@@ -1,0 +1,26 @@
+debug: true
+base_url: http://{{.LOCAL_IP}}:{{.NGINX_PORT}}
+logger:
+  level: info
+server:
+  http:
+    host: 0.0.0.0:8888
+admin:
+  user: {{.ADMIN_USER}}
+  password: {{.ADMIN_PASSWORD}}
+database:
+  master: postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@monkeycode-db:5432/{{.POSTGRES_DB}}?sslmode=disable&timezone=Asia/Shanghai
+  slave: postgres://{{.POSTGRES_USER}}:{{.POSTGRES_PASSWORD}}@monkeycode-db:5432/{{.POSTGRES_DB}}?sslmode=disable&timezone=Asia/Shanghai
+redis:
+  host: monkeycode-redis
+  port: "6379"
+  pass: {{.REDIS_PASSWORD}}
+  db: 0
+  idle_conn: 10
+llm_proxy:
+  timeout: 30s
+  keep_alive: 1m
+  client_pool_size: 10
+  request_log_path: /app/request/logs
+vscode:
+  vsix_file: /app/static/monkeycode.vsix

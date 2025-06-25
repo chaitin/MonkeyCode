@@ -1,0 +1,14 @@
+[err-permission]
+other = "无权操作"
+
+[err-user-not-found]
+other = "用户不存在"
+
+[err-password]
+other = "密码错误"
+
+[err-invite-code-invalid]
+other = "邀请码无效"
+
+[err-email-invalid]
+other = "邮箱格式错误"

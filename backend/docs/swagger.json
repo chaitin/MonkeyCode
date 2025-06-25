@@ -1,0 +1,2824 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "MonkeyCode API",
+        "title": "MonkeyCode API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "paths": {
+        "/api/v1/admin/create": {
+            "post": {
+                "description": "创建管理员",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "创建管理员",
+                "operationId": "create-admin",
+                "parameters": [
+                    {
+                        "description": "创建管理员参数",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CreateAdminReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.AdminUser"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/delete": {
+            "delete": {
+                "description": "删除管理员",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "删除管理员",
+                "operationId": "delete-admin",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "管理员ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/list": {
+            "get": {
+                "description": "获取管理员用户列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取管理员用户列表",
+                "operationId": "list-admin-user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "下一页标识",
+                        "name": "next_token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "分页",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页多少条记录",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListAdminUserResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/login": {
+            "post": {
+                "description": "管理员登录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "管理员登录",
+                "operationId": "admin-login",
+                "parameters": [
+                    {
+                        "description": "登录参数",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.LoginReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.AdminUser"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/login-history": {
+            "get": {
+                "description": "获取管理员登录历史",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取管理员登录历史",
+                "operationId": "admin-login-history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "下一页标识",
+                        "name": "next_token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "分页",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页多少条记录",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListAdminLoginHistoryResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/setting": {
+            "get": {
+                "description": "获取系统设置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取系统设置",
+                "operationId": "get-setting",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.Setting"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新系统设置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "更新系统设置",
+                "operationId": "update-setting",
+                "parameters": [
+                    {
+                        "description": "更新系统设置参数",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateSettingReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.Setting"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/billing/chat/info": {
+            "get": {
+                "description": "获取对话内容",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Billing"
+                ],
+                "summary": "获取对话内容",
+                "operationId": "chat-info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "对话记录ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ChatInfo"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/billing/chat/record": {
+            "get": {
+                "description": "获取对话记录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Billing"
+                ],
+                "summary": "获取对话记录",
+                "operationId": "list-chat-record",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "下一页标识",
+                        "name": "next_token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "分页",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页多少条记录",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListChatRecordResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/billing/completion/info": {
+            "get": {
+                "description": "获取补全内容",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Billing"
+                ],
+                "summary": "获取补全内容",
+                "operationId": "completion-info",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "补全记录ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.CompletionInfo"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/billing/completion/record": {
+            "get": {
+                "description": "获取补全记录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Billing"
+                ],
+                "summary": "获取补全记录",
+                "operationId": "list-completion-record",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "下一页标识",
+                        "name": "next_token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "分页",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页多少条记录",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListCompletionRecordResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/category-stat": {
+            "get": {
+                "description": "获取分类统计信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "获取分类统计信息",
+                "operationId": "category-stat-dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.CategoryStat"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/statistics": {
+            "get": {
+                "description": "获取统计信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "获取统计信息",
+                "operationId": "statistics-dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.Statistics"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/time-stat": {
+            "get": {
+                "description": "获取时间统计信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "获取时间统计信息",
+                "operationId": "time-stat-dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TimeStat"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/user-code-rank": {
+            "get": {
+                "description": "用户贡献榜",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "用户贡献榜",
+                "operationId": "user-code-rank-dashboard",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.UserCodeRank"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/user-events": {
+            "get": {
+                "description": "获取用户事件",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "获取用户事件",
+                "operationId": "user-events-dashboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.UserEvent"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/user-heatmap": {
+            "get": {
+                "description": "用户热力图",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "用户热力图",
+                "operationId": "user-heatmap-dashboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.UserHeatmapResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/user-stat": {
+            "get": {
+                "description": "获取用户统计信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "获取用户统计信息",
+                "operationId": "user-stat-dashboard",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.UserStat"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/model": {
+            "get": {
+                "description": "获取模型列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Model"
+                ],
+                "summary": "获取模型列表",
+                "operationId": "list-model",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.AllModelResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新模型",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Model"
+                ],
+                "summary": "更新模型",
+                "operationId": "update-model",
+                "parameters": [
+                    {
+                        "description": "模型",
+                        "name": "model",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateModelReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.Model"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建模型",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Model"
+                ],
+                "summary": "创建模型",
+                "operationId": "create-model",
+                "parameters": [
+                    {
+                        "description": "模型",
+                        "name": "model",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CreateModelReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.Model"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/model/check": {
+            "post": {
+                "description": "检查模型",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Model"
+                ],
+                "summary": "检查模型",
+                "operationId": "check-model",
+                "parameters": [
+                    {
+                        "description": "模型",
+                        "name": "model",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CheckModelReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.Model"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/model/my": {
+            "get": {
+                "description": "获取我的模型列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Model"
+                ],
+                "summary": "获取我的模型列表",
+                "operationId": "my-model-list",
+                "parameters": [
+                    {
+                        "enum": [
+                            "llm",
+                            "coder",
+                            "embedding",
+                            "audio",
+                            "reranker"
+                        ],
+                        "type": "string",
+                        "x-enum-varnames": [
+                            "ModelTypeLLM",
+                            "ModelTypeCoder",
+                            "ModelTypeEmbedding",
+                            "ModelTypeAudio",
+                            "ModelTypeReranker"
+                        ],
+                        "description": "模型类型 llm:对话模型 coder:代码模型",
+                        "name": "model_type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.Model"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/model/token-usage": {
+            "get": {
+                "description": "获取模型token使用情况",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Model"
+                ],
+                "summary": "获取模型token使用情况",
+                "operationId": "get-token-usage",
+                "parameters": [
+                    {
+                        "enum": [
+                            "llm",
+                            "coder",
+                            "embedding",
+                            "audio",
+                            "reranker"
+                        ],
+                        "type": "string",
+                        "x-enum-varnames": [
+                            "ModelTypeLLM",
+                            "ModelTypeCoder",
+                            "ModelTypeEmbedding",
+                            "ModelTypeAudio",
+                            "ModelTypeReranker"
+                        ],
+                        "description": "模型类型 llm:对话模型 coder:代码模型",
+                        "name": "model_type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ModelTokenUsageResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/static/vsix": {
+            "get": {
+                "description": "下载VSCode插件",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "下载VSCode插件",
+                "operationId": "vsix-download",
+                "responses": {}
+            }
+        },
+        "/api/v1/user/delete": {
+            "delete": {
+                "description": "删除用户",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "删除用户",
+                "operationId": "delete-user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/invite": {
+            "get": {
+                "description": "获取用户邀请码",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取用户邀请码",
+                "operationId": "invite",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.InviteResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/list": {
+            "get": {
+                "description": "获取用户列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取用户列表",
+                "operationId": "list-user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "下一页标识",
+                        "name": "next_token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "分页",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页多少条记录",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListUserResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/login": {
+            "post": {
+                "description": "用户登录",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "用户登录",
+                "operationId": "login",
+                "parameters": [
+                    {
+                        "description": "登录参数",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.LoginReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.LoginResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/login-history": {
+            "get": {
+                "description": "获取用户登录历史",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "获取用户登录历史",
+                "operationId": "login-history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "下一页标识",
+                        "name": "next_token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "分页",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页多少条记录",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListLoginHistoryResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/register": {
+            "post": {
+                "description": "注册用户",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "注册用户",
+                "operationId": "register",
+                "parameters": [
+                    {
+                        "description": "注册参数",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.RegisterReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/user/update": {
+            "put": {
+                "description": "更新用户",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "更新用户",
+                "operationId": "update-user",
+                "parameters": [
+                    {
+                        "description": "更新用户参数",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateUserReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/chat/completions": {
+            "post": {
+                "description": "处理聊天补全请求",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OpenAIV1"
+                ],
+                "summary": "处理聊天补全请求",
+                "operationId": "chat-completion",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/completion/accept": {
+            "post": {
+                "description": "接受补全请求",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OpenAIV1"
+                ],
+                "summary": "接受补全请求",
+                "operationId": "accept-completion",
+                "parameters": [
+                    {
+                        "description": "补全请求",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.AcceptCompletionReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/completions": {
+            "post": {
+                "description": "处理文本补全请求",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OpenAIV1"
+                ],
+                "summary": "处理文本补全请求",
+                "operationId": "completions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/embeddings": {
+            "post": {
+                "description": "处理嵌入请求",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OpenAIV1"
+                ],
+                "summary": "处理嵌入请求",
+                "operationId": "embeddings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/models": {
+            "get": {
+                "description": "模型列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "OpenAIV1"
+                ],
+                "summary": "模型列表",
+                "operationId": "model-list",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ModelListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "consts.AdminStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "AdminStatusActive",
+                "AdminStatusInactive"
+            ]
+        },
+        "consts.ModelStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "ModelStatusActive",
+                "ModelStatusInactive"
+            ]
+        },
+        "consts.ModelType": {
+            "type": "string",
+            "enum": [
+                "llm",
+                "coder",
+                "embedding",
+                "audio",
+                "reranker"
+            ],
+            "x-enum-varnames": [
+                "ModelTypeLLM",
+                "ModelTypeCoder",
+                "ModelTypeEmbedding",
+                "ModelTypeAudio",
+                "ModelTypeReranker"
+            ]
+        },
+        "consts.UserStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive",
+                "locked"
+            ],
+            "x-enum-varnames": [
+                "UserStatusActive",
+                "UserStatusInactive",
+                "UserStatusLocked"
+            ]
+        },
+        "domain.AcceptCompletionReq": {
+            "type": "object",
+            "properties": {
+                "completion": {
+                    "description": "补全内容",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "记录ID",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.AdminLoginHistory": {
+            "type": "object",
+            "properties": {
+                "client_version": {
+                    "description": "客户端版本",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "登录时间",
+                    "type": "integer"
+                },
+                "device": {
+                    "description": "设备信息",
+                    "type": "string"
+                },
+                "ip_info": {
+                    "description": "IP信息",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.IPInfo"
+                        }
+                    ]
+                },
+                "user": {
+                    "description": "用户信息",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.AdminUser"
+                        }
+                    ]
+                }
+            }
+        },
+        "domain.AdminUser": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "id": {
+                    "description": "用户ID",
+                    "type": "string"
+                },
+                "last_active_at": {
+                    "description": "最后活跃时间",
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "用户状态 active: 正常 inactive: 禁用",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.AdminStatus"
+                        }
+                    ]
+                },
+                "username": {
+                    "description": "用户名",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.AllModelResp": {
+            "type": "object",
+            "properties": {
+                "providers": {
+                    "description": "提供商列表",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ProviderModel"
+                    }
+                }
+            }
+        },
+        "domain.CategoryPoint": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "description": "分类",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "值",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.CategoryStat": {
+            "type": "object",
+            "properties": {
+                "program_language": {
+                    "description": "编程语言占比",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CategoryPoint"
+                    }
+                },
+                "work_mode": {
+                    "description": "工作模式占比",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CategoryPoint"
+                    }
+                }
+            }
+        },
+        "domain.ChatInfo": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ChatRecord": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "id": {
+                    "description": "记录ID",
+                    "type": "string"
+                },
+                "input_tokens": {
+                    "description": "输入token",
+                    "type": "integer"
+                },
+                "model": {
+                    "description": "模型",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.Model"
+                        }
+                    ]
+                },
+                "output_tokens": {
+                    "description": "输出token",
+                    "type": "integer"
+                },
+                "question": {
+                    "description": "问题",
+                    "type": "string"
+                },
+                "user": {
+                    "description": "用户",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.User"
+                        }
+                    ]
+                },
+                "work_mode": {
+                    "description": "工作模式",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CheckModelReq": {
+            "type": "object",
+            "required": [
+                "api_base",
+                "api_key",
+                "model_name",
+                "provider"
+            ],
+            "properties": {
+                "api_base": {
+                    "description": "接口地址",
+                    "type": "string"
+                },
+                "api_key": {
+                    "description": "接口密钥",
+                    "type": "string"
+                },
+                "model_name": {
+                    "description": "模型名称",
+                    "type": "string"
+                },
+                "provider": {
+                    "description": "提供商",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CompletionInfo": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CompletionRecord": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "id": {
+                    "description": "记录ID",
+                    "type": "string"
+                },
+                "input_tokens": {
+                    "description": "输入token",
+                    "type": "integer"
+                },
+                "is_accept": {
+                    "description": "是否采纳",
+                    "type": "boolean"
+                },
+                "output_tokens": {
+                    "description": "输出token",
+                    "type": "integer"
+                },
+                "program_language": {
+                    "description": "编程语言",
+                    "type": "string"
+                },
+                "user": {
+                    "description": "用户",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.User"
+                        }
+                    ]
+                }
+            }
+        },
+        "domain.CreateAdminReq": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "description": "密码",
+                    "type": "string"
+                },
+                "username": {
+                    "description": "用户名",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CreateModelReq": {
+            "type": "object",
+            "properties": {
+                "api_base": {
+                    "description": "接口地址 如：https://api.qwen.com",
+                    "type": "string"
+                },
+                "api_key": {
+                    "description": "接口密钥 如：sk-xxxx",
+                    "type": "string"
+                },
+                "model_name": {
+                    "description": "模型名称 如: deepseek-v3",
+                    "type": "string"
+                },
+                "model_type": {
+                    "description": "模型类型 llm:对话模型 coder:代码模型",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.ModelType"
+                        }
+                    ]
+                },
+                "provider": {
+                    "description": "提供商",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.IPInfo": {
+            "type": "object",
+            "properties": {
+                "asn": {
+                    "description": "ASN",
+                    "type": "string"
+                },
+                "city": {
+                    "description": "城市",
+                    "type": "string"
+                },
+                "country": {
+                    "description": "国家",
+                    "type": "string"
+                },
+                "ip": {
+                    "description": "IP地址",
+                    "type": "string"
+                },
+                "isp": {
+                    "description": "运营商",
+                    "type": "string"
+                },
+                "province": {
+                    "description": "省份",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.InviteResp": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "邀请码",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ListAdminLoginHistoryResp": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "login_histories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.AdminLoginHistory"
+                    }
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ListAdminUserResp": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.AdminUser"
+                    }
+                }
+            }
+        },
+        "domain.ListChatRecordResp": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ChatRecord"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ListCompletionRecordResp": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CompletionRecord"
+                    }
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ListLoginHistoryResp": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "login_histories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.UserLoginHistory"
+                    }
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ListUserResp": {
+            "type": "object",
+            "properties": {
+                "has_next_page": {
+                    "type": "boolean"
+                },
+                "next_token": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.User"
+                    }
+                }
+            }
+        },
+        "domain.LoginReq": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "description": "密码",
+                    "type": "string"
+                },
+                "session_id": {
+                    "description": "会话Id",
+                    "type": "string"
+                },
+                "username": {
+                    "description": "用户名",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.LoginResp": {
+            "type": "object",
+            "properties": {
+                "redirect_url": {
+                    "description": "重定向URL",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.Model": {
+            "type": "object",
+            "properties": {
+                "api_base": {
+                    "description": "接口地址 如：https://api.qwen.com",
+                    "type": "string"
+                },
+                "api_key": {
+                    "description": "接口密钥 如：sk-xxxx",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "id": {
+                    "description": "模型ID",
+                    "type": "string"
+                },
+                "input": {
+                    "description": "输入token数",
+                    "type": "integer"
+                },
+                "is_active": {
+                    "description": "是否启用",
+                    "type": "boolean"
+                },
+                "model_name": {
+                    "description": "模型名称 如: deepseek-v3",
+                    "type": "string"
+                },
+                "model_type": {
+                    "description": "模型类型 llm:对话模型 coder:代码模型",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.ModelType"
+                        }
+                    ]
+                },
+                "output": {
+                    "description": "输出token数",
+                    "type": "integer"
+                },
+                "provider": {
+                    "description": "提供商",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "状态 active:启用 inactive:禁用",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.ModelStatus"
+                        }
+                    ]
+                },
+                "updated_at": {
+                    "description": "更新时间",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ModelBasic": {
+            "type": "object",
+            "properties": {
+                "api_base": {
+                    "description": "接口地址 如：https://api.qwen.com",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "模型名称",
+                    "type": "string"
+                },
+                "provider": {
+                    "description": "提供商",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ModelData": {
+            "type": "object",
+            "properties": {
+                "api_base": {
+                    "type": "string"
+                },
+                "base_model": {
+                    "type": "string"
+                },
+                "created": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "object": {
+                    "type": "string"
+                },
+                "owned_by": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ModelListResp": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ModelData"
+                    }
+                },
+                "object": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ModelTokenUsage": {
+            "type": "object",
+            "properties": {
+                "timestamp": {
+                    "description": "时间戳",
+                    "type": "integer"
+                },
+                "tokens": {
+                    "description": "使用token数",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ModelTokenUsageResp": {
+            "type": "object",
+            "properties": {
+                "input_usage": {
+                    "description": "输入token使用记录",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ModelTokenUsage"
+                    }
+                },
+                "output_usage": {
+                    "description": "输出token使用记录",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ModelTokenUsage"
+                    }
+                },
+                "total_input": {
+                    "description": "总输入token数",
+                    "type": "integer"
+                },
+                "total_output": {
+                    "description": "总输出token数",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ProviderModel": {
+            "type": "object",
+            "properties": {
+                "models": {
+                    "description": "模型列表",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ModelBasic"
+                    }
+                },
+                "provider": {
+                    "description": "提供商",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.RegisterReq": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "邀请码",
+                    "type": "string"
+                },
+                "email": {
+                    "description": "邮箱",
+                    "type": "string"
+                },
+                "password": {
+                    "description": "密码",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.Setting": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "disable_password_login": {
+                    "description": "是否禁用密码登录",
+                    "type": "boolean"
+                },
+                "enable_sso": {
+                    "description": "是否开启SSO",
+                    "type": "boolean"
+                },
+                "force_two_factor_auth": {
+                    "description": "是否强制两步验证",
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "description": "更新时间",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.Statistics": {
+            "type": "object",
+            "properties": {
+                "disabled_users": {
+                    "description": "禁用用户数",
+                    "type": "integer"
+                },
+                "total_users": {
+                    "description": "总用户数",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TimeStat": {
+            "type": "object",
+            "properties": {
+                "accepted_per": {
+                    "description": "接受率统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "number"
+                            }
+                        }
+                    }
+                },
+                "active_users": {
+                    "description": "活跃用户数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "chats": {
+                    "description": "对话任务数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "code_completions": {
+                    "description": "补全任务数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "lines_of_code": {
+                    "description": "代码行数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "real_time_tokens": {
+                    "description": "实时token数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "total_accepted_per": {
+                    "description": "近90天平均接受率",
+                    "type": "number"
+                },
+                "total_chats": {
+                    "description": "近90天对话任务数",
+                    "type": "integer"
+                },
+                "total_completions": {
+                    "description": "近90天补全任务数",
+                    "type": "integer"
+                },
+                "total_lines_of_code": {
+                    "description": "近90天代码行数",
+                    "type": "integer"
+                },
+                "total_users": {
+                    "description": "近90天活跃用户数",
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.UpdateModelReq": {
+            "type": "object",
+            "properties": {
+                "api_base": {
+                    "description": "接口地址 如：https://api.qwen.com",
+                    "type": "string"
+                },
+                "api_key": {
+                    "description": "接口密钥 如：sk-xxxx",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "模型ID",
+                    "type": "string"
+                },
+                "model_name": {
+                    "description": "模型名称",
+                    "type": "string"
+                },
+                "provider": {
+                    "description": "提供商",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "状态 active:启用 inactive:禁用",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.ModelStatus"
+                        }
+                    ]
+                }
+            }
+        },
+        "domain.UpdateSettingReq": {
+            "type": "object",
+            "properties": {
+                "disable_password_login": {
+                    "description": "是否禁用密码登录",
+                    "type": "boolean"
+                },
+                "enable_sso": {
+                    "description": "是否开启SSO",
+                    "type": "boolean"
+                },
+                "force_two_factor_auth": {
+                    "description": "是否强制两步验证",
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain.UpdateUserReq": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "description": "用户ID",
+                    "type": "string"
+                },
+                "password": {
+                    "description": "重置密码",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "用户状态 active: 正常 locked: 锁定 inactive: 禁用",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.UserStatus"
+                        }
+                    ]
+                }
+            }
+        },
+        "domain.User": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "email": {
+                    "description": "邮箱",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "用户ID",
+                    "type": "string"
+                },
+                "last_active_at": {
+                    "description": "最后活跃时间",
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "用户状态 active: 正常 locked: 锁定 inactive: 禁用",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/consts.UserStatus"
+                        }
+                    ]
+                },
+                "two_step_auth": {
+                    "description": "是否开启两步验证",
+                    "type": "boolean"
+                },
+                "username": {
+                    "description": "用户名",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.UserCodeRank": {
+            "type": "object",
+            "properties": {
+                "lines": {
+                    "description": "代码行数",
+                    "type": "integer"
+                },
+                "username": {
+                    "description": "用户名",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.UserEvent": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "事件时间",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "事件名称",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.UserHeatmap": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.UserHeatmapResp": {
+            "type": "object",
+            "properties": {
+                "max_count": {
+                    "type": "integer"
+                },
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.UserHeatmap"
+                    }
+                }
+            }
+        },
+        "domain.UserLoginHistory": {
+            "type": "object",
+            "properties": {
+                "client_version": {
+                    "description": "客户端版本",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "登录时间",
+                    "type": "integer"
+                },
+                "device": {
+                    "description": "设备信息",
+                    "type": "string"
+                },
+                "ip_info": {
+                    "description": "IP信息",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.IPInfo"
+                        }
+                    ]
+                },
+                "user": {
+                    "description": "用户信息",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.User"
+                        }
+                    ]
+                }
+            }
+        },
+        "domain.UserStat": {
+            "type": "object",
+            "properties": {
+                "accepted_per": {
+                    "description": "接受率统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "number"
+                            }
+                        }
+                    }
+                },
+                "chats": {
+                    "description": "对话任务数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "code_completions": {
+                    "description": "补全任务数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "lines_of_code": {
+                    "description": "代码行数统计",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": {
+                                "description": "时间戳",
+                                "type": "integer"
+                            },
+                            "value": {
+                                "description": "值",
+                                "type": "integer"
+                            }
+                        }
+                    }
+                },
+                "program_language": {
+                    "description": "编程语言占比",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CategoryPoint"
+                    }
+                },
+                "total_accepted_per": {
+                    "description": "近90天总接受率",
+                    "type": "number"
+                },
+                "total_chats": {
+                    "description": "近90天总对话任务数",
+                    "type": "integer"
+                },
+                "total_completions": {
+                    "description": "近90天总补全任务数",
+                    "type": "integer"
+                },
+                "total_lines_of_code": {
+                    "description": "近90天总代码行数",
+                    "type": "integer"
+                },
+                "work_mode": {
+                    "description": "工作模式占比",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CategoryPoint"
+                    }
+                }
+            }
+        },
+        "web.Resp": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

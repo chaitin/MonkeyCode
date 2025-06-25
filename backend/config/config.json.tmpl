@@ -1,0 +1,52 @@
+{
+    "providerProfiles": {
+      "currentApiConfigName": "default",
+      "apiConfigs": {
+        "default": {
+          "apiProvider": "openai",
+          "apiModelId": "{{ .chatModel }}",
+          "openAiBaseUrl": "{{ .apiBase}}/v1",
+          "openAiApiKey": "{{ .apikey }}",
+          "openAiModelId": "{{ .chatModel }}",
+          "openAiCustomModelInfo": {
+            "maxTokens": 8192,
+            "contextWindow": 32768,
+            "supportsImages": false,
+            "supportsComputerUse": false,
+            "supportsPromptCache": false
+          },
+          "id": "59admorkig4"
+        }
+      },
+      "modeApiConfigs": {
+        "code": "59admorkig4",
+        "architect": "59admorkig4",
+        "ask": "59admorkig4",
+        "debug": "59admorkig4",
+        "deepresearch": "59admorkig4"
+      },
+      "migrations": {
+        "rateLimitSecondsMigrated": true,
+        "diffSettingsMigrated": true
+      }
+    },
+    "ctcodeTabCompletions": {
+      "enabled": true,
+      "apiProvider": "openai",
+      "openAiBaseUrl": "{{ .apiBase}}/v1",
+      "openAiApiKey": "{{ .apikey }}",
+      "openAiModelId": "{{ .codeModel }}"
+    },
+    "globalSettings": {
+      "allowedCommands": [
+        "npm test",
+        "npm install",
+        "tsc",
+        "git log",
+        "git diff",
+        "git show"
+      ],
+      "mode": "code",
+      "customModes": []
+    }
+  }
