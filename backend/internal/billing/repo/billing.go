@@ -12,6 +12,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 type BillingRepo struct {
@@ -54,6 +55,7 @@ func (b *BillingRepo) CompletionInfo(ctx context.Context, id string) (*domain.Co
 
 // ListChatRecord implements domain.BillingRepo.
 func (b *BillingRepo) ListChatRecord(ctx context.Context, req domain.ListRecordReq) (*domain.ListChatRecordResp, error) {
+	ctx = entx.SkipSoftDelete(ctx)
 	q := b.db.Task.Query().
 		WithUser().
 		WithModel().
@@ -100,6 +102,7 @@ func filterTask(q *db.TaskQuery, req domain.ListRecordReq) {
 
 // ListCompletionRecord implements domain.BillingRepo.
 func (b *BillingRepo) ListCompletionRecord(ctx context.Context, req domain.ListRecordReq) (*domain.ListCompletionRecordResp, error) {
+	ctx = entx.SkipSoftDelete(ctx)
 	q := b.db.Task.Query().
 		WithUser().
 		WithModel().
