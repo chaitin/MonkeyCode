@@ -85,6 +85,7 @@ const lightTheme = createTheme(
               borderWidth: '1px !important',
             },
             borderRadius: '10px !important',
+            fontSize: 14,
           },
         },
       },

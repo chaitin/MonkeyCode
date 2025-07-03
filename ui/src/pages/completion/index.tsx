@@ -65,7 +65,7 @@ const Completion = () => {
   const [filterLang, setFilterLang] = useState('');
   const [filterAccept, setFilterAccept] = useState<
     'accepted' | 'unaccepted' | ''
-  >('');
+  >('accepted');
 
   const { data: userOptions = { users: [] } } = useRequest(() =>
     getListUser({

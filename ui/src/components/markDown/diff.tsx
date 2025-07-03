@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { DiffEditor } from '@monaco-editor/react';
 
 interface DiffProps {
@@ -14,6 +14,30 @@ const Diff: React.FC<DiffProps> = ({
   language = 'javascript',
   height = 400,
 }) => {
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+
+  // 卸载时主动 dispose
+  useEffect(() => {
+    return () => {
+      if (editorRef.current && monacoRef.current) {
+        const editor = editorRef.current;
+        // DiffEditor getModel() 返回 [original, modified]
+        const models = editor.getModel ? editor.getModel() : [];
+        if (models && Array.isArray(models)) {
+          models.forEach(
+            (model: any) => model && model.dispose && model.dispose()
+          );
+        }
+      }
+    };
+  }, []);
+
+  const handleMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+  };
+
   // 处理高度和宽度样式
   const boxHeight = typeof height === 'number' ? `${height}px` : height;
   const boxWidth = 1000; // 默认宽度800px
@@ -27,25 +51,19 @@ const Diff: React.FC<DiffProps> = ({
         height='100%'
         width='100%'
         language={language}
-        original={original}
-        modified={modified}
+        original={original || ''}
+        modified={modified || ''}
         theme='vs-dark'
+        onMount={handleMount}
         options={{
           readOnly: true,
           minimap: { enabled: false },
           fontSize: 14,
           scrollBeyondLastLine: false,
-          wordWrap: 'on',
+          wordWrap: 'off',
           lineNumbers: 'on',
           glyphMargin: false,
           folding: false,
-          scrollbar: {
-            vertical: 'hidden',
-            horizontal: 'hidden',
-            handleMouseWheel: false,
-            alwaysConsumeMouseWheel: false,
-            useShadows: false,
-          },
           overviewRulerLanes: 0,
           guides: {
             indentation: true,

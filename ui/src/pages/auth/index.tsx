@@ -294,13 +294,6 @@ const AuthPage = () => {
   // 渲染登录表单
   const renderLoginForm = () => (
     <>
-      <LogoContainer>
-        <LogoImage src={Logo} alt='Monkey Code Logo' />
-        <LogoTitle variant='h4' gutterBottom>
-          Monkey Code
-        </LogoTitle>
-      </LogoContainer>
-
       <Box component='form' onSubmit={handleSubmit(onSubmit)}>
         <Grid container spacing={4}>
           <Grid size={12}>{renderUsernameField()}</Grid>
@@ -322,6 +315,12 @@ const AuthPage = () => {
   return (
     <StyledContainer id='box'>
       <StyledPaper elevation={3}>
+        <LogoContainer>
+          <LogoImage src={Logo} alt='Monkey Code Logo' />
+          <LogoTitle variant='h4' gutterBottom>
+            Monkey Code
+          </LogoTitle>
+        </LogoContainer>
         {!loginSetting.disable_password_login && renderLoginForm()}
         {loginSetting.enable_dingtalk_oauth && dingdingLogin()}
       </StyledPaper>

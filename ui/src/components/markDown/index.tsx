@@ -43,13 +43,80 @@ export const toolNames = [
 // 去掉下划线的标签名，用于Markdown渲染
 export const toolTagNames = toolNames.map((name) => name.replace(/_/g, ''));
 
-type ToolInfo = any;
+// 支持多组 diff 分隔符，容错处理
+function parseAndMergeDiffs(diffText: string) {
+  const diffBlocks: { search: string; replace: string }[] = [];
+  const lines = diffText.split('\n');
+  let inDiff = false;
+  let inSearch = false;
+  let inReplace = false;
+  let searchBuffer: string[] = [];
+  let replaceBuffer: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^<+ *SEARCH/.test(line)) {
+      inDiff = true;
+      inSearch = true;
+      inReplace = false;
+      searchBuffer = [];
+      replaceBuffer = [];
+      continue;
+    }
+    if (/^====+$/.test(line)) {
+      if (inDiff && inSearch) {
+        inSearch = false;
+        inReplace = true;
+        continue;
+      }
+    }
+    if (/^>+ *REPLACE/.test(line)) {
+      if (inDiff && inReplace) {
+        diffBlocks.push({
+          search: searchBuffer.join('\n'),
+          replace: replaceBuffer.join('\n'),
+        });
+        inDiff = false;
+        inReplace = false;
+        continue;
+      }
+    }
+    if (inDiff) {
+      if (inSearch) {
+        searchBuffer.push(line);
+      } else if (inReplace) {
+        replaceBuffer.push(line);
+      }
+    }
+  }
+  // 容错：如果最后一组没有正常结束
+  if (inDiff) {
+    diffBlocks.push({
+      search: searchBuffer.join('\n'),
+      replace: replaceBuffer.join('\n'),
+    });
+  }
+
+  const mergedSearch = diffBlocks.map((b) => b.search).join('\n');
+  const mergedReplace = diffBlocks.map((b) => b.replace).join('\n');
+
+  return { mergedSearch, mergedReplace, diffBlocks };
+}
 
 // 预处理 markdown，提取所有 <diff> 内容，生成 diffMap
 function preprocessMarkdown(mdContent: string) {
   let diffIndex = 0;
   const diffMap: Record<string, string> = {};
-  const newMd = mdContent.replace(
+  // 自动补全未闭合的 </diff>
+  let fixedMd = mdContent;
+  const openDiffCount = (fixedMd.match(/<diff>/g) || []).length;
+  const closeDiffCount = (fixedMd.match(/<\/diff>/g) || []).length;
+  if (openDiffCount > closeDiffCount) {
+    // 补全缺失的 </diff>
+    for (let i = 0; i < openDiffCount - closeDiffCount; i++) {
+      fixedMd += '</diff>';
+    }
+  }
+  const newMd = fixedMd.replace(
     /<diff>([\s\S]*?)<\/diff>/g,
     (_, diffContent) => {
       const id = `diff-${diffIndex++}`;
@@ -63,22 +130,11 @@ function preprocessMarkdown(mdContent: string) {
 const MarkDown = ({
   loading = false,
   content,
-  showToolInfo = {},
-  setShowToolInfo,
-  setCurrentToolId,
-  handleSearchAbort,
 }: {
   loading?: boolean;
   content: string;
-  showToolInfo: Record<string, ToolInfo>;
-  setShowToolInfo: (value: Record<string, ToolInfo>) => void;
-  setCurrentToolId?: (value: string) => void;
-  handleSearchAbort?: () => void;
 }) => {
   const theme = useTheme();
-  const [diffContent, setDiffContent] = useState([]);
-  const [showThink, setShowThink] = useState(false);
-  const editorRef = useRef<any>(null);
 
   // 删除 content 中 <thinking> 和 <execute_command> 标签，并保留标签中的内容
   const deleteTags = (content: string) => {
@@ -176,25 +232,22 @@ const MarkDown = ({
               // 去掉 user-content- 前缀
               const id = node?.properties?.id?.replace(/^user-content-/, '');
               const rawDiff = id ? diffMap[id] : '';
-              // 解析 rawDiff 为 original 和 modified
               let original = '',
                 modified = '';
               if (rawDiff) {
-                const match = rawDiff.match(
-                  /<{2,} *SEARCH([\s\S]*?)={2,}([\s\S]*?)>{2,} *REPLACE/
-                );
-                if (match) {
-                  // 清理行号标记和分隔线
-                  const cleanDiff = (str: string) =>
-                    str
-                      .replace(/:start_line:\d+\n?[-=]+/g, '')
-                      .replace(/^-{2,}\n?/gm, '')
-                      .replace(/^={2,}\n?/gm, '')
-                      .replace(/^\s+|\s+$/g, '');
-                  original = cleanDiff(match[1].trim());
-                  modified = cleanDiff(match[2].trim());
-                }
+                const { mergedSearch, mergedReplace } =
+                  parseAndMergeDiffs(rawDiff);
+                // 清理行号标记和分隔线
+                const cleanDiff = (str: string) =>
+                  str
+                    .replace(/:start_line:\d+\n?[-=]+/g, '')
+                    .replace(/^-{2,}\n?/gm, '')
+                    .replace(/^={2,}\n?/gm, '')
+                    .replace(/^\n+|\n+$/g, '');
+                original = cleanDiff(mergedSearch);
+                modified = cleanDiff(mergedReplace);
               }
+
               return (
                 <Diff
                   original={original}

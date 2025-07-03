@@ -125,13 +125,6 @@ const ChatDetailModal = ({
               lineNumbers: 'on',
               glyphMargin: false,
               folding: false,
-              scrollbar: {
-                vertical: 'hidden',
-                horizontal: 'hidden',
-                handleMouseWheel: false,
-                alwaysConsumeMouseWheel: false,
-                useShadows: false,
-              },
               overviewRulerLanes: 0,
               guides: {
                 indentation: true,
