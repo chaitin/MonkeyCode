@@ -123,11 +123,7 @@ const ChatDetailModal = ({
                   />
                 </StyledChatAvatar>
                 <StyledChatBubble isUser={isUser}>
-                  <MarkDown
-                    showToolInfo={showToolInfo}
-                    setShowToolInfo={setShowToolInfo}
-                    content={msg}
-                  />
+                  <MarkDown content={msg} />
                 </StyledChatBubble>
               </StyledChatRow>
             );
