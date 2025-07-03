@@ -1,4 +1,3 @@
-/* eslint-disable */
 /* tslint:disable */
 // @ts-nocheck
 /*
@@ -11,32 +10,37 @@
  */
 
 export enum ConstsUserStatus {
-  UserStatusActive = "active",
-  UserStatusInactive = "inactive",
-  UserStatusLocked = "locked",
+  UserStatusActive = 'active',
+  UserStatusInactive = 'inactive',
+  UserStatusLocked = 'locked',
 }
 
 export enum ConstsUserPlatform {
-  UserPlatformEmail = "email",
-  UserPlatformDingTalk = "dingtalk",
+  UserPlatformEmail = 'email',
+  UserPlatformDingTalk = 'dingtalk',
 }
 
 export enum ConstsModelType {
-  ModelTypeLLM = "llm",
-  ModelTypeCoder = "coder",
-  ModelTypeEmbedding = "embedding",
-  ModelTypeAudio = "audio",
-  ModelTypeReranker = "reranker",
+  ModelTypeLLM = 'llm',
+  ModelTypeCoder = 'coder',
+  ModelTypeEmbedding = 'embedding',
+  ModelTypeAudio = 'audio',
+  ModelTypeReranker = 'reranker',
 }
 
 export enum ConstsModelStatus {
-  ModelStatusActive = "active",
-  ModelStatusInactive = "inactive",
+  ModelStatusActive = 'active',
+  ModelStatusInactive = 'inactive',
+}
+
+export enum ConstsChatRole {
+  ChatRoleUser = 'user',
+  ChatRoleAssistant = 'assistant',
 }
 
 export enum ConstsAdminStatus {
-  AdminStatusActive = "active",
-  AdminStatusInactive = "inactive",
+  AdminStatusActive = 'active',
+  AdminStatusInactive = 'inactive',
 }
 
 export interface DomainAcceptCompletionReq {
@@ -91,9 +95,17 @@ export interface DomainCategoryStat {
   work_mode?: DomainCategoryPoint[];
 }
 
-export interface DomainChatInfo {
+export interface DomainChatContent {
+  /** 内容 */
   content?: string;
   created_at?: number;
+  /** 角色，如user: 用户的提问 assistant: 机器人回复 */
+  role?: ConstsChatRole;
+}
+
+export interface DomainChatInfo {
+  /** 消息内容 */
+  contents?: DomainChatContent[];
   id?: string;
 }
 
@@ -622,9 +634,53 @@ export interface GetListCompletionRecordParams {
   size?: number;
 }
 
+export interface GetCategoryStatDashboardParams {
+  /**
+   * 持续时间 (小时或天数)`
+   * @min 24
+   * @max 90
+   */
+  duration?: number;
+  /** 精度: "hour", "day" */
+  precision: 'hour' | 'day';
+  /** 用户ID，可jj */
+  user_id?: string;
+}
+
+export interface GetTimeStatDashboardParams {
+  /**
+   * 持续时间 (小时或天数)`
+   * @min 24
+   * @max 90
+   */
+  duration?: number;
+  /** 精度: "hour", "day" */
+  precision: 'hour' | 'day';
+  /** 用户ID，可jj */
+  user_id?: string;
+}
+
+export interface GetUserCodeRankDashboardParams {
+  /**
+   * 持续时间 (小时或天数)`
+   * @min 24
+   * @max 90
+   */
+  duration?: number;
+  /** 精度: "hour", "day" */
+  precision: 'hour' | 'day';
+  /** 用户ID，可jj */
+  user_id?: string;
+}
+
 export interface GetUserEventsDashboardParams {
-  /** 用户ID */
-  user_id: string;
+  /**
+   * 持续时间 (小时或天数)`
+   * @min 24
+   * @max 90
+   */
+  /** 用户ID，可jj */
+  user_id?: string;
 }
 
 export interface GetUserHeatmapDashboardParams {
@@ -633,18 +689,26 @@ export interface GetUserHeatmapDashboardParams {
 }
 
 export interface GetUserStatDashboardParams {
-  /** 用户ID */
+  /**
+   * 持续时间 (小时或天数)`
+   * @min 24
+   * @max 90
+   */
+  duration?: number;
+  /** 精度: "hour", "day" */
+  precision: 'hour' | 'day';
+  /** 用户ID，可jj */
   user_id?: string;
 }
 
 export interface GetMyModelListParams {
   /** 模型类型 llm:对话模型 coder:代码模型 */
-  model_type?: "llm" | "coder" | "embedding" | "audio" | "reranker";
+  model_type?: 'llm' | 'coder' | 'embedding' | 'audio' | 'reranker';
 }
 
 export interface GetGetTokenUsageParams {
   /** 模型类型 llm:对话模型 coder:代码模型 */
-  model_type: "llm" | "coder" | "embedding" | "audio" | "reranker";
+  model_type: 'llm' | 'coder' | 'embedding' | 'audio' | 'reranker';
 }
 
 export interface DeleteDeleteUserParams {
@@ -677,7 +741,7 @@ export interface GetUserOauthCallbackParams {
 
 export interface GetUserOauthSignupOrInParams {
   /** 第三方平台 dingtalk */
-  platform: "email" | "dingtalk";
+  platform: 'email' | 'dingtalk';
   /** 登录成功后跳转的 URL */
   redirect_url?: string;
   /** 会话ID */

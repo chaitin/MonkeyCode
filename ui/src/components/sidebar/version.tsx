@@ -13,7 +13,7 @@ const Version = () => {
   );
 
   useEffect(() => {
-    fetch('https://release.baizhi.cloud/monekycode/version.txt')
+    fetch('https://release.baizhi.cloud/monkeycode/version.txt')
       .then((response) => response.text())
       .then((data) => {
         setLatestVersion(data);

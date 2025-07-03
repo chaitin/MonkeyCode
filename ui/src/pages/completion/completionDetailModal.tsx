@@ -6,6 +6,16 @@ import MonacoEditor from '@monaco-editor/react';
 import { useEffect, useState, useRef } from 'react';
 import { DomainCompletionRecord } from '@/api/types';
 
+function getBaseLanguageId(languageId: string): string {
+  const map: Record<string, string> = {
+    typescriptreact: 'typescript',
+    javascriptreact: 'javascript',
+    tailwindcss: 'css',
+    'vue-html': 'vue',
+  };
+  return map[languageId] || languageId;
+}
+
 const ChatDetailModal = ({
   data,
   open,
@@ -103,7 +113,7 @@ const ChatDetailModal = ({
         <div style={{ height: 420 }}>
           <MonacoEditor
             height='100%'
-            language={data?.program_language || 'plaintext'}
+            language={getBaseLanguageId(data?.program_language || 'plaintext')}
             value={editorValue}
             theme='vs-dark'
             options={{

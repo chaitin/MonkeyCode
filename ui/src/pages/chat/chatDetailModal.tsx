@@ -2,15 +2,61 @@ import Avatar from '@/components/avatar';
 import Card from '@/components/card';
 import { getChatInfo } from '@/api/Billing';
 import MarkDown from '@/components/markDown';
-import { addCommasToNumber, processText } from '@/utils';
 import { Ellipsis, Icon, Modal } from '@c-x/ui';
-import { Box, Stack, Tooltip, useTheme } from '@mui/material';
-import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
-import { DomainChatRecord } from '@/api/types';
+import { styled } from '@mui/material/styles';
+import logo from '@/assets/images/logo.png';
 
-type ConversationItem = any;
+import { useEffect, useState } from 'react';
+import { DomainChatContent, DomainChatRecord } from '@/api/types';
+
 type ToolInfo = any;
+
+const StyledChatList = styled('div')(() => ({
+  background: '#f7f8fa',
+  borderRadius: 4,
+  padding: 24,
+  minHeight: 400,
+  maxHeight: 600,
+  overflowY: 'auto',
+}));
+
+const StyledChatRow = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'isUser',
+})<{ isUser: boolean }>(({ isUser }) => ({
+  display: 'flex',
+  flexDirection: isUser ? 'row-reverse' : 'row',
+  alignItems: 'flex-start',
+  marginBottom: 28,
+  position: 'relative',
+}));
+
+const StyledChatAvatar = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'isUser',
+})<{ isUser: boolean }>(({ isUser }) => ({
+  margin: isUser ? '0 0 0 18px' : '0 18px 0 0',
+  display: 'flex',
+  alignItems: 'flex-start',
+  position: 'relative',
+  top: 0,
+}));
+
+const StyledChatBubble = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'isUser',
+})<{ isUser: boolean }>(({ isUser }) => ({
+  background: isUser ? '#e6f7ff' : '#f5f5f5',
+  borderRadius: 18,
+  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+  padding: '16px 20px',
+  minHeight: 36,
+  maxWidth: 1100,
+  wordBreak: 'break-word',
+  position: 'relative',
+  transition: 'box-shadow 0.2s',
+  cursor: 'pointer',
+  '&:hover': {
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+  },
+}));
 
 const ChatDetailModal = ({
   data,
@@ -21,10 +67,7 @@ const ChatDetailModal = ({
   open: boolean;
   onClose: () => void;
 }) => {
-  const theme = useTheme();
-  const [ChatDetailModal, setChatDetailModal] =
-    useState<ConversationItem | null>(null);
-  const [content, setContent] = useState<string>('');
+  const [content, setContent] = useState<DomainChatContent[]>([]);
   const [showToolInfo, setShowToolInfo] = useState<{ [key: string]: ToolInfo }>(
     {}
   );
@@ -32,34 +75,8 @@ const ChatDetailModal = ({
   const getChatDetailModal = () => {
     if (!data) return;
     getChatInfo({ id: data.id! }).then((res) => {
-      setContent(res.content || '');
+      setContent(res.contents || []);
     });
-    // getConversationChatDetailModal({ id }).then((res) => {
-    //   const newAnswer = res.answer
-    //   const toolWrapsIds = newAnswer.match(/<tools id="([^"]+)">/g)?.map(match => {
-    //     const idMatch = match.match(/<tools id="([^"]+)">/);
-    //     return idMatch ? idMatch[1] : null;
-    //   }).filter(Boolean) || [];
-    //   const toolIds = newAnswer.match(/<tool id="([^"]+)">/g)?.map(match => {
-    //     const idMatch = match.match(/<tool id="([^"]+)">/);
-    //     return idMatch ? idMatch[1] : null;
-    //   }).filter(Boolean) || [];
-    //   const obj: { [key: string]: ToolInfo } = {}
-    //   toolWrapsIds.forEach(id => {
-    //     obj[id!] = {
-    //       done: true,
-    //     }
-    //   })
-    //   toolIds.forEach(id => {
-    //     obj[id!] = {
-    //       args: false,
-    //       result: false,
-    //       done: true,
-    //     }
-    //   })
-    //   setShowToolInfo(obj)
-    //   setChatDetailModal({ ...res, answer: processText(res.answer) })
-    // })
   };
 
   useEffect(() => {
@@ -81,169 +98,41 @@ const ChatDetailModal = ({
           对话记录-{data?.user?.username}
         </Ellipsis>
       }
-      width={800}
+      width={1200}
       open={open}
       onCancel={onClose}
       footer={null}
     >
-      {ChatDetailModal ? (
-        <Box sx={{ fontSize: 14 }}>
-          <Stack
-            direction={'row'}
-            alignItems={'center'}
-            gap={3}
-            sx={{
-              fontSize: 14,
-              color: 'text.auxiliary',
-            }}
-          >
-            {ChatDetailModal.created_at && (
-              <Stack direction={'row'} alignItems={'center'} gap={1}>
-                <Icon type='icon-a-shijian2' />
-                {dayjs(ChatDetailModal.created_at).format(
-                  'YYYY-MM-DD HH:mm:ss'
-                )}
-              </Stack>
-            )}
-            {ChatDetailModal.remote_ip && (
-              <Stack direction={'row'} alignItems={'center'} gap={1}>
-                <Icon type='icon-IPdizhijiancha' />
-                {ChatDetailModal.remote_ip}
-              </Stack>
-            )}
-            {ChatDetailModal.model && (
-              <Stack direction={'row'} alignItems={'center'} gap={1}>
-                <Icon type='icon-moxing' />
-                使用模型
-                <Box>{ChatDetailModal.model}</Box>
-              </Stack>
-            )}
-            {data?.input_tokens && data?.output_tokens && (
-              <Tooltip
-                title={
-                  <Stack gap={1} sx={{ minWidth: 100, py: 1 }}>
-                    <Box>
-                      输入 Token 使用： {addCommasToNumber(data?.input_tokens)}
-                    </Box>
-                    <Box>
-                      输出 Token 使用： {addCommasToNumber(data?.output_tokens)}
-                    </Box>
-                  </Stack>
-                }
-              >
-                <Stack
-                  direction={'row'}
-                  alignItems={'center'}
-                  gap={1}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <Icon type='icon-moxing' />
-                  Token 统计
-                  <Box>
-                    {addCommasToNumber(
-                      data?.input_tokens + data?.output_tokens
-                    )}
-                  </Box>
-                  <Icon type='icon-a-wenhao8' />
-                </Stack>
-              </Tooltip>
-            )}
-          </Stack>
-          {ChatDetailModal.references?.length > 0 && (
-            <>
-              <Stack
-                direction={'row'}
-                alignItems={'center'}
-                gap={1}
-                sx={{
-                  fontWeight: 'bold',
-                  mt: 2,
-                  mb: 1,
-                  '&::before': {
-                    content: '""',
-                    display: 'inline-block',
-                    width: '4px',
-                    height: '12px',
-                    borderRadius: '2px',
-                    backgroundColor: theme.palette.primary.main,
-                  },
-                }}
-              >
-                内容来源
-              </Stack>
-              <Card sx={{ p: 2, bgcolor: 'background.paper2' }}>
-                {ChatDetailModal.references.map((item: any, index: number) => (
-                  <Stack
-                    direction={'row'}
-                    alignItems={'center'}
-                    gap={1}
-                    key={index}
-                  >
-                    <Avatar
-                      src={item.favicon}
-                      sx={{ width: 18, height: 18 }}
-                      errorIcon={
-                        <Icon
-                          type='icon-ditu_diqiu'
-                          sx={{ fontSize: 18, color: 'text.auxiliary' }}
-                        />
-                      }
-                    />
-                    <Ellipsis>
-                      <Box
-                        component={'a'}
-                        href={item.url}
-                        target='_blank'
-                        sx={{
-                          color: 'text.primary',
-                          '&:hover': { color: 'primary.main' },
-                        }}
-                      >
-                        {item.title}
-                      </Box>
-                    </Ellipsis>
-                  </Stack>
-                ))}
-              </Card>
-            </>
-          )}
-          <Stack
-            direction={'row'}
-            alignItems={'center'}
-            gap={1}
-            sx={{
-              fontWeight: 'bold',
-              mt: 2,
-              mb: 1,
-              '&::before': {
-                content: '""',
-                display: 'inline-block',
-                width: '4px',
-                height: '12px',
-                borderRadius: '2px',
-                backgroundColor: theme.palette.primary.main,
-              },
-            }}
-          >
-            回答
-          </Stack>
-        </Box>
-      ) : (
-        <Box></Box>
-      )}
-      <Card
-        sx={{
-          '.markdown-body': {
-            background: 'transparent',
-          },
-          p: 0,
-        }}
-      >
-        <MarkDown
-          showToolInfo={showToolInfo}
-          setShowToolInfo={setShowToolInfo}
-          content={content}
-        />
+      <Card sx={{ p: 0, background: 'transparent', boxShadow: 'none' }}>
+        <StyledChatList>
+          {content.map((item, idx) => {
+            const isUser = item.role === 'user';
+            const name = isUser ? data?.user?.username : 'AI';
+            const msg = item.content || '';
+            return (
+              <StyledChatRow key={idx} isUser={isUser}>
+                <StyledChatAvatar isUser={isUser}>
+                  <Avatar
+                    name={isUser ? name : undefined}
+                    src={isUser ? undefined : logo}
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      fontSize: 22,
+                    }}
+                  />
+                </StyledChatAvatar>
+                <StyledChatBubble isUser={isUser}>
+                  <MarkDown
+                    showToolInfo={showToolInfo}
+                    setShowToolInfo={setShowToolInfo}
+                    content={msg}
+                  />
+                </StyledChatBubble>
+              </StyledChatRow>
+            );
+          })}
+        </StyledChatList>
       </Card>
     </Modal>
   );

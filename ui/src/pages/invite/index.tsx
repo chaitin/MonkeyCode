@@ -322,7 +322,11 @@ const Invite = () => {
                 borderRadius: 1,
                 height: 48,
               }}
-              onClick={onNext}
+              onClick={() => {
+                setTimeout(() => {
+                  onNext();
+                }, 500);
+              }}
             >
               下载客户端
             </Button>

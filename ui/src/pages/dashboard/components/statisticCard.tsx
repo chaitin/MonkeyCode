@@ -3,6 +3,7 @@ import { styled, Stack, Box } from '@mui/material';
 import { Empty } from '@c-x/ui';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
+import { TimeRange } from '../index';
 
 import Card from '@/components/card';
 import {
@@ -53,8 +54,10 @@ const StyledSerialNumber = styled('span')<{ num: number }>(({ theme, num }) => {
 
 export const ContributionCard = ({
   data = [],
+  timeRange,
 }: {
   data?: DomainUserCodeRank[];
+  timeRange: TimeRange;
 }) => {
   const navigate = useNavigate();
 
@@ -62,7 +65,9 @@ export const ContributionCard = ({
     <Card sx={{ height: '100%' }}>
       <Stack direction='row' justifyContent='space-between' alignItems='center'>
         <Box sx={{ fontWeight: 700 }}>用户贡献榜</Box>
-        <Box sx={{ fontSize: 12, color: 'text.tertiary' }}>最近 90 天</Box>
+        <Box sx={{ fontSize: 12, color: 'text.tertiary' }}>
+          {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}
+        </Box>
       </Stack>
 
       <Box

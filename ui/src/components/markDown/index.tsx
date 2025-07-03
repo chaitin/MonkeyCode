@@ -1,7 +1,7 @@
 // import { ToolInfo } from '@/api';
 import { Icon, message } from '@c-x/ui';
 import { Box, Button, IconButton, Stack, useTheme, alpha } from '@mui/material';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import {
@@ -13,6 +13,8 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
+import Diff from './diff';
+import { visit } from 'unist-util-visit';
 
 interface ExtendedComponents extends Components {
   tools?: React.ComponentType<any>;
@@ -43,6 +45,21 @@ export const toolTagNames = toolNames.map((name) => name.replace(/_/g, ''));
 
 type ToolInfo = any;
 
+// 预处理 markdown，提取所有 <diff> 内容，生成 diffMap
+function preprocessMarkdown(mdContent: string) {
+  let diffIndex = 0;
+  const diffMap: Record<string, string> = {};
+  const newMd = mdContent.replace(
+    /<diff>([\s\S]*?)<\/diff>/g,
+    (_, diffContent) => {
+      const id = `diff-${diffIndex++}`;
+      diffMap[id] = diffContent;
+      return `<diff id="${id}"></diff>`;
+    }
+  );
+  return { newMd, diffMap };
+}
+
 const MarkDown = ({
   loading = false,
   content,
@@ -59,7 +76,9 @@ const MarkDown = ({
   handleSearchAbort?: () => void;
 }) => {
   const theme = useTheme();
+  const [diffContent, setDiffContent] = useState([]);
   const [showThink, setShowThink] = useState(false);
+  const editorRef = useRef<any>(null);
 
   // 删除 content 中 <thinking> 和 <execute_command> 标签，并保留标签中的内容
   const deleteTags = (content: string) => {
@@ -72,6 +91,29 @@ const MarkDown = ({
   // 将content中的下划线标签替换为无下划线版本
   const processContent = (content: string) => {
     let processedContent = deleteTags(content);
+
+    // 处理 <file_content> 标签（支持带属性），将其内容替换为 markdown 代码块
+    processedContent = processedContent.replace(
+      /<file_content(?:\s+[^>]*)?>([\s\S]*?)<\/file_content>/g,
+      (match, p1) => {
+        // 提取 path 属性
+        const pathMatch = match.match(/path\s*=\s*["']([^"']+)["']/);
+        let lang = '';
+        if (pathMatch) {
+          const fileName = pathMatch[1];
+          const extMatch = fileName.match(/\.([a-zA-Z0-9]+)$/);
+          if (extMatch) {
+            lang = extMatch[1];
+          }
+        }
+        // 去除首尾空行
+        let code = p1.replace(/^\n+|\n+$/g, '');
+        // 去除每行前面的行号
+        code = code.replace(/^\s*\d+\s*\|\s?/gm, '');
+        // 拼接 markdown 代码块
+        return `\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`;
+      }
+    );
 
     toolNames.forEach((toolName) => {
       const withUnderscore = toolName;
@@ -95,11 +137,9 @@ const MarkDown = ({
     return processedContent;
   };
 
-  const answer = processContent(content);
-
-  console.log(answer);
-
-  console.log(content);
+  // 预处理 markdown，提取 diffMap
+  const { newMd, diffMap } = preprocessMarkdown(content);
+  const answer = processContent(newMd);
 
   if (content.length === 0) return null;
 
@@ -122,259 +162,48 @@ const MarkDown = ({
               tagNames: [
                 ...(defaultSchema.tagNames! as string[]),
                 'command',
-                // 'tools',
-                // 'tool',
-                // 'toolname',
-                // 'toolargs',
-                // 'toolresult',
-                // 'error',
                 'attemptcompletion',
                 ...toolTagNames,
+                'diff',
               ],
             },
           ],
         ]}
         components={
           {
-            error: ({
-              children,
-              ...rest
-            }: React.HTMLAttributes<HTMLElement>) => {
-              return (
-                <div className='chat-error' {...rest}>
-                  {children}
-                </div>
-              );
-            },
-            tools: ({
-              id = '',
-              ...rest
-            }: React.HTMLAttributes<HTMLElement>) => {
-              const _id = id.replace('user-content-', '');
-              return (
-                <div className='chat-tools' id={_id} {...rest}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: 8,
-                    }}
-                  >
-                    <div className='chat-tool-name-text'>
-                      <Icon type='icon-gongju-tool' />
-                      工具调用
-                    </div>
-                  </div>
-                  <div {...rest} style={{ zIndex: 1 }}></div>
-                  {!showToolInfo[_id].done && (
-                    <Stack direction='row' alignItems='center' gap={2}>
-                      <Button
-                        variant='contained'
-                        onClick={() => setCurrentToolId?.(_id)}
-                        className='chat-tool-run'
-                        sx={{
-                          width: 80,
-                          bgcolor: 'primary.main',
-                          '.MuiButton-startIcon': {
-                            mr: 0,
-                          },
-                        }}
-                        startIcon={
-                          <Icon
-                            type='icon-yunhang'
-                            sx={{ fontSize: 12, mr: 0 }}
-                          />
-                        }
-                      >
-                        运行
-                      </Button>
-                      <Button
-                        variant='outlined'
-                        sx={{ width: 80 }}
-                        onClick={handleSearchAbort}
-                      >
-                        结束
-                      </Button>
-                    </Stack>
-                  )}
-                </div>
-              );
-            },
-            tool: ({
-              id = '',
-              ...rest
-            }: React.HTMLAttributes<HTMLElement> & { id?: string }) => {
-              const _id = id.replace('user-content-', '');
-              const className = showToolInfo[_id]
-                ? showToolInfo[_id].args
-                  ? 'chat-tool chat-tool-expend-args'
-                  : showToolInfo[_id].result
-                  ? 'chat-tool chat-tool-expend-result'
-                  : 'chat-tool'
-                : 'chat-tool';
-              return (
-                <div className={className} id={_id}>
-                  <div {...rest} style={{ zIndex: 1 }}></div>
-                  {!!showToolInfo[_id] && (
-                    <div className='chat-tool-expend-btn'>
-                      <div
-                        className={
-                          showToolInfo[_id].args
-                            ? 'chat-tool-expend-text chat-tool-expend-text-active'
-                            : 'chat-tool-expend-text'
-                        }
-                        onClick={() => {
-                          setShowToolInfo({
-                            ...showToolInfo,
-                            [_id]: {
-                              args: !showToolInfo[_id].args,
-                              result: false,
-                              done: showToolInfo[_id].done,
-                            },
-                          });
-                        }}
-                      >
-                        参数
-                        <ExpandMoreRoundedIcon
-                          sx={{
-                            fontSize: 16,
-                            ml: 0,
-                            transform: showToolInfo[_id].args
-                              ? 'rotate(-180deg)'
-                              : 'rotate(0deg)',
-                          }}
-                        />
-                      </div>
-                      {showToolInfo[_id].done && (
-                        <div
-                          className={
-                            showToolInfo[_id].result
-                              ? 'chat-tool-expend-text chat-tool-expend-text-active'
-                              : 'chat-tool-expend-text'
-                          }
-                          onClick={() => {
-                            setShowToolInfo({
-                              ...showToolInfo,
-                              [_id]: {
-                                args: false,
-                                result: !showToolInfo[_id].result,
-                                done: showToolInfo[_id].done,
-                              },
-                            });
-                          }}
-                        >
-                          结果
-                          <ExpandMoreRoundedIcon
-                            sx={{
-                              fontSize: 16,
-                              ml: 0,
-                              transform: showToolInfo[_id].result
-                                ? 'rotate(-180deg)'
-                                : 'rotate(0deg)',
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            },
-            toolname: (props: React.HTMLAttributes<HTMLElement>) => {
-              return <div className='chat-tool-name'>{props.children}</div>;
-            },
-            toolargs: ({
-              children,
-              ...rest
-            }: React.HTMLAttributes<HTMLElement>) => {
-              const safeChildren = React.Children.toArray(children).filter(
-                (child) => child !== '\n'
-              );
-              let innerText: React.ReactNode = '';
-              try {
-                if (
-                  safeChildren.length > 1 &&
-                  React.isValidElement(safeChildren[1])
-                ) {
-                  const secondChild = safeChildren[1] as React.ReactElement<{
-                    children?: React.ReactNode;
-                  }>;
-                  if (secondChild.props && secondChild.props.children) {
-                    const jsonString = String(secondChild.props.children);
-                    innerText = JSON.stringify(JSON.parse(jsonString), null, 2);
-                  }
-                } else {
-                  innerText = safeChildren;
+            diff: (props: any) => {
+              const { node } = props;
+              // 去掉 user-content- 前缀
+              const id = node?.properties?.id?.replace(/^user-content-/, '');
+              const rawDiff = id ? diffMap[id] : '';
+              // 解析 rawDiff 为 original 和 modified
+              let original = '',
+                modified = '';
+              if (rawDiff) {
+                const match = rawDiff.match(
+                  /<{2,} *SEARCH([\s\S]*?)={2,}([\s\S]*?)>{2,} *REPLACE/
+                );
+                if (match) {
+                  // 清理行号标记和分隔线
+                  const cleanDiff = (str: string) =>
+                    str
+                      .replace(/:start_line:\d+\n?[-=]+/g, '')
+                      .replace(/^-{2,}\n?/gm, '')
+                      .replace(/^={2,}\n?/gm, '')
+                      .replace(/^\s+|\s+$/g, '');
+                  original = cleanDiff(match[1].trim());
+                  modified = cleanDiff(match[2].trim());
                 }
-              } catch (err) {
-                console.error(err);
-                innerText = safeChildren;
               }
               return (
-                <div className='chat-tool-args'>
-                  <pre {...rest}>{innerText}</pre>
-                </div>
-              );
-            },
-            toolresult: ({
-              children,
-              ...rest
-            }: React.HTMLAttributes<HTMLElement>) => {
-              const safeChildren = React.Children.toArray(
-                children || []
-              ).filter((child) => child !== '\n');
-              const hasPreTag = safeChildren.some(
-                (child) => React.isValidElement(child) && child.type === 'pre'
-              );
-              return hasPreTag ? (
-                <div
-                  className='chat-tool-result'
-                  {...rest}
-                  children={safeChildren}
+                <Diff
+                  original={original}
+                  modified={modified}
+                  language='javascript'
+                  height={400}
                 />
-              ) : (
-                <div className='chat-tool-result'>
-                  <pre {...rest} children={safeChildren} />
-                </div>
               );
             },
-
-            //   return (
-            //     <div id='chat-thinking'>
-            //       <div
-            //         className={!showThink ? 'three-ellipsis' : ''}
-            //         {...props}
-            //       ></div>
-            //       {!loading && (
-            //         <IconButton
-            //           size='small'
-            //           onClick={() => setShowThink(!showThink)}
-            //           sx={{
-            //             bgcolor: 'background.paper',
-            //             ':hover': {
-            //               bgcolor: alpha(theme.palette.primary.main, 0.1),
-            //               color: theme.palette.primary.main,
-            //             },
-            //           }}
-            //         >
-            //           <ExpandMoreRoundedIcon
-            //             sx={{
-            //               fontSize: 18,
-            //               flexShrink: 0,
-            //               transform: showThink
-            //                 ? 'rotate(-180deg)'
-            //                 : 'rotate(0deg)',
-            //             }}
-            //           />
-            //         </IconButton>
-            //       )}
-            //     </div>
-            //   );
-            // },
-            h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
-              <h2 {...props} />
-            ),
             a: ({
               children,
               style,
@@ -450,7 +279,6 @@ const MarkDown = ({
               ...rest
             }: React.HTMLAttributes<HTMLElement>) {
               const match = /language-(\w+)/.exec(className || '');
-              console.log(children, rest);
               return match ? (
                 <SyntaxHighlighter
                   showLineNumbers

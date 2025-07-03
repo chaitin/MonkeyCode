@@ -19,6 +19,9 @@ import {
   DomainUserEvent,
   DomainUserHeatmapResp,
   DomainUserStat,
+  GetCategoryStatDashboardParams,
+  GetTimeStatDashboardParams,
+  GetUserCodeRankDashboardParams,
   GetUserEventsDashboardParams,
   GetUserHeatmapDashboardParams,
   GetUserStatDashboardParams,
@@ -38,7 +41,10 @@ import {
 })` OK
  */
 
-export const getCategoryStatDashboard = (params: RequestParams = {}) =>
+export const getCategoryStatDashboard = (
+  query: GetCategoryStatDashboardParams,
+  params: RequestParams = {},
+) =>
   request<
     WebResp & {
       data?: DomainCategoryStat;
@@ -46,6 +52,7 @@ export const getCategoryStatDashboard = (params: RequestParams = {}) =>
   >({
     path: `/api/v1/dashboard/category-stat`,
     method: "GET",
+    query: query,
     type: ContentType.Json,
     format: "json",
     ...params,
@@ -90,7 +97,10 @@ export const getStatisticsDashboard = (params: RequestParams = {}) =>
 })` OK
  */
 
-export const getTimeStatDashboard = (params: RequestParams = {}) =>
+export const getTimeStatDashboard = (
+  query: GetTimeStatDashboardParams,
+  params: RequestParams = {},
+) =>
   request<
     WebResp & {
       data?: DomainTimeStat;
@@ -98,6 +108,7 @@ export const getTimeStatDashboard = (params: RequestParams = {}) =>
   >({
     path: `/api/v1/dashboard/time-stat`,
     method: "GET",
+    query: query,
     type: ContentType.Json,
     format: "json",
     ...params,
@@ -116,7 +127,10 @@ export const getTimeStatDashboard = (params: RequestParams = {}) =>
 })` OK
  */
 
-export const getUserCodeRankDashboard = (params: RequestParams = {}) =>
+export const getUserCodeRankDashboard = (
+  query: GetUserCodeRankDashboardParams,
+  params: RequestParams = {},
+) =>
   request<
     WebResp & {
       data?: DomainUserCodeRank[];
@@ -124,6 +138,7 @@ export const getUserCodeRankDashboard = (params: RequestParams = {}) =>
   >({
     path: `/api/v1/dashboard/user-code-rank`,
     method: "GET",
+    query: query,
     type: ContentType.Json,
     format: "json",
     ...params,

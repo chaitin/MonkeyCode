@@ -126,6 +126,13 @@ const lightTheme = createTheme(
           },
         },
       },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: {
+            fontSize: 14,
+          },
+        },
+      },
       MuiMenu: {
         styleOverrides: {
           paper: {

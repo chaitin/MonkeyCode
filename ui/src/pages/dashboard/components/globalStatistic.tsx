@@ -1,6 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Grid2 as Grid, styled } from '@mui/material';
-import dayjs from 'dayjs';
 import {
   getStatisticsDashboard,
   getUserCodeRankDashboard,
@@ -13,8 +12,17 @@ import LineCharts from './lineCharts';
 import PieCharts from './pieCharts';
 import BarCharts from './barCharts';
 import { ContributionCard } from './statisticCard';
-import { DomainTimeStat } from '@/api/types';
-import { getRecent90DaysData, getRecent60MinutesData } from '@/utils';
+import {
+  getRecent90DaysData,
+  getRecent60MinutesData,
+  getRecent24HoursData,
+} from '@/utils';
+import { TimeRange } from '../index';
+
+interface TimeDuration {
+  duration: number;
+  precision: 'day' | 'hour';
+}
 
 export const StyledHighlight = styled('span')(({ theme }) => ({
   fontSize: 12,
@@ -22,16 +30,46 @@ export const StyledHighlight = styled('span')(({ theme }) => ({
   padding: '0 4px',
 }));
 
-const GlobalStatistic = () => {
+const GlobalStatistic = ({ timeRange }: { timeRange: TimeRange }) => {
+  const [timeDuration, settimeDuration] = useState<TimeDuration>({
+    duration: timeRange === '90d' ? 90 : 24,
+    precision: timeRange === '90d' ? 'day' : 'hour',
+  });
+
   const { data: statisticsData } = useRequest(getStatisticsDashboard);
-  const { data: userCodeRankData } = useRequest(getUserCodeRankDashboard);
-  const { data: timeStatData } = useRequest(getTimeStatDashboard);
+
+  const { data: userCodeRankData } = useRequest(
+    () => getUserCodeRankDashboard(timeDuration),
+    {
+      refreshDeps: [timeDuration],
+    }
+  );
+
+  const { data: timeStatData } = useRequest(
+    () => getTimeStatDashboard(timeDuration),
+    {
+      refreshDeps: [timeDuration],
+    }
+  );
+
   const {
     data: categoryStatData = {
       program_language: [],
       work_mode: [],
     },
-  } = useRequest(getCategoryStatDashboard);
+  } = useRequest(() => getCategoryStatDashboard(timeDuration), {
+    refreshDeps: [timeDuration],
+  });
+
+  const getRangeData = (
+    data: Record<string, number>[],
+    timeRange: TimeRange,
+    label: { keyLabel?: string; valueLabel?: string } = { valueLabel: 'value' }
+  ) => {
+    return timeRange === '90d'
+      ? getRecent90DaysData(data, label)
+      : getRecent24HoursData(data, label);
+  };
 
   const {
     userActiveChartData,
@@ -49,33 +87,23 @@ const GlobalStatistic = () => {
       real_time_tokens = [],
       accepted_per = [],
     } = timeStatData || {};
-    const userActiveChartData = getRecent90DaysData(active_users, {
-      valueLabel: 'value',
-    });
-    const chatChartData = getRecent90DaysData(chats, {
-      valueLabel: 'value',
-    });
-    const codeCompletionChartData = getRecent90DaysData(code_completions, {
-      valueLabel: 'value',
-    });
-    const codeLineChartData = getRecent90DaysData(lines_of_code, {
-      valueLabel: 'value',
-    });
-    const realTimeTokenChartData = getRecent60MinutesData(real_time_tokens, {
-      valueLabel: 'value',
-    });
-    const acceptedPerChartData = getRecent90DaysData(accepted_per, {
-      valueLabel: 'value',
-    });
+    const label = { valueLabel: 'value' };
     return {
-      userActiveChartData,
-      chatChartData,
-      codeCompletionChartData,
-      codeLineChartData,
-      realTimeTokenChartData,
-      acceptedPerChartData,
+      userActiveChartData: getRangeData(active_users, timeRange, label),
+      chatChartData: getRangeData(chats, timeRange, label),
+      codeCompletionChartData: getRangeData(code_completions, timeRange, label),
+      codeLineChartData: getRangeData(lines_of_code, timeRange, label),
+      realTimeTokenChartData: getRecent60MinutesData(real_time_tokens, label),
+      acceptedPerChartData: getRangeData(accepted_per, timeRange, label),
     };
   }, [timeStatData]);
+
+  useEffect(() => {
+    settimeDuration({
+      duration: timeRange === '90d' ? 90 : 24,
+      precision: timeRange === '90d' ? 'day' : 'hour',
+    });
+  }, [timeRange]);
 
   return (
     <Grid
@@ -87,7 +115,6 @@ const GlobalStatistic = () => {
         borderRadius: 2.5,
       }}
     >
-      {/* <Grid container size={9} spacing={2}> */}
       <Grid size={3}>
         <UserCard data={statisticsData} />
       </Grid>
@@ -97,7 +124,7 @@ const GlobalStatistic = () => {
           data={userActiveChartData}
           extra={
             <>
-              最近 90 天共
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共
               <StyledHighlight>
                 {timeStatData?.total_users || 0}
               </StyledHighlight>
@@ -107,20 +134,20 @@ const GlobalStatistic = () => {
         />
       </Grid>
       <Grid size={3}>
-        <ContributionCard data={userCodeRankData} />
+        <ContributionCard data={userCodeRankData} timeRange={timeRange} />
       </Grid>
       <Grid size={4}>
         <PieCharts
           title='工作模式-对话任务'
           data={categoryStatData.work_mode || []}
-          extra='最近 90 天'
+          extra={timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}
         />
       </Grid>
       <Grid size={4}>
         <PieCharts
           title='编程语言'
           data={categoryStatData.program_language || []}
-          extra='最近 90 天'
+          extra={timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}
         />
       </Grid>
       <Grid size={4}>
@@ -136,7 +163,7 @@ const GlobalStatistic = () => {
           data={chatChartData}
           extra={
             <>
-              最近 90 天共
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共
               <StyledHighlight>
                 {timeStatData?.total_chats || 0}
               </StyledHighlight>
@@ -151,7 +178,7 @@ const GlobalStatistic = () => {
           data={codeCompletionChartData}
           extra={
             <>
-              最近 90 天共
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共
               <StyledHighlight>
                 {timeStatData?.total_completions || 0}
               </StyledHighlight>
@@ -166,7 +193,7 @@ const GlobalStatistic = () => {
           data={codeLineChartData}
           extra={
             <>
-              最近 90 天共修改
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共修改
               <StyledHighlight>
                 {timeStatData?.total_lines_of_code || 0}
               </StyledHighlight>
@@ -181,7 +208,7 @@ const GlobalStatistic = () => {
           data={acceptedPerChartData}
           extra={
             <>
-              最近 90 天平均采纳率为
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}平均采纳率为
               <StyledHighlight>
                 {(timeStatData?.total_accepted_per || 0).toFixed(2)}
               </StyledHighlight>

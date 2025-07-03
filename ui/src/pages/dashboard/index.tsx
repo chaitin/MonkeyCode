@@ -6,6 +6,9 @@ import {
   MenuItem,
   InputAdornment,
   IconButton,
+  Select,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import dayjs from 'dayjs';
 import { CusTabs } from '@c-x/ui';
@@ -17,12 +20,14 @@ import { useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { DomainUser } from '@/api/types';
 
+export type TimeRange = '90d' | '24h';
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { tab, id } = useParams();
   const [tabValue, setTabValue] = useState(tab || 'global');
-  const [memberId, setMemberId] = useState(id || '');
   const [memberData, setMemberData] = useState<DomainUser | null>(null);
+  const [timeRange, setTimeRange] = useState<TimeRange>('90d');
 
   const { data: userData, refresh } = useRequest(
     () =>
@@ -34,11 +39,9 @@ const Dashboard = () => {
       manual: true,
       onSuccess: (res) => {
         if (id) {
-          setMemberId(id);
           setMemberData(res.users?.find((item) => item.id === id) || null);
         } else {
           setMemberData(res.users?.[0] || null);
-          setMemberId(res.users?.[0]?.id || '');
           navigate(`/dashboard/member/${res.users?.[0]?.id}`);
         }
       },
@@ -54,7 +57,6 @@ const Dashboard = () => {
   }, [tabValue]);
 
   const onMemberChange = (data: DomainUser) => {
-    setMemberId(data.id!);
     setMemberData(data);
     navigate(`/dashboard/member/${data.id}`);
   };
@@ -90,14 +92,25 @@ const Dashboard = () => {
             },
           }}
         />
+        <Select
+          labelId='time-range-label'
+          value={timeRange}
+          size='small'
+          onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+          sx={{ fontSize: 14 }}
+        >
+          <MenuItem value='24h'>最近 24 小时</MenuItem>
+          <MenuItem value='90d'>最近 90 天</MenuItem>
+        </Select>
       </Stack>
 
-      {tabValue === 'global' && <GlobalStatistic />}
+      {tabValue === 'global' && <GlobalStatistic timeRange={timeRange} />}
       {tabValue === 'member' && (
         <MemberStatistic
           memberData={memberData}
           userList={userList}
           onMemberChange={onMemberChange}
+          timeRange={timeRange}
         />
       )}
     </Stack>

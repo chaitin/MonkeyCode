@@ -218,3 +218,31 @@ export const formatNumber = (num: number) => {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 };
+
+export const getRecent24HoursData = (
+  data: Record<string, number>[] = [],
+  label: { keyLabel?: string; valueLabel?: string } = {}
+) => {
+  const { keyLabel = 'timestamp', valueLabel = 'tokens' } = label;
+  const xData: string[] = [];
+  const yData: number[] = [];
+  const dateMap: Record<string, number> = {};
+
+  data.forEach((item) => {
+    // 转为整点小时
+    const hour = dayjs
+      .unix(item[keyLabel]!)
+      .startOf('hour')
+      .format('YYYY-MM-DD HH:00');
+    dateMap[hour] = item[valueLabel]!;
+  });
+
+  // 当前整点
+  const now = dayjs().startOf('hour');
+  for (let i = 23; i >= 0; i--) {
+    const time = now.subtract(i, 'hour').format('YYYY-MM-DD HH:00');
+    xData.push(time);
+    yData.push(dateMap[time] || 0);
+  }
+  return { xData, yData };
+};

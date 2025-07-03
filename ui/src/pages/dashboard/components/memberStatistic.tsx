@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Grid2 as Grid } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import MemberInfo from './memberInfo';
@@ -12,18 +12,31 @@ import {
   getUserHeatmapDashboard,
 } from '@/api/Dashboard';
 import { StyledHighlight } from './globalStatistic';
-import { getRecent90DaysData } from '@/utils';
+import { getRecent90DaysData, getRecent24HoursData } from '@/utils';
 import { DomainUser } from '@/api/types';
+import { TimeRange } from '../index';
+
+interface TimeDuration {
+  duration: number;
+  precision: 'day' | 'hour';
+}
 
 const MemberStatistic = ({
   memberData,
   userList,
   onMemberChange,
+  timeRange,
 }: {
   memberData: DomainUser | null;
   userList: DomainUser[];
   onMemberChange: (data: DomainUser) => void;
+  timeRange: TimeRange;
 }) => {
+  const [timeDuration, setTimeDuration] = useState<TimeDuration>({
+    duration: timeRange === '90d' ? 90 : 24,
+    precision: timeRange === '90d' ? 'day' : 'hour',
+  });
+
   const { id } = useParams();
   const { data: userEvents } = useRequest(
     () =>
@@ -40,9 +53,10 @@ const MemberStatistic = ({
     () =>
       getUserStatDashboard({
         user_id: id || '',
+        ...timeDuration,
       }),
     {
-      refreshDeps: [id],
+      refreshDeps: [id, timeDuration],
       manual: false,
       ready: !!id,
     }
@@ -59,6 +73,23 @@ const MemberStatistic = ({
     }
   );
 
+  useEffect(() => {
+    setTimeDuration({
+      duration: timeRange === '90d' ? 90 : 24,
+      precision: timeRange === '90d' ? 'day' : 'hour',
+    });
+  }, [timeRange]);
+
+  const getRangeData = (
+    data: Record<string, number>[],
+    timeRange: TimeRange,
+    label: { keyLabel?: string; valueLabel?: string } = { valueLabel: 'value' }
+  ) => {
+    return timeRange === '90d'
+      ? getRecent90DaysData(data, label)
+      : getRecent24HoursData(data, label);
+  };
+
   const {
     chatChartData,
     codeCompletionChartData,
@@ -71,18 +102,15 @@ const MemberStatistic = ({
       code_completions = [],
       lines_of_code = [],
     } = userStat || {};
-    const chatChartData = getRecent90DaysData(chats, {
-      valueLabel: 'value',
-    });
-    const codeCompletionChartData = getRecent90DaysData(code_completions, {
-      valueLabel: 'value',
-    });
-    const codeLineChartData = getRecent90DaysData(lines_of_code, {
-      valueLabel: 'value',
-    });
-    const acceptedPerChartData = getRecent90DaysData(accepted_per, {
-      valueLabel: 'value',
-    });
+    const label = { valueLabel: 'value' };
+    const chatChartData = getRangeData(chats, timeRange, label);
+    const codeCompletionChartData = getRangeData(
+      code_completions,
+      timeRange,
+      label
+    );
+    const codeLineChartData = getRangeData(lines_of_code, timeRange, label);
+    const acceptedPerChartData = getRangeData(accepted_per, timeRange, label);
     return {
       chatChartData,
       codeCompletionChartData,
@@ -112,14 +140,14 @@ const MemberStatistic = ({
         <Grid size={6}>
           <PieCharts
             title='工作模式-对话任务'
-            extra='最近 90 天'
+            extra={timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}
             data={userStat?.work_mode || []}
           />
         </Grid>
         <Grid size={6}>
           <PieCharts
             title='编程语言'
-            extra='最近 90 天'
+            extra={timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}
             data={userStat?.program_language || []}
           />
         </Grid>
@@ -133,7 +161,7 @@ const MemberStatistic = ({
           data={chatChartData}
           extra={
             <>
-              最近 90 天共
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共
               <StyledHighlight>{userStat?.total_chats || 0}</StyledHighlight>
               个对话任务
             </>
@@ -146,7 +174,7 @@ const MemberStatistic = ({
           data={codeCompletionChartData}
           extra={
             <>
-              最近 90 天共
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共
               <StyledHighlight>
                 {userStat?.total_completions || 0}
               </StyledHighlight>
@@ -161,7 +189,7 @@ const MemberStatistic = ({
           data={codeLineChartData}
           extra={
             <>
-              最近 90 天共修改
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}共修改
               <StyledHighlight>
                 {userStat?.total_lines_of_code || 0}
               </StyledHighlight>
@@ -176,7 +204,7 @@ const MemberStatistic = ({
           data={acceptedPerChartData}
           extra={
             <>
-              最近 90 天平均采纳率为
+              {timeRange === '90d' ? '最近 90 天' : '最近 24 小时'}平均采纳率为
               <StyledHighlight>
                 {(userStat?.total_accepted_per || 0).toFixed(2)}
               </StyledHighlight>

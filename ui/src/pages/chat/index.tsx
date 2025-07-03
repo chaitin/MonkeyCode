@@ -60,9 +60,15 @@ const Chat = () => {
         return (
           <Box
             onClick={() => setChatDetailModal(record)}
-            sx={{ cursor: 'pointer', color: 'info.main' }}
+            sx={{
+              cursor: 'pointer',
+              color: 'info.main',
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+            }}
           >
-            <Ellipsis>{cleanValue}</Ellipsis>
+            {cleanValue}
           </Box>
         );
       },
