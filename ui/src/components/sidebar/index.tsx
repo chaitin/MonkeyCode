@@ -2,13 +2,12 @@ import Logo from '@/assets/images/logo.png';
 import { alpha, Box, Button, Stack, useTheme, styled } from '@mui/material';
 import { Icon } from '@c-x/ui';
 import { NavLink, useLocation } from 'react-router-dom';
-import Avatar from '../avatar';
 import { Modal } from '@c-x/ui';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Qrcode from '@/assets/images/qrcode.png';
 import Version from './version';
 
-const menus = [
+const ADMIN_MENUS = [
   {
     label: '仪表盘',
     value: '/dashboard',
@@ -46,8 +45,8 @@ const menus = [
   },
   {
     label: '成员管理',
-    value: '/user',
-    pathname: 'user',
+    value: '/user-management',
+    pathname: 'user-management',
     icon: 'icon-yonghuguanli1',
     show: true,
   },
@@ -56,6 +55,30 @@ const menus = [
     value: '/admin',
     pathname: 'admin',
     icon: 'icon-guanliyuan1',
+    show: true,
+  },
+];
+
+const USER_MENUS = [
+  {
+    label: '仪表盘',
+    value: '/user/dashboard',
+    pathname: '/user/dashboard',
+    icon: 'icon-yibiaopan',
+    show: true,
+  },
+  {
+    label: '对话记录',
+    value: '/user/chat',
+    pathname: '/user/chat',
+    icon: 'icon-duihuajilu1',
+    show: true,
+  },
+  {
+    label: '补全记录',
+    value: '/user/completion',
+    pathname: '/user/completion',
+    icon: 'icon-buquanjilu',
     show: true,
   },
 ];
@@ -81,6 +104,13 @@ const Sidebar = () => {
   const { pathname } = useLocation();
   const theme = useTheme();
   const [showQrcode, setShowQrcode] = useState(false);
+  const menus = useMemo(() => {
+    if (pathname.startsWith('/user/')) {
+      return USER_MENUS;
+    }
+    return ADMIN_MENUS;
+  }, [pathname]);
+
   return (
     <Stack
       sx={{

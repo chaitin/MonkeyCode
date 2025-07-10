@@ -1,110 +1,120 @@
 import KeyboardArrowRightRoundedIcon from '@mui/icons-material/KeyboardArrowRightRounded';
-import { Box, Stack, useTheme } from '@mui/material';
-import React, { useEffect, useState } from 'react';
+import { Box, Stack, Typography } from '@mui/material';
+import { useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-const HomeBread = { title: '工作台', to: '/' };
-const OtherBread = {
+const ADMIN_BREADCRUMB_MAP: Record<string, { title: string; to: string }> = {
   dashboard: { title: '仪表盘', to: '/' },
   chat: { title: '对话记录', to: '/chat' },
   completion: { title: '补全记录', to: '/completion' },
   model: { title: '模型管理', to: '/model' },
-  user: { title: '成员管理', to: '/user' },
+  'user-management': { title: '成员管理', to: '/user-management' },
   admin: { title: '管理员', to: '/admin' },
 };
 
-const Bread = () => {
-  const theme = useTheme();
-  const { pathname } = useLocation();
-  const [breads, setBreads] = useState<
-    { title: React.ReactNode; to: string }[]
-  >([]);
+const USER_BREADCRUMB_MAP: Record<string, { title: string; to: string }> = {
+  dashboard: { title: '仪表盘', to: '/user/dashboard' },
+  chat: { title: '对话记录', to: '/user/chat' },
+  completion: { title: '补全记录', to: '/user/completion' },
+};
 
-  useEffect(() => {
-    const curBreads: { title: React.ReactNode; to: string }[] = [
-      {
-        title: (
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-            }}
-          >
-            MonkeyCode
-          </Box>
-        ),
-        to: '/dashboard',
-      },
-    ];
-    if (pathname === '/') {
-      curBreads.push(HomeBread);
-    } else {
-      const pieces = pathname.split('/').filter((it) => it !== '');
-      pieces.forEach((it) => {
-        const bread = OtherBread[it as keyof typeof OtherBread];
-        if (bread) {
-          curBreads.push(bread);
+const Bread = () => {
+  const { pathname } = useLocation();
+
+  const breadcrumbs = useMemo(() => {
+    const pathParts = pathname.split('/').filter(Boolean);
+
+    const generatedCrumbs = pathParts
+      .map((part) => {
+        if (pathname.startsWith('/user/')) {
+          return USER_BREADCRUMB_MAP[part];
         }
-      });
-    }
-    // if (pageName) {
-    //   curBreads.push({ title: pageName, to: 'custom' })
-    // }
-    setBreads(curBreads);
+        return ADMIN_BREADCRUMB_MAP[part];
+      })
+      .filter(Boolean);
+
+    return [
+      {
+        title: 'MonkeyCode',
+        to: pathname.startsWith('/user/') ? '/user/dashboard' : '/dashboard',
+      },
+      ...generatedCrumbs,
+    ];
   }, [pathname]);
 
   return (
     <Stack
-      direction={'row'}
-      alignItems={'center'}
+      direction='row'
+      alignItems='center'
       gap={1}
+      component='nav'
+      aria-label='breadcrumb'
       sx={{
         flexGrow: 1,
-        // color: 'text.auxiliary',
         fontSize: '14px',
-        // a: { color: 'text.auxiliary' },
       }}
     >
-      {/* <KBSelect /> */}
-      {breads.map((it, idx) => {
-        return (
-          <Stack
-            direction={'row'}
-            alignItems={'center'}
-            gap={1}
-            key={idx}
-            sx={{
-              color:
-                idx === breads.length - 1
-                  ? `${theme.palette.text.primary} !important`
-                  : 'text.disabled',
+      {breadcrumbs.map((crumb, index) => {
+        const isLast = index === breadcrumbs.length - 1;
 
-              ...(idx === breads.length - 1 && { fontWeight: 'bold' }),
-            }}
-          >
-            {idx !== 0 && (
+        const crumbContent = (
+          <Stack direction='row' alignItems='center' gap={1}>
+            {index > 0 && (
               <KeyboardArrowRightRoundedIcon sx={{ fontSize: 14 }} />
             )}
-            {it.to === 'custom' ? (
-              <Box
-                sx={{ cursor: 'pointer', ':hover': { color: 'primary.main' } }}
-              >
-                {it.title}
-              </Box>
-            ) : (
-              <NavLink to={it.to}>
-                <Box
-                  sx={{
-                    cursor: 'pointer',
-                    ':hover': { color: 'primary.main' },
-                  }}
-                >
-                  {it.title}
-                </Box>
-              </NavLink>
-            )}
+            <Typography
+              variant='body2'
+              sx={{
+                fontWeight: isLast ? 'bold' : 'normal',
+              }}
+            >
+              {crumb.title}
+            </Typography>
           </Stack>
+        );
+
+        if (isLast) {
+          return (
+            <Box key={index} sx={{ color: 'text.primary' }}>
+              {crumbContent}
+            </Box>
+          );
+        }
+
+        if (crumb.to === 'custom') {
+          return (
+            <Box
+              key={index}
+              sx={{
+                color: 'text.disabled',
+                cursor: 'pointer',
+                '&:hover': {
+                  color: 'primary.main',
+                },
+              }}
+            >
+              {crumbContent}
+            </Box>
+          );
+        }
+
+        return (
+          <NavLink
+            key={index}
+            to={crumb.to}
+            style={{ textDecoration: 'none', color: 'inherit' }}
+          >
+            <Box
+              sx={{
+                color: 'text.disabled',
+                '&:hover': {
+                  color: 'primary.main',
+                },
+              }}
+            >
+              {crumbContent}
+            </Box>
+          </NavLink>
         );
       })}
     </Stack>

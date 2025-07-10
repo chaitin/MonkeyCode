@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import Logo from '@/assets/images/logo.png';
 
@@ -20,6 +20,7 @@ import {
   IconButton,
   CircularProgress,
   Stack,
+  Divider,
 } from '@mui/material';
 import { useRequest } from 'ahooks';
 import {
@@ -134,19 +135,54 @@ const Invite = () => {
     });
   }, []);
 
-  const onDingdingLogin = () => {
+  const onOauthLogin = (platform: 'dingtalk' | 'custom') => {
     getUserOauthSignupOrIn({
-      platform: 'dingtalk',
+      platform,
       redirect_url: `${window.location.origin}/invite/${id}/2`,
+      inviate_code: id,
     }).then((res) => {
-      window.location.href = res.url!;
+      if (res.url) {
+        window.location.href = res.url;
+      }
     });
+  };
+
+  const oauthEnable = useMemo(() => {
+    return (
+      loginSetting.enable_custom_oauth || loginSetting.enable_dingtalk_oauth
+    );
+  }, [loginSetting]);
+
+  const oauthLogin = () => {
+    return (
+      <Stack justifyContent='center' gap={2}>
+        <Divider sx={{ my: 2, fontSize: 12, borderColor: 'divider' }}>
+          使用以下方式注册
+        </Divider>
+        {loginSetting.enable_dingtalk_oauth && (
+          <Button
+            sx={{ alignSelf: 'center' }}
+            onClick={() => onOauthLogin('dingtalk')}
+          >
+            <Icon type='icon-dingding' sx={{ fontSize: 30 }} />
+          </Button>
+        )}
+        {loginSetting.enable_custom_oauth && (
+          <IconButton
+            sx={{ alignSelf: 'center' }}
+            onClick={() => onOauthLogin('custom')}
+          >
+            <Icon type='icon-oauth' sx={{ fontSize: 30 }} />
+          </IconButton>
+        )}
+      </Stack>
+    );
   };
 
   const renderStepContent = () => {
     switch (activeStep) {
       case 1:
-        return !loginSetting.enable_dingtalk_oauth ? (
+        return !oauthEnable ? (
           <Box component='form' onSubmit={onRegister}>
             <Grid container spacing={3}>
               <Grid size={12}>
@@ -285,17 +321,7 @@ const Invite = () => {
             </Grid>
           </Box>
         ) : (
-          <Stack>
-            <Button
-              size='large'
-              variant='contained'
-              sx={{ alignSelf: 'center' }}
-              onClick={onDingdingLogin}
-            >
-              <Icon type='icon-dingding' sx={{ fontSize: 20, mr: 1 }} />
-              使用钉钉登录
-            </Button>
-          </Stack>
+          oauthLogin()
         );
 
       case 2:

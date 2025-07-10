@@ -61,7 +61,7 @@ const Diff: React.FC<DiffProps> = ({
           fontSize: 14,
           scrollBeyondLastLine: false,
           wordWrap: 'off',
-          lineNumbers: 'on',
+          lineNumbers: 'off',
           glyphMargin: false,
           folding: false,
           overviewRulerLanes: 0,

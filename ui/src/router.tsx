@@ -32,18 +32,26 @@ const Dashboard = LazyLoadable(lazy(() => import('@/pages/dashboard')));
 const Chat = LazyLoadable(lazy(() => import('@/pages/chat')));
 const Completion = LazyLoadable(lazy(() => import('@/pages/completion')));
 const Model = LazyLoadable(lazy(() => import('@/pages/model')));
-const User = LazyLoadable(lazy(() => import('@/pages/user')));
+const User = LazyLoadable(lazy(() => import('@/pages/user-management')));
 const Admin = LazyLoadable(lazy(() => import('@/pages/admin')));
 const Invite = LazyLoadable(lazy(() => import('@/pages/invite')));
 const Auth = LazyLoadable(lazy(() => import('@/pages/auth')));
 const Login = LazyLoadable(lazy(() => import('@/pages/login')));
+const UserLogin = LazyLoadable(lazy(() => import('@/pages/user/login')));
 const Expectation = LazyLoadable(lazy(() => import('@/pages/expectation')));
+const UserChat = LazyLoadable(lazy(() => import('@/pages/user/chat')));
+const UserCompletion = LazyLoadable(
+  lazy(() => import('@/pages/user/completion'))
+);
+
+const UserDashboard = LazyLoadable(
+  lazy(() => import('@/pages/user/dashboard'))
+);
 
 const routerConfig = [
   {
     path: '/',
     element: <MainLayout />,
-    redirect: '/dashboard',
     children: [
       {
         index: true,
@@ -70,12 +78,35 @@ const routerConfig = [
         element: <Model />,
       },
       {
-        path: 'user',
+        path: 'user-management',
         element: <User />,
       },
       {
         path: 'admin',
         element: <Admin />,
+      },
+    ],
+  },
+
+  {
+    path: '/user',
+    element: <MainLayout />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to='/user/dashboard' replace />,
+      },
+      {
+        path: 'dashboard',
+        element: <UserDashboard />,
+      },
+      {
+        path: 'chat',
+        element: <UserChat />,
+      },
+      {
+        path: 'completion',
+        element: <UserCompletion />,
       },
     ],
   },
@@ -86,6 +117,10 @@ const routerConfig = [
   {
     path: '/auth',
     element: <Auth />,
+  },
+  {
+    path: '/user/login',
+    element: <UserLogin />,
   },
   {
     path: '/login',
