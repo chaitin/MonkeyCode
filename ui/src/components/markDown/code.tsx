@@ -108,7 +108,7 @@ const Code = ({
         accessibilitySupport: 'off',
         bracketPairColorization: { enabled: false },
         matchBrackets: 'never',
-        lineNumbers: 'on',
+        lineNumbers: 'off',
         verticalScrollbarSize: 0,
         horizontalScrollbarSize: 0,
         scrollbar: {

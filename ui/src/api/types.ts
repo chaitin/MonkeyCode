@@ -1,3 +1,4 @@
+/* eslint-disable */
 /* tslint:disable */
 // @ts-nocheck
 /*
@@ -10,37 +11,38 @@
  */
 
 export enum ConstsUserStatus {
-  UserStatusActive = 'active',
-  UserStatusInactive = 'inactive',
-  UserStatusLocked = 'locked',
+  UserStatusActive = "active",
+  UserStatusInactive = "inactive",
+  UserStatusLocked = "locked",
 }
 
 export enum ConstsUserPlatform {
-  UserPlatformEmail = 'email',
-  UserPlatformDingTalk = 'dingtalk',
+  UserPlatformEmail = "email",
+  UserPlatformDingTalk = "dingtalk",
+  UserPlatformCustom = "custom",
 }
 
 export enum ConstsModelType {
-  ModelTypeLLM = 'llm',
-  ModelTypeCoder = 'coder',
-  ModelTypeEmbedding = 'embedding',
-  ModelTypeAudio = 'audio',
-  ModelTypeReranker = 'reranker',
+  ModelTypeLLM = "llm",
+  ModelTypeCoder = "coder",
+  ModelTypeEmbedding = "embedding",
+  ModelTypeAudio = "audio",
+  ModelTypeReranker = "reranker",
 }
 
 export enum ConstsModelStatus {
-  ModelStatusActive = 'active',
-  ModelStatusInactive = 'inactive',
+  ModelStatusActive = "active",
+  ModelStatusInactive = "inactive",
 }
 
 export enum ConstsChatRole {
-  ChatRoleUser = 'user',
-  ChatRoleAssistant = 'assistant',
+  ChatRoleUser = "user",
+  ChatRoleAssistant = "assistant",
 }
 
 export enum ConstsAdminStatus {
-  AdminStatusActive = 'active',
-  AdminStatusInactive = 'inactive',
+  AdminStatusActive = "active",
+  AdminStatusInactive = "inactive",
 }
 
 export interface DomainAcceptCompletionReq {
@@ -355,8 +357,22 @@ export interface DomainRegisterReq {
 export interface DomainSetting {
   /** 创建时间 */
   created_at?: number;
+  /** 自定义OAuth访问令牌URL */
+  custom_oauth_access_token_url?: string;
+  /** 自定义OAuth授权URL */
+  custom_oauth_authorize_url?: string;
+  /** 自定义OAuth客户端ID */
+  custom_oauth_client_id?: string;
+  /** 自定义OAuth Scope列表 */
+  custom_oauth_scopes?: string[];
+  /** 自定义OAuth用户信息URL */
+  custom_oauth_userinfo_url?: string;
+  /** 钉钉客户端ID */
+  dingtalk_client_id?: string;
   /** 是否禁用密码登录 */
   disable_password_login?: boolean;
+  /** 是否开启自定义OAuth */
+  enable_custom_oauth?: boolean;
   /** 是否开启钉钉OAuth */
   enable_dingtalk_oauth?: boolean;
   /** 是否开启SSO */
@@ -445,12 +461,26 @@ export interface DomainUpdateModelReq {
 }
 
 export interface DomainUpdateSettingReq {
+  /** 自定义OAuth访问令牌URL */
+  custom_oauth_access_token_url?: string;
+  /** 自定义OAuth授权URL */
+  custom_oauth_authorize_url?: string;
+  /** 自定义OAuth客户端ID */
+  custom_oauth_client_id?: string;
+  /** 自定义OAuth客户端密钥 */
+  custom_oauth_client_secret?: string;
+  /** 自定义OAuth Scope列表 */
+  custom_oauth_scopes?: string[];
+  /** 自定义OAuth用户信息URL */
+  custom_oauth_userinfo_url?: string;
   /** 钉钉客户端ID */
   dingtalk_client_id?: string;
   /** 钉钉客户端密钥 */
   dingtalk_client_secret?: string;
   /** 是否禁用密码登录 */
   disable_password_login?: boolean;
+  /** 是否开启自定义OAuth */
+  enable_custom_oauth?: boolean;
   /** 是否开启钉钉OAuth */
   enable_dingtalk_oauth?: boolean;
   /** 是否开启SSO */
@@ -639,11 +669,15 @@ export interface GetCategoryStatDashboardParams {
    * 持续时间 (小时或天数)`
    * @min 24
    * @max 90
+   * @default 90
    */
   duration?: number;
-  /** 精度: "hour", "day" */
-  precision: 'hour' | 'day';
-  /** 用户ID，可jj */
+  /**
+   * 精度: "hour", "day"
+   * @default "day"
+   */
+  precision: "hour" | "day";
+  /** 用户ID，可选参数 */
   user_id?: string;
 }
 
@@ -652,11 +686,15 @@ export interface GetTimeStatDashboardParams {
    * 持续时间 (小时或天数)`
    * @min 24
    * @max 90
+   * @default 90
    */
   duration?: number;
-  /** 精度: "hour", "day" */
-  precision: 'hour' | 'day';
-  /** 用户ID，可jj */
+  /**
+   * 精度: "hour", "day"
+   * @default "day"
+   */
+  precision: "hour" | "day";
+  /** 用户ID，可选参数 */
   user_id?: string;
 }
 
@@ -665,11 +703,15 @@ export interface GetUserCodeRankDashboardParams {
    * 持续时间 (小时或天数)`
    * @min 24
    * @max 90
+   * @default 90
    */
   duration?: number;
-  /** 精度: "hour", "day" */
-  precision: 'hour' | 'day';
-  /** 用户ID，可jj */
+  /**
+   * 精度: "hour", "day"
+   * @default "day"
+   */
+  precision: "hour" | "day";
+  /** 用户ID，可选参数 */
   user_id?: string;
 }
 
@@ -678,8 +720,15 @@ export interface GetUserEventsDashboardParams {
    * 持续时间 (小时或天数)`
    * @min 24
    * @max 90
+   * @default 90
    */
-  /** 用户ID，可jj */
+  duration?: number;
+  /**
+   * 精度: "hour", "day"
+   * @default "day"
+   */
+  precision: "hour" | "day";
+  /** 用户ID，可选参数 */
   user_id?: string;
 }
 
@@ -693,22 +742,26 @@ export interface GetUserStatDashboardParams {
    * 持续时间 (小时或天数)`
    * @min 24
    * @max 90
+   * @default 90
    */
   duration?: number;
-  /** 精度: "hour", "day" */
-  precision: 'hour' | 'day';
-  /** 用户ID，可jj */
+  /**
+   * 精度: "hour", "day"
+   * @default "day"
+   */
+  precision: "hour" | "day";
+  /** 用户ID，可选参数 */
   user_id?: string;
 }
 
 export interface GetMyModelListParams {
   /** 模型类型 llm:对话模型 coder:代码模型 */
-  model_type?: 'llm' | 'coder' | 'embedding' | 'audio' | 'reranker';
+  model_type?: "llm" | "coder" | "embedding" | "audio" | "reranker";
 }
 
 export interface GetGetTokenUsageParams {
   /** 模型类型 llm:对话模型 coder:代码模型 */
-  model_type: 'llm' | 'coder' | 'embedding' | 'audio' | 'reranker';
+  model_type: "llm" | "coder" | "embedding" | "audio" | "reranker";
 }
 
 export interface DeleteDeleteUserParams {
@@ -740,8 +793,10 @@ export interface GetUserOauthCallbackParams {
 }
 
 export interface GetUserOauthSignupOrInParams {
+  /** 邀请码 */
+  inviate_code?: string;
   /** 第三方平台 dingtalk */
-  platform: 'email' | 'dingtalk';
+  platform: "email" | "dingtalk" | "custom";
   /** 登录成功后跳转的 URL */
   redirect_url?: string;
   /** 会话ID */

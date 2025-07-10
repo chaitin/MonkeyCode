@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Card from '@/components/card';
 import {
   Grid2 as Grid,
@@ -30,6 +30,15 @@ const StyledLabel = styled('div')(({ theme }) => ({
   color: theme.vars.palette.text.primary,
 }));
 
+const OAUTH_LOGIN_TYPE_KEYS = ['enable_custom_oauth', 'enable_dingtalk_oauth'];
+
+const OAUTH_LOGIN_TYPE_LABELS = {
+  enable_custom_oauth: '已开启 OAuth 登录',
+  enable_dingtalk_oauth: '已开启钉钉登录',
+};
+
+type OAUTH_LOGIN_TYPE_KEYS = keyof typeof OAUTH_LOGIN_TYPE_LABELS;
+
 const User = () => {
   const [thirdPartyLoginSettingModalOpen, setThirdPartyLoginSettingModalOpen] =
     useState(false);
@@ -39,6 +48,7 @@ const User = () => {
       force_two_factor_auth: false,
       disable_password_login: false,
       enable_dingtalk_oauth: false,
+      enable_custom_oauth: false,
     },
     refresh,
   } = useRequest(getGetSetting);
@@ -50,6 +60,15 @@ const User = () => {
       message.success('设置更新成功');
     },
   });
+
+  const oauthLabel = useMemo(() => {
+    const key = OAUTH_LOGIN_TYPE_KEYS.find(
+      (key) => data[key as OAUTH_LOGIN_TYPE_KEYS]
+    );
+    return key
+      ? OAUTH_LOGIN_TYPE_LABELS[key as OAUTH_LOGIN_TYPE_KEYS]
+      : '未开启';
+  }, [data]);
 
   return (
     <Stack gap={2} sx={{ height: '100%' }}>
@@ -84,12 +103,12 @@ const User = () => {
                   component='span'
                   sx={{
                     ml: 2,
-                    color: data.enable_dingtalk_oauth ? 'success.main' : 'gray',
+                    color: oauthLabel ? 'success.main' : 'gray',
                     fontWeight: 400,
                     fontSize: 13,
                   }}
                 >
-                  {data.enable_dingtalk_oauth ? '已开启钉钉登录' : '未开启'}
+                  {oauthLabel}
                 </Box>
               </StyledLabel>
               <Button

@@ -54,8 +54,8 @@ const MemberInfo = ({
 }: {
   data: DomainUserHeatmapResp;
   memberData: DomainUser | null;
-  userList: DomainUser[];
-  onMemberChange: (data: DomainUser) => void;
+  userList?: DomainUser[];
+  onMemberChange?: (data: DomainUser) => void;
 }) => {
   const theme = useTheme();
   const [blockSize, setBlockSize] = useState(8);
@@ -104,12 +104,12 @@ const MemberInfo = ({
             open={open}
             onClose={handleClose}
           >
-            {userList.map((item) => (
+            {userList?.map((item) => (
               <MenuItem
                 key={item.id}
                 selected={memberData?.id === item.id}
                 onClick={() => {
-                  onMemberChange(item);
+                  onMemberChange?.(item);
                   handleClose();
                 }}
                 sx={{
@@ -127,12 +127,14 @@ const MemberInfo = ({
             sx={{ mb: 1 }}
           >
             <Avatar name={memberData?.username || ''} />
-            <IconButton onClick={handleClick} size='small'>
-              <Icon
-                type='icon-qiehuan'
-                sx={{ fontSize: 16, color: 'text.primary' }}
-              />
-            </IconButton>
+            {userList && (
+              <IconButton onClick={handleClick} size='small'>
+                <Icon
+                  type='icon-qiehuan'
+                  sx={{ fontSize: 16, color: 'text.primary' }}
+                />
+              </IconButton>
+            )}
           </Stack>
           <Box sx={{ fontSize: 16, fontWeight: 700 }}>
             {memberData?.username}

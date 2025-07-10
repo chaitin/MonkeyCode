@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Grid2 as Grid } from '@mui/material';
 import { useParams } from 'react-router-dom';
-import MemberInfo from './memberInfo';
-import PieCharts from './pieCharts';
-import LineCharts from './lineCharts';
-import { RecentActivityCard } from './statisticCard';
+import MemberInfo from '@/pages/dashboard/components/memberInfo';
+import PieCharts from '@/pages/dashboard/components/pieCharts';
+import LineCharts from '@/pages/dashboard/components/lineCharts';
+import { RecentActivityCard } from '@/pages/dashboard/components/statisticCard';
 import { useRequest } from 'ahooks';
 import {
   getUserEventsDashboard,
   getUserStatDashboard,
   getUserHeatmapDashboard,
 } from '@/api/Dashboard';
-import { StyledHighlight } from './globalStatistic';
+import { StyledHighlight } from '@/pages/dashboard/components/globalStatistic';
 import { getRecent90DaysData, getRecent24HoursData } from '@/utils';
 import { DomainUser } from '@/api/types';
 import { TimeRange } from '../index';
@@ -23,13 +23,9 @@ interface TimeDuration {
 
 const MemberStatistic = ({
   memberData,
-  userList,
-  onMemberChange,
   timeRange,
 }: {
   memberData: DomainUser | null;
-  userList: DomainUser[];
-  onMemberChange: (data: DomainUser) => void;
   timeRange: TimeRange;
 }) => {
   const [timeDuration, setTimeDuration] = useState<TimeDuration>({
@@ -131,12 +127,7 @@ const MemberStatistic = ({
     >
       <Grid container size={9}>
         <Grid size={12}>
-          <MemberInfo
-            data={userHeatmap || {}}
-            memberData={memberData}
-            userList={userList}
-            onMemberChange={onMemberChange}
-          />
+          <MemberInfo data={userHeatmap || {}} memberData={memberData} />
         </Grid>
         <Grid size={6}>
           <PieCharts
