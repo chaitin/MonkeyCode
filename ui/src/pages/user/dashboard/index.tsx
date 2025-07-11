@@ -64,12 +64,7 @@ const Dashboard = () => {
         </Select>
       </Stack>
 
-      <MemberStatistic
-        memberData={memberData}
-        userList={userList}
-        onMemberChange={onMemberChange}
-        timeRange={timeRange}
-      />
+      <MemberStatistic memberData={memberData} timeRange={timeRange} />
     </Stack>
   );
 };
