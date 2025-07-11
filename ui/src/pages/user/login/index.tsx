@@ -7,7 +7,6 @@ import {
   Typography,
   Container,
   Paper,
-  Alert,
   CircularProgress,
   Grid2 as Grid,
   InputAdornment,
@@ -16,6 +15,8 @@ import {
   Stack,
 } from '@mui/material';
 import { Icon, message } from '@c-x/ui';
+
+import { getRedirectUrl } from '@/utils';
 
 // @ts-ignore
 import { AestheticFluidBg } from '@/assets/jsm/AestheticFluidBg.module.js';
@@ -108,7 +109,7 @@ const BACKGROUND_CONFIG = {
   loop: true,
 } as const;
 
-const AuthPage = () => {
+const UserLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -146,17 +147,7 @@ const AuthPage = () => {
           session_id: sessionId,
         });
 
-        if (!loginResult.redirect_url) {
-          throw new Error('登录成功但未获取到重定向URL');
-        }
-
-        // 重定向到VSCode
-        window.location.href = loginResult.redirect_url;
-
-        // 记录授权日志
-        console.log('VSCode 授权信息已发送:', {
-          uri: loginResult.redirect_url,
-        });
+        window.location.href = loginResult.redirect_url!;
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : '登录失败，请重试';
@@ -266,17 +257,16 @@ const AuthPage = () => {
         size='large'
         disabled={loading}
       >
-        {loading ? <CircularProgress size={18} /> : '登录并授权 VSCode'}
+        {loading ? <CircularProgress size={18} /> : '登录'}
       </StyledButton>
     </Grid>
   );
 
   const onOauthLogin = (platform: 'dingtalk' | 'custom') => {
+    const redirectUrl = getRedirectUrl();
     getUserOauthSignupOrIn({
       platform,
-      redirect_url: window.location.origin + window.location.pathname,
-      // @ts-ignore
-      session_id: searchParams.get('session_id') || null,
+      redirect_url: redirectUrl.href,
     }).then((res) => {
       if (res.url) {
         window.location.href = res.url;
@@ -347,4 +337,4 @@ const AuthPage = () => {
   );
 };
 
-export default AuthPage;
+export default UserLogin;
