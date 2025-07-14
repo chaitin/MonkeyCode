@@ -206,7 +206,7 @@ export const RecentActivityCard = ({
                 sx={{ fontSize: 14, color: 'text.secondary' }}
                 className='text-ellipsis'
               >
-                {item.name}
+                {item.name?.slice(0, 100)}
               </Box>
               <Box sx={{ fontSize: 14, color: 'text.tertiary', flexShrink: 0 }}>
                 {dayjs.unix(item.created_at!).fromNow()}
