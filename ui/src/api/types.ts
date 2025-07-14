@@ -185,6 +185,40 @@ export interface DomainCreateModelReq {
   provider?: string;
 }
 
+export interface DomainCustomOAuth {
+  /** 自定义OAuth访问令牌URL */
+  access_token_url?: string;
+  /** 自定义OAuth授权URL */
+  authorize_url?: string;
+  /** 用户信息回包中的头像URL字段名` */
+  avatar_field?: string;
+  /** 自定义客户端ID */
+  client_id?: string;
+  /** 自定义客户端密钥 */
+  client_secret?: string;
+  /** 用户信息回包中的邮箱字段名 */
+  email_field?: string;
+  /** 自定义OAuth开关 */
+  enable?: boolean;
+  /** 用户信息回包中的ID字段名 */
+  id_field?: string;
+  /** 用户信息回包中的用户名字段名` */
+  name_field?: string;
+  /** 自定义OAuth Scope列表 */
+  scopes?: string[];
+  /** 自定义OAuth用户信息URL */
+  userinfo_url?: string;
+}
+
+export interface DomainDingtalkOAuth {
+  /** 钉钉客户端ID */
+  client_id?: string;
+  /** 钉钉客户端密钥 */
+  client_secret?: string;
+  /** 钉钉OAuth开关 */
+  enable?: boolean;
+}
+
 export interface DomainIPInfo {
   /** ASN */
   asn?: string;
@@ -357,24 +391,12 @@ export interface DomainRegisterReq {
 export interface DomainSetting {
   /** 创建时间 */
   created_at?: number;
-  /** 自定义OAuth访问令牌URL */
-  custom_oauth_access_token_url?: string;
-  /** 自定义OAuth授权URL */
-  custom_oauth_authorize_url?: string;
-  /** 自定义OAuth客户端ID */
-  custom_oauth_client_id?: string;
-  /** 自定义OAuth Scope列表 */
-  custom_oauth_scopes?: string[];
-  /** 自定义OAuth用户信息URL */
-  custom_oauth_userinfo_url?: string;
-  /** 钉钉客户端ID */
-  dingtalk_client_id?: string;
+  /** 自定义OAuth接入 */
+  custom_oauth?: DomainCustomOAuth;
+  /** 钉钉OAuth接入 */
+  dingtalk_oauth?: DomainDingtalkOAuth;
   /** 是否禁用密码登录 */
   disable_password_login?: boolean;
-  /** 是否开启自定义OAuth */
-  enable_custom_oauth?: boolean;
-  /** 是否开启钉钉OAuth */
-  enable_dingtalk_oauth?: boolean;
   /** 是否开启SSO */
   enable_sso?: boolean;
   /** 是否强制两步验证 */
@@ -461,28 +483,12 @@ export interface DomainUpdateModelReq {
 }
 
 export interface DomainUpdateSettingReq {
-  /** 自定义OAuth访问令牌URL */
-  custom_oauth_access_token_url?: string;
-  /** 自定义OAuth授权URL */
-  custom_oauth_authorize_url?: string;
-  /** 自定义OAuth客户端ID */
-  custom_oauth_client_id?: string;
-  /** 自定义OAuth客户端密钥 */
-  custom_oauth_client_secret?: string;
-  /** 自定义OAuth Scope列表 */
-  custom_oauth_scopes?: string[];
-  /** 自定义OAuth用户信息URL */
-  custom_oauth_userinfo_url?: string;
-  /** 钉钉客户端ID */
-  dingtalk_client_id?: string;
-  /** 钉钉客户端密钥 */
-  dingtalk_client_secret?: string;
+  /** 自定义OAuth配置 */
+  custom_oauth?: DomainCustomOAuth;
+  /** 钉钉OAuth配置 */
+  dingtalk_oauth?: DomainDingtalkOAuth;
   /** 是否禁用密码登录 */
   disable_password_login?: boolean;
-  /** 是否开启自定义OAuth */
-  enable_custom_oauth?: boolean;
-  /** 是否开启钉钉OAuth */
-  enable_dingtalk_oauth?: boolean;
   /** 是否开启SSO */
   enable_sso?: boolean;
   /** 是否强制两步验证 */
@@ -499,6 +505,8 @@ export interface DomainUpdateUserReq {
 }
 
 export interface DomainUser {
+  /** 头像URL */
+  avatar_url?: string;
   /** 创建时间 */
   created_at?: number;
   /** 邮箱 */

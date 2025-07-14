@@ -8,9 +8,8 @@ import {
   Button,
   Box,
 } from '@mui/material';
-import { Icon, Modal } from '@c-x/ui';
 import { useRequest } from 'ahooks';
-import { getGetSetting, putUpdateSetting } from '@/api/User';
+import { getGetSetting, putUpdateSetting } from '@/api/Admin';
 import MemberManage from './memberManage';
 import LoginHistory from './loginHistory';
 import { message } from '@c-x/ui';
@@ -30,11 +29,11 @@ const StyledLabel = styled('div')(({ theme }) => ({
   color: theme.vars.palette.text.primary,
 }));
 
-const OAUTH_LOGIN_TYPE_KEYS = ['enable_custom_oauth', 'enable_dingtalk_oauth'];
+const OAUTH_LOGIN_TYPE_KEYS = ['dingtalk_oauth', 'custom_oauth'];
 
 const OAUTH_LOGIN_TYPE_LABELS = {
-  enable_custom_oauth: '已开启 OAuth 登录',
-  enable_dingtalk_oauth: '已开启钉钉登录',
+  custom_oauth: '已开启 OAuth 登录',
+  dingtalk_oauth: '已开启钉钉登录',
 };
 
 type OAUTH_LOGIN_TYPE_KEYS = keyof typeof OAUTH_LOGIN_TYPE_LABELS;
@@ -42,16 +41,7 @@ type OAUTH_LOGIN_TYPE_KEYS = keyof typeof OAUTH_LOGIN_TYPE_LABELS;
 const User = () => {
   const [thirdPartyLoginSettingModalOpen, setThirdPartyLoginSettingModalOpen] =
     useState(false);
-  const {
-    data = {
-      enable_sso: false,
-      force_two_factor_auth: false,
-      disable_password_login: false,
-      enable_dingtalk_oauth: false,
-      enable_custom_oauth: false,
-    },
-    refresh,
-  } = useRequest(getGetSetting);
+  const { data, refresh } = useRequest(getGetSetting);
 
   const { runAsync: updateSetting } = useRequest(putUpdateSetting, {
     manual: true,
@@ -62,8 +52,9 @@ const User = () => {
   });
 
   const oauthLabel = useMemo(() => {
+    if (!data) return '未开启';
     const key = OAUTH_LOGIN_TYPE_KEYS.find(
-      (key) => data[key as OAUTH_LOGIN_TYPE_KEYS]
+      (key) => data[key as OAUTH_LOGIN_TYPE_KEYS]?.enable
     );
     return key
       ? OAUTH_LOGIN_TYPE_LABELS[key as OAUTH_LOGIN_TYPE_KEYS]
@@ -127,7 +118,7 @@ const User = () => {
       <ThirdPartyLoginSettingModal
         open={thirdPartyLoginSettingModalOpen}
         onCancel={() => setThirdPartyLoginSettingModalOpen(false)}
-        settingData={data}
+        settingData={data || {}}
         onOk={() => {
           refresh();
         }}

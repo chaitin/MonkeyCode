@@ -3,7 +3,7 @@ import { Stack, Box } from '@mui/material';
 import { Table } from '@c-x/ui';
 import dayjs from 'dayjs';
 import { useRequest } from 'ahooks';
-import { getAdminLoginHistory } from '@/api/User';
+import { getAdminLoginHistory } from '@/api/Admin';
 import { ColumnsType } from '@c-x/ui/dist/Table';
 import { DomainListAdminLoginHistoryResp } from '@/api/types';
 import User from '@/components/user';

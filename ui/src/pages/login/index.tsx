@@ -12,7 +12,7 @@ import {
   InputAdornment,
   IconButton,
 } from '@mui/material';
-import { postAdminLogin } from '@/api/User';
+import { postAdminLogin } from '@/api/Admin';
 import { useForm, Controller } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { styled } from '@mui/material/styles';

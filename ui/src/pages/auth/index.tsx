@@ -21,11 +21,13 @@ import { Icon, message } from '@c-x/ui';
 import { AestheticFluidBg } from '@/assets/jsm/AestheticFluidBg.module.js';
 
 import { useSearchParams } from 'react-router-dom';
-import { postLogin, getUserOauthSignupOrIn, getGetSetting } from '@/api/User';
+import { postLogin, getUserOauthSignupOrIn } from '@/api/User';
+import { getGetSetting } from '@/api/Admin';
 
 import { useForm, Controller } from 'react-hook-form';
 import { styled } from '@mui/material/styles';
 import { useRequest } from 'ahooks';
+import { DomainSetting } from '@/api/types';
 
 // 样式化组件
 const StyledContainer = styled(Container)(({ theme }) => ({
@@ -114,8 +116,9 @@ const AuthPage = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const [searchParams] = useSearchParams();
-  const { data: loginSetting = {} } = useRequest(getGetSetting);
-
+  const { data: loginSetting = {} as DomainSetting } =
+    useRequest(getGetSetting);
+  const { custom_oauth = {}, dingtalk_oauth = {} } = loginSetting;
   const {
     control,
     handleSubmit,
@@ -175,10 +178,8 @@ const AuthPage = () => {
   }, []);
 
   const oauthEnable = useMemo(() => {
-    return (
-      loginSetting.enable_custom_oauth || loginSetting.enable_dingtalk_oauth
-    );
-  }, [loginSetting]);
+    return custom_oauth.enable || dingtalk_oauth.enable;
+  }, [custom_oauth, dingtalk_oauth]);
 
   // 渲染用户名输入框
   const renderUsernameField = () => (
@@ -290,7 +291,7 @@ const AuthPage = () => {
         <Divider sx={{ my: 3, fontSize: 12, borderColor: 'divider' }}>
           使用其他方式登录
         </Divider>
-        {loginSetting.enable_dingtalk_oauth && (
+        {dingtalk_oauth.enable && (
           <IconButton
             sx={{ alignSelf: 'center' }}
             onClick={() => onOauthLogin('dingtalk')}
@@ -298,7 +299,7 @@ const AuthPage = () => {
             <Icon type='icon-dingding' sx={{ fontSize: 30 }} />
           </IconButton>
         )}
-        {loginSetting.enable_custom_oauth && (
+        {custom_oauth.enable && (
           <IconButton
             sx={{ alignSelf: 'center' }}
             onClick={() => onOauthLogin('custom')}

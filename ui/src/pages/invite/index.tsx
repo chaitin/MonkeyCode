@@ -23,12 +23,10 @@ import {
   Divider,
 } from '@mui/material';
 import { useRequest } from 'ahooks';
-import {
-  postRegister,
-  getUserOauthSignupOrIn,
-  getGetSetting,
-} from '@/api/User';
+import { postRegister, getUserOauthSignupOrIn } from '@/api/User';
+import { getGetSetting } from '@/api/Admin';
 import { Icon } from '@c-x/ui';
+import { DomainSetting } from '@/api/types';
 
 import DownloadIcon from '@mui/icons-material/Download';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
@@ -92,7 +90,9 @@ const StyledTextField = styled(TextField)(({ theme }) => ({
 const Invite = () => {
   const { id, step } = useParams();
   const [showPassword, setShowPassword] = useState(false);
-  const { data: loginSetting = {} } = useRequest(getGetSetting);
+  const { data: loginSetting = {} as DomainSetting } =
+    useRequest(getGetSetting);
+  const { custom_oauth = {}, dingtalk_oauth = {} } = loginSetting;
   const {
     control,
     handleSubmit,
@@ -148,10 +148,8 @@ const Invite = () => {
   };
 
   const oauthEnable = useMemo(() => {
-    return (
-      loginSetting.enable_custom_oauth || loginSetting.enable_dingtalk_oauth
-    );
-  }, [loginSetting]);
+    return custom_oauth.enable || dingtalk_oauth.enable;
+  }, [custom_oauth, dingtalk_oauth]);
 
   const oauthLogin = () => {
     return (
@@ -159,7 +157,7 @@ const Invite = () => {
         <Divider sx={{ my: 2, fontSize: 12, borderColor: 'divider' }}>
           使用以下方式注册
         </Divider>
-        {loginSetting.enable_dingtalk_oauth && (
+        {dingtalk_oauth.enable && (
           <Button
             sx={{ alignSelf: 'center' }}
             onClick={() => onOauthLogin('dingtalk')}
@@ -167,7 +165,7 @@ const Invite = () => {
             <Icon type='icon-dingding' sx={{ fontSize: 30 }} />
           </Button>
         )}
-        {loginSetting.enable_custom_oauth && (
+        {custom_oauth.enable && (
           <IconButton
             sx={{ alignSelf: 'center' }}
             onClick={() => onOauthLogin('custom')}

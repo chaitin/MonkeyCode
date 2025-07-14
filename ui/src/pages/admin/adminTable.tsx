@@ -7,9 +7,9 @@ import {
   TextField,
   Paper,
 } from '@mui/material';
-import { postCreateAdmin } from '@/api/User';
+import { postCreateAdmin } from '@/api/Admin';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { deleteDeleteAdmin, getListAdminUser } from '@/api/User';
+import { deleteDeleteAdmin, getListAdminUser } from '@/api/Admin';
 import { Table, Modal, message } from '@c-x/ui';
 import { ColumnsType } from '@c-x/ui/dist/Table';
 import { useRequest } from 'ahooks';
