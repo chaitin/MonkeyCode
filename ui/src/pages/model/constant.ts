@@ -1,13 +1,13 @@
 export const ModelProvider = {
-  百智云: {
-    label: '百智云',
-    cn: '',
+  BaiZhiCloud: {
+    label: 'BaiZhiCloud',
+    cn: '百智云',
     icon: 'icon-baizhiyunlogo',
     urlWrite: false,
     secretRequired: true,
     customHeader: false,
-    modelDocumentUrl: 'https://platform.deepseek.com/api_keys',
-    defaultBaseUrl: 'https://api.deepseek.com/v1',
+    modelDocumentUrl: 'https://model-square.app.baizhi.cloud/token',
+    defaultBaseUrl: 'https://model-square.app.baizhi.cloud/v1',
   },
   DeepSeek: {
     label: 'DeepSeek',
@@ -18,6 +18,37 @@ export const ModelProvider = {
     customHeader: false,
     modelDocumentUrl: 'https://platform.deepseek.com/api_keys',
     defaultBaseUrl: 'https://api.deepseek.com/v1',
+  },
+  Hunyuan: {
+    label: 'Hunyuan',
+    cn: '腾讯混元',
+    icon: 'icon-tengxunhunyuan',
+    urlWrite: false,
+    secretRequired: true,
+    customHeader: false,
+    modelDocumentUrl: 'https://console.cloud.tencent.com/hunyuan/start',
+    defaultBaseUrl: 'https://api.hunyuan.cloud.tencent.com/v1',
+  },
+  BaiLian: {
+    label: 'BaiLian',
+    cn: '阿里云百炼',
+    icon: 'icon-aliyunbailian',
+    urlWrite: false,
+    secretRequired: true,
+    customHeader: false,
+    modelDocumentUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key',
+    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  Volcengine: {
+    label: 'Volcengine',
+    cn: '火山引擎',
+    icon: 'icon-huoshanyinqing',
+    urlWrite: false,
+    secretRequired: true,
+    customHeader: false,
+    modelDocumentUrl:
+      'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
   },
   OpenAI: {
     label: 'OpenAI',

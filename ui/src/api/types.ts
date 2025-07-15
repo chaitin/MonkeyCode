@@ -35,6 +35,19 @@ export enum ConstsModelStatus {
   ModelStatusInactive = "inactive",
 }
 
+export enum ConstsModelProvider {
+  ModelProviderSiliconFlow = "SiliconFlow",
+  ModelProviderOpenAI = "OpenAI",
+  ModelProviderOllama = "Ollama",
+  ModelProviderDeepSeek = "DeepSeek",
+  ModelProviderMoonshot = "Moonshot",
+  ModelProviderAzureOpenAI = "AzureOpenAI",
+  ModelProviderBaiZhiCloud = "BaiZhiCloud",
+  ModelProviderHunyuan = "Hunyuan",
+  ModelProviderBaiLian = "BaiLian",
+  ModelProviderVolcengine = "Volcengine",
+}
+
 export enum ConstsChatRole {
   ChatRoleUser = "user",
   ChatRoleAssistant = "assistant",
@@ -133,12 +146,15 @@ export interface DomainChatRecord {
 export interface DomainCheckModelReq {
   /** 接口地址 */
   api_base: string;
+  api_header?: string;
   /** 接口密钥 */
   api_key: string;
+  api_version?: string;
   /** 模型名称 */
   model_name: string;
   /** 提供商 */
-  provider: string;
+  provider: ConstsModelProvider;
+  type: "llm" | "coder" | "embedding" | "rerank";
 }
 
 export interface DomainCompletionInfo {
@@ -174,15 +190,29 @@ export interface DomainCreateAdminReq {
 
 export interface DomainCreateModelReq {
   /** 接口地址 如：https://api.qwen.com */
-  api_base?: string;
+  api_base: string;
+  api_header?: string;
   /** 接口密钥 如：sk-xxxx */
   api_key?: string;
+  api_version?: string;
   /** 模型名称 如: deepseek-v3 */
-  model_name?: string;
+  model_name: string;
   /** 模型类型 llm:对话模型 coder:代码模型 */
   model_type?: ConstsModelType;
   /** 提供商 */
-  provider?: string;
+  provider:
+    | "SiliconFlow"
+    | "OpenAI"
+    | "Ollama"
+    | "DeepSeek"
+    | "Moonshot"
+    | "AzureOpenAI"
+    | "BaiZhiCloud"
+    | "Hunyuan"
+    | "BaiLian"
+    | "Volcengine";
+  /** 模型显示名称 */
+  show_name?: string;
 }
 
 export interface DomainCustomOAuth {
@@ -251,6 +281,10 @@ export interface DomainDingtalkOAuthReq {
   client_secret?: string;
   /** 钉钉OAuth开关 */
   enable?: boolean;
+}
+
+export interface DomainGetProviderModelListResp {
+  models?: DomainProviderModelListItem[];
 }
 
 export interface DomainIPInfo {
@@ -332,8 +366,12 @@ export interface DomainLoginResp {
 export interface DomainModel {
   /** 接口地址 如：https://api.qwen.com */
   api_base?: string;
+  /** 接口头 如：Authorization: Bearer sk-xxxx */
+  api_header?: string;
   /** 接口密钥 如：sk-xxxx */
   api_key?: string;
+  /** 接口版本 如：2023-05-15 */
+  api_version?: string;
   /** 创建时间 */
   created_at?: number;
   /** 模型ID */
@@ -349,7 +387,9 @@ export interface DomainModel {
   /** 输出token数 */
   output?: number;
   /** 提供商 */
-  provider?: string;
+  provider?: ConstsModelProvider;
+  /** 模型显示名称 */
+  show_name?: string;
   /** 状态 active:启用 inactive:禁用 */
   status?: ConstsModelStatus;
   /** 更新时间 */
@@ -362,7 +402,17 @@ export interface DomainModelBasic {
   /** 模型名称 */
   name?: string;
   /** 提供商 */
-  provider?: string;
+  provider:
+    | "SiliconFlow"
+    | "OpenAI"
+    | "Ollama"
+    | "DeepSeek"
+    | "Moonshot"
+    | "AzureOpenAI"
+    | "BaiZhiCloud"
+    | "Hunyuan"
+    | "BaiLian"
+    | "Volcengine";
 }
 
 export interface DomainModelData {
@@ -409,6 +459,10 @@ export interface DomainProviderModel {
   models?: DomainModelBasic[];
   /** 提供商 */
   provider?: string;
+}
+
+export interface DomainProviderModelListItem {
+  model?: string;
 }
 
 export interface DomainRegisterReq {
@@ -506,14 +560,28 @@ export interface DomainTimeStat {
 export interface DomainUpdateModelReq {
   /** 接口地址 如：https://api.qwen.com */
   api_base?: string;
+  api_header?: string;
   /** 接口密钥 如：sk-xxxx */
   api_key?: string;
+  api_version?: string;
   /** 模型ID */
   id?: string;
   /** 模型名称 */
   model_name?: string;
   /** 提供商 */
-  provider?: string;
+  provider:
+    | "SiliconFlow"
+    | "OpenAI"
+    | "Ollama"
+    | "DeepSeek"
+    | "Moonshot"
+    | "AzureOpenAI"
+    | "BaiZhiCloud"
+    | "Hunyuan"
+    | "BaiLian"
+    | "Volcengine";
+  /** 模型显示名称 */
+  show_name?: string;
   /** 状态 active:启用 inactive:禁用 */
   status?: ConstsModelStatus;
 }
@@ -803,6 +871,24 @@ export interface GetUserStatDashboardParams {
 export interface GetMyModelListParams {
   /** 模型类型 llm:对话模型 coder:代码模型 */
   model_type?: "llm" | "coder" | "embedding" | "audio" | "reranker";
+}
+
+export interface GetGetProviderModelListParams {
+  api_header?: string;
+  api_key?: string;
+  base_url: string;
+  provider:
+    | "SiliconFlow"
+    | "OpenAI"
+    | "Ollama"
+    | "DeepSeek"
+    | "Moonshot"
+    | "AzureOpenAI"
+    | "BaiZhiCloud"
+    | "Hunyuan"
+    | "BaiLian"
+    | "Volcengine";
+  type: "llm" | "coder" | "embedding" | "audio" | "reranker";
 }
 
 export interface GetGetTokenUsageParams {

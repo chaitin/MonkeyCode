@@ -1,49 +1,62 @@
 import {
   postCreateModel,
-  putUpdateModel,
+  getGetProviderModelList,
   postCheckModel,
-  getListModel,
-} from '@/api/Model';
+  putUpdateModel,
+} from '@/api';
+import { ConstsModelType, DomainModel } from '@/api/types';
 import Card from '@/components/card';
-import { ModelProvider } from '../constant';
-import { Icon, message, Modal } from '@c-x/ui';
-import { FormItem, StyledFormLabel } from '@/components/form';
+import { ModelProvider } from '@/pages/model/constant';
 import {
   Box,
+  Button,
   MenuItem,
   Stack,
   TextField,
   useTheme,
-  alpha,
-  Button,
+  alpha as addOpacityToColor,
 } from '@mui/material';
-import { useEffect, useMemo, useState } from 'react';
+import { Icon, message, Modal } from '@c-x/ui';
+import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import {
-  ConstsModelType,
-  DomainUpdateModelReq,
-  DomainCreateModelReq,
-  DomainProviderModel,
-} from '@/api/types';
-
-type ModelItem = any;
-
 interface AddModelProps {
   open: boolean;
-  data?: ModelItem;
+  data: DomainModel | null;
+  type: ConstsModelType;
   onClose: () => void;
   refresh: () => void;
-  modelType: 'llm' | 'coder';
 }
 
-const ModelModal = ({
+interface AddModelForm {
+  provider: keyof typeof ModelProvider;
+  model: string;
+  base_url: string;
+  api_version: string;
+  api_key: string;
+  api_header_key: string;
+  api_header_value: string;
+  type: ConstsModelType;
+}
+
+const titleMap = {
+  [ConstsModelType.ModelTypeLLM]: '对话模型',
+  [ConstsModelType.ModelTypeCoder]: '代码补全模型',
+  [ConstsModelType.ModelTypeEmbedding]: '向量模型',
+  [ConstsModelType.ModelTypeAudio]: '音频模型',
+  [ConstsModelType.ModelTypeReranker]: '重排序模型',
+};
+
+const ModelAdd = ({
   open,
   onClose,
   refresh,
   data,
-  modelType,
+  type = ConstsModelType.ModelTypeLLM,
 }: AddModelProps) => {
   const theme = useTheme();
+
+  const providers: Record<string, any> = ModelProvider;
+
   const {
     formState: { errors },
     handleSubmit,
@@ -51,64 +64,134 @@ const ModelModal = ({
     reset,
     setValue,
     watch,
-  } = useForm<Required<DomainCreateModelReq>>({
+  } = useForm<AddModelForm>({
     defaultValues: {
-      provider: data?.provider || 'DeepSeek',
-      api_base: data?.api_base || ModelProvider.DeepSeek.defaultBaseUrl,
-      model_name: data?.model_name || '',
-      api_key: data?.api_key || '',
+      type,
+      provider: 'BaiZhiCloud',
+      base_url: providers['BaiZhiCloud'].defaultBaseUrl,
+      model: '',
+      api_version: '',
+      api_key: '',
+      api_header_key: '',
+      api_header_value: '',
     },
   });
 
-  const providerBrand = watch('provider') as keyof typeof ModelProvider;
+  const providerBrand = watch('provider');
 
-  const [modelUserList, setModelUserList] = useState<DomainProviderModel[]>([]);
+  const [modelUserList, setModelUserList] = useState<{ model: string }[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [modelLoading, setModelLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  const onCreateModel = (value: DomainCreateModelReq) => {
-    return postCreateModel({
-      ...value,
-      model_type: modelType as ConstsModelType,
-    }).then(() => {
-      message.success('添加成功');
-      reset();
-      onClose();
-      refresh();
+  const handleReset = () => {
+    onClose();
+    reset({
+      type,
+      provider: 'BaiZhiCloud',
+      model: '',
+      base_url: '',
+      api_key: '',
+      api_version: '',
+      api_header_key: '',
+      api_header_value: '',
     });
+    setModelUserList([]);
+    setSuccess(false);
+    setLoading(false);
+    setModelLoading(false);
+    setError('');
+    refresh();
   };
 
-  const onUpdateModel = (value: DomainUpdateModelReq) => {
-    return putUpdateModel({
-      ...value,
-    }).then(() => {
-      message.success('修改成功');
-      reset();
-      onClose();
-      refresh();
-    });
+  const getModel = (value: AddModelForm) => {
+    let header = '';
+    if (value.api_header_key && value.api_header_value) {
+      header = value.api_header_key + '=' + value.api_header_value;
+    }
+    setModelLoading(true);
+    getGetProviderModelList({
+      type,
+      api_key: value.api_key,
+      base_url: value.base_url,
+      provider: value.provider as Exclude<typeof value.provider, 'Other'>,
+      api_header: header,
+    })
+      .then((res) => {
+        setModelUserList(
+          (res.models || [])
+            .filter((item): item is { model: string } => !!item.model)
+            .sort((a, b) => a.model!.localeCompare(b.model!))
+        );
+        if (
+          data &&
+          (res.models || []).find((it) => it.model === data.model_name)
+        ) {
+          setValue('model', data.model_name!);
+        } else {
+          setValue('model', res.models?.[0]?.model || '');
+        }
+        setSuccess(true);
+      })
+      .finally(() => {
+        setModelLoading(false);
+      });
   };
 
-  const onSubmit = (value: Required<DomainCreateModelReq>) => {
+  const onSubmit = (value: AddModelForm) => {
+    let header = '';
+    if (value.api_header_key && value.api_header_value) {
+      header = value.api_header_key + '=' + value.api_header_value;
+    }
     setError('');
     setLoading(true);
     postCheckModel({
-      ...value,
+      // @ts-ignore
+      type,
+      api_key: value.api_key,
+      api_base: value.base_url,
+      api_version: value.api_version,
+      // @ts-ignore
+      provider: value.provider,
+      model_name: value.model,
+      api_header: header,
     })
       .then((res) => {
         if (data) {
-          onUpdateModel({
-            ...value,
+          putUpdateModel({
+            api_key: value.api_key,
+            api_base: value.base_url,
+            model_name: value.model,
+            api_header: header,
+            api_version: value.api_version,
             id: data.id,
-          }).finally(() => {
-            setLoading(false);
-          });
+            provider: value.provider as Exclude<typeof value.provider, 'Other'>,
+          })
+            .then(() => {
+              message.success('修改成功');
+              handleReset();
+            })
+            .finally(() => {
+              setLoading(false);
+            });
         } else {
-          onCreateModel(value).finally(() => {
-            setLoading(false);
-          });
+          postCreateModel({
+            model_type: type,
+            api_key: value.api_key,
+            api_base: value.base_url,
+            model_name: value.model,
+            api_header: header,
+            provider: value.provider as Exclude<typeof value.provider, 'Other'>,
+          })
+            .then(() => {
+              message.success('添加成功');
+              handleReset();
+            })
+            .finally(() => {
+              setLoading(false);
+            });
         }
       })
       .catch(() => {
@@ -116,79 +199,64 @@ const ModelModal = ({
       });
   };
 
+  const resetCurData = (value: DomainModel) => {
+    // @ts-ignore
+    if (value.provider && value.provider !== 'Other') {
+      getModel({
+        api_key: value.api_key || '',
+        base_url: value.api_base || '',
+        model: value.model_name || '',
+        provider: value.provider,
+        api_version: value.api_version || '',
+        api_header_key: value.api_header?.split('=')[0] || '',
+        api_header_value: value.api_header?.split('=')[1] || '',
+        type,
+      });
+    }
+    reset({
+      type,
+      provider: value.provider || 'Other',
+      model: value.model_name || '',
+      base_url: value.api_base || '',
+      api_key: value.api_key || '',
+      api_version: value.api_version || '',
+      api_header_key: value.api_header?.split('=')[0] || '',
+      api_header_value: value.api_header?.split('=')[1] || '',
+    });
+  };
+
   useEffect(() => {
     if (open) {
       if (data) {
-        reset(
-          {
-            provider: data.provider || 'Other',
-            model_name: data.model_name || '',
-            api_base: data.api_base || '',
-            api_key: data.api_key || '',
-          },
-          {
-            keepDefaultValues: true,
-          }
-        );
+        console.log(data);
+        resetCurData(data);
       } else {
-        reset();
+        reset({
+          type,
+          provider: 'BaiZhiCloud',
+          model: '',
+          base_url: providers['BaiZhiCloud'].defaultBaseUrl,
+          api_key: '',
+          api_version: '',
+          api_header_key: '',
+          api_header_value: '',
+        });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, open]);
 
-  useEffect(() => {
-    if (open) {
-      getListModel().then((res) => {
-        setModelUserList(res.providers || []);
-        if (!data) {
-          setValue('provider', res.providers?.[0].provider || 'DeepSeek');
-        }
-      });
-    }
-  }, [open]);
-
-  const currentModelList = useMemo(() => {
-    return (
-      modelUserList.find((it) => it.provider === providerBrand)?.models || []
-    );
-  }, [modelUserList, providerBrand]);
-
-  useEffect(() => {
-    if (currentModelList.length > 0) {
-      if (data) {
-        setValue('api_base', data.api_base || '');
-        setValue('model_name', data.model_name || '');
-      } else {
-        setValue('api_base', currentModelList[0].api_base || '');
-        setValue('model_name', currentModelList[0].name || '');
-      }
-    }
-  }, [currentModelList, data]);
-
-  const getModelList = () => {
-    setModelLoading(true);
-    getListModel().then((res) => {
-      setModelUserList(res.providers || []);
-    });
-  };
-
   return (
     <Modal
-      title={data ? '修改第三方模型' : '添加第三方模型'}
+      title={data ? `修改${titleMap[type]}` : `添加${titleMap[type]}`}
       open={open}
       width={800}
-      onCancel={() => {
-        reset();
-        setModelUserList([]);
-        setLoading(false);
-        setError('');
-        onClose();
-      }}
+      onCancel={handleReset}
       okText='保存'
       onOk={handleSubmit(onSubmit)}
       okButtonProps={{
         loading,
+        disabled: !success && providerBrand !== 'Other',
       }}
     >
       <Stack direction={'row'} alignItems={'stretch'} gap={3}>
@@ -197,7 +265,7 @@ const ModelModal = ({
           sx={{
             width: 200,
             flexShrink: 0,
-            bgcolor: 'rgb(248, 249, 250)',
+            bgcolor: 'background.paper2',
             borderRadius: '10px',
             p: 1,
           }}
@@ -207,12 +275,12 @@ const ModelModal = ({
           >
             模型供应商
           </Box>
-          {modelUserList.map((it) => (
+          {Object.values(providers).map((it) => (
             <Stack
               direction={'row'}
               alignItems={'center'}
               gap={1.5}
-              key={it.provider}
+              key={it.label}
               sx={{
                 cursor: 'pointer',
                 fontSize: 14,
@@ -221,8 +289,8 @@ const ModelModal = ({
                 borderRadius: '10px',
                 fontWeight: 'bold',
                 fontFamily: 'Gbold',
-                ...(providerBrand === it.provider && {
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                ...(providerBrand === it.label && {
+                  bgcolor: addOpacityToColor(theme.palette.primary.main, 0.1),
                   color: 'primary.main',
                 }),
                 '&:hover': {
@@ -230,152 +298,261 @@ const ModelModal = ({
                 },
               }}
               onClick={() => {
-                if (data) return;
-                setError('');
-                reset(
-                  {
-                    provider: it.provider as keyof typeof ModelProvider,
-                    api_base: '',
-                    model_name: '',
+                if (data && data.provider === it.label) {
+                  resetCurData(data);
+                } else {
+                  setModelUserList([]);
+                  setError('');
+                  setModelLoading(false);
+                  setSuccess(false);
+                  reset({
+                    provider: it.label as keyof typeof ModelProvider,
+                    base_url:
+                      it.label === 'AzureOpenAI' ? '' : it.defaultBaseUrl,
+                    model: '',
+                    api_version: '',
                     api_key: '',
-                  },
-                  {
-                    keepDefaultValues: true,
-                  }
-                );
+                    api_header_key: '',
+                    api_header_value: '',
+                  });
+                }
               }}
             >
-              <Icon
-                type={
-                  ModelProvider[it.provider as keyof typeof ModelProvider].icon
-                }
-                sx={{ fontSize: 18 }}
-              />
-              {it.provider}
+              <Icon type={it.icon} sx={{ fontSize: 18 }} />
+              {it.cn || it.label || '其他'}
             </Stack>
           ))}
         </Stack>
-        <Stack sx={{ flex: 1 }} gap={2}>
-          <FormItem required label='API 地址'>
-            <Controller
-              control={control}
-              name='api_base'
-              rules={{
-                required: {
-                  value: true,
-                  message: 'URL 不能为空',
-                },
-              }}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  disabled={!ModelProvider[providerBrand].urlWrite}
-                  size='small'
-                  placeholder={ModelProvider[providerBrand].defaultBaseUrl}
-                  error={!!errors.api_base}
-                  helperText={errors.api_base?.message}
-                  onChange={(e) => {
-                    field.onChange(e.target.value);
-                    setModelUserList([]);
-                    setValue('model_name', '');
-                  }}
-                />
-              )}
-            />
-          </FormItem>
-          <Box>
-            <Stack
-              direction={'row'}
-              alignItems={'center'}
-              justifyContent={'space-between'}
-            >
-              <StyledFormLabel
-                required={ModelProvider[providerBrand].secretRequired}
-              >
-                API Secret
-              </StyledFormLabel>
-              {ModelProvider[providerBrand].modelDocumentUrl && (
-                <Box
-                  component={'span'}
-                  sx={{
-                    color: 'info.main',
-                    cursor: 'pointer',
-                    ml: 1,
-                    textAlign: 'right',
-                    fontSize: 14,
-                  }}
-                  onClick={() =>
-                    window.open(
-                      ModelProvider[providerBrand].modelDocumentUrl,
-                      '_blank'
-                    )
-                  }
-                >
-                  查看文档
+        <Box sx={{ flex: 1 }}>
+          <Box sx={{ fontSize: 14, lineHeight: '32px' }}>
+            API 地址{' '}
+            <Box component={'span'} sx={{ color: 'red' }}>
+              *
+            </Box>
+          </Box>
+          <Controller
+            control={control}
+            name='base_url'
+            rules={{
+              required: {
+                value: true,
+                message: 'URL 不能为空',
+              },
+            }}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                fullWidth
+                disabled={!providers[providerBrand].urlWrite}
+                size='small'
+                placeholder={providers[providerBrand].defaultBaseUrl}
+                error={!!errors.base_url}
+                helperText={errors.base_url?.message}
+                onChange={(e) => {
+                  field.onChange(e.target.value);
+                  setModelUserList([]);
+                  setValue('model', '');
+                  setSuccess(false);
+                }}
+              />
+            )}
+          />
+          <Stack
+            direction={'row'}
+            alignItems={'center'}
+            justifyContent={'space-between'}
+            sx={{ fontSize: 14, lineHeight: '32px', mt: 2 }}
+          >
+            <Box>
+              API Secret
+              {providers[providerBrand].secretRequired && (
+                <Box component={'span'} sx={{ color: 'red' }}>
+                  {' '}
+                  *
                 </Box>
               )}
-            </Stack>
-
-            <Controller
-              control={control}
-              name='api_key'
-              rules={{
-                required: {
-                  value: ModelProvider[providerBrand].secretRequired,
-                  message: 'API Secret 不能为空',
-                },
-              }}
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  size='small'
-                  placeholder=''
-                  error={!!errors.api_key}
-                  helperText={errors.api_key?.message}
-                  onChange={(e) => {
-                    field.onChange(e.target.value);
-                  }}
-                />
+            </Box>
+            {providers[providerBrand].modelDocumentUrl && (
+              <Box
+                component={'span'}
+                sx={{
+                  color: 'info.main',
+                  cursor: 'pointer',
+                  ml: 1,
+                  textAlign: 'right',
+                }}
+                onClick={() =>
+                  window.open(
+                    providers[providerBrand].modelDocumentUrl,
+                    '_blank'
+                  )
+                }
+              >
+                查看文档
+              </Box>
+            )}
+          </Stack>
+          <Controller
+            control={control}
+            name='api_key'
+            rules={{
+              required: {
+                value: providers[providerBrand].secretRequired,
+                message: 'API Secret 不能为空',
+              },
+            }}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                fullWidth
+                size='small'
+                placeholder=''
+                error={!!errors.api_key}
+                helperText={errors.api_key?.message}
+                onChange={(e) => {
+                  field.onChange(e.target.value);
+                  setModelUserList([]);
+                  setValue('model', '');
+                  setSuccess(false);
+                }}
+              />
+            )}
+          />
+          {providerBrand === 'AzureOpenAI' && (
+            <>
+              <Box sx={{ fontSize: 14, lineHeight: '32px', mt: 2 }}>
+                API Version
+              </Box>
+              <Controller
+                control={control}
+                name='api_version'
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    size='small'
+                    placeholder='2024-10-21'
+                    error={!!errors.api_version}
+                    helperText={errors.api_version?.message}
+                    onChange={(e) => {
+                      field.onChange(e.target.value);
+                      setModelUserList([]);
+                      setValue('model', '');
+                      setSuccess(false);
+                    }}
+                  />
+                )}
+              />
+            </>
+          )}
+          {providerBrand === 'Other' ? (
+            <>
+              <Box sx={{ fontSize: 14, lineHeight: '32px', mt: 2 }}>
+                模型名称{' '}
+                <Box component={'span'} sx={{ color: 'red' }}>
+                  *
+                </Box>
+              </Box>
+              <Controller
+                control={control}
+                name='model'
+                rules={{
+                  required: '模型名称不能为空',
+                }}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    size='small'
+                    placeholder=''
+                    error={!!errors.model}
+                    helperText={errors.model?.message}
+                  />
+                )}
+              />
+              <Box sx={{ fontSize: 12, color: 'error.main', mt: 1 }}>
+                需要与模型供应商提供的名称完全一致，不要随便填写
+              </Box>
+            </>
+          ) : modelUserList.length === 0 ? (
+            <Button
+              fullWidth
+              variant='outlined'
+              loading={modelLoading}
+              sx={{ mt: 4 }}
+              onClick={handleSubmit(getModel)}
+            >
+              获取模型列表
+            </Button>
+          ) : (
+            <>
+              <Box sx={{ fontSize: 14, lineHeight: '32px', mt: 2 }}>
+                模型名称{' '}
+                <Box component={'span'} sx={{ color: 'red' }}>
+                  *
+                </Box>
+              </Box>
+              <Controller
+                control={control}
+                name='model'
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    select
+                    size='small'
+                    placeholder=''
+                    error={!!errors.model}
+                    helperText={errors.model?.message}
+                  >
+                    {modelUserList.map((it) => (
+                      <MenuItem key={it.model} value={it.model}>
+                        {it.model}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
+              />
+              {providers[providerBrand].customHeader && (
+                <>
+                  <Box sx={{ fontSize: 14, lineHeight: '32px', mt: 2 }}>
+                    Header
+                  </Box>
+                  <Stack direction={'row'} gap={1}>
+                    <Controller
+                      control={control}
+                      name='api_header_key'
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          size='small'
+                          placeholder='key'
+                          error={!!errors.api_header_key}
+                          helperText={errors.api_header_key?.message}
+                        />
+                      )}
+                    />
+                    <Box sx={{ fontSize: 14, lineHeight: '36px' }}>=</Box>
+                    <Controller
+                      control={control}
+                      name='api_header_value'
+                      render={({ field }) => (
+                        <TextField
+                          {...field}
+                          fullWidth
+                          size='small'
+                          placeholder='value'
+                          error={!!errors.api_header_value}
+                          helperText={errors.api_header_value?.message}
+                        />
+                      )}
+                    />
+                  </Stack>
+                </>
               )}
-            />
-          </Box>
-
-          <Button
-            fullWidth
-            variant='outlined'
-            loading={modelLoading}
-            sx={{ mt: 4 }}
-            onClick={handleSubmit(getModelList)}
-          >
-            获取模型列表
-          </Button>
-
-          <FormItem required label='模型名称'>
-            <Controller
-              control={control}
-              name='model_name'
-              render={({ field }) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  select
-                  size='small'
-                  placeholder=''
-                  error={!!errors.model_name}
-                  helperText={errors.model_name?.message}
-                >
-                  {currentModelList.map((it) => (
-                    <MenuItem key={it.name} value={it.name}>
-                      {it.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
-            />
-          </FormItem>
-
+            </>
+          )}
           {error && (
             <Card
               sx={{
@@ -391,10 +568,10 @@ const ModelModal = ({
               {error}
             </Card>
           )}
-        </Stack>
+        </Box>
       </Stack>
     </Modal>
   );
 };
 
-export default ModelModal;
+export default ModelAdd;

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Card from '@/components/card';
 import { useRequest } from 'ahooks';
 import { getMyModelList, putUpdateModel } from '@/api/Model';
-import { DomainModel, ConstsModelStatus } from '@/api/types';
+import { DomainModel, ConstsModelStatus, ConstsModelType } from '@/api/types';
 import { Stack, Box, Button, Grid2 as Grid, ButtonBase } from '@mui/material';
 import StyledLabel from '@/components/label';
 import { Icon, Modal, message } from '@c-x/ui';
@@ -40,6 +40,7 @@ const ModelItem = ({
         putUpdateModel({
           id: data.id,
           status: ConstsModelStatus.ModelStatusInactive,
+          provider: data.provider!,
         }).then(() => {
           message.success('停用成功');
           refresh();
@@ -64,6 +65,7 @@ const ModelItem = ({
         putUpdateModel({
           id: data.id,
           status: ConstsModelStatus.ModelStatusActive,
+          provider: data.provider!,
         }).then(() => {
           message.success('激活成功');
           refresh();
@@ -110,7 +112,7 @@ const ModelItem = ({
         <Stack direction='row' alignItems='center' gap={1}>
           <Icon
             type={
-              ModelProvider[data.provider as keyof typeof ModelProvider].icon
+              ModelProvider[data.provider as keyof typeof ModelProvider]?.icon
             }
             sx={{ fontSize: 24 }}
           />
@@ -202,7 +204,7 @@ const ModelItem = ({
 
 interface IModelCardProps {
   title: string;
-  modelType: 'llm' | 'coder';
+  modelType: ConstsModelType;
 }
 
 const ModelCard: React.FC<IModelCardProps> = ({ title, modelType }) => {
@@ -257,7 +259,7 @@ const ModelCard: React.FC<IModelCardProps> = ({ title, modelType }) => {
         }}
         refresh={refresh}
         data={editData}
-        modelType={modelType}
+        type={modelType}
       />
     </Card>
   );

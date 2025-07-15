@@ -15,9 +15,11 @@ import {
   DomainAllModelResp,
   DomainCheckModelReq,
   DomainCreateModelReq,
+  DomainGetProviderModelListResp,
   DomainModel,
   DomainModelTokenUsageResp,
   DomainUpdateModelReq,
+  GetGetProviderModelListParams,
   GetGetTokenUsageParams,
   GetMyModelListParams,
   WebResp,
@@ -162,6 +164,36 @@ export const getMyModelList = (
     }
   >({
     path: `/api/v1/model/my`,
+    method: "GET",
+    query: query,
+    type: ContentType.Json,
+    format: "json",
+    ...params,
+  });
+
+/**
+ * @description 获取供应商支持的模型列表
+ *
+ * @tags Model
+ * @name GetGetProviderModelList
+ * @summary 获取供应商支持的模型列表
+ * @request GET:/api/v1/model/provider/supported
+ * @response `200` `(WebResp & {
+    data?: DomainGetProviderModelListResp,
+
+})` OK
+ */
+
+export const getGetProviderModelList = (
+  query: GetGetProviderModelListParams,
+  params: RequestParams = {},
+) =>
+  request<
+    WebResp & {
+      data?: DomainGetProviderModelListResp;
+    }
+  >({
+    path: `/api/v1/model/provider/supported`,
     method: "GET",
     query: query,
     type: ContentType.Json,
