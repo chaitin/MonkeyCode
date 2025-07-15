@@ -17,38 +17,6 @@ const Dashboard = () => {
   const [memberData, setMemberData] = useState<DomainUser | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
 
-  const { data: userData, refresh } = useRequest(
-    () =>
-      getListUser({
-        page: 1,
-        size: 99999,
-      }),
-    {
-      manual: true,
-      onSuccess: (res) => {
-        if (id) {
-          setMemberData(res.users?.find((item) => item.id === id) || null);
-        } else {
-          setMemberData(res.users?.[0] || null);
-          navigate(`/dashboard/member/${res.users?.[0]?.id}`);
-        }
-      },
-    }
-  );
-  const userList = useMemo(() => {
-    return userData?.users || [];
-  }, [userData]);
-  useEffect(() => {
-    if (tabValue === 'member') {
-      refresh();
-    }
-  }, [tabValue]);
-
-  const onMemberChange = (data: DomainUser) => {
-    setMemberData(data);
-    navigate(`/dashboard/member/${data.id}`);
-  };
-
   return (
     <Stack gap={2} sx={{ height: '100%' }}>
       <Stack direction='row' justifyContent='space-between' alignItems='center'>

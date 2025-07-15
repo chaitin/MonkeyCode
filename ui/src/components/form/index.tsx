@@ -16,7 +16,7 @@ export const FormItem = ({
   children,
   required,
 }: {
-  label: string;
+  label: string | React.ReactNode;
   children: React.ReactNode;
   required?: boolean;
 }) => {

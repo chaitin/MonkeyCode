@@ -7,7 +7,7 @@ import {
 import Card from '@/components/card';
 import { ModelProvider } from '../constant';
 import { Icon, message, Modal } from '@c-x/ui';
-import { StyledFormLabel } from '@/components/form';
+import { FormItem, StyledFormLabel } from '@/components/form';
 import {
   Box,
   MenuItem,
@@ -15,6 +15,7 @@ import {
   TextField,
   useTheme,
   alpha,
+  Button,
 } from '@mui/material';
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -165,6 +166,13 @@ const ModelModal = ({
     }
   }, [currentModelList, data]);
 
+  const getModelList = () => {
+    setModelLoading(true);
+    getListModel().then((res) => {
+      setModelUserList(res.providers || []);
+    });
+  };
+
   return (
     <Modal
       title={data ? '修改第三方模型' : '添加第三方模型'}
@@ -247,114 +255,127 @@ const ModelModal = ({
             </Stack>
           ))}
         </Stack>
-        <Box sx={{ flex: 1 }}>
-          <StyledFormLabel required>API 地址</StyledFormLabel>
-          <Controller
-            control={control}
-            name='api_base'
-            rules={{
-              required: {
-                value: true,
-                message: 'URL 不能为空',
-              },
-            }}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                fullWidth
-                disabled={!ModelProvider[providerBrand].urlWrite}
-                size='small'
-                placeholder={ModelProvider[providerBrand].defaultBaseUrl}
-                error={!!errors.api_base}
-                helperText={errors.api_base?.message}
-                onChange={(e) => {
-                  field.onChange(e.target.value);
-                  setModelUserList([]);
-                  setValue('model_name', '');
-                }}
-              />
-            )}
-          />
-          <Stack
-            direction={'row'}
-            alignItems={'center'}
-            justifyContent={'space-between'}
-            sx={{ fontSize: 14, lineHeight: '32px', mt: 2 }}
-          >
-            <StyledFormLabel
-              required={ModelProvider[providerBrand].secretRequired}
+        <Stack sx={{ flex: 1 }} gap={2}>
+          <FormItem required label='API 地址'>
+            <Controller
+              control={control}
+              name='api_base'
+              rules={{
+                required: {
+                  value: true,
+                  message: 'URL 不能为空',
+                },
+              }}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  fullWidth
+                  disabled={!ModelProvider[providerBrand].urlWrite}
+                  size='small'
+                  placeholder={ModelProvider[providerBrand].defaultBaseUrl}
+                  error={!!errors.api_base}
+                  helperText={errors.api_base?.message}
+                  onChange={(e) => {
+                    field.onChange(e.target.value);
+                    setModelUserList([]);
+                    setValue('model_name', '');
+                  }}
+                />
+              )}
+            />
+          </FormItem>
+          <Box>
+            <Stack
+              direction={'row'}
+              alignItems={'center'}
+              justifyContent={'space-between'}
             >
-              API Secret
-            </StyledFormLabel>
-            {ModelProvider[providerBrand].modelDocumentUrl && (
-              <Box
-                component={'span'}
-                sx={{
-                  color: 'info.main',
-                  cursor: 'pointer',
-                  ml: 1,
-                  textAlign: 'right',
-                }}
-                onClick={() =>
-                  window.open(
-                    ModelProvider[providerBrand].modelDocumentUrl,
-                    '_blank'
-                  )
-                }
+              <StyledFormLabel
+                required={ModelProvider[providerBrand].secretRequired}
               >
-                查看文档
-              </Box>
-            )}
-          </Stack>
-          <Controller
-            control={control}
-            name='api_key'
-            rules={{
-              required: {
-                value: ModelProvider[providerBrand].secretRequired,
-                message: 'API Secret 不能为空',
-              },
-            }}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                fullWidth
-                size='small'
-                placeholder=''
-                error={!!errors.api_key}
-                helperText={errors.api_key?.message}
-                onChange={(e) => {
-                  field.onChange(e.target.value);
-                }}
-              />
-            )}
-          />
+                API Secret
+              </StyledFormLabel>
+              {ModelProvider[providerBrand].modelDocumentUrl && (
+                <Box
+                  component={'span'}
+                  sx={{
+                    color: 'info.main',
+                    cursor: 'pointer',
+                    ml: 1,
+                    textAlign: 'right',
+                    fontSize: 14,
+                  }}
+                  onClick={() =>
+                    window.open(
+                      ModelProvider[providerBrand].modelDocumentUrl,
+                      '_blank'
+                    )
+                  }
+                >
+                  查看文档
+                </Box>
+              )}
+            </Stack>
 
-          <Box sx={{ mt: 2 }}>
-            <StyledFormLabel required>模型名称</StyledFormLabel>
+            <Controller
+              control={control}
+              name='api_key'
+              rules={{
+                required: {
+                  value: ModelProvider[providerBrand].secretRequired,
+                  message: 'API Secret 不能为空',
+                },
+              }}
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  fullWidth
+                  size='small'
+                  placeholder=''
+                  error={!!errors.api_key}
+                  helperText={errors.api_key?.message}
+                  onChange={(e) => {
+                    field.onChange(e.target.value);
+                  }}
+                />
+              )}
+            />
           </Box>
 
-          <Controller
-            control={control}
-            name='model_name'
-            render={({ field }) => (
-              <TextField
-                {...field}
-                fullWidth
-                select
-                size='small'
-                placeholder=''
-                error={!!errors.model_name}
-                helperText={errors.model_name?.message}
-              >
-                {currentModelList.map((it) => (
-                  <MenuItem key={it.name} value={it.name}>
-                    {it.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-          />
+          <Button
+            fullWidth
+            variant='outlined'
+            loading={modelLoading}
+            sx={{ mt: 4 }}
+            onClick={handleSubmit(getModelList)}
+          >
+            获取模型列表
+          </Button>
+
+          <FormItem required label='模型名称'>
+            <Controller
+              control={control}
+              name='model_name'
+              render={({ field }) => (
+                <TextField
+                  {...field}
+                  fullWidth
+                  select
+                  size='small'
+                  placeholder=''
+                  error={!!errors.model_name}
+                  helperText={errors.model_name?.message}
+                >
+                  {currentModelList.map((it) => (
+                    <MenuItem key={it.name} value={it.name}>
+                      {it.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+            />
+          </FormItem>
+
           {error && (
             <Card
               sx={{
@@ -370,7 +391,7 @@ const ModelModal = ({
               {error}
             </Card>
           )}
-        </Box>
+        </Stack>
       </Stack>
     </Modal>
   );
