@@ -23,33 +23,27 @@ type FileInfo struct {
 
 // WorkspaceStats 表示工作区统计信息
 type WorkspaceStats struct {
-	TotalFiles  int64     `json:"totalFiles"`
-	TotalSize   int64     `json:"totalSize"`
-	LastSync    time.Time `json:"lastSync"`
-	StoragePath string    `json:"storagePath"`
+	TotalFiles int64     `json:"totalFiles"`
+	TotalSize  int64     `json:"totalSize"`
+	LastSync   time.Time `json:"lastSync"`
 }
 
 // WorkspaceService 提供文件工作区管理功能
 type WorkspaceService struct {
-	config      *config.Config
-	logger      *slog.Logger
-	storagePath string
-	fileCache   map[string]*FileInfo
-	cacheMutex  sync.RWMutex
+	config     *config.Config
+	logger     *slog.Logger
+	fileCache  map[string]*FileInfo
+	cacheMutex sync.RWMutex
 }
 
 // NewWorkspaceService 创建新的工作区服务实例
 func NewWorkspaceService(config *config.Config, logger *slog.Logger) *WorkspaceService {
-	storagePath := "/tmp/monkeycode/workspace"
-	if config.Server.WorkspacePath != "" {
-		storagePath = config.Server.WorkspacePath
-	}
+	// TODO: 实现持久化存储配置
 
 	return &WorkspaceService{
-		config:      config,
-		logger:      logger,
-		storagePath: storagePath,
-		fileCache:   make(map[string]*FileInfo),
+		config:    config,
+		logger:    logger,
+		fileCache: make(map[string]*FileInfo),
 	}
 }
 
@@ -112,11 +106,7 @@ func (ws *WorkspaceService) GetWorkspaceStats() (*WorkspaceStats, error) {
 	ws.cacheMutex.RLock()
 	defer ws.cacheMutex.RUnlock()
 
-	// TODO: 根据用户项目信息统计数据库中的项目文件信息
-
-	stats := &WorkspaceStats{
-		StoragePath: ws.storagePath,
-	}
+	stats := &WorkspaceStats{}
 
 	for _, fileInfo := range ws.fileCache {
 		stats.TotalFiles++
@@ -138,11 +128,6 @@ func (ws *WorkspaceService) VerifyFileHash(filePath, expectedHash string) (bool,
 		return false, err
 	}
 	return fileInfo.Hash == expectedHash, nil
-}
-
-// GetStoragePath 返回存储路径
-func (ws *WorkspaceService) GetStoragePath() string {
-	return ws.storagePath
 }
 
 // ClearCache 清空所有文件缓存

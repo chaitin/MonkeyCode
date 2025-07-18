@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	billingv1 "github.com/chaitin/MonkeyCode/backend/internal/billing/handler/http/v1"
 	dashv1 "github.com/chaitin/MonkeyCode/backend/internal/dashboard/handler/v1"
+	"github.com/chaitin/MonkeyCode/backend/internal/handler"
 	v1 "github.com/chaitin/MonkeyCode/backend/internal/model/handler/http/v1"
 	openaiV1 "github.com/chaitin/MonkeyCode/backend/internal/openai/handler/v1"
 	userV1 "github.com/chaitin/MonkeyCode/backend/internal/user/handler/v1"
@@ -29,6 +30,7 @@ type Server struct {
 	userV1      *userV1.UserHandler
 	dashboardV1 *dashv1.DashboardHandler
 	billingV1   *billingv1.BillingHandler
+	socketH     *handler.SocketHandler
 }
 
 func newServer() (*Server, error) {
