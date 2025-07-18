@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/wire"
+	"github.com/labstack/echo/v4"
 
 	"github.com/GoYoko/web"
 
@@ -29,6 +30,10 @@ func main() {
 	if s.config.Debug {
 		s.web.Swagger("MonkeyCode API", "/reference", string(docs.SwaggerJSON), web.WithBasicAuth("mc", "mc88"))
 	}
+
+	// 设置Socket.IO路由
+	s.web.Echo().Any("/socket.io/*", echo.WrapHandler(s.socketH.GetServer().HttpHandler()))
+	s.logger.Info("Socket.IO server configured", "path", "/socket.io/")
 
 	s.web.PrintRoutes()
 
