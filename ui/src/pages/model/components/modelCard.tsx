@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
 import Card from '@/components/card';
 import { useRequest } from 'ahooks';
-import { deleteDeleteModel, getMyModelList, putUpdateModel } from '@/api/Model';
-import { DomainModel, ConstsModelStatus, ConstsModelType } from '@/api/types';
-import { Stack, Box, Button, Grid2 as Grid, ButtonBase } from '@mui/material';
+import {
+  deleteDeleteModel,
+  getMyModelList,
+  putUpdateModel,
+  postCreateModel,
+  getGetProviderModelList,
+  postCheckModel
+} from '@/api/Model';
+import { DomainModel, ConstsModelStatus, ConstsModelType, GetGetProviderModelListParams, DomainCreateModelReq, DomainCheckModelReq, DomainUpdateModelReq } from '@/api/types';
+import { Stack, Box, Button, Grid2 as Grid, ButtonBase, ThemeProvider } from '@mui/material';
 import StyledLabel from '@/components/label';
 import { Icon, Modal, message } from '@c-x/ui';
 import { addCommasToNumber } from '@/utils';
 import NoData from '@/assets/images/nodata.png';
 import { ModelProvider } from '../constant';
-import ModelModal from './modelModal';
+import { ModelModal, Model, ModelService, ConstsModelType as ModelKitType, ModelListItem } from '@yokowu/modelkit-ui';
 
 const ModelItem = ({
   data,
@@ -278,6 +285,26 @@ const ModelCard: React.FC<IModelCardProps> = ({
   const [open, setOpen] = useState(false);
   const [editData, setEditData] = useState<DomainModel | null>(null);
 
+  // 创建符合ModelService接口的服务实现
+  const modelService: ModelService = {
+    createModel: async (params) => {
+      const response = await postCreateModel(params as unknown as DomainCreateModelReq);
+      return { model: response as unknown as Model };
+    },
+    listModel: async (params) => {
+      const response = await getGetProviderModelList(params as unknown as GetGetProviderModelListParams);
+      return { models: response?.models || [] };
+    },
+    checkModel: async (params) => {
+      const response = await postCheckModel(params as unknown as DomainCheckModelReq);
+      return { model: response as unknown as Model };
+    },
+    updateModel: async (params) => {
+      const response = await putUpdateModel(params as unknown as DomainUpdateModelReq);
+      return { model: response as unknown as Model };
+    }
+  }
+
   const onEdit = (data: DomainModel) => {
     setOpen(true);
     setEditData(data);
@@ -319,8 +346,10 @@ const ModelCard: React.FC<IModelCardProps> = ({
           setEditData(null);
         }}
         refresh={refreshModel}
-        data={editData}
+        data={editData as Model | null}
         type={modelType}
+        modelService={modelService}
+        language="zh-CN"
       />
     </Card>
   );

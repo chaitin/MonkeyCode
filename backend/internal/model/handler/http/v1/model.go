@@ -2,11 +2,14 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
 	"github.com/GoYoko/web"
 
+	modelkitDomain "github.com/chaitin/ModelKit/domain"
+	modelkit "github.com/chaitin/ModelKit/usecase"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
 )
@@ -53,10 +56,31 @@ func NewModelHandler(
 //	@Success		200		{object}	web.Resp{data=domain.Model}
 //	@Router			/api/v1/model/check [post]
 func (h *ModelHandler) Check(c *web.Context, req domain.CheckModelReq) error {
-	m, err := h.usecase.Check(c.Request().Context(), &req)
+	modelkitRes, err := modelkit.CheckModel(c.Request().Context(), &modelkitDomain.CheckModelReq{
+		Provider:   string(req.Provider),
+		Model:      req.ModelName,
+		BaseURL:    req.APIBase,
+		APIKey:     req.APIKey,
+		APIHeader:  req.APIHeader,
+		APIVersion: req.APIVersion,
+		Type:       string(req.Type),
+	})
 	if err != nil {
 		return err
 	}
+	if modelkitRes.Error != "" {
+		return errors.New(modelkitRes.Error)
+	}
+
+	// 将输出转化为monkeycode格式
+	m := &domain.Model{
+		ModelType: req.Type,
+		Provider:  req.Provider,
+		ModelName: req.ModelName,
+		APIBase:   req.APIBase,
+	}
+	// end
+
 	return c.Success(m)
 }
 
@@ -171,11 +195,29 @@ func (h *ModelHandler) GetTokenUsage(c *web.Context, req domain.GetTokenUsageReq
 //	@Success		200		{object}	web.Resp{data=domain.GetProviderModelListResp}
 //	@Router			/api/v1/model/provider/supported [get]
 func (h *ModelHandler) GetProviderModelList(c *web.Context, req domain.GetProviderModelListReq) error {
-	resp, err := h.usecase.GetProviderModelList(c.Request().Context(), &req)
+	modelkitRes, err := modelkit.ModelList(c.Request().Context(), &modelkitDomain.ModelListReq{
+		Provider:  string(req.Provider),
+		Type:      string(req.Type),
+		BaseURL:   req.BaseURL,
+		APIKey:    req.APIKey,
+		APIHeader: req.APIHeader,
+	})
 	if err != nil {
 		return err
 	}
-	return c.Success(resp)
+
+	// 将输出转化为monkeycode格式
+	res := &domain.GetProviderModelListResp{
+		Models: make([]domain.ProviderModelListItem, len(modelkitRes.Models)),
+	}
+	for i, model := range modelkitRes.Models {
+		res.Models[i] = domain.ProviderModelListItem{
+			Model: model.Model,
+		}
+	}
+	// end
+
+	return c.Success(res)
 }
 
 // Delete 删除模型

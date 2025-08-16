@@ -15,10 +15,8 @@ type ModelUsecase interface {
 	Create(ctx context.Context, req *CreateModelReq) (*Model, error)
 	Update(ctx context.Context, req *UpdateModelReq) (*Model, error)
 	Delete(ctx context.Context, id string) error
-	Check(ctx context.Context, req *CheckModelReq) (*Model, error)
 	GetTokenUsage(ctx context.Context, modelType consts.ModelType) (*ModelTokenUsageResp, error)
 	InitModel(ctx context.Context) error
-	GetProviderModelList(ctx context.Context, req *GetProviderModelListReq) (*GetProviderModelListResp, error)
 }
 
 type ModelRepo interface {
@@ -31,43 +29,6 @@ type ModelRepo interface {
 	ModelUsage(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]ModelUsage, error)
 	GetTokenUsage(ctx context.Context, modelType consts.ModelType) (*ModelTokenUsageResp, error)
 	InitModel(ctx context.Context, modelName, modelKey, modelURL string) error
-}
-
-var ModelProviderBrandModelsList = map[consts.ModelProvider][]ProviderModelListItem{
-	consts.ModelProviderOpenAI: {
-		{Model: "gpt-4o"},
-	},
-	consts.ModelProviderDeepSeek: {
-		{Model: "deepseek-reasoner"},
-		{Model: "deepseek-chat"},
-	},
-	consts.ModelProviderMoonshot: {
-		{Model: "moonshot-v1-auto"},
-		{Model: "moonshot-v1-8k"},
-		{Model: "moonshot-v1-32k"},
-		{Model: "moonshot-v1-128k"},
-	},
-	consts.ModelProviderAzureOpenAI: {
-		{Model: "gpt-4"},
-		{Model: "gpt-4o"},
-		{Model: "gpt-4o-mini"},
-		{Model: "gpt-4o-nano"},
-		{Model: "gpt-4.1"},
-		{Model: "gpt-4.1-mini"},
-		{Model: "gpt-4.1-nano"},
-		{Model: "o1"},
-		{Model: "o1-mini"},
-		{Model: "o3"},
-		{Model: "o3-mini"},
-		{Model: "o4-mini"},
-	},
-	consts.ModelProviderVolcengine: {
-		{Model: "doubao-seed-1.6-250615"},
-		{Model: "doubao-seed-1.6-flash-250615"},
-		{Model: "doubao-seed-1.6-thinking-250615"},
-		{Model: "doubao-1.5-thinking-vision-pro-250428"},
-		{Model: "deepseek-r1-250528"},
-	},
 }
 
 type MyModelListReq struct {
