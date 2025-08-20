@@ -18,6 +18,7 @@
     "@mui/icons-material": "^6.4.12",
     "@mui/lab": "6.0.0-beta.19",
     "@mui/material": "^6.4.12",
+    "@yokowu/modelkit-ui": "0.4.2",
     "ahooks": "^3.8.4",
     "axios": "^1.9.0",
     "dayjs": "^1.11.7",
@@ -37,7 +38,8 @@
     "rehype-sanitize": "^6.0.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
-    "unist-util-visit": "^5.0.0"
+    "unist-util-visit": "^5.0.0",
+    "vite-plugin-dts": "^4.5.4"
   },
   "devDependencies": {
     "@c-x/cx-swagger-api": "^0.0.10",

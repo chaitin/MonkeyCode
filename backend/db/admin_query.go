@@ -15,19 +15,28 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
 	"github.com/google/uuid"
 )
 
 // AdminQuery is the builder for querying Admin entities.
 type AdminQuery struct {
 	config
-	ctx                *QueryContext
-	order              []admin.OrderOption
-	inters             []Interceptor
-	predicates         []predicate.Admin
-	withLoginHistories *AdminLoginHistoryQuery
-	modifiers          []func(*sql.Selector)
+	ctx                 *QueryContext
+	order               []admin.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.Admin
+	withLoginHistories  *AdminLoginHistoryQuery
+	withMyusergroups    *UserGroupQuery
+	withUsergroups      *UserGroupQuery
+	withRoles           *RoleQuery
+	withUserGroupAdmins *UserGroupAdminQuery
+	withAdminRoles      *AdminRoleQuery
+	modifiers           []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -79,6 +88,116 @@ func (aq *AdminQuery) QueryLoginHistories() *AdminLoginHistoryQuery {
 			sqlgraph.From(admin.Table, admin.FieldID, selector),
 			sqlgraph.To(adminloginhistory.Table, adminloginhistory.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, admin.LoginHistoriesTable, admin.LoginHistoriesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryMyusergroups chains the current query on the "myusergroups" edge.
+func (aq *AdminQuery) QueryMyusergroups() *UserGroupQuery {
+	query := (&UserGroupClient{config: aq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := aq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := aq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(admin.Table, admin.FieldID, selector),
+			sqlgraph.To(usergroup.Table, usergroup.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, admin.MyusergroupsTable, admin.MyusergroupsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryUsergroups chains the current query on the "usergroups" edge.
+func (aq *AdminQuery) QueryUsergroups() *UserGroupQuery {
+	query := (&UserGroupClient{config: aq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := aq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := aq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(admin.Table, admin.FieldID, selector),
+			sqlgraph.To(usergroup.Table, usergroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, admin.UsergroupsTable, admin.UsergroupsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryRoles chains the current query on the "roles" edge.
+func (aq *AdminQuery) QueryRoles() *RoleQuery {
+	query := (&RoleClient{config: aq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := aq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := aq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(admin.Table, admin.FieldID, selector),
+			sqlgraph.To(role.Table, role.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, admin.RolesTable, admin.RolesPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryUserGroupAdmins chains the current query on the "user_group_admins" edge.
+func (aq *AdminQuery) QueryUserGroupAdmins() *UserGroupAdminQuery {
+	query := (&UserGroupAdminClient{config: aq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := aq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := aq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(admin.Table, admin.FieldID, selector),
+			sqlgraph.To(usergroupadmin.Table, usergroupadmin.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, admin.UserGroupAdminsTable, admin.UserGroupAdminsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryAdminRoles chains the current query on the "admin_roles" edge.
+func (aq *AdminQuery) QueryAdminRoles() *AdminRoleQuery {
+	query := (&AdminRoleClient{config: aq.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := aq.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := aq.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(admin.Table, admin.FieldID, selector),
+			sqlgraph.To(adminrole.Table, adminrole.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, admin.AdminRolesTable, admin.AdminRolesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(aq.driver.Dialect(), step)
 		return fromU, nil
@@ -273,12 +392,17 @@ func (aq *AdminQuery) Clone() *AdminQuery {
 		return nil
 	}
 	return &AdminQuery{
-		config:             aq.config,
-		ctx:                aq.ctx.Clone(),
-		order:              append([]admin.OrderOption{}, aq.order...),
-		inters:             append([]Interceptor{}, aq.inters...),
-		predicates:         append([]predicate.Admin{}, aq.predicates...),
-		withLoginHistories: aq.withLoginHistories.Clone(),
+		config:              aq.config,
+		ctx:                 aq.ctx.Clone(),
+		order:               append([]admin.OrderOption{}, aq.order...),
+		inters:              append([]Interceptor{}, aq.inters...),
+		predicates:          append([]predicate.Admin{}, aq.predicates...),
+		withLoginHistories:  aq.withLoginHistories.Clone(),
+		withMyusergroups:    aq.withMyusergroups.Clone(),
+		withUsergroups:      aq.withUsergroups.Clone(),
+		withRoles:           aq.withRoles.Clone(),
+		withUserGroupAdmins: aq.withUserGroupAdmins.Clone(),
+		withAdminRoles:      aq.withAdminRoles.Clone(),
 		// clone intermediate query.
 		sql:       aq.sql.Clone(),
 		path:      aq.path,
@@ -294,6 +418,61 @@ func (aq *AdminQuery) WithLoginHistories(opts ...func(*AdminLoginHistoryQuery)) 
 		opt(query)
 	}
 	aq.withLoginHistories = query
+	return aq
+}
+
+// WithMyusergroups tells the query-builder to eager-load the nodes that are connected to
+// the "myusergroups" edge. The optional arguments are used to configure the query builder of the edge.
+func (aq *AdminQuery) WithMyusergroups(opts ...func(*UserGroupQuery)) *AdminQuery {
+	query := (&UserGroupClient{config: aq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	aq.withMyusergroups = query
+	return aq
+}
+
+// WithUsergroups tells the query-builder to eager-load the nodes that are connected to
+// the "usergroups" edge. The optional arguments are used to configure the query builder of the edge.
+func (aq *AdminQuery) WithUsergroups(opts ...func(*UserGroupQuery)) *AdminQuery {
+	query := (&UserGroupClient{config: aq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	aq.withUsergroups = query
+	return aq
+}
+
+// WithRoles tells the query-builder to eager-load the nodes that are connected to
+// the "roles" edge. The optional arguments are used to configure the query builder of the edge.
+func (aq *AdminQuery) WithRoles(opts ...func(*RoleQuery)) *AdminQuery {
+	query := (&RoleClient{config: aq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	aq.withRoles = query
+	return aq
+}
+
+// WithUserGroupAdmins tells the query-builder to eager-load the nodes that are connected to
+// the "user_group_admins" edge. The optional arguments are used to configure the query builder of the edge.
+func (aq *AdminQuery) WithUserGroupAdmins(opts ...func(*UserGroupAdminQuery)) *AdminQuery {
+	query := (&UserGroupAdminClient{config: aq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	aq.withUserGroupAdmins = query
+	return aq
+}
+
+// WithAdminRoles tells the query-builder to eager-load the nodes that are connected to
+// the "admin_roles" edge. The optional arguments are used to configure the query builder of the edge.
+func (aq *AdminQuery) WithAdminRoles(opts ...func(*AdminRoleQuery)) *AdminQuery {
+	query := (&AdminRoleClient{config: aq.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	aq.withAdminRoles = query
 	return aq
 }
 
@@ -375,8 +554,13 @@ func (aq *AdminQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Admin,
 	var (
 		nodes       = []*Admin{}
 		_spec       = aq.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [6]bool{
 			aq.withLoginHistories != nil,
+			aq.withMyusergroups != nil,
+			aq.withUsergroups != nil,
+			aq.withRoles != nil,
+			aq.withUserGroupAdmins != nil,
+			aq.withAdminRoles != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -407,6 +591,41 @@ func (aq *AdminQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Admin,
 			return nil, err
 		}
 	}
+	if query := aq.withMyusergroups; query != nil {
+		if err := aq.loadMyusergroups(ctx, query, nodes,
+			func(n *Admin) { n.Edges.Myusergroups = []*UserGroup{} },
+			func(n *Admin, e *UserGroup) { n.Edges.Myusergroups = append(n.Edges.Myusergroups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := aq.withUsergroups; query != nil {
+		if err := aq.loadUsergroups(ctx, query, nodes,
+			func(n *Admin) { n.Edges.Usergroups = []*UserGroup{} },
+			func(n *Admin, e *UserGroup) { n.Edges.Usergroups = append(n.Edges.Usergroups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := aq.withRoles; query != nil {
+		if err := aq.loadRoles(ctx, query, nodes,
+			func(n *Admin) { n.Edges.Roles = []*Role{} },
+			func(n *Admin, e *Role) { n.Edges.Roles = append(n.Edges.Roles, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := aq.withUserGroupAdmins; query != nil {
+		if err := aq.loadUserGroupAdmins(ctx, query, nodes,
+			func(n *Admin) { n.Edges.UserGroupAdmins = []*UserGroupAdmin{} },
+			func(n *Admin, e *UserGroupAdmin) { n.Edges.UserGroupAdmins = append(n.Edges.UserGroupAdmins, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := aq.withAdminRoles; query != nil {
+		if err := aq.loadAdminRoles(ctx, query, nodes,
+			func(n *Admin) { n.Edges.AdminRoles = []*AdminRole{} },
+			func(n *Admin, e *AdminRole) { n.Edges.AdminRoles = append(n.Edges.AdminRoles, e) }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
 }
 
@@ -425,6 +644,218 @@ func (aq *AdminQuery) loadLoginHistories(ctx context.Context, query *AdminLoginH
 	}
 	query.Where(predicate.AdminLoginHistory(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(admin.LoginHistoriesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.AdminID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "admin_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (aq *AdminQuery) loadMyusergroups(ctx context.Context, query *UserGroupQuery, nodes []*Admin, init func(*Admin), assign func(*Admin, *UserGroup)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Admin)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(usergroup.FieldAdminID)
+	}
+	query.Where(predicate.UserGroup(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(admin.MyusergroupsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.AdminID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "admin_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (aq *AdminQuery) loadUsergroups(ctx context.Context, query *UserGroupQuery, nodes []*Admin, init func(*Admin), assign func(*Admin, *UserGroup)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*Admin)
+	nids := make(map[uuid.UUID]map[*Admin]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(admin.UsergroupsTable)
+		s.Join(joinT).On(s.C(usergroup.FieldID), joinT.C(admin.UsergroupsPrimaryKey[0]))
+		s.Where(sql.InValues(joinT.C(admin.UsergroupsPrimaryKey[1]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(admin.UsergroupsPrimaryKey[1]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*Admin]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*UserGroup](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "usergroups" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (aq *AdminQuery) loadRoles(ctx context.Context, query *RoleQuery, nodes []*Admin, init func(*Admin), assign func(*Admin, *Role)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*Admin)
+	nids := make(map[int64]map[*Admin]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(admin.RolesTable)
+		s.Join(joinT).On(s.C(role.FieldID), joinT.C(admin.RolesPrimaryKey[0]))
+		s.Where(sql.InValues(joinT.C(admin.RolesPrimaryKey[1]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(admin.RolesPrimaryKey[1]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := values[1].(*sql.NullInt64).Int64
+				if nids[inValue] == nil {
+					nids[inValue] = map[*Admin]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*Role](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "roles" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (aq *AdminQuery) loadUserGroupAdmins(ctx context.Context, query *UserGroupAdminQuery, nodes []*Admin, init func(*Admin), assign func(*Admin, *UserGroupAdmin)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Admin)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(usergroupadmin.FieldAdminID)
+	}
+	query.Where(predicate.UserGroupAdmin(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(admin.UserGroupAdminsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.AdminID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "admin_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (aq *AdminQuery) loadAdminRoles(ctx context.Context, query *AdminRoleQuery, nodes []*Admin, init func(*Admin), assign func(*Admin, *AdminRole)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Admin)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(adminrole.FieldAdminID)
+	}
+	query.Where(predicate.AdminRole(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(admin.AdminRolesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

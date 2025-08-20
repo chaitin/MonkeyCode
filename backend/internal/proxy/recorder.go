@@ -83,6 +83,13 @@ func (r *Recorder) handleShadow() {
 		mode = req.Metadata["mode"]
 		tool = req.Metadata["tool"]
 		code = req.Metadata["code"]
+		if md := r.ctx.Metadata; len(md) > 0 {
+			prompt = md["prompt"]
+			taskID = md["task_id"]
+			mode = md["mode"]
+			tool = md["tool"]
+			code = md["code"]
+		}
 
 	case consts.ModelTypeCoder:
 		var req domain.CompletionRequest

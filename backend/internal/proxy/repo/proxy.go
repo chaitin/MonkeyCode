@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskrecord"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/rule"
 	"github.com/chaitin/MonkeyCode/backend/pkg/diff"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
@@ -77,6 +78,7 @@ func (r *ProxyRepo) ValidateApiKey(ctx context.Context, key string) (*db.ApiKey,
 }
 
 func (r *ProxyRepo) Record(ctx context.Context, record *domain.RecordParam) error {
+	ctx = rule.SkipPermission(ctx)
 	if record.TaskID == "" {
 		return fmt.Errorf("task_id is empty")
 	}

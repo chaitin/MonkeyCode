@@ -102,6 +102,7 @@ jobs:
           mkdir -p assets-amd64/sgp
           mkdir -p assets-arm64/sgp
           mkdir -p assets/vsix
+          mkdir tarballs
           touch docs/swagger.json
 
           # 下载 xdb
@@ -113,8 +114,8 @@ jobs:
           wget -O assets/vsix/monkeycode-${VERSION_NO_V}.vsix https://baizhiyun.oss-cn-hangzhou.aliyuncs.com/monkeycode/vsix/monkeycode-${VERSION_NO_V}.vsix
           
           # 下载 x86_64 SGP
-          wget -O assets-amd64/sgp/sgp https://baizhiyun.oss-cn-hangzhou.aliyuncs.com/monkeycode/sgp/x86_64/sgp
-          wget -O assets-amd64/sgp/sgp-rules https://baizhiyun.oss-cn-hangzhou.aliyuncs.com/monkeycode/sgp/x86_64/sgp-rules
+          wget -O tarballs/sgp.tgz https://baizhiyun.oss-cn-hangzhou.aliyuncs.com/monkeycode/sgp/x86_64/sgp.tgz
+          tar -xzvf tarballs/sgp.tgz -C assets-amd64
           chmod +x assets-amd64/sgp/sgp
           
           # 下载 aarch64 SGP

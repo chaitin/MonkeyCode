@@ -7,6 +7,9 @@ other = "用户不存在"
 [err-user-lock]
 other = "用户已锁定"
 
+[err-only-admin]
+other = "仅管理员可操作"
+
 [err-password]
 other = "密码错误"
 

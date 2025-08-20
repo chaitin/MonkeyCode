@@ -79,6 +79,7 @@ func NewUserHandler(
 	admin := w.Group("/api/v1/admin")
 	admin.POST("/login", web.BindHandler(u.AdminLogin))
 	admin.GET("/setting", web.BaseHandler(u.GetSetting))
+	admin.GET("/role", web.BaseHandler(u.ListRole))
 
 	admin.Use(auth.Auth(), active.Active("admin"), readonly.Guard())
 	admin.GET("/profile", web.BaseHandler(u.AdminProfile))
@@ -89,6 +90,7 @@ func NewUserHandler(
 	admin.POST("/logout", web.BaseHandler(u.AdminLogout))
 	admin.DELETE("/delete", web.BaseHandler(u.DeleteAdmin))
 	admin.GET("/export-completion-data", web.BaseHandler(u.ExportCompletionData))
+	admin.POST("/role", web.BindHandler(u.GrantRole))
 
 	// user
 	g := w.Group("/api/v1/user")
@@ -439,7 +441,7 @@ func (h *UserHandler) LoginHistory(c *web.Context) error {
 //	@Success		200	{object}	web.Resp{data=domain.InviteResp}
 //	@Router			/api/v1/user/invite [get]
 func (h *UserHandler) Invite(c *web.Context) error {
-	user := middleware.GetAdmin(c)
+	admin := middleware.GetAdmin(c)
 
 	edition := c.Get("edition")
 	if edition == nil {
@@ -457,7 +459,7 @@ func (h *UserHandler) Invite(c *web.Context) error {
 		}
 	}
 
-	resp, err := h.usecase.Invite(c.Request().Context(), user.ID)
+	resp, err := h.usecase.Invite(c.Request().Context(), admin.ID.String())
 	if err != nil {
 		return err
 	}
@@ -543,6 +545,42 @@ func (h *UserHandler) AdminLoginHistory(c *web.Context) error {
 		return err
 	}
 	return c.Success(resp)
+}
+
+// ListRole 获取系统角色列表
+//
+//	@Tags			Admin
+//	@Summary		获取角色列表
+//	@Description	获取角色列表
+//	@ID				list-role
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	web.Resp{data=[]domain.Role}
+//	@Router			/api/v1/admin/role [get]
+func (h *UserHandler) ListRole(c *web.Context) error {
+	roles, err := h.usecase.ListRole(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	return c.Success(roles)
+}
+
+// GrantRole 授权角色
+//
+//	@Tags			Admin
+//	@Summary		授权角色
+//	@Description	授权角色
+//	@ID				grant-role
+//	@Accept			json
+//	@Produce		json
+//	@Param			param	body		domain.GrantRoleReq	true	"授权角色参数"
+//	@Success		200		{object}	web.Resp
+//	@Router			/api/v1/admin/role [post]
+func (h *UserHandler) GrantRole(c *web.Context, req domain.GrantRoleReq) error {
+	if err := h.usecase.GrantRole(c.Request().Context(), &req); err != nil {
+		return err
+	}
+	return c.Success(nil)
 }
 
 // GetSetting 获取系统设置

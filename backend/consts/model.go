@@ -30,4 +30,7 @@ const (
 	ModelProviderHunyuan     ModelProvider = "Hunyuan"
 	ModelProviderBaiLian     ModelProvider = "BaiLian"
 	ModelProviderVolcengine  ModelProvider = "Volcengine"
+	ModelProviderZhiPu       ModelProvider = "ZhiPu"
+	ModelProviderGemini      ModelProvider = "Gemini"
+	ModelProviderOther       ModelProvider = "Other"
 )

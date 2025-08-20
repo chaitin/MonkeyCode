@@ -61,9 +61,13 @@ type UserEdges struct {
 	APIKeys []*ApiKey `json:"api_keys,omitempty"`
 	// SecurityScannings holds the value of the security_scannings edge.
 	SecurityScannings []*SecurityScanning `json:"security_scannings,omitempty"`
+	// Groups holds the value of the groups edge.
+	Groups []*UserGroup `json:"groups,omitempty"`
+	// UserGroups holds the value of the user_groups edge.
+	UserGroups []*UserGroupUser `json:"user_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [8]bool
+	loadedTypes [10]bool
 }
 
 // LoginHistoriesOrErr returns the LoginHistories value or an error if the edge
@@ -136,6 +140,24 @@ func (e UserEdges) SecurityScanningsOrErr() ([]*SecurityScanning, error) {
 		return e.SecurityScannings, nil
 	}
 	return nil, &NotLoadedError{edge: "security_scannings"}
+}
+
+// GroupsOrErr returns the Groups value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) GroupsOrErr() ([]*UserGroup, error) {
+	if e.loadedTypes[8] {
+		return e.Groups, nil
+	}
+	return nil, &NotLoadedError{edge: "groups"}
+}
+
+// UserGroupsOrErr returns the UserGroups value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) UserGroupsOrErr() ([]*UserGroupUser, error) {
+	if e.loadedTypes[9] {
+		return e.UserGroups, nil
+	}
+	return nil, &NotLoadedError{edge: "user_groups"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -275,6 +297,16 @@ func (u *User) QueryAPIKeys() *ApiKeyQuery {
 // QuerySecurityScannings queries the "security_scannings" edge of the User entity.
 func (u *User) QuerySecurityScannings() *SecurityScanningQuery {
 	return NewUserClient(u.config).QuerySecurityScannings(u)
+}
+
+// QueryGroups queries the "groups" edge of the User entity.
+func (u *User) QueryGroups() *UserGroupQuery {
+	return NewUserClient(u.config).QueryGroups(u)
+}
+
+// QueryUserGroups queries the "user_groups" edge of the User entity.
+func (u *User) QueryUserGroups() *UserGroupUserQuery {
+	return NewUserClient(u.config).QueryUserGroups(u)
 }
 
 // Update returns a builder for updating this User.

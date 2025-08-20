@@ -18,6 +18,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanning"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupuser"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/userloginhistory"
 	"github.com/chaitin/MonkeyCode/backend/db/workspace"
@@ -283,6 +285,36 @@ func (uc *UserCreate) AddSecurityScannings(s ...*SecurityScanning) *UserCreate {
 		ids[i] = s[i].ID
 	}
 	return uc.AddSecurityScanningIDs(ids...)
+}
+
+// AddGroupIDs adds the "groups" edge to the UserGroup entity by IDs.
+func (uc *UserCreate) AddGroupIDs(ids ...uuid.UUID) *UserCreate {
+	uc.mutation.AddGroupIDs(ids...)
+	return uc
+}
+
+// AddGroups adds the "groups" edges to the UserGroup entity.
+func (uc *UserCreate) AddGroups(u ...*UserGroup) *UserCreate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uc.AddGroupIDs(ids...)
+}
+
+// AddUserGroupIDs adds the "user_groups" edge to the UserGroupUser entity by IDs.
+func (uc *UserCreate) AddUserGroupIDs(ids ...uuid.UUID) *UserCreate {
+	uc.mutation.AddUserGroupIDs(ids...)
+	return uc
+}
+
+// AddUserGroups adds the "user_groups" edges to the UserGroupUser entity.
+func (uc *UserCreate) AddUserGroups(u ...*UserGroupUser) *UserCreate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return uc.AddUserGroupIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -554,6 +586,38 @@ func (uc *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(securityscanning.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.GroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.GroupsTable,
+			Columns: user.GroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := uc.mutation.UserGroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.UserGroupsTable,
+			Columns: []string{user.UserGroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupuser.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

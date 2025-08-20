@@ -8,24 +8,29 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
-
 	"github.com/GoYoko/web"
+	"github.com/google/uuid"
+	"github.com/patrickmn/go-cache"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
 	"github.com/chaitin/MonkeyCode/backend/db/apikey"
 	"github.com/chaitin/MonkeyCode/backend/db/invitecode"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/userloginhistory"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/rule"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
+	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ipdb"
 )
@@ -35,6 +40,7 @@ type UserRepo struct {
 	ipdb  *ipdb.IPDB
 	redis *redis.Client
 	cfg   *config.Config
+	cache *cache.Cache
 }
 
 func NewUserRepo(
@@ -43,7 +49,8 @@ func NewUserRepo(
 	redis *redis.Client,
 	cfg *config.Config,
 ) domain.UserRepo {
-	return &UserRepo{db: db, ipdb: ipdb, redis: redis, cfg: cfg}
+	cache := cache.New(5*time.Minute, 10*time.Minute)
+	return &UserRepo{db: db, ipdb: ipdb, redis: redis, cfg: cfg, cache: cache}
 }
 
 func (r *UserRepo) InitAdmin(ctx context.Context, username, password string) error {
@@ -53,7 +60,7 @@ func (r *UserRepo) InitAdmin(ctx context.Context, username, password string) err
 			Username: username,
 			Password: password,
 			Status:   consts.AdminStatusActive,
-		})
+		}, 1)
 	}
 	if err != nil {
 		return err
@@ -61,12 +68,21 @@ func (r *UserRepo) InitAdmin(ctx context.Context, username, password string) err
 	return nil
 }
 
-func (r *UserRepo) CreateAdmin(ctx context.Context, admin *db.Admin) (*db.Admin, error) {
-	return r.db.Admin.Create().
-		SetUsername(admin.Username).
-		SetPassword(admin.Password).
-		SetStatus(admin.Status).
-		Save(ctx)
+func (r *UserRepo) CreateAdmin(ctx context.Context, admin *db.Admin, roleID int64) (*db.Admin, error) {
+	var a *db.Admin
+	err := entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
+		new, err := r.db.Admin.Create().
+			SetUsername(admin.Username).
+			SetPassword(admin.Password).
+			SetStatus(admin.Status).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		a = new
+		return tx.AdminRole.Create().SetAdminID(new.ID).SetRoleID(roleID).Exec(ctx)
+	})
+	return a, err
 }
 
 func (r *UserRepo) AdminByName(ctx context.Context, username string) (*db.Admin, error) {
@@ -168,7 +184,7 @@ func (r *UserRepo) CreateInviteCode(ctx context.Context, userID string, code str
 }
 
 func (r *UserRepo) AdminList(ctx context.Context, page *web.Pagination) ([]*db.Admin, *db.PageInfo, error) {
-	q := r.db.Admin.Query().Order(admin.ByCreatedAt(sql.OrderDesc()))
+	q := r.db.Admin.Query().WithRoles().Order(admin.ByCreatedAt(sql.OrderDesc()))
 	return q.Page(ctx, page.Page, page.Size)
 }
 
@@ -610,4 +626,81 @@ func (r *UserRepo) GetUserCount(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return int64(count), nil
+}
+
+func (r *UserRepo) GetPermissions(ctx context.Context, id uuid.UUID) (*domain.Permissions, error) {
+	key := fmt.Sprintf("user_permissions:%s", id.String())
+	if cached, found := r.cache.Get(key); found {
+		return cached.(*domain.Permissions), nil
+	}
+
+	admin, err := r.db.Admin.Query().
+		WithRoles().
+		Where(admin.ID(id)).
+		First(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx = rule.SkipPermission(ctx)
+	usergroups, err := r.db.UserGroup.Query().
+		WithUsers().
+		Where(usergroup.Or(
+			usergroup.AdminID(id),
+			usergroup.HasUserGroupAdminsWith(usergroupadmin.AdminID(id)),
+		)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := &domain.Permissions{
+		AdminID: admin.ID,
+		IsAdmin: admin.Username == "admin",
+	}
+	for _, ug := range usergroups {
+		res.GroupIDs = append(res.GroupIDs, ug.ID)
+		for _, u := range ug.Edges.Users {
+			res.UserIDs = append(res.UserIDs, u.ID)
+		}
+	}
+	res.UserIDs = cvt.Unique(res.UserIDs)
+	res.GroupIDs = cvt.Unique(res.GroupIDs)
+
+	for _, r := range admin.Edges.Roles {
+		if r.ID == 1 {
+			res.IsAdmin = true
+		}
+		res.Roles = append(res.Roles, cvt.From(r, &domain.Role{}))
+	}
+
+	r.cache.Set(key, res, 5*time.Minute)
+	return res, nil
+}
+
+func (r *UserRepo) ListRole(ctx context.Context) ([]*db.Role, error) {
+	return r.db.Role.Query().All(ctx)
+}
+
+func (r *UserRepo) GrantRole(ctx context.Context, req *domain.GrantRoleReq) error {
+	return entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
+		if _, err := tx.AdminRole.Delete().
+			Where(adminrole.AdminID(req.AdminID)).
+			Exec(ctx); err != nil {
+			return err
+		}
+		for _, rid := range req.RoleIDs {
+			if err := tx.AdminRole.Create().
+				SetAdminID(req.AdminID).
+				SetRoleID(rid).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *UserRepo) CleanPermissionCache(ctx context.Context, id uuid.UUID) {
+	key := fmt.Sprintf("user_permissions:%s", id.String())
+	r.cache.Delete(key)
 }

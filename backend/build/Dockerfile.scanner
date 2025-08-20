@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 
 WORKDIR /src
 ENV CGO_ENABLED=0
@@ -22,6 +22,11 @@ go build \
 cmd/scanner/main.go cmd/scanner/wire_gen.go 
 
 FROM debian:bullseye-20250721-slim as binary
+
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

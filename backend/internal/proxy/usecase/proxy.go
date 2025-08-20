@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/rule"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/queuerunner"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
@@ -69,7 +70,7 @@ func (p *ProxyUsecase) requeue() {
 		p.queuerunner.Enqueue(context.Background(), scanning.ID.String(), domain.CreateSecurityScanningReq{
 			UserID:    scanning.UserID.String(),
 			Workspace: scanning.Workspace,
-			Language:  consts.SecurityScanningLanguage(scanning.Rule),
+			Language:  scanning.Language,
 		}, p.TaskHandle)
 	}
 }
@@ -121,6 +122,7 @@ func (p *ProxyUsecase) CreateSecurityScanning(ctx context.Context, req *domain.C
 }
 
 func (p *ProxyUsecase) TaskHandle(ctx context.Context, task *queuerunner.Task[domain.CreateSecurityScanningReq]) error {
+	ctx = rule.SkipPermission(ctx)
 	id := task.ID
 	if err := p.securityRepo.Update(ctx, id, nil, consts.SecurityScanningStatusRunning, nil); err != nil {
 		p.logger.With("id", task.ID).With("error", err).ErrorContext(ctx, "failed to update security scanning")

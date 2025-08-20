@@ -33,6 +33,18 @@ func (f AdminLoginHistoryFunc) Mutate(ctx context.Context, m db.Mutation) (db.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AdminLoginHistoryMutation", m)
 }
 
+// The AdminRoleFunc type is an adapter to allow the use of ordinary
+// function as AdminRole mutator.
+type AdminRoleFunc func(context.Context, *db.AdminRoleMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AdminRoleFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AdminRoleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AdminRoleMutation", m)
+}
+
 // The ApiKeyFunc type is an adapter to allow the use of ordinary
 // function as ApiKey mutator.
 type ApiKeyFunc func(context.Context, *db.ApiKeyMutation) (db.Value, error)
@@ -177,6 +189,18 @@ func (f ModelProviderModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ModelProviderModelMutation", m)
 }
 
+// The RoleFunc type is an adapter to allow the use of ordinary
+// function as Role mutator.
+type RoleFunc func(context.Context, *db.RoleMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RoleFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.RoleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.RoleMutation", m)
+}
+
 // The SecurityScanningFunc type is an adapter to allow the use of ordinary
 // function as SecurityScanning mutator.
 type SecurityScanningFunc func(context.Context, *db.SecurityScanningMutation) (db.Value, error)
@@ -247,6 +271,42 @@ func (f UserFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.UserMutation", m)
+}
+
+// The UserGroupFunc type is an adapter to allow the use of ordinary
+// function as UserGroup mutator.
+type UserGroupFunc func(context.Context, *db.UserGroupMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserGroupFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.UserGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.UserGroupMutation", m)
+}
+
+// The UserGroupAdminFunc type is an adapter to allow the use of ordinary
+// function as UserGroupAdmin mutator.
+type UserGroupAdminFunc func(context.Context, *db.UserGroupAdminMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserGroupAdminFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.UserGroupAdminMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.UserGroupAdminMutation", m)
+}
+
+// The UserGroupUserFunc type is an adapter to allow the use of ordinary
+// function as UserGroupUser mutator.
+type UserGroupUserFunc func(context.Context, *db.UserGroupUserMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserGroupUserFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.UserGroupUserMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.UserGroupUserMutation", m)
 }
 
 // The UserIdentityFunc type is an adapter to allow the use of ordinary

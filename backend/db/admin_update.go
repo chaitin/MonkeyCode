@@ -14,7 +14,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
 	"github.com/google/uuid"
 )
 
@@ -123,6 +127,81 @@ func (au *AdminUpdate) AddLoginHistories(a ...*AdminLoginHistory) *AdminUpdate {
 	return au.AddLoginHistoryIDs(ids...)
 }
 
+// AddMyusergroupIDs adds the "myusergroups" edge to the UserGroup entity by IDs.
+func (au *AdminUpdate) AddMyusergroupIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.AddMyusergroupIDs(ids...)
+	return au
+}
+
+// AddMyusergroups adds the "myusergroups" edges to the UserGroup entity.
+func (au *AdminUpdate) AddMyusergroups(u ...*UserGroup) *AdminUpdate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return au.AddMyusergroupIDs(ids...)
+}
+
+// AddUsergroupIDs adds the "usergroups" edge to the UserGroup entity by IDs.
+func (au *AdminUpdate) AddUsergroupIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.AddUsergroupIDs(ids...)
+	return au
+}
+
+// AddUsergroups adds the "usergroups" edges to the UserGroup entity.
+func (au *AdminUpdate) AddUsergroups(u ...*UserGroup) *AdminUpdate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return au.AddUsergroupIDs(ids...)
+}
+
+// AddRoleIDs adds the "roles" edge to the Role entity by IDs.
+func (au *AdminUpdate) AddRoleIDs(ids ...int64) *AdminUpdate {
+	au.mutation.AddRoleIDs(ids...)
+	return au
+}
+
+// AddRoles adds the "roles" edges to the Role entity.
+func (au *AdminUpdate) AddRoles(r ...*Role) *AdminUpdate {
+	ids := make([]int64, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return au.AddRoleIDs(ids...)
+}
+
+// AddUserGroupAdminIDs adds the "user_group_admins" edge to the UserGroupAdmin entity by IDs.
+func (au *AdminUpdate) AddUserGroupAdminIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.AddUserGroupAdminIDs(ids...)
+	return au
+}
+
+// AddUserGroupAdmins adds the "user_group_admins" edges to the UserGroupAdmin entity.
+func (au *AdminUpdate) AddUserGroupAdmins(u ...*UserGroupAdmin) *AdminUpdate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return au.AddUserGroupAdminIDs(ids...)
+}
+
+// AddAdminRoleIDs adds the "admin_roles" edge to the AdminRole entity by IDs.
+func (au *AdminUpdate) AddAdminRoleIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.AddAdminRoleIDs(ids...)
+	return au
+}
+
+// AddAdminRoles adds the "admin_roles" edges to the AdminRole entity.
+func (au *AdminUpdate) AddAdminRoles(a ...*AdminRole) *AdminUpdate {
+	ids := make([]uuid.UUID, len(a))
+	for i := range a {
+		ids[i] = a[i].ID
+	}
+	return au.AddAdminRoleIDs(ids...)
+}
+
 // Mutation returns the AdminMutation object of the builder.
 func (au *AdminUpdate) Mutation() *AdminMutation {
 	return au.mutation
@@ -147,6 +226,111 @@ func (au *AdminUpdate) RemoveLoginHistories(a ...*AdminLoginHistory) *AdminUpdat
 		ids[i] = a[i].ID
 	}
 	return au.RemoveLoginHistoryIDs(ids...)
+}
+
+// ClearMyusergroups clears all "myusergroups" edges to the UserGroup entity.
+func (au *AdminUpdate) ClearMyusergroups() *AdminUpdate {
+	au.mutation.ClearMyusergroups()
+	return au
+}
+
+// RemoveMyusergroupIDs removes the "myusergroups" edge to UserGroup entities by IDs.
+func (au *AdminUpdate) RemoveMyusergroupIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.RemoveMyusergroupIDs(ids...)
+	return au
+}
+
+// RemoveMyusergroups removes "myusergroups" edges to UserGroup entities.
+func (au *AdminUpdate) RemoveMyusergroups(u ...*UserGroup) *AdminUpdate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return au.RemoveMyusergroupIDs(ids...)
+}
+
+// ClearUsergroups clears all "usergroups" edges to the UserGroup entity.
+func (au *AdminUpdate) ClearUsergroups() *AdminUpdate {
+	au.mutation.ClearUsergroups()
+	return au
+}
+
+// RemoveUsergroupIDs removes the "usergroups" edge to UserGroup entities by IDs.
+func (au *AdminUpdate) RemoveUsergroupIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.RemoveUsergroupIDs(ids...)
+	return au
+}
+
+// RemoveUsergroups removes "usergroups" edges to UserGroup entities.
+func (au *AdminUpdate) RemoveUsergroups(u ...*UserGroup) *AdminUpdate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return au.RemoveUsergroupIDs(ids...)
+}
+
+// ClearRoles clears all "roles" edges to the Role entity.
+func (au *AdminUpdate) ClearRoles() *AdminUpdate {
+	au.mutation.ClearRoles()
+	return au
+}
+
+// RemoveRoleIDs removes the "roles" edge to Role entities by IDs.
+func (au *AdminUpdate) RemoveRoleIDs(ids ...int64) *AdminUpdate {
+	au.mutation.RemoveRoleIDs(ids...)
+	return au
+}
+
+// RemoveRoles removes "roles" edges to Role entities.
+func (au *AdminUpdate) RemoveRoles(r ...*Role) *AdminUpdate {
+	ids := make([]int64, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return au.RemoveRoleIDs(ids...)
+}
+
+// ClearUserGroupAdmins clears all "user_group_admins" edges to the UserGroupAdmin entity.
+func (au *AdminUpdate) ClearUserGroupAdmins() *AdminUpdate {
+	au.mutation.ClearUserGroupAdmins()
+	return au
+}
+
+// RemoveUserGroupAdminIDs removes the "user_group_admins" edge to UserGroupAdmin entities by IDs.
+func (au *AdminUpdate) RemoveUserGroupAdminIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.RemoveUserGroupAdminIDs(ids...)
+	return au
+}
+
+// RemoveUserGroupAdmins removes "user_group_admins" edges to UserGroupAdmin entities.
+func (au *AdminUpdate) RemoveUserGroupAdmins(u ...*UserGroupAdmin) *AdminUpdate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return au.RemoveUserGroupAdminIDs(ids...)
+}
+
+// ClearAdminRoles clears all "admin_roles" edges to the AdminRole entity.
+func (au *AdminUpdate) ClearAdminRoles() *AdminUpdate {
+	au.mutation.ClearAdminRoles()
+	return au
+}
+
+// RemoveAdminRoleIDs removes the "admin_roles" edge to AdminRole entities by IDs.
+func (au *AdminUpdate) RemoveAdminRoleIDs(ids ...uuid.UUID) *AdminUpdate {
+	au.mutation.RemoveAdminRoleIDs(ids...)
+	return au
+}
+
+// RemoveAdminRoles removes "admin_roles" edges to AdminRole entities.
+func (au *AdminUpdate) RemoveAdminRoles(a ...*AdminRole) *AdminUpdate {
+	ids := make([]uuid.UUID, len(a))
+	for i := range a {
+		ids[i] = a[i].ID
+	}
+	return au.RemoveAdminRoleIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -256,6 +440,231 @@ func (au *AdminUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(adminloginhistory.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if au.mutation.MyusergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.RemovedMyusergroupsIDs(); len(nodes) > 0 && !au.mutation.MyusergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.MyusergroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if au.mutation.UsergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.RemovedUsergroupsIDs(); len(nodes) > 0 && !au.mutation.UsergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.UsergroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if au.mutation.RolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.RemovedRolesIDs(); len(nodes) > 0 && !au.mutation.RolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.RolesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if au.mutation.UserGroupAdminsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.RemovedUserGroupAdminsIDs(); len(nodes) > 0 && !au.mutation.UserGroupAdminsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.UserGroupAdminsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if au.mutation.AdminRolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.RemovedAdminRolesIDs(); len(nodes) > 0 && !au.mutation.AdminRolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := au.mutation.AdminRolesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -376,6 +785,81 @@ func (auo *AdminUpdateOne) AddLoginHistories(a ...*AdminLoginHistory) *AdminUpda
 	return auo.AddLoginHistoryIDs(ids...)
 }
 
+// AddMyusergroupIDs adds the "myusergroups" edge to the UserGroup entity by IDs.
+func (auo *AdminUpdateOne) AddMyusergroupIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.AddMyusergroupIDs(ids...)
+	return auo
+}
+
+// AddMyusergroups adds the "myusergroups" edges to the UserGroup entity.
+func (auo *AdminUpdateOne) AddMyusergroups(u ...*UserGroup) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return auo.AddMyusergroupIDs(ids...)
+}
+
+// AddUsergroupIDs adds the "usergroups" edge to the UserGroup entity by IDs.
+func (auo *AdminUpdateOne) AddUsergroupIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.AddUsergroupIDs(ids...)
+	return auo
+}
+
+// AddUsergroups adds the "usergroups" edges to the UserGroup entity.
+func (auo *AdminUpdateOne) AddUsergroups(u ...*UserGroup) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return auo.AddUsergroupIDs(ids...)
+}
+
+// AddRoleIDs adds the "roles" edge to the Role entity by IDs.
+func (auo *AdminUpdateOne) AddRoleIDs(ids ...int64) *AdminUpdateOne {
+	auo.mutation.AddRoleIDs(ids...)
+	return auo
+}
+
+// AddRoles adds the "roles" edges to the Role entity.
+func (auo *AdminUpdateOne) AddRoles(r ...*Role) *AdminUpdateOne {
+	ids := make([]int64, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return auo.AddRoleIDs(ids...)
+}
+
+// AddUserGroupAdminIDs adds the "user_group_admins" edge to the UserGroupAdmin entity by IDs.
+func (auo *AdminUpdateOne) AddUserGroupAdminIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.AddUserGroupAdminIDs(ids...)
+	return auo
+}
+
+// AddUserGroupAdmins adds the "user_group_admins" edges to the UserGroupAdmin entity.
+func (auo *AdminUpdateOne) AddUserGroupAdmins(u ...*UserGroupAdmin) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return auo.AddUserGroupAdminIDs(ids...)
+}
+
+// AddAdminRoleIDs adds the "admin_roles" edge to the AdminRole entity by IDs.
+func (auo *AdminUpdateOne) AddAdminRoleIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.AddAdminRoleIDs(ids...)
+	return auo
+}
+
+// AddAdminRoles adds the "admin_roles" edges to the AdminRole entity.
+func (auo *AdminUpdateOne) AddAdminRoles(a ...*AdminRole) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(a))
+	for i := range a {
+		ids[i] = a[i].ID
+	}
+	return auo.AddAdminRoleIDs(ids...)
+}
+
 // Mutation returns the AdminMutation object of the builder.
 func (auo *AdminUpdateOne) Mutation() *AdminMutation {
 	return auo.mutation
@@ -400,6 +884,111 @@ func (auo *AdminUpdateOne) RemoveLoginHistories(a ...*AdminLoginHistory) *AdminU
 		ids[i] = a[i].ID
 	}
 	return auo.RemoveLoginHistoryIDs(ids...)
+}
+
+// ClearMyusergroups clears all "myusergroups" edges to the UserGroup entity.
+func (auo *AdminUpdateOne) ClearMyusergroups() *AdminUpdateOne {
+	auo.mutation.ClearMyusergroups()
+	return auo
+}
+
+// RemoveMyusergroupIDs removes the "myusergroups" edge to UserGroup entities by IDs.
+func (auo *AdminUpdateOne) RemoveMyusergroupIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.RemoveMyusergroupIDs(ids...)
+	return auo
+}
+
+// RemoveMyusergroups removes "myusergroups" edges to UserGroup entities.
+func (auo *AdminUpdateOne) RemoveMyusergroups(u ...*UserGroup) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return auo.RemoveMyusergroupIDs(ids...)
+}
+
+// ClearUsergroups clears all "usergroups" edges to the UserGroup entity.
+func (auo *AdminUpdateOne) ClearUsergroups() *AdminUpdateOne {
+	auo.mutation.ClearUsergroups()
+	return auo
+}
+
+// RemoveUsergroupIDs removes the "usergroups" edge to UserGroup entities by IDs.
+func (auo *AdminUpdateOne) RemoveUsergroupIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.RemoveUsergroupIDs(ids...)
+	return auo
+}
+
+// RemoveUsergroups removes "usergroups" edges to UserGroup entities.
+func (auo *AdminUpdateOne) RemoveUsergroups(u ...*UserGroup) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return auo.RemoveUsergroupIDs(ids...)
+}
+
+// ClearRoles clears all "roles" edges to the Role entity.
+func (auo *AdminUpdateOne) ClearRoles() *AdminUpdateOne {
+	auo.mutation.ClearRoles()
+	return auo
+}
+
+// RemoveRoleIDs removes the "roles" edge to Role entities by IDs.
+func (auo *AdminUpdateOne) RemoveRoleIDs(ids ...int64) *AdminUpdateOne {
+	auo.mutation.RemoveRoleIDs(ids...)
+	return auo
+}
+
+// RemoveRoles removes "roles" edges to Role entities.
+func (auo *AdminUpdateOne) RemoveRoles(r ...*Role) *AdminUpdateOne {
+	ids := make([]int64, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return auo.RemoveRoleIDs(ids...)
+}
+
+// ClearUserGroupAdmins clears all "user_group_admins" edges to the UserGroupAdmin entity.
+func (auo *AdminUpdateOne) ClearUserGroupAdmins() *AdminUpdateOne {
+	auo.mutation.ClearUserGroupAdmins()
+	return auo
+}
+
+// RemoveUserGroupAdminIDs removes the "user_group_admins" edge to UserGroupAdmin entities by IDs.
+func (auo *AdminUpdateOne) RemoveUserGroupAdminIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.RemoveUserGroupAdminIDs(ids...)
+	return auo
+}
+
+// RemoveUserGroupAdmins removes "user_group_admins" edges to UserGroupAdmin entities.
+func (auo *AdminUpdateOne) RemoveUserGroupAdmins(u ...*UserGroupAdmin) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return auo.RemoveUserGroupAdminIDs(ids...)
+}
+
+// ClearAdminRoles clears all "admin_roles" edges to the AdminRole entity.
+func (auo *AdminUpdateOne) ClearAdminRoles() *AdminUpdateOne {
+	auo.mutation.ClearAdminRoles()
+	return auo
+}
+
+// RemoveAdminRoleIDs removes the "admin_roles" edge to AdminRole entities by IDs.
+func (auo *AdminUpdateOne) RemoveAdminRoleIDs(ids ...uuid.UUID) *AdminUpdateOne {
+	auo.mutation.RemoveAdminRoleIDs(ids...)
+	return auo
+}
+
+// RemoveAdminRoles removes "admin_roles" edges to AdminRole entities.
+func (auo *AdminUpdateOne) RemoveAdminRoles(a ...*AdminRole) *AdminUpdateOne {
+	ids := make([]uuid.UUID, len(a))
+	for i := range a {
+		ids[i] = a[i].ID
+	}
+	return auo.RemoveAdminRoleIDs(ids...)
 }
 
 // Where appends a list predicates to the AdminUpdate builder.
@@ -539,6 +1128,231 @@ func (auo *AdminUpdateOne) sqlSave(ctx context.Context) (_node *Admin, err error
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(adminloginhistory.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if auo.mutation.MyusergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.RemovedMyusergroupsIDs(); len(nodes) > 0 && !auo.mutation.MyusergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.MyusergroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if auo.mutation.UsergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.RemovedUsergroupsIDs(); len(nodes) > 0 && !auo.mutation.UsergroupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.UsergroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if auo.mutation.RolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.RemovedRolesIDs(); len(nodes) > 0 && !auo.mutation.RolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.RolesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if auo.mutation.UserGroupAdminsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.RemovedUserGroupAdminsIDs(); len(nodes) > 0 && !auo.mutation.UserGroupAdminsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.UserGroupAdminsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if auo.mutation.AdminRolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.RemovedAdminRolesIDs(); len(nodes) > 0 && !auo.mutation.AdminRolesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := auo.mutation.AdminRolesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

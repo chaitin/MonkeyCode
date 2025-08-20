@@ -28,6 +28,16 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeLoginHistories holds the string denoting the login_histories edge name in mutations.
 	EdgeLoginHistories = "login_histories"
+	// EdgeMyusergroups holds the string denoting the myusergroups edge name in mutations.
+	EdgeMyusergroups = "myusergroups"
+	// EdgeUsergroups holds the string denoting the usergroups edge name in mutations.
+	EdgeUsergroups = "usergroups"
+	// EdgeRoles holds the string denoting the roles edge name in mutations.
+	EdgeRoles = "roles"
+	// EdgeUserGroupAdmins holds the string denoting the user_group_admins edge name in mutations.
+	EdgeUserGroupAdmins = "user_group_admins"
+	// EdgeAdminRoles holds the string denoting the admin_roles edge name in mutations.
+	EdgeAdminRoles = "admin_roles"
 	// Table holds the table name of the admin in the database.
 	Table = "admins"
 	// LoginHistoriesTable is the table that holds the login_histories relation/edge.
@@ -37,6 +47,37 @@ const (
 	LoginHistoriesInverseTable = "admin_login_histories"
 	// LoginHistoriesColumn is the table column denoting the login_histories relation/edge.
 	LoginHistoriesColumn = "admin_id"
+	// MyusergroupsTable is the table that holds the myusergroups relation/edge.
+	MyusergroupsTable = "user_groups"
+	// MyusergroupsInverseTable is the table name for the UserGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "usergroup" package.
+	MyusergroupsInverseTable = "user_groups"
+	// MyusergroupsColumn is the table column denoting the myusergroups relation/edge.
+	MyusergroupsColumn = "admin_id"
+	// UsergroupsTable is the table that holds the usergroups relation/edge. The primary key declared below.
+	UsergroupsTable = "user_group_admins"
+	// UsergroupsInverseTable is the table name for the UserGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "usergroup" package.
+	UsergroupsInverseTable = "user_groups"
+	// RolesTable is the table that holds the roles relation/edge. The primary key declared below.
+	RolesTable = "admin_roles"
+	// RolesInverseTable is the table name for the Role entity.
+	// It exists in this package in order to avoid circular dependency with the "role" package.
+	RolesInverseTable = "roles"
+	// UserGroupAdminsTable is the table that holds the user_group_admins relation/edge.
+	UserGroupAdminsTable = "user_group_admins"
+	// UserGroupAdminsInverseTable is the table name for the UserGroupAdmin entity.
+	// It exists in this package in order to avoid circular dependency with the "usergroupadmin" package.
+	UserGroupAdminsInverseTable = "user_group_admins"
+	// UserGroupAdminsColumn is the table column denoting the user_group_admins relation/edge.
+	UserGroupAdminsColumn = "admin_id"
+	// AdminRolesTable is the table that holds the admin_roles relation/edge.
+	AdminRolesTable = "admin_roles"
+	// AdminRolesInverseTable is the table name for the AdminRole entity.
+	// It exists in this package in order to avoid circular dependency with the "adminrole" package.
+	AdminRolesInverseTable = "admin_roles"
+	// AdminRolesColumn is the table column denoting the admin_roles relation/edge.
+	AdminRolesColumn = "admin_id"
 )
 
 // Columns holds all SQL columns for admin fields.
@@ -49,6 +90,15 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
+
+var (
+	// UsergroupsPrimaryKey and UsergroupsColumn2 are the table columns denoting the
+	// primary key for the usergroups relation (M2M).
+	UsergroupsPrimaryKey = []string{"user_group_id", "admin_id"}
+	// RolesPrimaryKey and RolesColumn2 are the table columns denoting the
+	// primary key for the roles relation (M2M).
+	RolesPrimaryKey = []string{"role_id", "admin_id"}
+)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -122,10 +172,115 @@ func ByLoginHistories(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newLoginHistoriesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByMyusergroupsCount orders the results by myusergroups count.
+func ByMyusergroupsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newMyusergroupsStep(), opts...)
+	}
+}
+
+// ByMyusergroups orders the results by myusergroups terms.
+func ByMyusergroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newMyusergroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByUsergroupsCount orders the results by usergroups count.
+func ByUsergroupsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsergroupsStep(), opts...)
+	}
+}
+
+// ByUsergroups orders the results by usergroups terms.
+func ByUsergroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsergroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByRolesCount orders the results by roles count.
+func ByRolesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRolesStep(), opts...)
+	}
+}
+
+// ByRoles orders the results by roles terms.
+func ByRoles(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRolesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByUserGroupAdminsCount orders the results by user_group_admins count.
+func ByUserGroupAdminsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUserGroupAdminsStep(), opts...)
+	}
+}
+
+// ByUserGroupAdmins orders the results by user_group_admins terms.
+func ByUserGroupAdmins(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUserGroupAdminsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByAdminRolesCount orders the results by admin_roles count.
+func ByAdminRolesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAdminRolesStep(), opts...)
+	}
+}
+
+// ByAdminRoles orders the results by admin_roles terms.
+func ByAdminRoles(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAdminRolesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newLoginHistoriesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(LoginHistoriesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, LoginHistoriesTable, LoginHistoriesColumn),
+	)
+}
+func newMyusergroupsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(MyusergroupsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, MyusergroupsTable, MyusergroupsColumn),
+	)
+}
+func newUsergroupsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsergroupsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, UsergroupsTable, UsergroupsPrimaryKey...),
+	)
+}
+func newRolesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RolesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, RolesTable, RolesPrimaryKey...),
+	)
+}
+func newUserGroupAdminsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UserGroupAdminsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, UserGroupAdminsTable, UserGroupAdminsColumn),
+	)
+}
+func newAdminRolesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AdminRolesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, AdminRolesTable, AdminRolesColumn),
 	)
 }

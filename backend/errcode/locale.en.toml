@@ -10,6 +10,9 @@ other = "User is locked"
 [err-password]
 other = "Incorrect password"
 
+[err-only-admin]
+other = "Only admin can perform this operation"
+
 [err-invite-code-invalid]
 other = "Invalid invitation code"
 

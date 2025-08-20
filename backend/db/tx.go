@@ -18,6 +18,8 @@ type Tx struct {
 	Admin *AdminClient
 	// AdminLoginHistory is the client for interacting with the AdminLoginHistory builders.
 	AdminLoginHistory *AdminLoginHistoryClient
+	// AdminRole is the client for interacting with the AdminRole builders.
+	AdminRole *AdminRoleClient
 	// ApiKey is the client for interacting with the ApiKey builders.
 	ApiKey *ApiKeyClient
 	// BillingPlan is the client for interacting with the BillingPlan builders.
@@ -42,6 +44,8 @@ type Tx struct {
 	ModelProvider *ModelProviderClient
 	// ModelProviderModel is the client for interacting with the ModelProviderModel builders.
 	ModelProviderModel *ModelProviderModelClient
+	// Role is the client for interacting with the Role builders.
+	Role *RoleClient
 	// SecurityScanning is the client for interacting with the SecurityScanning builders.
 	SecurityScanning *SecurityScanningClient
 	// SecurityScanningResult is the client for interacting with the SecurityScanningResult builders.
@@ -54,6 +58,12 @@ type Tx struct {
 	TaskRecord *TaskRecordClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// UserGroup is the client for interacting with the UserGroup builders.
+	UserGroup *UserGroupClient
+	// UserGroupAdmin is the client for interacting with the UserGroupAdmin builders.
+	UserGroupAdmin *UserGroupAdminClient
+	// UserGroupUser is the client for interacting with the UserGroupUser builders.
+	UserGroupUser *UserGroupUserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
 	UserIdentity *UserIdentityClient
 	// UserLoginHistory is the client for interacting with the UserLoginHistory builders.
@@ -195,6 +205,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Admin = NewAdminClient(tx.config)
 	tx.AdminLoginHistory = NewAdminLoginHistoryClient(tx.config)
+	tx.AdminRole = NewAdminRoleClient(tx.config)
 	tx.ApiKey = NewApiKeyClient(tx.config)
 	tx.BillingPlan = NewBillingPlanClient(tx.config)
 	tx.BillingQuota = NewBillingQuotaClient(tx.config)
@@ -207,12 +218,16 @@ func (tx *Tx) init() {
 	tx.Model = NewModelClient(tx.config)
 	tx.ModelProvider = NewModelProviderClient(tx.config)
 	tx.ModelProviderModel = NewModelProviderModelClient(tx.config)
+	tx.Role = NewRoleClient(tx.config)
 	tx.SecurityScanning = NewSecurityScanningClient(tx.config)
 	tx.SecurityScanningResult = NewSecurityScanningResultClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
 	tx.TaskRecord = NewTaskRecordClient(tx.config)
 	tx.User = NewUserClient(tx.config)
+	tx.UserGroup = NewUserGroupClient(tx.config)
+	tx.UserGroupAdmin = NewUserGroupAdminClient(tx.config)
+	tx.UserGroupUser = NewUserGroupUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.UserLoginHistory = NewUserLoginHistoryClient(tx.config)
 	tx.Workspace = NewWorkspaceClient(tx.config)

@@ -53,6 +53,39 @@ var (
 			},
 		},
 	}
+	// AdminRolesColumns holds the columns for the "admin_roles" table.
+	AdminRolesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "admin_id", Type: field.TypeUUID},
+		{Name: "role_id", Type: field.TypeInt64},
+	}
+	// AdminRolesTable holds the schema information for the "admin_roles" table.
+	AdminRolesTable = &schema.Table{
+		Name:       "admin_roles",
+		Columns:    AdminRolesColumns,
+		PrimaryKey: []*schema.Column{AdminRolesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "admin_roles_admins_admin",
+				Columns:    []*schema.Column{AdminRolesColumns[1]},
+				RefColumns: []*schema.Column{AdminsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "admin_roles_roles_role",
+				Columns:    []*schema.Column{AdminRolesColumns[2]},
+				RefColumns: []*schema.Column{RolesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "adminrole_role_id_admin_id",
+				Unique:  true,
+				Columns: []*schema.Column{AdminRolesColumns[2], AdminRolesColumns[1]},
+			},
+		},
+	}
 	// APIKeysColumns holds the columns for the "api_keys" table.
 	APIKeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -336,6 +369,19 @@ var (
 			},
 		},
 	}
+	// RolesColumns holds the columns for the "roles" table.
+	RolesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// RolesTable holds the schema information for the "roles" table.
+	RolesTable = &schema.Table{
+		Name:       "roles",
+		Columns:    RolesColumns,
+		PrimaryKey: []*schema.Column{RolesColumns[0]},
+	}
 	// SecurityScanningsColumns holds the columns for the "security_scannings" table.
 	SecurityScanningsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -514,6 +560,93 @@ var (
 		Name:       "users",
 		Columns:    UsersColumns,
 		PrimaryKey: []*schema.Column{UsersColumns[0]},
+	}
+	// UserGroupsColumns holds the columns for the "user_groups" table.
+	UserGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "admin_id", Type: field.TypeUUID},
+	}
+	// UserGroupsTable holds the schema information for the "user_groups" table.
+	UserGroupsTable = &schema.Table{
+		Name:       "user_groups",
+		Columns:    UserGroupsColumns,
+		PrimaryKey: []*schema.Column{UserGroupsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_groups_admins_myusergroups",
+				Columns:    []*schema.Column{UserGroupsColumns[3]},
+				RefColumns: []*schema.Column{AdminsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// UserGroupAdminsColumns holds the columns for the "user_group_admins" table.
+	UserGroupAdminsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "user_group_id", Type: field.TypeUUID},
+		{Name: "admin_id", Type: field.TypeUUID},
+	}
+	// UserGroupAdminsTable holds the schema information for the "user_group_admins" table.
+	UserGroupAdminsTable = &schema.Table{
+		Name:       "user_group_admins",
+		Columns:    UserGroupAdminsColumns,
+		PrimaryKey: []*schema.Column{UserGroupAdminsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_group_admins_user_groups_user_group",
+				Columns:    []*schema.Column{UserGroupAdminsColumns[1]},
+				RefColumns: []*schema.Column{UserGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_group_admins_admins_admin",
+				Columns:    []*schema.Column{UserGroupAdminsColumns[2]},
+				RefColumns: []*schema.Column{AdminsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "usergroupadmin_user_group_id_admin_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserGroupAdminsColumns[1], UserGroupAdminsColumns[2]},
+			},
+		},
+	}
+	// UserGroupUsersColumns holds the columns for the "user_group_users" table.
+	UserGroupUsersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "user_group_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// UserGroupUsersTable holds the schema information for the "user_group_users" table.
+	UserGroupUsersTable = &schema.Table{
+		Name:       "user_group_users",
+		Columns:    UserGroupUsersColumns,
+		PrimaryKey: []*schema.Column{UserGroupUsersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_group_users_user_groups_user_group",
+				Columns:    []*schema.Column{UserGroupUsersColumns[1]},
+				RefColumns: []*schema.Column{UserGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_group_users_users_user",
+				Columns:    []*schema.Column{UserGroupUsersColumns[2]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "usergroupuser_user_group_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserGroupUsersColumns[1], UserGroupUsersColumns[2]},
+			},
+		},
 	}
 	// UserIdentitiesColumns holds the columns for the "user_identities" table.
 	UserIdentitiesColumns = []*schema.Column{
@@ -700,6 +833,7 @@ var (
 	Tables = []*schema.Table{
 		AdminsTable,
 		AdminLoginHistoriesTable,
+		AdminRolesTable,
 		APIKeysTable,
 		BillingPlansTable,
 		BillingQuotasTable,
@@ -712,12 +846,16 @@ var (
 		ModelsTable,
 		ModelProvidersTable,
 		ModelProviderModelsTable,
+		RolesTable,
 		SecurityScanningsTable,
 		SecurityScanningResultsTable,
 		SettingsTable,
 		TasksTable,
 		TaskRecordsTable,
 		UsersTable,
+		UserGroupsTable,
+		UserGroupAdminsTable,
+		UserGroupUsersTable,
 		UserIdentitiesTable,
 		UserLoginHistoriesTable,
 		WorkspacesTable,
@@ -732,6 +870,11 @@ func init() {
 	AdminLoginHistoriesTable.ForeignKeys[0].RefTable = AdminsTable
 	AdminLoginHistoriesTable.Annotation = &entsql.Annotation{
 		Table: "admin_login_histories",
+	}
+	AdminRolesTable.ForeignKeys[0].RefTable = AdminsTable
+	AdminRolesTable.ForeignKeys[1].RefTable = RolesTable
+	AdminRolesTable.Annotation = &entsql.Annotation{
+		Table: "admin_roles",
 	}
 	APIKeysTable.ForeignKeys[0].RefTable = UsersTable
 	APIKeysTable.Annotation = &entsql.Annotation{
@@ -773,6 +916,9 @@ func init() {
 	ModelProviderModelsTable.Annotation = &entsql.Annotation{
 		Table: "model_provider_models",
 	}
+	RolesTable.Annotation = &entsql.Annotation{
+		Table: "roles",
+	}
 	SecurityScanningsTable.ForeignKeys[0].RefTable = UsersTable
 	SecurityScanningsTable.ForeignKeys[1].RefTable = WorkspacesTable
 	SecurityScanningsTable.Annotation = &entsql.Annotation{
@@ -796,6 +942,20 @@ func init() {
 	}
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",
+	}
+	UserGroupsTable.ForeignKeys[0].RefTable = AdminsTable
+	UserGroupsTable.Annotation = &entsql.Annotation{
+		Table: "user_groups",
+	}
+	UserGroupAdminsTable.ForeignKeys[0].RefTable = UserGroupsTable
+	UserGroupAdminsTable.ForeignKeys[1].RefTable = AdminsTable
+	UserGroupAdminsTable.Annotation = &entsql.Annotation{
+		Table: "user_group_admins",
+	}
+	UserGroupUsersTable.ForeignKeys[0].RefTable = UserGroupsTable
+	UserGroupUsersTable.ForeignKeys[1].RefTable = UsersTable
+	UserGroupUsersTable.Annotation = &entsql.Annotation{
+		Table: "user_group_users",
 	}
 	UserIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	UserIdentitiesTable.Annotation = &entsql.Annotation{

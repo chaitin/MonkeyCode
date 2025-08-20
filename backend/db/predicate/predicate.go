@@ -12,6 +12,9 @@ type Admin func(*sql.Selector)
 // AdminLoginHistory is the predicate function for adminloginhistory builders.
 type AdminLoginHistory func(*sql.Selector)
 
+// AdminRole is the predicate function for adminrole builders.
+type AdminRole func(*sql.Selector)
+
 // ApiKey is the predicate function for apikey builders.
 type ApiKey func(*sql.Selector)
 
@@ -48,6 +51,9 @@ type ModelProvider func(*sql.Selector)
 // ModelProviderModel is the predicate function for modelprovidermodel builders.
 type ModelProviderModel func(*sql.Selector)
 
+// Role is the predicate function for role builders.
+type Role func(*sql.Selector)
+
 // SecurityScanning is the predicate function for securityscanning builders.
 type SecurityScanning func(*sql.Selector)
 
@@ -65,6 +71,15 @@ type TaskRecord func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
+
+// UserGroup is the predicate function for usergroup builders.
+type UserGroup func(*sql.Selector)
+
+// UserGroupAdmin is the predicate function for usergroupadmin builders.
+type UserGroupAdmin func(*sql.Selector)
+
+// UserGroupUser is the predicate function for usergroupuser builders.
+type UserGroupUser func(*sql.Selector)
 
 // UserIdentity is the predicate function for useridentity builders.
 type UserIdentity func(*sql.Selector)

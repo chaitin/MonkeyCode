@@ -48,11 +48,6 @@ func (r *ModelRepo) GetWithCache(ctx context.Context, modelType consts.ModelType
 }
 
 func (r *ModelRepo) Create(ctx context.Context, m *domain.CreateModelReq) (*db.Model, error) {
-	uid, err := uuid.Parse(m.UserID)
-	if err != nil {
-		return nil, err
-	}
-
 	n, err := r.db.Model.Query().Where(model.ModelType(m.ModelType)).Count(ctx)
 	if err != nil {
 		return nil, err
@@ -64,7 +59,7 @@ func (r *ModelRepo) Create(ctx context.Context, m *domain.CreateModelReq) (*db.M
 
 	r.cache.Delete(string(m.ModelType))
 	create := r.db.Model.Create().
-		SetUserID(uid).
+		SetUserID(m.AdminID).
 		SetShowName(m.ShowName).
 		SetModelName(m.ModelName).
 		SetProvider(m.Provider).

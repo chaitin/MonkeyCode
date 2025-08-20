@@ -19,12 +19,14 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovider"
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovidermodel"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanning"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanningresult"
 	"github.com/chaitin/MonkeyCode/backend/db/setting"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskrecord"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/userloginhistory"
 	"github.com/chaitin/MonkeyCode/backend/db/workspace"
@@ -237,6 +239,12 @@ func init() {
 	modelprovidermodelDescID := modelprovidermodelFields[0].Descriptor()
 	// modelprovidermodel.DefaultID holds the default value on creation for the id field.
 	modelprovidermodel.DefaultID = modelprovidermodelDescID.Default.(func() uuid.UUID)
+	roleFields := schema.Role{}.Fields()
+	_ = roleFields
+	// roleDescCreatedAt is the schema descriptor for created_at field.
+	roleDescCreatedAt := roleFields[3].Descriptor()
+	// role.DefaultCreatedAt holds the default value on creation for the created_at field.
+	role.DefaultCreatedAt = roleDescCreatedAt.Default.(func() time.Time)
 	securityscanningFields := schema.SecurityScanning{}.Fields()
 	_ = securityscanningFields
 	// securityscanningDescCreatedAt is the schema descriptor for created_at field.
@@ -344,6 +352,16 @@ func init() {
 	userDescUpdatedAt := userFields[8].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
+	usergroupFields := schema.UserGroup{}.Fields()
+	_ = usergroupFields
+	// usergroupDescName is the schema descriptor for name field.
+	usergroupDescName := usergroupFields[2].Descriptor()
+	// usergroup.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	usergroup.NameValidator = usergroupDescName.Validators[0].(func(string) error)
+	// usergroupDescCreatedAt is the schema descriptor for created_at field.
+	usergroupDescCreatedAt := usergroupFields[3].Descriptor()
+	// usergroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	usergroup.DefaultCreatedAt = usergroupDescCreatedAt.Default.(func() time.Time)
 	useridentityMixin := schema.UserIdentity{}.Mixin()
 	useridentityMixinHooks0 := useridentityMixin[0].Hooks()
 	useridentity.Hooks[0] = useridentityMixinHooks0[0]

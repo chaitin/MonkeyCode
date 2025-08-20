@@ -9,7 +9,7 @@ BUILD_TIME=${shell date -u +"%Y-%m-%dT%H:%M:%SZ"}
 GIT_COMMIT=${shell git rev-parse HEAD}
 
 # make build PLATFORM= TAG= OUTPUT= GOCACHE=
-image:
+image: swag wire
 	docker buildx build \
 	  -f build/Dockerfile \
 	  --build-arg GOCACHE=${GOCACHE} \

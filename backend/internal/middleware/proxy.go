@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/rule"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 )
 
@@ -45,6 +46,7 @@ func (p *ProxyMiddleware) Auth() echo.MiddlewareFunc {
 
 			ctx := c.Request().Context()
 			ctx = context.WithValue(ctx, logger.UserIDKey{}, key.UserID)
+			ctx = rule.SkipPermission(ctx)
 			c.SetRequest(c.Request().WithContext(ctx))
 			c.Set(ApiContextKey, key)
 			return next(c)

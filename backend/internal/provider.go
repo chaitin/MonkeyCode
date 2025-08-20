@@ -37,7 +37,6 @@ import (
 	workspacehandlerv1 "github.com/chaitin/MonkeyCode/backend/internal/workspace/handler/http/v1"
 	workspacerepo "github.com/chaitin/MonkeyCode/backend/internal/workspace/repo"
 	workspaceusecase "github.com/chaitin/MonkeyCode/backend/internal/workspace/usecase"
-	"github.com/chaitin/MonkeyCode/backend/pkg/version"
 )
 
 // NewAPIHandlers 创建 APIHandlers 实例
@@ -96,7 +95,6 @@ var Provider = wire.NewSet(
 	workspaceusecase.NewWorkspaceFileUsecase,
 	workspacehandlerv1.NewWorkspaceFileHandler,
 	sockethandler.NewSocketHandler,
-	version.NewVersionInfo,
 	reportuse.NewReportUsecase,
 	reportrepo.NewReportRepo,
 	codesnippetrepo.NewCodeSnippetRepo,

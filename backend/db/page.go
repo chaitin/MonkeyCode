@@ -39,6 +39,20 @@ func (alh *AdminLoginHistoryQuery) Page(ctx context.Context, page, size int) ([]
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (ar *AdminRoleQuery) Page(ctx context.Context, page, size int) ([]*AdminRole, *PageInfo, error) {
+	cnt, err := ar.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := ar.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (ak *ApiKeyQuery) Page(ctx context.Context, page, size int) ([]*ApiKey, *PageInfo, error) {
 	cnt, err := ak.Count(ctx)
 	if err != nil {
@@ -207,6 +221,20 @@ func (mpm *ModelProviderModelQuery) Page(ctx context.Context, page, size int) ([
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (r *RoleQuery) Page(ctx context.Context, page, size int) ([]*Role, *PageInfo, error) {
+	cnt, err := r.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := r.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (ss *SecurityScanningQuery) Page(ctx context.Context, page, size int) ([]*SecurityScanning, *PageInfo, error) {
 	cnt, err := ss.Count(ctx)
 	if err != nil {
@@ -284,6 +312,48 @@ func (u *UserQuery) Page(ctx context.Context, page, size int) ([]*User, *PageInf
 	}
 	offset := size * (page - 1)
 	rs, err := u.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (ug *UserGroupQuery) Page(ctx context.Context, page, size int) ([]*UserGroup, *PageInfo, error) {
+	cnt, err := ug.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := ug.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (uga *UserGroupAdminQuery) Page(ctx context.Context, page, size int) ([]*UserGroupAdmin, *PageInfo, error) {
+	cnt, err := uga.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := uga.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (ugu *UserGroupUserQuery) Page(ctx context.Context, page, size int) ([]*UserGroupUser, *PageInfo, error) {
+	cnt, err := ugu.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := ugu.Offset(offset).Limit(size).All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

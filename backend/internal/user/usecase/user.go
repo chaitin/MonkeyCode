@@ -308,12 +308,12 @@ func (u *UserUsecase) CreateAdmin(ctx context.Context, req *domain.CreateAdminRe
 		Username: req.Username,
 		Password: string(hash),
 	}
-	n, err := u.repo.CreateAdmin(ctx, admin)
+	n, err := u.repo.CreateAdmin(ctx, admin, req.RoleID)
 	if err != nil {
 		return nil, err
 	}
 	return &domain.AdminUser{
-		ID:        n.ID.String(),
+		ID:        n.ID,
 		Username:  n.Username,
 		CreatedAt: n.CreatedAt.Unix(),
 	}, nil
@@ -689,4 +689,22 @@ func (u *UserUsecase) ExportCompletionData(ctx context.Context) (*domain.ExportC
 
 func (u *UserUsecase) GetUserCount(ctx context.Context) (int64, error) {
 	return u.repo.GetUserCount(ctx)
+}
+
+func (u *UserUsecase) GetPermissions(ctx context.Context, id uuid.UUID) (*domain.Permissions, error) {
+	return u.repo.GetPermissions(ctx, id)
+}
+
+func (u *UserUsecase) ListRole(ctx context.Context) ([]*domain.Role, error) {
+	roles, err := u.repo.ListRole(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cvt.Iter(roles, func(i int, role *db.Role) *domain.Role {
+		return cvt.From(role, &domain.Role{})
+	}), nil
+}
+
+func (u *UserUsecase) GrantRole(ctx context.Context, req *domain.GrantRoleReq) error {
+	return u.repo.GrantRole(ctx, req)
 }

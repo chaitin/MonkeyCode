@@ -15,6 +15,10 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
 	"github.com/google/uuid"
 )
 
@@ -105,6 +109,81 @@ func (ac *AdminCreate) AddLoginHistories(a ...*AdminLoginHistory) *AdminCreate {
 		ids[i] = a[i].ID
 	}
 	return ac.AddLoginHistoryIDs(ids...)
+}
+
+// AddMyusergroupIDs adds the "myusergroups" edge to the UserGroup entity by IDs.
+func (ac *AdminCreate) AddMyusergroupIDs(ids ...uuid.UUID) *AdminCreate {
+	ac.mutation.AddMyusergroupIDs(ids...)
+	return ac
+}
+
+// AddMyusergroups adds the "myusergroups" edges to the UserGroup entity.
+func (ac *AdminCreate) AddMyusergroups(u ...*UserGroup) *AdminCreate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return ac.AddMyusergroupIDs(ids...)
+}
+
+// AddUsergroupIDs adds the "usergroups" edge to the UserGroup entity by IDs.
+func (ac *AdminCreate) AddUsergroupIDs(ids ...uuid.UUID) *AdminCreate {
+	ac.mutation.AddUsergroupIDs(ids...)
+	return ac
+}
+
+// AddUsergroups adds the "usergroups" edges to the UserGroup entity.
+func (ac *AdminCreate) AddUsergroups(u ...*UserGroup) *AdminCreate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return ac.AddUsergroupIDs(ids...)
+}
+
+// AddRoleIDs adds the "roles" edge to the Role entity by IDs.
+func (ac *AdminCreate) AddRoleIDs(ids ...int64) *AdminCreate {
+	ac.mutation.AddRoleIDs(ids...)
+	return ac
+}
+
+// AddRoles adds the "roles" edges to the Role entity.
+func (ac *AdminCreate) AddRoles(r ...*Role) *AdminCreate {
+	ids := make([]int64, len(r))
+	for i := range r {
+		ids[i] = r[i].ID
+	}
+	return ac.AddRoleIDs(ids...)
+}
+
+// AddUserGroupAdminIDs adds the "user_group_admins" edge to the UserGroupAdmin entity by IDs.
+func (ac *AdminCreate) AddUserGroupAdminIDs(ids ...uuid.UUID) *AdminCreate {
+	ac.mutation.AddUserGroupAdminIDs(ids...)
+	return ac
+}
+
+// AddUserGroupAdmins adds the "user_group_admins" edges to the UserGroupAdmin entity.
+func (ac *AdminCreate) AddUserGroupAdmins(u ...*UserGroupAdmin) *AdminCreate {
+	ids := make([]uuid.UUID, len(u))
+	for i := range u {
+		ids[i] = u[i].ID
+	}
+	return ac.AddUserGroupAdminIDs(ids...)
+}
+
+// AddAdminRoleIDs adds the "admin_roles" edge to the AdminRole entity by IDs.
+func (ac *AdminCreate) AddAdminRoleIDs(ids ...uuid.UUID) *AdminCreate {
+	ac.mutation.AddAdminRoleIDs(ids...)
+	return ac
+}
+
+// AddAdminRoles adds the "admin_roles" edges to the AdminRole entity.
+func (ac *AdminCreate) AddAdminRoles(a ...*AdminRole) *AdminCreate {
+	ids := make([]uuid.UUID, len(a))
+	for i := range a {
+		ids[i] = a[i].ID
+	}
+	return ac.AddAdminRoleIDs(ids...)
 }
 
 // Mutation returns the AdminMutation object of the builder.
@@ -245,6 +324,86 @@ func (ac *AdminCreate) createSpec() (*Admin, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(adminloginhistory.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ac.mutation.MyusergroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   admin.MyusergroupsTable,
+			Columns: []string{admin.MyusergroupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ac.mutation.UsergroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.UsergroupsTable,
+			Columns: admin.UsergroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ac.mutation.RolesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   admin.RolesTable,
+			Columns: admin.RolesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(role.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ac.mutation.UserGroupAdminsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.UserGroupAdminsTable,
+			Columns: []string{admin.UserGroupAdminsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usergroupadmin.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := ac.mutation.AdminRolesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   admin.AdminRolesTable,
+			Columns: []string{admin.AdminRolesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(adminrole.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
 	"github.com/chaitin/MonkeyCode/backend/db/apikey"
 	"github.com/chaitin/MonkeyCode/backend/db/billingplan"
 	"github.com/chaitin/MonkeyCode/backend/db/billingquota"
@@ -26,12 +27,16 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovider"
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovidermodel"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanning"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanningresult"
 	"github.com/chaitin/MonkeyCode/backend/db/setting"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskrecord"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupuser"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/userloginhistory"
 	"github.com/chaitin/MonkeyCode/backend/db/workspace"
@@ -98,6 +103,7 @@ func checkColumn(table, column string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			admin.Table:                  admin.ValidColumn,
 			adminloginhistory.Table:      adminloginhistory.ValidColumn,
+			adminrole.Table:              adminrole.ValidColumn,
 			apikey.Table:                 apikey.ValidColumn,
 			billingplan.Table:            billingplan.ValidColumn,
 			billingquota.Table:           billingquota.ValidColumn,
@@ -110,12 +116,16 @@ func checkColumn(table, column string) error {
 			model.Table:                  model.ValidColumn,
 			modelprovider.Table:          modelprovider.ValidColumn,
 			modelprovidermodel.Table:     modelprovidermodel.ValidColumn,
+			role.Table:                   role.ValidColumn,
 			securityscanning.Table:       securityscanning.ValidColumn,
 			securityscanningresult.Table: securityscanningresult.ValidColumn,
 			setting.Table:                setting.ValidColumn,
 			task.Table:                   task.ValidColumn,
 			taskrecord.Table:             taskrecord.ValidColumn,
 			user.Table:                   user.ValidColumn,
+			usergroup.Table:              usergroup.ValidColumn,
+			usergroupadmin.Table:         usergroupadmin.ValidColumn,
+			usergroupuser.Table:          usergroupuser.ValidColumn,
 			useridentity.Table:           useridentity.ValidColumn,
 			userloginhistory.Table:       userloginhistory.ValidColumn,
 			workspace.Table:              workspace.ValidColumn,

@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import Card from '@/components/card';
-import { useRequest } from 'ahooks';
-import { deleteDeleteModel, getMyModelList, putUpdateModel } from '@/api/Model';
-import { DomainModel, ConstsModelStatus, ConstsModelType } from '@/api/types';
-import { Stack, Box, Button, Grid2 as Grid, ButtonBase } from '@mui/material';
+import {
+  deleteDeleteModel,
+  putUpdateModel,
+} from '@/api/Model';
+import { DomainModel, ConstsModelStatus, ConstsModelType, } from '@/api/types';
+import { Stack, Box, Button, Grid2 as Grid, ButtonBase, ThemeProvider } from '@mui/material';
 import StyledLabel from '@/components/label';
 import { Icon, Modal, message } from '@c-x/ui';
 import { addCommasToNumber } from '@/utils';
 import NoData from '@/assets/images/nodata.png';
 import { ModelProvider } from '../constant';
-import ModelModal from './modelModal';
+import { ModelModal, Model} from '@yokowu/modelkit-ui';
+import { localModelToModelKitModel, modelService } from '@/pages/model/components/services/modelService';
 
 const ModelItem = ({
   data,
@@ -319,8 +322,11 @@ const ModelCard: React.FC<IModelCardProps> = ({
           setEditData(null);
         }}
         refresh={refreshModel}
-        data={editData}
-        type={modelType}
+        data={editData ? localModelToModelKitModel(editData) : null}
+        model_type={modelType}
+        modelService={modelService}
+        language="zh-CN"
+        messageComponent={message}
       />
     </Card>
   );

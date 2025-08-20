@@ -10,6 +10,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
 	"github.com/chaitin/MonkeyCode/backend/db/apikey"
 	"github.com/chaitin/MonkeyCode/backend/db/billingplan"
 	"github.com/chaitin/MonkeyCode/backend/db/billingquota"
@@ -23,12 +24,16 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovider"
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovidermodel"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanning"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanningresult"
 	"github.com/chaitin/MonkeyCode/backend/db/setting"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskrecord"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupuser"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/userloginhistory"
 	"github.com/chaitin/MonkeyCode/backend/db/workspace"
@@ -143,6 +148,33 @@ func (f TraverseAdminLoginHistory) Traverse(ctx context.Context, q db.Query) err
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.AdminLoginHistoryQuery", q)
+}
+
+// The AdminRoleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AdminRoleFunc func(context.Context, *db.AdminRoleQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AdminRoleFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AdminRoleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AdminRoleQuery", q)
+}
+
+// The TraverseAdminRole type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAdminRole func(context.Context, *db.AdminRoleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAdminRole) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAdminRole) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AdminRoleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AdminRoleQuery", q)
 }
 
 // The ApiKeyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -469,6 +501,33 @@ func (f TraverseModelProviderModel) Traverse(ctx context.Context, q db.Query) er
 	return fmt.Errorf("unexpected query type %T. expect *db.ModelProviderModelQuery", q)
 }
 
+// The RoleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RoleFunc func(context.Context, *db.RoleQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f RoleFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.RoleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.RoleQuery", q)
+}
+
+// The TraverseRole type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRole func(context.Context, *db.RoleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRole) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRole) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.RoleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.RoleQuery", q)
+}
+
 // The SecurityScanningFunc type is an adapter to allow the use of ordinary function as a Querier.
 type SecurityScanningFunc func(context.Context, *db.SecurityScanningQuery) (db.Value, error)
 
@@ -631,6 +690,87 @@ func (f TraverseUser) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.UserQuery", q)
 }
 
+// The UserGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserGroupFunc func(context.Context, *db.UserGroupQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserGroupFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.UserGroupQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.UserGroupQuery", q)
+}
+
+// The TraverseUserGroup type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserGroup func(context.Context, *db.UserGroupQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserGroup) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserGroup) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.UserGroupQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.UserGroupQuery", q)
+}
+
+// The UserGroupAdminFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserGroupAdminFunc func(context.Context, *db.UserGroupAdminQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserGroupAdminFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.UserGroupAdminQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.UserGroupAdminQuery", q)
+}
+
+// The TraverseUserGroupAdmin type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserGroupAdmin func(context.Context, *db.UserGroupAdminQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserGroupAdmin) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserGroupAdmin) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.UserGroupAdminQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.UserGroupAdminQuery", q)
+}
+
+// The UserGroupUserFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserGroupUserFunc func(context.Context, *db.UserGroupUserQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserGroupUserFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.UserGroupUserQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.UserGroupUserQuery", q)
+}
+
+// The TraverseUserGroupUser type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserGroupUser func(context.Context, *db.UserGroupUserQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserGroupUser) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserGroupUser) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.UserGroupUserQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.UserGroupUserQuery", q)
+}
+
 // The UserIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserIdentityFunc func(context.Context, *db.UserIdentityQuery) (db.Value, error)
 
@@ -746,6 +886,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.AdminQuery, predicate.Admin, admin.OrderOption]{typ: db.TypeAdmin, tq: q}, nil
 	case *db.AdminLoginHistoryQuery:
 		return &query[*db.AdminLoginHistoryQuery, predicate.AdminLoginHistory, adminloginhistory.OrderOption]{typ: db.TypeAdminLoginHistory, tq: q}, nil
+	case *db.AdminRoleQuery:
+		return &query[*db.AdminRoleQuery, predicate.AdminRole, adminrole.OrderOption]{typ: db.TypeAdminRole, tq: q}, nil
 	case *db.ApiKeyQuery:
 		return &query[*db.ApiKeyQuery, predicate.ApiKey, apikey.OrderOption]{typ: db.TypeApiKey, tq: q}, nil
 	case *db.BillingPlanQuery:
@@ -770,6 +912,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.ModelProviderQuery, predicate.ModelProvider, modelprovider.OrderOption]{typ: db.TypeModelProvider, tq: q}, nil
 	case *db.ModelProviderModelQuery:
 		return &query[*db.ModelProviderModelQuery, predicate.ModelProviderModel, modelprovidermodel.OrderOption]{typ: db.TypeModelProviderModel, tq: q}, nil
+	case *db.RoleQuery:
+		return &query[*db.RoleQuery, predicate.Role, role.OrderOption]{typ: db.TypeRole, tq: q}, nil
 	case *db.SecurityScanningQuery:
 		return &query[*db.SecurityScanningQuery, predicate.SecurityScanning, securityscanning.OrderOption]{typ: db.TypeSecurityScanning, tq: q}, nil
 	case *db.SecurityScanningResultQuery:
@@ -782,6 +926,12 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TaskRecordQuery, predicate.TaskRecord, taskrecord.OrderOption]{typ: db.TypeTaskRecord, tq: q}, nil
 	case *db.UserQuery:
 		return &query[*db.UserQuery, predicate.User, user.OrderOption]{typ: db.TypeUser, tq: q}, nil
+	case *db.UserGroupQuery:
+		return &query[*db.UserGroupQuery, predicate.UserGroup, usergroup.OrderOption]{typ: db.TypeUserGroup, tq: q}, nil
+	case *db.UserGroupAdminQuery:
+		return &query[*db.UserGroupAdminQuery, predicate.UserGroupAdmin, usergroupadmin.OrderOption]{typ: db.TypeUserGroupAdmin, tq: q}, nil
+	case *db.UserGroupUserQuery:
+		return &query[*db.UserGroupUserQuery, predicate.UserGroupUser, usergroupuser.OrderOption]{typ: db.TypeUserGroupUser, tq: q}, nil
 	case *db.UserIdentityQuery:
 		return &query[*db.UserIdentityQuery, predicate.UserIdentity, useridentity.OrderOption]{typ: db.TypeUserIdentity, tq: q}, nil
 	case *db.UserLoginHistoryQuery:

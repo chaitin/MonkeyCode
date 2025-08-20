@@ -1,7 +1,7 @@
 PLATFORM=linux/amd64
 TAG=main
-REGISTRY=monkeycode
-
+REGISTRY=monkeycode.chaitin.cn/monkeycode
+OUTPUT=type=docker,dest=${HOME}/tmp/monkeycode_frontend.tar
 
 # 构建前端代码
 build:
@@ -13,9 +13,5 @@ image: build
 	  -f .Dockerfile \
 	  --platform ${PLATFORM} \
 	  --tag ${REGISTRY}/frontend:${TAG} \
-	  --load \
+	  --output ${OUTPUT} \
 	  .
-
-save: image
-	docker save -o /tmp/monkeycode_frontend.tar monkeycode/frontend:main
-		

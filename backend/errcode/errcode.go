@@ -22,4 +22,5 @@ var (
 	ErrDingtalkNotEnabled  = web.NewBadRequestErr("err-dingtalk-not-enabled")
 	ErrCustomNotEnabled    = web.NewBadRequestErr("err-custom-not-enabled")
 	ErrUserLimit           = web.NewBadRequestErr("err-user-limit")
+	ErrOnlyAdmin           = web.NewBadRequestErr("err-only-admin")
 )

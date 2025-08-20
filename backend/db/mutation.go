@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/admin"
 	"github.com/chaitin/MonkeyCode/backend/db/adminloginhistory"
+	"github.com/chaitin/MonkeyCode/backend/db/adminrole"
 	"github.com/chaitin/MonkeyCode/backend/db/apikey"
 	"github.com/chaitin/MonkeyCode/backend/db/billingplan"
 	"github.com/chaitin/MonkeyCode/backend/db/billingquota"
@@ -27,12 +28,16 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovider"
 	"github.com/chaitin/MonkeyCode/backend/db/modelprovidermodel"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/role"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanning"
 	"github.com/chaitin/MonkeyCode/backend/db/securityscanningresult"
 	"github.com/chaitin/MonkeyCode/backend/db/setting"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskrecord"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroup"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupadmin"
+	"github.com/chaitin/MonkeyCode/backend/db/usergroupuser"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/userloginhistory"
 	"github.com/chaitin/MonkeyCode/backend/db/workspace"
@@ -53,6 +58,7 @@ const (
 	// Node types.
 	TypeAdmin                  = "Admin"
 	TypeAdminLoginHistory      = "AdminLoginHistory"
+	TypeAdminRole              = "AdminRole"
 	TypeApiKey                 = "ApiKey"
 	TypeBillingPlan            = "BillingPlan"
 	TypeBillingQuota           = "BillingQuota"
@@ -65,12 +71,16 @@ const (
 	TypeModel                  = "Model"
 	TypeModelProvider          = "ModelProvider"
 	TypeModelProviderModel     = "ModelProviderModel"
+	TypeRole                   = "Role"
 	TypeSecurityScanning       = "SecurityScanning"
 	TypeSecurityScanningResult = "SecurityScanningResult"
 	TypeSetting                = "Setting"
 	TypeTask                   = "Task"
 	TypeTaskRecord             = "TaskRecord"
 	TypeUser                   = "User"
+	TypeUserGroup              = "UserGroup"
+	TypeUserGroupAdmin         = "UserGroupAdmin"
+	TypeUserGroupUser          = "UserGroupUser"
 	TypeUserIdentity           = "UserIdentity"
 	TypeUserLoginHistory       = "UserLoginHistory"
 	TypeWorkspace              = "Workspace"
@@ -80,22 +90,37 @@ const (
 // AdminMutation represents an operation that mutates the Admin nodes in the graph.
 type AdminMutation struct {
 	config
-	op                     Op
-	typ                    string
-	id                     *uuid.UUID
-	username               *string
-	password               *string
-	status                 *consts.AdminStatus
-	last_active_at         *time.Time
-	created_at             *time.Time
-	updated_at             *time.Time
-	clearedFields          map[string]struct{}
-	login_histories        map[uuid.UUID]struct{}
-	removedlogin_histories map[uuid.UUID]struct{}
-	clearedlogin_histories bool
-	done                   bool
-	oldValue               func(context.Context) (*Admin, error)
-	predicates             []predicate.Admin
+	op                       Op
+	typ                      string
+	id                       *uuid.UUID
+	username                 *string
+	password                 *string
+	status                   *consts.AdminStatus
+	last_active_at           *time.Time
+	created_at               *time.Time
+	updated_at               *time.Time
+	clearedFields            map[string]struct{}
+	login_histories          map[uuid.UUID]struct{}
+	removedlogin_histories   map[uuid.UUID]struct{}
+	clearedlogin_histories   bool
+	myusergroups             map[uuid.UUID]struct{}
+	removedmyusergroups      map[uuid.UUID]struct{}
+	clearedmyusergroups      bool
+	usergroups               map[uuid.UUID]struct{}
+	removedusergroups        map[uuid.UUID]struct{}
+	clearedusergroups        bool
+	roles                    map[int64]struct{}
+	removedroles             map[int64]struct{}
+	clearedroles             bool
+	user_group_admins        map[uuid.UUID]struct{}
+	removeduser_group_admins map[uuid.UUID]struct{}
+	cleareduser_group_admins bool
+	admin_roles              map[uuid.UUID]struct{}
+	removedadmin_roles       map[uuid.UUID]struct{}
+	clearedadmin_roles       bool
+	done                     bool
+	oldValue                 func(context.Context) (*Admin, error)
+	predicates               []predicate.Admin
 }
 
 var _ ent.Mutation = (*AdminMutation)(nil)
@@ -472,6 +497,276 @@ func (m *AdminMutation) ResetLoginHistories() {
 	m.removedlogin_histories = nil
 }
 
+// AddMyusergroupIDs adds the "myusergroups" edge to the UserGroup entity by ids.
+func (m *AdminMutation) AddMyusergroupIDs(ids ...uuid.UUID) {
+	if m.myusergroups == nil {
+		m.myusergroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.myusergroups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearMyusergroups clears the "myusergroups" edge to the UserGroup entity.
+func (m *AdminMutation) ClearMyusergroups() {
+	m.clearedmyusergroups = true
+}
+
+// MyusergroupsCleared reports if the "myusergroups" edge to the UserGroup entity was cleared.
+func (m *AdminMutation) MyusergroupsCleared() bool {
+	return m.clearedmyusergroups
+}
+
+// RemoveMyusergroupIDs removes the "myusergroups" edge to the UserGroup entity by IDs.
+func (m *AdminMutation) RemoveMyusergroupIDs(ids ...uuid.UUID) {
+	if m.removedmyusergroups == nil {
+		m.removedmyusergroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.myusergroups, ids[i])
+		m.removedmyusergroups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedMyusergroups returns the removed IDs of the "myusergroups" edge to the UserGroup entity.
+func (m *AdminMutation) RemovedMyusergroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removedmyusergroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// MyusergroupsIDs returns the "myusergroups" edge IDs in the mutation.
+func (m *AdminMutation) MyusergroupsIDs() (ids []uuid.UUID) {
+	for id := range m.myusergroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetMyusergroups resets all changes to the "myusergroups" edge.
+func (m *AdminMutation) ResetMyusergroups() {
+	m.myusergroups = nil
+	m.clearedmyusergroups = false
+	m.removedmyusergroups = nil
+}
+
+// AddUsergroupIDs adds the "usergroups" edge to the UserGroup entity by ids.
+func (m *AdminMutation) AddUsergroupIDs(ids ...uuid.UUID) {
+	if m.usergroups == nil {
+		m.usergroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.usergroups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUsergroups clears the "usergroups" edge to the UserGroup entity.
+func (m *AdminMutation) ClearUsergroups() {
+	m.clearedusergroups = true
+}
+
+// UsergroupsCleared reports if the "usergroups" edge to the UserGroup entity was cleared.
+func (m *AdminMutation) UsergroupsCleared() bool {
+	return m.clearedusergroups
+}
+
+// RemoveUsergroupIDs removes the "usergroups" edge to the UserGroup entity by IDs.
+func (m *AdminMutation) RemoveUsergroupIDs(ids ...uuid.UUID) {
+	if m.removedusergroups == nil {
+		m.removedusergroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.usergroups, ids[i])
+		m.removedusergroups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUsergroups returns the removed IDs of the "usergroups" edge to the UserGroup entity.
+func (m *AdminMutation) RemovedUsergroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removedusergroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UsergroupsIDs returns the "usergroups" edge IDs in the mutation.
+func (m *AdminMutation) UsergroupsIDs() (ids []uuid.UUID) {
+	for id := range m.usergroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUsergroups resets all changes to the "usergroups" edge.
+func (m *AdminMutation) ResetUsergroups() {
+	m.usergroups = nil
+	m.clearedusergroups = false
+	m.removedusergroups = nil
+}
+
+// AddRoleIDs adds the "roles" edge to the Role entity by ids.
+func (m *AdminMutation) AddRoleIDs(ids ...int64) {
+	if m.roles == nil {
+		m.roles = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.roles[ids[i]] = struct{}{}
+	}
+}
+
+// ClearRoles clears the "roles" edge to the Role entity.
+func (m *AdminMutation) ClearRoles() {
+	m.clearedroles = true
+}
+
+// RolesCleared reports if the "roles" edge to the Role entity was cleared.
+func (m *AdminMutation) RolesCleared() bool {
+	return m.clearedroles
+}
+
+// RemoveRoleIDs removes the "roles" edge to the Role entity by IDs.
+func (m *AdminMutation) RemoveRoleIDs(ids ...int64) {
+	if m.removedroles == nil {
+		m.removedroles = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.roles, ids[i])
+		m.removedroles[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedRoles returns the removed IDs of the "roles" edge to the Role entity.
+func (m *AdminMutation) RemovedRolesIDs() (ids []int64) {
+	for id := range m.removedroles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// RolesIDs returns the "roles" edge IDs in the mutation.
+func (m *AdminMutation) RolesIDs() (ids []int64) {
+	for id := range m.roles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetRoles resets all changes to the "roles" edge.
+func (m *AdminMutation) ResetRoles() {
+	m.roles = nil
+	m.clearedroles = false
+	m.removedroles = nil
+}
+
+// AddUserGroupAdminIDs adds the "user_group_admins" edge to the UserGroupAdmin entity by ids.
+func (m *AdminMutation) AddUserGroupAdminIDs(ids ...uuid.UUID) {
+	if m.user_group_admins == nil {
+		m.user_group_admins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.user_group_admins[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUserGroupAdmins clears the "user_group_admins" edge to the UserGroupAdmin entity.
+func (m *AdminMutation) ClearUserGroupAdmins() {
+	m.cleareduser_group_admins = true
+}
+
+// UserGroupAdminsCleared reports if the "user_group_admins" edge to the UserGroupAdmin entity was cleared.
+func (m *AdminMutation) UserGroupAdminsCleared() bool {
+	return m.cleareduser_group_admins
+}
+
+// RemoveUserGroupAdminIDs removes the "user_group_admins" edge to the UserGroupAdmin entity by IDs.
+func (m *AdminMutation) RemoveUserGroupAdminIDs(ids ...uuid.UUID) {
+	if m.removeduser_group_admins == nil {
+		m.removeduser_group_admins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.user_group_admins, ids[i])
+		m.removeduser_group_admins[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUserGroupAdmins returns the removed IDs of the "user_group_admins" edge to the UserGroupAdmin entity.
+func (m *AdminMutation) RemovedUserGroupAdminsIDs() (ids []uuid.UUID) {
+	for id := range m.removeduser_group_admins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UserGroupAdminsIDs returns the "user_group_admins" edge IDs in the mutation.
+func (m *AdminMutation) UserGroupAdminsIDs() (ids []uuid.UUID) {
+	for id := range m.user_group_admins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUserGroupAdmins resets all changes to the "user_group_admins" edge.
+func (m *AdminMutation) ResetUserGroupAdmins() {
+	m.user_group_admins = nil
+	m.cleareduser_group_admins = false
+	m.removeduser_group_admins = nil
+}
+
+// AddAdminRoleIDs adds the "admin_roles" edge to the AdminRole entity by ids.
+func (m *AdminMutation) AddAdminRoleIDs(ids ...uuid.UUID) {
+	if m.admin_roles == nil {
+		m.admin_roles = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.admin_roles[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAdminRoles clears the "admin_roles" edge to the AdminRole entity.
+func (m *AdminMutation) ClearAdminRoles() {
+	m.clearedadmin_roles = true
+}
+
+// AdminRolesCleared reports if the "admin_roles" edge to the AdminRole entity was cleared.
+func (m *AdminMutation) AdminRolesCleared() bool {
+	return m.clearedadmin_roles
+}
+
+// RemoveAdminRoleIDs removes the "admin_roles" edge to the AdminRole entity by IDs.
+func (m *AdminMutation) RemoveAdminRoleIDs(ids ...uuid.UUID) {
+	if m.removedadmin_roles == nil {
+		m.removedadmin_roles = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.admin_roles, ids[i])
+		m.removedadmin_roles[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAdminRoles returns the removed IDs of the "admin_roles" edge to the AdminRole entity.
+func (m *AdminMutation) RemovedAdminRolesIDs() (ids []uuid.UUID) {
+	for id := range m.removedadmin_roles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AdminRolesIDs returns the "admin_roles" edge IDs in the mutation.
+func (m *AdminMutation) AdminRolesIDs() (ids []uuid.UUID) {
+	for id := range m.admin_roles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAdminRoles resets all changes to the "admin_roles" edge.
+func (m *AdminMutation) ResetAdminRoles() {
+	m.admin_roles = nil
+	m.clearedadmin_roles = false
+	m.removedadmin_roles = nil
+}
+
 // Where appends a list predicates to the AdminMutation builder.
 func (m *AdminMutation) Where(ps ...predicate.Admin) {
 	m.predicates = append(m.predicates, ps...)
@@ -690,9 +985,24 @@ func (m *AdminMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *AdminMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 6)
 	if m.login_histories != nil {
 		edges = append(edges, admin.EdgeLoginHistories)
+	}
+	if m.myusergroups != nil {
+		edges = append(edges, admin.EdgeMyusergroups)
+	}
+	if m.usergroups != nil {
+		edges = append(edges, admin.EdgeUsergroups)
+	}
+	if m.roles != nil {
+		edges = append(edges, admin.EdgeRoles)
+	}
+	if m.user_group_admins != nil {
+		edges = append(edges, admin.EdgeUserGroupAdmins)
+	}
+	if m.admin_roles != nil {
+		edges = append(edges, admin.EdgeAdminRoles)
 	}
 	return edges
 }
@@ -707,15 +1017,60 @@ func (m *AdminMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case admin.EdgeMyusergroups:
+		ids := make([]ent.Value, 0, len(m.myusergroups))
+		for id := range m.myusergroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeUsergroups:
+		ids := make([]ent.Value, 0, len(m.usergroups))
+		for id := range m.usergroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeRoles:
+		ids := make([]ent.Value, 0, len(m.roles))
+		for id := range m.roles {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeUserGroupAdmins:
+		ids := make([]ent.Value, 0, len(m.user_group_admins))
+		for id := range m.user_group_admins {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeAdminRoles:
+		ids := make([]ent.Value, 0, len(m.admin_roles))
+		for id := range m.admin_roles {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *AdminMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 6)
 	if m.removedlogin_histories != nil {
 		edges = append(edges, admin.EdgeLoginHistories)
+	}
+	if m.removedmyusergroups != nil {
+		edges = append(edges, admin.EdgeMyusergroups)
+	}
+	if m.removedusergroups != nil {
+		edges = append(edges, admin.EdgeUsergroups)
+	}
+	if m.removedroles != nil {
+		edges = append(edges, admin.EdgeRoles)
+	}
+	if m.removeduser_group_admins != nil {
+		edges = append(edges, admin.EdgeUserGroupAdmins)
+	}
+	if m.removedadmin_roles != nil {
+		edges = append(edges, admin.EdgeAdminRoles)
 	}
 	return edges
 }
@@ -730,15 +1085,60 @@ func (m *AdminMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case admin.EdgeMyusergroups:
+		ids := make([]ent.Value, 0, len(m.removedmyusergroups))
+		for id := range m.removedmyusergroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeUsergroups:
+		ids := make([]ent.Value, 0, len(m.removedusergroups))
+		for id := range m.removedusergroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeRoles:
+		ids := make([]ent.Value, 0, len(m.removedroles))
+		for id := range m.removedroles {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeUserGroupAdmins:
+		ids := make([]ent.Value, 0, len(m.removeduser_group_admins))
+		for id := range m.removeduser_group_admins {
+			ids = append(ids, id)
+		}
+		return ids
+	case admin.EdgeAdminRoles:
+		ids := make([]ent.Value, 0, len(m.removedadmin_roles))
+		for id := range m.removedadmin_roles {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *AdminMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 6)
 	if m.clearedlogin_histories {
 		edges = append(edges, admin.EdgeLoginHistories)
+	}
+	if m.clearedmyusergroups {
+		edges = append(edges, admin.EdgeMyusergroups)
+	}
+	if m.clearedusergroups {
+		edges = append(edges, admin.EdgeUsergroups)
+	}
+	if m.clearedroles {
+		edges = append(edges, admin.EdgeRoles)
+	}
+	if m.cleareduser_group_admins {
+		edges = append(edges, admin.EdgeUserGroupAdmins)
+	}
+	if m.clearedadmin_roles {
+		edges = append(edges, admin.EdgeAdminRoles)
 	}
 	return edges
 }
@@ -749,6 +1149,16 @@ func (m *AdminMutation) EdgeCleared(name string) bool {
 	switch name {
 	case admin.EdgeLoginHistories:
 		return m.clearedlogin_histories
+	case admin.EdgeMyusergroups:
+		return m.clearedmyusergroups
+	case admin.EdgeUsergroups:
+		return m.clearedusergroups
+	case admin.EdgeRoles:
+		return m.clearedroles
+	case admin.EdgeUserGroupAdmins:
+		return m.cleareduser_group_admins
+	case admin.EdgeAdminRoles:
+		return m.clearedadmin_roles
 	}
 	return false
 }
@@ -767,6 +1177,21 @@ func (m *AdminMutation) ResetEdge(name string) error {
 	switch name {
 	case admin.EdgeLoginHistories:
 		m.ResetLoginHistories()
+		return nil
+	case admin.EdgeMyusergroups:
+		m.ResetMyusergroups()
+		return nil
+	case admin.EdgeUsergroups:
+		m.ResetUsergroups()
+		return nil
+	case admin.EdgeRoles:
+		m.ResetRoles()
+		return nil
+	case admin.EdgeUserGroupAdmins:
+		m.ResetUserGroupAdmins()
+		return nil
+	case admin.EdgeAdminRoles:
+		m.ResetAdminRoles()
 		return nil
 	}
 	return fmt.Errorf("unknown Admin edge %s", name)
@@ -1753,6 +2178,495 @@ func (m *AdminLoginHistoryMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AdminLoginHistory edge %s", name)
+}
+
+// AdminRoleMutation represents an operation that mutates the AdminRole nodes in the graph.
+type AdminRoleMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	clearedFields map[string]struct{}
+	admin         *uuid.UUID
+	clearedadmin  bool
+	role          *int64
+	clearedrole   bool
+	done          bool
+	oldValue      func(context.Context) (*AdminRole, error)
+	predicates    []predicate.AdminRole
+}
+
+var _ ent.Mutation = (*AdminRoleMutation)(nil)
+
+// adminroleOption allows management of the mutation configuration using functional options.
+type adminroleOption func(*AdminRoleMutation)
+
+// newAdminRoleMutation creates new mutation for the AdminRole entity.
+func newAdminRoleMutation(c config, op Op, opts ...adminroleOption) *AdminRoleMutation {
+	m := &AdminRoleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAdminRole,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAdminRoleID sets the ID field of the mutation.
+func withAdminRoleID(id uuid.UUID) adminroleOption {
+	return func(m *AdminRoleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AdminRole
+		)
+		m.oldValue = func(ctx context.Context) (*AdminRole, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AdminRole.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAdminRole sets the old AdminRole of the mutation.
+func withAdminRole(node *AdminRole) adminroleOption {
+	return func(m *AdminRoleMutation) {
+		m.oldValue = func(context.Context) (*AdminRole, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AdminRoleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AdminRoleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of AdminRole entities.
+func (m *AdminRoleMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AdminRoleMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AdminRoleMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AdminRole.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAdminID sets the "admin_id" field.
+func (m *AdminRoleMutation) SetAdminID(u uuid.UUID) {
+	m.admin = &u
+}
+
+// AdminID returns the value of the "admin_id" field in the mutation.
+func (m *AdminRoleMutation) AdminID() (r uuid.UUID, exists bool) {
+	v := m.admin
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAdminID returns the old "admin_id" field's value of the AdminRole entity.
+// If the AdminRole object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AdminRoleMutation) OldAdminID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAdminID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAdminID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAdminID: %w", err)
+	}
+	return oldValue.AdminID, nil
+}
+
+// ResetAdminID resets all changes to the "admin_id" field.
+func (m *AdminRoleMutation) ResetAdminID() {
+	m.admin = nil
+}
+
+// SetRoleID sets the "role_id" field.
+func (m *AdminRoleMutation) SetRoleID(i int64) {
+	m.role = &i
+}
+
+// RoleID returns the value of the "role_id" field in the mutation.
+func (m *AdminRoleMutation) RoleID() (r int64, exists bool) {
+	v := m.role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoleID returns the old "role_id" field's value of the AdminRole entity.
+// If the AdminRole object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AdminRoleMutation) OldRoleID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoleID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoleID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoleID: %w", err)
+	}
+	return oldValue.RoleID, nil
+}
+
+// ResetRoleID resets all changes to the "role_id" field.
+func (m *AdminRoleMutation) ResetRoleID() {
+	m.role = nil
+}
+
+// ClearAdmin clears the "admin" edge to the Admin entity.
+func (m *AdminRoleMutation) ClearAdmin() {
+	m.clearedadmin = true
+	m.clearedFields[adminrole.FieldAdminID] = struct{}{}
+}
+
+// AdminCleared reports if the "admin" edge to the Admin entity was cleared.
+func (m *AdminRoleMutation) AdminCleared() bool {
+	return m.clearedadmin
+}
+
+// AdminIDs returns the "admin" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AdminID instead. It exists only for internal usage by the builders.
+func (m *AdminRoleMutation) AdminIDs() (ids []uuid.UUID) {
+	if id := m.admin; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAdmin resets all changes to the "admin" edge.
+func (m *AdminRoleMutation) ResetAdmin() {
+	m.admin = nil
+	m.clearedadmin = false
+}
+
+// ClearRole clears the "role" edge to the Role entity.
+func (m *AdminRoleMutation) ClearRole() {
+	m.clearedrole = true
+	m.clearedFields[adminrole.FieldRoleID] = struct{}{}
+}
+
+// RoleCleared reports if the "role" edge to the Role entity was cleared.
+func (m *AdminRoleMutation) RoleCleared() bool {
+	return m.clearedrole
+}
+
+// RoleIDs returns the "role" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RoleID instead. It exists only for internal usage by the builders.
+func (m *AdminRoleMutation) RoleIDs() (ids []int64) {
+	if id := m.role; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRole resets all changes to the "role" edge.
+func (m *AdminRoleMutation) ResetRole() {
+	m.role = nil
+	m.clearedrole = false
+}
+
+// Where appends a list predicates to the AdminRoleMutation builder.
+func (m *AdminRoleMutation) Where(ps ...predicate.AdminRole) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AdminRoleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AdminRoleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AdminRole, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AdminRoleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AdminRoleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AdminRole).
+func (m *AdminRoleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AdminRoleMutation) Fields() []string {
+	fields := make([]string, 0, 2)
+	if m.admin != nil {
+		fields = append(fields, adminrole.FieldAdminID)
+	}
+	if m.role != nil {
+		fields = append(fields, adminrole.FieldRoleID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AdminRoleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case adminrole.FieldAdminID:
+		return m.AdminID()
+	case adminrole.FieldRoleID:
+		return m.RoleID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AdminRoleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case adminrole.FieldAdminID:
+		return m.OldAdminID(ctx)
+	case adminrole.FieldRoleID:
+		return m.OldRoleID(ctx)
+	}
+	return nil, fmt.Errorf("unknown AdminRole field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AdminRoleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case adminrole.FieldAdminID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAdminID(v)
+		return nil
+	case adminrole.FieldRoleID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoleID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AdminRole field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AdminRoleMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AdminRoleMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AdminRoleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown AdminRole numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AdminRoleMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AdminRoleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AdminRoleMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown AdminRole nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AdminRoleMutation) ResetField(name string) error {
+	switch name {
+	case adminrole.FieldAdminID:
+		m.ResetAdminID()
+		return nil
+	case adminrole.FieldRoleID:
+		m.ResetRoleID()
+		return nil
+	}
+	return fmt.Errorf("unknown AdminRole field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AdminRoleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.admin != nil {
+		edges = append(edges, adminrole.EdgeAdmin)
+	}
+	if m.role != nil {
+		edges = append(edges, adminrole.EdgeRole)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AdminRoleMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case adminrole.EdgeAdmin:
+		if id := m.admin; id != nil {
+			return []ent.Value{*id}
+		}
+	case adminrole.EdgeRole:
+		if id := m.role; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AdminRoleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AdminRoleMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AdminRoleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedadmin {
+		edges = append(edges, adminrole.EdgeAdmin)
+	}
+	if m.clearedrole {
+		edges = append(edges, adminrole.EdgeRole)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AdminRoleMutation) EdgeCleared(name string) bool {
+	switch name {
+	case adminrole.EdgeAdmin:
+		return m.clearedadmin
+	case adminrole.EdgeRole:
+		return m.clearedrole
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AdminRoleMutation) ClearEdge(name string) error {
+	switch name {
+	case adminrole.EdgeAdmin:
+		m.ClearAdmin()
+		return nil
+	case adminrole.EdgeRole:
+		m.ClearRole()
+		return nil
+	}
+	return fmt.Errorf("unknown AdminRole unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AdminRoleMutation) ResetEdge(name string) error {
+	switch name {
+	case adminrole.EdgeAdmin:
+		m.ResetAdmin()
+		return nil
+	case adminrole.EdgeRole:
+		m.ResetRole()
+		return nil
+	}
+	return fmt.Errorf("unknown AdminRole edge %s", name)
 }
 
 // ApiKeyMutation represents an operation that mutates the ApiKey nodes in the graph.
@@ -11604,6 +12518,622 @@ func (m *ModelProviderModelMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ModelProviderModel edge %s", name)
 }
 
+// RoleMutation represents an operation that mutates the Role nodes in the graph.
+type RoleMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	name               *string
+	description        *string
+	created_at         *time.Time
+	clearedFields      map[string]struct{}
+	admins             map[uuid.UUID]struct{}
+	removedadmins      map[uuid.UUID]struct{}
+	clearedadmins      bool
+	admin_roles        map[uuid.UUID]struct{}
+	removedadmin_roles map[uuid.UUID]struct{}
+	clearedadmin_roles bool
+	done               bool
+	oldValue           func(context.Context) (*Role, error)
+	predicates         []predicate.Role
+}
+
+var _ ent.Mutation = (*RoleMutation)(nil)
+
+// roleOption allows management of the mutation configuration using functional options.
+type roleOption func(*RoleMutation)
+
+// newRoleMutation creates new mutation for the Role entity.
+func newRoleMutation(c config, op Op, opts ...roleOption) *RoleMutation {
+	m := &RoleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRole,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRoleID sets the ID field of the mutation.
+func withRoleID(id int64) roleOption {
+	return func(m *RoleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Role
+		)
+		m.oldValue = func(ctx context.Context) (*Role, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Role.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRole sets the old Role of the mutation.
+func withRole(node *Role) roleOption {
+	return func(m *RoleMutation) {
+		m.oldValue = func(context.Context) (*Role, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RoleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RoleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Role entities.
+func (m *RoleMutation) SetID(id int64) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RoleMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RoleMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Role.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *RoleMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *RoleMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Role entity.
+// If the Role object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RoleMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *RoleMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *RoleMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *RoleMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the Role entity.
+// If the Role object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RoleMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *RoleMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RoleMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RoleMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Role entity.
+// If the Role object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RoleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RoleMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// AddAdminIDs adds the "admins" edge to the Admin entity by ids.
+func (m *RoleMutation) AddAdminIDs(ids ...uuid.UUID) {
+	if m.admins == nil {
+		m.admins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.admins[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAdmins clears the "admins" edge to the Admin entity.
+func (m *RoleMutation) ClearAdmins() {
+	m.clearedadmins = true
+}
+
+// AdminsCleared reports if the "admins" edge to the Admin entity was cleared.
+func (m *RoleMutation) AdminsCleared() bool {
+	return m.clearedadmins
+}
+
+// RemoveAdminIDs removes the "admins" edge to the Admin entity by IDs.
+func (m *RoleMutation) RemoveAdminIDs(ids ...uuid.UUID) {
+	if m.removedadmins == nil {
+		m.removedadmins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.admins, ids[i])
+		m.removedadmins[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAdmins returns the removed IDs of the "admins" edge to the Admin entity.
+func (m *RoleMutation) RemovedAdminsIDs() (ids []uuid.UUID) {
+	for id := range m.removedadmins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AdminsIDs returns the "admins" edge IDs in the mutation.
+func (m *RoleMutation) AdminsIDs() (ids []uuid.UUID) {
+	for id := range m.admins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAdmins resets all changes to the "admins" edge.
+func (m *RoleMutation) ResetAdmins() {
+	m.admins = nil
+	m.clearedadmins = false
+	m.removedadmins = nil
+}
+
+// AddAdminRoleIDs adds the "admin_roles" edge to the AdminRole entity by ids.
+func (m *RoleMutation) AddAdminRoleIDs(ids ...uuid.UUID) {
+	if m.admin_roles == nil {
+		m.admin_roles = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.admin_roles[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAdminRoles clears the "admin_roles" edge to the AdminRole entity.
+func (m *RoleMutation) ClearAdminRoles() {
+	m.clearedadmin_roles = true
+}
+
+// AdminRolesCleared reports if the "admin_roles" edge to the AdminRole entity was cleared.
+func (m *RoleMutation) AdminRolesCleared() bool {
+	return m.clearedadmin_roles
+}
+
+// RemoveAdminRoleIDs removes the "admin_roles" edge to the AdminRole entity by IDs.
+func (m *RoleMutation) RemoveAdminRoleIDs(ids ...uuid.UUID) {
+	if m.removedadmin_roles == nil {
+		m.removedadmin_roles = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.admin_roles, ids[i])
+		m.removedadmin_roles[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAdminRoles returns the removed IDs of the "admin_roles" edge to the AdminRole entity.
+func (m *RoleMutation) RemovedAdminRolesIDs() (ids []uuid.UUID) {
+	for id := range m.removedadmin_roles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AdminRolesIDs returns the "admin_roles" edge IDs in the mutation.
+func (m *RoleMutation) AdminRolesIDs() (ids []uuid.UUID) {
+	for id := range m.admin_roles {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAdminRoles resets all changes to the "admin_roles" edge.
+func (m *RoleMutation) ResetAdminRoles() {
+	m.admin_roles = nil
+	m.clearedadmin_roles = false
+	m.removedadmin_roles = nil
+}
+
+// Where appends a list predicates to the RoleMutation builder.
+func (m *RoleMutation) Where(ps ...predicate.Role) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RoleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RoleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Role, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RoleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RoleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Role).
+func (m *RoleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RoleMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.name != nil {
+		fields = append(fields, role.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, role.FieldDescription)
+	}
+	if m.created_at != nil {
+		fields = append(fields, role.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RoleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case role.FieldName:
+		return m.Name()
+	case role.FieldDescription:
+		return m.Description()
+	case role.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RoleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case role.FieldName:
+		return m.OldName(ctx)
+	case role.FieldDescription:
+		return m.OldDescription(ctx)
+	case role.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Role field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RoleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case role.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case role.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case role.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Role field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RoleMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RoleMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RoleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Role numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RoleMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RoleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RoleMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Role nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RoleMutation) ResetField(name string) error {
+	switch name {
+	case role.FieldName:
+		m.ResetName()
+		return nil
+	case role.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case role.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Role field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RoleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.admins != nil {
+		edges = append(edges, role.EdgeAdmins)
+	}
+	if m.admin_roles != nil {
+		edges = append(edges, role.EdgeAdminRoles)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RoleMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case role.EdgeAdmins:
+		ids := make([]ent.Value, 0, len(m.admins))
+		for id := range m.admins {
+			ids = append(ids, id)
+		}
+		return ids
+	case role.EdgeAdminRoles:
+		ids := make([]ent.Value, 0, len(m.admin_roles))
+		for id := range m.admin_roles {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RoleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.removedadmins != nil {
+		edges = append(edges, role.EdgeAdmins)
+	}
+	if m.removedadmin_roles != nil {
+		edges = append(edges, role.EdgeAdminRoles)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RoleMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case role.EdgeAdmins:
+		ids := make([]ent.Value, 0, len(m.removedadmins))
+		for id := range m.removedadmins {
+			ids = append(ids, id)
+		}
+		return ids
+	case role.EdgeAdminRoles:
+		ids := make([]ent.Value, 0, len(m.removedadmin_roles))
+		for id := range m.removedadmin_roles {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RoleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedadmins {
+		edges = append(edges, role.EdgeAdmins)
+	}
+	if m.clearedadmin_roles {
+		edges = append(edges, role.EdgeAdminRoles)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RoleMutation) EdgeCleared(name string) bool {
+	switch name {
+	case role.EdgeAdmins:
+		return m.clearedadmins
+	case role.EdgeAdminRoles:
+		return m.clearedadmin_roles
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RoleMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Role unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RoleMutation) ResetEdge(name string) error {
+	switch name {
+	case role.EdgeAdmins:
+		m.ResetAdmins()
+		return nil
+	case role.EdgeAdminRoles:
+		m.ResetAdminRoles()
+		return nil
+	}
+	return fmt.Errorf("unknown Role edge %s", name)
+}
+
 // SecurityScanningMutation represents an operation that mutates the SecurityScanning nodes in the graph.
 type SecurityScanningMutation struct {
 	config
@@ -17725,6 +19255,12 @@ type UserMutation struct {
 	security_scannings        map[uuid.UUID]struct{}
 	removedsecurity_scannings map[uuid.UUID]struct{}
 	clearedsecurity_scannings bool
+	groups                    map[uuid.UUID]struct{}
+	removedgroups             map[uuid.UUID]struct{}
+	clearedgroups             bool
+	user_groups               map[uuid.UUID]struct{}
+	removeduser_groups        map[uuid.UUID]struct{}
+	cleareduser_groups        bool
 	done                      bool
 	oldValue                  func(context.Context) (*User, error)
 	predicates                []predicate.User
@@ -18655,6 +20191,114 @@ func (m *UserMutation) ResetSecurityScannings() {
 	m.removedsecurity_scannings = nil
 }
 
+// AddGroupIDs adds the "groups" edge to the UserGroup entity by ids.
+func (m *UserMutation) AddGroupIDs(ids ...uuid.UUID) {
+	if m.groups == nil {
+		m.groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.groups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGroups clears the "groups" edge to the UserGroup entity.
+func (m *UserMutation) ClearGroups() {
+	m.clearedgroups = true
+}
+
+// GroupsCleared reports if the "groups" edge to the UserGroup entity was cleared.
+func (m *UserMutation) GroupsCleared() bool {
+	return m.clearedgroups
+}
+
+// RemoveGroupIDs removes the "groups" edge to the UserGroup entity by IDs.
+func (m *UserMutation) RemoveGroupIDs(ids ...uuid.UUID) {
+	if m.removedgroups == nil {
+		m.removedgroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.groups, ids[i])
+		m.removedgroups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGroups returns the removed IDs of the "groups" edge to the UserGroup entity.
+func (m *UserMutation) RemovedGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removedgroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GroupsIDs returns the "groups" edge IDs in the mutation.
+func (m *UserMutation) GroupsIDs() (ids []uuid.UUID) {
+	for id := range m.groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGroups resets all changes to the "groups" edge.
+func (m *UserMutation) ResetGroups() {
+	m.groups = nil
+	m.clearedgroups = false
+	m.removedgroups = nil
+}
+
+// AddUserGroupIDs adds the "user_groups" edge to the UserGroupUser entity by ids.
+func (m *UserMutation) AddUserGroupIDs(ids ...uuid.UUID) {
+	if m.user_groups == nil {
+		m.user_groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.user_groups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUserGroups clears the "user_groups" edge to the UserGroupUser entity.
+func (m *UserMutation) ClearUserGroups() {
+	m.cleareduser_groups = true
+}
+
+// UserGroupsCleared reports if the "user_groups" edge to the UserGroupUser entity was cleared.
+func (m *UserMutation) UserGroupsCleared() bool {
+	return m.cleareduser_groups
+}
+
+// RemoveUserGroupIDs removes the "user_groups" edge to the UserGroupUser entity by IDs.
+func (m *UserMutation) RemoveUserGroupIDs(ids ...uuid.UUID) {
+	if m.removeduser_groups == nil {
+		m.removeduser_groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.user_groups, ids[i])
+		m.removeduser_groups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUserGroups returns the removed IDs of the "user_groups" edge to the UserGroupUser entity.
+func (m *UserMutation) RemovedUserGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removeduser_groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UserGroupsIDs returns the "user_groups" edge IDs in the mutation.
+func (m *UserMutation) UserGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.user_groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUserGroups resets all changes to the "user_groups" edge.
+func (m *UserMutation) ResetUserGroups() {
+	m.user_groups = nil
+	m.cleareduser_groups = false
+	m.removeduser_groups = nil
+}
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -18957,7 +20601,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 8)
+	edges := make([]string, 0, 10)
 	if m.login_histories != nil {
 		edges = append(edges, user.EdgeLoginHistories)
 	}
@@ -18981,6 +20625,12 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.security_scannings != nil {
 		edges = append(edges, user.EdgeSecurityScannings)
+	}
+	if m.groups != nil {
+		edges = append(edges, user.EdgeGroups)
+	}
+	if m.user_groups != nil {
+		edges = append(edges, user.EdgeUserGroups)
 	}
 	return edges
 }
@@ -19037,13 +20687,25 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.groups))
+		for id := range m.groups {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeUserGroups:
+		ids := make([]ent.Value, 0, len(m.user_groups))
+		for id := range m.user_groups {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 8)
+	edges := make([]string, 0, 10)
 	if m.removedlogin_histories != nil {
 		edges = append(edges, user.EdgeLoginHistories)
 	}
@@ -19067,6 +20729,12 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedsecurity_scannings != nil {
 		edges = append(edges, user.EdgeSecurityScannings)
+	}
+	if m.removedgroups != nil {
+		edges = append(edges, user.EdgeGroups)
+	}
+	if m.removeduser_groups != nil {
+		edges = append(edges, user.EdgeUserGroups)
 	}
 	return edges
 }
@@ -19123,13 +20791,25 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.removedgroups))
+		for id := range m.removedgroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeUserGroups:
+		ids := make([]ent.Value, 0, len(m.removeduser_groups))
+		for id := range m.removeduser_groups {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 8)
+	edges := make([]string, 0, 10)
 	if m.clearedlogin_histories {
 		edges = append(edges, user.EdgeLoginHistories)
 	}
@@ -19154,6 +20834,12 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedsecurity_scannings {
 		edges = append(edges, user.EdgeSecurityScannings)
 	}
+	if m.clearedgroups {
+		edges = append(edges, user.EdgeGroups)
+	}
+	if m.cleareduser_groups {
+		edges = append(edges, user.EdgeUserGroups)
+	}
 	return edges
 }
 
@@ -19177,6 +20863,10 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedapi_keys
 	case user.EdgeSecurityScannings:
 		return m.clearedsecurity_scannings
+	case user.EdgeGroups:
+		return m.clearedgroups
+	case user.EdgeUserGroups:
+		return m.cleareduser_groups
 	}
 	return false
 }
@@ -19217,8 +20907,1827 @@ func (m *UserMutation) ResetEdge(name string) error {
 	case user.EdgeSecurityScannings:
 		m.ResetSecurityScannings()
 		return nil
+	case user.EdgeGroups:
+		m.ResetGroups()
+		return nil
+	case user.EdgeUserGroups:
+		m.ResetUserGroups()
+		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)
+}
+
+// UserGroupMutation represents an operation that mutates the UserGroup nodes in the graph.
+type UserGroupMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *uuid.UUID
+	name                     *string
+	created_at               *time.Time
+	clearedFields            map[string]struct{}
+	owner                    *uuid.UUID
+	clearedowner             bool
+	users                    map[uuid.UUID]struct{}
+	removedusers             map[uuid.UUID]struct{}
+	clearedusers             bool
+	admins                   map[uuid.UUID]struct{}
+	removedadmins            map[uuid.UUID]struct{}
+	clearedadmins            bool
+	user_groups              map[uuid.UUID]struct{}
+	removeduser_groups       map[uuid.UUID]struct{}
+	cleareduser_groups       bool
+	user_group_admins        map[uuid.UUID]struct{}
+	removeduser_group_admins map[uuid.UUID]struct{}
+	cleareduser_group_admins bool
+	done                     bool
+	oldValue                 func(context.Context) (*UserGroup, error)
+	predicates               []predicate.UserGroup
+}
+
+var _ ent.Mutation = (*UserGroupMutation)(nil)
+
+// usergroupOption allows management of the mutation configuration using functional options.
+type usergroupOption func(*UserGroupMutation)
+
+// newUserGroupMutation creates new mutation for the UserGroup entity.
+func newUserGroupMutation(c config, op Op, opts ...usergroupOption) *UserGroupMutation {
+	m := &UserGroupMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUserGroup,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withUserGroupID sets the ID field of the mutation.
+func withUserGroupID(id uuid.UUID) usergroupOption {
+	return func(m *UserGroupMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UserGroup
+		)
+		m.oldValue = func(ctx context.Context) (*UserGroup, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().UserGroup.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withUserGroup sets the old UserGroup of the mutation.
+func withUserGroup(node *UserGroup) usergroupOption {
+	return func(m *UserGroupMutation) {
+		m.oldValue = func(context.Context) (*UserGroup, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UserGroupMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UserGroupMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of UserGroup entities.
+func (m *UserGroupMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UserGroupMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UserGroupMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UserGroup.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAdminID sets the "admin_id" field.
+func (m *UserGroupMutation) SetAdminID(u uuid.UUID) {
+	m.owner = &u
+}
+
+// AdminID returns the value of the "admin_id" field in the mutation.
+func (m *UserGroupMutation) AdminID() (r uuid.UUID, exists bool) {
+	v := m.owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAdminID returns the old "admin_id" field's value of the UserGroup entity.
+// If the UserGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupMutation) OldAdminID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAdminID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAdminID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAdminID: %w", err)
+	}
+	return oldValue.AdminID, nil
+}
+
+// ResetAdminID resets all changes to the "admin_id" field.
+func (m *UserGroupMutation) ResetAdminID() {
+	m.owner = nil
+}
+
+// SetName sets the "name" field.
+func (m *UserGroupMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *UserGroupMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the UserGroup entity.
+// If the UserGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *UserGroupMutation) ResetName() {
+	m.name = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UserGroupMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UserGroupMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the UserGroup entity.
+// If the UserGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UserGroupMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetOwnerID sets the "owner" edge to the Admin entity by id.
+func (m *UserGroupMutation) SetOwnerID(id uuid.UUID) {
+	m.owner = &id
+}
+
+// ClearOwner clears the "owner" edge to the Admin entity.
+func (m *UserGroupMutation) ClearOwner() {
+	m.clearedowner = true
+	m.clearedFields[usergroup.FieldAdminID] = struct{}{}
+}
+
+// OwnerCleared reports if the "owner" edge to the Admin entity was cleared.
+func (m *UserGroupMutation) OwnerCleared() bool {
+	return m.clearedowner
+}
+
+// OwnerID returns the "owner" edge ID in the mutation.
+func (m *UserGroupMutation) OwnerID() (id uuid.UUID, exists bool) {
+	if m.owner != nil {
+		return *m.owner, true
+	}
+	return
+}
+
+// OwnerIDs returns the "owner" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OwnerID instead. It exists only for internal usage by the builders.
+func (m *UserGroupMutation) OwnerIDs() (ids []uuid.UUID) {
+	if id := m.owner; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOwner resets all changes to the "owner" edge.
+func (m *UserGroupMutation) ResetOwner() {
+	m.owner = nil
+	m.clearedowner = false
+}
+
+// AddUserIDs adds the "users" edge to the User entity by ids.
+func (m *UserGroupMutation) AddUserIDs(ids ...uuid.UUID) {
+	if m.users == nil {
+		m.users = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.users[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUsers clears the "users" edge to the User entity.
+func (m *UserGroupMutation) ClearUsers() {
+	m.clearedusers = true
+}
+
+// UsersCleared reports if the "users" edge to the User entity was cleared.
+func (m *UserGroupMutation) UsersCleared() bool {
+	return m.clearedusers
+}
+
+// RemoveUserIDs removes the "users" edge to the User entity by IDs.
+func (m *UserGroupMutation) RemoveUserIDs(ids ...uuid.UUID) {
+	if m.removedusers == nil {
+		m.removedusers = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.users, ids[i])
+		m.removedusers[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUsers returns the removed IDs of the "users" edge to the User entity.
+func (m *UserGroupMutation) RemovedUsersIDs() (ids []uuid.UUID) {
+	for id := range m.removedusers {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UsersIDs returns the "users" edge IDs in the mutation.
+func (m *UserGroupMutation) UsersIDs() (ids []uuid.UUID) {
+	for id := range m.users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUsers resets all changes to the "users" edge.
+func (m *UserGroupMutation) ResetUsers() {
+	m.users = nil
+	m.clearedusers = false
+	m.removedusers = nil
+}
+
+// AddAdminIDs adds the "admins" edge to the Admin entity by ids.
+func (m *UserGroupMutation) AddAdminIDs(ids ...uuid.UUID) {
+	if m.admins == nil {
+		m.admins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.admins[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAdmins clears the "admins" edge to the Admin entity.
+func (m *UserGroupMutation) ClearAdmins() {
+	m.clearedadmins = true
+}
+
+// AdminsCleared reports if the "admins" edge to the Admin entity was cleared.
+func (m *UserGroupMutation) AdminsCleared() bool {
+	return m.clearedadmins
+}
+
+// RemoveAdminIDs removes the "admins" edge to the Admin entity by IDs.
+func (m *UserGroupMutation) RemoveAdminIDs(ids ...uuid.UUID) {
+	if m.removedadmins == nil {
+		m.removedadmins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.admins, ids[i])
+		m.removedadmins[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAdmins returns the removed IDs of the "admins" edge to the Admin entity.
+func (m *UserGroupMutation) RemovedAdminsIDs() (ids []uuid.UUID) {
+	for id := range m.removedadmins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// AdminsIDs returns the "admins" edge IDs in the mutation.
+func (m *UserGroupMutation) AdminsIDs() (ids []uuid.UUID) {
+	for id := range m.admins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAdmins resets all changes to the "admins" edge.
+func (m *UserGroupMutation) ResetAdmins() {
+	m.admins = nil
+	m.clearedadmins = false
+	m.removedadmins = nil
+}
+
+// AddUserGroupIDs adds the "user_groups" edge to the UserGroupUser entity by ids.
+func (m *UserGroupMutation) AddUserGroupIDs(ids ...uuid.UUID) {
+	if m.user_groups == nil {
+		m.user_groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.user_groups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUserGroups clears the "user_groups" edge to the UserGroupUser entity.
+func (m *UserGroupMutation) ClearUserGroups() {
+	m.cleareduser_groups = true
+}
+
+// UserGroupsCleared reports if the "user_groups" edge to the UserGroupUser entity was cleared.
+func (m *UserGroupMutation) UserGroupsCleared() bool {
+	return m.cleareduser_groups
+}
+
+// RemoveUserGroupIDs removes the "user_groups" edge to the UserGroupUser entity by IDs.
+func (m *UserGroupMutation) RemoveUserGroupIDs(ids ...uuid.UUID) {
+	if m.removeduser_groups == nil {
+		m.removeduser_groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.user_groups, ids[i])
+		m.removeduser_groups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUserGroups returns the removed IDs of the "user_groups" edge to the UserGroupUser entity.
+func (m *UserGroupMutation) RemovedUserGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removeduser_groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UserGroupsIDs returns the "user_groups" edge IDs in the mutation.
+func (m *UserGroupMutation) UserGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.user_groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUserGroups resets all changes to the "user_groups" edge.
+func (m *UserGroupMutation) ResetUserGroups() {
+	m.user_groups = nil
+	m.cleareduser_groups = false
+	m.removeduser_groups = nil
+}
+
+// AddUserGroupAdminIDs adds the "user_group_admins" edge to the UserGroupAdmin entity by ids.
+func (m *UserGroupMutation) AddUserGroupAdminIDs(ids ...uuid.UUID) {
+	if m.user_group_admins == nil {
+		m.user_group_admins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.user_group_admins[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUserGroupAdmins clears the "user_group_admins" edge to the UserGroupAdmin entity.
+func (m *UserGroupMutation) ClearUserGroupAdmins() {
+	m.cleareduser_group_admins = true
+}
+
+// UserGroupAdminsCleared reports if the "user_group_admins" edge to the UserGroupAdmin entity was cleared.
+func (m *UserGroupMutation) UserGroupAdminsCleared() bool {
+	return m.cleareduser_group_admins
+}
+
+// RemoveUserGroupAdminIDs removes the "user_group_admins" edge to the UserGroupAdmin entity by IDs.
+func (m *UserGroupMutation) RemoveUserGroupAdminIDs(ids ...uuid.UUID) {
+	if m.removeduser_group_admins == nil {
+		m.removeduser_group_admins = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.user_group_admins, ids[i])
+		m.removeduser_group_admins[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUserGroupAdmins returns the removed IDs of the "user_group_admins" edge to the UserGroupAdmin entity.
+func (m *UserGroupMutation) RemovedUserGroupAdminsIDs() (ids []uuid.UUID) {
+	for id := range m.removeduser_group_admins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UserGroupAdminsIDs returns the "user_group_admins" edge IDs in the mutation.
+func (m *UserGroupMutation) UserGroupAdminsIDs() (ids []uuid.UUID) {
+	for id := range m.user_group_admins {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUserGroupAdmins resets all changes to the "user_group_admins" edge.
+func (m *UserGroupMutation) ResetUserGroupAdmins() {
+	m.user_group_admins = nil
+	m.cleareduser_group_admins = false
+	m.removeduser_group_admins = nil
+}
+
+// Where appends a list predicates to the UserGroupMutation builder.
+func (m *UserGroupMutation) Where(ps ...predicate.UserGroup) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the UserGroupMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UserGroupMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UserGroup, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *UserGroupMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *UserGroupMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (UserGroup).
+func (m *UserGroupMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UserGroupMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.owner != nil {
+		fields = append(fields, usergroup.FieldAdminID)
+	}
+	if m.name != nil {
+		fields = append(fields, usergroup.FieldName)
+	}
+	if m.created_at != nil {
+		fields = append(fields, usergroup.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UserGroupMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case usergroup.FieldAdminID:
+		return m.AdminID()
+	case usergroup.FieldName:
+		return m.Name()
+	case usergroup.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UserGroupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case usergroup.FieldAdminID:
+		return m.OldAdminID(ctx)
+	case usergroup.FieldName:
+		return m.OldName(ctx)
+	case usergroup.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown UserGroup field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserGroupMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case usergroup.FieldAdminID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAdminID(v)
+		return nil
+	case usergroup.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case usergroup.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroup field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UserGroupMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UserGroupMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserGroupMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown UserGroup numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UserGroupMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UserGroupMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UserGroupMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown UserGroup nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UserGroupMutation) ResetField(name string) error {
+	switch name {
+	case usergroup.FieldAdminID:
+		m.ResetAdminID()
+		return nil
+	case usergroup.FieldName:
+		m.ResetName()
+		return nil
+	case usergroup.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroup field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UserGroupMutation) AddedEdges() []string {
+	edges := make([]string, 0, 5)
+	if m.owner != nil {
+		edges = append(edges, usergroup.EdgeOwner)
+	}
+	if m.users != nil {
+		edges = append(edges, usergroup.EdgeUsers)
+	}
+	if m.admins != nil {
+		edges = append(edges, usergroup.EdgeAdmins)
+	}
+	if m.user_groups != nil {
+		edges = append(edges, usergroup.EdgeUserGroups)
+	}
+	if m.user_group_admins != nil {
+		edges = append(edges, usergroup.EdgeUserGroupAdmins)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UserGroupMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case usergroup.EdgeOwner:
+		if id := m.owner; id != nil {
+			return []ent.Value{*id}
+		}
+	case usergroup.EdgeUsers:
+		ids := make([]ent.Value, 0, len(m.users))
+		for id := range m.users {
+			ids = append(ids, id)
+		}
+		return ids
+	case usergroup.EdgeAdmins:
+		ids := make([]ent.Value, 0, len(m.admins))
+		for id := range m.admins {
+			ids = append(ids, id)
+		}
+		return ids
+	case usergroup.EdgeUserGroups:
+		ids := make([]ent.Value, 0, len(m.user_groups))
+		for id := range m.user_groups {
+			ids = append(ids, id)
+		}
+		return ids
+	case usergroup.EdgeUserGroupAdmins:
+		ids := make([]ent.Value, 0, len(m.user_group_admins))
+		for id := range m.user_group_admins {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UserGroupMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 5)
+	if m.removedusers != nil {
+		edges = append(edges, usergroup.EdgeUsers)
+	}
+	if m.removedadmins != nil {
+		edges = append(edges, usergroup.EdgeAdmins)
+	}
+	if m.removeduser_groups != nil {
+		edges = append(edges, usergroup.EdgeUserGroups)
+	}
+	if m.removeduser_group_admins != nil {
+		edges = append(edges, usergroup.EdgeUserGroupAdmins)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UserGroupMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case usergroup.EdgeUsers:
+		ids := make([]ent.Value, 0, len(m.removedusers))
+		for id := range m.removedusers {
+			ids = append(ids, id)
+		}
+		return ids
+	case usergroup.EdgeAdmins:
+		ids := make([]ent.Value, 0, len(m.removedadmins))
+		for id := range m.removedadmins {
+			ids = append(ids, id)
+		}
+		return ids
+	case usergroup.EdgeUserGroups:
+		ids := make([]ent.Value, 0, len(m.removeduser_groups))
+		for id := range m.removeduser_groups {
+			ids = append(ids, id)
+		}
+		return ids
+	case usergroup.EdgeUserGroupAdmins:
+		ids := make([]ent.Value, 0, len(m.removeduser_group_admins))
+		for id := range m.removeduser_group_admins {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UserGroupMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 5)
+	if m.clearedowner {
+		edges = append(edges, usergroup.EdgeOwner)
+	}
+	if m.clearedusers {
+		edges = append(edges, usergroup.EdgeUsers)
+	}
+	if m.clearedadmins {
+		edges = append(edges, usergroup.EdgeAdmins)
+	}
+	if m.cleareduser_groups {
+		edges = append(edges, usergroup.EdgeUserGroups)
+	}
+	if m.cleareduser_group_admins {
+		edges = append(edges, usergroup.EdgeUserGroupAdmins)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UserGroupMutation) EdgeCleared(name string) bool {
+	switch name {
+	case usergroup.EdgeOwner:
+		return m.clearedowner
+	case usergroup.EdgeUsers:
+		return m.clearedusers
+	case usergroup.EdgeAdmins:
+		return m.clearedadmins
+	case usergroup.EdgeUserGroups:
+		return m.cleareduser_groups
+	case usergroup.EdgeUserGroupAdmins:
+		return m.cleareduser_group_admins
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UserGroupMutation) ClearEdge(name string) error {
+	switch name {
+	case usergroup.EdgeOwner:
+		m.ClearOwner()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroup unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UserGroupMutation) ResetEdge(name string) error {
+	switch name {
+	case usergroup.EdgeOwner:
+		m.ResetOwner()
+		return nil
+	case usergroup.EdgeUsers:
+		m.ResetUsers()
+		return nil
+	case usergroup.EdgeAdmins:
+		m.ResetAdmins()
+		return nil
+	case usergroup.EdgeUserGroups:
+		m.ResetUserGroups()
+		return nil
+	case usergroup.EdgeUserGroupAdmins:
+		m.ResetUserGroupAdmins()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroup edge %s", name)
+}
+
+// UserGroupAdminMutation represents an operation that mutates the UserGroupAdmin nodes in the graph.
+type UserGroupAdminMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	clearedFields     map[string]struct{}
+	user_group        *uuid.UUID
+	cleareduser_group bool
+	admin             *uuid.UUID
+	clearedadmin      bool
+	done              bool
+	oldValue          func(context.Context) (*UserGroupAdmin, error)
+	predicates        []predicate.UserGroupAdmin
+}
+
+var _ ent.Mutation = (*UserGroupAdminMutation)(nil)
+
+// usergroupadminOption allows management of the mutation configuration using functional options.
+type usergroupadminOption func(*UserGroupAdminMutation)
+
+// newUserGroupAdminMutation creates new mutation for the UserGroupAdmin entity.
+func newUserGroupAdminMutation(c config, op Op, opts ...usergroupadminOption) *UserGroupAdminMutation {
+	m := &UserGroupAdminMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUserGroupAdmin,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withUserGroupAdminID sets the ID field of the mutation.
+func withUserGroupAdminID(id uuid.UUID) usergroupadminOption {
+	return func(m *UserGroupAdminMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UserGroupAdmin
+		)
+		m.oldValue = func(ctx context.Context) (*UserGroupAdmin, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().UserGroupAdmin.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withUserGroupAdmin sets the old UserGroupAdmin of the mutation.
+func withUserGroupAdmin(node *UserGroupAdmin) usergroupadminOption {
+	return func(m *UserGroupAdminMutation) {
+		m.oldValue = func(context.Context) (*UserGroupAdmin, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UserGroupAdminMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UserGroupAdminMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of UserGroupAdmin entities.
+func (m *UserGroupAdminMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UserGroupAdminMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UserGroupAdminMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UserGroupAdmin.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUserGroupID sets the "user_group_id" field.
+func (m *UserGroupAdminMutation) SetUserGroupID(u uuid.UUID) {
+	m.user_group = &u
+}
+
+// UserGroupID returns the value of the "user_group_id" field in the mutation.
+func (m *UserGroupAdminMutation) UserGroupID() (r uuid.UUID, exists bool) {
+	v := m.user_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserGroupID returns the old "user_group_id" field's value of the UserGroupAdmin entity.
+// If the UserGroupAdmin object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupAdminMutation) OldUserGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserGroupID: %w", err)
+	}
+	return oldValue.UserGroupID, nil
+}
+
+// ResetUserGroupID resets all changes to the "user_group_id" field.
+func (m *UserGroupAdminMutation) ResetUserGroupID() {
+	m.user_group = nil
+}
+
+// SetAdminID sets the "admin_id" field.
+func (m *UserGroupAdminMutation) SetAdminID(u uuid.UUID) {
+	m.admin = &u
+}
+
+// AdminID returns the value of the "admin_id" field in the mutation.
+func (m *UserGroupAdminMutation) AdminID() (r uuid.UUID, exists bool) {
+	v := m.admin
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAdminID returns the old "admin_id" field's value of the UserGroupAdmin entity.
+// If the UserGroupAdmin object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupAdminMutation) OldAdminID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAdminID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAdminID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAdminID: %w", err)
+	}
+	return oldValue.AdminID, nil
+}
+
+// ResetAdminID resets all changes to the "admin_id" field.
+func (m *UserGroupAdminMutation) ResetAdminID() {
+	m.admin = nil
+}
+
+// ClearUserGroup clears the "user_group" edge to the UserGroup entity.
+func (m *UserGroupAdminMutation) ClearUserGroup() {
+	m.cleareduser_group = true
+	m.clearedFields[usergroupadmin.FieldUserGroupID] = struct{}{}
+}
+
+// UserGroupCleared reports if the "user_group" edge to the UserGroup entity was cleared.
+func (m *UserGroupAdminMutation) UserGroupCleared() bool {
+	return m.cleareduser_group
+}
+
+// UserGroupIDs returns the "user_group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserGroupID instead. It exists only for internal usage by the builders.
+func (m *UserGroupAdminMutation) UserGroupIDs() (ids []uuid.UUID) {
+	if id := m.user_group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUserGroup resets all changes to the "user_group" edge.
+func (m *UserGroupAdminMutation) ResetUserGroup() {
+	m.user_group = nil
+	m.cleareduser_group = false
+}
+
+// ClearAdmin clears the "admin" edge to the Admin entity.
+func (m *UserGroupAdminMutation) ClearAdmin() {
+	m.clearedadmin = true
+	m.clearedFields[usergroupadmin.FieldAdminID] = struct{}{}
+}
+
+// AdminCleared reports if the "admin" edge to the Admin entity was cleared.
+func (m *UserGroupAdminMutation) AdminCleared() bool {
+	return m.clearedadmin
+}
+
+// AdminIDs returns the "admin" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// AdminID instead. It exists only for internal usage by the builders.
+func (m *UserGroupAdminMutation) AdminIDs() (ids []uuid.UUID) {
+	if id := m.admin; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAdmin resets all changes to the "admin" edge.
+func (m *UserGroupAdminMutation) ResetAdmin() {
+	m.admin = nil
+	m.clearedadmin = false
+}
+
+// Where appends a list predicates to the UserGroupAdminMutation builder.
+func (m *UserGroupAdminMutation) Where(ps ...predicate.UserGroupAdmin) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the UserGroupAdminMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UserGroupAdminMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UserGroupAdmin, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *UserGroupAdminMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *UserGroupAdminMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (UserGroupAdmin).
+func (m *UserGroupAdminMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UserGroupAdminMutation) Fields() []string {
+	fields := make([]string, 0, 2)
+	if m.user_group != nil {
+		fields = append(fields, usergroupadmin.FieldUserGroupID)
+	}
+	if m.admin != nil {
+		fields = append(fields, usergroupadmin.FieldAdminID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UserGroupAdminMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case usergroupadmin.FieldUserGroupID:
+		return m.UserGroupID()
+	case usergroupadmin.FieldAdminID:
+		return m.AdminID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UserGroupAdminMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case usergroupadmin.FieldUserGroupID:
+		return m.OldUserGroupID(ctx)
+	case usergroupadmin.FieldAdminID:
+		return m.OldAdminID(ctx)
+	}
+	return nil, fmt.Errorf("unknown UserGroupAdmin field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserGroupAdminMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case usergroupadmin.FieldUserGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserGroupID(v)
+		return nil
+	case usergroupadmin.FieldAdminID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAdminID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupAdmin field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UserGroupAdminMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UserGroupAdminMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserGroupAdminMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown UserGroupAdmin numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UserGroupAdminMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UserGroupAdminMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UserGroupAdminMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown UserGroupAdmin nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UserGroupAdminMutation) ResetField(name string) error {
+	switch name {
+	case usergroupadmin.FieldUserGroupID:
+		m.ResetUserGroupID()
+		return nil
+	case usergroupadmin.FieldAdminID:
+		m.ResetAdminID()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupAdmin field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UserGroupAdminMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.user_group != nil {
+		edges = append(edges, usergroupadmin.EdgeUserGroup)
+	}
+	if m.admin != nil {
+		edges = append(edges, usergroupadmin.EdgeAdmin)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UserGroupAdminMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case usergroupadmin.EdgeUserGroup:
+		if id := m.user_group; id != nil {
+			return []ent.Value{*id}
+		}
+	case usergroupadmin.EdgeAdmin:
+		if id := m.admin; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UserGroupAdminMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UserGroupAdminMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UserGroupAdminMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.cleareduser_group {
+		edges = append(edges, usergroupadmin.EdgeUserGroup)
+	}
+	if m.clearedadmin {
+		edges = append(edges, usergroupadmin.EdgeAdmin)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UserGroupAdminMutation) EdgeCleared(name string) bool {
+	switch name {
+	case usergroupadmin.EdgeUserGroup:
+		return m.cleareduser_group
+	case usergroupadmin.EdgeAdmin:
+		return m.clearedadmin
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UserGroupAdminMutation) ClearEdge(name string) error {
+	switch name {
+	case usergroupadmin.EdgeUserGroup:
+		m.ClearUserGroup()
+		return nil
+	case usergroupadmin.EdgeAdmin:
+		m.ClearAdmin()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupAdmin unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UserGroupAdminMutation) ResetEdge(name string) error {
+	switch name {
+	case usergroupadmin.EdgeUserGroup:
+		m.ResetUserGroup()
+		return nil
+	case usergroupadmin.EdgeAdmin:
+		m.ResetAdmin()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupAdmin edge %s", name)
+}
+
+// UserGroupUserMutation represents an operation that mutates the UserGroupUser nodes in the graph.
+type UserGroupUserMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	clearedFields     map[string]struct{}
+	user_group        *uuid.UUID
+	cleareduser_group bool
+	user              *uuid.UUID
+	cleareduser       bool
+	done              bool
+	oldValue          func(context.Context) (*UserGroupUser, error)
+	predicates        []predicate.UserGroupUser
+}
+
+var _ ent.Mutation = (*UserGroupUserMutation)(nil)
+
+// usergroupuserOption allows management of the mutation configuration using functional options.
+type usergroupuserOption func(*UserGroupUserMutation)
+
+// newUserGroupUserMutation creates new mutation for the UserGroupUser entity.
+func newUserGroupUserMutation(c config, op Op, opts ...usergroupuserOption) *UserGroupUserMutation {
+	m := &UserGroupUserMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUserGroupUser,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withUserGroupUserID sets the ID field of the mutation.
+func withUserGroupUserID(id uuid.UUID) usergroupuserOption {
+	return func(m *UserGroupUserMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UserGroupUser
+		)
+		m.oldValue = func(ctx context.Context) (*UserGroupUser, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().UserGroupUser.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withUserGroupUser sets the old UserGroupUser of the mutation.
+func withUserGroupUser(node *UserGroupUser) usergroupuserOption {
+	return func(m *UserGroupUserMutation) {
+		m.oldValue = func(context.Context) (*UserGroupUser, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UserGroupUserMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UserGroupUserMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of UserGroupUser entities.
+func (m *UserGroupUserMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UserGroupUserMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UserGroupUserMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UserGroupUser.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUserGroupID sets the "user_group_id" field.
+func (m *UserGroupUserMutation) SetUserGroupID(u uuid.UUID) {
+	m.user_group = &u
+}
+
+// UserGroupID returns the value of the "user_group_id" field in the mutation.
+func (m *UserGroupUserMutation) UserGroupID() (r uuid.UUID, exists bool) {
+	v := m.user_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserGroupID returns the old "user_group_id" field's value of the UserGroupUser entity.
+// If the UserGroupUser object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupUserMutation) OldUserGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserGroupID: %w", err)
+	}
+	return oldValue.UserGroupID, nil
+}
+
+// ResetUserGroupID resets all changes to the "user_group_id" field.
+func (m *UserGroupUserMutation) ResetUserGroupID() {
+	m.user_group = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *UserGroupUserMutation) SetUserID(u uuid.UUID) {
+	m.user = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *UserGroupUserMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the UserGroupUser entity.
+// If the UserGroupUser object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserGroupUserMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *UserGroupUserMutation) ResetUserID() {
+	m.user = nil
+}
+
+// ClearUserGroup clears the "user_group" edge to the UserGroup entity.
+func (m *UserGroupUserMutation) ClearUserGroup() {
+	m.cleareduser_group = true
+	m.clearedFields[usergroupuser.FieldUserGroupID] = struct{}{}
+}
+
+// UserGroupCleared reports if the "user_group" edge to the UserGroup entity was cleared.
+func (m *UserGroupUserMutation) UserGroupCleared() bool {
+	return m.cleareduser_group
+}
+
+// UserGroupIDs returns the "user_group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserGroupID instead. It exists only for internal usage by the builders.
+func (m *UserGroupUserMutation) UserGroupIDs() (ids []uuid.UUID) {
+	if id := m.user_group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUserGroup resets all changes to the "user_group" edge.
+func (m *UserGroupUserMutation) ResetUserGroup() {
+	m.user_group = nil
+	m.cleareduser_group = false
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *UserGroupUserMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[usergroupuser.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *UserGroupUserMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *UserGroupUserMutation) UserIDs() (ids []uuid.UUID) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *UserGroupUserMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the UserGroupUserMutation builder.
+func (m *UserGroupUserMutation) Where(ps ...predicate.UserGroupUser) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the UserGroupUserMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UserGroupUserMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UserGroupUser, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *UserGroupUserMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *UserGroupUserMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (UserGroupUser).
+func (m *UserGroupUserMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UserGroupUserMutation) Fields() []string {
+	fields := make([]string, 0, 2)
+	if m.user_group != nil {
+		fields = append(fields, usergroupuser.FieldUserGroupID)
+	}
+	if m.user != nil {
+		fields = append(fields, usergroupuser.FieldUserID)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UserGroupUserMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case usergroupuser.FieldUserGroupID:
+		return m.UserGroupID()
+	case usergroupuser.FieldUserID:
+		return m.UserID()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UserGroupUserMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case usergroupuser.FieldUserGroupID:
+		return m.OldUserGroupID(ctx)
+	case usergroupuser.FieldUserID:
+		return m.OldUserID(ctx)
+	}
+	return nil, fmt.Errorf("unknown UserGroupUser field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserGroupUserMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case usergroupuser.FieldUserGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserGroupID(v)
+		return nil
+	case usergroupuser.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupUser field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UserGroupUserMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UserGroupUserMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserGroupUserMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown UserGroupUser numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UserGroupUserMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UserGroupUserMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UserGroupUserMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown UserGroupUser nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UserGroupUserMutation) ResetField(name string) error {
+	switch name {
+	case usergroupuser.FieldUserGroupID:
+		m.ResetUserGroupID()
+		return nil
+	case usergroupuser.FieldUserID:
+		m.ResetUserID()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupUser field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UserGroupUserMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.user_group != nil {
+		edges = append(edges, usergroupuser.EdgeUserGroup)
+	}
+	if m.user != nil {
+		edges = append(edges, usergroupuser.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UserGroupUserMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case usergroupuser.EdgeUserGroup:
+		if id := m.user_group; id != nil {
+			return []ent.Value{*id}
+		}
+	case usergroupuser.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UserGroupUserMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UserGroupUserMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UserGroupUserMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.cleareduser_group {
+		edges = append(edges, usergroupuser.EdgeUserGroup)
+	}
+	if m.cleareduser {
+		edges = append(edges, usergroupuser.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UserGroupUserMutation) EdgeCleared(name string) bool {
+	switch name {
+	case usergroupuser.EdgeUserGroup:
+		return m.cleareduser_group
+	case usergroupuser.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UserGroupUserMutation) ClearEdge(name string) error {
+	switch name {
+	case usergroupuser.EdgeUserGroup:
+		m.ClearUserGroup()
+		return nil
+	case usergroupuser.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupUser unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UserGroupUserMutation) ResetEdge(name string) error {
+	switch name {
+	case usergroupuser.EdgeUserGroup:
+		m.ResetUserGroup()
+		return nil
+	case usergroupuser.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown UserGroupUser edge %s", name)
 }
 
 // UserIdentityMutation represents an operation that mutates the UserIdentity nodes in the graph.

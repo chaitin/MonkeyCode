@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/report"
 	"github.com/chaitin/MonkeyCode/backend/pkg/session"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
+	"github.com/chaitin/MonkeyCode/backend/pkg/version"
 )
 
 var Provider = wire.NewSet(
@@ -26,6 +27,7 @@ var Provider = wire.NewSet(
 	session.NewSession,
 	ipdb.NewIPDB,
 	report.NewReport,
+	version.NewVersionInfo,
 )
 
 func NewWeb(cfg *config.Config) *web.Web {

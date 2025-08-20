@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/GoYoko/web"
+	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -34,6 +35,9 @@ type UserUsecase interface {
 	ExportCompletionData(ctx context.Context) (*ExportCompletionDataResp, error)
 	GetUserByApiKey(ctx context.Context, apiKey string) (*db.User, error)
 	GetUserCount(ctx context.Context) (int64, error)
+	ListRole(ctx context.Context) ([]*Role, error)
+	GrantRole(ctx context.Context, req *GrantRoleReq) error
+	GetPermissions(ctx context.Context, id uuid.UUID) (*Permissions, error)
 }
 
 type UserRepo interface {
@@ -42,7 +46,7 @@ type UserRepo interface {
 	Delete(ctx context.Context, id string) error
 	InitAdmin(ctx context.Context, username, password string) error
 	CreateUser(ctx context.Context, user *db.User) (*db.User, error)
-	CreateAdmin(ctx context.Context, admin *db.Admin) (*db.Admin, error)
+	CreateAdmin(ctx context.Context, admin *db.Admin, roleID int64) (*db.Admin, error)
 	DeleteAdmin(ctx context.Context, id string) error
 	AdminByName(ctx context.Context, username string) (*db.Admin, error)
 	GetByName(ctx context.Context, username string) (*db.User, error)
@@ -62,6 +66,10 @@ type UserRepo interface {
 	SaveUserLoginHistory(ctx context.Context, userID, ip string, session *VSCodeSession) error
 	ExportCompletionData(ctx context.Context) ([]*CompletionData, error)
 	GetUserCount(ctx context.Context) (int64, error)
+	ListRole(ctx context.Context) ([]*db.Role, error)
+	GrantRole(ctx context.Context, req *GrantRoleReq) error
+	GetPermissions(ctx context.Context, id uuid.UUID) (*Permissions, error)
+	CleanPermissionCache(ctx context.Context, id uuid.UUID)
 }
 
 type ProfileUpdateReq struct {
@@ -79,8 +87,9 @@ type UpdateUserReq struct {
 }
 
 type CreateAdminReq struct {
-	Username string `json:"username"` // 用户名
-	Password string `json:"password"` // 密码
+	Username string `json:"username" validate:"required"` // 用户名
+	Password string `json:"password" validate:"required"` // 密码
+	RoleID   int64  `json:"role_id" validate:"required"`  // 角色ID
 }
 
 type VSCodeAuthInitReq struct {
@@ -257,11 +266,16 @@ func (u *User) From(e *db.User) *User {
 }
 
 type AdminUser struct {
-	ID           string             `json:"id"`             // 用户ID
+	ID           uuid.UUID          `json:"id"`             // 用户ID
 	Username     string             `json:"username"`       // 用户名
 	LastActiveAt int64              `json:"last_active_at"` // 最后活跃时间
 	Status       consts.AdminStatus `json:"status"`         // 用户状态 active: 正常 inactive: 禁用
+	Role         *Role              `json:"role"`           // 角色
 	CreatedAt    int64              `json:"created_at"`     // 创建时间
+}
+
+func (a *AdminUser) IsAdmin() bool {
+	return a.Username == "admin"
 }
 
 func (a *AdminUser) From(e *db.Admin) *AdminUser {
@@ -269,9 +283,17 @@ func (a *AdminUser) From(e *db.Admin) *AdminUser {
 		return a
 	}
 
-	a.ID = e.ID.String()
+	a.ID = e.ID
 	a.Username = e.Username
 	a.Status = e.Status
+	if e.Username == "admin" {
+		a.Role = &Role{
+			ID:   1,
+			Name: "超级管理员",
+		}
+	} else if l := len(e.Edges.Roles); l > 0 {
+		a.Role = cvt.From(e.Edges.Roles[l-1], &Role{})
+	}
 	a.CreatedAt = e.CreatedAt.Unix()
 
 	return a
@@ -426,4 +448,12 @@ type CompletionData struct {
 type ExportCompletionDataResp struct {
 	TotalCount int64             `json:"total_count"` // 总记录数
 	Data       []*CompletionData `json:"data"`        // 补全数据列表
+}
+
+type Permissions struct {
+	AdminID  uuid.UUID
+	IsAdmin  bool
+	Roles    []*Role
+	UserIDs  []uuid.UUID
+	GroupIDs []uuid.UUID
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/workspace"
 	"github.com/chaitin/MonkeyCode/backend/db/workspacefile"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/rule"
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
@@ -193,7 +194,7 @@ func (s *SecurityScanningRepo) ListBrief(ctx context.Context, req domain.ListSec
 
 	scannings, p, err := query.
 		Order(securityscanning.ByCreatedAt(sql.OrderDesc())).
-		Page(context.Background(), int(req.Page), int(req.Size))
+		Page(ctx, int(req.Page), int(req.Size))
 
 	if err != nil {
 		return nil, err
@@ -267,6 +268,7 @@ func (s *SecurityScanningRepo) RiskCountByIDs(ctx context.Context, ids []uuid.UU
 
 // AllRunning implements domain.SecurityScanningRepo.
 func (s *SecurityScanningRepo) AllRunning(ctx context.Context) ([]*db.SecurityScanning, error) {
+	ctx = rule.SkipPermission(ctx)
 	return s.db.SecurityScanning.Query().
 		Where(securityscanning.Status(consts.SecurityScanningStatusRunning)).
 		Order(securityscanning.ByCreatedAt(sql.OrderAsc())).
