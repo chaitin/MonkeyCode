@@ -1,0 +1,62 @@
+# 本地开发配置文件 - 纯YAML格式（非模版）
+
+base_url: http://localhost:8080
+
+# 启用调试模式
+debug: true
+
+logger:
+  level: debug
+
+server:
+  addr: :8080
+  port: ""
+
+admin:
+  user: admin
+  password: admin123
+
+database:
+  master: postgres://monkeycode:123456@localhost:5432/monkeycode?sslmode=disable&timezone=Asia/Shanghai
+  slave: postgres://monkeycode:123456@localhost:5432/monkeycode?sslmode=disable&timezone=Asia/Shanghai
+  max_open_conns: 25
+  max_idle_conns: 5
+
+redis:
+  host: localhost
+  port: "6379"
+  pass: ""
+  db: 0
+  idle_conn: 5
+
+llm_proxy:
+  timeout: 30s
+  keep_alive: 1m
+  client_pool_size: 5
+  request_log_path: ./logs
+
+vscode:
+  vsix_file: ./static/monkeycode.vsix
+
+# 关闭数据上报
+data_report:
+  key: ""
+  machine_id_file: "./static/.machine_id"
+
+init_model:
+  model_name: ""
+  model_key: ""
+  model_url: ""
+
+extension:
+  baseurl: "https://release.baizhi.cloud"
+  limit: 1
+  limit_second: 10
+
+security:
+  queue_limit: 5
+
+embedding:
+  model_name: "qwen3-embedding-0.6b"
+  api_endpoint: "https://aiapi.chaitin.net/v1/embeddings"
+  api_key: ""
