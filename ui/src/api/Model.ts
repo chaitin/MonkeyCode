@@ -23,6 +23,7 @@ import {
   GetGetTokenUsageParams,
   GetMyModelListParams,
   GithubComChaitinMonkeyCodeBackendDomainCheckModelReq,
+  GithubComChaitinMonkeyCodeBackendDomainCheckModelResp,
   WebResp,
 } from "./types";
 
@@ -143,7 +144,7 @@ export const deleteDeleteModel = (
  * @summary 检查模型
  * @request POST:/api/v1/model/check
  * @response `200` `(WebResp & {
-    data?: DomainModel,
+    data?: GithubComChaitinMonkeyCodeBackendDomainCheckModelResp,
 
 })` OK
  */
@@ -154,7 +155,7 @@ export const postCheckModel = (
 ) =>
   request<
     WebResp & {
-      data?: DomainModel;
+      data?: GithubComChaitinMonkeyCodeBackendDomainCheckModelResp;
     }
   >({
     path: `/api/v1/model/check`,

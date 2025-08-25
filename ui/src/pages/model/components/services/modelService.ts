@@ -152,8 +152,8 @@ export const modelService: IModelService = {
     const localData = convertUICheckToLocalCheck(data);
     const result = await postCheckModel(localData);
 
-    const model: Model = result;
-    const error: string = '';
+    const model: Model = result.model || {};
+    const error: string = result.error || '';
     return { model, error };
   },
 

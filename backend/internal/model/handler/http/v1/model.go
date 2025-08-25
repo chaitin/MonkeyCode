@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strings"
 
@@ -53,7 +52,7 @@ func NewModelHandler(
 //	@Accept			json
 //	@Produce		json
 //	@Param			model	body		domain.CheckModelReq	true	"模型"
-//	@Success		200		{object}	web.Resp{data=domain.Model}
+//	@Success		200		{object}	web.Resp{data=domain.CheckModelResp}
 //	@Router			/api/v1/model/check [post]
 func (h *ModelHandler) Check(c *web.Context, req domain.CheckModelReq) error {
 	modelkitRes, err := modelkit.CheckModel(c.Request().Context(), &modelkitDomain.CheckModelReq{
@@ -66,10 +65,14 @@ func (h *ModelHandler) Check(c *web.Context, req domain.CheckModelReq) error {
 		Type:       string(req.Type),
 	})
 	if err != nil {
-		return err
+		return c.Success(domain.CheckModelResp{
+			Error: err.Error(),
+		})
 	}
 	if modelkitRes.Error != "" {
-		return errors.New(modelkitRes.Error)
+		return c.Success(domain.CheckModelResp{
+			Error: modelkitRes.Error,
+		})
 	}
 
 	// 将输出转化为monkeycode格式
@@ -81,7 +84,10 @@ func (h *ModelHandler) Check(c *web.Context, req domain.CheckModelReq) error {
 	}
 	// end
 
-	return c.Success(m)
+	return c.Success(domain.CheckModelResp{
+		Model: m,
+		Error: "",
+	})
 }
 
 // List 获取模型列表

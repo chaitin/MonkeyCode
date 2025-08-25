@@ -36,6 +36,47 @@ export enum GithubComChaitinMonkeyCodeBackendConstsModelProvider {
   ModelProviderVolcengine = "Volcengine",
   ModelProviderZhiPu = "ZhiPu",
   ModelProviderGemini = "Gemini",
+  ModelProviderAiHubMix = "AiHubMix",
+  ModelProviderOcoolAI = "OcoolAI",
+  ModelProviderPPIO = "PPIO",
+  ModelProviderAlayaNew = "AlayaNew",
+  ModelProviderQiniu = "Qiniu",
+  ModelProviderDMXAPI = "DMXAPI",
+  ModelProviderBurnCloud = "BurnCloud",
+  ModelProviderTokenFlux = "TokenFlux",
+  ModelProvider302AI = "302AI",
+  ModelProviderCephalon = "Cephalon",
+  ModelProviderLanyun = "Lanyun",
+  ModelProviderPH8 = "PH8",
+  ModelProviderOpenRouter = "OpenRouter",
+  ModelProviderNewAPI = "NewAPI",
+  ModelProviderLMStudio = "LMStudio",
+  ModelProviderAnthropic = "Anthropic",
+  ModelProviderVertexAI = "VertexAI",
+  ModelProviderGithub = "Github",
+  ModelProviderCopilot = "Copilot",
+  ModelProviderYi = "Yi",
+  ModelProviderBaichuan = "Baichuan",
+  ModelProviderStepFun = "StepFun",
+  ModelProviderInfini = "Infini",
+  ModelProviderMiniMax = "MiniMax",
+  ModelProviderGroq = "Groq",
+  ModelProviderTogether = "Together",
+  ModelProviderFireworks = "Fireworks",
+  ModelProviderNvidia = "Nvidia",
+  ModelProviderGrok = "Grok",
+  ModelProviderHyperbolic = "Hyperbolic",
+  ModelProviderMistral = "Mistral",
+  ModelProviderJina = "Jina",
+  ModelProviderPerplexity = "Perplexity",
+  ModelProviderModelScope = "ModelScope",
+  ModelProviderXirang = "Xirang",
+  ModelProviderTencentCloudTI = "TencentCloudTI",
+  ModelProviderBaiduCloud = "BaiduCloud",
+  ModelProviderGPUStack = "GPUStack",
+  ModelProviderVoyageAI = "VoyageAI",
+  ModelProviderAWSBedrock = "AWSBedrock",
+  ModelProviderPoe = "Poe",
   ModelProviderOther = "Other",
 }
 
@@ -450,20 +491,7 @@ export interface DomainCreateModelReq {
   /** 高级参数 */
   param?: DomainModelParam;
   /** 提供商 */
-  provider:
-    | "SiliconFlow"
-    | "OpenAI"
-    | "Ollama"
-    | "DeepSeek"
-    | "Moonshot"
-    | "AzureOpenAI"
-    | "BaiZhiCloud"
-    | "Hunyuan"
-    | "BaiLian"
-    | "Volcengine"
-    | "ZhiPu"
-    | "Gemini"
-    | "Other";
+  provider: GithubComChaitinMonkeyCodeBackendConstsModelProvider;
   /** 模型显示名称 */
   show_name?: string;
 }
@@ -848,20 +876,7 @@ export interface DomainModelBasic {
   /** 模型名称 */
   name?: string;
   /** 提供商 */
-  provider:
-    | "SiliconFlow"
-    | "OpenAI"
-    | "Ollama"
-    | "DeepSeek"
-    | "Moonshot"
-    | "AzureOpenAI"
-    | "BaiZhiCloud"
-    | "Hunyuan"
-    | "BaiLian"
-    | "Volcengine"
-    | "ZhiPu"
-    | "Gemini"
-    | "Other";
+  provider: GithubComChaitinMonkeyCodeBackendConstsModelProvider;
 }
 
 export interface DomainModelData {
@@ -1168,20 +1183,7 @@ export interface DomainUpdateModelReq {
   /** 高级参数 */
   param?: DomainModelParam;
   /** 提供商 */
-  provider:
-    | "SiliconFlow"
-    | "OpenAI"
-    | "Ollama"
-    | "DeepSeek"
-    | "Moonshot"
-    | "AzureOpenAI"
-    | "BaiZhiCloud"
-    | "Hunyuan"
-    | "BaiLian"
-    | "Volcengine"
-    | "ZhiPu"
-    | "Gemini"
-    | "Other";
+  provider: GithubComChaitinMonkeyCodeBackendConstsModelProvider;
   /** 模型显示名称 */
   show_name?: string;
   /** 状态 active:启用 inactive:禁用 */
@@ -1385,6 +1387,11 @@ export interface GithubComChaitinMonkeyCodeBackendDomainCheckModelReq {
   /** 提供商 */
   provider: GithubComChaitinMonkeyCodeBackendConstsModelProvider;
   type: "llm" | "coder" | "embedding" | "rerank";
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainCheckModelResp {
+  error?: string;
+  model?: DomainModel;
 }
 
 export interface GithubComChaitinMonkeyCodeBackendDomainModelListResp {
@@ -1714,6 +1721,47 @@ export interface GetGetProviderModelListParams {
     | "Volcengine"
     | "ZhiPu"
     | "Gemini"
+    | "AiHubMix"
+    | "OcoolAI"
+    | "PPIO"
+    | "AlayaNew"
+    | "Qiniu"
+    | "DMXAPI"
+    | "BurnCloud"
+    | "TokenFlux"
+    | "302AI"
+    | "Cephalon"
+    | "Lanyun"
+    | "PH8"
+    | "OpenRouter"
+    | "NewAPI"
+    | "LMStudio"
+    | "Anthropic"
+    | "VertexAI"
+    | "Github"
+    | "Copilot"
+    | "Yi"
+    | "Baichuan"
+    | "StepFun"
+    | "Infini"
+    | "MiniMax"
+    | "Groq"
+    | "Together"
+    | "Fireworks"
+    | "Nvidia"
+    | "Grok"
+    | "Hyperbolic"
+    | "Mistral"
+    | "Jina"
+    | "Perplexity"
+    | "ModelScope"
+    | "Xirang"
+    | "TencentCloudTI"
+    | "BaiduCloud"
+    | "GPUStack"
+    | "VoyageAI"
+    | "AWSBedrock"
+    | "Poe"
     | "Other";
   type: "llm" | "coder" | "embedding" | "audio" | "reranker";
 }
