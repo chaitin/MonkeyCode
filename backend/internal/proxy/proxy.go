@@ -58,6 +58,7 @@ func NewLLMProxy(
 		MaxConnsPerHost:     cfg.LLMProxy.ClientPoolSize,
 		MaxIdleConnsPerHost: cfg.LLMProxy.ClientPoolSize,
 		IdleConnTimeout:     24 * time.Hour,
+		Proxy:               http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 24 * time.Hour,

@@ -36,6 +36,7 @@ func NewModelUsecase(
 			MaxIdleConnsPerHost: 100,
 			MaxConnsPerHost:     100,
 			IdleConnTimeout:     time.Second * 30,
+			Proxy:               http.ProxyFromEnvironment,
 		},
 	}
 	return &ModelUsecase{repo: repo, cfg: cfg, logger: logger, client: client}
