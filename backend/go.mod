@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	entgo.io/ent v0.14.4
 	github.com/GoYoko/web v1.4.0
-	github.com/chaitin/ModelKit v1.6.2
+	github.com/chaitin/ModelKit v1.8.1
 	github.com/doquangtan/socket.io/v4 v4.0.8
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/uuid v1.6.0

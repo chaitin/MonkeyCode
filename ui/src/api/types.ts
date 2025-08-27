@@ -623,6 +623,7 @@ export interface DomainGetAndSaveReq {
 
 export interface DomainGetProviderModelListResp {
   models?: DomainProviderModelListItem[];
+  error?: string;
 }
 
 export interface DomainGrantGroupReq {

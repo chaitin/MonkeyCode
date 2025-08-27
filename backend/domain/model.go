@@ -55,6 +55,7 @@ type GetProviderModelListReq struct {
 
 type GetProviderModelListResp struct {
 	Models []ProviderModelListItem `json:"models"`
+	Error  string                  `json:"error"`
 }
 
 type ProviderModelListItem struct {

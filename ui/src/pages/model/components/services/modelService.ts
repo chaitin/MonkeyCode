@@ -141,11 +141,14 @@ export const modelService: IModelService = {
     const localData = convertUIGetModelNameToLocal(data);
     const result = await getGetProviderModelList(localData);
 
-    const models: UIModelListItem[] = result.models?.map(item => ({
-      model: item.model,
-    })) || [];
+    const models: UIModelListItem[] = result.models
+      ? result.models.map(item => ({
+          model: item.model || '',
+        }))
+      : [];
+    const error: string = result.error || '';
 
-    return { models };
+    return { models, error };
   },
 
   async checkModel(data: UICheckModelData) {

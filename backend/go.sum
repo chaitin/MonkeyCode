@@ -54,8 +54,8 @@ github.com/bytedance/sonic/loader v0.3.0/go.mod h1:N8A3vUdtUebEY2/VQC0MyhYeKUFos
 github.com/certifi/gocertifi v0.0.0-20190105021004-abcd57078448/go.mod h1:GJKEexRPVJrBSOjoqN5VNOIKJ5Q3RViH6eu3puDRwx4=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
-github.com/chaitin/ModelKit v1.6.2 h1:iw605mv1MCQwyud4nzblcgMe9pw8jvBG6Rv/UV40jzA=
-github.com/chaitin/ModelKit v1.6.2/go.mod h1:IBeqs9T8+vxMXhoer8daV0yrSPb5uaoAwQQW2Tz2qAg=
+github.com/chaitin/ModelKit v1.8.1 h1:yN+cMNeItV7mHJWkcBN3bub44QuEzgpUWvH70v1jULQ=
+github.com/chaitin/ModelKit v1.8.1/go.mod h1:IBeqs9T8+vxMXhoer8daV0yrSPb5uaoAwQQW2Tz2qAg=
 github.com/cloudwego/base64x v0.1.6 h1:t11wG9AECkCDk5fMSoxmufanudBtJ+/HemLstXDLI2M=
 github.com/cloudwego/base64x v0.1.6/go.mod h1:OFcloc187FXDaYHvrNIjxSe8ncn0OOM8gEHfghB2IPU=
 github.com/cloudwego/eino v0.3.51 h1:emSaDu49v9EEJYOusL42Li/VL5QBSyBvhxO9ZcKPZvs=

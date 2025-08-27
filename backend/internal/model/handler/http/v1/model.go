@@ -207,12 +207,16 @@ func (h *ModelHandler) GetProviderModelList(c *web.Context, req domain.GetProvid
 		APIHeader: req.APIHeader,
 	})
 	if err != nil {
-		return err
+		res := &domain.GetProviderModelListResp{
+			Error: err.Error(),
+		}
+		return c.Success(res)
 	}
 
 	// 将输出转化为monkeycode格式
 	res := &domain.GetProviderModelListResp{
 		Models: make([]domain.ProviderModelListItem, len(modelkitRes.Models)),
+		Error:  modelkitRes.Error,
 	}
 	for i, model := range modelkitRes.Models {
 		res.Models[i] = domain.ProviderModelListItem{

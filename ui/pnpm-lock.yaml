@@ -33,8 +33,8 @@ importers:
         specifier: ^6.4.12
         version: 6.5.0(@emotion/react@11.14.0(@types/react@19.1.10)(react@19.1.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.1.10)(react@19.1.1))(@types/react@19.1.10)(react@19.1.1))(@types/react@19.1.10)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@yokowu/modelkit-ui':
-        specifier: 0.6.0
-        version: 0.6.0(8525073519bd78ecc27b6ab63a7efdab)
+        specifier: 0.7.0
+        version: 0.7.0(8525073519bd78ecc27b6ab63a7efdab)
       ahooks:
         specifier: ^3.8.4
         version: 3.9.0(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -1111,8 +1111,8 @@ packages:
   '@vue/shared@3.5.18':
     resolution: {integrity: sha512-cZy8Dq+uuIXbxCZpuLd2GJdeSO/lIzIspC2WtkqIpje5QyFbvLaI5wZtdUjLHjGZrlVX6GilejatWwVYYRc8tA==}
 
-  '@yokowu/modelkit-ui@0.6.0':
-    resolution: {integrity: sha512-STKsF+4QXIgkZHRISxbhJEF5AdMkUvCIeIdwdYxQUkrlCENkLLyYijH63bxNSm6c/DVB+tYbSDHg8XdSFDI6KQ==}
+  '@yokowu/modelkit-ui@0.7.0':
+    resolution: {integrity: sha512-QPP8pO2fqHdqjVMMu4KnSesbVnUpsl3Th6jJo7/eyYXOUVoMriO+n2Rxz5aE3zvnhNtjecc5+qbIGF9v7siPaA==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -3754,7 +3754,7 @@ snapshots:
 
   '@vue/shared@3.5.18': {}
 
-  '@yokowu/modelkit-ui@0.6.0(8525073519bd78ecc27b6ab63a7efdab)':
+  '@yokowu/modelkit-ui@0.7.0(8525073519bd78ecc27b6ab63a7efdab)':
     dependencies:
       '@c-x/ui': 1.0.9(87983aa74373e7bdff176d7db35e2938)
       '@mui/material': 6.5.0(@emotion/react@11.14.0(@types/react@19.1.10)(react@19.1.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.1.10)(react@19.1.1))(@types/react@19.1.10)(react@19.1.1))(@types/react@19.1.10)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
