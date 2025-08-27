@@ -80,7 +80,8 @@ type Config struct {
 	} `mapstructure:"extension"`
 
 	DataReport struct {
-		Key string `mapstructure:"key"`
+		Key           string `mapstructure:"key"`
+		MachineIDFile string `mapstructure:"machine_id_file"`
 	} `mapstructure:"data_report"`
 
 	Security struct {
@@ -121,6 +122,20 @@ func Init() (*Config, error) {
 	v.SetEnvPrefix("MONKEYCODE")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	// 可选的配置文件读取（保持向后兼容）
+	// 优先级：环境变量 > 配置文件 > 默认值
+	v.SetConfigType("yaml")
+	v.AddConfigPath("./config")
+	v.AddConfigPath(".")
+
+	// 尝试读取本地开发配置（仅用于开发环境便利性）
+	v.SetConfigName("config.local")
+	if err := v.ReadInConfig(); err != nil {
+		// 本地配置不存在是正常的，不需要报错
+		// 线上部署完全依赖环境变量，这样保持向后兼容
+	}
+
+	// 设置默认值，确保在没有配置文件时程序能启动（云上部署场景）
 	v.SetDefault("debug", false)
 	v.SetDefault("read_only", false)
 	v.SetDefault("logger.level", "info")
@@ -152,6 +167,7 @@ func Init() (*Config, error) {
 	v.SetDefault("extension.limit", 1)
 	v.SetDefault("extension.limit_second", 10)
 	v.SetDefault("data_report.key", "")
+	v.SetDefault("data_report.machine_id_file", "static/.machine_id")
 	v.SetDefault("security.queue_limit", 5)
 	v.SetDefault("embedding.model_name", "qwen3-embedding-0.6b")
 	v.SetDefault("embedding.api_endpoint", "https://aiapi.chaitin.net/v1/embeddings")
