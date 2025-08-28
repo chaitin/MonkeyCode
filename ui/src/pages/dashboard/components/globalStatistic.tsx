@@ -7,9 +7,8 @@ import {
 import { SecondTimeRange } from '@/components/ui/calendar';
 import {
   getRecent60MinutesData,
-  getRecentDaysData,
-  getRecent24HoursData as getRecentHoursData,
   getTimeRange,
+  getRangeData,
 } from '@/utils';
 import { Grid2 as Grid, styled } from '@mui/material';
 import { useRequest } from 'ahooks';
@@ -55,15 +54,6 @@ const GlobalStatistic = ({
     refreshDeps: [timeDuration],
   });
   const precision = useMemo(() => getTimeRange(timeDuration), [timeDuration]);
-  const getRangeData = (
-    data: Record<string, number>[],
-    precision: 'day' | 'hour',
-    label: { keyLabel?: string; valueLabel?: string } = { valueLabel: 'value' }
-  ) => {
-    return precision === 'day'
-      ? getRecentDaysData(data, label)
-      : getRecentHoursData(data, label);
-  };
 
   const {
     userActiveChartData,
@@ -83,12 +73,12 @@ const GlobalStatistic = ({
     } = timeStatData || {};
     const label = { valueLabel: 'value' };
     return {
-      userActiveChartData: getRangeData(active_users, precision, label),
-      chatChartData: getRangeData(chats, precision, label),
-      codeCompletionChartData: getRangeData(code_completions, precision, label),
-      codeLineChartData: getRangeData(lines_of_code, precision, label),
+      userActiveChartData: getRangeData(timeDuration, active_users, precision, label),
+      chatChartData: getRangeData(timeDuration, chats, precision, label),
+      codeCompletionChartData: getRangeData(timeDuration, code_completions, precision, label),
+      codeLineChartData: getRangeData(timeDuration, lines_of_code, precision, label),
       realTimeTokenChartData: getRecent60MinutesData(real_time_tokens, label),
-      acceptedPerChartData: getRangeData(accepted_per, precision, label),
+      acceptedPerChartData: getRangeData(timeDuration, accepted_per, precision, label),
     };
   }, [timeStatData, precision]);
 

@@ -34,13 +34,32 @@ type Statistics struct {
 }
 
 type StatisticsFilter struct {
-	Precision string `json:"precision" query:"precision" validate:"required,oneof=hour day" default:"day"` // 精度: "hour", "day"
-	Duration  int    `json:"duration" query:"duration" validate:"gte=24,lte=90" default:"90"`              // 持续时间 (小时或天数)`
-	UserID    string `json:"user_id,omitempty" query:"user_id"`                                            // 用户ID，可选参数
+	Precision string `json:"precision" query:"precision"`       // 精度: "hour", "day"
+	Duration  int    `json:"duration" query:"duration"`         // 持续时间 (小时或天数)`
+	StartAt   int64  `json:"start_at" query:"start_at"`         // 开始时间, 时间范围优先级高于精度选择
+	EndAt     int64  `json:"end_at" query:"end_at"`             // 结束时间, 时间范围优先级高于精度选择
+	UserID    string `json:"user_id,omitempty" query:"user_id"` // 用户ID，可选参数
+}
+
+func (s StatisticsFilter) MustPrecision() string {
+	if s.Precision == "" {
+		return "day"
+	}
+	return s.Precision
 }
 
 func (s StatisticsFilter) StartTime() time.Time {
+	if s.StartAt > 0 {
+		return time.Unix(s.StartAt, 0)
+	}
 	return time.Now().Add(-24 * time.Hour)
+}
+
+func (s StatisticsFilter) EndTime() time.Time {
+	if s.EndAt > 0 {
+		return time.Unix(s.EndAt, 0)
+	}
+	return time.Now()
 }
 
 type UserHeatmapResp struct {

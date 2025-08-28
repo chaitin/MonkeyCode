@@ -31,6 +31,7 @@ func (d *DashboardRepo) CategoryStat(ctx context.Context, req domain.StatisticsF
 	var cs []domain.CategoryPoint
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Where(task.WorkModeNEQ("")).
 		Modify(func(s *sql.Selector) {
 			s.Select(
@@ -45,6 +46,7 @@ func (d *DashboardRepo) CategoryStat(ctx context.Context, req domain.StatisticsF
 	var ps []domain.CategoryPoint
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Where(task.ProgramLanguageNEQ("")).
 		Where(task.IsSuggested(true)).
 		Modify(func(s *sql.Selector) {
@@ -95,6 +97,7 @@ func (d *DashboardRepo) TimeStat(ctx context.Context, req domain.StatisticsFilte
 	udv := make([]DateValue, 0)
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Aggregate(func(s *sql.Selector) string {
 			return sql.As("COUNT(DISTINCT user_id)", "count")
 		}).
@@ -106,9 +109,10 @@ func (d *DashboardRepo) TimeStat(ctx context.Context, req domain.StatisticsFilte
 	ds := make([]DateValue, 0)
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Modify(func(s *sql.Selector) {
 			s.Select(
-				sql.As(fmt.Sprintf("date_trunc('%s', created_at)", req.Precision), "date"),
+				sql.As(fmt.Sprintf("date_trunc('%s', created_at)", req.MustPrecision()), "date"),
 				sql.As("COUNT(DISTINCT user_id)", "user_count"),
 				sql.As("COUNT(*) FILTER (WHERE model_type = 'llm')", "llm_count"),
 				sql.As("COUNT(*) FILTER (WHERE is_suggested = true AND model_type = 'coder')", "code_count"),
@@ -206,6 +210,7 @@ func (d *DashboardRepo) UserCodeRank(ctx context.Context, req domain.StatisticsF
 	var rs []UserCodeRank
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Where(task.IsAccept(true)).
 		Modify(func(s *sql.Selector) {
 			s.Select(
@@ -252,6 +257,7 @@ func (d *DashboardRepo) UserEvents(ctx context.Context, req domain.StatisticsFil
 		WithTaskRecords().
 		Where(task.ModelType(consts.ModelTypeLLM)).
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Where(task.HasUserWith(user.ID(id))).
 		Order(task.ByCreatedAt(sql.OrderDesc())).
 		Limit(100).
@@ -286,9 +292,10 @@ func (d *DashboardRepo) UserStat(ctx context.Context, req domain.StatisticsFilte
 	if err := d.db.Task.Query().
 		Where(task.HasUserWith(user.ID(id))).
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Modify(func(s *sql.Selector) {
 			s.Select(
-				sql.As(fmt.Sprintf("date_trunc('%s', created_at)", req.Precision), "date"),
+				sql.As(fmt.Sprintf("date_trunc('%s', created_at)", req.MustPrecision()), "date"),
 				sql.As("COUNT(DISTINCT user_id)", "user_count"),
 				sql.As("COUNT(*) FILTER (WHERE model_type = 'llm')", "llm_count"),
 				sql.As("COUNT(*) FILTER (WHERE is_suggested = true AND model_type = 'coder')", "code_count"),
@@ -305,6 +312,7 @@ func (d *DashboardRepo) UserStat(ctx context.Context, req domain.StatisticsFilte
 	var cs []domain.CategoryPoint
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Where(task.HasUserWith(user.ID(id))).
 		Where(task.WorkModeNEQ("")).
 		Modify(func(s *sql.Selector) {
@@ -321,6 +329,7 @@ func (d *DashboardRepo) UserStat(ctx context.Context, req domain.StatisticsFilte
 	var ps []domain.CategoryPoint
 	if err := d.db.Task.Query().
 		Where(task.CreatedAtGTE(req.StartTime())).
+		Where(task.CreatedAtLTE(req.EndTime())).
 		Where(task.HasUserWith(user.ID(id))).
 		Where(task.ProgramLanguageNEQ("")).
 		Where(task.IsSuggested(true)).

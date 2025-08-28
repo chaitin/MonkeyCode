@@ -5,7 +5,7 @@ import {
 } from '@/api/Dashboard';
 import { DomainUser } from '@/api/types';
 import { SecondTimeRange } from '@/components/ui/calendar';
-import { getRecent24HoursData, getRecentDaysData, getTimeRange } from '@/utils';
+import { getRangeData, getRecent24HoursData, getRecentDaysData, getTimeRange } from '@/utils';
 import { Grid2 as Grid } from '@mui/material';
 import { useRequest } from 'ahooks';
 import { useMemo } from 'react';
@@ -15,8 +15,6 @@ import LineCharts from './lineCharts';
 import MemberInfo from './memberInfo';
 import PieCharts from './pieCharts';
 import { RecentActivityCard } from './statisticCard';
-
-type Precision = 'day' | 'hour';
 
 const MemberStatistic = ({
   memberData,
@@ -67,16 +65,6 @@ const MemberStatistic = ({
     }
   );
 
-  const getRangeData = (
-    data: Record<string, number>[],
-    precision: Precision,
-    label: { keyLabel?: string; valueLabel?: string } = { valueLabel: 'value' }
-  ) => {
-    return precision === 'day'
-      ? getRecentDaysData(data, label)
-      : getRecent24HoursData(data, label);
-  };
-
   const {
     chatChartData,
     codeCompletionChartData,
@@ -90,14 +78,15 @@ const MemberStatistic = ({
       lines_of_code = [],
     } = userStat || {};
     const label = { valueLabel: 'value' };
-    const chatChartData = getRangeData(chats, precision, label);
+    const chatChartData = getRangeData(timeDuration, chats, precision, label);
     const codeCompletionChartData = getRangeData(
+      timeDuration,
       code_completions,
       precision,
       label
     );
-    const codeLineChartData = getRangeData(lines_of_code, precision, label);
-    const acceptedPerChartData = getRangeData(accepted_per, precision, label);
+    const codeLineChartData = getRangeData(timeDuration, lines_of_code, precision, label);
+    const acceptedPerChartData = getRangeData(timeDuration, accepted_per, precision, label);
     return {
       chatChartData,
       codeCompletionChartData,
