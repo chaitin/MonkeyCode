@@ -30,15 +30,16 @@ func NewModelRepo(db *db.Client) domain.ModelRepo {
 	return &ModelRepo{db: db, cache: cache}
 }
 
-func (r *ModelRepo) GetWithCache(ctx context.Context, modelType consts.ModelType) (*db.Model, error) {
+func (r *ModelRepo) GetWithCache(ctx context.Context, modelType consts.ModelType) ([]*db.Model, error) {
 	if v, ok := r.cache.Get(string(modelType)); ok {
-		return v.(*db.Model), nil
+		return v.([]*db.Model), nil
 	}
 
 	m, err := r.db.Model.Query().
 		Where(model.ModelType(modelType)).
-		Where(model.Status(consts.ModelStatusActive)).
-		Only(ctx)
+		Where(model.StatusIn(consts.ModelStatusActive, consts.ModelStatusDefault)).
+		Order(ByStatusOrder()).
+		All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -47,14 +48,22 @@ func (r *ModelRepo) GetWithCache(ctx context.Context, modelType consts.ModelType
 	return m, nil
 }
 
+func ByStatusOrder() func(s *sql.Selector) {
+	return func(s *sql.Selector) {
+		s.OrderExprFunc(func(b *sql.Builder) {
+			b.WriteString("case when status = 'default' then 3 when status = 'active' then 2 else 1 end desc")
+		})
+	}
+}
+
 func (r *ModelRepo) Create(ctx context.Context, m *domain.CreateModelReq) (*db.Model, error) {
 	n, err := r.db.Model.Query().Where(model.ModelType(m.ModelType)).Count(ctx)
 	if err != nil {
 		return nil, err
 	}
-	status := consts.ModelStatusInactive
+	status := consts.ModelStatusActive
 	if n == 0 {
-		status = consts.ModelStatusActive
+		status = consts.ModelStatusDefault
 	}
 
 	r.cache.Delete(string(m.ModelType))

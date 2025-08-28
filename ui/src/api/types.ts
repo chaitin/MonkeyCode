@@ -19,6 +19,7 @@ export enum GithubComChaitinMonkeyCodeBackendConstsModelType {
 }
 
 export enum GithubComChaitinMonkeyCodeBackendConstsModelStatus {
+  ModelStatusDefault = "default",
   ModelStatusActive = "active",
   ModelStatusInactive = "inactive",
 }

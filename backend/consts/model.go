@@ -3,6 +3,7 @@ package consts
 type ModelStatus string
 
 const (
+	ModelStatusDefault  ModelStatus = "default"
 	ModelStatusActive   ModelStatus = "active"
 	ModelStatusInactive ModelStatus = "inactive"
 )

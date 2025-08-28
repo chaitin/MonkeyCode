@@ -20,7 +20,7 @@ type ModelUsecase interface {
 }
 
 type ModelRepo interface {
-	GetWithCache(ctx context.Context, modelType consts.ModelType) (*db.Model, error)
+	GetWithCache(ctx context.Context, modelType consts.ModelType) ([]*db.Model, error)
 	List(ctx context.Context) (*AllModelResp, error)
 	Create(ctx context.Context, m *CreateModelReq) (*db.Model, error)
 	Update(ctx context.Context, id string, fn func(tx *db.Tx, old *db.Model, up *db.ModelUpdateOne) error) (*db.Model, error)
@@ -181,7 +181,7 @@ func (m *Model) From(e *db.Model) *Model {
 	m.ModelType = e.ModelType
 	m.Status = e.Status
 	m.IsInternal = e.IsInternal
-	m.IsActive = e.Status == consts.ModelStatusActive
+	m.IsActive = e.Status == consts.ModelStatusActive || e.Status == consts.ModelStatusDefault
 	if p := e.Parameters; p != nil {
 		m.Param = ModelParam{
 			R1Enabled:          p.R1Enabled,

@@ -68,7 +68,7 @@ type ConfigReq struct {
 
 type ConfigResp struct {
 	Type    consts.ConfigType `json:"type"`
-	Content string            `json:"content"`
+	Content any               `json:"content"`
 }
 type OpenAIResp struct {
 	Object string        `json:"object"`

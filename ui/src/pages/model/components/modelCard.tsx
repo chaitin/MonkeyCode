@@ -6,7 +6,6 @@ import {
 } from '@/api/Model';
 import { DomainModel, GithubComChaitinMonkeyCodeBackendConstsModelStatus, GithubComChaitinMonkeyCodeBackendConstsModelType, } from '@/api/types';
 import { Stack, Box, Button, Grid2 as Grid, ButtonBase } from '@mui/material';
-import StyledLabel from '@/components/label';
 import { Icon, Modal, message } from '@c-x/ui';
 import { addCommasToNumber } from '@/utils';
 import NoData from '@/assets/images/nodata.png';
@@ -76,6 +75,31 @@ const ModelItem = ({
     });
   };
 
+  const onSetDefaultModel = () => {
+    Modal.confirm({
+      title: '设为默认模型',
+      content: (
+        <>
+          确定要设置{' '}
+          <Box component='span' sx={{ fontWeight: 700, color: 'text.primary' }}>
+            {data.model_name}
+          </Box>{' '}
+          为默认模型吗？
+        </>
+      ),
+      onOk: () => {
+        putUpdateModel({
+          id: data.id,
+          status: GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusDefault,
+          provider: data.provider!,
+        }).then(() => {
+          message.success('设为默认模型成功');
+          refresh();
+        });
+      },
+    });
+  };
+
   const onActiveModel = () => {
     Modal.confirm({
       title: '激活模型',
@@ -101,6 +125,100 @@ const ModelItem = ({
     });
   };
 
+  // 添加状态标签渲染函数
+  const renderStatusLabel = () => {
+    // 根据 is_active 和 status 字段判断状态
+    if (data.is_active && data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive) {
+      return (
+        <Box
+          sx={{
+            px: 1.5,
+            py: 0.5,
+            backgroundColor: 'success.main',
+            color: 'success.contrastText',
+            borderRadius: '0 0 0 8px', // 左下角圆角，贴合卡片右上角
+            fontSize: 12,
+            fontWeight: 600,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            position: 'relative',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: 0,
+              height: 0,
+              borderLeft: '6px solid transparent',
+              borderTop: '6px solid',
+              borderTopColor: 'success.dark',
+            }
+          }}
+        >
+          可选
+        </Box>
+      );
+    } else if (data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive) {
+      return (
+        <Box
+          sx={{
+            px: 1.5,
+            py: 0.5,
+            backgroundColor: 'grey.400',
+            color: 'grey.50',
+            borderRadius: '0 0 0 8px',
+            fontSize: 12,
+            fontWeight: 600,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            position: 'relative',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: 0,
+              height: 0,
+              borderLeft: '6px solid transparent',
+              borderTop: '6px solid',
+              borderTopColor: 'grey.600',
+            }
+          }}
+        >
+          未激活
+        </Box>
+      );
+    } else {
+      // 默认状态
+      return (
+        <Box
+          sx={{
+            px: 1.5,
+            py: 0.5,
+            backgroundColor: 'primary.main',
+            color: 'primary.contrastText',
+            borderRadius: '0 0 0 8px',
+            fontSize: 12,
+            fontWeight: 600,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            position: 'relative',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: 0,
+              height: 0,
+              borderLeft: '6px solid transparent',
+              borderTop: '6px solid',
+              borderTopColor: 'primary.dark',
+            }
+          }}
+        >
+          默认
+        </Box>
+      );
+    }
+  };
+
   return (
     <Card
       sx={{
@@ -109,7 +227,7 @@ const ModelItem = ({
         transition: 'all 0.3s ease',
         borderStyle: 'solid',
         borderWidth: '1px',
-        borderColor: data.is_active ? 'success.main' : 'transparent',
+        borderColor: 'transparent',
         boxShadow:
           '0px 0px 10px 0px rgba(68, 80, 91, 0.1), 0px 0px 2px 0px rgba(68, 80, 91, 0.1)',
         '&:hover': {
@@ -118,6 +236,18 @@ const ModelItem = ({
         },
       }}
     >
+      {/* 美化的右上角状态标签 */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          zIndex: 2,
+        }}
+      >
+        {renderStatusLabel()}
+      </Box>
+
       <Stack
         direction='row'
         alignItems='center'
@@ -129,7 +259,7 @@ const ModelItem = ({
             type={
               DEFAULT_MODEL_PROVIDERS[data.provider as keyof typeof DEFAULT_MODEL_PROVIDERS]?.icon
             }
-            sx={{ fontSize: 24 }}
+            sx={{ fontSize: 24, color: data.is_active ? 'inherit' : 'grey.400' }}
           />
           <Stack
             direction='row'
@@ -143,6 +273,7 @@ const ModelItem = ({
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
+                color: data.is_active ? 'inherit' : 'grey.400',
               }}
             >
               {data.show_name || '未命名'}
@@ -195,11 +326,25 @@ const ModelItem = ({
         gap={2}
         sx={{ mt: 2 }}
       >
-        <Stack direction='row' alignItems='center'>
-          <StyledLabel color={data.is_active ? 'success' : 'disabled'}>{data.is_active ? '正在使用' : '未激活'}</StyledLabel>
-        </Stack>
+        <Stack direction='row' alignItems='center'> </Stack>
         <Stack direction='row' sx={{ button: { minWidth: 0 } }} gap={2}>
-          {!data.is_active && (
+          {(data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive ||
+          data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive) && (
+            <ButtonBase
+              disableRipple
+              sx={{
+                color: 'text.primary',
+                '&:hover': {
+                  fontWeight: 700
+                },
+              }}
+              onClick={onSetDefaultModel}
+            >
+              设为默认
+            </ButtonBase>
+          )}
+
+          {data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive && (
             <ButtonBase
               disableRipple
               sx={{
