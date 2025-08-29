@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tee"
 )
@@ -96,11 +97,16 @@ func (l *LLMProxy) rewrite(r *httputil.ProxyRequest) {
 		return
 	}
 
-	m, err := l.usecase.SelectModelWithLoadBalancing("", mt)
-	if err != nil {
-		l.logger.ErrorContext(r.In.Context(), "select model with load balancing failed", slog.String("path", r.In.URL.Path), slog.Any("err", err))
-		return
+	var m *domain.Model
+	var err error
+	if m = middleware.GetProxyModel(r.In.Context()); m == nil {
+		m, err = l.usecase.SelectModelWithLoadBalancing("", mt)
+		if err != nil {
+			l.logger.ErrorContext(r.In.Context(), "select model with load balancing failed", slog.String("path", r.In.URL.Path), slog.Any("err", err))
+			return
+		}
 	}
+
 	ul, err := url.Parse(m.APIBase)
 	if err != nil {
 		l.logger.ErrorContext(r.In.Context(), "parse model api base failed", slog.String("path", r.In.URL.Path), slog.Any("err", err))

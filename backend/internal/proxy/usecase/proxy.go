@@ -9,6 +9,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/ent/rule"
+	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/queuerunner"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
@@ -85,7 +87,16 @@ func (p *ProxyUsecase) SelectModelWithLoadBalancing(modelName string, modelType 
 	if err != nil {
 		return nil, err
 	}
-	return cvt.From(model, &domain.Model{}), nil
+	if len(model) == 0 {
+		return nil, fmt.Errorf("no model found")
+	}
+	m := model[0]
+	for _, mm := range model {
+		if mm.Status == consts.ModelStatusDefault {
+			m = mm
+		}
+	}
+	return cvt.From(m, &domain.Model{}), nil
 }
 
 func (p *ProxyUsecase) ValidateApiKey(ctx context.Context, key string) (*domain.ApiKey, error) {
@@ -102,12 +113,33 @@ func (p *ProxyUsecase) AcceptCompletion(ctx context.Context, req *domain.AcceptC
 
 func (p *ProxyUsecase) Report(ctx context.Context, req *domain.ReportReq) error {
 	var model *db.Model
-	var err error
 	if req.Action == consts.ReportActionNewTask {
-		model, err = p.modelRepo.GetWithCache(context.Background(), consts.ModelTypeLLM)
-		if err != nil {
-			p.logger.With("fn", "Report").With("error", err).ErrorContext(ctx, "failed to get model")
-			return err
+		m := middleware.GetProxyModel(ctx)
+		if m == nil {
+			ms, err := p.modelRepo.GetWithCache(ctx, consts.ModelTypeLLM)
+			if err != nil {
+				return fmt.Errorf("get model with cache failed: %w", err)
+			}
+			if len(ms) == 0 {
+				return fmt.Errorf("no model found")
+			}
+			model = ms[0]
+			for _, mm := range ms {
+				if mm.Status == consts.ModelStatusDefault {
+					model = mm
+					break
+				}
+			}
+		} else {
+			mid, err := uuid.Parse(m.ID)
+			if err != nil {
+				return fmt.Errorf("parse proxy model id failed: %w", err)
+			}
+			model = &db.Model{
+				ID:        mid,
+				ModelName: m.ModelName,
+				ModelType: m.ModelType,
+			}
 		}
 	}
 	return p.repo.Report(ctx, model, req)
