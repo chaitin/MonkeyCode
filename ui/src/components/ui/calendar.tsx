@@ -217,58 +217,7 @@ const parseDateInput = (input: string) => {
 };
 
 const filterPresets = (obj: Record<string, any>, search: string) => {
-  if (!search) {
-    return obj;
-  }
-
-  const searchWords = search.toLowerCase().split("-").filter(Boolean);
-
-  const filtered = Object.fromEntries(
-    Object.entries(obj).filter(([_, value]) => {
-      const keyLower = value.text.toLowerCase();
-      return searchWords.every(word => keyLower.includes(word));
-    })
-  );
-
-  if (Object.entries(filtered).length > 0) {
-    return filtered;
-  }
-
-  const parsed = parseDateInput(search);
-  if (parsed) {
-    return parsed;
-  }
-
-  const numberMatch = search.match(/\d+/);
-  if (!numberMatch) {
-    return {};
-  }
-
-  const n = parseInt(numberMatch[0], 10);
-  const now = new Date();
-
-  return {
-    [`last-${n}-days`]: {
-      text: `Last ${n} Days`,
-      start: startOfDay(subDays(now, n)),
-      end: endOfDay(now)
-    },
-    [`last-${n}-weeks`]: {
-      text: `Last ${n} Weeks`,
-      start: startOfDay(subWeeks(now, n)),
-      end: endOfDay(now)
-    },
-    [`last-${n}-months`]: {
-      text: `Last ${n} Months`,
-      start: startOfDay(subMonths(now, n)),
-      end: endOfDay(now)
-    },
-    [`last-${n}-years`]: {
-      text: `Last ${n} Years`,
-      start: startOfDay(subYears(now, n)),
-      end: endOfDay(now)
-    }
-  };
+  return obj
 };
 
 const formatDateRange = (start: Date, end: Date, timezone: string) => {

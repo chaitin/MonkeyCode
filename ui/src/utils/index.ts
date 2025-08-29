@@ -157,7 +157,8 @@ export const getRedirectUrl = (source: 'user' | 'admin' = 'admin') => {
 
 export const getRecentDaysData = (
   data: Record<string, number>[] = [],
-  label: { keyLabel?: string; valueLabel?: string } = {}
+  label: { keyLabel?: string; valueLabel?: string } = {},
+  durationDay: number = 90
 ) => {
   const { keyLabel = 'timestamp', valueLabel = 'tokens' } = label;
   const xData: string[] = [];
@@ -169,7 +170,7 @@ export const getRecentDaysData = (
       item[valueLabel]!;
   });
 
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < durationDay; i++) {
     const time = dayjs().startOf('day').subtract(i, 'day').format('YYYY-MM-DD');
     if (dateMap[time]) {
       xData.unshift(time);
@@ -269,8 +270,60 @@ export const getBaseLanguageId = (languageId: string): string => {
 
 export const getTimeRange = (timeDuration: SecondTimeRange) => {
   const diff = timeDuration.end_at - timeDuration.start_at;
-  if (diff > 24 * 60 * 60 * 1000) {
+  if (diff > 365 * 24 * 60 * 60) {
+    return 'month';
+  }
+  if (diff > 17* 24 * 60 * 60) { 
     return 'day';
   }
   return 'hour';
+};
+
+export const getRangeData = (
+  timeDuration: { start_at: number; end_at: number },
+  data: { timestamp?: number; value?: number }[],
+  precision: 'month' | 'day' | 'hour',
+  label: { keyLabel?: string; valueLabel?: string } = { keyLabel: 'timestamp', valueLabel: 'value' }
+) => {
+  const { keyLabel = 'timestamp', valueLabel = 'value' } = label;
+  const xData: (string | number)[] = [];
+  const yData: number[] = [];
+  const dateMap: Record<string, number> = {};
+
+  // 将原始数据转换为时间映射
+  data.forEach((item) => {
+    const timestampValue = item[keyLabel as keyof typeof item] as number;
+    const dataValue = item[valueLabel as keyof typeof item] as number;
+
+    if (timestampValue && dataValue !== undefined) {
+      // API返回的timestamp是秒，直接使用dayjs.unix()
+      const timeKey = precision === 'day'
+        ? dayjs.unix(timestampValue).format('YYYY-MM-DD')
+        : dayjs.unix(timestampValue).format('YYYY-MM-DD HH:00');
+      dateMap[timeKey] = dataValue;
+    }
+  });
+
+  // timeDuration中的时间戳是毫秒，需要除以1000
+  const startTime = dayjs.unix(timeDuration.start_at);
+  const endTime = dayjs.unix(timeDuration.end_at);
+
+  // 根据 precision 对齐时间点
+  const startPoint = precision === 'day' ? startTime.startOf('day') : startTime.startOf('hour');
+  const endPoint = precision === 'day' ? endTime.startOf('day') : endTime.startOf('hour');
+
+  // 从开始时间到结束时间，逐个补齐数据点
+  let currentTime = startPoint;
+  while (currentTime.unix() <= endPoint.unix()) {
+    const timeKey = precision === 'day'
+      ? currentTime.format('YYYY-MM-DD')
+      : currentTime.format('YYYY-MM-DD HH:00');
+
+    xData.push(timeKey);
+    yData.push(dateMap[timeKey] || 0);
+
+    currentTime = currentTime.add(1, precision);
+  }
+
+  return { xData, yData };
 };

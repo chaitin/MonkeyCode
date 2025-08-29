@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getListUser } from '@/api/User';
-import { Stack, MenuItem, Select, Box } from '@mui/material';
+import { Stack, Box } from '@mui/material';
 import { CusTabs } from '@c-x/ui';
 import GlobalStatistic from './components/globalStatistic';
 import { useRequest } from 'ahooks';
@@ -10,14 +10,16 @@ import { useNavigate } from 'react-router-dom';
 import { DomainUser } from '@/api/types';
 import { v1LicenseList } from '@/api';
 import { Calendar, RangeValue } from '@/components/ui/calendar';
-import { endOfDay, startOfDay, subDays, subMonths, subWeeks } from 'date-fns';
+import { subDays, subMonths, subWeeks } from 'date-fns';
+import { getTimeRange } from '@/utils';
 
 const get24HoursRange = () => {
   return {
-    start: startOfDay(subDays(new Date(), 1)),
-    end: endOfDay(new Date()),
+    start: subDays(new Date(), 1),
+    end: new Date(),
   };
 };
+
 const presets = {
   'last-1-days': {
     text: '最近 24 小时',
@@ -25,23 +27,38 @@ const presets = {
   },
   'last-3-days': {
     text: '最近 3 天',
-    start: startOfDay(subDays(new Date(), 3)),
-    end: endOfDay(new Date()),
+    start: subDays(new Date(), 3),
+    end: new Date(),
   },
   'last-7-days': {
     text: '最近 7 天',
-    start: startOfDay(subWeeks(new Date(), 1)),
-    end: endOfDay(new Date()),
+    start: subWeeks(new Date(), 1),
+    end: new Date(),
   },
   'last-14-days': {
     text: '最近 14 天',
-    start: startOfDay(subWeeks(new Date(), 2)),
-    end: endOfDay(new Date()),
+    start: subWeeks(new Date(), 2),
+    end: new Date(),
   },
   'last-month': {
     text: '最近 1 月',
-    start: startOfDay(subMonths(new Date(), 1)),
-    end: endOfDay(new Date()),
+    start: subMonths(new Date(), 1),
+    end: new Date(),
+  },
+  'last-3-months': {
+    text: '最近 3 月',
+    start: subMonths(new Date(), 3),
+    end: new Date(),
+  },
+  'last-half-year': {
+    text: '最近半年',
+    start: subMonths(new Date(), 6),
+    end: new Date(),
+  },
+  'last-year': {
+    text: '最近一年',
+    start: subMonths(new Date(), 12),
+    end: new Date(),
   },
 };
 export type TimeRange = '90d' | '24h';
@@ -96,22 +113,31 @@ const Dashboard = () => {
   };
   const handleTimeRangeChange = (value: any) => {
     if (value) {
+      console.log(value)
       setTimeRange(value);
     } else {
       setTimeRange(get24HoursRange());
     }
   };
+
   const secondValue = useMemo(() => {
     return {
       start_at: timeRange.start
         ? Math.floor(timeRange.start?.getTime() / 1000)
         : 0,
       end_at: timeRange.end ? Math.floor(timeRange.end?.getTime() / 1000) : 0,
+      precision: getTimeRange({
+        start_at: timeRange.start
+          ? Math.floor(timeRange.start?.getTime() / 1000)
+          : 0,
+        end_at: timeRange.end ? Math.floor(timeRange.end?.getTime() / 1000) : 0,
+      }),
     };
   }, [timeRange]);
+
   return (
     <Stack gap={2} sx={{ height: '100%' }}>
-      <Stack direction='row' gap={2} alignItems='center'>
+      <Stack direction='row' gap={2} justifyContent='space-between' alignItems='center'>
         <CusTabs
           value={tabValue}
           onChange={onTabChange}
@@ -137,10 +163,11 @@ const Dashboard = () => {
         />
         <Box sx={{ py: '4px', pr: 5 }}>
           <Calendar
-            isDocsPage
+            allowClear
             disabled={license?.edition !== 2}
             onChange={handleTimeRangeChange}
             presets={presets}
+            presetIndex={0}
             value={timeRange}
           />
         </Box>
