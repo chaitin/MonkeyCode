@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Card from '@/components/card';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import { useRequest } from 'ahooks';
@@ -35,17 +35,18 @@ const GroupList = () => {
   const userData = useRequest(() => getListUser({}));
   const adminData = useRequest(() => getListAdminUser({}));
   const [searchUser, setSearchUser] = useState('');
-  const [data, setData] = useState<DomainUserGroup[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
-    useEffect(()=>{
-    if(searchUser){
-      setData(groupData?.data?.groups?.filter((item)=>
-        (item.name ||'').toLowerCase()?.includes(searchUser.toLowerCase())) || []);
-    }else {
-      setData(groupData?.data?.groups || []);
+  const filteredData = useMemo(() => {
+    if (!groupData?.data?.groups) return [];
+    if (searchUser) {
+      return groupData.data.groups.filter((item) =>
+        (item.name || '').toLowerCase().includes(searchUser.toLowerCase())
+      );
     }
-  },[searchUser, groupData])
+    return groupData.data.groups;
+  }, [searchUser, groupData?.data?.groups]);
+
   const handleClick = (
     event: React.MouseEvent<HTMLButtonElement>,
     record: DomainUserGroup
@@ -296,7 +297,7 @@ const GroupList = () => {
       <Table
         columns={columns}
         height='calc(100% - 53px)'
-        dataSource={data}
+        dataSource={filteredData}
         sx={{ mx: -2 }}
         pagination={false}
         rowKey='id'
