@@ -12,6 +12,7 @@ import { useRequest } from 'ahooks';
 import { getGetSetting, putUpdateSetting } from '@/api/Admin';
 import MemberManage from './memberManage';
 import LoginHistory from './loginHistory';
+import { DomainLicenseEdition, v1LicenseList } from '@/api';
 import { message } from '@c-x/ui';
 import ThirdPartyLoginSettingModal from './thirdPartyLoginSettingModal';
 import GroupList from './groupList';
@@ -51,6 +52,10 @@ const User = () => {
       message.success('设置更新成功');
     },
   });
+
+  const license = useRequest(() => {
+    return v1LicenseList({});
+  }).data;
 
   const oauthLabel = useMemo(() => {
     if (!data) return '未开启';
@@ -119,9 +124,9 @@ const User = () => {
                 color='info'
                 sx={{ gap: 2 }}
                 onClick={() => setThirdPartyLoginSettingModalOpen(true)}
-                disabled
+                disabled={license?.edition !== DomainLicenseEdition.LicenseEditionEnterprise}
               >
-                配置 (敬请期待)
+                配置
               </Button>
             </StyledCard>
             <LoginHistory />
