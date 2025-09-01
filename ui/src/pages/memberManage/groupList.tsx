@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import Card from '@/components/card';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import { useRequest } from 'ahooks';
@@ -31,11 +31,15 @@ const GroupList = () => {
   const [openCreateGroupModal, setOpenCreateGroupModal] = useState(false);
   const [openUpdateGroupModal, setOpenUpdateGroupModal] = useState(false);
   const [currentGroup, setCurrentGroup] = useState<DomainUserGroup | null>(null);
-  const groupData = useRequest(() => getListUserGroup({page: 1, size: 999}));
-  const userData = useRequest(() => getListUser({}));
-  const adminData = useRequest(() => getListAdminUser({}));
+  const groupData = useRequest(() => getListUserGroup({page: 1, size: 9999}));
+  const userData = useRequest(() => getListUser({page: 1, size: 9999}));
+  const adminData = useRequest(() => getListAdminUser({page: 1, size: 9999}));
   const [searchUser, setSearchUser] = useState('');
+  const [memberSearchText, setMemberSearchText] = useState('');
+  const [adminSearchText, setAdminSearchText] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const memberInputRef = useRef<HTMLInputElement>(null);
+  const adminInputRef = useRef<HTMLInputElement>(null);
 
   const filteredData = useMemo(() => {
     if (!groupData?.data?.groups) return [];
@@ -46,6 +50,16 @@ const GroupList = () => {
     }
     return groupData.data.groups;
   }, [searchUser, groupData?.data?.groups]);
+
+  const filteredSelectUsers = useMemo(() => {
+    if (!userData.data?.users) return [];
+    return userData.data.users.filter(user => (user.username || '').toLowerCase().includes(memberSearchText.toLowerCase()));
+  }, [userData.data?.users, memberSearchText]);
+
+  const filteredSelectAdmins = useMemo(() => {
+    if (!adminData.data?.users) return [];
+    return adminData.data.users.filter(user => (user.username || '').toLowerCase().includes(adminSearchText.toLowerCase()));
+  }, [adminData.data?.users, adminSearchText]);
 
   const handleClick = (
     event: React.MouseEvent<HTMLButtonElement>,
@@ -110,6 +124,15 @@ const GroupList = () => {
             value={(users || []).map((u: DomainUser) => u.id)}
             label='成员'
             size='small'
+            onClose={() => setMemberSearchText('')}
+            onOpen={() => {
+              setTimeout(() => {
+                memberInputRef.current?.focus();
+              }, 100);
+            }}
+            MenuProps={{
+              autoFocus: false,
+            }}
             renderValue={(selectedIds: string[]) => {
               if (!Array.isArray(selectedIds)) return null;
               const selectedUsers = (userData.data?.users || []).filter((user: DomainUser) =>
@@ -156,9 +179,24 @@ const GroupList = () => {
                   message.error('成员移除失败');
                 });
               }
+              setMemberSearchText('');
             }}
           >
-            {userData.data?.users?.map((user) => (
+            <Box
+              onKeyDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              sx={{ p: 1, position: 'sticky', top: -8, zIndex: 1, backgroundColor: 'background.paper' }}
+            >
+              <TextField
+                size="small"
+                fullWidth
+                inputRef={memberInputRef}
+                placeholder="搜索成员"
+                onChange={(e) => setMemberSearchText(e.target.value)}
+              />
+            </Box>
+            {filteredSelectUsers?.map((user) => (
               <MenuItem key={user.username} value={user.id}>
                 {(users.some((u: DomainUser) => {
                   return u.id === user.id
@@ -184,6 +222,15 @@ const GroupList = () => {
             value={(admins || []).map((u: DomainAdminUser) => u.id)}
             label='管理员'
             size='small'
+            onClose={() => setAdminSearchText('')}
+            onOpen={() => {
+              setTimeout(() => {
+                adminInputRef.current?.focus();
+              }, 100);
+            }}
+            MenuProps={{
+              autoFocus: false,
+            }}
             renderValue={(selectedIds: string[]) => {
               if (!Array.isArray(selectedIds)) return null;
               const selectedAdmins = (adminData.data?.users || []).filter((user: DomainAdminUser) =>
@@ -230,9 +277,24 @@ const GroupList = () => {
                   message.error('管理员移除失败');
                 });
               }
+              setAdminSearchText('');
             }}
           >
-            {adminData.data?.users?.map((user) => (
+            <Box
+              onKeyDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              sx={{ p: 1, position: 'sticky', top: -8, zIndex: 1, backgroundColor: 'background.paper' }}
+            >
+              <TextField
+                size="small"
+                fullWidth
+                inputRef={adminInputRef}
+                placeholder="搜索管理员"
+                onChange={(e) => setAdminSearchText(e.target.value)}
+              />
+            </Box>
+            {filteredSelectAdmins?.map((user) => (
               <MenuItem key={user.username} value={user.id}>
                 {(admins.some((u: DomainAdminUser) => {
                   return u.id === user.id
