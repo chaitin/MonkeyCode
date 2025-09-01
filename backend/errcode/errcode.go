@@ -14,6 +14,7 @@ var (
 	ErrUserNotFound        = web.NewBadRequestErr("err-user-not-found")
 	ErrUserLock            = web.NewBadRequestErr("err-user-lock")
 	ErrPassword            = web.NewBadRequestErr("err-password")
+	ErrAccountAlreadyExist = web.NewBadRequestErr("err-account-already-exist")
 	ErrInviteCodeInvalid   = web.NewBadRequestErr("err-invite-code-invalid")
 	ErrEmailInvalid        = web.NewBadRequestErr("err-email-invalid")
 	ErrOAuthStateInvalid   = web.NewBadRequestErr("err-oauth-state-invalid")

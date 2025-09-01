@@ -7,6 +7,9 @@ other = "User not found"
 [err-user-lock]
 other = "User is locked"
 
+[err-account-already-exist]
+other = "Account already exists"
+
 [err-password]
 other = "Incorrect password"
 

@@ -7,6 +7,9 @@ other = "用户不存在"
 [err-user-lock]
 other = "用户已锁定"
 
+[err-account-already-exist]
+other = "当前账号已经注册"
+
 [err-only-admin]
 other = "仅管理员可操作"
 

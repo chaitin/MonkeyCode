@@ -136,18 +136,25 @@ func (r *UserRepo) innerValidateInviteCode(ctx context.Context, tx *db.Tx, code 
 	return ic, nil
 }
 
-func (r *UserRepo) CreateUser(ctx context.Context, user *db.User) (*db.User, error) {
+func (r *UserRepo) CreateUser(ctx context.Context, us *db.User) (*db.User, error) {
 	var res *db.User
 	err := entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
 		if err := r.checkLimit(ctx, tx); err != nil {
 			return err
 		}
+		n, err := tx.User.Query().Where(user.Email(us.Email)).Count(ctx)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return errcode.ErrAccountAlreadyExist
+		}
 		u, err := tx.User.Create().
-			SetUsername(user.Username).
-			SetEmail(user.Email).
-			SetPassword(user.Password).
-			SetStatus(user.Status).
-			SetPlatform(user.Platform).
+			SetUsername(us.Username).
+			SetEmail(us.Email).
+			SetPassword(us.Password).
+			SetStatus(us.Status).
+			SetPlatform(us.Platform).
 			Save(ctx)
 		if err != nil {
 			return err
@@ -377,7 +384,8 @@ func (r *UserRepo) OAuthRegister(ctx context.Context, platform consts.UserPlatfo
 			Where(useridentity.Platform(platform), useridentity.IdentityID(req.ID)).
 			First(ctx)
 		if err == nil {
-			return fmt.Errorf("user already exists for platform %s and identity ID %s", platform, req.ID)
+			e := fmt.Errorf("user already exists for platform %s and identity ID %s", platform, req.ID)
+			return errcode.ErrAccountAlreadyExist.Wrap(e)
 		}
 		if !db.IsNotFound(err) {
 			return err
