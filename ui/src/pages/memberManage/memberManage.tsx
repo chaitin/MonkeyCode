@@ -156,8 +156,12 @@ const MemberManage = () => {
   const [data, setData] = useState<DomainUser[]>([]);
   useEffect(()=>{
     if(searchUser){
-      setData(originData?.users?.filter((item)=>
-        (item.username ||'').toLowerCase()?.includes(searchUser.toLowerCase())) || []);
+      setData(originData?.users?.filter((item) => {
+        const searchTerm = searchUser.toLowerCase();
+        const username = (item.username || '').toLowerCase();
+        const email = (item.email || '').toLowerCase();
+        return username.includes(searchTerm) || email.includes(searchTerm);
+      }) || []);
     }else {
       setData(originData?.users || []);
     }
