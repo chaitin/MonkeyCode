@@ -102,13 +102,6 @@ func (u *OpenAIUsecase) GetConfig(ctx context.Context, req *domain.ConfigReq) (*
 		ProviderProfiles: domain.ProviderProfiles{
 			CurrentApiConfigName: "default",
 			ApiConfigs:           map[string]domain.ApiConfig{},
-			ModeApiConfigs: map[string]string{
-				"code":         "59admorkig4",
-				"architect":    "59admorkig4",
-				"ask":          "59admorkig4",
-				"debug":        "59admorkig4",
-				"deepresearch": "59admorkig4",
-			},
 			Migrations: domain.Migrations{
 				RateLimitSecondsMigrated: true,
 				DiffSettingsMigrated:     true,
@@ -131,6 +124,13 @@ func (u *OpenAIUsecase) GetConfig(ctx context.Context, req *domain.ConfigReq) (*
 		name := fmt.Sprintf("%s (%s)", m.ModelName, m.Provider)
 		if m.Status == consts.ModelStatusDefault {
 			name = "default"
+			config.ProviderProfiles.ModeApiConfigs = map[string]string{
+				"code":         m.ID.String(),
+				"architect":    m.ID.String(),
+				"ask":          m.ID.String(),
+				"debug":        m.ID.String(),
+				"deepresearch": m.ID.String(),
+			}
 		}
 		config.ProviderProfiles.ApiConfigs[name] = domain.ApiConfig{
 			ApiProvider:           "openai",
