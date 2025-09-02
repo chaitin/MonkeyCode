@@ -139,9 +139,6 @@ func (r *UserRepo) innerValidateInviteCode(ctx context.Context, tx *db.Tx, code 
 func (r *UserRepo) CreateUser(ctx context.Context, us *db.User) (*db.User, error) {
 	var res *db.User
 	err := entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
-		if err := r.checkLimit(ctx, tx); err != nil {
-			return err
-		}
 		n, err := tx.User.Query().Where(user.Email(us.Email)).Count(ctx)
 		if err != nil {
 			return err
@@ -371,10 +368,6 @@ func (r *UserRepo) DeleteAdmin(ctx context.Context, id string) error {
 func (r *UserRepo) OAuthRegister(ctx context.Context, platform consts.UserPlatform, inviteCode string, req *domain.OAuthUserInfo) (*db.User, error) {
 	var u *db.User
 	err := entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
-		if err := r.checkLimit(ctx, tx); err != nil {
-			return err
-		}
-
 		if _, err := r.innerValidateInviteCode(ctx, tx, inviteCode); err != nil {
 			return errcode.ErrInviteCodeInvalid.Wrap(err)
 		}
@@ -447,17 +440,6 @@ func (r *UserRepo) updateAvatar(ctx context.Context, tx *db.Tx, ui *db.UserIdent
 	return tx.User.UpdateOneID(ui.UserID).SetAvatarURL(avatar).Exec(ctx)
 }
 
-func (r *UserRepo) checkLimit(ctx context.Context, tx *db.Tx) error {
-	count, err := tx.User.Query().Count(ctx)
-	if err != nil {
-		return err
-	}
-	if count >= r.cfg.Admin.Limit {
-		return errcode.ErrUserLimit.Wrap(err)
-	}
-	return nil
-}
-
 func (r *UserRepo) SignUpOrIn(ctx context.Context, platform consts.UserPlatform, req *domain.OAuthUserInfo) (*db.User, error) {
 	var u *db.User
 	err := entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
@@ -478,9 +460,6 @@ func (r *UserRepo) SignUpOrIn(ctx context.Context, platform consts.UserPlatform,
 			return nil
 		}
 		if !db.IsNotFound(err) {
-			return err
-		}
-		if err = r.checkLimit(ctx, tx); err != nil {
 			return err
 		}
 		user, err := tx.User.Create().
