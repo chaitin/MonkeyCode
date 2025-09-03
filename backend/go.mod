@@ -8,6 +8,7 @@ require (
 	github.com/chaitin/ModelKit/v2 v2.0.6
 	github.com/doquangtan/socket.io/v4 v4.0.8
 	github.com/golang-migrate/migrate/v4 v4.18.3
+	github.com/google/go-github/v74 v74.0.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/labstack/echo/v4 v4.13.4
