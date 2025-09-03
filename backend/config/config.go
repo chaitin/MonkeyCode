@@ -85,6 +85,10 @@ type Config struct {
 	Security struct {
 		QueueLimit int `mapstructure:"queue_limit"`
 	} `mapstructure:"security"`
+
+	Sentry struct {
+		DSN         string  `mapstructure:"dsn"`
+	} `mapstructure:"sentry"`
 }
 
 func (c *Config) GetBaseURL(req *http.Request, settings *domain.Setting) string {
@@ -154,6 +158,7 @@ func Init() (*Config, error) {
 	v.SetDefault("embedding.model_name", "qwen3-embedding-0.6b")
 	v.SetDefault("embedding.api_endpoint", "https://aiapi.chaitin.net/v1/embeddings")
 	v.SetDefault("embedding.api_key", "")
+	v.SetDefault("sentry.dsn", "")
 
 	c := Config{}
 	if err := v.Unmarshal(&c); err != nil {
