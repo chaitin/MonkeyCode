@@ -100,8 +100,7 @@ func (u *OpenAIUsecase) GetConfig(ctx context.Context, req *domain.ConfigReq) (*
 
 	config := &domain.PluginConfig{
 		ProviderProfiles: domain.ProviderProfiles{
-			CurrentApiConfigName: "default",
-			ApiConfigs:           map[string]domain.ApiConfig{},
+			ApiConfigs: map[string]domain.ApiConfig{},
 			Migrations: domain.Migrations{
 				RateLimitSecondsMigrated: true,
 				DiffSettingsMigrated:     true,
@@ -121,9 +120,8 @@ func (u *OpenAIUsecase) GetConfig(ctx context.Context, req *domain.ConfigReq) (*
 		if m.Parameters == nil {
 			m.Parameters = types.DefaultModelParam()
 		}
-		name := fmt.Sprintf("%s (%s)", m.ModelName, m.Provider)
 		if m.Status == consts.ModelStatusDefault {
-			name = "default"
+			config.ProviderProfiles.CurrentApiConfigName = m.ShowName
 			config.ProviderProfiles.ModeApiConfigs = map[string]string{
 				"code":         m.ID.String(),
 				"architect":    m.ID.String(),
@@ -132,7 +130,7 @@ func (u *OpenAIUsecase) GetConfig(ctx context.Context, req *domain.ConfigReq) (*
 				"deepresearch": m.ID.String(),
 			}
 		}
-		config.ProviderProfiles.ApiConfigs[name] = domain.ApiConfig{
+		config.ProviderProfiles.ApiConfigs[m.ShowName] = domain.ApiConfig{
 			ApiProvider:           "openai",
 			ApiModelId:            m.ModelName,
 			OpenAiBaseUrl:         req.BaseURL + "/v1",
