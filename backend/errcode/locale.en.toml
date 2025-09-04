@@ -40,6 +40,15 @@ other = "OAuth is not enabled"
 [err-user-limit]
 other = "User limit reached"
 
+[err-model-limit]
+other = "Model limit reached"
+
+[err-security-limit]
+other = "Security limit reached"
+
+[err-only-enterprise]
+other = "Only enterprise user can perform this operation"
+
 [err-invalid-secret]
 other = "Invalid secret"
 

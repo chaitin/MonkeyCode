@@ -61,7 +61,6 @@ const presets = {
     end: new Date(),
   },
 };
-export type TimeRange = '90d' | '24h';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -69,7 +68,7 @@ const Dashboard = () => {
   const [tabValue, setTabValue] = useState(tab || 'global');
   const [memberData, setMemberData] = useState<DomainUser | null>(null);
   const [timeRange, setTimeRange] = useState<RangeValue>(
-    presets['last-1-days']
+    presets['last-7-days']
   );
 
   const license = useRequest(() => {
@@ -167,7 +166,7 @@ const Dashboard = () => {
             disabled={license?.edition !== 2}
             onChange={handleTimeRangeChange}
             presets={presets}
-            presetIndex={0}
+            presetIndex={2}
             value={timeRange}
           />
         </Box>

@@ -442,23 +442,6 @@ func (h *UserHandler) LoginHistory(c *web.Context) error {
 //	@Router			/api/v1/user/invite [get]
 func (h *UserHandler) Invite(c *web.Context) error {
 	admin := middleware.GetAdmin(c)
-
-	edition := c.Get("edition")
-	if edition == nil {
-		return errcode.ErrPermission
-	}
-
-	// 如果是 Free 版本 user 表不允许超过 100 人
-	if edition.(int) == 0 {
-		count, err := h.usecase.GetUserCount(c.Request().Context())
-		if err != nil {
-			return err
-		}
-		if count >= 100 {
-			return errcode.ErrUserLimit
-		}
-	}
-
 	resp, err := h.usecase.Invite(c.Request().Context(), admin.ID.String())
 	if err != nil {
 		return err

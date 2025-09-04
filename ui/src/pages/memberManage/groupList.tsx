@@ -19,8 +19,8 @@ import {
 } from '@mui/material';
 import { Table, Modal, message } from '@c-x/ui';
 import { ColumnsType } from '@c-x/ui/dist/Table';
-import { DomainAdminUser, DomainUser, DomainUserGroup } from '@/api/types';
-import { deleteDeleteGroup, getListAdminUser, getListUserGroup } from '@/api';
+import { DomainAdminUser, DomainLicenseEdition, DomainUser, DomainUserGroup } from '@/api/types';
+import { deleteDeleteGroup, getListAdminUser, getListUserGroup, v1LicenseList } from '@/api';
 import { deleteRemoveAdminFromGroup, postGrantGroup, postAddUserToGroup, deleteRemoveUserFromGroup, putUpdateUserGroup } from '@/api/UserGroup';
 import CreateGroupModal from './createGroupModal';
 import UpdateGroupModal from './updateGroupModal';
@@ -40,6 +40,9 @@ const GroupList = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const memberInputRef = useRef<HTMLInputElement>(null);
   const adminInputRef = useRef<HTMLInputElement>(null);
+  const license = useRequest(() => {
+    return v1LicenseList({})
+  }).data
 
   const filteredData = useMemo(() => {
     if (!groupData?.data?.groups) return [];
@@ -353,6 +356,7 @@ const GroupList = () => {
             variant='contained'
             color='primary'
             onClick={() => setOpenCreateGroupModal(true)}
+            disabled={license?.edition !== DomainLicenseEdition.LicenseEditionEnterprise}
           >创建成员组</Button>
         </Stack>
       </Stack>

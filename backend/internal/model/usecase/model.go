@@ -109,12 +109,22 @@ func (m *ModelUsecase) Update(ctx context.Context, req *domain.UpdateModelReq) (
 		}
 		if req.Status != nil {
 			if *req.Status == consts.ModelStatusDefault {
-				if err := tx.Model.Update().
-					Where(model.Status(consts.ModelStatusDefault)).
-					Where(model.ModelType(old.ModelType)).
-					SetStatus(consts.ModelStatusActive).
-					Exec(ctx); err != nil {
-					return err
+				if old.ModelType == consts.ModelTypeCoder {
+					if err := tx.Model.Update().
+						Where(model.StatusIn(consts.ModelStatusDefault, consts.ModelStatusActive)).
+						Where(model.ModelType(old.ModelType)).
+						SetStatus(consts.ModelStatusInactive).
+						Exec(ctx); err != nil {
+						return err
+					}
+				} else {
+					if err := tx.Model.Update().
+						Where(model.Status(consts.ModelStatusDefault)).
+						Where(model.ModelType(old.ModelType)).
+						SetStatus(consts.ModelStatusActive).
+						Exec(ctx); err != nil {
+						return err
+					}
 				}
 			}
 			if *req.Status == consts.ModelStatusActive {
