@@ -344,7 +344,9 @@ const ModelItem = ({
             </ButtonBase>
           )}
 
-          {data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive && (
+          {data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive &&
+          data.model_type !== GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeCoder && 
+          (
             <ButtonBase
               disableRipple
               sx={{

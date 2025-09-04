@@ -62,6 +62,9 @@ func (r *ModelRepo) Create(ctx context.Context, m *domain.CreateModelReq) (*db.M
 		return nil, err
 	}
 	status := consts.ModelStatusActive
+	if m.ModelType == consts.ModelTypeCoder {
+		status = consts.ModelStatusInactive
+	}
 	if n == 0 {
 		status = consts.ModelStatusDefault
 	}

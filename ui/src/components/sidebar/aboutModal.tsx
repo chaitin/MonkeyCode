@@ -1,9 +1,13 @@
 import dayjs from 'dayjs';
 import { useState } from 'react';
-import { Ellipsis, Modal } from '@c-x/ui';
-import { Box, Button, Link, Stack } from '@mui/material';
+import { Modal } from '@c-x/ui';
+import HelpCenter from '@/assets/json/help-center.json';
+import Takeoff from '@/assets/json/takeoff.json';
+import IconUpgrade from '@/assets/json/upgrade.json';
+import { Box, Button, Stack } from '@mui/material';
 import { DomainLicenseResp } from '@/api/types';
 import ChangeLicense from './changeLicense';
+import LottieIcon from '../lottieIcon';
 
 interface LicenseModalProps {
   open: boolean;
@@ -36,7 +40,7 @@ const AboutModal = ({
   }
 
   return (
-    <Modal 
+    <Modal
       title='关于 MonkeyCode'
       width={600}
       open={open}
@@ -45,7 +49,7 @@ const AboutModal = ({
       <Stack direction={'column'} gap={2} sx={{
         fontSize: '14px'
       }}>
-        <Stack direction={'row'}>
+        <Stack direction={'row'} gap={2} alignItems={'center'}>
           <Box sx={{
             width: '120px'
           }}>当前版本</Box>
@@ -53,25 +57,75 @@ const AboutModal = ({
             width: '120px',
             fontWeight: 700
           }}>{curVersion}</Box>
+
+          {latestVersion === `v${curVersion}` ? (
+            <Box sx={{ color: 'text.auxiliary', fontSize: 12 }}>
+              已是最新版本，无需更新
+            </Box>
+          ) : (
+            <Button
+              size='small'
+              startIcon={
+                <Box>
+                  <LottieIcon
+                    id='version'
+                    src={latestVersion === '' ? HelpCenter : IconUpgrade}
+                    style={{ width: 16, height: 16, display: 'flex' }}
+                  />
+                </Box>
+              }
+              onClick={() => {
+                window.open(
+                  'https://monkeycode.docs.baizhi.cloud/node/01980d22-db84-73b4-ae13-6a188e318048',
+                );
+              }}
+            >
+              立即更新
+            </Button>
+          )}
         </Stack>
-        <Stack direction={'row'}>
+
+        <Stack direction={'row'} gap={2} alignItems={'center'}>
           <Box sx={{
             width: '120px',
           }}>产品型号</Box>
-          <Box sx={{
-            mr: '20px'
-          }}>{editionText(license?.edition)}</Box>
-          <Link href="#" sx={{
-            color: 'info.main',
-            '&:hover': {
-              fontWeight: 700
+          <Box>{editionText(license?.edition)}</Box>
+
+          <Button
+            size='small'
+            startIcon={
+              <Box>
+                <LottieIcon
+                  id='version'
+                  src={Takeoff}
+                  style={{ width: 16, height: 16, display: 'flex' }}
+                />
+              </Box>
             }
-          }}
-          onClick={() => {
-            setOpenChangeLicense(true);
-          }}>切换授权</Link>
+            onClick={() => setOpenChangeLicense(true)}
+          >
+            切换授权
+          </Button>
+
+          <Button
+            size='small'
+            startIcon={
+              <Box>
+                <LottieIcon
+                  id='consult'
+                  src={HelpCenter}
+                  style={{ width: 16, display: 'flex' }}
+                />
+              </Box>
+            }
+            onClick={() => {
+              window.open('https://baizhi.cloud/consult');
+            }}
+          >
+            商务咨询
+          </Button>
         </Stack>
-        {license && license?.edition !== 0 && <Stack direction={'row'}>
+        {license && license?.edition !== 0 && <Stack direction={'row'} gap={2}>
           <Box sx={{
             width: '120px'
           }}>授权时间</Box>
@@ -79,9 +133,9 @@ const AboutModal = ({
           }}>{dayjs.unix(license.started_at!).format('YYYY-MM-DD')} ~ {dayjs.unix(license.expired_at!).format('YYYY-MM-DD')}</Box>
         </Stack>}
       </Stack>
-      <ChangeLicense 
+      <ChangeLicense
         open={openChangeLicense}
-        onClose={() => {setOpenChangeLicense(false)}} />
+        onClose={() => { setOpenChangeLicense(false) }} />
     </Modal>
   );
 };

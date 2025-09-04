@@ -40,6 +40,15 @@ other = "OAuth未启用"
 [err-user-limit]
 other = "用户数量已达上限"
 
+[err-model-limit]
+other = "模型数量已达上限"
+
+[err-security-limit]
+other = "已有扫描中的任务"
+
+[err-only-enterprise]
+other = "仅企业版可用"
+
 [err-invalid-secret]
 other = "无效的密钥"
 
