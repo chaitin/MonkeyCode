@@ -38,6 +38,8 @@ MonkeyCode 充分考虑了隐私和安全，支持**完全私有化和离线使�
 
 请参考 [入门指南 - 新手必读！！！](https://monkeycode.docs.baizhi.cloud/node/0197be94-c6c1-737a-a0ca-01cd9c81e833)
 
+[![](https://raw.githubusercontent.com/ClawCloud/Run-Template/refs/heads/main/Run-on-ClawCloud.svg)](https://template.run.claw.cloud/?openapp=system-fastdeploy%3FtemplateName%3Dmonkeycode)  CLAWCLOUD Run 提供一键部署快速预览。
+
 ### 在 VS Code 中使用 MonkeyCode
 
 请参考 [在 VS Code 中使用](https://monkeycode.docs.baizhi.cloud/node/0197e39a-14e7-79db-8e25-6d775407a85b)。
