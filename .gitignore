@@ -4,3 +4,4 @@ backend/assets-amd64
 ModelModal
 ui/node_modules
 ui/dist
+.monkeycode
