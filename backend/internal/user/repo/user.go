@@ -423,6 +423,13 @@ func (r *UserRepo) OAuthLogin(ctx context.Context, platform consts.UserPlatform,
 	if ui.Edges.User.Status != consts.UserStatusActive {
 		return nil, errcode.ErrUserLock
 	}
+	if ui.Nickname != req.Name {
+		if err = entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
+			return r.updateUsername(ctx, tx, ui, req.Name)
+		}); err != nil {
+			return nil, err
+		}
+	}
 	if ui.AvatarURL != req.AvatarURL {
 		if err = entx.WithTx(ctx, r.db, func(tx *db.Tx) error {
 			return r.updateAvatar(ctx, tx, ui, req.AvatarURL)
@@ -431,6 +438,13 @@ func (r *UserRepo) OAuthLogin(ctx context.Context, platform consts.UserPlatform,
 		}
 	}
 	return ui.Edges.User, nil
+}
+
+func (r *UserRepo) updateUsername(ctx context.Context, tx *db.Tx, ui *db.UserIdentity, name string) error {
+	if err := tx.UserIdentity.UpdateOneID(ui.ID).SetNickname(name).Exec(ctx); err != nil {
+		return err
+	}
+	return tx.User.UpdateOneID(ui.UserID).SetUsername(name).Exec(ctx)
 }
 
 func (r *UserRepo) updateAvatar(ctx context.Context, tx *db.Tx, ui *db.UserIdentity, avatar string) error {
@@ -451,6 +465,11 @@ func (r *UserRepo) SignUpOrIn(ctx context.Context, platform consts.UserPlatform,
 			u = ui.Edges.User
 			if u.Status != consts.UserStatusActive {
 				return errcode.ErrUserLock
+			}
+			if ui.Nickname != req.Name {
+				if err = r.updateUsername(ctx, tx, ui, req.Name); err != nil {
+					return err
+				}
 			}
 			if ui.AvatarURL != req.AvatarURL {
 				if err = r.updateAvatar(ctx, tx, ui, req.AvatarURL); err != nil {
