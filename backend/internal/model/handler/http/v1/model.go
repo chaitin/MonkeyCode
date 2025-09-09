@@ -7,8 +7,8 @@ import (
 
 	"github.com/GoYoko/web"
 
-	modelkitDomain "github.com/chaitin/ModelKit/domain"
-	modelkit "github.com/chaitin/ModelKit/usecase"
+	modelkitDomain "github.com/chaitin/ModelKit/v2/domain"
+	modelkit "github.com/chaitin/ModelKit/v2/usecase"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
 )
