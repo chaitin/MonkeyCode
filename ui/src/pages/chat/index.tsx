@@ -137,11 +137,13 @@ const Chat = () => {
             color: 'info',
           },
         };
-        return (
-          <StyledLabel color={value ? workModeMap[value]['color'] : 'default'}>
-            {value ? workModeMap[value]['name'] : '未知'}
-          </StyledLabel>
-        );
+
+        const current = workModeMap[value!] || {
+          color: 'default',
+          name: '未知',
+        };
+
+        return <StyledLabel color={current.color}>{current.name}</StyledLabel>;
       },
     },
     {
