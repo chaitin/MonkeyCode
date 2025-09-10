@@ -218,7 +218,7 @@ const EmloyeeModal = ({
                       value={item}
                       control={<Radio />}
                       label={item}
-                      disabled={item !== ConstsRepoPlatform.RepoPlatformGitLab}
+                      disabled={item !== ConstsRepoPlatform.RepoPlatformGitLab && item !== ConstsRepoPlatform.RepoPlatformGitHub}
                     />
                   ))}
                 </RadioGroup>
