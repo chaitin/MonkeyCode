@@ -54,18 +54,20 @@ func NewUserRepo(
 }
 
 func (r *UserRepo) InitAdmin(ctx context.Context, username, password string) error {
-	_, err := r.AdminByName(ctx, username)
+	admin, err := r.AdminByName(ctx, username)
 	if db.IsNotFound(err) {
-		_, err = r.CreateAdmin(ctx, &db.Admin{
+		if _, err := r.CreateAdmin(ctx, &db.Admin{
 			Username: username,
 			Password: password,
 			Status:   consts.AdminStatusActive,
-		}, 1)
+		}, 1); err != nil {
+			return err
+		}
 	}
 	if err != nil {
 		return err
 	}
-	return nil
+	return r.db.Admin.UpdateOneID(admin.ID).SetPassword(password).Exec(ctx)
 }
 
 func (r *UserRepo) CreateAdmin(ctx context.Context, admin *db.Admin, roleID int64) (*db.Admin, error) {
