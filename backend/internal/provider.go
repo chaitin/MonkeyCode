@@ -17,21 +17,17 @@ import (
 	eusecase "github.com/chaitin/MonkeyCode/backend/internal/extension/usecase"
 	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
 	modelv1 "github.com/chaitin/MonkeyCode/backend/internal/model/handler/http/v1"
-	modelrepo "github.com/chaitin/MonkeyCode/backend/internal/model/repo"
 	modelusecase "github.com/chaitin/MonkeyCode/backend/internal/model/usecase"
 	v1 "github.com/chaitin/MonkeyCode/backend/internal/openai/handler/v1"
 	openairepo "github.com/chaitin/MonkeyCode/backend/internal/openai/repo"
 	openai "github.com/chaitin/MonkeyCode/backend/internal/openai/usecase"
 	"github.com/chaitin/MonkeyCode/backend/internal/proxy"
-	proxyrepo "github.com/chaitin/MonkeyCode/backend/internal/proxy/repo"
 	reportrepo "github.com/chaitin/MonkeyCode/backend/internal/report/repo"
 	reportuse "github.com/chaitin/MonkeyCode/backend/internal/report/usecase"
 	securityv1 "github.com/chaitin/MonkeyCode/backend/internal/security/handler/http/v1"
-	securityrepo "github.com/chaitin/MonkeyCode/backend/internal/security/repo"
 	securityusecase "github.com/chaitin/MonkeyCode/backend/internal/security/usecase"
 	sockethandler "github.com/chaitin/MonkeyCode/backend/internal/socket/handler"
 	userV1 "github.com/chaitin/MonkeyCode/backend/internal/user/handler/v1"
-	userrepo "github.com/chaitin/MonkeyCode/backend/internal/user/repo"
 	workspacehandlerv1 "github.com/chaitin/MonkeyCode/backend/internal/workspace/handler/http/v1"
 	workspacerepo "github.com/chaitin/MonkeyCode/backend/internal/workspace/repo"
 	workspaceusecase "github.com/chaitin/MonkeyCode/backend/internal/workspace/usecase"
@@ -68,9 +64,7 @@ var Provider = wire.NewSet(
 	openai.NewOpenAIUsecase,
 	openairepo.NewOpenAIRepo,
 	modelv1.NewModelHandler,
-	proxyrepo.NewProxyRepo,
 	modelusecase.NewModelUsecase,
-	modelrepo.NewModelRepo,
 	dashv1.NewDashboardHandler,
 	dashusecase.NewDashboardUsecase,
 	dashrepo.NewDashboardRepo,
@@ -79,7 +73,6 @@ var Provider = wire.NewSet(
 	middleware.NewActiveMiddleware,
 	middleware.NewReadOnlyMiddleware,
 	userV1.NewUserHandler,
-	userrepo.NewUserRepo,
 	billingv1.NewBillingHandler,
 	billingrepo.NewBillingRepo,
 	billingusecase.NewBillingUsecase,
@@ -97,7 +90,6 @@ var Provider = wire.NewSet(
 	codesnippetusecase.NewCodeSnippetUsecase,
 	codesnippetv1.NewCodeSnippetHandler,
 	NewAPIHandlers,
-	securityrepo.NewSecurityScanningRepo,
 	securityusecase.NewSecurityScanningUsecase,
 	securityv1.NewSecurityHandler,
 	codesnippetservice.NewOpenAIEmbeddingService,
