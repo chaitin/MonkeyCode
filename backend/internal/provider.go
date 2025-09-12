@@ -24,7 +24,6 @@ import (
 	openai "github.com/chaitin/MonkeyCode/backend/internal/openai/usecase"
 	"github.com/chaitin/MonkeyCode/backend/internal/proxy"
 	proxyrepo "github.com/chaitin/MonkeyCode/backend/internal/proxy/repo"
-	proxyusecase "github.com/chaitin/MonkeyCode/backend/internal/proxy/usecase"
 	reportrepo "github.com/chaitin/MonkeyCode/backend/internal/report/repo"
 	reportuse "github.com/chaitin/MonkeyCode/backend/internal/report/usecase"
 	securityv1 "github.com/chaitin/MonkeyCode/backend/internal/security/handler/http/v1"
@@ -33,7 +32,6 @@ import (
 	sockethandler "github.com/chaitin/MonkeyCode/backend/internal/socket/handler"
 	userV1 "github.com/chaitin/MonkeyCode/backend/internal/user/handler/v1"
 	userrepo "github.com/chaitin/MonkeyCode/backend/internal/user/repo"
-	userusecase "github.com/chaitin/MonkeyCode/backend/internal/user/usecase"
 	workspacehandlerv1 "github.com/chaitin/MonkeyCode/backend/internal/workspace/handler/http/v1"
 	workspacerepo "github.com/chaitin/MonkeyCode/backend/internal/workspace/repo"
 	workspaceusecase "github.com/chaitin/MonkeyCode/backend/internal/workspace/usecase"
@@ -70,7 +68,6 @@ var Provider = wire.NewSet(
 	openai.NewOpenAIUsecase,
 	openairepo.NewOpenAIRepo,
 	modelv1.NewModelHandler,
-	proxyusecase.NewProxyUsecase,
 	proxyrepo.NewProxyRepo,
 	modelusecase.NewModelUsecase,
 	modelrepo.NewModelRepo,
@@ -83,7 +80,6 @@ var Provider = wire.NewSet(
 	middleware.NewReadOnlyMiddleware,
 	userV1.NewUserHandler,
 	userrepo.NewUserRepo,
-	userusecase.NewUserUsecase,
 	billingv1.NewBillingHandler,
 	billingrepo.NewBillingRepo,
 	billingusecase.NewBillingUsecase,

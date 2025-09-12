@@ -8,6 +8,7 @@ import (
 
 	"github.com/GoYoko/web"
 
+	"github.com/chaitin/MonkeyCode/backend"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/docs"
 	"github.com/chaitin/MonkeyCode/backend/internal"
@@ -72,10 +73,10 @@ func (s *Server) Stop() error {
 	return s.web.Echo().Shutdown(context.Background())
 }
 
-//lint:ignore U1000 unused for wire
-var appSet = wire.NewSet(
+var AppSet = wire.NewSet(
 	wire.FieldsOf(new(*config.Config), "Logger"),
 	config.Init,
 	pkg.Provider,
 	internal.Provider,
+	backend.Provider,
 )
