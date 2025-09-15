@@ -14,8 +14,9 @@ import (
 )
 
 type ModelHandler struct {
-	usecase domain.ModelUsecase
-	logger  *slog.Logger
+	usecase  domain.ModelUsecase
+	logger   *slog.Logger
+	modelkit *modelkit.ModelKit
 }
 
 func NewModelHandler(
@@ -26,7 +27,8 @@ func NewModelHandler(
 	readonly *middleware.ReadOnlyMiddleware,
 	logger *slog.Logger,
 ) *ModelHandler {
-	m := &ModelHandler{usecase: usecase, logger: logger.With("handler", "model")}
+	modelkit := modelkit.NewModelKit(logger)
+	m := &ModelHandler{usecase: usecase, logger: logger.With("handler", "model"), modelkit: modelkit}
 
 	g := w.Group("/api/v1/model")
 	g.Use(auth.Auth(), active.Active("admin"), readonly.Guard())
@@ -55,7 +57,7 @@ func NewModelHandler(
 //	@Success		200		{object}	web.Resp{data=domain.CheckModelResp}
 //	@Router			/api/v1/model/check [post]
 func (h *ModelHandler) Check(c *web.Context, req domain.CheckModelReq) error {
-	modelkitRes, err := modelkit.CheckModel(c.Request().Context(), &modelkitDomain.CheckModelReq{
+	modelkitRes, err := h.modelkit.CheckModel(c.Request().Context(), &modelkitDomain.CheckModelReq{
 		Provider:   string(req.Provider),
 		Model:      req.ModelName,
 		BaseURL:    req.APIBase,
@@ -199,7 +201,7 @@ func (h *ModelHandler) GetTokenUsage(c *web.Context, req domain.GetTokenUsageReq
 //	@Success		200		{object}	web.Resp{data=domain.GetProviderModelListResp}
 //	@Router			/api/v1/model/provider/supported [get]
 func (h *ModelHandler) GetProviderModelList(c *web.Context, req domain.GetProviderModelListReq) error {
-	modelkitRes, err := modelkit.ModelList(c.Request().Context(), &modelkitDomain.ModelListReq{
+	modelkitRes, err := h.modelkit.ModelList(c.Request().Context(), &modelkitDomain.ModelListReq{
 		Provider:  string(req.Provider),
 		Type:      string(req.Type),
 		BaseURL:   req.BaseURL,
