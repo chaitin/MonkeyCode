@@ -1,11 +1,11 @@
-import CardServiceSettings from "./components/cardServiceSettings";
-import { Grid2 as Grid } from "@mui/material";
-import CardAdminUser from "./components/cardAdminUser";
-import Model from "@/pages/model";
+import CardServiceSettings from './components/cardServiceSettings';
+import { Grid } from '@mui/material';
+import CardAdminUser from './components/cardAdminUser';
+import Model from '@/pages/model';
 
 const GeneralSetting = () => {
   return (
-    <Grid container spacing={2} sx={{ height: "100%" }}>
+    <Grid container spacing={2} sx={{ height: '100%' }}>
       <Grid size={6}>
         <CardServiceSettings />
         <Model />

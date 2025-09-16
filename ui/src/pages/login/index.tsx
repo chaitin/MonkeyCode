@@ -7,7 +7,7 @@ import {
   Container,
   Paper,
   CircularProgress,
-  Grid2 as Grid,
+  Grid,
   InputAdornment,
   IconButton,
   Stack,
@@ -18,7 +18,7 @@ import { postAdminLogin } from '@/api/Admin';
 import { useForm, Controller } from 'react-hook-form';
 import { styled } from '@mui/material/styles';
 import { ConstsLoginSource, DomainSetting } from '@/api/types';
-import { Icon, CusTabs } from '@c-x/ui';
+import { Icon, CusTabs } from '@ctzhian/ui';
 import Logo from '@/assets/images/logo.png';
 import { getRedirectUrl } from '@/utils';
 import { getGetSetting } from '@/api/Admin';

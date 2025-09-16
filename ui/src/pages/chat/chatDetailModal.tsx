@@ -2,7 +2,7 @@ import Avatar from '@/components/avatar';
 import Card from '@/components/card';
 import { getChatInfo } from '@/api/Billing';
 import MarkDown from '@/components/markDown';
-import { Ellipsis, Modal } from '@c-x/ui';
+import { Ellipsis, Modal } from '@ctzhian/ui';
 import { styled } from '@mui/material';
 import logo from '@/assets/images/logo.png';
 

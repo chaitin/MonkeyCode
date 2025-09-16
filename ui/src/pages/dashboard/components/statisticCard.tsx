@@ -1,4 +1,4 @@
-import { Empty } from '@c-x/ui';
+import { Empty } from '@ctzhian/ui';
 import { Box, Stack, styled } from '@mui/material';
 import dayjs from 'dayjs';
 import { useState } from 'react';
@@ -117,7 +117,7 @@ export const ContributionCard = ({
                 gap={1.5}
                 sx={{
                   flex: 1,
-                  minWidth: 0
+                  minWidth: 0,
                 }}
               >
                 <Avatar
@@ -125,7 +125,8 @@ export const ContributionCard = ({
                   src={item.user?.avatar_url}
                   sx={{ width: 20, height: 20, fontSize: 12 }}
                 />
-                <StyledText className='active-user-name'>{item.username}
+                <StyledText className='active-user-name'>
+                  {item.username}
                 </StyledText>
               </Stack>
             </StyledItem>

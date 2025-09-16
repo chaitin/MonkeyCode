@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table } from '@c-x/ui';
+import { Table } from '@ctzhian/ui';
 import { getUserListChatRecord } from '@/api/UserRecord';
 import dayjs from 'dayjs';
 
@@ -15,7 +15,7 @@ import {
 import StyledLabel from '@/components/label';
 
 import ChatDetailModal from './chatDetailModal';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { DomainChatRecord, DomainUser } from '@/api/types';
 import { addCommasToNumber } from '@/utils';
 import User from '@/components/user';
@@ -153,14 +153,26 @@ const Chat = () => {
       render(value: number) {
         return (
           <Stack direction='column'>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {dayjs.unix(value).format('YYYY-MM-DD')}
             </Box>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {dayjs.unix(value).format('HH:mm:ss')}
             </Box>
           </Stack>
-        )      
+        );
       },
     },
   ];

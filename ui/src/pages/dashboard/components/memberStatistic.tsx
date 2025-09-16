@@ -5,8 +5,13 @@ import {
 } from '@/api/Dashboard';
 import { DomainUser } from '@/api/types';
 import { SecondTimeRange } from '@/components/ui/calendar';
-import { getRangeData, getRecent24HoursData, getRecentDaysData, getTimeRange } from '@/utils';
-import { Grid2 as Grid } from '@mui/material';
+import {
+  getRangeData,
+  getRecent24HoursData,
+  getRecentDaysData,
+  getTimeRange,
+} from '@/utils';
+import { Grid } from '@mui/material';
 import { useRequest } from 'ahooks';
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
@@ -85,8 +90,18 @@ const MemberStatistic = ({
       precision,
       label
     );
-    const codeLineChartData = getRangeData(timeDuration, lines_of_code, precision, label);
-    const acceptedPerChartData = getRangeData(timeDuration, accepted_per, precision, label);
+    const codeLineChartData = getRangeData(
+      timeDuration,
+      lines_of_code,
+      precision,
+      label
+    );
+    const acceptedPerChartData = getRangeData(
+      timeDuration,
+      accepted_per,
+      precision,
+      label
+    );
     return {
       chatChartData,
       codeCompletionChartData,

@@ -1,8 +1,8 @@
 import Logo from '@/assets/images/logo.png';
 import { alpha, Box, Button, Stack, useTheme, styled } from '@mui/material';
-import { Icon } from '@c-x/ui';
+import { Icon } from '@ctzhian/ui';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Modal } from '@c-x/ui';
+import { Modal } from '@ctzhian/ui';
 import { useMemo, useState } from 'react';
 import Qrcode from '@/assets/images/qrcode.png';
 import Version from './version';
@@ -145,7 +145,10 @@ const Sidebar = () => {
     }
     return isConfigModel
       ? ADMIN_MENUS.map((item) => ({ ...item, disabled: false }))
-      : ADMIN_MENUS.map((item) => ({ ...item, disabled: item.pathname !== 'general-setting' }));
+      : ADMIN_MENUS.map((item) => ({
+          ...item,
+          disabled: item.pathname !== 'general-setting',
+        }));
   }, [pathname, isConfigModel]);
 
   return (

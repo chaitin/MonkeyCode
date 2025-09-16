@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getListUser } from '@/api/User';
 import { Stack, Box } from '@mui/material';
-import { CusTabs } from '@c-x/ui';
+import { CusTabs } from '@ctzhian/ui';
 import GlobalStatistic from './components/globalStatistic';
 import { useRequest } from 'ahooks';
 import MemberStatistic from './components/memberStatistic';
@@ -112,7 +112,7 @@ const Dashboard = () => {
   };
   const handleTimeRangeChange = (value: any) => {
     if (value) {
-      console.log(value)
+      console.log(value);
       setTimeRange(value);
     } else {
       setTimeRange(get24HoursRange());
@@ -136,7 +136,12 @@ const Dashboard = () => {
 
   return (
     <Stack gap={2} sx={{ height: '100%' }}>
-      <Stack direction='row' gap={2} justifyContent='space-between' alignItems='center'>
+      <Stack
+        direction='row'
+        gap={2}
+        justifyContent='space-between'
+        alignItems='center'
+      >
         <CusTabs
           value={tabValue}
           onChange={onTabChange}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, message } from '@c-x/ui';
+import { Modal, message } from '@ctzhian/ui';
 import { Box, TextField } from '@mui/material';
 import { putUpdateUserGroup } from '@/api/UserGroup';
 import { DomainUserGroup } from '@/api/types';
@@ -11,7 +11,12 @@ interface UpdateGroupModalProps {
   group: DomainUserGroup | null;
 }
 
-const UpdateGroupModal = ({ open, onClose, onUpdated, group }: UpdateGroupModalProps) => {
+const UpdateGroupModal = ({
+  open,
+  onClose,
+  onUpdated,
+  group,
+}: UpdateGroupModalProps) => {
   const [groupName, setGroupName] = useState('');
 
   // 当group变化时，更新表单中的组名

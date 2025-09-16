@@ -1,6 +1,6 @@
 import Card from '@/components/card';
 import { getCompletionInfo } from '@/api/Billing';
-import { Modal } from '@c-x/ui';
+import { Modal } from '@ctzhian/ui';
 import MonacoEditor from '@monaco-editor/react';
 import { loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';

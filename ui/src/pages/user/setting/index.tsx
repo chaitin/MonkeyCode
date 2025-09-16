@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
-import { message, Modal } from '@c-x/ui';
+import { message, Modal } from '@ctzhian/ui';
 import { useForm, Controller } from 'react-hook-form';
 import { useRequest } from 'ahooks';
 import Card from '@/components/card';

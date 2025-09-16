@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, message, Loading } from '@c-x/ui';
+import { Modal, message, Loading } from '@ctzhian/ui';
 import { Box, Typography, IconButton, Paper } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { CopyToClipboard } from 'react-copy-to-clipboard';

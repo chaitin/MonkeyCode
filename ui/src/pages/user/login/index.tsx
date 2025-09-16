@@ -8,13 +8,13 @@ import {
   Container,
   Paper,
   CircularProgress,
-  Grid2 as Grid,
+  Grid,
   InputAdornment,
   IconButton,
   Divider,
   Stack,
 } from '@mui/material';
-import { Icon, message } from '@c-x/ui';
+import { Icon, message } from '@ctzhian/ui';
 
 import { getRedirectUrl } from '@/utils';
 

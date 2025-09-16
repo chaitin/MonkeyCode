@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DomainCompletionRecord, DomainUser } from '@/api/types';
 import { getUserListCompletionRecord } from '@/api/UserRecord';
-import { Table } from '@c-x/ui';
+import { Table } from '@ctzhian/ui';
 import Card from '@/components/card';
 import {
   Box,
@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import dayjs from 'dayjs';
 import { useDebounceFn } from 'ahooks';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { addCommasToNumber } from '@/utils';
 import CompletionDetailModal from './completionDetailModal';
 import StyledLabel from '@/components/label';

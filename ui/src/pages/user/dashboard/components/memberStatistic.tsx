@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Grid2 as Grid } from '@mui/material';
+import { Grid } from '@mui/material';
 import MemberInfo from '@/pages/dashboard/components/memberInfo';
 import PieCharts from '@/pages/dashboard/components/pieCharts';
 import LineCharts from '@/pages/dashboard/components/lineCharts';

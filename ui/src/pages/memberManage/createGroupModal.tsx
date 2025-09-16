@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, message } from '@c-x/ui';
+import { Modal, message } from '@ctzhian/ui';
 import { Box, TextField } from '@mui/material';
 import { postCreateGroup } from '@/api/UserGroup';
 

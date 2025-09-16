@@ -6,7 +6,7 @@ import {
   Autocomplete,
   Chip,
 } from '@mui/material';
-import { Modal, message } from '@c-x/ui';
+import { Modal, message } from '@ctzhian/ui';
 import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { FormItem } from '@/components/form';

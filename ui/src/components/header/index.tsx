@@ -1,5 +1,5 @@
 import { Button, IconButton, Stack, Tooltip } from '@mui/material';
-import { message } from '@c-x/ui';
+import { message } from '@ctzhian/ui';
 import { postLogout } from '@/api/User';
 import { postAdminLogout } from '@/api/Admin';
 import { useNavigate, useLocation } from 'react-router-dom';

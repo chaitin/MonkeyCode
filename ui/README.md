@@ -44,7 +44,7 @@
 ### UI框架与样式
 - **Material-UI (@mui)** - Google Material Design组件库
 - **Emotion** - CSS-in-JS样式库
-- **@c-x/ui** - 自定义组件库
+- **@ctzhian/ui** - 自定义组件库
 
 ### 状态管理与数据
 - **ahooks** - React Hooks工具库
