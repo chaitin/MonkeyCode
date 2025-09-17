@@ -15,7 +15,7 @@ import {
   Typography,
   Container,
   Paper,
-  Grid2 as Grid,
+  Grid,
   InputAdornment,
   IconButton,
   CircularProgress,
@@ -25,7 +25,7 @@ import {
 import { useRequest } from 'ahooks';
 import { postRegister, getUserOauthSignupOrIn } from '@/api/User';
 import { getGetSetting } from '@/api/Admin';
-import { Icon } from '@c-x/ui';
+import { Icon } from '@ctzhian/ui';
 import { ConstsLoginSource, DomainSetting } from '@/api/types';
 
 import DownloadIcon from '@mui/icons-material/Download';

@@ -4,7 +4,7 @@ import ModelCard from './components/modelCard';
 import { Stack } from '@mui/material';
 import { GithubComChaitinMonkeyCodeBackendConstsModelType } from '@/api/types';
 import { useCommonContext } from '@/hooks/context';
-import { Modal } from '@c-x/ui';
+import { Modal } from '@ctzhian/ui';
 
 const Model = () => {
   const { coderModel, llmModel, refreshModel, isConfigModel, modelLoading } =
@@ -43,13 +43,17 @@ const Model = () => {
         title='对话模型'
         data={llmModel}
         refreshModel={refreshModel}
-        modelType={GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeLLM}
+        modelType={
+          GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeLLM
+        }
       />
       <ModelCard
         title='代码补全模型'
         data={coderModel}
         refreshModel={refreshModel}
-        modelType={GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeCoder}
+        modelType={
+          GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeCoder
+        }
       />
     </Stack>
   );

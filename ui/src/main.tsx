@@ -6,7 +6,7 @@ import '@/assets/fonts/font.css';
 import '@/assets/fonts/iconfont';
 import './index.css';
 import '@/assets/styles/markdown.css';
-import { ThemeProvider } from '@c-x/ui';
+import { ThemeProvider } from '@ctzhian/ui';
 import { zhCN } from 'date-fns/locale/zh-CN';
 import { setDefaultOptions } from 'date-fns';
 

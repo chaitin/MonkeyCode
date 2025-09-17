@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table } from '@c-x/ui';
+import { Table } from '@ctzhian/ui';
 import { getListChatRecord } from '@/api/Billing';
 import dayjs from 'dayjs';
 
@@ -17,7 +17,7 @@ import {
 import StyledLabel from '@/components/label';
 
 import ChatDetailModal from './chatDetailModal';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { DomainChatRecord, DomainUser } from '@/api/types';
 import { addCommasToNumber } from '@/utils';
 import User from '@/components/user';

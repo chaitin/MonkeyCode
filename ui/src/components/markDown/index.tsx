@@ -1,4 +1,4 @@
-import { message } from '@c-x/ui';
+import { message } from '@ctzhian/ui';
 import { Box, useTheme } from '@mui/material';
 import React from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';

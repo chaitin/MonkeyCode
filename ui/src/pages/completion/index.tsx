@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { DomainCompletionRecord, DomainUser } from '@/api/types';
 import { getListCompletionRecord } from '@/api/Billing';
 import { useRequest } from 'ahooks';
-import { Table } from '@c-x/ui';
+import { Table } from '@ctzhian/ui';
 import Card from '@/components/card';
 import {
   Box,
@@ -17,7 +17,7 @@ import {
 import { getListUser } from '@/api/User';
 import dayjs from 'dayjs';
 import { useDebounceFn } from 'ahooks';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { addCommasToNumber } from '@/utils';
 import CompletionDetailModal from './completionDetailModal';
 import StyledLabel from '@/components/label';
@@ -154,14 +154,26 @@ const Completion = () => {
       render(value: number) {
         return (
           <Stack direction='column'>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {dayjs.unix(value).format('YYYY-MM-DD')}
             </Box>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {dayjs.unix(value).format('HH:mm:ss')}
             </Box>
           </Stack>
-        )      
+        );
       },
     },
   ];

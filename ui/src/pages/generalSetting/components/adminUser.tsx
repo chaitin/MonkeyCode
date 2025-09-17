@@ -14,9 +14,14 @@ import {
 import { AdminPanelSettings, Person } from '@mui/icons-material';
 import { postCreateAdmin } from '@/api/Admin';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
-import { deleteDeleteAdmin, getAdminProfile, getListAdminUser, postGrantRole } from '@/api/Admin';
-import { Table, Modal, message } from '@c-x/ui';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import {
+  deleteDeleteAdmin,
+  getAdminProfile,
+  getListAdminUser,
+  postGrantRole,
+} from '@/api/Admin';
+import { Table, Modal, message } from '@ctzhian/ui';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { useRequest } from 'ahooks';
 import dayjs from 'dayjs';
 import { DomainAdminUser } from '@/api/types';
@@ -109,7 +114,9 @@ const AddAdminModal = ({
                   <MenuItem value={2}>普通管理员</MenuItem>
                 </Select>
                 {errors.roleId && (
-                  <Box sx={{ color: 'error.main', fontSize: '0.75rem', mt: 0.5 }}>
+                  <Box
+                    sx={{ color: 'error.main', fontSize: '0.75rem', mt: 0.5 }}
+                  >
                     {errors.roleId?.message as string}
                   </Box>
                 )}
@@ -186,17 +193,19 @@ const AdminUser = () => {
   const [open, setOpen] = useState(false);
   const { data, loading, refresh } = useRequest(() => getListAdminUser({}));
   const { data: currentAdmin } = useRequest(() => getAdminProfile({}));
-  
+
   const handleRoleChange = (adminId: string, newRoleId: number) => {
     postGrantRole({
       admin_id: adminId,
       role_ids: [newRoleId],
-    }).then(() => {
-      message.success('角色更新成功');
-      refresh();
-    }).catch(() => {
-      message.error('角色更新失败');
-    });
+    })
+      .then(() => {
+        message.success('角色更新成功');
+        refresh();
+      })
+      .catch(() => {
+        message.error('角色更新失败');
+      });
   };
 
   const onDeleteAdmin = (data: DomainAdminUser) => {
@@ -240,40 +249,42 @@ const AdminUser = () => {
             <Select
               size='small'
               value={record.role?.id || ''}
-              onChange={(e) => handleRoleChange(record.id!, Number(e.target.value))}
+              onChange={(e) =>
+                handleRoleChange(record.id!, Number(e.target.value))
+              }
               displayEmpty
               disabled={record.id === currentAdmin?.id}
               renderValue={(value) => {
                 if (value === 1) {
                   return (
-                    <Stack direction="row" alignItems="center" gap={1}>
-                      <AdminPanelSettings fontSize="small" />
+                    <Stack direction='row' alignItems='center' gap={1}>
+                      <AdminPanelSettings fontSize='small' />
                       <span>超级管理员</span>
                     </Stack>
                   );
                 } else if (value === 2) {
                   return (
-                    <Stack direction="row" alignItems="center" gap={1}>
-                      <Person fontSize="small" />
+                    <Stack direction='row' alignItems='center' gap={1}>
+                      <Person fontSize='small' />
                       <span>普通管理员</span>
                     </Stack>
                   );
                 }
-                return "请选择角色";
+                return '请选择角色';
               }}
               sx={{
-                mr: 1
+                mr: 1,
               }}
             >
               <MenuItem value={1}>
-                <Stack direction="row" alignItems="center" gap={1}>
-                  <AdminPanelSettings fontSize="small" />
+                <Stack direction='row' alignItems='center' gap={1}>
+                  <AdminPanelSettings fontSize='small' />
                   <span>超级管理员</span>
                 </Stack>
               </MenuItem>
               <MenuItem value={2}>
-                <Stack direction="row" alignItems="center" gap={1}>
-                  <Person fontSize="small" />
+                <Stack direction='row' alignItems='center' gap={1}>
+                  <Person fontSize='small' />
                   <span>普通管理员</span>
                 </Stack>
               </MenuItem>
@@ -287,10 +298,16 @@ const AdminUser = () => {
       dataIndex: 'created_at',
       width: 120,
       render: (text, record) => {
-        return <Stack>
-          <Box>{dayjs.unix(text).fromNow()}</Box>
-          <Box>{record.last_active_at === 0 ? '从未使用' : dayjs.unix(text).fromNow()}</Box>
-        </Stack>
+        return (
+          <Stack>
+            <Box>{dayjs.unix(text).fromNow()}</Box>
+            <Box>
+              {record.last_active_at === 0
+                ? '从未使用'
+                : dayjs.unix(text).fromNow()}
+            </Box>
+          </Stack>
+        );
       },
     },
     {
@@ -317,23 +334,27 @@ const AdminUser = () => {
         direction='row'
         justifyContent='space-between'
         alignItems='center'
-        sx={{ 
+        sx={{
           mb: 2,
           height: 32,
           fontWeight: 'bold',
-         }}
+        }}
       >
-        <Box sx={{
-          '&::before': {
-            content: '""',
-            display: 'inline-block',
-            width: 4,
-            height: 12,
-            bgcolor: 'common.black',
-            borderRadius: '2px',
-            mr: 1,
-          },
-        }}>管理员清单</Box>
+        <Box
+          sx={{
+            '&::before': {
+              content: '""',
+              display: 'inline-block',
+              width: 4,
+              height: 12,
+              bgcolor: 'common.black',
+              borderRadius: '2px',
+              mr: 1,
+            },
+          }}
+        >
+          管理员清单
+        </Box>
         <Button
           variant='contained'
           color='primary'

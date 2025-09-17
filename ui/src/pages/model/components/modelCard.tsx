@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
 import Card from '@/components/card';
+import { deleteDeleteModel, putUpdateModel } from '@/api/Model';
 import {
-  deleteDeleteModel,
-  putUpdateModel,
-} from '@/api/Model';
-import { DomainModel, GithubComChaitinMonkeyCodeBackendConstsModelStatus, GithubComChaitinMonkeyCodeBackendConstsModelType, } from '@/api/types';
-import { Stack, Box, Button, Grid2 as Grid, ButtonBase } from '@mui/material';
-import { Icon, Modal, message } from '@c-x/ui';
+  DomainModel,
+  GithubComChaitinMonkeyCodeBackendConstsModelStatus,
+  GithubComChaitinMonkeyCodeBackendConstsModelType,
+} from '@/api/types';
+import { Stack, Box, Button, Grid, ButtonBase } from '@mui/material';
+import { Icon, Modal, message } from '@ctzhian/ui';
 import { addCommasToNumber } from '@/utils';
 import NoData from '@/assets/images/nodata.png';
-import { ModelModal, DEFAULT_MODEL_PROVIDERS} from '@yokowu/modelkit-ui';
-import { localModelToModelKitModel, modelService } from '@/pages/model/components/services/modelService';
+import { ModelModal, DEFAULT_MODEL_PROVIDERS } from '@yokowu/modelkit-ui';
+import {
+  localModelToModelKitModel,
+  modelService,
+} from '@/pages/model/components/services/modelService';
 
 const ModelItem = ({
   data,
@@ -40,7 +44,8 @@ const ModelItem = ({
       onOk: () => {
         putUpdateModel({
           id: data.id,
-          status: GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive,
+          status:
+            GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive,
           provider: data.provider!,
         }).then(() => {
           message.success('停用成功');
@@ -90,7 +95,8 @@ const ModelItem = ({
       onOk: () => {
         putUpdateModel({
           id: data.id,
-          status: GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusDefault,
+          status:
+            GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusDefault,
           provider: data.provider!,
         }).then(() => {
           message.success('设为默认模型成功');
@@ -115,7 +121,8 @@ const ModelItem = ({
       onOk: () => {
         putUpdateModel({
           id: data.id,
-          status: GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive,
+          status:
+            GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive,
           provider: data.provider!,
         }).then(() => {
           message.success('激活成功');
@@ -128,7 +135,11 @@ const ModelItem = ({
   // 添加状态标签渲染函数
   const renderStatusLabel = () => {
     // 根据 is_active 和 status 字段判断状态
-    if (data.is_active && data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive) {
+    if (
+      data.is_active &&
+      data.status ===
+        GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive
+    ) {
       return (
         <Box
           sx={{
@@ -151,13 +162,16 @@ const ModelItem = ({
               borderLeft: '6px solid transparent',
               borderTop: '6px solid',
               borderTopColor: 'success.dark',
-            }
+            },
           }}
         >
           可选
         </Box>
       );
-    } else if (data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive) {
+    } else if (
+      data.status ===
+      GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive
+    ) {
       return (
         <Box
           sx={{
@@ -180,7 +194,7 @@ const ModelItem = ({
               borderLeft: '6px solid transparent',
               borderTop: '6px solid',
               borderTopColor: 'grey.600',
-            }
+            },
           }}
         >
           未激活
@@ -210,7 +224,7 @@ const ModelItem = ({
               borderLeft: '6px solid transparent',
               borderTop: '6px solid',
               borderTopColor: 'primary.dark',
-            }
+            },
           }}
         >
           默认
@@ -257,9 +271,14 @@ const ModelItem = ({
         <Stack direction='row' alignItems='center' gap={1}>
           <Icon
             type={
-              DEFAULT_MODEL_PROVIDERS[data.provider as keyof typeof DEFAULT_MODEL_PROVIDERS]?.icon
+              DEFAULT_MODEL_PROVIDERS[
+                data.provider as keyof typeof DEFAULT_MODEL_PROVIDERS
+              ]?.icon
             }
-            sx={{ fontSize: 24, color: data.is_active ? 'inherit' : 'grey.400' }}
+            sx={{
+              fontSize: 24,
+              color: data.is_active ? 'inherit' : 'grey.400',
+            }}
           />
           <Stack
             direction='row'
@@ -326,16 +345,20 @@ const ModelItem = ({
         gap={2}
         sx={{ mt: 2 }}
       >
-        <Stack direction='row' alignItems='center'> </Stack>
+        <Stack direction='row' alignItems='center'>
+          {' '}
+        </Stack>
         <Stack direction='row' sx={{ button: { minWidth: 0 } }} gap={2}>
-          {(data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive ||
-          data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive) && (
+          {(data.status ===
+            GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusActive ||
+            data.status ===
+              GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive) && (
             <ButtonBase
               disableRipple
               sx={{
                 color: 'text.primary',
                 '&:hover': {
-                  fontWeight: 700
+                  fontWeight: 700,
                 },
               }}
               onClick={onSetDefaultModel}
@@ -344,22 +367,23 @@ const ModelItem = ({
             </ButtonBase>
           )}
 
-          {data.status === GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive &&
-          data.model_type !== GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeCoder && 
-          (
-            <ButtonBase
-              disableRipple
-              sx={{
-                color: 'success.main',
-                '&:hover': {
-                  fontWeight: 700
-                },
-              }}
-              onClick={onActiveModel}
-            >
-              激活
-            </ButtonBase>
-          )}
+          {data.status ===
+            GithubComChaitinMonkeyCodeBackendConstsModelStatus.ModelStatusInactive &&
+            data.model_type !==
+              GithubComChaitinMonkeyCodeBackendConstsModelType.ModelTypeCoder && (
+              <ButtonBase
+                disableRipple
+                sx={{
+                  color: 'success.main',
+                  '&:hover': {
+                    fontWeight: 700,
+                  },
+                }}
+                onClick={onActiveModel}
+              >
+                激活
+              </ButtonBase>
+            )}
 
           {!data.is_internal && (
             <ButtonBase
@@ -367,7 +391,7 @@ const ModelItem = ({
               sx={{
                 color: 'info.main',
                 '&:hover': {
-                  fontWeight: 700
+                  fontWeight: 700,
                 },
               }}
               onClick={() => onEdit(data)}
@@ -382,7 +406,7 @@ const ModelItem = ({
               sx={{
                 color: 'error.main',
                 '&:hover': {
-                  fontWeight: 700
+                  fontWeight: 700,
                 },
               }}
               onClick={onInactiveModel}
@@ -397,7 +421,7 @@ const ModelItem = ({
               sx={{
                 color: 'error.main',
                 '&:hover': {
-                  fontWeight: 700
+                  fontWeight: 700,
                 },
               }}
               onClick={onRemoveModel}
@@ -471,7 +495,7 @@ const ModelCard: React.FC<IModelCardProps> = ({
         data={editData ? localModelToModelKitModel(editData) : null}
         model_type={modelType}
         modelService={modelService}
-        language="zh-CN"
+        language='zh-CN'
         messageComponent={message}
       />
     </Card>

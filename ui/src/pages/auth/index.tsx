@@ -9,13 +9,13 @@ import {
   Paper,
   Alert,
   CircularProgress,
-  Grid2 as Grid,
+  Grid,
   InputAdornment,
   IconButton,
   Divider,
   Stack,
 } from '@mui/material';
-import { CusTabs, Icon, message } from '@c-x/ui';
+import { CusTabs, Icon, message } from '@ctzhian/ui';
 
 // @ts-ignore
 import { AestheticFluidBg } from '@/assets/jsm/AestheticFluidBg.module.js';
@@ -354,9 +354,9 @@ const AuthPage = () => {
         <CusTabs
           list={[
             { label: '研发成员', value: 'user' },
-            { label: '管理员', value: 'admin', disabled: true},
+            { label: '管理员', value: 'admin', disabled: true },
           ]}
-          value={"user"}
+          value={'user'}
           sx={{
             width: '100%',
             mb: 4,

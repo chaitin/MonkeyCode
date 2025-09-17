@@ -2,9 +2,9 @@ import Card from '@/components/card';
 import { Stack, Box } from '@mui/material';
 import { useRequest } from 'ahooks';
 import { getLoginHistory } from '@/api/User';
-import { Table } from '@c-x/ui';
+import { Table } from '@ctzhian/ui';
 import dayjs from 'dayjs';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { DomainListLoginHistoryResp } from '@/api/types';
 import User from '@/components/user';
 
@@ -20,7 +20,13 @@ const LoginHistory = () => {
       dataIndex: 'user',
       render: (user, record) => {
         return (
-          <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <Box
+            sx={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
             <User
               username={record.user!.username!}
               id={record.user!.id!}
@@ -38,10 +44,23 @@ const LoginHistory = () => {
       render: (ip, record) => {
         return (
           <Stack direction='column'>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {record?.device}
             </Box>
-            <Box sx={{ color: 'text.secondary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                color: 'text.secondary',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {record?.hostname}
             </Box>
           </Stack>
@@ -54,10 +73,23 @@ const LoginHistory = () => {
       render: (ip, record) => {
         return (
           <Stack direction='column'>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {record?.client_id}
             </Box>
-            <Box sx={{ color: 'text.secondary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                color: 'text.secondary',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {record?.client_version}
             </Box>
           </Stack>
@@ -70,11 +102,26 @@ const LoginHistory = () => {
       render: (ip, record) => {
         return (
           <Stack direction='column'>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {record?.ip_info?.ip}
             </Box>
-            <Box sx={{ color: 'text.secondary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {record?.ip_info?.country === '中国' ? ('' + record?.ip_info?.province + '-' + record?.ip_info?.city) : (record?.ip_info?.country || '未知')}
+            <Box
+              sx={{
+                color: 'text.secondary',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {record?.ip_info?.country === '中国'
+                ? '' + record?.ip_info?.province + '-' + record?.ip_info?.city
+                : record?.ip_info?.country || '未知'}
             </Box>
           </Stack>
         );
@@ -86,14 +133,26 @@ const LoginHistory = () => {
       render: (text) => {
         return (
           <Stack direction='column'>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {dayjs.unix(text).format('YYYY-MM-DD')}
             </Box>
-            <Box sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <Box
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
               {dayjs.unix(text).format('HH:mm:ss')}
             </Box>
           </Stack>
-        )
+        );
       },
     },
   ];

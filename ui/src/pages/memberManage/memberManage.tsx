@@ -17,9 +17,9 @@ import {
   MenuItem,
   Typography,
 } from '@mui/material';
-import { Table, MenuSelect, Modal, message } from '@c-x/ui';
+import { Table, MenuSelect, Modal, message } from '@ctzhian/ui';
 import InviteUserModal from './inviteUserModal';
-import { ColumnsType } from '@c-x/ui/dist/Table';
+import { ColumnsType } from '@ctzhian/ui/dist/Table';
 import { ConstsUserStatus, DomainUser } from '@/api/types';
 import dayjs from 'dayjs';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
@@ -150,22 +150,28 @@ const MemberManage = () => {
   const [open, setOpen] = useState(false);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<DomainUser | null>(null);
-  const { data: originData, loading, refresh } = useRequest(() => getListUser({page: 1, size: 999}));
+  const {
+    data: originData,
+    loading,
+    refresh,
+  } = useRequest(() => getListUser({ page: 1, size: 999 }));
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [searchUser, setSearchUser] = useState('');
   const [data, setData] = useState<DomainUser[]>([]);
-  useEffect(()=>{
-    if(searchUser){
-      setData(originData?.users?.filter((item) => {
-        const searchTerm = searchUser.toLowerCase();
-        const username = (item.username || '').toLowerCase();
-        const email = (item.email || '').toLowerCase();
-        return username.includes(searchTerm) || email.includes(searchTerm);
-      }) || []);
-    }else {
+  useEffect(() => {
+    if (searchUser) {
+      setData(
+        originData?.users?.filter((item) => {
+          const searchTerm = searchUser.toLowerCase();
+          const username = (item.username || '').toLowerCase();
+          const email = (item.email || '').toLowerCase();
+          return username.includes(searchTerm) || email.includes(searchTerm);
+        }) || []
+      );
+    } else {
       setData(originData?.users || []);
     }
-  },[searchUser, originData])
+  }, [searchUser, originData]);
   const handleClick = (
     event: React.MouseEvent<HTMLButtonElement>,
     record: DomainUser
@@ -344,7 +350,11 @@ const MemberManage = () => {
       >
         <Box sx={{ fontWeight: 700 }}>成员列表</Box>
         <Stack direction='row' gap={1}>
-          <TextField label='搜索' size='small' onChange={(e)=>setSearchUser(e.target.value)} />
+          <TextField
+            label='搜索'
+            size='small'
+            onChange={(e) => setSearchUser(e.target.value)}
+          />
           <Button
             variant='contained'
             color='primary'

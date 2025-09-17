@@ -1,19 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import Card from '@/components/card';
-import {
-  Grid2 as Grid,
-  Stack,
-  styled,
-  Switch,
-  Button,
-  Box,
-} from '@mui/material';
+import { Grid, Stack, styled, Switch, Button, Box } from '@mui/material';
 import { useRequest } from 'ahooks';
 import { getGetSetting, putUpdateSetting } from '@/api/Admin';
 import MemberManage from './memberManage';
 import LoginHistory from './loginHistory';
 import { DomainLicenseEdition, v1LicenseList } from '@/api';
-import { message } from '@c-x/ui';
+import { message } from '@ctzhian/ui';
 import ThirdPartyLoginSettingModal from './thirdPartyLoginSettingModal';
 import GroupList from './groupList';
 
@@ -124,7 +117,10 @@ const User = () => {
                 color='info'
                 sx={{ gap: 2 }}
                 onClick={() => setThirdPartyLoginSettingModalOpen(true)}
-                disabled={license?.edition !== DomainLicenseEdition.LicenseEditionEnterprise}
+                disabled={
+                  license?.edition !==
+                  DomainLicenseEdition.LicenseEditionEnterprise
+                }
               >
                 配置
               </Button>

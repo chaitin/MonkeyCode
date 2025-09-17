@@ -1,6 +1,6 @@
 import { Box, Stack } from '@mui/material';
 import { DomainUserCodeRank } from '@/api/types';
-import { Modal } from '@c-x/ui';
+import { Modal } from '@ctzhian/ui';
 import { StyledItem, StyledSerialNumber, StyledText } from './statisticCard';
 import User from '@/components/user';
 import Avatar from '@/components/avatar';
@@ -49,13 +49,13 @@ const ContributionModal = ({
                   minWidth: 0,
                 }}
               >
-                
                 <Avatar
                   name={item.user?.username}
                   src={item.user?.avatar_url}
                   sx={{ width: 20, height: 20, fontSize: 12 }}
                 />
-                <StyledText className='active-user-name'>{item.username}
+                <StyledText className='active-user-name'>
+                  {item.username}
                 </StyledText>
               </Stack>
             </StyledItem>

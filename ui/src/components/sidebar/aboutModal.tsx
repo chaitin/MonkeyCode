@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { useState } from 'react';
-import { Modal } from '@c-x/ui';
+import { Modal } from '@ctzhian/ui';
 import HelpCenter from '@/assets/json/help-center.json';
 import Takeoff from '@/assets/json/takeoff.json';
 import IconUpgrade from '@/assets/json/upgrade.json';
@@ -22,22 +22,21 @@ const AboutModal = ({
   onClose,
   curVersion,
   latestVersion,
-  license
+  license,
 }: LicenseModalProps) => {
-
   const [openChangeLicense, setOpenChangeLicense] = useState(false);
 
   const editionText = (edition: any) => {
     if (edition === 0) {
-      return '开源版'
+      return '开源版';
     } else if (edition === 1) {
-      return '联创版'
+      return '联创版';
     } else if (edition === 2) {
-      return '企业版'
+      return '企业版';
     } else {
-      return '未知'
+      return '未知';
     }
-  }
+  };
 
   return (
     <Modal
@@ -45,18 +44,31 @@ const AboutModal = ({
       width={600}
       open={open}
       onCancel={onClose}
-      footer={null}>
-      <Stack direction={'column'} gap={2} sx={{
-        fontSize: '14px'
-      }}>
+      footer={null}
+    >
+      <Stack
+        direction={'column'}
+        gap={2}
+        sx={{
+          fontSize: '14px',
+        }}
+      >
         <Stack direction={'row'} gap={2} alignItems={'center'}>
-          <Box sx={{
-            width: '120px'
-          }}>当前版本</Box>
-          <Box sx={{
-            width: '120px',
-            fontWeight: 700
-          }}>{curVersion}</Box>
+          <Box
+            sx={{
+              width: '120px',
+            }}
+          >
+            当前版本
+          </Box>
+          <Box
+            sx={{
+              width: '120px',
+              fontWeight: 700,
+            }}
+          >
+            {curVersion}
+          </Box>
 
           {latestVersion === `v${curVersion}` ? (
             <Box sx={{ color: 'text.auxiliary', fontSize: 12 }}>
@@ -76,7 +88,7 @@ const AboutModal = ({
               }
               onClick={() => {
                 window.open(
-                  'https://monkeycode.docs.baizhi.cloud/node/01980d22-db84-73b4-ae13-6a188e318048',
+                  'https://monkeycode.docs.baizhi.cloud/node/01980d22-db84-73b4-ae13-6a188e318048'
                 );
               }}
             >
@@ -86,9 +98,13 @@ const AboutModal = ({
         </Stack>
 
         <Stack direction={'row'} gap={2} alignItems={'center'}>
-          <Box sx={{
-            width: '120px',
-          }}>产品型号</Box>
+          <Box
+            sx={{
+              width: '120px',
+            }}
+          >
+            产品型号
+          </Box>
           <Box>{editionText(license?.edition)}</Box>
 
           <Button
@@ -125,17 +141,28 @@ const AboutModal = ({
             商务咨询
           </Button>
         </Stack>
-        {license && license?.edition !== 0 && <Stack direction={'row'} gap={2}>
-          <Box sx={{
-            width: '120px'
-          }}>授权时间</Box>
-          <Box sx={{
-          }}>{dayjs.unix(license.started_at!).format('YYYY-MM-DD')} ~ {dayjs.unix(license.expired_at!).format('YYYY-MM-DD')}</Box>
-        </Stack>}
+        {license && license?.edition !== 0 && (
+          <Stack direction={'row'} gap={2}>
+            <Box
+              sx={{
+                width: '120px',
+              }}
+            >
+              授权时间
+            </Box>
+            <Box sx={{}}>
+              {dayjs.unix(license.started_at!).format('YYYY-MM-DD')} ~{' '}
+              {dayjs.unix(license.expired_at!).format('YYYY-MM-DD')}
+            </Box>
+          </Stack>
+        )}
       </Stack>
       <ChangeLicense
         open={openChangeLicense}
-        onClose={() => { setOpenChangeLicense(false) }} />
+        onClose={() => {
+          setOpenChangeLicense(false);
+        }}
+      />
     </Modal>
   );
 };

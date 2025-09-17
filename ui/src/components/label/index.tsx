@@ -9,7 +9,9 @@ const StyledLabel = styled('div')<StyledLabelProps>(
     // 获取颜色值
     const getColor = (colorProp: string) => {
       // 如果是主题预设颜色
-      if (['success', 'warning', 'error', 'info', 'disabled'].includes(colorProp)) {
+      if (
+        ['success', 'warning', 'error', 'info', 'disabled'].includes(colorProp)
+      ) {
         return theme.palette[
           colorProp as 'success' | 'warning' | 'error' | 'info' | 'disabled'
         ].main;
@@ -26,10 +28,14 @@ const StyledLabel = styled('div')<StyledLabelProps>(
 
     // 获取背景颜色（淡化版本）
     const getBackgroundColor = (colorProp: string) => {
-      if (['success', 'warning', 'error', 'info', 'disabled'].includes(colorProp)) {
+      if (
+        ['success', 'warning', 'error', 'info', 'disabled'].includes(colorProp)
+      ) {
         // 使用主题的 light 版本，如果没有则使用 alpha 透明度
         const palette =
-          theme.palette[colorProp as 'success' | 'warning' | 'error' | 'info' | 'disabled'];
+          theme.palette[
+            colorProp as 'success' | 'warning' | 'error' | 'info' | 'disabled'
+          ];
         return alpha(palette.main, 0.15);
       }
       // 如果是 default，使用淡灰色背景
@@ -42,7 +48,7 @@ const StyledLabel = styled('div')<StyledLabelProps>(
 
     return {
       padding: theme.spacing(0.5, 1),
-      borderRadius: theme.shape.borderRadius * 4,
+      borderRadius: (theme.shape.borderRadius as number) * 4,
       color: textColor,
       backgroundColor: getBackgroundColor(color),
       border: `1px solid ${alpha(textColor, 0.3)}`,

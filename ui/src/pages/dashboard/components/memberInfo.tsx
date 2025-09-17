@@ -5,7 +5,7 @@ import {
 } from '@/api/types';
 import Avatar from '@/components/avatar';
 import Card from '@/components/card';
-import { Icon } from '@c-x/ui';
+import { Icon } from '@ctzhian/ui';
 import {
   Box,
   IconButton,
