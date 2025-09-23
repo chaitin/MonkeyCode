@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <a target="_blank" href="https://monkeycode.docs.baizhi.cloud/">📖 官方网站</a> &nbsp; | &nbsp;
+  <a target="_blank" href="https://monkeycode-ai.com/">📖 在线使用</a> &nbsp; | &nbsp;
+  <a target="_blank" href="https://monkeycode.docs.baizhi.cloud/">📖 离线使用</a> &nbsp; | &nbsp;
   <a target="_blank" href="/images/wechat.png">🙋‍♂️ 微信交流群</a>
 </p>
 
