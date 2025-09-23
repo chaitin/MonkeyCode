@@ -16,12 +16,26 @@
 
 ## 💡 能力
 
-- 作为 `研发工程师`，你可以使用 VSCode 插件，获得 **对话式编程** 和 **代码智能补全** 能力
-- 作为 `安全工程师`，你可以使用 MonkeyCode 对代码进行 **智能安全扫描**，提前发现代码中可能存在的 **安全风险**
-- 作为 `产品经理`，你可以直接在代码仓库中提 Issue 并 at @monkeycode-ai，机器人将会帮你 **实现需求并自动提交代码**
-- 作为 `研发 Leader`，你可以直接在 PR/MR 中 at @monkeycode-ai，机器人将会帮你 **review PR/MR**
-- 作为 `代码仓库管理员`，MonkeyCode 会帮你自动整理 PR/MR 和 Issue
+### IDE 插件的能力
+
+- 在 IDE 中 **对话式编程**（类似 cursor）
+- 在 IDE 中 **代码智能补全**（类似 cursor）
+- 在日常编码过程中 IDE 会自动对代码进行 **智能安全扫描**
+
+### Git 平台机器人的能力
+
+- @monkeycode-ai，请 review 这个 PR，并给出修改建议
+- @monkeycode-ai，请根据 Issue 的描述来实现相关的功能，实现完成后主动发起 PR
+- @monkeycode-ai，请理解 Issue 所描述的需求，将其合理地拆分为多个子任务并为子任务创建新的 Issue
+- @monkeycode-ai，请查找和当前 Issue 类似的其他 Issue
 - 。。。还有更多姿势等你解锁
+
+### 研发管理面板的能力
+
+- 对 AI 编程行为做统计分析
+- 对 AI 编程行为做审计和管控
+- 对 AI 生成的代码进行安全扫描
+- 统一管理大模型使用额度
 
 ## ⚡️ 界面展示
 
@@ -34,11 +48,13 @@
 
 ### 在线使用 MonkeyCode-AI
 
-👋 在任意代码仓库的 PR 或 Issue 评论区中 at @monkeycode-ai 并描述需求
-🙋‍♂️ AI 工程师将在收到消息后的 30 秒内做出回应
-🔥 无需配置，仅需描述需求，就能获得 AI 工程师的帮助
+- 👋 在任意代码仓库的 PR 或 Issue 评论区中 at @monkeycode-ai 并描述需求
+- 🙋‍♂️ AI 工程师将在收到消息后的 30 秒内做出回应
+- 🔥 无需配置，仅需描述需求，就能获得 AI 工程师的帮助
 
 请参考 [https://monkeycode-ai.com/](https://monkeycode-ai.com/)
+
+> 注意：VSCode 插件不支持在线使用
 
 ### 离线安装
 
@@ -49,10 +65,6 @@
 - **免费在线使用**: 无需注册，无需安装，只需要在 GitHub/GitLab/Gitee/Gitea 的任意代码仓库的任意 PR 或 Issue 评论区中 at @monkeycode-ai，就会有猴子来帮你干活
 - **私有化部署**：支持一键安装到私有化环境，支持完全离线使用，让你的代码隐私得到保障。
 - **企业级管理面板**：对使用 AI 编程行为进行严格审计和管控，确保团队协作的高效性和安全性。
-
-### 在 VS Code 中使用 MonkeyCode
-
-请参考 [在 VS Code 中使用](https://monkeycode.docs.baizhi.cloud/node/0197e39a-14e7-79db-8e25-6d775407a85b)。
 
 ## 社区交流
 
