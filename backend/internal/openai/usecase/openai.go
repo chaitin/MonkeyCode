@@ -128,6 +128,7 @@ func (u *OpenAIUsecase) GetConfig(ctx context.Context, req *domain.ConfigReq) (*
 				"ask":          m.ID.String(),
 				"debug":        m.ID.String(),
 				"deepresearch": m.ID.String(),
+				"orchestrator": m.ID.String(),
 			}
 		}
 		config.ProviderProfiles.ApiConfigs[m.ShowName] = domain.ApiConfig{
