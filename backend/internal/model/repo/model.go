@@ -184,7 +184,6 @@ func (r *ModelRepo) GetTokenUsage(ctx context.Context, modelType consts.ModelTyp
 				OrderBy("date")
 		}).
 		Scan(ctx, &dailyUsages)
-
 	if err != nil {
 		return nil, err
 	}

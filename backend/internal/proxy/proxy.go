@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tee"
+	"github.com/chaitin/MonkeyCode/backend/pkg/tools"
 )
 
 type CtxKey struct{}
@@ -114,7 +115,7 @@ func (l *LLMProxy) rewrite(r *httputil.ProxyRequest) {
 	}
 
 	metadata := make(map[string]string)
-	if m.Provider == consts.ModelProviderZhiPu {
+	if tools.CheckProvider(r.In.Context(), m.Provider, m.ModelName) == consts.ModelProviderZhiPu {
 		body, err := io.ReadAll(r.In.Body)
 		if err != nil {
 			l.logger.ErrorContext(r.In.Context(), "read request body failed", slog.String("path", r.In.URL.Path), slog.Any("err", err))
