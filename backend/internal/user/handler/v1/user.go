@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/internal/middleware"
+	"github.com/chaitin/MonkeyCode/backend/pkg/sentry"
 	"github.com/chaitin/MonkeyCode/backend/pkg/session"
 	"github.com/chaitin/MonkeyCode/backend/pkg/version"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vsix"
@@ -698,6 +699,7 @@ func (h *UserHandler) InitAdmin() error {
 func (h *UserHandler) ExportCompletionData(c *web.Context) error {
 	data, err := h.usecase.ExportCompletionData(c.Request().Context())
 	if err != nil {
+		sentry.CaptureError(err)
 		return err
 	}
 

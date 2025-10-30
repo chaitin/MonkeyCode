@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/wire"
 	"github.com/labstack/echo/v4"
@@ -13,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/docs"
 	"github.com/chaitin/MonkeyCode/backend/internal"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
+	"github.com/chaitin/MonkeyCode/backend/pkg/sentry"
 	"github.com/chaitin/MonkeyCode/backend/pkg/service"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
 )
@@ -28,6 +30,18 @@ func main() {
 
 	s.version.Print()
 	s.logger.With("config", s.config).Debug("config")
+
+	// 初始化Sentry
+	if err := sentry.Init(s.config, s.logger); err != nil {
+		s.logger.Error("Failed to initialize Sentry", "error", err)
+	} else {
+		// 添加Sentry中间件
+		s.web.Echo().Use(sentry.Middleware())
+		sentry.CaptureMessage("It works!")
+		s.logger.Info("Sentry middleware added")
+		// 确保在程序退出时刷新Sentry缓冲区
+		defer sentry.Flush(2 * time.Second)
+	}
 
 	if s.config.Debug {
 		s.web.Swagger("MonkeyCode API", "/reference", string(docs.SwaggerJSON), web.WithBasicAuth("mc", "mc88"))
