@@ -1,34 +1,38 @@
 import path from "path"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, loadEnv } from "vite"
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  define: {
-    "global": "globalThis",
-  },
-  optimizeDeps: {
-    include: ["buffer"],
-    esbuildOptions: {
-      define: {
-        global: "globalThis",
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
       },
     },
-  },
-  server: {
-    allowedHosts: ['.monkeycode-ai.online'],
-    proxy: {
-      '/api': {
-        target: 'https://monkeycode-ai.com/',
-        changeOrigin: true,
-        ws: true
+    define: {
+      "global": "globalThis",
+    },
+    optimizeDeps: {
+      include: ["buffer"],
+      esbuildOptions: {
+        define: {
+          global: "globalThis",
+        },
+      },
+    },
+    server: {
+      allowedHosts: ['.monkeycode-ai.online'],
+      proxy: {
+        '/api': {
+          target: env.TARGET,
+          changeOrigin: true,
+          ws: true
+        }
       }
     }
   }
