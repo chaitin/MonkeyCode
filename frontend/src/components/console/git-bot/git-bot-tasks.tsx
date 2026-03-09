@@ -9,7 +9,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { IconAlertTriangle, IconCircleCheck, IconFolder, IconLoader, IconReload } from "@tabler/icons-react"
 import dayjs from "dayjs"
 import { BookOpenIcon } from "lucide-react"
-import React, { forwardRef, useCallback, useImperativeHandle, useEffect, useRef, useState } from "react"
+import { forwardRef, useCallback, useImperativeHandle, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 const PAGE_SIZE = 24;
@@ -52,7 +52,7 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
     })
   }, [])
 
-  const fetchTasks = useCallback(() => {
+  const fetchTasks = useCallback(async () => {
     setPage(1)
     setHasMore(true)
     fetchTasksImpl(1, false)

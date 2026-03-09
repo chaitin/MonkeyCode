@@ -11,7 +11,6 @@ import {
 import {
   Command,
   CommandEmpty,
-  CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
@@ -34,7 +33,6 @@ import { cn } from "@/lib/utils"
 import { getGitPlatformIcon } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconCheck, IconChevronDown, IconGitBranch, IconLoader } from "@tabler/icons-react"
-import Icon from "@/components/common/Icon"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"

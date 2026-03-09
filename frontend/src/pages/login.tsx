@@ -107,38 +107,39 @@ export default function LoginPage({
                 </TabsList>
 
                 <TabsContent value="user" className="mt-4">
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="user-email">账号</FieldLabel>
-                      <Input
-                        value={userEmail}
-                        placeholder="monkeycode@example.com"
-                        onChange={(e) => setUserEmail(e.target.value)}
-                        id="user-email"
-                        type="email"
-                        required
-                        disabled={logging}
-                      />
-                    </Field>
-                    <Field>
-                      <div className="flex flex-row items-center justify-between">
-                        <FieldLabel htmlFor="user-password">密码</FieldLabel>
-                        <Link to="/findpassword" className="text-sm text-muted-foreground hover:underline">
-                          找回密码
-                        </Link>
-                      </div>
-                      <Input
-                        value={userPassword}
-                        placeholder="************"
-                        onChange={(e) => setUserPassword(e.target.value)}
-                        id="user-password"
-                        type="password"
-                        required
-                        disabled={logging}
-                      />
-                    </Field>
-                    <Field>
-                      <Button onClick={handleUserLogin} disabled={logging} variant="outline">
+                  <form onSubmit={(e) => { e.preventDefault(); handleUserLogin(); }}>
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="user-email">账号</FieldLabel>
+                        <Input
+                          value={userEmail}
+                          placeholder="monkeycode@example.com"
+                          onChange={(e) => setUserEmail(e.target.value)}
+                          id="user-email"
+                          type="email"
+                          required
+                          disabled={logging}
+                        />
+                      </Field>
+                      <Field>
+                        <div className="flex flex-row items-center justify-between">
+                          <FieldLabel htmlFor="user-password">密码</FieldLabel>
+                          <Link to="/findpassword" className="text-sm text-muted-foreground hover:underline">
+                            找回密码
+                          </Link>
+                        </div>
+                        <Input
+                          value={userPassword}
+                          placeholder="************"
+                          onChange={(e) => setUserPassword(e.target.value)}
+                          id="user-password"
+                          type="password"
+                          required
+                          disabled={logging}
+                        />
+                      </Field>
+                      <Field>
+                        <Button type="submit" disabled={logging} variant="outline">
                         {logging && <Spinner className="mr-2" />}
                         登录
                       </Button>
@@ -153,40 +154,43 @@ export default function LoginPage({
                       </Button>
                     </div>
                   </FieldGroup>
+                  </form>
                 </TabsContent>
                 <TabsContent value="manager" className="mt-4">
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="email">账号</FieldLabel>
-                      <Input
-                        value={teamManagerEmail}
-                        placeholder="monkeycode@example.com"
-                        onChange={(e) => setTeamManagerEmail(e.target.value)}
-                        id="email"
-                        type="email"
-                        required
-                        disabled={logging}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="password">密码</FieldLabel>
-                      <Input 
-                        id="password"
-                        placeholder="************"
-                        type="password"
-                        required
-                        disabled={logging} 
-                        value={teamManagerPassword} 
-                        onChange={(e) => setTeamManagerPassword(e.target.value)}
-                      />
-                    </Field>
-                    <Field>
-                      <Button onClick={handleTeamManagerLogin} disabled={logging}>
+                  <form onSubmit={(e) => { e.preventDefault(); handleTeamManagerLogin(); }}>
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="email">账号</FieldLabel>
+                        <Input
+                          value={teamManagerEmail}
+                          placeholder="monkeycode@example.com"
+                          onChange={(e) => setTeamManagerEmail(e.target.value)}
+                          id="email"
+                          type="email"
+                          required
+                          disabled={logging}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="password">密码</FieldLabel>
+                        <Input 
+                          id="password"
+                          placeholder="************"
+                          type="password"
+                          required
+                          disabled={logging} 
+                          value={teamManagerPassword} 
+                          onChange={(e) => setTeamManagerPassword(e.target.value)}
+                        />
+                      </Field>
+                      <Field>
+                        <Button type="submit" disabled={logging}>
                         {logging && <Spinner />}
                         登录
                       </Button>
                     </Field>
                   </FieldGroup>
+                  </form>
                 </TabsContent>
               </Tabs>
             </CardContent>
