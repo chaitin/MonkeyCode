@@ -65,7 +65,7 @@ jobs:
           name: dist
 
       - name: Copy dist to docker
-        run: cp -r dist frontend/docker/dist
+        run: cp -r frontend/dist frontend/docker/dist
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
