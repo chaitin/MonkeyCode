@@ -15,6 +15,19 @@ export enum ConstsCliName {
   CliNameOpencode = "opencode",
 }
 
+export enum ConstsFeedbackStatus {
+  FeedbackStatusPending = "pending",
+  FeedbackStatusProcessing = "processing",
+  FeedbackStatusResolved = "resolved",
+  FeedbackStatusClosed = "closed",
+}
+
+export enum ConstsFeedbackType {
+  FeedbackTypeBug = "bug",
+  FeedbackTypeSuggestion = "suggestion",
+  FeedbackTypeOther = "other",
+}
+
 export enum ConstsFileKind {
   FileKindUnknown = "unknown",
   FileKindFile = "file",
@@ -229,6 +242,15 @@ export interface DomainAddTeamModelReq {
   temperature?: number;
 }
 
+export interface DomainAddTeamOAuthSiteReq {
+  base_url: string;
+  client_id: string;
+  client_secret: string;
+  name: string;
+  platform: "gitlab" | "gitea";
+  proxy_url?: string;
+}
+
 export interface DomainAddTeamUserReq {
   /** 邮箱列表 */
   emails: string[];
@@ -268,6 +290,10 @@ export interface DomainAuthRepository {
   description?: string;
   full_name?: string;
   url?: string;
+}
+
+export interface DomainBranch {
+  name?: string;
 }
 
 export interface DomainChangePasswordReq {
@@ -315,6 +341,12 @@ export interface DomainCreateCollaboratorItem {
   permission?: ConstsProjectCollaboratorRole;
   /** 用户ID */
   user_id?: string;
+}
+
+export interface DomainCreateFeedbackReq {
+  content: string;
+  title: string;
+  type: "bug" | "suggestion" | "other";
 }
 
 export interface DomainCreateGitBotReq {
@@ -424,6 +456,17 @@ export interface DomainDeleteImageReq {
 export interface DomainExchangeReq {
   /** 兑换码 */
   code?: string;
+}
+
+export interface DomainFeedback {
+  content?: string;
+  created_at?: number;
+  id?: string;
+  status?: ConstsFeedbackStatus;
+  title?: string;
+  type?: ConstsFeedbackType;
+  updated_at?: number;
+  user?: DomainUser;
 }
 
 export interface DomainFileChangeReq {
@@ -555,11 +598,18 @@ export interface DomainListCollaboratorsResp {
   collaborators?: DomainCollaborator[];
 }
 
+export interface DomainListFeedbacksResp {
+  feedbacks?: DomainFeedback[];
+  page?: Dbv2Cursor;
+}
+
 export interface DomainListGitBotResp {
   bots?: DomainGitBot[];
 }
 
 export interface DomainListGitBotTaskResp {
+  /** 分页信息 */
+  page_info?: Dbv2PageInfo;
   tasks?: DomainGitBotTask[];
 }
 
@@ -604,8 +654,10 @@ export interface DomainListProjectResp {
 }
 
 export interface DomainListTaskResp {
-  /** 游标信息 */
+  /** 游标信息（游标分页时返回） */
   page?: Dbv2Cursor;
+  /** 分页信息（page/size 分页时返回） */
+  page_info?: Dbv2PageInfo;
   /** 任务列表 */
   tasks?: DomainProjectTask[];
 }
@@ -624,6 +676,10 @@ export interface DomainListTeamImagesResp {
 
 export interface DomainListTeamModelsResp {
   models?: DomainTeamModel[];
+}
+
+export interface DomainListTeamOAuthSitesResp {
+  sites?: DomainTeamOAuthSite[];
 }
 
 export interface DomainListTransactionResp {
@@ -1005,6 +1061,16 @@ export interface DomainShareTerminalResp {
   password?: string;
 }
 
+export interface DomainSiteInfo {
+  base_url?: string;
+  name?: string;
+  site_type?: string;
+}
+
+export interface DomainSitesResp {
+  sites?: DomainSiteInfo[];
+}
+
 export interface DomainSkill {
   args_schema?: Record<string, any>;
   categories?: string[];
@@ -1170,6 +1236,19 @@ export interface DomainTeamModel {
   updated_at?: number;
 }
 
+export interface DomainTeamOAuthSite {
+  base_url?: string;
+  client_id?: string;
+  client_secret?: string;
+  created_at?: number;
+  id?: string;
+  name?: string;
+  platform?: string;
+  proxy_url?: string;
+  site_type?: string;
+  updated_at?: number;
+}
+
 export interface DomainTeamUser {
   team?: DomainTeam;
   user?: DomainUser;
@@ -1298,6 +1377,14 @@ export interface DomainUpdateTeamModelReq {
   model?: string;
   provider?: string;
   temperature?: number;
+}
+
+export interface DomainUpdateTeamOAuthSiteReq {
+  base_url?: string;
+  client_id?: string;
+  client_secret?: string;
+  name?: string;
+  proxy_url?: string;
 }
 
 export interface DomainUpdateTeamUserReq {
@@ -1743,6 +1830,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 返回合并后的 Gitea 站点列表（团队配置优先，全局配置兜底），不含凭证信息
+     *
+     * @tags 站点管理
+     * @name V1GiteaSitesList
+     * @summary 获取 Gitea 可用站点列表
+     * @request GET:/api/v1/gitea/sites
+     * @secure
+     */
+    v1GiteaSitesList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainSitesResp;
+        },
+        WebResp
+      >({
+        path: `/api/v1/gitea/sites`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 获取 Gitee OAuth 授权 URL
      *
      * @tags 【用户】git 身份管理
@@ -1791,6 +1902,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/gitlab/authorize_url`,
         method: "GET",
         query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 返回合并后的 GitLab 站点列表（团队配置优先，全局配置兜底），不含凭证信息
+     *
+     * @tags 站点管理
+     * @name V1GitlabSitesList
+     * @summary 获取 GitLab 可用站点列表
+     * @request GET:/api/v1/gitlab/sites
+     * @secure
+     */
+    v1GitlabSitesList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainSitesResp;
+        },
+        WebResp
+      >({
+        path: `/api/v1/gitlab/sites`,
+        method: "GET",
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -2030,6 +2165,67 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/public/captcha/redeem`,
         method: "POST",
         body: body,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 问题反馈列表，支持按状态、类型、时间过滤
+     *
+     * @tags 【用户】问题反馈
+     * @name V1PublicFeedbacksList
+     * @summary 问题反馈列表
+     * @request GET:/api/v1/public/feedbacks
+     */
+    v1PublicFeedbacksList: (
+      query?: {
+        /** 状态过滤 */
+        status?: string;
+        /** 类型过滤 */
+        type?: string;
+        /** 创建开始时间 */
+        created_at_start?: string;
+        /** 创建结束时间 */
+        created_at_end?: string;
+        /** 游标 */
+        cursor?: string;
+        /** 每页数量 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        WebResp & {
+          data?: DomainListFeedbacksResp;
+        },
+        WebResp
+      >({
+        path: `/api/v1/public/feedbacks`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 问题反馈详情
+     *
+     * @tags 【用户】问题反馈
+     * @name V1PublicFeedbacksDetail
+     * @summary 问题反馈详情
+     * @request GET:/api/v1/public/feedbacks/{id}
+     */
+    v1PublicFeedbacksDetail: (id: string, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainFeedback;
+        },
+        WebResp
+      >({
+        path: `/api/v1/public/feedbacks/${id}`,
+        method: "GET",
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -2603,6 +2799,99 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 获取团队 OAuth 站点列表
+     *
+     * @tags 【Team 管理员】OAuth 站点管理
+     * @name V1TeamsOauthSitesList
+     * @summary 获取团队 OAuth 站点列表
+     * @request GET:/api/v1/teams/oauth-sites
+     * @secure
+     */
+    v1TeamsOauthSitesList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainListTeamOAuthSitesResp;
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/oauth-sites`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 添加团队 OAuth 站点
+     *
+     * @tags 【Team 管理员】OAuth 站点管理
+     * @name V1TeamsOauthSitesCreate
+     * @summary 添加团队 OAuth 站点
+     * @request POST:/api/v1/teams/oauth-sites
+     * @secure
+     */
+    v1TeamsOauthSitesCreate: (req: DomainAddTeamOAuthSiteReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainTeamOAuthSite;
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/oauth-sites`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新团队 OAuth 站点
+     *
+     * @tags 【Team 管理员】OAuth 站点管理
+     * @name V1TeamsOauthSitesUpdate
+     * @summary 更新团队 OAuth 站点
+     * @request PUT:/api/v1/teams/oauth-sites/{site_id}
+     * @secure
+     */
+    v1TeamsOauthSitesUpdate: (siteId: string, req: DomainUpdateTeamOAuthSiteReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainTeamOAuthSite;
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/oauth-sites/${siteId}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除团队 OAuth 站点
+     *
+     * @tags 【Team 管理员】OAuth 站点管理
+     * @name V1TeamsOauthSitesDelete
+     * @summary 删除团队 OAuth 站点
+     * @request DELETE:/api/v1/teams/oauth-sites/{site_id}
+     * @secure
+     */
+    v1TeamsOauthSitesDelete: (siteId: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/teams/oauth-sites/${siteId}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 获取团队成员列表，支持按角色筛选
      *
      * @tags 【Team 管理员】分组成员管理
@@ -2876,6 +3165,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         method: "GET",
         query: query,
         type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 创建问题反馈
+     *
+     * @tags 【用户】问题反馈
+     * @name V1UsersFeedbacksCreate
+     * @summary 创建问题反馈
+     * @request POST:/api/v1/users/feedbacks
+     * @secure
+     */
+    v1UsersFeedbacksCreate: (req: DomainCreateFeedbackReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainFeedback;
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/feedbacks`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
         ...params,
       }),
 
@@ -3171,7 +3485,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description Git Bot 任务列表
+     * @description Git Bot 任务列表，支持分页
      *
      * @tags 【用户】Git Bot
      * @name V1UsersGitBotsTasksList
@@ -3181,8 +3495,14 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsTasksList: (
       query?: {
-        /** ID */
+        /** 指定 Git Bot ID，不传则查全部 */
         id?: string;
+        /** 下一页标识 */
+        next_token?: string;
+        /** 分页 */
+        page?: number;
+        /** 每页多少条记录 */
+        size?: number;
       },
       params: RequestParams = {},
     ) =>
@@ -3263,6 +3583,41 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/git-identities`,
         method: "POST",
         body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 根据 Git 身份获取指定仓库的分支列表
+     *
+     * @tags 【用户】git 身份管理
+     * @name V1UsersGitIdentitiesBranchesDetail
+     * @summary 获取仓库分支列表
+     * @request GET:/api/v1/users/git-identities/{identity_id}/{escaped_repo_full_name}/branches
+     * @secure
+     */
+    v1UsersGitIdentitiesBranchesDetail: (
+      identityId: string,
+      escapedRepoFullName: string,
+      query?: {
+        /** 页码（默认1） */
+        page?: number;
+        /** 每页数量（默认50，最大100） */
+        per_page?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        WebResp & {
+          data?: DomainBranch[];
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/git-identities/${identityId}/${escapedRepoFullName}/branches`,
+        method: "GET",
+        query: query,
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -4721,7 +5076,13 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         cursor?: string;
         /** 页数 */
         limit?: number;
+        /** 下一页标识 */
+        next_token?: string;
+        /** 分页 */
+        page?: number;
         project_id?: string;
+        /** 每页多少条记录 */
+        size?: number;
       },
       params: RequestParams = {},
     ) =>

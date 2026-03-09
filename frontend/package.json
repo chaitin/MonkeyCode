@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "api": "sta --path ${SWAGGER_URL:-https://monkeycode-ai.com/swagger/swagger.json} --output src/api"
+    "api": "sta --path ${SWAGGER} --output src/api"
   },
   "dependencies": {
     "@cap.js/widget": "^0.1.32",
