@@ -21,7 +21,6 @@ export default function TaskViewPage() {
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(searchParams.get('taskId') || null)
-  const [selectedTask, setSelectedTask] = useState<DomainProjectTask | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState<'wide' | 'narrow'>('wide')
   const [, update] = useState(0)
 
@@ -41,12 +40,11 @@ export default function TaskViewPage() {
         if (fetchedTasks.length > 0 && !selectedTaskId) {
           const firstTask = fetchedTasks[0]
           setSelectedTaskId(firstTask.id)
-          setSelectedTask(firstTask)
           setSearchParams({ taskId: firstTask.id }, { replace: true })
         } else if (selectedTaskId) {
-          const foundTask = fetchedTasks.find(t => t.id === selectedTaskId)
+          const foundTask = fetchedTasks.find((t: DomainProjectTask) => t.id === selectedTaskId)
           if (foundTask) {
-            setSelectedTask(foundTask)
+            setTasks(fetchedTasks)
           }
         }
       } else {
@@ -59,8 +57,6 @@ export default function TaskViewPage() {
   useEffect(() => {
     fetchTasks()
   }, [fetchTasks])
-
-  const taskTitle = selectedTask?.summary || stripMarkdown(selectedTask?.content || "")
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -104,7 +100,6 @@ export default function TaskViewPage() {
                   )}
                   onClick={() => {
                     setSelectedTaskId(task.id)
-                    setSelectedTask(task)
                     setSearchParams({ taskId: task.id })
                   }}
                 >
