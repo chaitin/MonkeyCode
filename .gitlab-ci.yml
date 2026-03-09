@@ -12,7 +12,7 @@ variables:
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-    - monkeycode-ai/node_modules/
+    - frontend/monkeycode-ai/node_modules/
     - .pnpm-store/
 
 # 构建阶段
@@ -22,7 +22,7 @@ build:
   before_script:
     - corepack enable
     - corepack prepare pnpm@latest --activate
-    - cd monkeycode-ai
+    - cd frontend/monkeycode-ai
     - pnpm install --frozen-lockfile
   script:
     # 生成 sitemap
@@ -34,7 +34,7 @@ build:
     - pnpm run build
   artifacts:
     paths:
-      - monkeycode-ai/dist/
+      - frontend/monkeycode-ai/dist/
     expire_in: 1 week
   only:
     - main
@@ -46,8 +46,8 @@ docker:
   stage: docker
   image: portus.in.chaitin.net/library/docker:buildx
   before_script:
-    - cp -r ./monkeycode-ai/dist ./docker/dist
-    - cd docker
+    - cp -r ./frontend/monkeycode-ai/dist ./frontend/docker/dist
+    - cd frontend/docker
     - docker login -u "$ALI_CR_USER" -p "$ALI_CR_PASSWORD" chaitin-registry.cn-hangzhou.cr.aliyuncs.com
     - docker buildx create --name builder --use --bootstrap --driver-opt image=portus.in.chaitin.net/library/buildkit:buildx-stable-1
   script:
