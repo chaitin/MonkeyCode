@@ -6,6 +6,7 @@ import {
   TextField,
   Typography,
   IconButton,
+  InputAdornment,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -14,7 +15,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
-import { message, Modal } from '@ctzhian/ui';
+import { message, Modal, Icon } from '@ctzhian/ui';
 import { useForm, Controller } from 'react-hook-form';
 import { useRequest } from 'ahooks';
 import Card from '@/components/card';
@@ -39,6 +40,9 @@ const UserSetting = () => {
   const [user, { setUser, refreshUser }] = useAuthContext();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -119,6 +123,12 @@ const UserSetting = () => {
   };
 
   // 提交密码修改
+  const resetPasswordVisibility = () => {
+    setShowOldPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+  };
+
   const onPasswordSubmit = (data: PasswordFormData) => {
     const params: DomainProfileUpdateReq = {
       old_password: data.oldPassword,
@@ -128,6 +138,7 @@ const UserSetting = () => {
     updateProfile(params);
     setPasswordDialogOpen(false);
     resetPasswordForm();
+    resetPasswordVisibility();
   };
 
   // 处理文件选择
@@ -334,7 +345,10 @@ const UserSetting = () => {
       <Modal
         title='修改密码'
         open={passwordDialogOpen}
-        onCancel={() => setPasswordDialogOpen(false)}
+        onCancel={() => {
+          setPasswordDialogOpen(false);
+          resetPasswordVisibility();
+        }}
         width={600}
         onOk={handlePasswordSubmit(onPasswordSubmit)}
       >
@@ -348,12 +362,31 @@ const UserSetting = () => {
                 render={({ field, fieldState }) => (
                   <TextField
                     {...field}
-                    type='password'
+                    type={showOldPassword ? 'text' : 'password'}
                     fullWidth
                     size='small'
                     placeholder='请输入当前密码'
                     error={!!fieldState.error}
                     helperText={fieldState.error?.message}
+                    slotProps={{
+                      input: {
+                        endAdornment: (
+                          <InputAdornment position='end'>
+                            <IconButton
+                              aria-label='切换当前密码显示'
+                              onClick={() => setShowOldPassword(!showOldPassword)}
+                              edge='end'
+                              size='small'
+                            >
+                              <Icon
+                                type={showOldPassword ? 'icon-kejian' : 'icon-bukejian'}
+                                sx={{ fontSize: 18 }}
+                              />
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
@@ -373,12 +406,31 @@ const UserSetting = () => {
                 render={({ field, fieldState }) => (
                   <TextField
                     {...field}
-                    type='password'
+                    type={showNewPassword ? 'text' : 'password'}
                     fullWidth
                     size='small'
                     placeholder='请输入新密码'
                     error={!!fieldState.error}
                     helperText={fieldState.error?.message}
+                    slotProps={{
+                      input: {
+                        endAdornment: (
+                          <InputAdornment position='end'>
+                            <IconButton
+                              aria-label='切换新密码显示'
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              edge='end'
+                              size='small'
+                            >
+                              <Icon
+                                type={showNewPassword ? 'icon-kejian' : 'icon-bukejian'}
+                                sx={{ fontSize: 18 }}
+                              />
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
@@ -397,12 +449,31 @@ const UserSetting = () => {
                 render={({ field, fieldState }) => (
                   <TextField
                     {...field}
-                    type='password'
+                    type={showConfirmPassword ? 'text' : 'password'}
                     fullWidth
                     size='small'
                     placeholder='请再次输入新密码'
                     error={!!fieldState.error}
                     helperText={fieldState.error?.message}
+                    slotProps={{
+                      input: {
+                        endAdornment: (
+                          <InputAdornment position='end'>
+                            <IconButton
+                              aria-label='切换确认密码显示'
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              edge='end'
+                              size='small'
+                            >
+                              <Icon
+                                type={showConfirmPassword ? 'icon-kejian' : 'icon-bukejian'}
+                                sx={{ fontSize: 18 }}
+                              />
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
