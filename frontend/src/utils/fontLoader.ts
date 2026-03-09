@@ -24,7 +24,8 @@ export const preloadFonts = async (): Promise<boolean> => {
 
   const fontPromises = fontVariants.map((variant: FontVariant) => {
     return new Promise<void>((resolve, reject) => {
-      const font = new FontFace('Google Sans Code', `url(/${variant.file})`, {
+      const base = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/'
+      const font = new FontFace('Google Sans Code', `url(${base}${variant.file})`, {
         weight: variant.weight,
         style: variant.style
       });

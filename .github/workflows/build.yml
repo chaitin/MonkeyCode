@@ -74,10 +74,12 @@ jobs:
           elif [ -d _build/dist ]; then
             cp -r _build/dist frontend/docker/
           else
-            # artifact 可能把内容解压到根目录
             mkdir -p frontend/docker/dist
-            cp -r index.html assets frontend/docker/dist/ 2>/dev/null || (echo "Artifact structure:" && find . -maxdepth 3 -type d && exit 1)
+            for f in index.html assets captcha ppt; do [ -e "$f" ] && cp -r "$f" frontend/docker/dist/; done
+            cp -r *.ttf *.png *.jpg *.svg *.txt *.js *.wasm frontend/docker/dist/ 2>/dev/null || true
+            [ -f frontend/docker/dist/index.html ] || (echo "Artifact structure:" && find . -maxdepth 3 -type d && exit 1)
           fi
+          ls -la frontend/docker/dist/ | head -25
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
