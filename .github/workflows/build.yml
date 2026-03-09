@@ -47,10 +47,13 @@ jobs:
         run: pnpm run build
 
       - name: Upload dist
+        run: |
+          mkdir -p _build/dist && cp -r frontend/dist/* _build/dist/
+      - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: frontend/dist/
+          path: _build/dist/
 
   docker:
     needs: build
@@ -63,7 +66,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: frontend/docker/
+
+      - name: Prepare docker context
+        run: cp -r _build/dist frontend/docker/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
