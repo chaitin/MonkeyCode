@@ -29,6 +29,7 @@ import PostCreatePage from "./pages/post-create"
 import ProjectIssuesPage from "./pages/console/user/project/issues"
 import ProjectTasksPage from "./pages/console/user/project/tasks"
 import TaskDevelopPage from "./pages/console/user/task/task-dev"
+import TaskViewPage from "./pages/console/user/task/task-view"
 
 function App() {
   return (
@@ -56,6 +57,7 @@ function App() {
           </Route>
           <Route path="/console/terminal" element={<TerminalPage />} />
           <Route path="/console/files" element={<FileManagerPage />} />
+          <Route path="/console/task/view" element={<TaskViewPage />} />
           <Route path="/console/task/develop/:taskId" element={<TaskDevelopPage />} />
           <Route path="/sharedterminal" element={<SharedTerminalPage />} />
           <Route path="/manager" element={<ManagerConsolePage />}>

@@ -23,6 +23,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: ['.monkeycode-ai.online'],
     proxy: {
       '/api': {
         target: 'https://monkeycode-ai.com/',
