@@ -68,7 +68,16 @@ jobs:
           name: dist
 
       - name: Prepare docker context
-        run: cp -r _build/dist frontend/docker/
+        run: |
+          if [ -d dist ]; then
+            cp -r dist frontend/docker/
+          elif [ -d _build/dist ]; then
+            cp -r _build/dist frontend/docker/
+          else
+            # artifact 可能把内容解压到根目录
+            mkdir -p frontend/docker/dist
+            cp -r index.html assets frontend/docker/dist/ 2>/dev/null || (echo "Artifact structure:" && find . -maxdepth 3 -type d && exit 1)
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
