@@ -1,0 +1,414 @@
+import { useState, useEffect, useRef } from "react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Checkbox } from "@/components/ui/checkbox"
+import { apiRequest } from "@/utils/requestUtils"
+import { toast } from "sonner"
+import type { DomainProviderModelListItem, DomainTeamGroup } from "@/api/Api"
+import { ConstsInterfaceType } from "@/api/Api"
+import { getModelUrlDescription, modelProviderList } from "@/utils/common"
+import { ChevronDown } from "lucide-react"
+import { cn } from "@/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
+import { CircleQuestionMark } from 'lucide-react'
+
+interface AddModelProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onRefresh?: () => void
+}
+
+export default function AddModel({
+  open,
+  onOpenChange,
+  onRefresh,
+}: AddModelProps) {
+  const [model, setModel] = useState("")
+  const [apiToken, setApiToken] = useState("")
+  const [baseUrl, setBaseUrl] = useState("https://model-square.app.baizhi.cloud/v1")
+  const [interfaceType, setInterfaceType] = useState<ConstsInterfaceType>(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+  const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
+  const [groups, setGroups] = useState<DomainTeamGroup[]>([])
+  const [selectOpen, setSelectOpen] = useState(false)
+  const selectRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      fetchGroups()
+    }
+  }, [open])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (selectRef.current && !selectRef.current.contains(event.target as Node)) {
+        setSelectOpen(false)
+      }
+    }
+
+    if (selectOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [selectOpen])
+
+  const fetchGroups = async () => {
+    await apiRequest('v1TeamsGroupsList', {}, [], (resp) => {
+      if (resp.code === 0) {
+        setGroups(resp.data?.groups || [])
+      } else {
+        toast.error("获取分组列表失败: " + resp.message);
+      }
+    })
+  }
+
+  const handleGroupCheckboxChange = (groupId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedGroupIds([...selectedGroupIds, groupId])
+    } else {
+      setSelectedGroupIds(selectedGroupIds.filter(id => id !== groupId))
+    }
+  }
+
+  const fetchModelList = async () => {
+    if (!apiToken.trim()) {
+      toast.error("请先输入 API Token")
+      return
+    }
+
+    if (modelProviderList[baseUrl.trim()]) {
+      setModelList(modelProviderList[baseUrl.trim()])
+      return
+    }
+
+    setLoadingModels(true)
+    await apiRequest('getProviderModelList', {
+        api_key: apiToken.trim(),
+        base_url: baseUrl.trim() || "https://model-square.app.baizhi.cloud/v1",
+        provider: "BaiZhiCloud",
+      }, [], (resp) => {
+        if (resp.code === 0) {
+          const models = resp.data?.models || []
+          setModelList(models)
+          if (models.length === 0) {
+            toast.warning("未获取到可用模型")
+          } else {
+            toast.success(`获取到 ${models.length} 个可用模型`)
+          }
+        } else {
+          toast.error("获取模型列表失败: " + resp.message);
+        }
+      })
+    setLoadingModels(false)
+  }
+
+  const handleSave = async () => {
+    if (!apiToken.trim()) {
+      toast.error("请输入 API Token")
+      return
+    }
+    if (!baseUrl.trim()) {
+      toast.error("请输入模型 API 地址")
+      return
+    }
+    if (!model.trim()) {
+      toast.error("请选择模型名称")
+      return
+    }
+
+    setSaving(true)
+
+    // 先进行健康检查
+    const healthCheckData = {
+      api_key: apiToken.trim(),
+      model: model.trim(),
+      base_url: baseUrl.trim(),
+      interface_type: interfaceType,
+      provider: "BaiZhiCloud",
+    }
+
+    await apiRequest('v1TeamsModelsHealthCheckCreate', healthCheckData, [], async (resp) => {
+      if (resp.code === 0) {
+        if (resp.data?.success) {
+          // 健康检查通过，继续保存
+          const requestData: any = {
+            provider: "BaiZhiCloud",
+            model: model.trim(),
+            base_url: baseUrl.trim(),
+            api_key: apiToken.trim(),
+            interface_type: interfaceType,
+            group_ids: selectedGroupIds
+          }
+
+          await apiRequest('v1TeamsModelsCreate', requestData, [], (resp) => {
+            if (resp.code === 0) {
+              toast.success("模型绑定成功")
+              setModel("")
+              setApiToken("")
+              setBaseUrl("https://model-square.app.baizhi.cloud/v1")
+              setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+              setModelList([])
+              setSelectedGroupIds([])
+              setSelectOpen(false)
+              onOpenChange(false)
+              onRefresh?.()
+            } else {
+              toast.error("绑定模型失败: " + resp.message);
+            }
+          })
+        } else {
+          toast.error("模型配置检查失败: " + resp.data?.error)
+        }
+      }
+    })
+    
+    setSaving(false)
+  }
+
+  const handleCancel = () => {
+    setModel("")
+    setApiToken("")
+    setBaseUrl("https://model-square.app.baizhi.cloud/v1")
+    setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+    setModelList([])
+    setSelectedGroupIds([])
+    setSelectOpen(false)
+    onOpenChange(false)
+  }
+
+  // 对模型列表进行分组和排序
+  const getGroupedModels = () => {
+    const groups: Record<string, DomainProviderModelListItem[]> = {}
+    
+    modelList.forEach((item) => {
+      const modelName = item.model || ""
+      const parts = modelName.split("-")
+      const groupKey = parts.length > 0 ? parts[0] : "其他"
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = []
+      }
+      groups[groupKey].push(item)
+    })
+    
+    // 对每个组内的模型按字符串排序
+    Object.keys(groups).forEach((key) => {
+      groups[key].sort((a, b) => {
+        const aName = a.model || ""
+        const bName = b.model || ""
+        return aName.localeCompare(bName)
+      })
+    })
+    
+    // 对组名进行排序
+    const sortedGroupKeys = Object.keys(groups).sort()
+    
+    return { groups, sortedGroupKeys }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant={"outline"} size="sm">绑定</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>绑定 AI 大模型</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <Field>
+            <FieldLabel>接口格式</FieldLabel>
+            <FieldContent>
+              <Select
+                value={interfaceType}
+                onValueChange={(value) => setInterfaceType(value as ConstsInterfaceType)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="请选择接口格式类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ConstsInterfaceType.InterfaceTypeOpenAIResponse}>
+                    OpenAI Responses
+                  </SelectItem>
+                  <SelectItem value={ConstsInterfaceType.InterfaceTypeOpenAIChat}>
+                    OpenAI Chat
+                  </SelectItem>
+                  <SelectItem value={ConstsInterfaceType.InterfaceTypeAnthropic}>
+                    Anthropic
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>模型 API 地址</FieldLabel>
+            <FieldContent>
+              <Input
+                placeholder="请输入模型 API 地址"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+            </FieldContent>
+            <FieldDescription>{getModelUrlDescription(baseUrl, interfaceType)}</FieldDescription>
+          </Field>
+          <Field>
+            <div className="flex items-center justify-between gap-2">
+              <FieldLabel>API Token</FieldLabel>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                asChild
+                className="h-auto p-0 text-foreground"
+              >
+                <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank">
+                  <CircleQuestionMark />如何获得
+                </a>
+              </Button>
+            </div>
+            <FieldContent>
+              <Input
+                placeholder="请输入 API Token"
+                value={apiToken}
+                onChange={(e) => setApiToken(e.target.value)}
+              />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>模型名称</FieldLabel>
+            <FieldContent>
+              <Select
+                value={model}
+                onValueChange={setModel}
+                onOpenChange={(open) => {
+                  if (open && apiToken.trim() && !loadingModels) {
+                    fetchModelList()
+                  }
+                }}
+                disabled={loadingModels || !apiToken.trim()}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={loadingModels ? "加载中..." : "请选择模型"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {loadingModels ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Spinner />
+                      <span className="ml-2 text-sm text-muted-foreground">加载模型中...</span>
+                    </div>
+                  ) : modelList.length > 0 ? (() => {
+                    const { groups, sortedGroupKeys } = getGroupedModels()
+                    return (
+                      <>
+                        {sortedGroupKeys.map((groupKey) => (
+                          <SelectGroup key={groupKey}>
+                            <SelectLabel>{groupKey}</SelectLabel>
+                            {groups[groupKey].map((item, index) => (
+                              <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
+                                {item.model}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                      </>
+                    )
+                  })() : (
+                    <div className="py-4 text-center text-sm text-muted-foreground">
+                      {apiToken.trim() ? "暂无可用模型" : "请先输入 API Token"}
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>可使用该配置的分组</FieldLabel>
+            <FieldContent>
+              <div className="relative" ref={selectRef}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={selectOpen}
+                  className="w-full justify-between"
+                  onClick={() => setSelectOpen(!selectOpen)}
+                >
+                  <span className="truncate">
+                    {selectedGroupIds.length === 0
+                      ? "请选择分组"
+                      : selectedGroupIds.length === 1
+                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
+                      : `已选择 ${selectedGroupIds.length} 个分组`}
+                  </span>
+                  <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
+                </Button>
+                {selectOpen && (
+                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                    <div className="max-h-[300px] overflow-auto p-1">
+                      {groups.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          暂无分组
+                        </div>
+                      ) : (
+                        groups.map((group) => {
+                          const isChecked = selectedGroupIds.includes(group.id || "")
+                          return (
+                            <div
+                              key={group.id}
+                              className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-accent cursor-pointer"
+                              onClick={() => handleGroupCheckboxChange(group.id || "", !isChecked)}
+                            >
+                              <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={(checked) => handleGroupCheckboxChange(group.id || "", checked as boolean)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <span className="text-sm">{group.name}</span>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </FieldContent>
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel} disabled={saving}>
+            取消
+          </Button>
+          <Button onClick={handleSave} disabled={!model.trim() || saving}>
+            {saving && <Spinner className="size-4" />}
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+

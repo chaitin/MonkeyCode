@@ -1,0 +1,14 @@
+# MonkeyCode AI 搜索引擎爬虫规则
+
+User-agent: *
+Allow: /
+
+# 禁止爬取
+Disallow: /console/
+Disallow: /manager/
+Disallow: /api/
+Disallow: /assets/
+
+# 站点地图
+Sitemap: https://monkeycode-ai.com/sitemap.xml
+

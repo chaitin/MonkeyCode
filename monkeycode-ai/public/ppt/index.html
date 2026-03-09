@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MonkeyCode - 企业级 AI 开发平台</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --r-background-color: #0a0e17;
+            --r-main-font: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            --r-heading-font: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            --r-code-font: 'JetBrains Mono', monospace;
+            --r-main-color: #e8eaed;
+            --r-heading-color: #fff;
+            --r-link-color: #64ffda;
+            --r-link-color-hover: #9effd8;
+            --r-selection-background-color: rgba(100, 255, 218, 0.3);
+            --accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            --cyan-glow: #64ffda;
+            --purple-glow: #a78bfa;
+            --orange-glow: #fb923c;
+        }
+
+        .reveal {
+            font-weight: 400;
+        }
+
+        .reveal .slides {
+            text-align: left;
+        }
+
+        .reveal .slides section {
+            padding: 50px 60px;
+            box-sizing: border-box;
+            height: 100%;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3 {
+            text-transform: none;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .reveal h1 {
+            font-size: 2.5em;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .reveal h2 {
+            font-size: 1.8em;
+            color: var(--cyan-glow);
+            margin-bottom: 0.6em;
+        }
+
+        .reveal h3 {
+            font-size: 1.15em;
+            color: var(--purple-glow);
+        }
+
+        .reveal p, .reveal li {
+            font-size: 0.95em;
+            line-height: 1.7;
+            color: #b8c0cc;
+        }
+
+        .reveal ul {
+            list-style: none;
+            padding-left: 0;
+            margin-top: 20px;
+        }
+
+        .reveal ul li {
+            position: relative;
+            padding-left: 1.8em;
+            margin-bottom: 0.7em;
+        }
+
+        .reveal ul li::before {
+            content: "▹";
+            position: absolute;
+            left: 0;
+            color: var(--cyan-glow);
+            font-size: 1em;
+        }
+
+        .reveal code {
+            font-family: var(--r-code-font);
+            background: rgba(100, 255, 218, 0.1);
+            border: 1px solid rgba(100, 255, 218, 0.2);
+            border-radius: 4px;
+            padding: 0.1em 0.4em;
+            color: var(--cyan-glow);
+            font-size: 0.9em;
+        }
+
+        /* Title slide styling */
+        .title-slide {
+            text-align: center !important;
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .title-slide h1 {
+            font-size: 3.5em;
+            margin-bottom: 0.2em;
+        }
+
+        .title-slide .subtitle {
+            font-size: 1.2em;
+            color: #8892a6;
+            font-weight: 300;
+        }
+
+        .title-slide .company {
+            font-size: 0.9em;
+            color: var(--orange-glow);
+            margin-top: 30px;
+        }
+
+        /* Flow diagram */
+        .flow-box {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(100, 255, 218, 0.08);
+            border: 1px solid rgba(100, 255, 218, 0.2);
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin: 20px 0;
+        }
+
+        .flow-box .step {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        .flow-box .arrow {
+            color: var(--cyan-glow);
+            font-size: 1.2em;
+        }
+
+        /* Feature cards */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            margin-top: 30px;
+        }
+
+        .feature-grid.three-col {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .feature-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(100, 255, 218, 0.15);
+            border-radius: 14px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(100, 255, 218, 0.4);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(100, 255, 218, 0.08);
+        }
+
+        .feature-card h3 {
+            margin-top: 0;
+            font-size: 1.05em;
+        }
+
+        .feature-card p {
+            font-size: 0.85em;
+            margin-bottom: 0;
+        }
+
+        /* Icon styling */
+        .icon {
+            font-size: 1.8em;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        /* Highlight box */
+        .highlight-box {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.1));
+            border-left: 3px solid var(--purple-glow);
+            padding: 16px 24px;
+            border-radius: 0 10px 10px 0;
+            margin: 20px 0;
+        }
+
+        .highlight-box p {
+            margin: 0;
+            font-size: 0.9em;
+        }
+
+        /* Two column layout */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: start;
+        }
+
+        /* Tag list */
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .tag {
+            background: rgba(167, 139, 250, 0.15);
+            border: 1px solid rgba(167, 139, 250, 0.3);
+            color: var(--purple-glow);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8em;
+        }
+
+        /* Animated background */
+        .reveal .slides::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at 20% 80%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(167, 139, 250, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(240, 147, 251, 0.05) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* CTA button */
+        .cta-button {
+            display: inline-block;
+            padding: 14px 36px;
+            background: var(--accent-gradient);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1em;
+            margin-top: 30px;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .cta-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.5);
+        }
+
+        /* Center helper */
+        .centered {
+            text-align: center !important;
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Slide number */
+        .reveal .slide-number {
+            font-family: var(--r-code-font);
+            font-size: 0.8em;
+            color: #8892a6;
+            background: transparent;
+        }
+
+        /* Progress bar */
+        .reveal .progress {
+            height: 3px;
+            background: rgba(100, 255, 218, 0.1);
+        }
+
+        .reveal .progress span {
+            background: var(--accent-gradient);
+        }
+
+        /* Role cards */
+        .role-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 24px;
+        }
+
+        .role-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(100, 255, 218, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .role-card .role-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .role-card h4 {
+            color: var(--cyan-glow);
+            font-size: 0.95em;
+            margin: 0 0 8px 0;
+        }
+
+        .role-card p {
+            font-size: 0.8em;
+            margin: 0;
+        }
+
+        /* Git platforms */
+        .platform-list {
+            display: flex;
+            gap: 16px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .platform {
+            background: rgba(100, 255, 218, 0.08);
+            border: 1px solid rgba(100, 255, 218, 0.2);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            color: var(--cyan-glow);
+        }
+
+        /* Quote */
+        .quote {
+            font-size: 1.1em;
+            font-style: italic;
+            color: #e8eaed;
+            border-left: 3px solid var(--cyan-glow);
+            padding-left: 24px;
+            margin: 24px 0;
+        }
+
+        /* Compact list */
+        .compact-list li {
+            margin-bottom: 0.5em;
+            font-size: 0.88em;
+        }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Slide 1: Title -->
+            <section class="title-slide">
+                <h1>MonkeyCode</h1>
+                <p class="subtitle">企业级 AI 开发平台</p>
+                <p class="company">长亭科技 出品</p>
+                <p style="margin-top: 50px; color: #64ffda; font-size: 0.75em;">
+                    按 <code>Space</code> 或 <code>→</code> 键继续
+                </p>
+            </section>
+
+            <!-- Slide 2: 产品介绍 -->
+            <section>
+                <h2>什么是 MonkeyCode？</h2>
+                <p style="font-size: 1.05em; color: #e8eaed; margin-bottom: 24px;">
+                    MonkeyCode 不只是一个 AI 编程工具，而是一个<strong style="color: var(--cyan-glow);">面向专业团队的 AI 研发基础设施</strong>
+                </p>
+                
+                <div class="flow-box">
+                    <span class="step">需求</span>
+                    <span class="arrow">→</span>
+                    <span class="step">设计</span>
+                    <span class="arrow">→</span>
+                    <span class="step">开发</span>
+                    <span class="arrow">→</span>
+                    <span class="step">Review</span>
+                </div>
+
+                <p>覆盖研发全流程，提供安全、隔离、可并行的开发环境</p>
+
+                <div class="highlight-box">
+                    <p>📢 当前提供 SaaS 版，后续计划推出<strong style="color: var(--purple-glow);"> 离线部署版</strong> 和 <strong style="color: var(--purple-glow);">开源版</strong></p>
+                </div>
+            </section>
+
+            <!-- Slide 3: 产品定位 -->
+            <section>
+                <h2>✨ 产品定位</h2>
+                <ul>
+                    <li class="fragment">企业级 AI Coding 平台</li>
+                    <li class="fragment">面向专业开发者与研发团队</li>
+                    <li class="fragment">支持真实工程场景，支持复杂项目与多人协作</li>
+                    <li class="fragment">不只是写代码，而是参与完整研发流程</li>
+                </ul>
+
+                <div class="flow-box fragment" style="margin-top: 40px;">
+                    <span class="step">需求</span>
+                    <span class="arrow">→</span>
+                    <span class="step">设计</span>
+                    <span class="arrow">→</span>
+                    <span class="step">开发</span>
+                    <span class="arrow">→</span>
+                    <span class="step">Review</span>
+                </div>
+            </section>
+
+            <!-- Slide 4: AI 智能任务 -->
+            <section>
+                <h2>🚀 AI 智能任务</h2>
+                <p>核心能力：通过<strong style="color: var(--cyan-glow);">自然语言</strong>驱动 AI 执行任务</p>
+                
+                <div class="two-col" style="margin-top: 24px;">
+                    <div>
+                        <h3>底层能力</h3>
+                        <p>由业内顶尖工具驱动：</p>
+                        <div class="tag-list">
+                            <span class="tag">OpenAI Codex</span>
+                            <span class="tag">Claude Code</span>
+                        </div>
+                        <p style="margin-top: 16px; font-size: 0.85em;">已使用 Codex 或 Claude Code？<br>可无缝迁移至 MonkeyCode</p>
+                    </div>
+                    <div>
+                        <h3>国产模型适配</h3>
+                        <p>完整支持国内主流模型：</p>
+                        <div class="tag-list">
+                            <span class="tag">DeepSeek</span>
+                            <span class="tag">Qwen</span>
+                            <span class="tag">Kimi</span>
+                            <span class="tag">GLM</span>
+                            <span class="tag">Doubao</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 5: SDD 项目开发 -->
+            <section>
+                <h2>🚀 SDD 项目开发</h2>
+                <p>基于 <strong style="color: var(--cyan-glow);">SDD（规范驱动开发）</strong> 的项目开发模式</p>
+                <p style="font-size: 0.85em; color: #8892a6;">相比 "Vibe coding"，更强调可控性、可追溯性与工程质量</p>
+
+                <div class="flow-box" style="margin: 24px 0;">
+                    <span class="step">原始需求</span>
+                    <span class="arrow">→</span>
+                    <span class="step">产品设计</span>
+                    <span class="arrow">→</span>
+                    <span class="step">技术设计</span>
+                    <span class="arrow">→</span>
+                    <span class="step">任务列表</span>
+                </div>
+
+                <div class="role-grid">
+                    <div class="role-card fragment">
+                        <div class="role-icon">👔</div>
+                        <h4>产品经理</h4>
+                        <p>需求拆解与产品设计</p>
+                    </div>
+                    <div class="role-card fragment">
+                        <div class="role-icon">📋</div>
+                        <h4>项目管理</h4>
+                        <p>流程与进度管理</p>
+                    </div>
+                    <div class="role-card fragment">
+                        <div class="role-icon">💻</div>
+                        <h4>研发工程师</h4>
+                        <p>技术设计与实现</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 6: Git Review Bot -->
+            <section>
+                <h2>🚀 Git Review Bot</h2>
+                <p>深度集成主流 Git 平台，支持 AI 驱动的代码审查</p>
+
+                <div class="platform-list">
+                    <span class="platform">GitHub</span>
+                    <span class="platform">GitLab</span>
+                    <span class="platform">Gitea</span>
+                    <span class="platform">Gitee</span>
+                </div>
+
+                <h3 style="margin-top: 24px;">使用场景</h3>
+                <ul class="compact-list">
+                    <li class="fragment">在 PR / MR 中 <code>@MonkeyCode</code>，自动进行代码 Review</li>
+                    <li class="fragment">接入 DevOps 流程，代码提交时自动触发 AI Review</li>
+                    <li class="fragment">支持独立部署的私有化 GitLab 集成</li>
+                </ul>
+            </section>
+
+            <!-- Slide 7: 在线开发环境 -->
+            <section>
+                <h2>🚀 在线开发环境</h2>
+                <p>灵活、安全的开发环境：<strong style="color: var(--cyan-glow);">本地开发机 + 云端控制</strong></p>
+
+                <div class="feature-grid" style="margin-top: 24px;">
+                    <div class="feature-card fragment">
+                        <span class="icon">🔒</span>
+                        <h3>环境隔离</h3>
+                        <p>每次任务自动创建虚拟机，AI 操作仅在虚拟机内执行，不影响真实环境</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">⚡</span>
+                        <h3>并行运行</h3>
+                        <p>多个 AI 任务并行，每个任务独立虚拟环境，互不影响</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">🔄</span>
+                        <h3>失败重试</h3>
+                        <p>任务失败可直接重试，系统自动创建新虚拟机</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">📱</span>
+                        <h3>多端访问</h3>
+                        <p>支持 PC 与移动端，随时随地驱动 AI 执行研发任务</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 8: 特色功能 -->
+            <section>
+                <h2>✨ 核心特色</h2>
+                <div class="feature-grid three-col" style="margin-top: 20px;">
+                    <div class="feature-card fragment">
+                        <span class="icon">🔧</span>
+                        <h3>工具无关性</h3>
+                        <p>支持 Codex、Claude Code 等，无缝切换</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">🤖</span>
+                        <h3>模型无关性</h3>
+                        <p>兼容 GPT、Claude、DeepSeek、Kimi 等</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">📐</span>
+                        <h3>SDD 驱动</h3>
+                        <p>严格管理技术设计，解决 AI 放飞自我问题</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">🌐</span>
+                        <h3>多入口触发</h3>
+                        <p>IDE / Web / Git / API 多种方式发起任务</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">🛡️</span>
+                        <h3>环境隔离</h3>
+                        <p>任务启动创建全新 OS，安全可控</p>
+                    </div>
+                    <div class="feature-card fragment">
+                        <span class="icon">🏢</span>
+                        <h3>企业级配置</h3>
+                        <p>支持离线大模型，支持企业内网使用</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Slide 9: CTA -->
+            <section class="centered">
+                <h1>开始使用 MonkeyCode</h1>
+                <p style="font-size: 1em; color: #8892a6; margin: 20px 0;">
+                    让 AI 成为你的研发基础设施
+                </p>
+                <a href="https://monkeycode-ai.com/" class="cta-button" target="_blank">立即体验</a>
+                <p style="margin-top: 40px; font-size: 0.8em; color: #64ffda;">
+                    monkeycode-ai.com
+                </p>
+            </section>
+
+            <!-- Slide 10: Thank you -->
+            <section class="centered">
+                <h1>感谢观看</h1>
+                <p class="subtitle" style="font-size: 1em; color: #8892a6;">Q & A</p>
+                <p style="margin-top: 40px; font-size: 0.85em; color: var(--orange-glow);">
+                    长亭科技 · MonkeyCode 团队
+                </p>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/markdown/markdown.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            slideNumber: 'c/t',
+            progress: true,
+            center: false,
+            transition: 'slide',
+            transitionSpeed: 'default',
+            backgroundTransition: 'fade',
+            plugins: [RevealHighlight, RevealNotes, RevealMarkdown],
+            // 16:9 宽高比
+            width: 1920,
+            height: 1080,
+            // 自适应缩放
+            margin: 0.04,
+            minScale: 0.2,
+            maxScale: 2.0,
+            // 键盘控制
+            keyboard: true,
+            // 触摸滑动
+            touch: true,
+            // 循环播放
+            loop: false,
+            // 右下角控制按钮
+            controls: true,
+            // 显示幻灯片编号
+            showSlideNumber: 'all',
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+/* UserMessage Markdown Styles */
+.user-message-markdown {
+  line-height: 1.6;
+  color: inherit;
+}
+
+.user-message-markdown h1 {
+  opacity: 1;
+  font-weight: bold;
+}
+
+.user-message-markdown h2 {
+  opacity: 0.9;
+  font-weight: bold;
+}
+
+.user-message-markdown h3 {
+  opacity: 0.8;
+  font-weight: bold;
+}
+
+
+.user-message-markdown h4 {
+  opacity: 0.7;
+  font-weight: bold;
+}
+
+.user-message-markdown h5 {
+  opacity: 0.6;
+  font-weight: bold;
+}
+
+
+.user-message-markdown h6 {
+  opacity: 0.6;
+  font-weight: bold;
+}
+
+
+.user-message-markdown h1::before {
+  content: "# ";
+}
+
+.user-message-markdown h2::before {
+  content: "## ";
+}
+
+.user-message-markdown h3::before {
+  content: "### ";
+}
+
+.user-message-markdown h4::before {
+  content: "#### ";
+}
+
+.user-message-markdown h5::before {
+  content: "##### ";
+}
+
+.user-message-markdown h6::before {
+  content: "###### ";
+}
+
+/* Paragraphs */
+.user-message-markdown p {
+  margin: 0.5em 0;
+}
+
+.user-message-markdown p:first-child {
+  margin-top: 0;
+}
+
+.user-message-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+/* Lists */
+.user-message-markdown ul,
+.user-message-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 0;
+  margin-left: 0;
+  list-style-position: inside;
+}
+
+.user-message-markdown li {
+  margin: 0.25em 0;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.user-message-markdown ul {
+  list-style-type: disc;
+}
+
+.user-message-markdown ol {
+  list-style-type: decimal;
+}
+
+.user-message-markdown ul ul,
+.user-message-markdown ol ol,
+.user-message-markdown ul ol,
+.user-message-markdown ol ul {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+  padding-left: 1.5em;
+  margin-left: 0;
+}
+
+/* Code */
+.user-message-markdown code {
+  background-color: var(--muted);
+  color: var(--primary);
+  padding: .2em .4em;
+  margin: 0;
+  font-size: 85%;
+  border-radius: 0.25em;
+}
+
+.user-message-markdown pre {
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 0.375em;
+  padding: 0.75em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  white-space: pre-wrap;
+}
+.user-message-markdown pre code {
+  font-size: 85% !important;
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+  display: block;
+}
+
+
+/* Links */
+.user-message-markdown a {
+  color: rgb(107, 148, 255);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.user-message-markdown a:hover {
+  opacity: 0.7;
+}
+
+/* Blockquotes */
+.user-message-markdown blockquote {
+  border-left: 3px solid oklch(0.7 0 0);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: oklch(from currentColor l c h / calc(alpha * 0.6));
+  font-style: italic;
+}
+
+/* Horizontal Rules */
+.user-message-markdown hr {
+  border: none;
+  border-top: 1px solid oklch(from currentColor l c h / calc(alpha * 0.6));
+  margin: 1em 0;
+}
+/* Tables */
+.user-message-markdown table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  width: 100%;
+}
+
+.user-message-markdown th,
+.user-message-markdown td {
+  border: 1px solid oklch(0.9 0 0);
+  padding: 0.5em;
+  text-align: left;
+}
+
+
+.user-message-markdown th {
+  background-color: oklch(from currentColor l c h / calc(alpha * 0.2));
+  font-weight: 600;
+}
+
+
+
+/* Images */
+.user-message-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375em;
+  margin: 0.75em 0;
+}
+
+/* Strong and Emphasis */
+.user-message-markdown strong {
+  font-weight: 600;
+}
+
+.user-message-markdown em {
+  font-style: italic;
+}
+
+/* Strikethrough */
+.user-message-markdown del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* Task Lists - Remove bullet point for checkbox items */
+.user-message-markdown li:has(input[type="checkbox"]) {
+  list-style-type: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.user-message-markdown li:has(input[type="checkbox"]) input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.user-message-markdown li:has(input[type="checkbox"]) > *:not(input[type="checkbox"]):not(ul):not(ol) {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Ensure nested lists in task list items are properly indented and on new line */
+.user-message-markdown li:has(input[type="checkbox"]) ul,
+.user-message-markdown li:has(input[type="checkbox"]) ol {
+  flex-basis: 100%;
+  width: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-left: 0;
+  padding-left: 1.5em;
+}
+

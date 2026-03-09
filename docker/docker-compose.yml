@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/frontend:latest
+    container_name: saas-web-frontend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    networks:
+      - saas-network
+
+networks:
+  saas-network:
+    driver: bridge
