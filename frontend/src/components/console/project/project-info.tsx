@@ -2,7 +2,6 @@ import { type DomainProject } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
 import EditCollaboratorsDialog from "@/components/console/project/edit-collaborators"
 import EditProjectNameDialog from "@/components/console/project/edit-project-name"
-import GenerateDocDialog from "@/components/console/project/generate-doc-dialog"
 import StartDevelopTaskDialog from "@/components/console/project/start-develop-task-dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -11,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconBook, IconBrandGithub, IconLoader, IconPencil, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
+import { IconBrandGithub, IconLoader, IconPencil, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
 import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -32,7 +31,6 @@ const ProjectInfo = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<DomainProject | undefined>(undefined)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [emptyDocDialogOpen, setEmptyDocDialogOpen] = useState(false)
   const [conversationDialogOpen, setConversationDialogOpen] = useState(false)
   const navigate = useNavigate()
   const { projects, reloadProjects } = useCommonData()
@@ -79,11 +77,6 @@ const ProjectInfo = ({
     setDeleteLoading(false)
   }
 
-  const handleGenerateDoc = () => {
-    if (!project) return
-    setEmptyDocDialogOpen(true)
-  }
-
   const handleStartConversation = () => {
     if (!project || isRepoUnbound) return
     setConversationDialogOpen(true)
@@ -118,24 +111,16 @@ const ProjectInfo = ({
         </ItemContent>
         <ItemActions>
           
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="sm" disabled={isRepoUnbound}>
-                <IconSparkles className="size-4" />
-                启动 AI
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleStartConversation}>
-                <IconSparkles />
-                发起对话
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleGenerateDoc}>
-                <IconBook />
-                生成项目文档
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <Button 
+            variant="secondary" 
+            size="sm" 
+            disabled={isRepoUnbound}
+            onClick={handleStartConversation}
+          >
+            <IconSparkles className="size-4" />
+            启动 AI
+          </Button>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm">
@@ -199,13 +184,6 @@ const ProjectInfo = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <GenerateDocDialog
-        open={emptyDocDialogOpen}
-        onOpenChange={setEmptyDocDialogOpen}
-        projectId={project?.id || ''}
-        projectName={project?.name || ''}
-      />
 
       <StartDevelopTaskDialog
         open={conversationDialogOpen}

@@ -827,6 +827,8 @@ export interface DomainProject {
   created_at?: number;
   /** 项目描述 */
   description?: string;
+  /** 仓库 full_name */
+  full_name?: string;
   /** 项目关联的 git identity id */
   git_identity_id?: string;
   /** 项目ID */
