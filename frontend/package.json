@@ -35,6 +35,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tabler/icons-react": "^3.35.0",
     "@tailwindcss/vite": "^4.1.17",
+    "@tanstack/react-virtual": "^3.13.21",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@uiw/react-json-view": "2.0.0-alpha.40",
     "@xterm/addon-fit": "^0.10.0",

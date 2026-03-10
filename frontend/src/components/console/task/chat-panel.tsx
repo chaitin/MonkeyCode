@@ -1,6 +1,6 @@
-
 import { MessageItem, type MessageType } from "./message"
 import React from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { Button } from "@/components/ui/button"
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
@@ -73,12 +73,43 @@ export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingM
     }
   }, [streamStatus])
 
+  const displayMessages = React.useMemo(
+    () => messages.filter((message) => message.type !== 'agent_thought_chunk'),
+    [messages]
+  )
+
+  const virtualRows = React.useMemo(() => {
+    const rows: Array<{ type: 'message'; message: MessageType } | { type: 'taskStatus' } | { type: 'fileChanges' }> = displayMessages.map((m) => ({ type: 'message' as const, message: m }))
+    if (streamStatus !== 'waiting') {
+      rows.push({ type: 'taskStatus' })
+    }
+    if (!disabled && fileChanges.length > 0 && showSubmitButton) {
+      rows.push({ type: 'fileChanges' })
+    }
+    return rows
+  }, [displayMessages, streamStatus, disabled, fileChanges.length, showSubmitButton])
+
+  const virtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (index) => {
+      const row = virtualRows[index]
+      if (row.type === 'taskStatus') return 40
+      if (row.type === 'fileChanges') return 50
+      return 120
+    },
+    overscan: 5,
+    gap: 4,
+  })
+
+  const virtualItems = virtualizer.getVirtualItems()
+
   // 自动滚动到底部
   React.useEffect(() => {
-    if (scrollContainerRef.current) {
+    if (scrollContainerRef.current && streamStatus !== 'waiting') {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
     }
-  }, [streamStatus])
+  }, [streamStatus, virtualRows.length])
 
   const renderTaskStatus = () => {
     if (streamStatus === 'inited') {
@@ -198,34 +229,52 @@ export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingM
       </div>}
 
       <div ref={scrollContainerRef} className="h-full overflow-y-auto p-2 border rounded-md">
-        <div className="flex flex-col justify-end min-h-full gap-1">
-          {messages.filter((message) => message.type !== 'agent_thought_chunk').map((message) => (
-            <div key={message.id} id={`message-${message.id}`} className="scroll-mt-4">
-              <MessageItem message={message as MessageType} cli={cli} />
-            </div>
-          ))}
-          {renderTaskStatus()}
-          {!disabled && fileChanges.length > 0 && showSubmitButton ? (
-            <div className="flex flex-row px-3 py-2 border rounded-md items-center bg-muted/50 mt-2">
-              <div 
-                className="flex-1 text-xs cursor-pointer hover:text-primary transition-colors"
-                onClick={() => setFileChangesDialogOpen(true)}
+        <div
+          style={{
+            height: virtualizer.getTotalSize(),
+            position: 'relative',
+          }}
+        >
+          {virtualItems.map((virtualRow) => {
+            const row = virtualRows[virtualRow.index]
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
               >
-                {fileChanges.length} 个文件被修改，是否提交保存
+                {row.type === 'message' && (
+                  <div id={`message-${row.message.id}`} className="scroll-mt-4">
+                    <MessageItem message={row.message as MessageType} cli={cli} />
+                  </div>
+                )}
+                {row.type === 'taskStatus' && renderTaskStatus()}
+                {row.type === 'fileChanges' && (
+                  <div className="flex flex-row px-3 py-2 border rounded-md items-center bg-muted/50 mt-2">
+                    <div
+                      className="flex-1 text-xs cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => setFileChangesDialogOpen(true)}
+                    >
+                      {fileChanges.length} 个文件被修改，是否提交保存
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setShowSubmitButton(false)}>
+                      不急
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => sendUserInput("用 git 提交所有修改，并推送到远程仓库")}>
+                      提交
+                    </Button>
+                  </div>
+                )}
               </div>
-              
-              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => {
-                setShowSubmitButton(false)
-              }}>
-                不急
-              </Button>
-              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => {
-                sendUserInput("用 git 提交所有修改，并推送到远程仓库")
-              }}>
-                提交
-              </Button>
-            </div>
-          ) : null}
+            )
+          })}
         </div>
       </div>
       <FileChangesDialog
