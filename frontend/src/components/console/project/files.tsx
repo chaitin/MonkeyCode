@@ -305,17 +305,16 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         <IconFolderOpen className="size-4" />
         项目文件
       </Label>
-      {project?.repo_url && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 cursor-pointer"
-          onClick={() => window.open(project.repo_url, '_blank')}
-        >
-          <IconExternalLink className="size-4" />
-          访问原仓库
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 cursor-pointer"
+        disabled={!project?.repo_url}
+        onClick={() => project?.repo_url && window.open(project.repo_url, '_blank')}
+      >
+        <IconExternalLink className="size-4" />
+        访问原仓库
+      </Button>
     </div>
   )
 
