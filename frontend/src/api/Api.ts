@@ -68,6 +68,31 @@ export enum ConstsModelProvider {
   ModelProviderGoogle = "Gemini",
 }
 
+export enum ConstsNotifyChannelKind {
+  NotifyChannelDingTalk = "dingtalk",
+  NotifyChannelFeishu = "feishu",
+  NotifyChannelWeCom = "wecom",
+  NotifyChannelWebhook = "webhook",
+}
+
+export enum ConstsNotifyEventType {
+  NotifyEventTaskCreated = "task.created",
+  NotifyEventTaskEnded = "task.ended",
+  NotifyEventVMRecycled = "vm.recycled",
+  NotifyEventVMExpiringSoon = "vm.expiring_soon",
+}
+
+export interface ConstsNotifyEventTypeInfo {
+  description?: string;
+  name?: string;
+  type?: ConstsNotifyEventType;
+}
+
+export enum ConstsNotifyOwnerType {
+  NotifyOwnerUser = "user",
+  NotifyOwnerTeam = "team",
+}
+
 export enum ConstsOwnerType {
   OwnerTypePrivate = "private",
   OwnerTypePublic = "public",
@@ -388,6 +413,22 @@ export interface DomainCreateModelReq {
   model: string;
   provider: string;
   temperature?: number;
+}
+
+export interface DomainCreateNotifyChannelReq {
+  /**
+   * 订阅的事件类型
+   * @minItems 1
+   */
+  event_types: ConstsNotifyEventType[];
+  headers?: Record<string, string>;
+  kind: "dingtalk" | "feishu" | "wecom" | "webhook";
+  /** @maxLength 64 */
+  name: string;
+  /** "self" | "team:<uuid>" */
+  scope: string;
+  secret?: string;
+  webhook_url: string;
 }
 
 export interface DomainCreateProjectReq {
@@ -715,6 +756,19 @@ export interface DomainModel {
   provider?: string;
   temperature?: number;
   updated_at?: number;
+}
+
+export interface DomainNotifyChannel {
+  created_at?: number;
+  enabled?: boolean;
+  event_types?: ConstsNotifyEventType[];
+  id?: string;
+  kind?: ConstsNotifyChannelKind;
+  name?: string;
+  owner_id?: string;
+  owner_type?: ConstsNotifyOwnerType;
+  scope?: string;
+  webhook_url?: string;
 }
 
 export enum DomainOAuthSiteType {
@@ -1358,6 +1412,16 @@ export interface DomainUpdateModelReq {
   temperature?: number;
 }
 
+export interface DomainUpdateNotifyChannelReq {
+  enabled?: boolean;
+  event_types?: ConstsNotifyEventType[];
+  headers?: Record<string, string>;
+  name?: string;
+  scope?: string;
+  secret?: string;
+  webhook_url?: string;
+}
+
 export interface DomainUpdateProjectReq {
   /** 创建协作者列表 */
   collaborators?: DomainCreateCollaboratorItem[];
@@ -1526,7 +1590,6 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
-/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -4427,6 +4490,142 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         WebResp
       >({
         path: `/api/v1/users/models/${id}/health-check`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 列出当前用户的所有推送渠道及其订阅配置
+     *
+     * @tags 通知推送
+     * @name V1UsersNotifyChannelsList
+     * @summary 列出推送渠道
+     * @request GET:/api/v1/users/notify/channels
+     * @secure
+     */
+    v1UsersNotifyChannelsList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainNotifyChannel[];
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/notify/channels`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 创建推送渠道（钉钉/飞书/企业微信/Webhook），同时配置订阅的事件类型
+     *
+     * @tags 通知推送
+     * @name V1UsersNotifyChannelsCreate
+     * @summary 创建推送渠道
+     * @request POST:/api/v1/users/notify/channels
+     * @secure
+     */
+    v1UsersNotifyChannelsCreate: (param: DomainCreateNotifyChannelReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainNotifyChannel;
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/notify/channels`,
+        method: "POST",
+        body: param,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新推送渠道配置及订阅的事件类型
+     *
+     * @tags 通知推送
+     * @name V1UsersNotifyChannelsUpdate
+     * @summary 更新推送渠道
+     * @request PUT:/api/v1/users/notify/channels/{id}
+     * @secure
+     */
+    v1UsersNotifyChannelsUpdate: (id: string, param: DomainUpdateNotifyChannelReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainNotifyChannel;
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/notify/channels/${id}`,
+        method: "PUT",
+        body: param,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除推送渠道及其关联的订阅
+     *
+     * @tags 通知推送
+     * @name V1UsersNotifyChannelsDelete
+     * @summary 删除推送渠道
+     * @request DELETE:/api/v1/users/notify/channels/{id}
+     * @secure
+     */
+    v1UsersNotifyChannelsDelete: (id: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/users/notify/channels/${id}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 发送测试消息验证渠道配置是否正确
+     *
+     * @tags 通知推送
+     * @name V1UsersNotifyChannelsTestCreate
+     * @summary 测试推送渠道
+     * @request POST:/api/v1/users/notify/channels/{id}/test
+     * @secure
+     */
+    v1UsersNotifyChannelsTestCreate: (id: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/users/notify/channels/${id}/test`,
+        method: "POST",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 列出所有支持订阅的事件类型
+     *
+     * @tags 通知推送
+     * @name V1UsersNotifyEventTypesList
+     * @summary 列出事件类型
+     * @request GET:/api/v1/users/notify/event-types
+     * @secure
+     */
+    v1UsersNotifyEventTypesList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: ConstsNotifyEventTypeInfo[];
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/notify/event-types`,
         method: "GET",
         secure: true,
         type: ContentType.Json,
