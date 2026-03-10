@@ -18,6 +18,7 @@ const PAGE_SIZE = 50
 
 export default function TaskViewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const projectId = searchParams.get('projectId') || undefined
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(searchParams.get('taskId') || null)
@@ -33,14 +34,18 @@ export default function TaskViewPage() {
 
   const fetchTasks = useCallback(async () => {
     setLoading(true)
-    await apiRequest('v1UsersTasksList', { page: 1, size: PAGE_SIZE }, [], (resp) => {
+    const params: { page: number; size: number; project_id?: string } = { page: 1, size: PAGE_SIZE }
+    if (projectId) params.project_id = projectId
+    await apiRequest('v1UsersTasksList', params, [], (resp) => {
       if (resp.code === 0) {
         const fetchedTasks = resp.data?.tasks || []
         setTasks(fetchedTasks)
         if (fetchedTasks.length > 0 && !selectedTaskId) {
           const firstTask = fetchedTasks[0]
           setSelectedTaskId(firstTask.id)
-          setSearchParams({ taskId: firstTask.id }, { replace: true })
+          const nextParams = new URLSearchParams({ taskId: firstTask.id })
+          if (projectId) nextParams.set('projectId', projectId)
+          setSearchParams(nextParams, { replace: true })
         } else if (selectedTaskId) {
           const foundTask = fetchedTasks.find((t: DomainProjectTask) => t.id === selectedTaskId)
           if (foundTask) {
@@ -52,7 +57,7 @@ export default function TaskViewPage() {
       }
     })
     setLoading(false)
-  }, [selectedTaskId, setSearchParams])
+  }, [selectedTaskId, setSearchParams, projectId])
 
   useEffect(() => {
     fetchTasks()
@@ -66,7 +71,7 @@ export default function TaskViewPage() {
             variant="outline" 
             size="sm"
             className="flex-1"
-            onClick={() => window.location.href = '/console/tasks'}
+            onClick={() => window.location.href = projectId ? `/console/project/${projectId}/tasks` : '/console/tasks'}
           >
             <IconPlus className="w-4 h-4" />
             {sidebarWidth === 'wide' ? '启动新任务' : '新任务'}
@@ -100,7 +105,9 @@ export default function TaskViewPage() {
                   )}
                   onClick={() => {
                     setSelectedTaskId(task.id)
-                    setSearchParams({ taskId: task.id })
+                    const nextParams = new URLSearchParams({ taskId: task.id })
+                    if (projectId) nextParams.set('projectId', projectId)
+                    setSearchParams(nextParams)
                   }}
                 >
                   <div className={cn(sidebarWidth === 'wide' ? "px-3 py-2" : "px-2 py-2")}>
@@ -111,7 +118,7 @@ export default function TaskViewPage() {
                           {task.status === "error" && <IconAlertTriangle className="w-4 h-4 text-muted-foreground/50" />}
                           {(task.status === "pending" || task.status === "processing") && <IconLoader className="w-4 h-4 text-muted-foreground animate-spin" style={{ animationDuration: '3s' }} />}
                         </div>
-                        <div className="flex-1 min-w-0 line-clamp-1">
+                        <div className={cn("flex-1 min-w-0 line-clamp-1", task.status === "finished" && "text-muted-foreground")}>
                           {task.summary || stripMarkdown(task.content)}
                         </div>
                         <div className="flex-shrink-0 text-xs text-muted-foreground">
@@ -119,7 +126,7 @@ export default function TaskViewPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-sm line-clamp-1">
+                      <div className={cn("text-sm line-clamp-1", task.status === "finished" && "text-muted-foreground")}>
                         {task.summary || stripMarkdown(task.content)}
                       </div>
                     )}

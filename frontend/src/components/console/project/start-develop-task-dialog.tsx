@@ -118,7 +118,10 @@ export default function StartDevelopTaskDialog({
       if (resp.code === 0) {
         toast.success('对话任务已启动')
         onOpenChange(false)
-        window.open(`/console/task/view?taskId=${resp.data?.id}`, "_blank")
+        const viewUrl = project?.id
+          ? `/console/task/view?taskId=${resp.data?.id}&projectId=${project.id}`
+          : `/console/task/view?taskId=${resp.data?.id}`
+        window.open(viewUrl, "_blank")
       } else {
         toast.error(resp.message || '任务启动失败')
       }
