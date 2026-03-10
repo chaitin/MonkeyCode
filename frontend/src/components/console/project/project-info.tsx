@@ -2,6 +2,7 @@ import { type DomainProject } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
 import EditCollaboratorsDialog from "@/components/console/project/edit-collaborators"
 import EditProjectEnvDialog from "@/components/console/project/edit-project-env"
+import EditProjectImageDialog from "@/components/console/project/edit-project-image"
 import EditProjectNameDialog from "@/components/console/project/edit-project-name"
 import StartDevelopTaskDialog from "@/components/console/project/start-develop-task-dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -11,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconBrandGithub, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
+import { IconBrandGithub, IconDeviceImacCode, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
 import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -34,6 +35,7 @@ const ProjectInfo = ({
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [conversationDialogOpen, setConversationDialogOpen] = useState(false)
   const [envDialogOpen, setEnvDialogOpen] = useState(false)
+  const [imageDialogOpen, setImageDialogOpen] = useState(false)
   const navigate = useNavigate()
   const { projects, reloadProjects } = useCommonData()
 
@@ -53,6 +55,12 @@ const ProjectInfo = ({
     if (!project) return
     setEditingProject(project)
     setEnvDialogOpen(true)
+  }
+
+  const handleEditImage = () => {
+    if (!project) return
+    setEditingProject(project)
+    setImageDialogOpen(true)
   }
 
   const handleDeleteClick = () => {
@@ -148,6 +156,10 @@ const ProjectInfo = ({
                 <IconSettings />
                 环境变量
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleEditImage}>
+                <IconDeviceImacCode />
+                开发镜像
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
                 onClick={handleDeleteClick}
@@ -177,6 +189,13 @@ const ProjectInfo = ({
       <EditProjectEnvDialog
         open={envDialogOpen}
         onOpenChange={setEnvDialogOpen}
+        project={editingProject}
+        onSuccess={onRefresh}
+      />
+
+      <EditProjectImageDialog
+        open={imageDialogOpen}
+        onOpenChange={setImageDialogOpen}
         project={editingProject}
         onSuccess={onRefresh}
       />
