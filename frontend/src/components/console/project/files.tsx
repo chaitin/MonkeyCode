@@ -3,9 +3,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { type DomainProject, type DomainProjectTreeEntry } from "@/api/Api"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { IconFileText, IconFolder, IconFolderOpen, IconLoader, IconReload, IconGitBranch, IconFile, IconFileSymlink, IconReport, IconDownload } from "@tabler/icons-react"
-import { CommitHistoryDialog } from "./commit-history-dialog"
-import { Button } from "@/components/ui/button"
+import { IconFileText, IconFolder, IconFolderOpen, IconLoader, IconGitBranch, IconFile, IconFileSymlink } from "@tabler/icons-react"
 import { Label } from "@/components/ui/label"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -25,7 +23,6 @@ import "ace-builds/src-noconflict/mode-sql"
 import "ace-builds/src-noconflict/mode-sh"
 import "ace-builds/src-noconflict/mode-dockerfile"
 import dayjs from "dayjs"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 type TreeEntry = DomainProjectTreeEntry
 
@@ -234,9 +231,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
   const [fileContent, setFileContent] = useState<string>('')
   const [fileLoading, setFileLoading] = useState(false)
 
-  // 修改历史对话框状态
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
-
   const languageMode = useMemo(() => {
     return selectedFile?.name ? getLanguageMode(selectedFile.name) : 'text'
   }, [selectedFile])
@@ -267,10 +261,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     fetchRootEntries()
   }, [project?.id, fetchRootEntries, refreshKey])
 
-  const handleRefresh = useCallback(() => {
-    setRefreshKey(prev => prev + 1)
-  }, [])
-
   // 获取文件内容
   const fetchFileContent = useCallback(async (entry: TreeEntry) => {
     if (!project?.id) return
@@ -300,71 +290,11 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
   }, [fetchFileContent, onFileSelect])
 
   const Header = (
-    <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/50">
+    <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/50">
       <Label className="flex items-center">
         <IconFolderOpen className="size-4" />
         项目文件
       </Label>
-      <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-6 cursor-pointer"
-              onClick={() => {
-                setHistoryDialogOpen(true)
-              }}
-              disabled={loading}
-            >
-              <IconReport className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            查看修改历史
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-6 cursor-pointer"
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              <IconReload className={cn("h-4 w-4", loading && "animate-spin")} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            刷新文件列表
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-6"
-              disabled={loading}
-            >
-              <a href={`/api/v1/users/projects/${project?.id}/tree/archive`} download={`${project?.name}.zip`} target="_blank">
-                <IconDownload className="h-4 w-4" />
-              </a>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            下载项目文件
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
-      {/* 修改历史对话框 */}
-      <CommitHistoryDialog
-        projectId={project?.id || ''}
-        open={historyDialogOpen}
-        onOpenChange={setHistoryDialogOpen}
-      />
     </div>
   )
 

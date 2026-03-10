@@ -1,6 +1,5 @@
 import { type DomainProject } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
-import EditCollaboratorsDialog from "@/components/console/project/edit-collaborators"
 import EditProjectEnvDialog from "@/components/console/project/edit-project-env"
 import EditProjectImageDialog from "@/components/console/project/edit-project-image"
 import EditProjectNameDialog from "@/components/console/project/edit-project-name"
@@ -12,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconBrandGithub, IconDeviceImacCode, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
+import { IconBrandGithub, IconDeviceImacCode, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash } from "@tabler/icons-react"
 import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -28,7 +27,6 @@ const ProjectInfo = ({
   onRefresh,
 }: ProjectInfoProps) => {
   const [isEditNameDialogOpen, setIsEditNameDialogOpen] = useState(false)
-  const [isEditCollaboratorsDialogOpen, setIsEditCollaboratorsDialogOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<DomainProject | undefined>(undefined)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState<DomainProject | undefined>(undefined)
@@ -43,12 +41,6 @@ const ProjectInfo = ({
     if (!project) return
     setEditingProject(project)
     setIsEditNameDialogOpen(true)
-  }
-
-  const handleEditCollaborators = () => {
-    if (!project) return
-    setEditingProject(project)
-    setIsEditCollaboratorsDialogOpen(true)
   }
 
   const handleEditEnv = () => {
@@ -148,10 +140,6 @@ const ProjectInfo = ({
                 <IconPencil />
                 修改名称
               </DropdownMenuItem>
-              <DropdownMenuItem disabled onClick={handleEditCollaborators}>
-                <IconUsers />
-                项目成员
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleEditEnv}>
                 <IconSettings />
                 环境变量
@@ -175,13 +163,6 @@ const ProjectInfo = ({
       <EditProjectNameDialog
         open={isEditNameDialogOpen}
         onOpenChange={setIsEditNameDialogOpen}
-        project={editingProject}
-        onSuccess={onRefresh}
-      />
-
-      <EditCollaboratorsDialog
-        open={isEditCollaboratorsDialogOpen}
-        onOpenChange={setIsEditCollaboratorsDialogOpen}
         project={editingProject}
         onSuccess={onRefresh}
       />
