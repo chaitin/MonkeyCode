@@ -58,15 +58,15 @@ export default function NavProject() {
         {projects.length > 0 ? projects.map((project) => (
           <SidebarMenuItem key={project.id}>
             <SidebarMenuButton asChild>
-              <Link to={`/console/project/${project.id}/docs/`}>
+              <Link to={`/console/project/${project.id}/info/`}>
               {location.pathname.startsWith(`/console/project/${project.id}/`) ? <FolderOpenDot /> : <IconFolderCode />} 
                 <span>{project.name}</span>
               </Link>
             </SidebarMenuButton>
             {location.pathname.startsWith(`/console/project/${project.id}/`) && <SidebarMenuSub>
               <SidebarMenuSubItem className="flex flex-col gap-1">
-                <SidebarMenuSubButton isActive={location.pathname.startsWith(`/console/project/${project.id}/docs/`)} asChild>
-                  <Link to={`/console/project/${project.id}/docs/`}>
+                <SidebarMenuSubButton isActive={location.pathname.startsWith(`/console/project/${project.id}/info/`)} asChild>
+                  <Link to={`/console/project/${project.id}/info/`}>
                     <IconBook />
                     项目
                   </Link>

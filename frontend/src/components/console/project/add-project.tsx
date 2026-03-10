@@ -183,7 +183,7 @@ export default function AddProjectDialog({
           setIdentityRepoOptions([])
           onSuccess?.()
           if (resp.data?.id) {
-            navigate(`/console/project/${resp.data.id}/docs/`)
+            navigate(`/console/project/${resp.data.id}/info/`)
           }
         } else {
           toast.error(resp.message || "创建项目失败")

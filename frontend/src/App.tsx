@@ -48,7 +48,7 @@ function App() {
           <Route path="/console" element={<UserConsolePage />}>
             <Route index element={<Navigate to="/console/tasks" replace />} />
             <Route path="tasks" element={<TasksPage />} />
-            <Route path="project/:projectId/docs/*" element={<ProjectPage />} />
+            <Route path="project/:projectId/info" element={<ProjectPage />} />
             <Route path="project/:projectId/issues" element={<ProjectIssuesPage />} />
             <Route path="project/:projectId/tasks" element={<ProjectTasksPage />} />
             <Route path="gitbot" element={<GitBotsPage />} />

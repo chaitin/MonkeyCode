@@ -223,8 +223,7 @@ TreeNode.displayName = 'TreeNode'
 export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className }: ProjectFileManagerProps) => {
   const [entries, setEntries] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshKey, setRefreshKey] = useState(0)
-  
+
   // 文件内容对话框状态
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<TreeEntry | null>(null)
@@ -259,7 +258,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
 
   useEffect(() => {
     fetchRootEntries()
-  }, [project?.id, fetchRootEntries, refreshKey])
+  }, [project?.id, fetchRootEntries])
 
   // 获取文件内容
   const fetchFileContent = useCallback(async (entry: TreeEntry) => {
@@ -342,7 +341,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
           <div className="p-1">
             {entries.map((entry) => (
               <TreeNode
-                key={`${refreshKey}-${entry.path}`}
+                key={entry.path}
                 entry={entry}
                 projectId={project?.id || ''}
                 depth={0}
