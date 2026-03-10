@@ -3,10 +3,11 @@ import { apiRequest } from "@/utils/requestUtils"
 import { type DomainProject, type DomainProjectTreeEntry } from "@/api/Api"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { IconFileText, IconFolder, IconFolderOpen, IconLoader, IconGitBranch, IconFile, IconFileSymlink } from "@tabler/icons-react"
+import { IconFileText, IconFolder, IconFolderOpen, IconLoader, IconGitBranch, IconFile, IconFileSymlink, IconExternalLink } from "@tabler/icons-react"
 import { Label } from "@/components/ui/label"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { useEffect } from "react"
 import { b64decode } from "@/utils/common"
 import AceEditor from "react-ace"
@@ -289,11 +290,22 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
   }, [fetchFileContent, onFileSelect])
 
   const Header = (
-    <div className="px-4 py-3 flex items-center justify-between border-b bg-muted/50">
+    <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/50">
       <Label className="flex items-center">
         <IconFolderOpen className="size-4" />
         项目文件
       </Label>
+      {project?.repo_url && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 cursor-pointer"
+          onClick={() => window.open(project.repo_url, '_blank')}
+        >
+          <IconExternalLink className="size-4" />
+          访问原仓库
+        </Button>
+      )}
     </div>
   )
 
