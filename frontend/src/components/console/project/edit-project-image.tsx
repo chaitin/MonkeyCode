@@ -4,9 +4,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { DomainImage, DomainProject } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
+import { apiRequest } from "@/utils/requestUtils"
 import { getImageShortName, getOSFromImageName } from "@/utils/common"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import { IconLoader } from "@tabler/icons-react"
 
 interface EditProjectImageDialogProps {
   open: boolean
@@ -23,22 +25,36 @@ export default function EditProjectImageDialog({
 }: EditProjectImageDialogProps) {
   const { images, loadingImages } = useCommonData()
   const [selectedImageId, setSelectedImageId] = useState<string>("")
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (open && project) {
-      // TODO: 从 API 获取项目绑定的开发镜像，目前使用空
-      setSelectedImageId("")
+      const imageId = project.image_id ?? ""
+      setSelectedImageId(imageId)
     } else if (!open) {
       setSelectedImageId("")
     }
   }, [open, project])
 
-  const handleSave = () => {
-    // TODO: 调用 API 保存项目开发镜像
-    console.log("保存开发镜像:", selectedImageId)
-    toast.success("开发镜像已保存（API 待实现）")
-    onOpenChange(false)
-    onSuccess?.()
+  const handleSave = async () => {
+    if (!project?.id) return
+
+    setLoading(true)
+    await apiRequest(
+      "v1UsersProjectsUpdate",
+      { image_id: selectedImageId },
+      [project.id],
+      (resp) => {
+        if (resp.code === 0) {
+          toast.success("开发镜像已保存")
+          onOpenChange(false)
+          onSuccess?.()
+        } else {
+          toast.error(resp.message || "保存开发镜像失败")
+        }
+      }
+    )
+    setLoading(false)
   }
 
   const handleCancel = () => {
@@ -78,10 +94,13 @@ export default function EditProjectImageDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel} disabled={loading}>
             取消
           </Button>
-          <Button onClick={handleSave}>保存</Button>
+          <Button onClick={handleSave} disabled={loading}>
+            {loading && <IconLoader className="size-4 animate-spin" />}
+            保存
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

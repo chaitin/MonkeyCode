@@ -393,8 +393,12 @@ export interface DomainCreateModelReq {
 export interface DomainCreateProjectReq {
   /** 项目描述 */
   description?: string;
+  /** 环境变量 */
+  env_variables?: Record<string, any>;
   /** 关联的 git identity id */
   git_identity_id?: string;
+  /** 关联的镜像ID */
+  image_id?: string;
   /** 项目名 */
   name?: string;
   /** 项目平台 */
@@ -608,8 +612,6 @@ export interface DomainListGitBotResp {
 }
 
 export interface DomainListGitBotTaskResp {
-  /** 分页信息 */
-  page_info?: Dbv2PageInfo;
   tasks?: DomainGitBotTask[];
 }
 
@@ -654,10 +656,8 @@ export interface DomainListProjectResp {
 }
 
 export interface DomainListTaskResp {
-  /** 游标信息（游标分页时返回） */
+  /** 游标信息 */
   page?: Dbv2Cursor;
-  /** 分页信息（page/size 分页时返回） */
-  page_info?: Dbv2PageInfo;
   /** 任务列表 */
   tasks?: DomainProjectTask[];
 }
@@ -715,6 +715,11 @@ export interface DomainModel {
   provider?: string;
   temperature?: number;
   updated_at?: number;
+}
+
+export enum DomainOAuthSiteType {
+  OAuthSiteTypeDomestic = "domestic",
+  OAuthSiteTypeInternational = "international",
 }
 
 export interface DomainOAuthURLResp {
@@ -827,12 +832,16 @@ export interface DomainProject {
   created_at?: number;
   /** 项目描述 */
   description?: string;
+  /** 环境变量 */
+  env_variables?: Record<string, any>;
   /** 仓库 full_name */
   full_name?: string;
   /** 项目关联的 git identity id */
   git_identity_id?: string;
   /** 项目ID */
   id?: string;
+  /** 项目关联的镜像ID */
+  image_id?: string;
   /** 问题列表 */
   issues?: DomainProjectIssue[];
   /** 项目名 */
@@ -935,6 +944,7 @@ export interface DomainProjectTask {
   created_at?: number;
   /** 额外参数 */
   extra?: DomainTaskExtraConfig;
+  full_name?: string;
   id: string;
   identity?: DomainGitIdentity;
   image?: DomainImage;
@@ -1066,7 +1076,7 @@ export interface DomainShareTerminalResp {
 export interface DomainSiteInfo {
   base_url?: string;
   name?: string;
-  site_type?: string;
+  site_type?: DomainOAuthSiteType;
 }
 
 export interface DomainSitesResp {
@@ -1144,6 +1154,7 @@ export interface DomainTask {
   created_at?: number;
   /** 额外参数 */
   extra?: DomainTaskExtraConfig;
+  full_name?: string;
   id?: string;
   identity?: DomainGitIdentity;
   image?: DomainImage;
@@ -1352,6 +1363,10 @@ export interface DomainUpdateProjectReq {
   collaborators?: DomainCreateCollaboratorItem[];
   /** 项目描述 */
   description?: string;
+  /** 环境变量 */
+  env_variables?: Record<string, any>;
+  /** 关联的镜像ID */
+  image_id?: string;
   /** 项目名 */
   name?: string;
 }
@@ -1832,7 +1847,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 返回合并后的 Gitea 站点列表（团队配置优先，全局配置兜底），不含凭证信息
+     * @description 返回当前用户所有团队合并后的 Gitea 站点列表（团队配置优先，全局配置兜底），不含凭证信息
      *
      * @tags 站点管理
      * @name V1GiteaSitesList
@@ -1911,7 +1926,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 返回合并后的 GitLab 站点列表（团队配置优先，全局配置兜底），不含凭证信息
+     * @description 返回当前用户所有团队合并后的 GitLab 站点列表（团队配置优先，全局配置兜底），不含凭证信息
      *
      * @tags 站点管理
      * @name V1GitlabSitesList
@@ -3487,7 +3502,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description Git Bot 任务列表，支持分页
+     * @description Git Bot 任务列表
      *
      * @tags 【用户】Git Bot
      * @name V1UsersGitBotsTasksList
@@ -3497,14 +3512,8 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsTasksList: (
       query?: {
-        /** 指定 Git Bot ID，不传则查全部 */
+        /** ID */
         id?: string;
-        /** 下一页标识 */
-        next_token?: string;
-        /** 分页 */
-        page?: number;
-        /** 每页多少条记录 */
-        size?: number;
       },
       params: RequestParams = {},
     ) =>
@@ -5078,13 +5087,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         cursor?: string;
         /** 页数 */
         limit?: number;
-        /** 下一页标识 */
-        next_token?: string;
-        /** 分页 */
-        page?: number;
         project_id?: string;
-        /** 每页多少条记录 */
-        size?: number;
       },
       params: RequestParams = {},
     ) =>

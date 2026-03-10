@@ -2,9 +2,10 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { DomainProject } from "@/api/Api"
+import { apiRequest } from "@/utils/requestUtils"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { IconPlus, IconTrash } from "@tabler/icons-react"
+import { IconLoader, IconPlus, IconTrash } from "@tabler/icons-react"
 
 export type EnvVar = { key: string; value: string }
 
@@ -22,11 +23,13 @@ export default function EditProjectEnvDialog({
   onSuccess,
 }: EditProjectEnvDialogProps) {
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (open && project) {
-      // TODO: 从 API 获取项目环境变量，目前使用空列表
-      setEnvVars([])
+      const dict = project.env_variables ?? {}
+      const vars: EnvVar[] = Object.entries(dict).map(([key, value]) => ({ key, value: String(value ?? "") }))
+      setEnvVars(vars.length > 0 ? vars : [])
     } else if (!open) {
       setEnvVars([])
     }
@@ -46,7 +49,7 @@ export default function EditProjectEnvDialog({
     )
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const validVars = envVars.filter((row) => row.key.trim() !== "")
     const hasEmptyKey = envVars.some((row) => row.key.trim() === "" && row.value.trim() !== "")
     if (hasEmptyKey) {
@@ -54,11 +57,25 @@ export default function EditProjectEnvDialog({
       return
     }
 
-    // TODO: 调用 API 保存环境变量
-    console.log("保存环境变量:", validVars)
-    toast.success("环境变量已保存（API 待实现）")
-    onOpenChange(false)
-    onSuccess?.()
+    if (!project?.id) return
+
+    setLoading(true)
+    const envVariables = Object.fromEntries(validVars.map((v) => [v.key.trim(), v.value]))
+    await apiRequest(
+      "v1UsersProjectsUpdate",
+      { env_variables: envVariables },
+      [project.id],
+      (resp) => {
+        if (resp.code === 0) {
+          toast.success("环境变量已保存")
+          onOpenChange(false)
+          onSuccess?.()
+        } else {
+          toast.error(resp.message || "保存环境变量失败")
+        }
+      }
+    )
+    setLoading(false)
   }
 
   const handleCancel = () => {
@@ -107,10 +124,13 @@ export default function EditProjectEnvDialog({
           </Button>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
+          <Button variant="outline" onClick={handleCancel} disabled={loading}>
             取消
           </Button>
-          <Button onClick={handleSave}>保存</Button>
+          <Button onClick={handleSave} disabled={loading}>
+            {loading && <IconLoader className="size-4 animate-spin" />}
+            保存
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
