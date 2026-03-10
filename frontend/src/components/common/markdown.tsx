@@ -262,6 +262,7 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
                 language={language}
                 PreTag="pre"
                 wrapLines={true}
+                codeTagProps={{ style: { wordBreak: 'break-all', whiteSpace: 'pre-wrap' } }}
               >
                 {code}
               </SyntaxHighlighter>
