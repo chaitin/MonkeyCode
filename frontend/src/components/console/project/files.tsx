@@ -1,4 +1,4 @@
-import { useState, useCallback, memo, useMemo } from "react"
+import { useState, useCallback, memo, useMemo, useRef } from "react"
 import { apiRequest } from "@/utils/requestUtils"
 import { type DomainProject, type DomainProjectTreeEntry } from "@/api/Api"
 import { cn } from "@/lib/utils"
@@ -224,6 +224,9 @@ TreeNode.displayName = 'TreeNode'
 export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className }: ProjectFileManagerProps) => {
   const [entries, setEntries] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const projectIdRef = useRef(project?.id)
+  projectIdRef.current = project?.id
+  const isMountedRef = useRef(true)
 
   // 文件内容对话框状态
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -242,11 +245,14 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
       return
     }
 
+    const requestedProjectId = project.id
     setLoading(true)
     await apiRequest('v1UsersProjectsTreeDetail', {
       recursive: false,
       path: ''
     }, [project?.id], (resp) => {
+      // 忽略过期响应：切换 project 后，旧请求可能晚于新请求返回；或组件已卸载
+      if (!isMountedRef.current || projectIdRef.current !== requestedProjectId) return
       if (resp.code === 0) {
         setEntries(sortEntries(resp.data || []))
       } else {
@@ -258,7 +264,11 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
   }, [project?.id, onLoaded])
 
   useEffect(() => {
+    isMountedRef.current = true
     fetchRootEntries()
+    return () => {
+      isMountedRef.current = false
+    }
   }, [project?.id, fetchRootEntries])
 
   // 获取文件内容

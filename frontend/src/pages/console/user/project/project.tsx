@@ -14,20 +14,26 @@ import { apiRequest } from "@/utils/requestUtils"
 import { b64decode } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { isProjectRepoUnbound } from "@/utils/project"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { IconAlertCircle, IconFileText, IconLoader } from "@tabler/icons-react"
 
 export default function ProjectPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
+  const projectIdRef = useRef(projectId)
+  projectIdRef.current = projectId
+
   const [project, setProject] = useState<DomainProject | undefined>(undefined)
   const [readmeContent, setReadmeContent] = useState<string>('')
   const [readmePath, setReadmePath] = useState<string>('')
   const [readmeLoaded, setReadmeLoaded] = useState(false)
 
   const fetchProject = async () => {
-    await apiRequest("v1UsersProjectsDetail", {}, [projectId], (resp) => {
+    const requestedId = projectId
+    await apiRequest("v1UsersProjectsDetail", {}, [requestedId], (resp) => {
+      // 忽略过期响应：切换 project 后，旧请求可能晚于新请求返回
+      if (projectIdRef.current !== requestedId) return
       if (resp.code === 0) {
         setProject(resp.data)
       } else {
@@ -57,11 +63,13 @@ export default function ProjectPage() {
       return
     }
 
+    const requestedProjectId = project.id
     setReadmeLoaded(false)
     apiRequest('v1UsersProjectsTreeDetail', {
       recursive: false,
       path: ''
     }, [project.id], (resp) => {
+      if (projectIdRef.current !== requestedProjectId) return
       if (resp.code !== 0 || !resp.data) {
         setReadmeLoaded(true)
         return
@@ -78,6 +86,7 @@ export default function ProjectPage() {
       }
       const pathToFetch = readmePathVal as string
       apiRequest('v1UsersProjectsTreeBlobDetail', { path: pathToFetch }, [project.id as string], (r) => {
+        if (projectIdRef.current !== requestedProjectId) return
         if (r.code === 0 && r.data?.content) {
           setReadmeContent(b64decode(r.data.content))
           setReadmePath(pathToFetch)
