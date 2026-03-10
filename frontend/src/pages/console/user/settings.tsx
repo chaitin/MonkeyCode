@@ -3,6 +3,7 @@ import Models from "@/components/console/settings/models"
 import Hosts from "@/components/console/settings/hosts"
 import Identities from "@/components/console/settings/identities"
 import VmsPage from "@/components/console/settings/vms"
+import Notifications from "@/components/console/settings/notifications"
 import { useGitHubSetupCallback } from "@/hooks/useGitHubSetupCallback"
 import { useCommonData } from "@/components/console/data-provider"
 import {
@@ -29,6 +30,7 @@ export default function SettingsPage() {
       <Images />
       <Hosts />
       <VmsPage />
+      <Notifications />
 
       <AlertDialog open={result !== null} onOpenChange={(open) => { if (!open) dismiss() }}>
         <AlertDialogContent>
