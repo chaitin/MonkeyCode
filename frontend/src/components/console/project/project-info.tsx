@@ -1,6 +1,7 @@
 import { type DomainProject } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
 import EditCollaboratorsDialog from "@/components/console/project/edit-collaborators"
+import EditProjectEnvDialog from "@/components/console/project/edit-project-env"
 import EditProjectNameDialog from "@/components/console/project/edit-project-name"
 import StartDevelopTaskDialog from "@/components/console/project/start-develop-task-dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -10,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconBrandGithub, IconLoader, IconPencil, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
+import { IconBrandGithub, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash, IconUsers } from "@tabler/icons-react"
 import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -32,6 +33,7 @@ const ProjectInfo = ({
   const [deletingProject, setDeletingProject] = useState<DomainProject | undefined>(undefined)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [conversationDialogOpen, setConversationDialogOpen] = useState(false)
+  const [envDialogOpen, setEnvDialogOpen] = useState(false)
   const navigate = useNavigate()
   const { projects, reloadProjects } = useCommonData()
 
@@ -45,6 +47,12 @@ const ProjectInfo = ({
     if (!project) return
     setEditingProject(project)
     setIsEditCollaboratorsDialogOpen(true)
+  }
+
+  const handleEditEnv = () => {
+    if (!project) return
+    setEditingProject(project)
+    setEnvDialogOpen(true)
   }
 
   const handleDeleteClick = () => {
@@ -132,9 +140,13 @@ const ProjectInfo = ({
                 <IconPencil />
                 修改名称
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleEditCollaborators}>
+              <DropdownMenuItem disabled onClick={handleEditCollaborators}>
                 <IconUsers />
                 项目成员
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleEditEnv}>
+                <IconSettings />
+                环境变量
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
@@ -158,6 +170,13 @@ const ProjectInfo = ({
       <EditCollaboratorsDialog
         open={isEditCollaboratorsDialogOpen}
         onOpenChange={setIsEditCollaboratorsDialogOpen}
+        project={editingProject}
+        onSuccess={onRefresh}
+      />
+
+      <EditProjectEnvDialog
+        open={envDialogOpen}
+        onOpenChange={setEnvDialogOpen}
         project={editingProject}
         onSuccess={onRefresh}
       />
