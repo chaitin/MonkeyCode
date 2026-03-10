@@ -30,8 +30,6 @@ export default function EditProjectEnvDialog({
       const dict = project.env_variables ?? {}
       const vars: EnvVar[] = Object.entries(dict).map(([key, value]) => ({ key, value: String(value ?? "") }))
       setEnvVars(vars.length > 0 ? vars : [])
-    } else if (!open) {
-      setEnvVars([])
     }
   }, [open, project])
 

@@ -31,8 +31,6 @@ export default function EditProjectImageDialog({
     if (open && project) {
       const imageId = project.image_id ?? ""
       setSelectedImageId(imageId)
-    } else if (!open) {
-      setSelectedImageId("")
     }
   }, [open, project])
 
@@ -70,7 +68,7 @@ export default function EditProjectImageDialog({
         <DialogHeader>
           <DialogTitle>开发镜像</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            为项目绑定开发环境使用的 Docker 镜像
+            为项目绑定开发环境的系统镜像
           </p>
         </DialogHeader>
         <div className="space-y-4">
