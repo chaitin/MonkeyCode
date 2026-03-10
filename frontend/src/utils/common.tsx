@@ -581,7 +581,8 @@ export function selectModel(models: DomainModel[], followDefault: boolean = true
   let result = models[0]?.id || ''
   const defaultModelId = models.find(model => model.is_default)?.id
 
-  const defaultModelName = Math.random() < 0.8 ? 'minimax-m2.5' : 'glm-4.7'
+  //const defaultModelName = Math.random() < 0.9 ? 'minimax-m2.5' : 'glm-5'
+  const defaultModelName = 'minimax-m2.5'
   const publicModelId = models.find(model => model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.model === defaultModelName)?.id
 
   if (publicModelId) {

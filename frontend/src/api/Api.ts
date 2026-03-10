@@ -78,7 +78,6 @@ export enum ConstsNotifyChannelKind {
 export enum ConstsNotifyEventType {
   NotifyEventTaskCreated = "task.created",
   NotifyEventTaskEnded = "task.ended",
-  NotifyEventVMRecycled = "vm.recycled",
   NotifyEventVMExpiringSoon = "vm.expiring_soon",
 }
 
@@ -425,8 +424,6 @@ export interface DomainCreateNotifyChannelReq {
   kind: "dingtalk" | "feishu" | "wecom" | "webhook";
   /** @maxLength 64 */
   name: string;
-  /** "self" | "team:<uuid>" */
-  scope: string;
   secret?: string;
   webhook_url: string;
 }
@@ -1417,7 +1414,6 @@ export interface DomainUpdateNotifyChannelReq {
   event_types?: ConstsNotifyEventType[];
   headers?: Record<string, string>;
   name?: string;
-  scope?: string;
   secret?: string;
   webhook_url?: string;
 }
@@ -2872,6 +2868,142 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       this.request<WebResp, WebResp>({
         path: `/api/v1/teams/models/${modelId}`,
         method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 列出当前团队的所有推送渠道及其订阅配置
+     *
+     * @tags 【Team 管理员】通知推送
+     * @name V1TeamsNotifyChannelsList
+     * @summary 列出团队推送渠道
+     * @request GET:/api/v1/teams/notify/channels
+     * @secure
+     */
+    v1TeamsNotifyChannelsList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainNotifyChannel[];
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/notify/channels`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 创建团队推送渠道（钉钉/飞书/企业微信/Webhook），同时配置订阅的事件类型
+     *
+     * @tags 【Team 管理员】通知推送
+     * @name V1TeamsNotifyChannelsCreate
+     * @summary 创建团队推送渠道
+     * @request POST:/api/v1/teams/notify/channels
+     * @secure
+     */
+    v1TeamsNotifyChannelsCreate: (param: DomainCreateNotifyChannelReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainNotifyChannel;
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/notify/channels`,
+        method: "POST",
+        body: param,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新团队推送渠道配置及订阅的事件类型
+     *
+     * @tags 【Team 管理员】通知推送
+     * @name V1TeamsNotifyChannelsUpdate
+     * @summary 更新团队推送渠道
+     * @request PUT:/api/v1/teams/notify/channels/{id}
+     * @secure
+     */
+    v1TeamsNotifyChannelsUpdate: (id: string, param: DomainUpdateNotifyChannelReq, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainNotifyChannel;
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/notify/channels/${id}`,
+        method: "PUT",
+        body: param,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除团队推送渠道及其关联的订阅
+     *
+     * @tags 【Team 管理员】通知推送
+     * @name V1TeamsNotifyChannelsDelete
+     * @summary 删除团队推送渠道
+     * @request DELETE:/api/v1/teams/notify/channels/{id}
+     * @secure
+     */
+    v1TeamsNotifyChannelsDelete: (id: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/teams/notify/channels/${id}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 发送测试消息验证渠道配置是否正确
+     *
+     * @tags 【Team 管理员】通知推送
+     * @name V1TeamsNotifyChannelsTestCreate
+     * @summary 测试团队推送渠道
+     * @request POST:/api/v1/teams/notify/channels/{id}/test
+     * @secure
+     */
+    v1TeamsNotifyChannelsTestCreate: (id: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/teams/notify/channels/${id}/test`,
+        method: "POST",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 列出所有支持订阅的事件类型
+     *
+     * @tags 通知推送
+     * @name V1TeamsNotifyEventTypesList
+     * @summary 列出事件类型
+     * @request GET:/api/v1/teams/notify/event-types
+     * @secure
+     */
+    v1TeamsNotifyEventTypesList: (params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: ConstsNotifyEventTypeInfo[];
+        },
+        WebResp
+      >({
+        path: `/api/v1/teams/notify/event-types`,
+        method: "GET",
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -4502,7 +4634,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      *
      * @tags 通知推送
      * @name V1UsersNotifyChannelsList
-     * @summary 列出推送渠道
+     * @summary 列出用户推送渠道
      * @request GET:/api/v1/users/notify/channels
      * @secure
      */
@@ -4522,11 +4654,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 创建推送渠道（钉钉/飞书/企业微信/Webhook），同时配置订阅的事件类型
+     * @description 创建用户推送渠道（钉钉/飞书/企业微信/Webhook），同时配置订阅的事件类型
      *
      * @tags 通知推送
      * @name V1UsersNotifyChannelsCreate
-     * @summary 创建推送渠道
+     * @summary 创建用户推送渠道
      * @request POST:/api/v1/users/notify/channels
      * @secure
      */
@@ -4547,11 +4679,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 更新推送渠道配置及订阅的事件类型
+     * @description 更新用户推送渠道配置及订阅的事件类型
      *
      * @tags 通知推送
      * @name V1UsersNotifyChannelsUpdate
-     * @summary 更新推送渠道
+     * @summary 更新用户推送渠道
      * @request PUT:/api/v1/users/notify/channels/{id}
      * @secure
      */
@@ -4572,11 +4704,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 删除推送渠道及其关联的订阅
+     * @description 删除用户推送渠道及其关联的订阅
      *
      * @tags 通知推送
      * @name V1UsersNotifyChannelsDelete
-     * @summary 删除推送渠道
+     * @summary 删除用户推送渠道
      * @request DELETE:/api/v1/users/notify/channels/{id}
      * @secure
      */
@@ -4595,7 +4727,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      *
      * @tags 通知推送
      * @name V1UsersNotifyChannelsTestCreate
-     * @summary 测试推送渠道
+     * @summary 测试用户推送渠道
      * @request POST:/api/v1/users/notify/channels/{id}/test
      * @secure
      */

@@ -7,7 +7,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { IconChartBar, IconReport, IconUsersGroup } from "@tabler/icons-react"
+import { IconChartBar, IconReport, IconSettings2, IconUsersGroup } from "@tabler/icons-react"
 import { Bot, Box, MonitorCloud, User } from "lucide-react"
 
 export default function NavTeams() {
@@ -94,7 +94,17 @@ export default function NavTeams() {
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
-
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/other-settings"}
+            asChild
+          >
+            <Link to="/manager/other-settings">
+              <IconSettings2 />
+              <span>其他配置</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
   )
