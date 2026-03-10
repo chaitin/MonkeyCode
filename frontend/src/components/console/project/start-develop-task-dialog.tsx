@@ -102,6 +102,9 @@ export default function StartDevelopTaskDialog({
       model_id: selectModel(models, false),
       image_id: selectImage(images, false),
       host_id: selectHost(hosts, false),
+      repo: {
+        branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch,
+      },
       resource: {
         core: 2,
         memory: 8 * 1024 * 1024 * 1024,
@@ -109,7 +112,6 @@ export default function StartDevelopTaskDialog({
       },
       extra: {
         project_id: project?.id,
-        branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch,
       },
       task_type: ConstsTaskType.TaskTypeDevelop,
     }, [], (resp) => {
