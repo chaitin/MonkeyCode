@@ -118,7 +118,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const { models, images, hosts, identities, balance, bonus, user } = useCommonData();
+  const { models, images, hosts, identities, user } = useCommonData();
   const navigate = useNavigate();
 
   const selectableIdentities = useMemo(
