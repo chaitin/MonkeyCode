@@ -1,4 +1,4 @@
-import { ConstsProjectIssuePriority, ConstsProjectIssueStatus, type DomainProjectIssue } from "@/api/Api"
+import { ConstsProjectIssuePriority, ConstsProjectIssueStatus, type DomainProjectIssue, type DomainProject } from "@/api/Api"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import dayjs from "dayjs"
@@ -11,10 +11,11 @@ import { getStatusName } from "@/utils/common"
 interface IssueCardProps {
   issue: DomainProjectIssue
   projectId: string
+  project?: DomainProject
   onViewIssue: (issue: DomainProjectIssue) => void
 }
 
-export default function IssueCard({ issue, projectId, onViewIssue }: IssueCardProps) {
+export default function IssueCard({ issue, projectId, project, onViewIssue }: IssueCardProps) {
 
   const priority = useMemo(() => {
     switch (issue.priority) {
@@ -59,7 +60,7 @@ export default function IssueCard({ issue, projectId, onViewIssue }: IssueCardPr
         >
           {issue.title}
         </div>
-        <IssueMenu issue={issue} projectId={projectId} />
+        <IssueMenu issue={issue} projectId={projectId} project={project} />
       </div>
       <div className="text-xs text-muted-foreground line-clamp-2 break-all">{issue.summary}</div>
       <Separator className="my-2" />

@@ -1,9 +1,9 @@
-import { type DomainProjectIssue } from "@/api/Api";
+import { type DomainProjectIssue, type DomainProject } from "@/api/Api";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { CalendarDays } from "lucide-react";
 import IssueCard from "./issue-card";
 
-export default function ProjectIssueList({ issues, projectId, onViewIssue }: { issues: DomainProjectIssue[], projectId: string, onViewIssue: (issue: DomainProjectIssue) => void }) {
+export default function ProjectIssueList({ issues, projectId, project, onViewIssue }: { issues: DomainProjectIssue[], projectId: string, project?: DomainProject, onViewIssue: (issue: DomainProjectIssue) => void }) {
   if (issues.length === 0) {
     return (
       <Empty className="border">
@@ -26,7 +26,8 @@ export default function ProjectIssueList({ issues, projectId, onViewIssue }: { i
         <IssueCard 
           key={issue.id} 
           issue={issue} 
-          projectId={projectId} 
+          projectId={projectId}
+          project={project}
           onViewIssue={onViewIssue}
         />
       ))}

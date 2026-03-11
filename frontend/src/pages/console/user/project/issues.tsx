@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type DomainProjectIssue } from "@/api/Api";
+import { type DomainProjectIssue, type DomainProject } from "@/api/Api";
 import { apiRequest } from "@/utils/requestUtils";
 import { toast } from "sonner";
 import { useParams } from "react-router-dom";
@@ -11,10 +11,21 @@ import CreateIssueDialog from "@/components/console/project/create-issue";
 
 export default function ProjectIssuesPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
+  const [project, setProject] = useState<DomainProject | undefined>(undefined)
   const [issues, setIssues] = useState<DomainProjectIssue[]>([])
   const [isCreateIssueDialogOpen, setIsCreateIssueDialogOpen] = useState(false)
   const [viewingIssue, setViewingIssue] = useState<DomainProjectIssue | undefined>(undefined)
   const [viewIssueDialogOpen, setViewIssueDialogOpen] = useState(false)
+
+  const fetchProject = async () => {
+    await apiRequest("v1UsersProjectsDetail", {}, [projectId], (resp) => {
+      if (resp.code === 0) {
+        setProject(resp.data)
+      } else {
+        toast.error(resp.message || "获取项目失败")
+      }
+    })
+  }
 
   const fetchProjectIssues = async () => {
     await apiRequest('v1UsersProjectsIssuesDetail', {}, [projectId], (resp) => {
@@ -57,6 +68,7 @@ export default function ProjectIssuesPage() {
 
   useEffect(() => {
     if (projectId) {
+      fetchProject()
       fetchProjectIssues()
     }
   }, [projectId])
@@ -75,6 +87,7 @@ export default function ProjectIssuesPage() {
       <ProjectIssueList 
         issues={issues}
         projectId={projectId}
+        project={project}
         onViewIssue={handleViewIssue}
       />
 
@@ -90,6 +103,7 @@ export default function ProjectIssuesPage() {
         onOpenChange={setViewIssueDialogOpen}
         issue={viewingIssue}
         projectId={projectId}
+        project={project}
         onSuccess={fetchProjectIssues}
       />
     </div>

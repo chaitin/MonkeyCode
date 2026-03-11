@@ -1,4 +1,4 @@
-import { type DomainProjectIssue } from "@/api/Api"
+import { type DomainProjectIssue, type DomainProject } from "@/api/Api"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { IconDeviceImacCode, IconSparkles, IconTrash } from "@tabler/icons-react"
@@ -10,9 +10,10 @@ import IssueDevelopDialog from "./issue-dev-dialog"
 interface IssueMenuProps {
   issue?: DomainProjectIssue
   projectId: string
+  project?: DomainProject
 }
 
-export default function IssueMenu({ issue, projectId }: IssueMenuProps) {
+export default function IssueMenu({ issue, projectId, project }: IssueMenuProps) {
   const [designDialogOpen, setDesignDialogOpen] = useState(false)
   const [developDialogOpen, setDevelopDialogOpen] = useState(false)
 
@@ -48,12 +49,14 @@ export default function IssueMenu({ issue, projectId }: IssueMenuProps) {
         onOpenChange={setDesignDialogOpen}
         issue={issue}
         projectId={projectId}
+        project={project}
       />
       <IssueDevelopDialog
         open={developDialogOpen}
         onOpenChange={setDevelopDialogOpen}
         issue={issue}
         projectId={projectId}
+        project={project}
       />
     </>
   )
