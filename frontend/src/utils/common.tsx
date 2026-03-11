@@ -581,14 +581,11 @@ export function selectModel(models: DomainModel[], followDefault: boolean = true
   let result = models[0]?.id || ''
   const defaultModelId = models.find(model => model.is_default)?.id
 
-  //const defaultModelName = Math.random() < 0.9 ? 'minimax-m2.5' : 'glm-5'
-  const defaultModelName = 'minimax-m2.5'
-  const publicModelId = models.find(model => model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.model === defaultModelName)?.id
+  const publicModelId = models.find(model => model.owner?.type === ConstsOwnerType.OwnerTypePublic)?.id
 
   if (publicModelId) {
     result = publicModelId
   } else {
-    // 没有公开大模型时，使用默认模型
     result = defaultModelId || result
   }
 

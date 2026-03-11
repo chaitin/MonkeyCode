@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getInterfaceTypeBadge, getModelHealthBadge, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconCoinYen, IconLink, IconPuzzle, IconSend, IconSourceCode, IconSquareRoundedLetterOFilled, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconSquareRoundedLetterOFilled, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { flushSync } from "react-dom";
@@ -244,11 +244,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const readyToExecuteTask = () => {
     if (!taskContent.trim()) {
       toast.error('请输入任务内容');
-      return;
-    }
-
-    if (selectedModelId === "premium" && balance <= 0 && bonus <= 0) {
-      toast.error('点数不足，无法使用强力模型');
       return;
     }
 
@@ -775,15 +770,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   <SelectValue placeholder="选择大模型" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={"premium"}>
-                    <div className="flex items-center gap-2">
-                      <IconCoinYen className="text-primary" />
-                      <span>强力模型</span>
-                      <Badge>
-                        付费
-                      </Badge>
-                    </div>
-                  </SelectItem>
                   {models.map((model) => (
                     <SelectItem 
                       key={model.id} 

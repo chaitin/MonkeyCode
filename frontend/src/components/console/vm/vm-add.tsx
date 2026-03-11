@@ -28,7 +28,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
-import { IconCoinYen } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
 
 interface VmAddDialogProps {
@@ -331,17 +330,6 @@ export default function VmAddDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-
-                    <SelectItem value={"premium"}>
-                      <div className="flex items-center gap-2">
-                        <IconCoinYen className="text-primary" />
-                        <span>强力模型</span>
-                        <Badge variant="outline">
-                          付费
-                        </Badge>
-                        <Badge variant="outline">平台内置</Badge>
-                      </div>
-                    </SelectItem>
                     {models.filter(model => model.id).map((model) => (
                       <SelectItem key={model.id} value={model.id!}>
                         <div className="flex items-center gap-2">
