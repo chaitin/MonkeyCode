@@ -281,7 +281,9 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         return
       }
 
-      await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, project.full_name], (resp) => {
+      const encodedRepoName = encodeURIComponent(project.full_name)
+
+      await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, encodedRepoName], (resp) => {
         if (resp.code === 0 && resp.data) {
           setBranches(resp.data)
           if (resp.data.length > 0 && !selectedBranch) {
