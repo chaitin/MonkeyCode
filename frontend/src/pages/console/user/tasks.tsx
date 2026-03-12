@@ -1,4 +1,4 @@
-import { ConstsTaskType, type DomainProjectTask } from "@/api/Api";
+import { type DomainProjectTask } from "@/api/Api";
 import { TaskInput } from "@/components/console/task/task-input";
 import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
