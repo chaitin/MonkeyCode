@@ -30,7 +30,6 @@ import PostCreatePage from "./pages/post-create"
 import ProjectIssuesPage from "./pages/console/user/project/issues"
 import ProjectTasksPage from "./pages/console/user/project/tasks"
 import TaskDevelopPage from "./pages/console/user/task/task-dev"
-import TaskDevelopNewPage from "./pages/console/user/task/task-dev-new"
 import TaskViewPage from "./pages/console/user/task/task-view"
 
 function App() {
@@ -61,7 +60,6 @@ function App() {
           <Route path="/console/files" element={<FileManagerPage />} />
           <Route path="/console/task/view" element={<TaskViewPage />} />
           <Route path="/console/task/develop/:taskId" element={<TaskDevelopPage />} />
-          <Route path="/console/task/new/:taskId" element={<TaskDevelopNewPage />} />
           <Route path="/sharedterminal" element={<SharedTerminalPage />} />
           <Route path="/manager" element={<ManagerConsolePage />}>
             <Route index element={<Navigate to="/manager/dashboard" replace />} />

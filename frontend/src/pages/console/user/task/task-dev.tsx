@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { humanTime, stripMarkdown } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconDeviceDesktop, IconDotsVertical, IconFolderOpen, IconMessage, IconShare, IconTerminal2 } from "@tabler/icons-react"
+import { IconDeviceDesktop, IconDotsVertical, IconFolderOpen, IconShare, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
