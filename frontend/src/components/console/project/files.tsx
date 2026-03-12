@@ -1,6 +1,6 @@
-import { useState, useCallback, memo, useMemo, useRef } from "react"
+import { useState, useCallback, memo, useMemo, useRef, useEffect } from "react"
 import { apiRequest } from "@/utils/requestUtils"
-import { type DomainProject, type DomainProjectTreeEntry } from "@/api/Api"
+import { type DomainProject, type DomainProjectTreeEntry, type DomainBranch } from "@/api/Api"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { IconFileText, IconFolder, IconFolderOpen, IconLoader, IconGitBranch, IconFile, IconFileSymlink, IconExternalLink } from "@tabler/icons-react"
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { useEffect } from "react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { b64decode } from "@/utils/common"
 import AceEditor from "react-ace"
 import "ace-builds/src-noconflict/mode-text"
@@ -122,10 +122,11 @@ interface TreeNodeProps {
   entry: TreeEntry
   projectId: string
   depth: number
+  branch?: string
   onFileSelect?: (entry: TreeEntry) => void
 }
 
-const TreeNode = memo(({ entry, projectId, depth, onFileSelect }: TreeNodeProps) => {
+const TreeNode = memo(({ entry, projectId, depth, branch, onFileSelect }: TreeNodeProps) => {
   const [isOpen, setIsOpen] = useState(false)
   const [children, setChildren] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -139,7 +140,8 @@ const TreeNode = memo(({ entry, projectId, depth, onFileSelect }: TreeNodeProps)
     setLoading(true)
     await apiRequest('v1UsersProjectsTreeDetail', {
       recursive: false,
-      path: entry.path
+      path: entry.path,
+      ref: branch || undefined
     }, [projectId], (resp) => {
       if (resp.code === 0) {
         setChildren(sortEntries(resp.data || []))
@@ -147,7 +149,7 @@ const TreeNode = memo(({ entry, projectId, depth, onFileSelect }: TreeNodeProps)
       }
     })
     setLoading(false)
-  }, [projectId, entry.path, isDir, loaded])
+  }, [projectId, entry.path, isDir, loaded, branch])
 
   const handleToggle = useCallback((open: boolean) => {
     setIsOpen(open)
@@ -193,6 +195,7 @@ const TreeNode = memo(({ entry, projectId, depth, onFileSelect }: TreeNodeProps)
               entry={child}
               projectId={projectId}
               depth={depth + 1}
+              branch={branch}
               onFileSelect={onFileSelect}
             />
           ))}
@@ -228,6 +231,8 @@ TreeNode.displayName = 'TreeNode'
 export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className }: ProjectFileManagerProps) => {
   const [entries, setEntries] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [branches, setBranches] = useState<DomainBranch[]>([])
+  const [selectedBranch, setSelectedBranch] = useState<string>('')
   const projectIdRef = useRef(project?.id)
   projectIdRef.current = project?.id
   const isMountedRef = useRef(true)
@@ -253,7 +258,8 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     setLoading(true)
     await apiRequest('v1UsersProjectsTreeDetail', {
       recursive: false,
-      path: ''
+      path: '',
+      ref: selectedBranch || undefined
     }, [project?.id], (resp) => {
       // 忽略过期响应：切换 project 后，旧请求可能晚于新请求返回；或组件已卸载
       if (!isMountedRef.current || projectIdRef.current !== requestedProjectId) return
@@ -265,7 +271,31 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     })
     setLoading(false)
     onLoaded?.()
-  }, [project?.id, onLoaded])
+  }, [project?.id, onLoaded, selectedBranch])
+
+  // 获取分支列表
+  useEffect(() => {
+    const fetchBranches = async () => {
+      if (!project?.git_identity_id || !project?.full_name) {
+        setBranches([])
+        return
+      }
+
+      await apiRequest('v1UsersGitIdentitiesBranchesDetail', {
+        identityId: project.git_identity_id,
+        escapedRepoFullName: project.full_name
+      }, [], (resp) => {
+        if (resp.code === 0 && resp.data) {
+          setBranches(resp.data)
+          if (resp.data.length > 0 && !selectedBranch) {
+            setSelectedBranch(resp.data[0]?.name || '')
+          }
+        }
+      })
+    }
+
+    fetchBranches()
+  }, [project?.git_identity_id, project?.full_name])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -305,10 +335,26 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
 
   const Header = (
     <div className="px-4 py-2 flex items-center justify-between border-b bg-muted/50">
-      <Label className="flex items-center">
-        <IconFolderOpen className="size-4" />
-        项目文件
-      </Label>
+      <div className="flex items-center gap-2">
+        <Label className="flex items-center">
+          <IconFolderOpen className="size-4" />
+          项目文件
+        </Label>
+        {branches.length > 0 && (
+          <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+            <SelectTrigger className="h-6 w-[140px] text-xs">
+              <SelectValue placeholder="选择分支" />
+            </SelectTrigger>
+            <SelectContent>
+              {branches.map((branch) => (
+                <SelectItem key={branch.name} value={branch.name || ''} className="text-xs">
+                  {branch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
       <Button
         variant="ghost"
         size="sm"
@@ -370,6 +416,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
                 entry={entry}
                 projectId={project?.id || ''}
                 depth={0}
+                branch={selectedBranch}
                 onFileSelect={handleFileClick}
               />
             ))}
