@@ -287,7 +287,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         if (resp.code === 0 && resp.data) {
           setBranches(resp.data)
           if (resp.data.length > 0 && !selectedBranch) {
-            const branchNames = resp.data.map(b => b.name || '').filter(Boolean)
+            const branchNames = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
             let defaultBranch = ''
             if (branchNames.includes('main')) {
               defaultBranch = 'main'
