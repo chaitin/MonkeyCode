@@ -179,9 +179,11 @@ const TreeNode = memo(({ entry, projectId, depth, onFileSelect }: TreeNodeProps)
             <div className="text-muted-foreground text-xs shrink-0">
               -
             </div>
-            <div className="text-muted-foreground text-xs shrink-0 w-30 text-right">
-              {dayjs.unix(entry.last_modified_at || 0).fromNow()}
-            </div>
+            {entry.last_modified_at ? (
+              <div className="text-muted-foreground text-xs shrink-0 w-30 text-right">
+                {dayjs.unix(entry.last_modified_at).fromNow()}
+              </div>
+            ) : null}
           </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -212,9 +214,11 @@ const TreeNode = memo(({ entry, projectId, depth, onFileSelect }: TreeNodeProps)
       <div className="text-muted-foreground text-xs shrink-0">
         {formatSize(entry.size)}
       </div>
-      <div className="text-muted-foreground text-xs shrink-0 w-30 text-right">
-        {dayjs.unix(entry.last_modified_at || 0).fromNow()}
-      </div>
+      {entry.last_modified_at ? (
+        <div className="text-muted-foreground text-xs shrink-0 w-30 text-right">
+          {dayjs.unix(entry.last_modified_at).fromNow()}
+        </div>
+      ) : null}
     </div>
   )
 })
