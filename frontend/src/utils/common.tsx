@@ -578,22 +578,16 @@ export function getFileExtension(filename: string): string {
 }
 
 export function selectModel(models: DomainModel[], followDefault: boolean = true): string {
-  let result = models[0]?.id || ''
   const defaultModelId = models.find(model => model.is_default)?.id
 
-  const publicModelId = models.find(model => model.owner?.type === ConstsOwnerType.OwnerTypePublic)?.id
-
-  if (publicModelId) {
-    result = publicModelId
-  } else {
-    result = defaultModelId || result
-  }
-
   if (followDefault) {
-    result = defaultModelId || result
+    if (defaultModelId) {
+      return defaultModelId
+    }
+    return 'economy'
   }
 
-  return result
+  return 'economy'
 }
 
 

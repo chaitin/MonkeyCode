@@ -121,6 +121,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const { models, images, hosts, identities, user } = useCommonData();
   const navigate = useNavigate();
 
+  const modelsWithEconomy = useMemo(() => {
+    const economyModel = { 
+      id: "economy", 
+      model: "免费模型", 
+      owner: { type: "public" as const }, 
+      is_default: false,
+      interface_type: ConstsInterfaceType.InterfaceTypeOpenAIChat,
+      last_check_success: true
+    } as DomainModel;
+    return [economyModel, ...models];
+  }, [models]);
+
   const selectableIdentities = useMemo(
     () => identities.filter(isIdentityWithRepos),
     [identities]
@@ -207,7 +219,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   };
 
   const setDefaultConfig = () => {
-    setSelectedModelId(selectModel(models, true))
+    setSelectedModelId(selectModel(modelsWithEconomy, true))
     setSelectedTool(ConstsCliName.CliNameOpencode)
     setSelectedHostId(selectHost(hosts, true))
 
@@ -248,7 +260,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     }
 
     // 检查公共模型与非公共宿主机的组合
-    const selectedModel = models.find(m => m.id === selectedModelId);
+    const selectedModel = modelsWithEconomy.find(m => m.id === selectedModelId);
     if (selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
       toast.warning('内置模型只能在内置宿主机上使用');
       return;
@@ -770,21 +782,25 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   <SelectValue placeholder="选择大模型" />
                 </SelectTrigger>
                 <SelectContent>
-                  {models.map((model) => (
+                  {modelsWithEconomy.map((model) => (
                     <SelectItem 
                       key={model.id} 
                       value={model.id || ""} 
                       disabled={!adaptedModelForTool(model || "")}>
-                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                      {model.id === "economy" ? (
+                        <img src="/logo-colored.png" className="size-4" alt="" />
+                      ) : (
+                        <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                      )}
                       {getModelHealthBadge(model)}
                       {model.model}
                       {model.is_default && <Badge>默认</Badge>}
                       {model.owner?.type === ConstsOwnerType.OwnerTypePublic ? (
-                        <Badge>免费</Badge>
+                        <Badge>推荐</Badge>
                       ) : (
                         getOwnerTypeBadge(model.owner)
                       )}
-                      {getInterfaceTypeBadge(model.interface_type)}
+                      {model.id !== "economy" && getInterfaceTypeBadge(model.interface_type)}
                     </SelectItem>
                   ))}
                 </SelectContent>
