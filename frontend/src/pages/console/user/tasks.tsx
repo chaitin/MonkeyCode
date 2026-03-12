@@ -15,6 +15,13 @@ import { toast } from "sonner";
 
 const PAGE_SIZE = 24;
 
+const formatTokens = (tokens?: number) => {
+  if (!tokens) return ''
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  return tokens.toString()
+}
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [page, setPage] = useState(1)
@@ -126,11 +133,11 @@ export default function TasksPage() {
                 {task.status === "pending" && <><Spinner />等待执行</>}
                 {task.status === "processing" && <><Spinner />正在执行</>}
               </Badge>
-              <Badge variant="outline" className={cn(task.status === "processing" || task.status === "pending" ? "" : "text-muted-foreground")}>
-                {task?.type === ConstsTaskType.TaskTypeDevelop && "开发任务"}
-                {task?.type === ConstsTaskType.TaskTypeDesign && "设计任务"}
-                {task?.type === ConstsTaskType.TaskTypeReview && "审查任务"}
-              </Badge>
+              {task.stats?.total_tokens ? (
+                <Badge variant="outline" className="text-muted-foreground">
+                  {formatTokens(task.stats.total_tokens)} tokens
+                </Badge>
+              ) : null}
             </div>
             {dayjs.unix(task.created_at as number).fromNow()}
           </ItemFooter>

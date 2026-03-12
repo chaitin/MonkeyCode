@@ -14,7 +14,7 @@ import { toast } from "sonner"
 
 dayjs.extend(relativeTime)
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 500
 
 export default function TaskViewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -63,6 +63,25 @@ export default function TaskViewPage() {
     fetchTasks()
   }, [fetchTasks])
 
+  useEffect(() => {
+    const taskIdFromUrl = searchParams.get('taskId')
+    if (taskIdFromUrl && tasks.length > 0) {
+      setTimeout(() => {
+        const element = document.querySelector(`[data-task-id="${taskIdFromUrl}"]`)
+        element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [tasks, searchParams])
+
+  useEffect(() => {
+    if (selectedTaskId) {
+      setTimeout(() => {
+        const element = document.querySelector(`[data-task-id="${selectedTaskId}"]`)
+        element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [selectedTaskId])
+
   return (
     <div className="flex h-screen overflow-hidden">
       <div className={cn("border-r flex flex-col h-full bg-muted/30 overflow-hidden transition-all duration-300", sidebarWidth === 'wide' ? 'w-80' : 'w-40')}>
@@ -99,9 +118,10 @@ export default function TaskViewPage() {
               tasks.map((task) => (
                 <div
                   key={task.id}
+                  data-task-id={task.id}
                   className={cn(
                     "cursor-pointer transition-all hover:bg-accent rounded",
-                    selectedTaskId === task.id && "bg-accent"
+                    selectedTaskId === task.id && "bg-accent text-primary"
                   )}
                   onClick={() => {
                     setSelectedTaskId(task.id)
@@ -118,7 +138,7 @@ export default function TaskViewPage() {
                           {task.status === "error" && <IconAlertTriangle className="w-4 h-4 text-muted-foreground/50" />}
                           {(task.status === "pending" || task.status === "processing") && <IconLoader className="w-4 h-4 text-muted-foreground animate-spin" style={{ animationDuration: '3s' }} />}
                         </div>
-                        <div className={cn("flex-1 min-w-0 line-clamp-1", task.status === "finished" && "text-muted-foreground")}>
+                        <div className={cn("flex-1 line-clamp-1 break-all", selectedTaskId === task.id ? "text-primary" : task.status === "finished" && "text-muted-foreground")}>
                           {task.summary || stripMarkdown(task.content)}
                         </div>
                         <div className="flex-shrink-0 text-xs text-muted-foreground">
@@ -126,7 +146,7 @@ export default function TaskViewPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className={cn("text-sm line-clamp-1", task.status === "finished" && "text-muted-foreground")}>
+                      <div className={cn("text-sm line-clamp-1 break-all", selectedTaskId === task.id ? "text-primary" : task.status === "finished" && "text-muted-foreground")}>
                         {task.summary || stripMarkdown(task.content)}
                       </div>
                     )}

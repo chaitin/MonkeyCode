@@ -15,19 +15,6 @@ export enum ConstsCliName {
   CliNameOpencode = "opencode",
 }
 
-export enum ConstsFeedbackStatus {
-  FeedbackStatusPending = "pending",
-  FeedbackStatusProcessing = "processing",
-  FeedbackStatusResolved = "resolved",
-  FeedbackStatusClosed = "closed",
-}
-
-export enum ConstsFeedbackType {
-  FeedbackTypeBug = "bug",
-  FeedbackTypeSuggestion = "suggestion",
-  FeedbackTypeOther = "other",
-}
-
 export enum ConstsFileKind {
   FileKindUnknown = "unknown",
   FileKindFile = "file",
@@ -222,6 +209,7 @@ export interface DomainAddGitIdentityReq {
   access_token: string;
   base_url: string;
   email: string;
+  oauth_site_id?: string;
   platform: ConstsGitPlatform;
   remark?: string;
   username: string;
@@ -367,12 +355,6 @@ export interface DomainCreateCollaboratorItem {
   user_id?: string;
 }
 
-export interface DomainCreateFeedbackReq {
-  content: string;
-  title: string;
-  type: "bug" | "suggestion" | "other";
-}
-
 export interface DomainCreateGitBotReq {
   host_id: string;
   name?: string;
@@ -458,7 +440,7 @@ export interface DomainCreateTaskReq {
   host_id: string;
   /** 镜像ID */
   image_id: string;
-  /** 模型ID premium: 指定用贵的模型 economy: 指定用便宜的模型 */
+  /** 模型ID economy: 指定用便宜的模型 */
   model_id: string;
   /** 仓库信息 */
   repo: DomainTaskRepoReq;
@@ -481,7 +463,7 @@ export interface DomainCreateVMReq {
   install_coding_agents?: boolean;
   /** 过期时间: 倒计时时间，以秒为单位, 0 表示永不过期 */
   life?: number;
-  /** 模型ID premium: 指定用贵的模型 economy: 指定用便宜的模型 */
+  /** 模型ID economy: 指定用便宜的模型 */
   model_id: string;
   /** 宿主机名称 */
   name: string;
@@ -498,17 +480,6 @@ export interface DomainDeleteImageReq {
 export interface DomainExchangeReq {
   /** 兑换码 */
   code?: string;
-}
-
-export interface DomainFeedback {
-  content?: string;
-  created_at?: number;
-  id?: string;
-  status?: ConstsFeedbackStatus;
-  title?: string;
-  type?: ConstsFeedbackType;
-  updated_at?: number;
-  user?: DomainUser;
 }
 
 export interface DomainFileChangeReq {
@@ -582,6 +553,7 @@ export interface DomainGitIdentity {
   email?: string;
   id?: string;
   is_installation_app?: boolean;
+  oauth_site_id?: string;
   platform?: ConstsGitPlatform;
   remark?: string;
   username?: string;
@@ -640,16 +612,13 @@ export interface DomainListCollaboratorsResp {
   collaborators?: DomainCollaborator[];
 }
 
-export interface DomainListFeedbacksResp {
-  feedbacks?: DomainFeedback[];
-  page?: Dbv2Cursor;
-}
-
 export interface DomainListGitBotResp {
   bots?: DomainGitBot[];
 }
 
 export interface DomainListGitBotTaskResp {
+  /** 分页信息 */
+  page_info?: Dbv2PageInfo;
   tasks?: DomainGitBotTask[];
 }
 
@@ -694,8 +663,8 @@ export interface DomainListProjectResp {
 }
 
 export interface DomainListTaskResp {
-  /** 游标信息 */
-  page?: Dbv2Cursor;
+  /** 分页信息 */
+  page_info?: Dbv2PageInfo;
   /** 任务列表 */
   tasks?: DomainProjectTask[];
 }
@@ -1002,6 +971,8 @@ export interface DomainProjectTask {
   model?: DomainModel;
   repo_filename?: string;
   repo_url?: string;
+  /** 统计数据 */
+  stats?: DomainTaskStats;
   /** 任务状态 */
   status?: ConstsTaskStatus;
   /** 任务子类型 */
@@ -1212,6 +1183,8 @@ export interface DomainTask {
   model?: DomainModel;
   repo_filename?: string;
   repo_url?: string;
+  /** 统计数据 */
+  stats?: DomainTaskStats;
   /** 任务状态 */
   status?: ConstsTaskStatus;
   /** 任务子类型 */
@@ -1237,6 +1210,13 @@ export interface DomainTaskRepoReq {
   repo_filename?: string;
   repo_url?: string;
   zip_url?: string;
+}
+
+export interface DomainTaskStats {
+  input_tokens?: number;
+  llm_requests?: number;
+  output_tokens?: number;
+  total_tokens?: number;
 }
 
 export interface DomainTeam {
@@ -1360,7 +1340,9 @@ export interface DomainUpdateGitBotReq {
 export interface DomainUpdateGitIdentityReq {
   access_token?: string;
   base_url?: string;
+  clear_oauth_site_id?: boolean;
   email?: string;
+  oauth_site_id?: string;
   platform?: ConstsGitPlatform;
   remark?: string;
   username?: string;
@@ -2241,67 +2223,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/public/captcha/redeem`,
         method: "POST",
         body: body,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 问题反馈列表，支持按状态、类型、时间过滤
-     *
-     * @tags 【用户】问题反馈
-     * @name V1PublicFeedbacksList
-     * @summary 问题反馈列表
-     * @request GET:/api/v1/public/feedbacks
-     */
-    v1PublicFeedbacksList: (
-      query?: {
-        /** 状态过滤 */
-        status?: string;
-        /** 类型过滤 */
-        type?: string;
-        /** 创建开始时间 */
-        created_at_start?: string;
-        /** 创建结束时间 */
-        created_at_end?: string;
-        /** 游标 */
-        cursor?: string;
-        /** 每页数量 */
-        limit?: number;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<
-        WebResp & {
-          data?: DomainListFeedbacksResp;
-        },
-        WebResp
-      >({
-        path: `/api/v1/public/feedbacks`,
-        method: "GET",
-        query: query,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 问题反馈详情
-     *
-     * @tags 【用户】问题反馈
-     * @name V1PublicFeedbacksDetail
-     * @summary 问题反馈详情
-     * @request GET:/api/v1/public/feedbacks/{id}
-     */
-    v1PublicFeedbacksDetail: (id: string, params: RequestParams = {}) =>
-      this.request<
-        WebResp & {
-          data?: DomainFeedback;
-        },
-        WebResp
-      >({
-        path: `/api/v1/public/feedbacks/${id}`,
-        method: "GET",
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -3381,31 +3302,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 创建问题反馈
-     *
-     * @tags 【用户】问题反馈
-     * @name V1UsersFeedbacksCreate
-     * @summary 创建问题反馈
-     * @request POST:/api/v1/users/feedbacks
-     * @secure
-     */
-    v1UsersFeedbacksCreate: (req: DomainCreateFeedbackReq, params: RequestParams = {}) =>
-      this.request<
-        WebResp & {
-          data?: DomainFeedback;
-        },
-        WebResp
-      >({
-        path: `/api/v1/users/feedbacks`,
-        method: "POST",
-        body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 删除文件/目录
      *
      * @tags 【用户】文件管理
@@ -3697,7 +3593,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description Git Bot 任务列表
+     * @description Git Bot 任务列表，支持分页
      *
      * @tags 【用户】Git Bot
      * @name V1UsersGitBotsTasksList
@@ -3707,8 +3603,14 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsTasksList: (
       query?: {
-        /** ID */
+        /** 指定 Git Bot ID，不传则查全部 */
         id?: string;
+        /** 下一页标识 */
+        next_token?: string;
+        /** 分页 */
+        page?: number;
+        /** 每页多少条记录 */
+        size?: number;
       },
       params: RequestParams = {},
     ) =>
@@ -5404,7 +5306,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取属于该用户的所有任务，支持游标分页
+     * @description 获取属于该用户的所有任务，仅支持普通分页
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksList
@@ -5414,11 +5316,13 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersTasksList: (
       query?: {
-        /** 游标，首页传空。下一页回传回包中的 cursor */
-        cursor?: string;
-        /** 页数 */
-        limit?: number;
+        /** 下一页标识 */
+        next_token?: string;
+        /** 分页 */
+        page?: number;
         project_id?: string;
+        /** 每页多少条记录 */
+        size?: number;
       },
       params: RequestParams = {},
     ) =>
