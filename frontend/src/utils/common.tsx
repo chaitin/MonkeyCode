@@ -674,9 +674,9 @@ export function getModelUrlDescription(baseUrl: string, interfaceType: ConstsInt
 
   switch (interfaceType) {
     case ConstsInterfaceType.InterfaceTypeOpenAIResponse:
-      return url + "chat/completions"
-    case ConstsInterfaceType.InterfaceTypeOpenAIChat:
       return url + "responses"
+    case ConstsInterfaceType.InterfaceTypeOpenAIChat:
+      return url + "chat/completions"
     case ConstsInterfaceType.InterfaceTypeAnthropic:
       return url + "v1/messages"
     default:
