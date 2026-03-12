@@ -96,7 +96,7 @@ export default function TasksPage() {
             <HoverCard>
               <HoverCardTrigger asChild>
                 <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => {
-                  window.open(`/console/task/develop/${task.id}`, "_blank")
+                  window.open(`/console/task/view?taskId=${task.id}`, "_blank")
                 }}>
                   {task.summary || stripMarkdown(task.content)}
                 </ItemTitle>
