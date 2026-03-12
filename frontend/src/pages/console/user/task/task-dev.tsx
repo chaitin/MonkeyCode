@@ -425,7 +425,9 @@ export default function TaskDevelopPage() {
         </ResizablePanel>}
         {(showTerminalPanel || showFilesPanel) && <ResizableHandle className="invisible hidden sm:block" />}
         <ResizablePanel defaultSize={40} minSize={35} style={{overflow: 'visible'}}>
-          <TaskChatPanel 
+          <div className="w-full h-full flex justify-center">
+            <div className="max-w-[800px] w-full">
+              <TaskChatPanel 
             messages={messages} 
             cli={task?.cli_name}
             availableCommands={availableCommands}
@@ -442,7 +444,9 @@ export default function TaskDevelopPage() {
             fileChanges={changedPaths}
             fileChangesMap={fileChangesMap}
             taskManager={taskManager.current}
-          />
+            />
+            </div>
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
       <TaskPreparingDialog task={task} />
