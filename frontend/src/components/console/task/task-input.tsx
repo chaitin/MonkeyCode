@@ -750,7 +750,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                     <Icon name="claude" className="size-4" />
                     Claude Code
                   </SelectItem>
-                  <SelectItem value={ConstsCliName.CliNameCodex}>
+                  <SelectItem value={ConstsCliName.CliNameCodex} disabled>
                     <Icon name="openai" className="size-4" />
                     OpenAI Codex
                   </SelectItem>
