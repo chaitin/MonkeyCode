@@ -13,12 +13,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
-import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { humanTime, stripMarkdown } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconDeviceDesktop, IconDotsVertical, IconFolderOpen, IconLayout, IconMessage, IconShare, IconTerminal2 } from "@tabler/icons-react"
+import { IconDeviceDesktop, IconDotsVertical, IconFolderOpen, IconMessage, IconShare, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -26,9 +25,8 @@ import { toast } from "sonner"
 export default function TaskDevelopPage() {
   const { taskId } = useParams()
   const [ task, setTask] = React.useState<DomainProjectTask | null>(null)
-  const [ showFilesPanel, setShowFilesPanel] = React.useState(true)
-  const [ showTerminalPanel, setShowTerminalPanel] = React.useState(true)
-  const [ showChatPanel, setShowChatPanel] = React.useState(true)
+  const [ showFilesPanel, setShowFilesPanel] = React.useState(false)
+  const [ showTerminalPanel, setShowTerminalPanel] = React.useState(false)
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const connectedRef = React.useRef<boolean>(false)
   const [thinkingMessage, setThinkingMessage] = React.useState("")
@@ -309,56 +307,44 @@ export default function TaskDevelopPage() {
           <Badge className="animate-pulse cursor-pointer" onClick={() => setShowReloadAlert(true)}>网络连接已断开</Badge> 
         ) : null}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant={existPorts ? "default" : "ghost"} size="icon-sm" 
-              disabled={task?.virtualmachine?.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline} 
-              className={cn(
-                "hidden lg:flex rounded-full", 
-                existPorts ? "animate-bounce" : ""
-              )}
-              onClick={() => setPortForwardDialogOpen(true)}
-            >
-              <IconDeviceDesktop />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>在线预览</TooltipContent>
-        </Tooltip>
+        <Button 
+          variant={existPorts ? "default" : "ghost"} size="sm" 
+          disabled={task?.virtualmachine?.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline} 
+          className={cn(
+            "hidden lg:flex gap-1", 
+            existPorts ? "animate-bounce" : ""
+          )}
+          onClick={() => setPortForwardDialogOpen(true)}
+        >
+          <IconDeviceDesktop className="size-4" />
+          预览
+        </Button>
 
-        <DropdownMenu >
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="hidden sm:flex rounded-full">
-              <IconLayout />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="w-40" onClick={(e) => {
-              setShowFilesPanel(!showFilesPanel)
-              e.preventDefault()
-            }}>
-              <IconFolderOpen />
-              <div className="flex-1">项目文件</div>
-              <Switch checked={showFilesPanel} onCheckedChange={setShowFilesPanel} />
-            </DropdownMenuItem>
-            <DropdownMenuItem className="w-40" onClick={(e) => {
-              setShowTerminalPanel(!showTerminalPanel)
-              e.preventDefault()
-            }}>
-              <IconTerminal2 />
-              <div className="flex-1">终端</div>
-              <Switch checked={showTerminalPanel} onCheckedChange={setShowTerminalPanel} />
-            </DropdownMenuItem>
-            <DropdownMenuItem className="w-40" onClick={(e) => {
-              setShowChatPanel(!showChatPanel)
-              e.preventDefault()
-            }}>
-              <IconMessage />
-              <div className="flex-1">AI 对话</div>
-              <Switch checked={showChatPanel} onCheckedChange={setShowChatPanel} />
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button 
+          variant="ghost"
+          size="sm" 
+          className={cn(
+            "gap-1",
+            showFilesPanel ? "text-primary bg-accent" : ""
+          )}
+          onClick={() => setShowFilesPanel(!showFilesPanel)}
+        >
+          <IconFolderOpen className="size-4" />
+          文件
+        </Button>
+
+        <Button 
+          variant="ghost"
+          size="sm" 
+          className={cn(
+            "gap-1",
+            showTerminalPanel ? "text-primary bg-accent" : ""
+          )}
+          onClick={() => setShowTerminalPanel(!showTerminalPanel)}
+        >
+          <IconTerminal2 className="size-4" />
+          终端
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -437,8 +423,8 @@ export default function TaskDevelopPage() {
             </ResizablePanel>}
           </ResizablePanelGroup>
         </ResizablePanel>}
-        {showChatPanel && (showTerminalPanel || showFilesPanel) && <ResizableHandle className="invisible hidden sm:block" />}
-        {showChatPanel && <ResizablePanel defaultSize={40} minSize={35} style={{overflow: 'visible'}}>
+        {(showTerminalPanel || showFilesPanel) && <ResizableHandle className="invisible hidden sm:block" />}
+        <ResizablePanel defaultSize={40} minSize={35} style={{overflow: 'visible'}}>
           <TaskChatPanel 
             messages={messages} 
             cli={task?.cli_name}
@@ -457,7 +443,7 @@ export default function TaskDevelopPage() {
             fileChangesMap={fileChangesMap}
             taskManager={taskManager.current}
           />
-        </ResizablePanel>}
+        </ResizablePanel>
       </ResizablePanelGroup>
       <TaskPreparingDialog task={task} />
       <VmPortForwardDialog
