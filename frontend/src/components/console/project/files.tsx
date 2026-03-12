@@ -287,7 +287,16 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         if (resp.code === 0 && resp.data) {
           setBranches(resp.data)
           if (resp.data.length > 0 && !selectedBranch) {
-            setSelectedBranch(resp.data[0]?.name || '')
+            const branchNames = resp.data.map(b => b.name || '').filter(Boolean)
+            let defaultBranch = ''
+            if (branchNames.includes('main')) {
+              defaultBranch = 'main'
+            } else if (branchNames.includes('master')) {
+              defaultBranch = 'master'
+            } else {
+              defaultBranch = branchNames.sort()[0] || ''
+            }
+            setSelectedBranch(defaultBranch)
           }
         }
       })
@@ -341,7 +350,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         </Label>
         {branches.length > 0 && (
           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-            <SelectTrigger className="h-6 w-[140px] text-xs">
+            <SelectTrigger className="w-[140px] text-xs" style={{ height: '28px' }}>
               <SelectValue placeholder="选择分支" />
             </SelectTrigger>
             <SelectContent>
