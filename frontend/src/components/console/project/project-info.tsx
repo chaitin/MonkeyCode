@@ -74,7 +74,7 @@ const ProjectInfo = ({
         const remainingProjects = projects.filter(p => p.id !== deletingProject.id)
         reloadProjects()
         if (remainingProjects.length > 0) {
-          navigate(`/console/project/${remainingProjects[0].id}/info/`)
+          navigate(`/console/project/${remainingProjects[0].id}`)
         } else {
           navigate('/console/tasks')
         }

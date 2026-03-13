@@ -90,7 +90,7 @@ export default function TaskViewPage() {
             variant="outline" 
             size="sm"
             className="flex-1"
-            onClick={() => window.location.href = projectId ? `/console/project/${projectId}/tasks` : '/console/tasks'}
+            onClick={() => window.location.href = projectId ? `/console/project/${projectId}` : '/console/tasks'}
           >
             <IconPlus className="w-4 h-4" />
             {sidebarWidth === 'wide' ? '启动新任务' : '新任务'}
