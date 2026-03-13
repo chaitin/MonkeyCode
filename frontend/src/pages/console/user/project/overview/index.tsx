@@ -61,21 +61,21 @@ export default function ProjectOverviewPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full w-full">
+    <div className="flex flex-col gap-4 h-full w-full min-h-0">
       <ProjectInfo project={project} onRefresh={fetchProject} />
-      <Tabs defaultValue="info" className="w-full">
+      <Tabs defaultValue="info" className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         <TabsList>
           <TabsTrigger value="info">信息</TabsTrigger>
           <TabsTrigger value="issues">需求</TabsTrigger>
           <TabsTrigger value="tasks">任务</TabsTrigger>
         </TabsList>
-        <TabsContent value="info" className="mt-4 flex flex-col gap-4">
+        <TabsContent value="info" className="mt-2 flex flex-col gap-4">
           <ProjectOverviewInfoTab projectId={projectId} project={project} />
         </TabsContent>
-        <TabsContent value="issues" className="mt-4">
+        <TabsContent value="issues" className="mt-2 flex-1 min-h-0 flex flex-col">
           <ProjectOverviewIssuesTab projectId={projectId} project={project} />
         </TabsContent>
-        <TabsContent value="tasks" className="mt-4">
+        <TabsContent value="tasks" className="mt-2 flex-1 min-h-0 flex flex-col">
           <ProjectOverviewTasksTab projectId={projectId} />
         </TabsContent>
       </Tabs>

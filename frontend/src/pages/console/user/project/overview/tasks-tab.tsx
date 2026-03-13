@@ -88,7 +88,7 @@ export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTa
 
   if (tasksInitialLoading && tasks.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex-1 min-h-0 flex items-center justify-center">
         <Spinner className="size-8" />
       </div>
     )
@@ -96,24 +96,22 @@ export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTa
 
   if (tasks.length === 0) {
     return (
-      <Empty className="border h-full">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <IconListDetails />
-          </EmptyMedia>
-          <EmptyTitle>暂无任务</EmptyTitle>
-          <EmptyDescription>该项目下还没有创建任何任务</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <Empty className="border flex-1">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconListDetails />
+            </EmptyMedia>
+            <EmptyTitle>暂无任务</EmptyTitle>
+            <EmptyDescription>该项目下还没有创建任何任务</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">项目任务列表</h2>
-        <span className="text-sm text-muted-foreground">共 {tasks.length} 个任务</span>
-      </div>
+    <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-auto">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-4 w-full">
         {tasks.map((task) => (
           <Item variant="outline" key={task.id} className="group hover:border-primary/50">
