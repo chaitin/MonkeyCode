@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { type DomainProjectTask } from "@/api/Api"
-import { ConstsTaskType } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +19,13 @@ import { getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/uti
 import dayjs from "dayjs"
 
 const TASKS_PAGE_SIZE = 24
+
+const formatTokens = (tokens?: number) => {
+  if (!tokens) return ""
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  return tokens.toString()
+}
 
 interface ProjectOverviewTasksTabProps {
   projectId: string
@@ -180,16 +186,11 @@ export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTa
                     </>
                   )}
                 </Badge>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    task.status === "processing" || task.status === "pending" ? "" : "text-muted-foreground"
-                  )}
-                >
-                  {task?.type === ConstsTaskType.TaskTypeDevelop && "开发任务"}
-                  {task?.type === ConstsTaskType.TaskTypeDesign && "设计任务"}
-                  {task?.type === ConstsTaskType.TaskTypeReview && "审查任务"}
-                </Badge>
+                {task.stats?.total_tokens ? (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    {formatTokens(task.stats.total_tokens)} tokens
+                  </Badge>
+                ) : null}
               </div>
               {dayjs.unix(task.created_at as number).fromNow()}
             </ItemFooter>

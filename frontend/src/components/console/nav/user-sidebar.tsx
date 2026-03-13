@@ -10,7 +10,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import NavBalance from "./nav-balance"
 import NavMain from "./nav-main"
 import { Link } from "react-router-dom"
 import { Settings } from "lucide-react"
@@ -54,7 +53,6 @@ export default function UserSidebar({
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-        <NavBalance />
         <NavUser />
       </SidebarFooter>
     </Sidebar>

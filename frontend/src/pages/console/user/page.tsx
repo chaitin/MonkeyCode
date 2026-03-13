@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { HelpCircle, Users } from "lucide-react"
+import NavBalance from "@/components/console/nav/nav-balance"
 import { DataProvider } from "@/components/console/data-provider"
 import {
   HoverCard,
@@ -35,7 +36,7 @@ export default function UserConsolePage() {
       { label: "仪表盘", href: "/console/dashboard" },
     ],
     "/console/tasks": [
-      { label: "智能任务", href: "/console/tasks" },
+      { label: "新任务", href: "/console/tasks" },
     ],
     "/console/projects": [
       { label: "项目管理", href: "/console/projects" },
@@ -120,6 +121,7 @@ export default function UserConsolePage() {
                   </div>
                 </HoverCardContent>
               </HoverCard>
+              <NavBalance variant="header" />
               <Button className="hidden lg:flex" variant="ghost" size="sm" asChild>
                 <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank">
                   <HelpCircle className="h-[1.2rem] w-[1.2rem]" />

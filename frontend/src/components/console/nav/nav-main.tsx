@@ -24,7 +24,7 @@ export default function NavMain() {
           >
             <Link to="/console/tasks">
               <Bot />
-              <span>智能任务</span>
+              <span>新任务</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

@@ -18,7 +18,11 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCommonData } from "../data-provider";
 
-export default function NavBalance() {
+interface NavBalanceProps {
+  variant?: "sidebar" | "header";
+}
+
+export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
   const [exchangeCode, setExchangeCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -110,17 +114,29 @@ export default function NavBalance() {
     toast.success("邀请链接已复制到剪贴板");
   }
 
+  const triggerContent = (
+    <>
+      <IconWallet className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-5"} />
+      余额: {Math.ceil(balance + bonus).toLocaleString()} 点
+    </>
+  );
+
   return (
     <Dialog onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton className="cursor-pointer">
-              <IconWallet className="size-5" />
-              余额: {Math.ceil(balance + bonus).toLocaleString()} 点
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {variant === "header" ? (
+          <Button className="hidden lg:flex" variant="ghost" size="sm">
+            {triggerContent}
+          </Button>
+        ) : (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton className="cursor-pointer">
+                {triggerContent}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
