@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-const UNLINKED_TASKS_LIMIT = 3
+const UNLINKED_TASKS_LIMIT = 5
 const UNLINKED_TASKS_FETCH_SIZE = 50
 const STORAGE_KEY = "nav-project-expanded"
 const UNLINKED_KEY = "__unlinked__"
@@ -196,7 +196,7 @@ export default function NavProject() {
             <SidebarMenuItem>
               <div
                 className={cn(
-                  "flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+                  "flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
                   isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
               >
@@ -224,8 +224,8 @@ export default function NavProject() {
               </div>
               <CollapsibleContent>
                 {unlinkedTasks.length > 0 && (
-                  <SidebarMenuSub>
-                    <SidebarMenuSubItem className="flex flex-col gap-1">
+                  <SidebarMenuSub className="ml-1 mr-0 border-none">
+                    <SidebarMenuSubItem className="flex flex-col">
                       {unlinkedTasks.map((task: DomainProjectTask) => {
                         const TaskIcon =
                           task.status === "finished" || task.status === "error"
@@ -276,7 +276,7 @@ export default function NavProject() {
               <SidebarMenuItem>
                 <div
                   className={cn(
-                    "group/project-row flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+                    "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
                     isProjectActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   )}
                 >
@@ -317,8 +317,8 @@ export default function NavProject() {
                   </Tooltip>
                 </div>
                 <CollapsibleContent>
-                  <SidebarMenuSub>
-                    <SidebarMenuSubItem className="flex flex-col gap-1">
+                  <SidebarMenuSub className="ml-1 mr-0 border-none">
+                    <SidebarMenuSubItem className="flex flex-col">
                       {(project.tasks || []).map((task: DomainProjectTask) => {
                         const TaskIcon =
                           task.status === "finished" || task.status === "error"

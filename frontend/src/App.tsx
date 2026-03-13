@@ -28,6 +28,7 @@ import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
 import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDevelopPage from "./pages/console/user/task/task-dev"
+import TaskDetailPage from "./pages/console/user/task/task-detail"
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
           <Route path="/console" element={<UserConsolePage />}>
             <Route index element={<Navigate to="/console/tasks" replace />} />
             <Route path="tasks" element={<TasksPage />} />
+            <Route path="task/:taskId" element={<TaskDetailPage />} />
             <Route path="project/:projectId" element={<ProjectOverviewPage />} />
             <Route path="gitbot" element={<GitBotsPage />} />
             <Route path="ide" element={<IDEIDE />} />

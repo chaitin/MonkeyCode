@@ -1,3 +1,4 @@
+import { BreadcrumbTaskProvider, useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { Fragment } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 import UserSidebar from "@/components/console/nav/user-sidebar"
@@ -25,8 +26,9 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
 
-export default function UserConsolePage() {
+function UserConsoleContent() {
   const location = useLocation()
+  const { taskName } = useBreadcrumbTask() ?? { taskName: null }
 
   const breadcrumbSegmentsMap: Record<
     string,
@@ -57,12 +59,16 @@ export default function UserConsolePage() {
 
   const normalizedPath =
     location.pathname !== "/" ? location.pathname.replace(/\/$/, "") : location.pathname
-  
+
+  // 动态路由的 breadcrumb：/console/task/:taskId（排除 develop）
+  const taskDetailMatch = normalizedPath.match(/^\/console\/task\/(?!develop\/)(.+)$/)
   const breadcrumbSegments =
-    breadcrumbSegmentsMap[normalizedPath] ?? [{ label: "用户控制台" }]
+    breadcrumbSegmentsMap[normalizedPath] ??
+    (taskDetailMatch
+      ? [{ label: "任务", href: "/console/tasks" }, { label: taskName ?? "未知任务名称" }]
+      : [{ label: "用户控制台" }])
 
   return (
-
     <DataProvider>
       <SidebarProvider>
         <UserSidebar />
@@ -139,5 +145,13 @@ export default function UserConsolePage() {
         </SidebarInset>
       </SidebarProvider>
     </DataProvider>
+  )
+}
+
+export default function UserConsolePage() {
+  return (
+    <BreadcrumbTaskProvider>
+      <UserConsoleContent />
+    </BreadcrumbTaskProvider>
   )
 }
