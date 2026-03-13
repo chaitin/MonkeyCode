@@ -151,10 +151,11 @@ export function TaskPreviewPanel({
 
   return (
     <>
-      <div className="flex flex-col h-full min-h-0 overflow-auto p-4">
-        <div className="text-sm font-medium text-foreground mb-3">在线预览</div>
-        <ItemGroup className="gap-3">
-          {(ports && ports.length > 0) ? ports.map((port: DomainVMPort) => (
+      <div className="flex flex-col h-full min-h-0 overflow-auto">
+        <div className="text-sm font-medium text-foreground mb-3 shrink-0">在线预览</div>
+        {(ports && ports.length > 0) ? (
+        <ItemGroup className="gap-4">
+          {ports.map((port: DomainVMPort) => (
             <Item variant="outline" size="sm" key={port.port?.toString()} className="group hover:border-primary/50">
               <ItemContent>
                 <ItemTitle>
@@ -248,8 +249,11 @@ export function TaskPreviewPanel({
                 </DropdownMenu>
               </ItemActions>
             </Item>
-          )) : (
-            <Empty className="border border-dashed">
+          ))}
+        </ItemGroup>
+        ) : (
+          <div className="flex-1 min-h-0 flex">
+            <Empty className="border border-dashed w-full">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <IconAccessPoint className="size-6" />
@@ -259,8 +263,8 @@ export function TaskPreviewPanel({
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
-          )}
-        </ItemGroup>
+          </div>
+        )}
       </div>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
