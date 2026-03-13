@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconAlertCircle, IconCloudOff, IconLoader, IconPlus, IconReload, IconTerminal2, IconX } from "@tabler/icons-react"
+import { IconAlertCircle, IconCloudOff, IconPlus, IconReload, IconTerminal2, IconX } from "@tabler/icons-react"
 import { useEffect, useState } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { toast } from "sonner"
@@ -31,13 +31,11 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
   const [signal, setSignal] = useState<number>(0)
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected")
   const [titles, setTitles] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
   const [sessionToClose, setSessionToClose] = useState<string | null>(null)
 
-  const fetchSessions = async (needLoading = true) => {
+  const fetchSessions = async () => {
     if (!envid) return
-    if (needLoading) setLoading(true)
 
     await apiRequest("v1UsersHostsVmsTerminalsDetail", {}, [envid], (resp) => {
       if (resp.code === 0) {
@@ -46,7 +44,6 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
         setSessions(connections)
       }
     })
-    if (needLoading) setLoading(false)
   }
 
   const handleDeleteSession = async (terminalId: string) => {
@@ -60,7 +57,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
           setCurrentSessionId(remaining[0]?.id || null)
           setSignal((prev) => prev + 1)
         }
-        fetchSessions(false)
+        fetchSessions()
       } else {
         toast.error("关闭终端会话失败: " + resp.message)
       }
@@ -94,12 +91,12 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
 
   useEffect(() => {
     if (!envid || disabled) return
-    fetchSessions(true)
+    fetchSessions()
   }, [envid, disabled])
 
   useEffect(() => {
     if (connectionStatus === "connected") {
-      fetchSessions(false)
+      fetchSessions()
     }
   }, [connectionStatus])
 
@@ -164,60 +161,53 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center border-b bg-muted/50 shrink-0 overflow-x-auto">
+      <div className="flex items-center border-b bg-muted/30 shrink-0 overflow-x-auto px-2 gap-1">
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 rounded-none border-r mx-1 cursor-pointer hover:bg-transparent dark:hover:bg-transparent hover:text-primary"
+          className="size-8 shrink-0 cursor-pointer hover:text-primary"
           onClick={handleNewSession}
           disabled={disabled}
         >
           <IconPlus className="size-4" />
         </Button>
-        <div className="flex items-center gap-0.5 min-w-0 flex-1 overflow-x-auto">
-          {loading && displaySessions.length === 0 ? (
-            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-              <IconLoader className="size-4 animate-spin" />
-              加载中...
-            </div>
-          ) : (
-            displaySessions.map((session) => {
+        <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto py-1.5 divide-x divide-border/50">
+          {displaySessions.map((session) => {
               const sid = session.id || ""
               const isActive = currentSessionId === sid
               return (
                 <div
                   key={sid}
                   className={cn(
-                    "group flex items-center gap-1 px-2 py-2 border-b-2 cursor-pointer shrink-0 min-w-0 max-w-[140px] transition-colors",
+                    "group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 rounded-md cursor-pointer shrink-0 min-w-0 max-w-[140px] transition-all duration-150",
                     isActive
-                      ? "border-primary bg-background text-primary"
-                      : "border-transparent text-muted-foreground hover:text-primary"
+                      ? "bg-background text-primary border border-border/50"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60 border border-transparent"
                   )}
                   onClick={() => handleSelectSession(sid)}
                 >
                   {getTabIcon(sid)}
-                  <span className="truncate text-xs">{getTabTitle(session)}</span>
+                  <span className="truncate text-xs font-medium">{getTabTitle(session)}</span>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 text-foreground hover:text-primary rounded-full cursor-pointer"
+                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-primary rounded cursor-pointer"
                     onClick={(e) => handleCloseTab(e, sid)}
                   >
                     <IconX className="size-3" />
                   </Button>
                 </div>
               )
-            })
-          )}
+            })}
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 mx-1 cursor-pointer hover:bg-transparent dark:hover:bg-transparent hover:text-primary"
-          onClick={() => fetchSessions(true)}
+          className="size-8 shrink-0 cursor-pointer hover:text-primary"
+          onClick={() => fetchSessions()}
           disabled={disabled}
         >
-          <IconReload className={cn("size-4", loading && "animate-spin")} />
+          <IconReload className="size-4" />
         </Button>
       </div>
 
