@@ -239,14 +239,14 @@ export default function NavProject() {
                           <SidebarMenuSubButton
                             key={task.id}
                             size="sm"
-                            isActive={location.search.includes(`taskId=${task.id}`)}
+                            isActive={location.pathname === `/console/task/develop/${task.id}`}
                             asChild
                             className={cn(
                               (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground"
                             )}
                           >
                             <a
-                              href={`/console/task/view?taskId=${task.id}`}
+                              href={`/console/task/develop/${task.id}`}
                               target="_blank"
                               rel="noopener noreferrer"
                             >
@@ -332,14 +332,14 @@ export default function NavProject() {
                           <SidebarMenuSubButton
                             key={task.id}
                             size="sm"
-                            isActive={location.search.includes(`taskId=${task.id}`)}
+                            isActive={location.pathname === `/console/task/develop/${task.id}`}
                             asChild
                             className={cn(
                               (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground"
                             )}
                           >
                             <a
-                              href={`/console/task/view?taskId=${task.id}&projectId=${projectId}`}
+                              href={`/console/task/develop/${task.id}`}
                               target="_blank"
                               rel="noopener noreferrer"
                             >

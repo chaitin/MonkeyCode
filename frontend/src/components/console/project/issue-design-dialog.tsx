@@ -138,7 +138,7 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
         toast.success('方案设计任务已启动')
         onConfirm?.()
         handleOpenChange(false)
-        window.open(`/console/task/view?taskId=${resp.data?.id}`, "_blank")
+        window.open(`/console/task/develop/${resp.data?.id}`, "_blank")
       } else {
         toast.error(resp.message || '任务启动失败')
       }

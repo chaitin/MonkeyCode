@@ -127,7 +127,7 @@ export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTa
                   <ItemTitle
                     className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer"
                     onClick={() =>
-                      window.open(`/console/task/view?taskId=${task.id}&projectId=${projectId}`, "_blank")
+                      window.open(`/console/task/develop/${task.id}`, "_blank")
                     }
                   >
                     {task.summary || stripMarkdown(task.content)}

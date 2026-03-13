@@ -38,7 +38,7 @@ export default function TasksPage() {
       loadingRef.current = false
       setLoading(false)
     }
-    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE }, [], (resp) => {
+    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE, project_id: "00000000-0000-0000-0000-000000000000" }, [], (resp) => {
       if (resp.code === 0) {
         const newTasks = resp.data?.tasks || []
         setTasks(prev => append ? [...prev, ...newTasks] : newTasks)
@@ -103,7 +103,7 @@ export default function TasksPage() {
             <HoverCard>
               <HoverCardTrigger asChild>
                 <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => {
-                  window.open(`/console/task/view?taskId=${task.id}`, "_blank")
+                  window.open(`/console/task/develop/${task.id}`, "_blank")
                 }}>
                   {task.summary || stripMarkdown(task.content)}
                 </ItemTitle>

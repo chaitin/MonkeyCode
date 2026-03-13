@@ -299,7 +299,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       if (resp.code === 0) {
         toast.success('任务启动成功');
         onTaskCreated();
-        window.open(`/console/task/view?taskId=${resp.data?.id}`, "_blank");
+        window.open(`/console/task/develop/${resp.data?.id}`, "_blank");
       } else {
         toast.error(resp.message || "任务启动失败");
       }
