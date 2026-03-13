@@ -38,7 +38,7 @@ export default function TasksPage() {
       loadingRef.current = false
       setLoading(false)
     }
-    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE, project_id: "00000000-0000-0000-0000-000000000000" }, [], (resp) => {
+    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE, quick_start: true }, [], (resp) => {
       if (resp.code === 0) {
         const newTasks = resp.data?.tasks || []
         setTasks(prev => append ? [...prev, ...newTasks] : newTasks)

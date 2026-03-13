@@ -5320,7 +5320,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         next_token?: string;
         /** 分页 */
         page?: number;
+        /** 用于筛选项目相关的任务 */
         project_id?: string;
+        /** 只筛选快速启动的项目无关任务 */
+        quick_start?: boolean;
         /** 每页多少条记录 */
         size?: number;
       },

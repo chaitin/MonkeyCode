@@ -113,14 +113,10 @@ export default function NavProject() {
 
   const fetchUnlinkedTasks = useCallback(() => {
     setLoadingUnlinkedTasks(true)
-    apiRequest("v1UsersTasksList", { page: 1, size: UNLINKED_TASKS_FETCH_SIZE }, [], (resp) => {
+    apiRequest("v1UsersTasksList", { page: 1, size: UNLINKED_TASKS_FETCH_SIZE, quick_start: true }, [], (resp) => {
       if (resp.code === 0) {
         const allTasks = resp.data?.tasks || []
         const unlinked = allTasks
-          .filter((t: DomainProjectTask) => {
-            const pid = t.extra?.project_id
-            return !pid || pid === "00000000-0000-0000-0000-000000000000"
-          })
           .sort((a: DomainProjectTask, b: DomainProjectTask) => (b.created_at || 0) - (a.created_at || 0))
           .slice(0, UNLINKED_TASKS_LIMIT)
         setUnlinkedTasks(unlinked)
