@@ -1,0 +1,18 @@
+{
+  "provider": {
+    "monkeycode-ai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "monkeycode-ai",
+      "options": {
+        "baseURL": "{{.base_url}}"
+      },
+      "models": {
+        "{{.model}}": {
+          "name": "{{.model}}"
+        }
+      }
+    }
+  },
+  "model": "monkeycode-ai/{{.model}}",
+  "instructions": ["/tmp/codingmatrix-project-tpl/.ai-ready/rules/*.md"]
+}

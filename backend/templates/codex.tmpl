@@ -1,0 +1,18 @@
+model = "{{.model}}"
+model_provider = "ct"
+preferred_auth_method = "apikey"
+approval_policy = "untrusted"
+sandbox_mode = "danger-full-access"
+
+[model_providers.ct]
+name = "Azure"
+base_url = "{{.base_url}}"
+env_key = "OPENAI_API_KEY"
+
+[projects."/workspace"]
+trust_level = "trusted"
+
+{{- with .mcpserver}}
+[mcp_servers.gittask]
+url = "{{.}}"
+{{end}}
