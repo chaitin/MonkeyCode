@@ -1,0 +1,32 @@
+{{ define "page" }}
+
+{{/* Add the base header for the generated file */}}
+{{ $pkg := base $.Config.Package }}
+{{ template "header" $ }}
+
+// PageInfo 分页信息
+type PageInfo struct {
+	NextToken   string `json:"next_token,omitempty"`
+	HasNextPage bool   `json:"has_next_page"`
+	TotalCount  int64  `json:"total_count"`
+}
+
+{{/* Loop over all nodes and add the Greet method */}}
+{{ range $n := $.Nodes }}
+    {{ $receiver := $n.Receiver }}
+    func ({{ $receiver }} *{{ $n.QueryName }}) Page(ctx context.Context, page, size int) ([]*{{ $n.Name }}, *PageInfo, error) {
+        cnt, err := {{ $receiver }}.Count(ctx)
+        if err != nil {
+            return nil, nil, err
+        }
+        offset := size * (page - 1)
+        rs, err := {{ $receiver }}.Offset(offset).Limit(size).All(ctx)
+        if err != nil {
+            return nil, nil, err
+        }
+        has := (page * size) < cnt
+        return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+    }
+{{ end }}
+
+{{ end }}

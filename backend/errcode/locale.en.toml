@@ -1,0 +1,163 @@
+[err-unauthorized]
+other = "Unauthorized"
+
+[err-forbidden]
+other = "Forbidden"
+
+[err-bad-request]
+other = "Bad request"
+
+[err-internal-server]
+other = "Internal server error"
+
+[err-permision-denied]
+other = "Permission denied"
+
+[err-not-found]
+other = "Resource not found"
+
+[err-duplicate]
+other = "Duplicate entry"
+
+[err-database-query]
+other = "Database query failed"
+
+[err-database-operation-failed]
+other = "Database operation failed"
+
+[err-http-request-failed]
+other = "HTTP request failed"
+
+[err-file-permision-denied]
+other = "{{.file}} permission denied"
+
+[err-vm-id-required]
+other = "VM ID is required"
+
+[err-vm-not-belong-to-user]
+other = "VM does not belong to user"
+
+[err-host-id-required]
+other = "Host ID is required"
+
+[err-public-host-cannot-renew]
+other = "Public hosts cannot be renewed"
+
+[err-public-host-beyond-limit]
+other = "Number of public hosts beyond limit"
+
+[err-vm-beyond-expire-time]
+other = "Virtual machine expiration time exceeded"
+
+[err-model-id-required]
+other = "Model ID is required"
+
+[err-invalid-parameter]
+other = "Invalid parameter"
+
+[err-invalid-platform]
+other = "Invalid platform"
+
+[err-invalid-token]
+other = "Invalid token"
+
+[err-invalid-collaborarator]
+other = "Invalid collaborator"
+
+[err-update-project-failed]
+other = "Update project failed"
+
+[err-git-operation]
+other = "Git operation failed"
+
+[err-project-git-identity-required]
+other = "Project must be linked to a Git identity first"
+
+[err-repo-already-linked]
+other = "Repository already linked, duplicate binding not allowed"
+
+[err-git-identity-in-use-by-project]
+other = "This Git identity is in use by project(s), cannot delete"
+
+[err-team-member-limit-exceeded]
+other = "Team member limit exceeded"
+
+[err-invalid-password]
+other = "Invalid password"
+
+[err-sms-failed]
+other = "SMS send failed"
+
+[err-identity-already-bound]
+other = "Identity already bound"
+
+[err-invalid-state]
+other = "Invalid state"
+
+[err-not-logged-in]
+other = "Not logged in"
+
+[err-user-blocked]
+other = "User account is blocked"
+
+[err-not-allow-individual]
+other = "Individual users do not have permission to operate"
+
+[err-login-failed]
+other = "Login failed"
+
+[err-invalid-coupon]
+other = "Invalid coupon"
+
+[err-reset-password-failed]
+other = "Reset password failed"
+[err-create-captcha-failed]
+other = "Failed to create captcha"
+
+[err-redeem-captcha-failed]
+other = "Failed to redeem captcha"
+
+[err-public-host-not-found]
+other = "Public host not found"
+
+[err-host-offline]
+other = "Host is offline"
+
+[err-wallet-insufficient]
+other = "Insufficient wallet balance"
+
+[err-account-overdraft]
+other = "Account overdraft"
+
+[err-deposit-failed]
+other = "Deposit failed"
+
+[err-vm-expired]
+other = "Virtual machine expired"
+
+[err-apply-port-failed]
+other = "Failed to apply port"
+
+[err-recycle-port-failed]
+other = "Failed to recycle port"
+
+[err-kb-nil-tree]
+other = "Tree is nil"
+
+[err-kb-empty-path]
+other = "Path is empty"
+
+[err-kb-path-not-found]
+other = "Path not found"
+
+[err-kb-not-file]
+other = "Path is a directory, not a file"
+
+[err-kb-not-dir]
+other = "Path is a file, not a directory"
+
+[err-kb-dir-not-empty]
+other = "Directory is not empty"
+
+[err-kb-already-exists]
+other = "Path already exists with different type"

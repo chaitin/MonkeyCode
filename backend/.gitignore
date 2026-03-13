@@ -1,0 +1,15 @@
+.env
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+dbv2/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+config/server/config.yaml
