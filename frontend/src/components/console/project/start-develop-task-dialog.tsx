@@ -134,7 +134,7 @@ export default function StartDevelopTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>发起对话</DialogTitle>
+          <DialogTitle>启动 AI 任务</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4">
