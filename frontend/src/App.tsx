@@ -28,6 +28,7 @@ import PlaygroundDetailPage from "./pages/playground-detail"
 import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
 import ProjectIssuesPage from "./pages/console/user/project/issues"
+import ProjectOverviewPage from "./pages/console/user/project/overview"
 import ProjectTasksPage from "./pages/console/user/project/tasks"
 import TaskDevelopPage from "./pages/console/user/task/task-dev"
 import TaskViewPage from "./pages/console/user/task/task-view"
@@ -52,6 +53,7 @@ function App() {
             <Route path="project/:projectId/info" element={<ProjectPage />} />
             <Route path="project/:projectId/issues" element={<ProjectIssuesPage />} />
             <Route path="project/:projectId/tasks" element={<ProjectTasksPage />} />
+            <Route path="project/:projectId" element={<ProjectOverviewPage />} />
             <Route path="gitbot" element={<GitBotsPage />} />
             <Route path="ide" element={<IDEIDE />} />
             <Route path="settings" element={<SettingsPage />} />
