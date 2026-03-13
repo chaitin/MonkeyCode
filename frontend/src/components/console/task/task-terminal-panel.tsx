@@ -1,7 +1,6 @@
 import type { DomainTerminal } from "@/api/Api"
 import Terminal from "@/components/common/terminal"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +12,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconAlertCircle, IconLoader, IconPlus, IconReload, IconTerminal2, IconX } from "@tabler/icons-react"
+import { IconAlertCircle, IconCloudOff, IconLoader, IconPlus, IconReload, IconTerminal2, IconX } from "@tabler/icons-react"
 import { useEffect, useState } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { toast } from "sonner"
@@ -104,6 +103,13 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
     }
   }, [connectionStatus])
 
+  useEffect(() => {
+    if (sessions.length > 0 && currentSessionId === null) {
+      setCurrentSessionId(sessions[0].id || null)
+      setSignal((prev) => prev + 1)
+    }
+  }, [sessions])
+
   const displaySessions = [...sessions]
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     displaySessions.unshift({
@@ -135,18 +141,20 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
 
   if (disabled) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/50 shrink-0">
           <IconTerminal2 className="size-4 text-primary" />
           <span className="text-sm font-medium">终端</span>
         </div>
-        <div className="flex-1 flex items-center justify-center">
-          <Empty className="opacity-50">
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Empty className="border border-dashed w-full flex-1 min-h-0">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <IconTerminal2 />
+                <IconCloudOff className="size-6" />
               </EmptyMedia>
-              <EmptyDescription>开发环境不可用</EmptyDescription>
+              <EmptyDescription>
+                开发环境未就绪
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         </div>
@@ -157,7 +165,16 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center border-b bg-muted/50 shrink-0 overflow-x-auto">
-        <div className="flex items-center gap-0.5 min-w-0 flex-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 rounded-none border-r mx-1 cursor-pointer hover:bg-transparent dark:hover:bg-transparent hover:text-primary"
+          onClick={handleNewSession}
+          disabled={disabled}
+        >
+          <IconPlus className="size-4" />
+        </Button>
+        <div className="flex items-center gap-0.5 min-w-0 flex-1 overflow-x-auto">
           {loading && displaySessions.length === 0 ? (
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
               <IconLoader className="size-4 animate-spin" />
@@ -171,10 +188,10 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
                 <div
                   key={sid}
                   className={cn(
-                    "group flex items-center gap-1.5 px-3 py-2 border-b-2 cursor-pointer shrink-0 min-w-0 max-w-[140px] transition-colors",
+                    "group flex items-center gap-1 px-2 py-2 border-b-2 cursor-pointer shrink-0 min-w-0 max-w-[140px] transition-colors",
                     isActive
                       ? "border-primary bg-background text-primary"
-                      : "border-transparent hover:bg-muted/80 text-muted-foreground hover:text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-primary"
                   )}
                   onClick={() => handleSelectSession(sid)}
                 >
@@ -183,7 +200,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
+                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 text-foreground hover:text-primary rounded-full cursor-pointer"
                     onClick={(e) => handleCloseTab(e, sid)}
                   >
                     <IconX className="size-3" />
@@ -193,37 +210,18 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
             })
           )}
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0 rounded-none border-l"
-              onClick={handleNewSession}
-              disabled={disabled}
-            >
-              <IconPlus className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>新建终端</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              onClick={() => fetchSessions(true)}
-              disabled={disabled}
-            >
-              <IconReload className={cn("size-4", loading && "animate-spin")} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>刷新列表</TooltipContent>
-        </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 mx-1 cursor-pointer hover:bg-transparent dark:hover:bg-transparent hover:text-primary"
+          onClick={() => fetchSessions(true)}
+          disabled={disabled}
+        >
+          <IconReload className={cn("size-4", loading && "animate-spin")} />
+        </Button>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 flex flex-col">
         {currentSessionId ? (
           <Terminal
             ws={`/api/v1/users/hosts/vms/${envid}/terminals/connect?terminal_id=${currentSessionId}`}
@@ -234,16 +232,14 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
             onConnectionStatusChanged={setConnectionStatus}
           />
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <Empty className="opacity-50">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <IconTerminal2 />
-                </EmptyMedia>
-                <EmptyDescription>点击 + 创建终端</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </div>
+          <Empty className="w-full flex-1 min-h-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <IconTerminal2 className="size-6" />
+              </EmptyMedia>
+              <EmptyDescription>点击 + 创建终端</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         )}
       </div>
 

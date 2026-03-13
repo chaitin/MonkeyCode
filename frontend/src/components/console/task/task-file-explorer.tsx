@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImper
 import { getFileExtension } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { IconChevronRight, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
+import { IconChevronRight, IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { RepoFileEntryMode, TaskWebSocketManager, type RepoFileChange, type RepoFileStatus, type TaskStreamStatus } from "./ws-manager"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -33,6 +33,7 @@ import "ace-builds/src-noconflict/mode-java"
 import "@/utils/ace-theme"
 import React from "react"
 import { toast } from "sonner"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 
 interface TaskFileExplorerProps {
   className?: string
@@ -469,10 +470,22 @@ export const TaskFileExplorer = ({
 
   if (disabled) {
     return (
-      <div className={cn("flex flex-col h-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30", className)}>
-        <div className="flex flex-col items-center justify-center flex-1 py-16 text-slate-500">
-          <IconFolder className="size-12 mb-3 opacity-50" />
-          <span className="text-sm">无法连接开发环境</span>
+      <div className={cn("flex flex-col h-full min-h-0", className)}>
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-800/50 shrink-0">
+          <IconFolderOpen className="size-4 text-emerald-600" />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">项目文件</span>
+        </div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Empty className="border border-dashed w-full flex-1 min-h-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <IconCloudOff className="size-6" />
+              </EmptyMedia>
+              <EmptyDescription>
+                开发环境未就绪，请先进入开发页面启动任务
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </div>
       </div>
     )

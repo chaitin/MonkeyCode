@@ -3,7 +3,7 @@ import type { RepoFileChange, TaskWebSocketManager } from "./ws-manager"
 import { Badge } from "@/components/ui/badge"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
-import { IconFileDiff, IconLoader, IconReport } from "@tabler/icons-react"
+import { IconCloudOff, IconFileDiff, IconLoader, IconReport } from "@tabler/icons-react"
 import { parseDiff, Diff, Hunk } from "react-diff-view"
 import "react-diff-view/style/index.css"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,7 @@ interface TaskChangesPanelProps {
   fileChanges: string[]
   fileChangesMap: Map<string, RepoFileChange>
   taskManager: TaskWebSocketManager | null
+  disabled?: boolean
 }
 
 function getStatusLabel(status?: string): string {
@@ -31,7 +32,7 @@ function getStatusLabel(status?: string): string {
   }
 }
 
-export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager }: TaskChangesPanelProps) {
+export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, disabled }: TaskChangesPanelProps) {
   const sortedPaths = [...fileChanges].sort((a, b) => a.localeCompare(b))
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [diffContent, setDiffContent] = useState<string>("")
@@ -52,6 +53,26 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager }: T
   }
 
   const diffFiles = diffContent ? parseDiff(diffContent) : []
+
+  if (disabled) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <div className="text-sm font-medium text-foreground mb-3 shrink-0">文件变更</div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Empty className="border border-dashed w-full flex-1 min-h-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <IconCloudOff className="size-6" />
+              </EmptyMedia>
+              <EmptyDescription>
+                开发环境未就绪，无法查看变更
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </div>
+      </div>
+    )
+  }
 
   const renderDiffContent = () => {
     if (!selectedFile) return null
@@ -91,11 +112,11 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager }: T
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className={cn("min-h-0 flex flex-col overflow-hidden p-4", selectedFile ? "h-1/2 border-b" : "flex-1")}>
+      <div className={cn("min-h-0 flex flex-col overflow-hidden", selectedFile ? "h-1/2 border-b" : "flex-1")}>
         <div className="text-sm font-medium text-foreground mb-3 shrink-0">文件变更</div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className={cn("flex-1 min-h-0", sortedPaths.length === 0 ? "flex flex-col" : "overflow-y-auto")}>
           {sortedPaths.length === 0 ? (
-            <Empty className="border border-dashed">
+            <Empty className="border border-dashed w-full flex-1 min-h-0">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <IconFileDiff className="size-6" />

@@ -1,6 +1,7 @@
 import { MessageItem, type MessageType } from "@/components/console/task/message"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { IconDeviceDesktop, IconFile, IconGitBranch, IconSend, IconTerminal2 } from "@tabler/icons-react"
 
@@ -88,6 +89,45 @@ export interface TaskChatSectionProps {
   hasPanel: boolean
   activePanel: PanelType | null
   onTogglePanel: (panel: PanelType) => void
+  panelsDisabled?: boolean
+}
+
+function PanelButton({
+  active,
+  disabled,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean
+  disabled: boolean
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  onClick: () => void
+}) {
+  const button = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", active && "text-primary bg-accent")}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <Icon className="size-3.5" />
+      {label}
+    </Button>
+  )
+  if (disabled) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent>任务已结束，无法查看</TooltipContent>
+      </Tooltip>
+    )
+  }
+  return button
 }
 
 export function TaskChatSection({
@@ -98,6 +138,7 @@ export function TaskChatSection({
   hasPanel,
   activePanel,
   onTogglePanel,
+  panelsDisabled = false,
 }: TaskChatSectionProps) {
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">
@@ -132,42 +173,34 @@ export function TaskChatSection({
             </InputGroupAddon>
           </InputGroup>
           <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "files" && "text-primary bg-accent")}
+            <PanelButton
+              active={activePanel === "files"}
+              disabled={panelsDisabled}
+              icon={IconFile}
+              label="文件"
               onClick={() => onTogglePanel("files")}
-            >
-              <IconFile className="size-3.5" />
-              文件
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "terminal" && "text-primary bg-accent")}
+            />
+            <PanelButton
+              active={activePanel === "terminal"}
+              disabled={panelsDisabled}
+              icon={IconTerminal2}
+              label="终端"
               onClick={() => onTogglePanel("terminal")}
-            >
-              <IconTerminal2 className="size-3.5" />
-              终端
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "changes" && "text-primary bg-accent")}
+            />
+            <PanelButton
+              active={activePanel === "changes"}
+              disabled={panelsDisabled}
+              icon={IconGitBranch}
+              label="修改"
               onClick={() => onTogglePanel("changes")}
-            >
-              <IconGitBranch className="size-3.5" />
-              修改
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "preview" && "text-primary bg-accent")}
+            />
+            <PanelButton
+              active={activePanel === "preview"}
+              disabled={panelsDisabled}
+              icon={IconDeviceDesktop}
+              label="预览"
               onClick={() => onTogglePanel("preview")}
-            >
-              <IconDeviceDesktop className="size-3.5" />
-              预览
-            </Button>
+            />
           </div>
         </div>
       </div>

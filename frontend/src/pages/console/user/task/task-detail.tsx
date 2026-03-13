@@ -1,4 +1,4 @@
-import { type DomainProjectTask } from "@/api/Api"
+import { ConstsTaskStatus, type DomainProjectTask } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
@@ -121,6 +121,8 @@ export default function TaskDetailPage() {
     setActivePanel((prev) => (prev === panel ? null : panel))
   }
 
+  const panelsDisabled = task?.status !== ConstsTaskStatus.TaskStatusProcessing
+
   const chatSection = (
     <TaskChatSection
       inputValue={inputValue}
@@ -130,6 +132,7 @@ export default function TaskDetailPage() {
       hasPanel={hasPanel}
       activePanel={activePanel}
       onTogglePanel={togglePanel}
+      panelsDisabled={panelsDisabled}
     />
   )
 
@@ -151,67 +154,44 @@ export default function TaskDetailPage() {
         <ResizablePanel defaultSize={50} minSize={30} className="min-w-0">
           <div className="h-full overflow-hidden flex flex-col">
             {activePanel === "files" && (
-              <div className="flex-1 min-h-0 flex flex-col p-0">
-                {envid && vmOnline ? (
-                  <TaskFileExplorer
-                    disabled={!vmOnline}
-                    streamStatus={streamStatus}
-                    fileChangesMap={fileChangesMap}
-                    changedPaths={changedPaths}
-                    taskManager={taskManager.current}
-                    onRefresh={fetchFileChanges}
-                    envid={envid}
-                  />
-                ) : (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    {!task ? "加载中..." : "开发环境未就绪，请先进入开发页面启动任务"}
-                  </div>
-                )}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <TaskFileExplorer
+                  disabled={!vmOnline}
+                  streamStatus={streamStatus}
+                  fileChangesMap={fileChangesMap}
+                  changedPaths={changedPaths}
+                  taskManager={taskManager.current}
+                  onRefresh={fetchFileChanges}
+                  envid={envid}
+                />
               </div>
             )}
             {activePanel === "terminal" && (
-              <div className="flex-1 min-h-0 overflow-auto p-0">
-                {envid ? (
-                  <div className="h-full w-full border rounded-md overflow-hidden">
-                    <TaskTerminalPanel envid={envid} disabled={!vmOnline} />
-                  </div>
-                ) : (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    {!task ? "加载中..." : "开发环境未就绪"}
-                  </div>
-                )}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <div className="h-full w-full border rounded-md overflow-hidden">
+                  <TaskTerminalPanel envid={envid} disabled={!vmOnline} />
+                </div>
               </div>
             )}
             {activePanel === "changes" && (
               <div className="flex-1 min-h-0 overflow-hidden">
-                {vmOnline ? (
-                  <TaskChangesPanel
-                    fileChanges={changedPaths}
-                    fileChangesMap={fileChangesMap}
-                    taskManager={taskManager.current}
-                  />
-                ) : (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    {!task ? "加载中..." : "开发环境未就绪，无法查看变更"}
-                  </div>
-                )}
+                <TaskChangesPanel
+                  fileChanges={changedPaths}
+                  fileChangesMap={fileChangesMap}
+                  taskManager={taskManager.current}
+                  disabled={!vmOnline}
+                />
               </div>
             )}
             {activePanel === "preview" && (
               <div className="flex-1 min-h-0 overflow-hidden">
-                {vmOnline ? (
-                  <TaskPreviewPanel
-                    ports={task?.virtualmachine?.ports}
-                    hostId={task?.virtualmachine?.host?.id}
-                    vmId={task?.virtualmachine?.id}
-                    onSuccess={fetchTaskDetail}
-                    disabled={!vmOnline}
-                  />
-                ) : (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    {!task ? "加载中..." : "开发环境未就绪，无法预览"}
-                  </div>
-                )}
+                <TaskPreviewPanel
+                  ports={task?.virtualmachine?.ports}
+                  hostId={task?.virtualmachine?.host?.id}
+                  vmId={task?.virtualmachine?.id}
+                  onSuccess={fetchTaskDetail}
+                  disabled={!vmOnline}
+                />
               </div>
             )}
           </div>

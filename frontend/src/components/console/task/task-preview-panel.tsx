@@ -23,7 +23,7 @@ import { Item, ItemContent, ItemTitle, ItemGroup, ItemActions, ItemDescription }
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconAccessPoint, IconAlertCircle, IconCopy, IconDotsVertical, IconHandStop, IconTrash } from "@tabler/icons-react"
+import { IconAccessPoint, IconAlertCircle, IconCloudOff, IconCopy, IconDotsVertical, IconHandStop, IconTrash } from "@tabler/icons-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -149,6 +149,26 @@ export function TaskPreviewPanel({
     setWhitelistSaving(false)
   }
 
+  if (disabled) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <div className="text-sm font-medium text-foreground mb-3 shrink-0">在线预览</div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <Empty className="border border-dashed w-full flex-1 min-h-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <IconCloudOff className="size-6" />
+              </EmptyMedia>
+              <EmptyDescription>
+                开发环境未就绪，无法预览
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="flex flex-col h-full min-h-0 overflow-auto">
@@ -252,8 +272,8 @@ export function TaskPreviewPanel({
           ))}
         </ItemGroup>
         ) : (
-          <div className="flex-1 min-h-0 flex">
-            <Empty className="border border-dashed w-full">
+          <div className="flex-1 min-h-0 flex flex-col">
+            <Empty className="border border-dashed w-full flex-1 min-h-0">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <IconAccessPoint className="size-6" />
