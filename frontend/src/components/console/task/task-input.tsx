@@ -20,7 +20,7 @@ import { getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShort
 import { apiRequest } from "@/utils/requestUtils";
 import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconSquareRoundedLetterOFilled, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useSettingsDialog } from "@/pages/console/user/page";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { VoiceInputButton } from "./voice-input-button";
@@ -119,7 +119,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { models, images, hosts, identities, user } = useCommonData();
-  const navigate = useNavigate();
+  const { setOpen: setSettingsOpen } = useSettingsDialog();
 
   const modelsWithEconomy = useMemo(() => {
     const economyModel = { 
@@ -539,7 +539,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                             size="sm"
                             onClick={() => {
                               setCodeDropdownOpen(false);
-                              navigate("/console/settings");
+                              setSettingsOpen(true);
                             }}
                           >
                             去设置

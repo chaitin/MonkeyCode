@@ -1,14 +1,6 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   Bot,
   MoreVertical,
 } from "lucide-react"
@@ -142,7 +134,7 @@ export default function Models() {
 
   const loadModels = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Spinner className="size-6" />
@@ -159,7 +151,7 @@ export default function Models() {
 
   const noModels = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <IconAlertHexagon />
@@ -257,26 +249,26 @@ export default function Models() {
   
 
   return (
-    <Card className="w-full shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bot />
-          AI 大模型
-        </CardTitle>
-        <CardDescription>
-          配置 AI 大模型，用于代码生成和分析项目
-        </CardDescription>
-        <CardAction>
-          <AddModel
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            onRefresh={reloadModels}
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
+        <div>
+          <div className="flex items-center gap-2 font-semibold leading-none">
+            <Bot />
+            AI 大模型
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            配置 AI 大模型，用于代码生成和分析项目
+          </p>
+        </div>
+        <AddModel
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onRefresh={reloadModels}
+        />
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         {loadingModels ? loadModels() : models.length === 0 ? noModels() : listModels()}
-      </CardContent>
+      </div>
       <EditModel
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
@@ -317,6 +309,6 @@ export default function Models() {
           </div>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   )
 }

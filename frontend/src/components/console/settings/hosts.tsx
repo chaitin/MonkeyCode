@@ -1,14 +1,6 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -162,7 +154,7 @@ export default function Hosts() {
 
   const loadHosts = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Spinner className="size-6" />
@@ -177,7 +169,7 @@ export default function Hosts() {
 
   const noHosts = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <IconAlertHexagon />
@@ -261,23 +253,23 @@ export default function Hosts() {
 
   return (
     <>
-      <Card className="w-full shadow-none">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive />
-            开发环境宿主机
-          </CardTitle>
-          <CardDescription>
-            用于在宿主机上创建开发环境
-          </CardDescription>
-          <CardAction>
-            <Button variant={"outline"} size="sm" onClick={() => setOpen(true)}>绑定</Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-        {loadingHosts ? loadHosts() : hosts.length === 0 ? noHosts() : listHosts()}
-        </CardContent>
-      </Card>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
+          <div>
+            <div className="flex items-center gap-2 font-semibold leading-none">
+              <HardDrive />
+              开发环境宿主机
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              用于在宿主机上创建开发环境
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>绑定</Button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+          {loadingHosts ? loadHosts() : hosts.length === 0 ? noHosts() : listHosts()}
+        </div>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-3xl">

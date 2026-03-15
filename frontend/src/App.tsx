@@ -4,7 +4,6 @@ import LoginPage from "@/pages/login"
 import WelcomePage from "@/pages/welcome"
 import UserConsolePage from "@/pages/console/user/page"
 import ManagerConsolePage from "@/pages/console/manager/page"
-import SettingsPage from "@/pages/console/user/settings"
 import TasksPage from "@/pages/console/user/tasks"
 import IDEIDE from "@/pages/console/user/ide-ide"
 import GitBotsPage from "@/pages/console/user/git-bots"
@@ -51,7 +50,6 @@ function App() {
             <Route path="project/:projectId" element={<ProjectOverviewPage />} />
             <Route path="gitbot" element={<GitBotsPage />} />
             <Route path="ide" element={<IDEIDE />} />
-            <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/console/terminal" element={<TerminalPage />} />
           <Route path="/console/files" element={<FileManagerPage />} />

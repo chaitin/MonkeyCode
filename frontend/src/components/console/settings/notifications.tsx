@@ -1,13 +1,5 @@
 import { useState, useEffect } from "react"
 import { Bell, CirclePlus, Link2, MoreVertical } from "lucide-react"
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -348,7 +340,7 @@ export default function Notifications() {
   )
 
   const loadingContent = (
-    <Empty className="border border-dashed">
+    <Empty className="min-h-full border border-dashed">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Spinner className="size-6" />
@@ -361,30 +353,45 @@ export default function Notifications() {
   )
 
   return (
-    <Card className="w-full shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bell />
-          消息通知
-        </CardTitle>
-        <CardDescription>
-          配置任务、系统等消息的接收方式，支持钉钉、飞书、企业微信机器人和 Webhook
-        </CardDescription>
-        <CardAction>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openAddDialog}
-            disabled={loadingEventTypes || eventTypes.length === 0}
-          >
-            <CirclePlus className="size-4" />
-            添加接收端
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {loadingChannels ? loadingContent : channels.length > 0 ? listChannels() : null}
-      </CardContent>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
+        <div>
+          <div className="flex items-center gap-2 font-semibold leading-none">
+            <Bell />
+            消息通知
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            配置任务、系统等消息的接收方式，支持钉钉、飞书、企业微信机器人和 Webhook
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={openAddDialog}
+          disabled={loadingEventTypes || eventTypes.length === 0}
+        >
+          <CirclePlus className="size-4" />
+          添加接收端
+        </Button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        {loadingChannels ? (
+          loadingContent
+        ) : channels.length > 0 ? (
+          listChannels()
+        ) : (
+          <Empty className="min-h-full border border-dashed">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Bell className="size-6" />
+              </EmptyMedia>
+              <EmptyDescription>
+                添加接收端以接收任务、系统等消息通知
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+      </div>
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -516,6 +523,6 @@ export default function Notifications() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </div>
   )
 }

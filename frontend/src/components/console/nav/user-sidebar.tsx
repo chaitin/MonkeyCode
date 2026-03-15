@@ -11,12 +11,13 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import NavMain from "./nav-main"
-import { Link } from "react-router-dom"
+import { useSettingsDialog } from "@/pages/console/user/page"
 import { Settings } from "lucide-react"
 
 export default function UserSidebar({ 
   ...props 
 }: React.ComponentProps<typeof Sidebar>) {
+  const { open: settingsOpen, setOpen: setSettingsOpen } = useSettingsDialog()
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
@@ -43,13 +44,11 @@ export default function UserSidebar({
         <SidebarMenuItem>
           <SidebarMenuButton 
             tooltip="配置"
-            isActive={location.pathname === "/console/settings"}
-            asChild
+            isActive={settingsOpen}
+            onClick={() => setSettingsOpen(true)}
           >
-            <Link to="/console/settings">
-              <Settings />
-              <span>配置</span>
-            </Link>
+            <Settings />
+            <span>配置</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

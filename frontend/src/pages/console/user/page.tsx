@@ -1,7 +1,8 @@
 import { BreadcrumbTaskProvider, useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
-import { Fragment } from "react"
+import { createContext, Fragment, useContext, useState } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 import UserSidebar from "@/components/console/nav/user-sidebar"
+import { SettingsDialog } from "@/components/console/settings/settings-dialog"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -26,6 +27,13 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
 
+const SettingsDialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
+export const useSettingsDialog = () => {
+  const ctx = useContext(SettingsDialogContext)
+  if (!ctx) throw new Error("useSettingsDialog must be used within SettingsDialogContext.Provider")
+  return ctx
+}
+
 function UserConsoleContent() {
   const location = useLocation()
   const { taskName } = useBreadcrumbTask() ?? { taskName: null }
@@ -42,9 +50,6 @@ function UserConsoleContent() {
     ],
     "/console/projects": [
       { label: "项目管理", href: "/console/projects" },
-    ],
-    "/console/settings": [
-      { label: "配置", href: "/console/settings" },
     ],
     "/console/vms": [
       { label: "开发环境", href: "/console/vms" },
@@ -68,10 +73,13 @@ function UserConsoleContent() {
       ? [{ label: "任务", href: "/console/tasks" }, { label: taskName ?? "未知任务名称" }]
       : [{ label: "用户控制台" }])
 
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
   return (
     <DataProvider>
-      <SidebarProvider>
-        <UserSidebar />
+      <SettingsDialogContext.Provider value={{ open: settingsOpen, setOpen: setSettingsOpen }}>
+        <SidebarProvider>
+          <UserSidebar />
         <SidebarInset className="h-[calc(100vh-var(--spacing)*4)]">
           <header className="flex h-15 shrink-0 items-center gap-2">
             <div className="flex items-center gap-2 px-4">
@@ -143,7 +151,9 @@ function UserConsoleContent() {
             </div>
           </div>
         </SidebarInset>
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </SidebarProvider>
+      </SettingsDialogContext.Provider>
     </DataProvider>
   )
 }
