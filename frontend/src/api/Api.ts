@@ -866,12 +866,12 @@ export interface DomainProject {
   issues?: DomainProjectIssue[];
   /** 项目名 */
   name?: string;
-  /** 未解决问题数量 */
-  open_issue_count?: number;
   /** 项目平台 */
   platform?: ConstsGitPlatform;
   /** 项目仓库URL */
   repo_url?: string;
+  /** 项目相关的任务 */
+  tasks?: DomainProjectTask[];
   /** 更新时间 */
   updated_at?: number;
   /** 用户信息 */
@@ -5320,7 +5320,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         next_token?: string;
         /** 分页 */
         page?: number;
+        /** 用于筛选项目相关的任务 */
         project_id?: string;
+        /** 只筛选快速启动的项目无关任务 */
+        quick_start?: boolean;
         /** 每页多少条记录 */
         size?: number;
       },

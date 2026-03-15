@@ -72,7 +72,6 @@ const PlaygroundDetailPage = () => {
 
 
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
-  const [thinkingMessage, setThinkingMessage] = React.useState("")
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>('inited')
   const [messages, setMessages] = React.useState<MessageType[]>([])
   const [plan, setPlan] = React.useState<TaskPlan | null>(null)
@@ -93,7 +92,6 @@ const PlaygroundDetailPage = () => {
       setMessages([...state.messages])
       setPlan(state.plan)
       setSending(state.sending)
-      setThinkingMessage(state.thinkingMessage)
     }, true, true)
     taskManager.current = manager
 
@@ -383,7 +381,6 @@ const PlaygroundDetailPage = () => {
                     streamStatus={streamStatus}
                     disabled={true} 
                     sending={sending}
-                    thinkingMessage={thinkingMessage}
                     plan={plan}
                     availableCommands={null}
                     queueSize={0}

@@ -57,7 +57,6 @@ import {
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useCommonData } from "@/components/console/data-provider";
 import { VmRenewDialog } from "@/components/console/vm/vm-renew";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 
 export default function VmsPage() {
@@ -147,7 +146,7 @@ export default function VmsPage() {
 
   const loadVms = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Spinner className="size-6" />
@@ -164,7 +163,7 @@ export default function VmsPage() {
 
   const NoVms = () => {
     return (
-      <Empty className="border h-full">
+      <Empty className="min-h-full border">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Server />
@@ -186,6 +185,21 @@ export default function VmsPage() {
             </Button>
           </div>
         </EmptyContent>
+      </Empty>
+    )
+  }
+
+  const AllOfflineVms = () => {
+    return (
+      <Empty className="min-h-full border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <MonitorCloud />
+          </EmptyMedia>
+          <EmptyDescription>
+            您有 {vms.length} 个离线开发环境，开启「离线开发环境」可查看
+          </EmptyDescription>
+        </EmptyHeader>
       </Empty>
     )
   }
@@ -284,17 +298,18 @@ export default function VmsPage() {
   }
 
   return (
-    <Card className="w-full shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MonitorCloud />
-          开发环境
-        </CardTitle>
-        <CardDescription>
-          用于在宿主机上创建开发环境
-        </CardDescription>
-        <CardAction className="">
-          <DropdownMenu>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
+        <div>
+          <div className="flex items-center gap-2 font-semibold leading-none">
+            <MonitorCloud />
+            开发环境
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            用于在宿主机上创建开发环境
+          </p>
+        </div>
+        <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm">
                 <MoreVertical className="size-4" />
@@ -319,10 +334,9 @@ export default function VmsPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {loadingHosts && !hostsInited ? loadVms() : vms.length === 0 ? <NoVms /> : <VmsList />}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        {loadingHosts && !hostsInited ? loadVms() : vms.length === 0 ? <NoVms /> : showVms.length === 0 ? <AllOfflineVms /> : <VmsList />}
         <CreateVM
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
@@ -358,7 +372,7 @@ export default function VmsPage() {
           vmId={vmToRenew?.id}
           onSuccess={reloadHosts}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

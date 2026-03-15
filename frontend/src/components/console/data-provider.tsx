@@ -1,4 +1,4 @@
-import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
+import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
 import { getImageShortName } from '@/utils/common';
 import { apiRequest } from '@/utils/requestUtils';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
@@ -37,6 +37,11 @@ type CommonData = {
   projects: DomainProject[];
   loadingProjects: boolean;
   reloadProjects: () => void;
+
+  /** 未关联项目的任务（quick_start），用于侧边栏「默认」分组展示 */
+  unlinkedTasks: DomainProjectTask[];
+  loadingUnlinkedTasks: boolean;
+  reloadUnlinkedTasks: () => void;
 };
 
 const DataContext = createContext<CommonData | null>(null);
@@ -66,6 +71,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [projects, setProjects] = useState<DomainProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
 
+  const [unlinkedTasks, setUnlinkedTasks] = useState<DomainProjectTask[]>([]);
+  const [loadingUnlinkedTasks, setLoadingUnlinkedTasks] = useState(true);
 
   const fetchUserInfo = () => {
     apiRequest('v1UsersStatusList', {}, [], (resp) => {
@@ -255,6 +262,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoadingProjects(false)
   }
 
+  const UNLINKED_TASKS_LIMIT = 5
+  const UNLINKED_TASKS_FETCH_SIZE = 50
+
+  const fetchUnlinkedTasks = async () => {
+    setLoadingUnlinkedTasks(true)
+    await apiRequest('v1UsersTasksList', { page: 1, size: UNLINKED_TASKS_FETCH_SIZE, quick_start: true }, [], (resp) => {
+      if (resp.code === 0) {
+        const allTasks = resp.data?.tasks || []
+        const unlinked = allTasks
+          .sort((a: DomainProjectTask, b: DomainProjectTask) => (b.created_at || 0) - (a.created_at || 0))
+          .slice(0, UNLINKED_TASKS_LIMIT)
+        setUnlinkedTasks(unlinked)
+      }
+      setLoadingUnlinkedTasks(false)
+    }, () => setLoadingUnlinkedTasks(false))
+  }
 
   useEffect(() => {
     fetchUserInfo();
@@ -265,6 +288,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchWallet();
     fetchMembers();
     fetchProjects();
+    fetchUnlinkedTasks();
   }, []);
 
   return (
@@ -301,6 +325,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         projects: projects,
         loadingProjects: loadingProjects,
         reloadProjects: fetchProjects,
+
+        unlinkedTasks: unlinkedTasks,
+        loadingUnlinkedTasks: loadingUnlinkedTasks,
+        reloadUnlinkedTasks: fetchUnlinkedTasks,
     }}>
       {children}
     </DataContext.Provider>

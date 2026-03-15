@@ -11,6 +11,8 @@ import { apiRequest } from "@/utils/requestUtils";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useCommonData } from "@/components/console/data-provider";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 24;
@@ -23,6 +25,8 @@ const formatTokens = (tokens?: number) => {
 }
 
 export default function TasksPage() {
+  const navigate = useNavigate()
+  const { reloadProjects, reloadUnlinkedTasks } = useCommonData()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
@@ -38,7 +42,7 @@ export default function TasksPage() {
       loadingRef.current = false
       setLoading(false)
     }
-    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE }, [], (resp) => {
+    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE, quick_start: true }, [], (resp) => {
       if (resp.code === 0) {
         const newTasks = resp.data?.tasks || []
         setTasks(prev => append ? [...prev, ...newTasks] : newTasks)
@@ -93,7 +97,7 @@ export default function TasksPage() {
     <div className="flex flex-col flex-1 items-center">
       <h1 className="text-4xl pt-30 pb-10">MonkeyCode 智能任务</h1>
       <div className="max-w-[800px] w-full py-10">
-        <TaskInput repos={repos} onTaskCreated={() => { setPage(1); setHasMore(true); fetchTasks(1, false); }} />
+        <TaskInput repos={repos} onTaskCreated={() => { setPage(1); setHasMore(true); fetchTasks(1, false); reloadProjects(); reloadUnlinkedTasks(); }} />
       </div>
       <Separator className="my-4"/>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-4 w-full">
@@ -102,9 +106,7 @@ export default function TasksPage() {
           <ItemContent>
             <HoverCard>
               <HoverCardTrigger asChild>
-                <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => {
-                  window.open(`/console/task/view?taskId=${task.id}`, "_blank")
-                }}>
+                <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => navigate(`/console/task/${task.id}`)}>
                   {task.summary || stripMarkdown(task.content)}
                 </ItemTitle>
               </HoverCardTrigger>

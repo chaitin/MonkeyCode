@@ -1,13 +1,11 @@
 import { MessageItem, type MessageType } from "./message"
 import React from "react"
+import { createPortal } from "react-dom"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Button } from "@/components/ui/button"
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
-import { stripMarkdown } from "@/utils/common"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import { IconCircle, IconCircleCheck, IconLoader, IconPlayerStopFilled, IconSparkles, IconSubtask } from "@tabler/icons-react"
+import { IconCircle, IconCircleCheck, IconLoader, IconPlayerStopFilled, IconSubtask } from "@tabler/icons-react"
 import type { AvailableCommands, PlanEntry, RepoFileChange, TaskPlan, TaskStreamStatus, TaskWebSocketManager } from "./ws-manager"
 import { TaskChatInputBox } from "./chat-inputbox"
 import { cn } from "@/lib/utils"
@@ -15,11 +13,12 @@ import { FileChangesDialog } from "./file-changes-dialog"
 import type { ConstsCliName } from "@/api/Api"
 
 interface TaskChatPanelProps {
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>
+  inputPortalTargetRef?: React.RefObject<HTMLDivElement | null>
   messages: MessageType[]
   cli?: ConstsCliName
   streamStatus: TaskStreamStatus
   disabled: boolean
-  thinkingMessage: string
   plan: TaskPlan | null
   availableCommands: AvailableCommands | null
   sending: boolean
@@ -33,11 +32,11 @@ interface TaskChatPanelProps {
   taskManager: TaskWebSocketManager | null
 }
 
-export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingMessage, plan, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
-  const [thinkingOpened, setThinkingOpened] = React.useState(false)
+export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, plan, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
   const [planOpened, setPlanOpened] = React.useState(false)
   const [timeCost, setTimeCost] = React.useState(0)
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null)
+  const internalScrollRef = React.useRef<HTMLDivElement>(null)
+  const scrollContainerRef = externalScrollRef ?? internalScrollRef
   const [showSubmitButton, setShowSubmitButton] = React.useState(false)
   const [fileChangesDialogOpen, setFileChangesDialogOpen] = React.useState(false)
 
@@ -54,14 +53,6 @@ export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingM
     setPlanOpened(plan.entries.some((entry: PlanEntry) => entry.status !== 'completed'))
 
   }, [plan])
-
-  const thinkingSummary = React.useMemo(() => {
-    const textThinkingMesssage = stripMarkdown(thinkingMessage)
-    if (textThinkingMesssage.length <= 200) {
-      return textThinkingMesssage
-    }
-    return textThinkingMesssage.slice(-200)
-  }, [thinkingMessage])
 
   React.useEffect(() => {
     if (streamStatus === 'executing') {
@@ -192,27 +183,7 @@ export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingM
   }
 
   return (
-    <div className="flex flex-col gap-2 h-full w-full">
-      {thinkingSummary && <div className="flex w-full flex-col gap-2 border rounded-md p-2">
-        <div className="flex items-center justify-between">
-          <Label>
-            <IconSparkles className="size-4 text-primary" />
-            思考过程
-          </Label>
-          <Button variant={thinkingOpened ? "secondary" : "ghost"} size="icon-sm" className="size-5" onClick={() => setThinkingOpened(!thinkingOpened)}>
-            {thinkingOpened ? <ChevronsDownUp className="size-4" /> : <ChevronsUpDown className="size-4" />}
-          </Button>
-        </div>
-        {thinkingOpened ? (<div className="w-full">
-          <div className="user-message-markdown text-sm max-h-80 overflow-y-auto opacity-60 text-xs px-2 -mx-2">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{thinkingMessage}</ReactMarkdown>
-          </div>
-        </div>): (<div className="w-full max-w-full overflow-hidden relative h-4">
-            <div className="text-xs text-muted-foreground absolute right-0 min-w-full whitespace-nowrap">
-            {thinkingSummary}
-          </div>
-        </div>)}
-      </div>}
+    <div className={cn("flex flex-col gap-2 w-full", externalScrollRef ? "min-h-full" : "h-full")}>
       {plan && plan.entries.length > 0 && <div className="flex w-full flex-col gap-2 border rounded-md p-2">
         <div className="flex items-center justify-between">
           <Label>
@@ -228,7 +199,11 @@ export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingM
         </div>
       </div>}
 
-      <div ref={scrollContainerRef} className="h-full overflow-y-auto p-2 border rounded-md">
+      <div
+        ref={!externalScrollRef ? internalScrollRef : undefined}
+        className={cn("py-2", !externalScrollRef && "h-full overflow-y-auto")}
+        style={externalScrollRef ? { minHeight: virtualizer.getTotalSize() } : undefined}
+      >
         <div
           style={{
             height: virtualizer.getTotalSize(),
@@ -295,21 +270,42 @@ export const TaskChatPanel = ({ messages, cli, streamStatus, disabled, thinkingM
           setShowSubmitButton(false)
         }}
       />
-      {disabled ? (
-        <div className="flex items-center justify-center w-ful border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
-          开发环境不可用
-        </div>
-      ) : (
-        <TaskChatInputBox 
-          streamStatus={streamStatus}
-          availableCommands={availableCommands}
-          onSend={sendUserInput}
-          sending={sending}
-          queueSize={queueSize}
-          sendResetSession={sendResetSession}
-          sendReloadSession={sendReloadSession}
-        />
-      )}
+      {inputPortalTargetRef
+        ? inputPortalTargetRef.current &&
+          createPortal(
+            disabled ? (
+              <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
+                开发环境不可用
+              </div>
+            ) : (
+              <TaskChatInputBox
+                streamStatus={streamStatus}
+                availableCommands={availableCommands}
+                onSend={sendUserInput}
+                sending={sending}
+                queueSize={queueSize}
+                sendResetSession={sendResetSession}
+                sendReloadSession={sendReloadSession}
+              />
+            ),
+            inputPortalTargetRef.current
+          )
+        : null}
+      {!inputPortalTargetRef && (disabled ? (
+            <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
+              开发环境不可用
+            </div>
+          ) : (
+            <TaskChatInputBox
+              streamStatus={streamStatus}
+              availableCommands={availableCommands}
+              onSend={sendUserInput}
+              sending={sending}
+              queueSize={queueSize}
+              sendResetSession={sendResetSession}
+              sendReloadSession={sendReloadSession}
+            />
+          ))}
 
     </div>
   )

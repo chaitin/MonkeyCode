@@ -2,14 +2,6 @@ import { useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   Item,
   ItemActions,
   ItemContent,
@@ -168,7 +160,7 @@ export default function Identities() {
   }
   const loadIdentities = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Spinner className="size-6" />
@@ -374,16 +366,18 @@ export default function Identities() {
 
 
   return (
-    <Card className="w-full shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <IconPasswordFingerprint />
-          Git 平台身份凭证
-        </CardTitle>
-        <CardDescription>
-          用于在 Git 仓库中提交代码和拉取代码的身份凭证
-        </CardDescription>
-        <CardAction>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
+        <div>
+          <div className="flex items-center gap-2 font-semibold leading-none">
+            <IconPasswordFingerprint />
+            Git 平台身份凭证
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            用于在 Git 仓库中提交代码和拉取代码的身份凭证
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
@@ -431,9 +425,9 @@ export default function Identities() {
             onOpenChange={setIsDialogOpen}
             onRefresh={reloadIdentities}
           />
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         {loadingIdentities ? (
           loadIdentities()
         ) : (
@@ -445,7 +439,7 @@ export default function Identities() {
             {identityItems()}
           </ItemGroup>
         )}
-      </CardContent>
+      </div>
       <EditIdentity
         open={isEditDialogOpen}
         onOpenChange={(open) => {
@@ -456,6 +450,6 @@ export default function Identities() {
         identity={editingIdentity}
         onRefresh={reloadIdentities}
       />
-    </Card>
+    </div>
   )
 }

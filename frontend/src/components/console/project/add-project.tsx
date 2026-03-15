@@ -35,6 +35,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { IconCheck, IconChevronDown, IconGitBranch, IconLoader } from "@tabler/icons-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { useSettingsDialog } from "@/pages/console/user/page"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
@@ -64,6 +65,7 @@ export default function AddProjectDialog({
   const [repoPopoverOpen, setRepoPopoverOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const { setOpen: setSettingsOpen } = useSettingsDialog()
 
   const { identities } = useCommonData()
 
@@ -183,7 +185,7 @@ export default function AddProjectDialog({
           setIdentityRepoOptions([])
           onSuccess?.()
           if (resp.data?.id) {
-            navigate(`/console/project/${resp.data.id}/info/`)
+            navigate(`/console/project/${resp.data.id}`)
           }
         } else {
           toast.error(resp.message || "创建项目失败")
@@ -265,7 +267,7 @@ export default function AddProjectDialog({
                     size="sm"
                     onClick={() => {
                       onOpenChange(false)
-                      navigate("/console/settings")
+                      setSettingsOpen(true)
                     }}
                   >
                     去设置

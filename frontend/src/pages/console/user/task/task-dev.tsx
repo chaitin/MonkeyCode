@@ -29,7 +29,6 @@ export default function TaskDevelopPage() {
   const [ showTerminalPanel, setShowTerminalPanel] = React.useState(false)
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const connectedRef = React.useRef<boolean>(false)
-  const [thinkingMessage, setThinkingMessage] = React.useState("")
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const [renewDialogOpen, setRenewDialogOpen] = React.useState(false)
   const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
@@ -49,6 +48,13 @@ export default function TaskDevelopPage() {
   const [queueSize, setQueueSize] = React.useState(0)
   // 文件详情面板 ref
   const taskDetailPanelRef = React.useRef<TaskDetailPanelRef>(null)
+  const chatScrollRef = React.useRef<HTMLDivElement>(null)
+  const chatInputRef = React.useRef<HTMLDivElement>(null)
+  const [, setChatInputReady] = React.useState(0)
+  const chatInputRefCallback = React.useCallback((el: HTMLDivElement | null) => {
+    (chatInputRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    if (el) setChatInputReady((c) => c + 1)
+  }, [])
   
   // 在线预览对话框状态
   const [portForwardDialogOpen, setPortForwardDialogOpen] = React.useState(false)
@@ -177,7 +183,6 @@ export default function TaskDevelopPage() {
     setStreamStatus(state.status)
     setMessages([...state.messages])
     setSending(state.sending)
-    setThinkingMessage(state.thinkingMessage)
     setQueueSize(state.queueSize)
     // 使用 ref 比较版本号，避免闭包陷阱
     if (state.plan.version !== planVersionRef.current) {
@@ -425,16 +430,18 @@ export default function TaskDevelopPage() {
         </ResizablePanel>}
         {(showTerminalPanel || showFilesPanel) && <ResizableHandle className="invisible hidden sm:block" />}
         <ResizablePanel defaultSize={40} minSize={35} style={{overflow: 'visible'}}>
-          <div className="w-full h-full flex justify-center">
-            <div className="max-w-[800px] w-full">
-              <TaskChatPanel 
+          <div className="w-full h-full flex flex-col min-w-0">
+            <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto flex justify-center">
+              <div className="max-w-[800px] w-full min-h-full">
+                <TaskChatPanel 
+            scrollContainerRef={chatScrollRef}
+            inputPortalTargetRef={chatInputRef}
             messages={messages} 
             cli={task?.cli_name}
             availableCommands={availableCommands}
             streamStatus={streamStatus}
             disabled={task?.virtualmachine?.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline} 
             sending={sending}
-            thinkingMessage={thinkingMessage}
             plan={plan}
             sendUserInput={sendUserInput}
             sendCancelCommand={sendCancelCommand}
@@ -445,6 +452,10 @@ export default function TaskDevelopPage() {
             fileChangesMap={fileChangesMap}
             taskManager={taskManager.current}
             />
+              </div>
+            </div>
+            <div className="shrink-0 w-full flex justify-center">
+              <div ref={chatInputRefCallback} className="max-w-[800px] w-full" />
             </div>
           </div>
         </ResizablePanel>

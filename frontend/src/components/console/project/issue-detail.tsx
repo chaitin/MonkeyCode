@@ -22,6 +22,7 @@ interface ViewIssueDialogProps {
   projectId: string
   project?: DomainProject
   onSuccess?: () => void
+  onTaskCreated?: () => void
 }
 
 export default function ViewIssueDialog({
@@ -31,6 +32,7 @@ export default function ViewIssueDialog({
   projectId,
   project,
   onSuccess,
+  onTaskCreated,
 }: ViewIssueDialogProps) {
   const [loading, setLoading] = useState(false)
   const [issueData, setIssueData] = useState<DomainProjectIssue | undefined>(issue)
@@ -312,7 +314,7 @@ export default function ViewIssueDialog({
 
             <div className="flex flex-row gap-2 border rounded-md px-2 py-1 bg-muted/30">
               <Label className="flex-1">更多操作</Label>
-              <IssueMenu issue={issueData} projectId={projectId} project={project} />
+              <IssueMenu issue={issueData} projectId={projectId} project={project} onTaskCreated={onTaskCreated} />
             </div>
 
           </div>

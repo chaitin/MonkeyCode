@@ -10,6 +10,7 @@ import { selectHost, selectImage, selectModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 interface IssueDevelopDialogProps {
@@ -29,11 +30,12 @@ export default function IssueDevelopDialog({
   project,
   onConfirm
 }: IssueDevelopDialogProps) {
+  const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
-  const { images, models, hosts } = useCommonData()
+  const { images, models, hosts, reloadProjects, reloadUnlinkedTasks } = useCommonData()
 
   const fetchBranches = async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
@@ -141,9 +143,11 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
     }, [], (resp) => {
       if (resp.code === 0) {
         toast.success('开发任务已启动')
+        reloadProjects()
+        reloadUnlinkedTasks()
         onConfirm?.()
         handleOpenChange(false)
-        window.open(`/console/task/view?taskId=${resp.data?.id}`, "_blank")
+        navigate(`/console/task/${resp.data?.id}`)
       } else {
         toast.error(resp.message || '任务启动失败')
       }

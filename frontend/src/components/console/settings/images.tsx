@@ -3,14 +3,6 @@ import Icon from "@/components/common/Icon"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   Item,
   ItemActions,
   ItemContent,
@@ -104,7 +96,7 @@ export default function Images() {
 
   const loadImages = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Spinner className="size-6" />
@@ -121,7 +113,7 @@ export default function Images() {
 
   const noImages = () => {
     return (
-      <Empty className="border border-dashed">
+      <Empty className="min-h-full border border-dashed">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <IconAlertHexagon />
@@ -213,28 +205,26 @@ export default function Images() {
   }
 
   return (
-    <Card className="w-full shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Box />
-          系统镜像
-        </CardTitle>
-        <CardDescription>
-          使用 Docker 镜像，用于构建开发环境
-        </CardDescription>
-        <CardAction>
-          <AddImage
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            onRefresh={reloadImages}
-          />
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-
-      {loadingImages ? loadImages() : images.length === 0 ? noImages() : listImages()}
-
-      </CardContent>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
+        <div>
+          <div className="flex items-center gap-2 font-semibold leading-none">
+            <Box />
+            系统镜像
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            使用 Docker 镜像，用于构建开发环境
+          </p>
+        </div>
+        <AddImage
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onRefresh={reloadImages}
+        />
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        {loadingImages ? loadImages() : images.length === 0 ? noImages() : listImages()}
+      </div>
       <EditImage
         open={isEditDialogOpen}
         onOpenChange={(open) => {
@@ -245,6 +235,6 @@ export default function Images() {
         image={editingImage ? { id: editingImage.id || '', image_name: editingImage.name || '', remark: editingImage.remark || '' } : null}
         onRefresh={reloadImages}
       />
-    </Card>
+    </div>
   )
 }
