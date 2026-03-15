@@ -17,6 +17,7 @@ import { getStatusName } from "@/utils/common"
 interface ProjectOverviewIssuesTabProps {
   projectId: string
   project?: DomainProject
+  onTaskCreated?: () => void
 }
 
 const STATUS_ALL = "__all__"
@@ -36,7 +37,7 @@ const PRIORITY_OPTIONS = [
   { value: "1", label: "低" },
 ]
 
-export default function ProjectOverviewIssuesTab({ projectId, project }: ProjectOverviewIssuesTabProps) {
+export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCreated }: ProjectOverviewIssuesTabProps) {
   const [issues, setIssues] = useState<DomainProjectIssue[]>([])
   const [statusFilter, setStatusFilter] = useState<string>(STATUS_ALL)
   const [priorityFilter, setPriorityFilter] = useState<string>(PRIORITY_ALL)
@@ -122,6 +123,7 @@ export default function ProjectOverviewIssuesTab({ projectId, project }: Project
         projectId={projectId}
         project={project}
         onViewIssue={handleViewIssue}
+        onTaskCreated={onTaskCreated}
       />
       <CreateIssueDialog
         open={isCreateIssueDialogOpen}
@@ -136,6 +138,7 @@ export default function ProjectOverviewIssuesTab({ projectId, project }: Project
         projectId={projectId}
         project={project}
         onSuccess={fetchProjectIssues}
+        onTaskCreated={onTaskCreated}
       />
     </div>
   )

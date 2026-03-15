@@ -11,9 +11,10 @@ interface IssueMenuProps {
   issue?: DomainProjectIssue
   projectId: string
   project?: DomainProject
+  onTaskCreated?: () => void
 }
 
-export default function IssueMenu({ issue, projectId, project }: IssueMenuProps) {
+export default function IssueMenu({ issue, projectId, project, onTaskCreated }: IssueMenuProps) {
   const [designDialogOpen, setDesignDialogOpen] = useState(false)
   const [developDialogOpen, setDevelopDialogOpen] = useState(false)
 
@@ -50,6 +51,7 @@ export default function IssueMenu({ issue, projectId, project }: IssueMenuProps)
         issue={issue}
         projectId={projectId}
         project={project}
+        onConfirm={onTaskCreated}
       />
       <IssueDevelopDialog
         open={developDialogOpen}
@@ -57,6 +59,7 @@ export default function IssueMenu({ issue, projectId, project }: IssueMenuProps)
         issue={issue}
         projectId={projectId}
         project={project}
+        onConfirm={onTaskCreated}
       />
     </>
   )

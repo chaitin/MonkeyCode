@@ -30,9 +30,10 @@ const formatTokens = (tokens?: number) => {
 
 interface ProjectOverviewTasksTabProps {
   projectId: string
+  refreshKey?: number
 }
 
-export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTasksTabProps) {
+export default function ProjectOverviewTasksTab({ projectId, refreshKey }: ProjectOverviewTasksTabProps) {
   const navigate = useNavigate()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [tasksPage, setTasksPage] = useState(1)
@@ -79,7 +80,7 @@ export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTa
       setTasksInitialLoading(true)
       fetchTasks(1, false)
     }
-  }, [projectId, fetchTasks])
+  }, [projectId, refreshKey, fetchTasks])
 
   useEffect(() => {
     const el = loadMoreRef.current

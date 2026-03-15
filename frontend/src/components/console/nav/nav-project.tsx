@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 
 import {
   SidebarGroup,
@@ -22,11 +22,8 @@ import { Label } from "@/components/ui/label"
 import { type DomainProjectTask } from "@/api/Api"
 import { stripMarkdown } from "@/utils/common"
 import { cn } from "@/lib/utils"
-import { apiRequest } from "@/utils/requestUtils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-const UNLINKED_TASKS_LIMIT = 5
-const UNLINKED_TASKS_FETCH_SIZE = 50
 const STORAGE_KEY = "nav-project-expanded"
 const UNLINKED_KEY = "__unlinked__"
 
@@ -48,11 +45,9 @@ export default function NavProject() {
   const location = useLocation()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [startTaskProject, setStartTaskProject] = useState<{ id: string; name?: string } | null>(null)
-  const [unlinkedTasks, setUnlinkedTasks] = useState<DomainProjectTask[]>([])
-  const [loadingUnlinkedTasks, setLoadingUnlinkedTasks] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>(loadExpandedFromStorage)
 
-  const { projects, loadingProjects, reloadProjects } = useCommonData()
+  const { projects, loadingProjects, reloadProjects, unlinkedTasks, loadingUnlinkedTasks, reloadUnlinkedTasks } = useCommonData()
 
   useEffect(() => {
     const stored = loadExpandedFromStorage()
@@ -136,31 +131,13 @@ export default function NavProject() {
     })
   }
 
-  const fetchUnlinkedTasks = useCallback(() => {
-    setLoadingUnlinkedTasks(true)
-    apiRequest("v1UsersTasksList", { page: 1, size: UNLINKED_TASKS_FETCH_SIZE, quick_start: true }, [], (resp) => {
-      if (resp.code === 0) {
-        const allTasks = resp.data?.tasks || []
-        const unlinked = allTasks
-          .sort((a: DomainProjectTask, b: DomainProjectTask) => (b.created_at || 0) - (a.created_at || 0))
-          .slice(0, UNLINKED_TASKS_LIMIT)
-        setUnlinkedTasks(unlinked)
-      }
-      setLoadingUnlinkedTasks(false)
-    }, () => setLoadingUnlinkedTasks(false))
-  }, [])
-
-  useEffect(() => {
-    fetchUnlinkedTasks()
-  }, [fetchUnlinkedTasks])
-
   useEffect(() => {
     const timer = setInterval(() => {
       reloadProjects()
-      fetchUnlinkedTasks()
+      reloadUnlinkedTasks()
     }, 30000)
     return () => clearInterval(timer)
-  }, [reloadProjects, fetchUnlinkedTasks])
+  }, [reloadProjects, reloadUnlinkedTasks])
 
   const isUnlinkedActive = location.pathname === "/console/tasks"
 
@@ -175,11 +152,11 @@ export default function NavProject() {
             className="size-5" 
             onClick={() => {
               reloadProjects()
-              fetchUnlinkedTasks()
+              reloadUnlinkedTasks()
             }}
-            disabled={loadingProjects}
+            disabled={loadingProjects || loadingUnlinkedTasks}
           >
-            <IconReload className={`size-3.5 ${loadingProjects ? 'animate-spin' : ''}`} />
+            <IconReload className={`size-3.5 ${(loadingProjects || loadingUnlinkedTasks) ? 'animate-spin' : ''}`} />
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -204,12 +181,13 @@ export default function NavProject() {
       {startTaskProject && (
         <StartDevelopTaskDialog
           open={!!startTaskProject}
-          onOpenChange={(open) => {
-            if (!open) {
-              setStartTaskProject(null)
-              reloadProjects()
-            }
-          }}
+onOpenChange={(open) => {
+              if (!open) {
+                setStartTaskProject(null)
+                reloadProjects()
+                reloadUnlinkedTasks()
+              }
+            }}
           project={projects.find((p) => p.id === startTaskProject.id)}
         />
       )}
@@ -259,21 +237,21 @@ export default function NavProject() {
                       </Link>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">前往默认</TooltipContent>
+                  <TooltipContent side="right">创建任务</TooltipContent>
                 </Tooltip>
               </div>
               <CollapsibleContent>
                 {unlinkedTasks.length > 0 && (
                   <SidebarMenuSub className="ml-1 mr-0 border-none">
                     <SidebarMenuSubItem className="flex flex-col gap-0.5">
-                      {unlinkedTasks.map((task: DomainProjectTask) => {
+                      {unlinkedTasks.map((task: DomainProjectTask, index) => {
                         const TaskIcon =
                           task.status === "finished" || task.status === "error"
                             ? IconCircleMinus
                             : IconLoader
                         return (
                           <SidebarMenuSubButton
-                            key={task.id}
+                            key={`unlinked-${task.id ?? index}-${index}`}
                             size="sm"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
@@ -355,14 +333,14 @@ export default function NavProject() {
                 <CollapsibleContent>
                   <SidebarMenuSub className="ml-1 mr-0 border-none">
                     <SidebarMenuSubItem className="flex flex-col gap-0.5">
-                      {(project.tasks || []).map((task: DomainProjectTask) => {
+                      {(project.tasks || []).map((task: DomainProjectTask, index) => {
                         const TaskIcon =
                           task.status === "finished" || task.status === "error"
                             ? IconCircleMinus
                             : IconLoader
                         return (
                           <SidebarMenuSubButton
-                            key={task.id}
+                            key={`${projectId}-${task.id ?? index}-${index}`}
                             size="sm"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild

@@ -35,7 +35,7 @@ const ProjectInfo = ({
   const [envDialogOpen, setEnvDialogOpen] = useState(false)
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
   const navigate = useNavigate()
-  const { projects, reloadProjects } = useCommonData()
+  const { projects, reloadProjects, reloadUnlinkedTasks } = useCommonData()
 
   const handleEditProjectName = () => {
     if (!project) return
@@ -206,7 +206,13 @@ const ProjectInfo = ({
 
       <StartDevelopTaskDialog
         open={conversationDialogOpen}
-        onOpenChange={setConversationDialogOpen}
+        onOpenChange={(open) => {
+          setConversationDialogOpen(open)
+          if (!open) {
+            reloadProjects()
+            reloadUnlinkedTasks()
+          }
+        }}
         project={project}
       />
     </>

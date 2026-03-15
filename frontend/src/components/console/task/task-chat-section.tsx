@@ -48,7 +48,7 @@ const MOCK_MESSAGES: MessageType[] = [
     },
   },
   {
-    id: "2",
+    id: "6",
     time: Date.now() - 270000,
     role: "agent",
     type: "agent_message_chunk",
@@ -58,7 +58,7 @@ const MOCK_MESSAGES: MessageType[] = [
     },
   },
   {
-    id: "2",
+    id: "7",
     time: Date.now() - 270000,
     role: "agent",
     type: "agent_message_chunk",
@@ -68,7 +68,7 @@ const MOCK_MESSAGES: MessageType[] = [
     },
   },
   {
-    id: "2",
+    id: "8",
     time: Date.now() - 270000,
     role: "agent",
     type: "agent_message_chunk",

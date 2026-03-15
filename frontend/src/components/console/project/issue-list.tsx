@@ -3,7 +3,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { CalendarDays } from "lucide-react";
 import IssueCard from "./issue-card";
 
-export default function ProjectIssueList({ issues, projectId, project, onViewIssue }: { issues: DomainProjectIssue[], projectId: string, project?: DomainProject, onViewIssue: (issue: DomainProjectIssue) => void }) {
+export default function ProjectIssueList({ issues, projectId, project, onViewIssue, onTaskCreated }: { issues: DomainProjectIssue[], projectId: string, project?: DomainProject, onViewIssue: (issue: DomainProjectIssue) => void, onTaskCreated?: () => void }) {
   if (issues.length === 0) {
     return (
       <div className="flex-1 min-h-0 flex flex-col">
@@ -31,6 +31,7 @@ export default function ProjectIssueList({ issues, projectId, project, onViewIss
           projectId={projectId}
           project={project}
           onViewIssue={onViewIssue}
+          onTaskCreated={onTaskCreated}
         />
       ))}
     </div>

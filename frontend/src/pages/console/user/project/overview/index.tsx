@@ -24,6 +24,7 @@ export default function ProjectOverviewPage() {
   projectIdRef.current = projectId
 
   const [project, setProject] = useState<DomainProject | undefined>(undefined)
+  const [tasksRefreshKey, setTasksRefreshKey] = useState(0)
 
   const fetchProject = async () => {
     const requestedId = projectId
@@ -73,10 +74,10 @@ export default function ProjectOverviewPage() {
           <ProjectOverviewInfoTab projectId={projectId} project={project} />
         </TabsContent>
         <TabsContent value="issues" className="mt-2 flex-1 min-h-0 flex flex-col">
-          <ProjectOverviewIssuesTab projectId={projectId} project={project} />
+          <ProjectOverviewIssuesTab projectId={projectId} project={project} onTaskCreated={() => setTasksRefreshKey((k) => k + 1)} />
         </TabsContent>
         <TabsContent value="tasks" className="mt-2 flex-1 min-h-0 flex flex-col">
-          <ProjectOverviewTasksTab projectId={projectId} />
+          <ProjectOverviewTasksTab projectId={projectId} refreshKey={tasksRefreshKey} />
         </TabsContent>
       </Tabs>
     </div>

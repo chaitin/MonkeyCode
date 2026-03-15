@@ -35,7 +35,7 @@ export default function IssueDesignDialog({
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
-  const { images, models, hosts } = useCommonData()
+  const { images, models, hosts, reloadProjects, reloadUnlinkedTasks } = useCommonData()
 
   const fetchBranches = async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
@@ -138,6 +138,8 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
     }, [], (resp) => {
       if (resp.code === 0) {
         toast.success('方案设计任务已启动')
+        reloadProjects()
+        reloadUnlinkedTasks()
         onConfirm?.()
         handleOpenChange(false)
         navigate(`/console/task/${resp.data?.id}`)
