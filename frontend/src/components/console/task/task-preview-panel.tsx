@@ -151,10 +151,12 @@ export function TaskPreviewPanel({
 
   if (disabled) {
     return (
-      <div className="flex flex-col h-full min-h-0">
-        <div className="text-sm font-medium text-foreground mb-3 shrink-0">在线预览</div>
-        <div className="flex-1 min-h-0 flex flex-col">
-          <Empty className="border border-dashed w-full flex-1 min-h-0">
+      <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 min-h-12 border-b bg-muted/50 shrink-0">
+          <span className="text-sm font-medium">在线预览</span>
+        </div>
+        <div className="flex-1 min-h-0 flex flex-col p-2">
+          <Empty className="w-full flex-1 min-h-0">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <IconCloudOff className="size-6" />
@@ -171,10 +173,13 @@ export function TaskPreviewPanel({
 
   return (
     <>
-      <div className="flex flex-col h-full min-h-0 overflow-auto">
-        <div className="text-sm font-medium text-foreground mb-3 shrink-0">在线预览</div>
+      <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
+          <span className="text-sm font-medium">在线预览</span>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto flex flex-col p-2">
         {(ports && ports.length > 0) ? (
-        <ItemGroup className="gap-4">
+        <ItemGroup className="gap-2">
           {ports.map((port: DomainVMPort) => (
             <Item variant="outline" size="sm" key={port.port?.toString()} className="group hover:border-primary/50">
               <ItemContent>
@@ -273,7 +278,7 @@ export function TaskPreviewPanel({
         </ItemGroup>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
-            <Empty className="border border-dashed w-full flex-1 min-h-0">
+            <Empty className="w-full flex-1 min-h-0">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <IconAccessPoint className="size-6" />
@@ -285,6 +290,7 @@ export function TaskPreviewPanel({
             </Empty>
           </div>
         )}
+        </div>
       </div>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

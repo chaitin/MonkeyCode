@@ -139,7 +139,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
   if (disabled) {
     return (
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/50 shrink-0">
+        <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
           <IconTerminal2 className="size-4 text-primary" />
           <span className="text-sm font-medium">终端</span>
         </div>
@@ -163,8 +163,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
     <div className="flex flex-col h-full min-h-0">
       <div
         className={cn(
-          "flex items-center border-b bg-muted/30 shrink-0 overflow-x-auto px-2 gap-1",
-          displaySessions.length === 0 && "min-h-12 py-2"
+          "flex items-center min-h-11 border-b bg-muted/30 shrink-0 overflow-x-auto px-2 py-1 gap-1",
         )}
       >
         <Button
@@ -176,7 +175,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
         >
           <IconPlus className="size-4" />
         </Button>
-        <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto py-1.5 divide-x divide-border/50">
+        <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto divide-x divide-border/50">
           {displaySessions.map((session) => {
               const sid = session.id || ""
               const isActive = currentSessionId === sid

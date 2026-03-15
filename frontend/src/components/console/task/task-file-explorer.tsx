@@ -253,18 +253,26 @@ const DirNode = forwardRef<DirNodeRef, {
   if (!file) {
     if (loading && children.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <IconLoader className="size-6 animate-spin mb-2" />
-          <span className="text-sm">正在加载...</span>
-        </div>
+        <Empty className="w-full flex-1 min-h-0 py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconLoader className="size-6 animate-spin" />
+            </EmptyMedia>
+            <EmptyDescription>正在加载...</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )
     }
     if (children.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <IconFolder className="size-8 mb-2 opacity-50" />
-          <span className="text-sm">当前目录没有文件</span>
-        </div>
+        <Empty className="w-full flex-1 min-h-0 py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconFolder className="size-6 opacity-50" />
+            </EmptyMedia>
+            <EmptyDescription>当前目录没有文件</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )
     }
     return (
@@ -430,32 +438,50 @@ export const TaskFileExplorer = ({
   const renderFileContent = () => {
     if (!currentFile) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-          <IconFileText className="size-12 mb-3 opacity-40" />
-          <span className="text-sm">点击左侧文件查看内容</span>
-        </div>
+        <Empty className="border border-dashed w-full h-full min-h-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconFileText className="size-6 opacity-40" />
+            </EmptyMedia>
+            <EmptyDescription>点击左侧文件查看内容</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )
     }
     if (fileLoading) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-          <IconLoader className="size-8 animate-spin mb-2" />
-          <span className="text-xs">加载中...</span>
-        </div>
+        <Empty className="border border-dashed w-full h-full min-h-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconLoader className="size-6 animate-spin" />
+            </EmptyMedia>
+            <EmptyDescription>加载中...</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )
     }
     if (currentFile.isTooLarge) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-          <span className="text-sm">文件太大不支持预览</span>
-        </div>
+        <Empty className="border border-dashed w-full h-full min-h-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconFileText className="size-6 opacity-50" />
+            </EmptyMedia>
+            <EmptyDescription>文件太大不支持预览</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )
     }
     if (currentFile.isBinary) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-          <span className="text-sm">二进制文件不支持预览</span>
-        </div>
+        <Empty className="border border-dashed w-full h-full min-h-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconFileText className="size-6 opacity-50" />
+            </EmptyMedia>
+            <EmptyDescription>二进制文件不支持预览</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )
     }
     return (
@@ -476,7 +502,7 @@ export const TaskFileExplorer = ({
   if (disabled) {
     return (
       <div className={cn("flex flex-col h-full min-h-0", className)}>
-        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/50 shrink-0">
+        <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
           <span className="text-sm font-medium">项目文件</span>
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
@@ -497,7 +523,7 @@ export const TaskFileExplorer = ({
 
   const fileTreePanel = (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+      <div className="flex items-center justify-between px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">项目文件</span>
         </div>
@@ -520,7 +546,7 @@ export const TaskFileExplorer = ({
           />
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto py-1">
+      <div className="flex-1 min-h-0 overflow-y-auto py-1 flex flex-col">
         <DirNode
           key={refreshKey}
           ref={rootRef}
@@ -540,7 +566,7 @@ export const TaskFileExplorer = ({
 
   const previewPanel = currentFile && (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden bg-background">
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+      <div className="flex items-center justify-between px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <span className="text-sm font-medium truncate flex-1 min-w-0">{currentFile.name}</span>
         <div className="flex items-center gap-0.5">
           <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={reloadFile} disabled={fileLoading}>
@@ -559,11 +585,11 @@ export const TaskFileExplorer = ({
     <div className={cn("flex flex-col h-full min-h-0", className)}>
       {currentFile ? (
         <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
-          <ResizablePanel defaultSize={40} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
+          <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
             {fileTreePanel}
           </ResizablePanel>
           <ResizableHandle withHandle className="shrink-0" />
-          <ResizablePanel defaultSize={60} minSize={30} className="min-h-0 flex flex-col overflow-hidden">
+          <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
             {previewPanel}
           </ResizablePanel>
         </ResizablePanelGroup>
