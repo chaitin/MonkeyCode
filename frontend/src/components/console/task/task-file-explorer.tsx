@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImper
 import { getFileExtension } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { IconChevronRight, IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
+import { IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { RepoFileEntryMode, TaskWebSocketManager, type RepoFileChange, type RepoFileStatus, type TaskStreamStatus } from "./ws-manager"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -34,6 +34,7 @@ import "@/utils/ace-theme"
 import React from "react"
 import { toast } from "sonner"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 
 interface TaskFileExplorerProps {
   className?: string
@@ -66,20 +67,20 @@ const isDirectory = (file: RepoFileStatus) => {
 const getFileIcon = (file: RepoFileStatus, isOpen?: boolean) => {
   switch (file.entry_mode) {
     case RepoFileEntryMode.RepoEntryModeTree:
-      return isOpen ? <IconFolderOpen className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> : <IconFolder className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+      return isOpen ? <IconFolderOpen className="h-3.5 w-3.5 text-primary shrink-0" /> : <IconFolder className="h-3.5 w-3.5 text-primary shrink-0" />
     case RepoFileEntryMode.RepoEntryModeSymlink:
-      return <IconFileSymlink className="size-3.5 text-slate-500 shrink-0" />
+      return <IconFileSymlink className="size-3.5 text-muted-foreground shrink-0" />
     case RepoFileEntryMode.RepoEntryModeExecutable:
-      return <IconFileCode className="size-3.5 text-slate-500 shrink-0" />
+      return <IconFileCode className="size-3.5 text-muted-foreground shrink-0" />
     case RepoFileEntryMode.RepoEntryModeSubmodule:
-      return isOpen ? <IconFolderOpen className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> : <IconFolderRoot className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+      return isOpen ? <IconFolderOpen className="h-3.5 w-3.5 text-primary shrink-0" /> : <IconFolderRoot className="h-3.5 w-3.5 text-primary shrink-0" />
     case RepoFileEntryMode.RepoEntryModeFile:
     case RepoFileEntryMode.RepoEntryModeUnspecified:
     default:
       if (['jpg', 'png', 'gif', 'jpeg', 'webp', 'svg', 'ico'].includes(getFileExtension(file.name))) {
-        return <IconPhoto className="size-3.5 text-slate-500 shrink-0" />
+        return <IconPhoto className="size-3.5 text-muted-foreground shrink-0" />
       }
-      return <IconFileText className="size-3.5 text-slate-500 shrink-0" />
+      return <IconFileText className="size-3.5 text-muted-foreground shrink-0" />
   }
 }
 
@@ -134,32 +135,34 @@ interface DirNodeRef {
 }
 
 // --- FileNode (新样式) ---
-const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh }: {
+const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh, selectedPath }: {
   file: RepoFileStatus
   depth: number
   onFileSelect?: (path: string, file: RepoFileStatus) => void
   fileChangesMap: Map<string, RepoFileChange>
   envid?: string
   onRefresh?: () => void
+  selectedPath?: string | null
 }) => {
   const paddingLeft = depth * 14
   const fileChange = fileChangesMap.get(file.path)
   const hasChanges = !!fileChange?.status
+  const isSelected = selectedPath === file.path
 
   return (
     <div
-      className="flex items-center gap-1 pl-1 pr-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-md cursor-pointer select-none group transition-colors"
+      className="flex items-center gap-1 mx-1.5 my-0.5 pl-1 pr-1.5 py-0.5 hover:bg-muted/60 rounded-md cursor-pointer select-none group transition-colors"
       style={{ paddingLeft: `${paddingLeft + 6}px` }}
     >
       <div className="flex items-center gap-1.5 py-0.5 flex-1 truncate min-w-0" onClick={() => onFileSelect?.(file.path, file)}>
         {getFileIcon(file)}
-        <span className="text-xs truncate flex-1">{file.name}</span>
+        <span className={cn("text-sm truncate flex-1", isSelected && "text-primary")}>{file.name}</span>
       </div>
-      <div className="relative size-4 shrink-0 flex items-center justify-center">
+      <div className="relative size-5 shrink-0 flex items-center justify-center">
         {hasChanges && (
-          <span className="text-[10px] font-medium text-amber-600 group-hover:opacity-0 transition-opacity">●</span>
+          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity">●</span>
         )}
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 flex items-center justify-center">
           <FileActionsDropdown file={file} envid={envid} onRefresh={onRefresh} onSuccess={onRefresh} />
         </div>
       </div>
@@ -178,7 +181,8 @@ const DirNode = forwardRef<DirNodeRef, {
   fileChangesMap: Map<string, RepoFileChange>
   envid?: string
   onRefresh?: () => void
-}>(({ file, depth, onFileSelect, defaultExpanded = false, streamStatus, taskManager, fileChangesMap, envid, onRefresh }, ref) => {
+  selectedPath?: string | null
+}>(({ file, depth, onFileSelect, defaultExpanded = false, streamStatus, taskManager, fileChangesMap, envid, onRefresh, selectedPath }, ref) => {
   const [children, setChildren] = useState<RepoFileStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -187,19 +191,22 @@ const DirNode = forwardRef<DirNodeRef, {
   const fullPath = file?.path || ''
   const paddingLeft = depth * 14
 
-  const fetchChildren = useCallback(async () => {
-    setLoading(true)
-    if (taskManager) {
-      const result = await taskManager.getFileList(fullPath)
-      const filtered = (result || []).filter(f => f.name !== '.git')
-      setChildren(sortFiles(filtered))
-      setLoaded(true)
+  const fetchChildren = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true)
+    try {
+      if (taskManager) {
+        const result = await taskManager.getFileList(fullPath)
+        const filtered = (result || []).filter(f => f.name !== '.git')
+        setChildren(sortFiles(filtered))
+        setLoaded(true)
+      }
+    } finally {
+      if (showLoading) setLoading(false)
     }
-    setLoading(false)
   }, [fullPath, taskManager])
 
   const refresh = useCallback(async () => {
-    await fetchChildren()
+    await fetchChildren(true)
     const refreshPromises: Promise<void>[] = []
     childRefs.current.forEach((childRef) => refreshPromises.push(childRef.refresh()))
     await Promise.all(refreshPromises)
@@ -211,7 +218,7 @@ const DirNode = forwardRef<DirNodeRef, {
       const parentPath = lastSlashIndex > 0 ? p.substring(0, lastSlashIndex) : ''
       return parentPath === fullPath || (fullPath === '' && parentPath === '')
     })
-    if (needsRefresh) await fetchChildren()
+    if (needsRefresh) await fetchChildren(false)
     const childPaths = paths.filter(p => fullPath === '' || fullPath === '/' || p.startsWith(fullPath + '/'))
     if (childPaths.length > 0) {
       const refreshPromises: Promise<void>[] = []
@@ -224,12 +231,12 @@ const DirNode = forwardRef<DirNodeRef, {
 
   const handleToggle = useCallback((open: boolean) => {
     setExpanded(open)
-    if (open && !loaded) fetchChildren()
+    if (open && !loaded) fetchChildren(true)
   }, [loaded, fetchChildren])
 
   useEffect(() => {
     if (defaultExpanded && !loaded && (streamStatus === 'waiting' || streamStatus === 'executing')) {
-      fetchChildren()
+      fetchChildren(true)
     }
   }, [defaultExpanded, loaded, fetchChildren, streamStatus])
 
@@ -246,17 +253,17 @@ const DirNode = forwardRef<DirNodeRef, {
   if (!file) {
     if (loading && children.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <IconLoader className="size-6 animate-spin mb-2" />
-          <span className="text-xs">正在加载...</span>
+          <span className="text-sm">正在加载...</span>
         </div>
       )
     }
     if (children.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <IconFolder className="size-8 mb-2 opacity-50" />
-          <span className="text-xs">当前目录没有文件</span>
+          <span className="text-sm">当前目录没有文件</span>
         </div>
       )
     }
@@ -274,9 +281,10 @@ const DirNode = forwardRef<DirNodeRef, {
               fileChangesMap={fileChangesMap}
               envid={envid}
               onRefresh={onRefresh}
+              selectedPath={selectedPath}
             />
           ) : (
-            <FileNode key={child.name} file={child} depth={depth} onFileSelect={onFileSelect} fileChangesMap={fileChangesMap} envid={envid} onRefresh={onRefresh} />
+            <FileNode key={child.name} file={child} depth={depth} onFileSelect={onFileSelect} fileChangesMap={fileChangesMap} envid={envid} onRefresh={onRefresh} selectedPath={selectedPath} />
           )
         )}
       </div>
@@ -286,19 +294,18 @@ const DirNode = forwardRef<DirNodeRef, {
   return (
     <Collapsible open={expanded} onOpenChange={handleToggle}>
       <div
-        className="flex items-center gap-1 pl-1 pr-1.5 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-md cursor-pointer select-none group transition-colors"
+        className="flex items-center gap-1 mx-1.5 my-0.5 pl-1 pr-1.5 py-0.5 hover:bg-muted/60 rounded-md cursor-pointer select-none group transition-colors"
         style={{ paddingLeft: `${paddingLeft + 6}px` }}
       >
         <CollapsibleTrigger asChild>
           <div className="flex items-center gap-1.5 flex-1 min-w-0 py-0.5">
-            {loading ? <IconLoader className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" /> : getFileIcon(file, expanded)}
-            <span className="text-xs truncate flex-1">{file.name}</span>
-            <IconChevronRight className={cn("size-3 shrink-0 transition-transform text-slate-400", expanded && "rotate-90")} />
+            {loading ? <IconLoader className="h-3.5 w-3.5 animate-spin text-primary shrink-0" /> : getFileIcon(file, expanded)}
+            <span className="text-sm truncate flex-1">{file.name}</span>
           </div>
         </CollapsibleTrigger>
-        <div className="relative w-4 h-4 shrink-0 flex items-center justify-center">
-          {hasChangesInChildren && <span className="text-[10px] font-medium text-amber-600 group-hover:opacity-0 transition-opacity">●</span>}
-          <div className="absolute inset-0">
+        <div className="relative size-5 shrink-0 flex items-center justify-center">
+          {hasChangesInChildren && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity">●</span>}
+          <div className="absolute inset-0 flex items-center justify-center">
             <FileActionsDropdown file={file} envid={envid} onRefresh={async () => { await refresh(); onRefresh?.() }} onSuccess={async () => { await refresh(); onRefresh?.() }} />
           </div>
         </div>
@@ -316,9 +323,10 @@ const DirNode = forwardRef<DirNodeRef, {
               fileChangesMap={fileChangesMap}
               envid={envid}
               onRefresh={onRefresh}
+              selectedPath={selectedPath}
             />
           ) : (
-            <FileNode key={child.name} file={child} depth={depth + 1} onFileSelect={onFileSelect} fileChangesMap={fileChangesMap} envid={envid} onRefresh={onRefresh} />
+            <FileNode key={child.name} file={child} depth={depth + 1} onFileSelect={onFileSelect} fileChangesMap={fileChangesMap} envid={envid} onRefresh={onRefresh} selectedPath={selectedPath} />
           )
         )}
       </CollapsibleContent>
@@ -340,20 +348,24 @@ export const TaskFileExplorer = ({
 }: TaskFileExplorerProps): React.JSX.Element => {
   const rootRef = useRef<DirNodeRef>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [fileList, setFileList] = useState<FileItem[]>([])
-  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
+  const [currentFile, setCurrentFile] = useState<FileItem | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
-
-  const currentFile = useMemo(() => fileList.find((f) => f.path === currentFilePath) || null, [fileList, currentFilePath])
 
   const handleRefresh = useCallback(() => {
     setRefreshKey((prev) => prev + 1)
     onRefresh?.()
   }, [onRefresh])
 
+  const refreshPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (changedPaths && changedPaths.length > 0) {
+    if (!changedPaths || changedPaths.length === 0) return
+    refreshPathsTimeoutRef.current && clearTimeout(refreshPathsTimeoutRef.current)
+    refreshPathsTimeoutRef.current = setTimeout(() => {
       rootRef.current?.refreshPaths(changedPaths)
+      refreshPathsTimeoutRef.current = null
+    }, 300)
+    return () => {
+      refreshPathsTimeoutRef.current && clearTimeout(refreshPathsTimeoutRef.current)
     }
   }, [changedPaths])
 
@@ -370,11 +382,7 @@ export const TaskFileExplorer = ({
 
   const openFile = useCallback(async (path: string) => {
     if (!envid || !path) return null
-    const existing = fileList.find((f) => f.path === path)
-    if (existing) {
-      setCurrentFilePath(path)
-      return existing
-    }
+    if (currentFile?.path === path) return currentFile
     const bytes = await fetchFileContent(path)
     if (!bytes) return null
     const isBinaryByExt = isBinaryExtension(path)
@@ -389,10 +397,9 @@ export const TaskFileExplorer = ({
       isBinary,
       isTooLarge,
     }
-    setFileList((prev) => [...prev, file])
-    setCurrentFilePath(path)
+    setCurrentFile(file)
     return file
-  }, [envid, fileList, fetchFileContent])
+  }, [envid, currentFile, fetchFileContent])
 
   const handleFileSelect = useCallback((path: string, file: RepoFileStatus) => {
     if (file.entry_mode === RepoFileEntryMode.RepoEntryModeTree || file.entry_mode === RepoFileEntryMode.RepoEntryModeSubmodule) return
@@ -400,32 +407,30 @@ export const TaskFileExplorer = ({
   }, [openFile])
 
   const reloadFile = useCallback(async () => {
-    if (!currentFile || !currentFilePath) return
-    const bytes = await fetchFileContent(currentFilePath)
+    if (!currentFile) return
+    const bytes = await fetchFileContent(currentFile.path)
     if (!bytes) return
-    const isBinaryByExt = isBinaryExtension(currentFilePath)
+    const isBinaryByExt = isBinaryExtension(currentFile.path)
     const isTooLarge = bytes.length > MAX_FILE_SIZE
     const { text, isText } = isBinaryByExt ? { text: '', isText: false } : tryDecodeAsText(bytes)
-    setFileList((prev) => prev.map((f) => (f.path === currentFilePath ? {
-      ...f,
+    setCurrentFile({
+      ...currentFile,
       bytes,
       content: isText ? text : null,
       isBinary: isBinaryByExt || !isText,
       isTooLarge,
-    } : f)))
-    toast.success(`文件 ${currentFilePath} 已重新加载`)
-  }, [currentFile, currentFilePath, fetchFileContent])
+    })
+    toast.success(`文件 ${currentFile.path} 已重新加载`)
+  }, [currentFile, fetchFileContent])
 
   const closeFile = useCallback(() => {
-    const newList = fileList.filter((f) => f.path !== currentFilePath)
-    setFileList(newList)
-    setCurrentFilePath(newList.length > 0 ? newList[0].path : null)
-  }, [fileList, currentFilePath])
+    setCurrentFile(null)
+  }, [])
 
   const renderFileContent = () => {
     if (!currentFile) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-slate-400">
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
           <IconFileText className="size-12 mb-3 opacity-40" />
           <span className="text-sm">点击左侧文件查看内容</span>
         </div>
@@ -433,7 +438,7 @@ export const TaskFileExplorer = ({
     }
     if (fileLoading) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-slate-500">
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
           <IconLoader className="size-8 animate-spin mb-2" />
           <span className="text-xs">加载中...</span>
         </div>
@@ -441,14 +446,14 @@ export const TaskFileExplorer = ({
     }
     if (currentFile.isTooLarge) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-slate-500">
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
           <span className="text-sm">文件太大不支持预览</span>
         </div>
       )
     }
     if (currentFile.isBinary) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-slate-500">
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
           <span className="text-sm">二进制文件不支持预览</span>
         </div>
       )
@@ -471,9 +476,8 @@ export const TaskFileExplorer = ({
   if (disabled) {
     return (
       <div className={cn("flex flex-col h-full min-h-0", className)}>
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-800/50 shrink-0">
-          <IconFolderOpen className="size-4 text-emerald-600" />
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">项目文件</span>
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/50 shrink-0">
+          <span className="text-sm font-medium">项目文件</span>
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           <Empty className="border border-dashed w-full flex-1 min-h-0">
@@ -491,62 +495,80 @@ export const TaskFileExplorer = ({
     )
   }
 
-  return (
-    <div className={cn("flex flex-col h-full gap-2", className)}>
-      <div className={cn("flex flex-col min-h-0 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden", currentFile ? "h-1/2" : "flex-1")}>
-        <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2">
-            <IconFolderOpen className="size-4 text-emerald-600" />
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">项目文件</span>
-          </div>
-          <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh} disabled={disabled}>
-                  <IconReload className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>刷新</TooltipContent>
-            </Tooltip>
-            <FileActionsDropdown
-              file={{ entry_mode: RepoFileEntryMode.RepoEntryModeTree, mode: 0, modified_at: 0, name: 'workspace', path: '', size: 0 }}
-              envid={envid}
-              onRefresh={handleRefresh}
-              onSuccess={handleRefresh}
-              alwaysVisible
-              hideDestructive
-            />
-          </div>
+  const fileTreePanel = (
+    <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">项目文件</span>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <DirNode
-            key={refreshKey}
-            ref={rootRef}
-            streamStatus={streamStatus}
-            depth={0}
-            onFileSelect={handleFileSelect}
-            defaultExpanded
-            taskManager={taskManager}
-            fileChangesMap={fileChangesMap}
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={handleRefresh} disabled={disabled}>
+                <IconReload className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>刷新</TooltipContent>
+          </Tooltip>
+          <FileActionsDropdown
+            file={{ entry_mode: RepoFileEntryMode.RepoEntryModeTree, mode: 0, modified_at: 0, name: 'workspace', path: '', size: 0 }}
             envid={envid}
             onRefresh={handleRefresh}
+            onSuccess={handleRefresh}
+            alwaysVisible
+            hideDestructive
           />
         </div>
       </div>
+      <div className="flex-1 min-h-0 overflow-y-auto py-1">
+        <DirNode
+          key={refreshKey}
+          ref={rootRef}
+          streamStatus={streamStatus}
+          depth={0}
+          onFileSelect={handleFileSelect}
+          defaultExpanded
+          taskManager={taskManager}
+          fileChangesMap={fileChangesMap}
+          envid={envid}
+          onRefresh={handleRefresh}
+          selectedPath={currentFile?.path}
+        />
+      </div>
+    </div>
+  )
 
-      {currentFile && (
-        <div className="h-1/2 min-h-0 flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-950">
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-800/50 shrink-0">
-            <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate flex-1">{currentFile.name}</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={reloadFile} disabled={fileLoading}>
-              <IconReload className={cn("size-3", fileLoading && "animate-spin")} />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={closeFile}>
-              <IconX className="size-3" />
-            </Button>
-          </div>
-          <div className="flex-1 min-h-0 overflow-hidden">{renderFileContent()}</div>
+  const previewPanel = currentFile && (
+    <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden bg-background">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+        <span className="text-sm font-medium truncate flex-1 min-w-0">{currentFile.name}</span>
+        <div className="flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={reloadFile} disabled={fileLoading}>
+            <IconReload className={cn("size-4", fileLoading && "animate-spin")} />
+          </Button>
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={closeFile}>
+            <IconX className="size-4" />
+          </Button>
         </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">{renderFileContent()}</div>
+    </div>
+  )
+
+  return (
+    <div className={cn("flex flex-col h-full min-h-0", className)}>
+      {currentFile ? (
+        <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
+          <ResizablePanel defaultSize={40} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
+            {fileTreePanel}
+          </ResizablePanel>
+          <ResizableHandle withHandle className="shrink-0" />
+          <ResizablePanel defaultSize={60} minSize={30} className="min-h-0 flex flex-col overflow-hidden">
+            {previewPanel}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">{fileTreePanel}</div>
       )}
     </div>
   )

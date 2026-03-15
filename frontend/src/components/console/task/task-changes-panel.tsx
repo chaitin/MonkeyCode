@@ -144,7 +144,7 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
     <div className="flex flex-col h-full min-h-0">
       <div className="text-sm font-medium text-foreground mb-3 shrink-0">文件变更</div>
       {selectedFile ? (
-        <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-4">
+        <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
           <ResizablePanel defaultSize={40} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
             {fileListContent}
           </ResizablePanel>

@@ -146,7 +146,7 @@ export default function TaskDetailPage() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <ResizablePanelGroup direction="horizontal" className="gap-4">
+      <ResizablePanelGroup direction="horizontal" className="gap-2">
         <ResizablePanel defaultSize={50} minSize={30} className="min-w-0">
           {chatSection}
         </ResizablePanel>

@@ -81,7 +81,7 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           <Button
             variant="ghost"
             size="icon"
-            className={`h-5 w-5 shrink-0 ${alwaysVisible ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`}
+            className={`shrink-0 leading-none p-0 ${alwaysVisible ? 'size-8' : 'size-5 opacity-0 group-hover:opacity-100 transition-opacity'}`}
             onClick={(e) => e.stopPropagation()}
           >
             <IconDotsVertical className="size-4" />
