@@ -161,7 +161,12 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center border-b bg-muted/30 shrink-0 overflow-x-auto px-2 gap-1">
+      <div
+        className={cn(
+          "flex items-center border-b bg-muted/30 shrink-0 overflow-x-auto px-2 gap-1",
+          displaySessions.length === 0 && "min-h-12 py-2"
+        )}
+      >
         <Button
           variant="ghost"
           size="icon"
