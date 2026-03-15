@@ -80,32 +80,47 @@ function UserConsoleContent() {
       <SettingsDialogContext.Provider value={{ open: settingsOpen, setOpen: setSettingsOpen }}>
         <SidebarProvider>
           <UserSidebar />
-        <SidebarInset className="h-[calc(100vh-var(--spacing)*4)]">
-          <header className="flex h-15 shrink-0 items-center gap-2">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
+        <SidebarInset className="h-[calc(100vh-var(--spacing)*4)] min-w-0 overflow-hidden">
+          <header className="flex h-15 shrink-0 items-center gap-2 overflow-hidden">
+            <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
+              <SidebarTrigger className="-ml-1 shrink-0" />
               <Separator
                 orientation="vertical"
-                className="mr-2 data-[orientation=vertical]:h-4"
+                className="mr-2 shrink-0 data-[orientation=vertical]:h-4"
               />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem className="hidden lg:block">
-                    <BreadcrumbLink href="/console">MonkeyCode AI</BreadcrumbLink>
+              <Breadcrumb className="flex min-w-0 flex-1 overflow-hidden">
+                <BreadcrumbList className="min-w-0 flex-1 flex-nowrap break-normal">
+                  <BreadcrumbItem className="hidden shrink-0 lg:block">
+                    <BreadcrumbLink
+                      href="/console"
+                      className="whitespace-nowrap"
+                    >
+                      MonkeyCode AI
+                    </BreadcrumbLink>
                   </BreadcrumbItem>
                   {breadcrumbSegments.map((segment, index) => {
                     const isLast = index === breadcrumbSegments.length - 1
                     return (
                       <Fragment key={`${segment.label}-${index}`}>
                         {index === 0 && (
-                          <BreadcrumbSeparator className="hidden lg:block" />
+                          <BreadcrumbSeparator className="hidden shrink-0 lg:block" />
                         )}
-                        {index > 0 && <BreadcrumbSeparator />}
-                        <BreadcrumbItem>
+                        {index > 0 && <BreadcrumbSeparator className="shrink-0" />}
+                        <BreadcrumbItem
+                          className={isLast ? "min-w-0 shrink overflow-hidden" : "shrink-0"}
+                        >
                           {isLast ? (
-                            <BreadcrumbPage>{segment.label}</BreadcrumbPage>
+                            <BreadcrumbPage
+                              className="block truncate"
+                              title={segment.label}
+                            >
+                              {segment.label}
+                            </BreadcrumbPage>
                           ) : (
-                            <BreadcrumbLink href={segment.href ?? "#"}>
+                            <BreadcrumbLink
+                              href={segment.href ?? "#"}
+                              className="whitespace-nowrap"
+                            >
                               {segment.label}
                             </BreadcrumbLink>
                           )}
@@ -116,7 +131,7 @@ function UserConsoleContent() {
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
-            <div className="ml-auto flex items-center gap-2 px-4">
+            <div className="ml-auto flex shrink-0 items-center gap-2 px-4">
               <HoverCard openDelay={100} closeDelay={200}>
                 <HoverCardTrigger asChild>
                   <Button className="hidden lg:flex" variant="ghost" size="sm">
