@@ -274,14 +274,14 @@ export default function TaskDetailPage() {
                 active={activePanel === "changes"}
                 disabled={panelsDisabled}
                 icon={IconGitBranch}
-                label="修改"
+                label={`修改${changedPaths.length > 0 ? `(${changedPaths.length})` : ""}`}
                 onClick={() => togglePanel("changes")}
               />
               <PanelButton
                 active={activePanel === "preview"}
                 disabled={panelsDisabled}
                 icon={IconDeviceDesktop}
-                label="预览"
+                label={`预览${(task?.virtualmachine?.ports?.length ?? 0) > 0 ? `(${task?.virtualmachine?.ports?.length})` : ""}`}
                 onClick={() => togglePanel("preview")}
               />
               <PanelButton
