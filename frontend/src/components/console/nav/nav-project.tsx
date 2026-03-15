@@ -103,6 +103,31 @@ export default function NavProject() {
     }
   }, [unlinkedTasks, loadingUnlinkedTasks])
 
+  // 选中项目或默认时自动展开二级菜单并持久化
+  useEffect(() => {
+    if (location.pathname === "/console/tasks") {
+      setExpandedProjects((prev) => {
+        if (prev[UNLINKED_KEY]) return prev
+        const next = { ...prev, [UNLINKED_KEY]: true }
+        saveExpandedToStorage(next)
+        return next
+      })
+      return
+    }
+    const match = location.pathname.match(/^\/console\/project\/([^/]+)/)
+    if (match) {
+      const projectId = match[1]
+      if (projectId && projectId !== UNLINKED_KEY) {
+        setExpandedProjects((prev) => {
+          if (prev[projectId]) return prev
+          const next = { ...prev, [projectId]: true }
+          saveExpandedToStorage(next)
+          return next
+        })
+      }
+    }
+  }, [location.pathname])
+
   const handleProjectOpenChange = (projectId: string, open: boolean) => {
     setExpandedProjects((prev) => {
       const next = { ...prev, [projectId]: open }
@@ -196,7 +221,7 @@ export default function NavProject() {
             <SidebarMenuItem>
               <div
                 className={cn(
-                  "flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
                   isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
               >
@@ -221,11 +246,26 @@ export default function NavProject() {
                 >
                   默认
                 </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-sidebar-accent-foreground hover:text-primary"
+                      asChild
+                    >
+                      <Link to="/console/tasks">
+                        <IconPlus className="size-3.5" />
+                      </Link>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">前往默认</TooltipContent>
+                </Tooltip>
               </div>
               <CollapsibleContent>
                 {unlinkedTasks.length > 0 && (
                   <SidebarMenuSub className="ml-1 mr-0 border-none">
-                    <SidebarMenuSubItem className="flex flex-col">
+                    <SidebarMenuSubItem className="flex flex-col gap-0.5">
                       {unlinkedTasks.map((task: DomainProjectTask) => {
                         const TaskIcon =
                           task.status === "finished" || task.status === "error"
@@ -314,7 +354,7 @@ export default function NavProject() {
                 </div>
                 <CollapsibleContent>
                   <SidebarMenuSub className="ml-1 mr-0 border-none">
-                    <SidebarMenuSubItem className="flex flex-col">
+                    <SidebarMenuSubItem className="flex flex-col gap-0.5">
                       {(project.tasks || []).map((task: DomainProjectTask) => {
                         const TaskIcon =
                           task.status === "finished" || task.status === "error"
