@@ -10,7 +10,6 @@ const PublicTaskPage = () => {
   const [searchParams] = useSearchParams()
   const [taskId] = useState(searchParams.get('id'));
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
-  const [thinkingMessage, setThinkingMessage] = React.useState("")
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>('inited')
   const [messages, setMessages] = React.useState<MessageType[]>([])
   const [plan, setPlan] = React.useState<TaskPlan | null>(null)
@@ -28,7 +27,6 @@ const PublicTaskPage = () => {
       setMessages([...state.messages])
       setPlan(state.plan)
       setSending(state.sending)
-      setThinkingMessage(state.thinkingMessage)
     }, searchParams.get('fast') === null, true)
     taskManager.current = manager
     manager.connect()
@@ -51,7 +49,6 @@ const PublicTaskPage = () => {
             streamStatus={streamStatus}
             disabled={true} 
             sending={sending}
-            thinkingMessage={thinkingMessage}
             plan={plan}
             availableCommands={null}
             queueSize={0}

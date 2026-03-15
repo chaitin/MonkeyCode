@@ -186,3 +186,16 @@
 .font-google-sans-code {
   font-family: 'Google Sans Code';
 }
+
+@keyframes text-flash {
+  0%, 100% {
+    color: var(--foreground);
+  }
+  50% {
+    color: var(--primary);
+  }
+}
+
+.animate-text-flash {
+  animation: text-flash 1.5s ease-in-out infinite;
+}

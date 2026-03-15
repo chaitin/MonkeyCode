@@ -8,12 +8,13 @@ import { TaskWebSocketManager, type AvailableCommands, type RepoFileChange, type
 import { TaskChangesPanel } from "@/components/console/task/task-changes-panel"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import { type PanelType } from "@/components/console/task/task-chat-section"
+import { VmRenewDialog } from "@/components/console/vm/vm-renew"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconDeviceDesktop, IconFile, IconGitBranch, IconTerminal2 } from "@tabler/icons-react"
+import { IconClockHour4, IconDeviceDesktop, IconFile, IconGitBranch, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -25,18 +26,20 @@ function PanelButton({
   icon: Icon,
   label,
   onClick,
+  urgent,
 }: {
   active: boolean
   disabled: boolean
   icon: React.ComponentType<{ className?: string }>
   label: string
   onClick: () => void
+  urgent?: boolean
 }) {
   const button = (
     <Button
       variant="ghost"
       size="sm"
-      className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", active && "text-primary bg-accent")}
+      className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", active && "text-primary bg-accent", urgent && "animate-text-flash")}
       onClick={onClick}
       disabled={disabled}
     >
@@ -73,7 +76,6 @@ export default function TaskDetailPage() {
   const [changedPaths, setChangedPaths] = React.useState<string[]>([])
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>("inited")
   const [messages, setMessages] = React.useState<MessageType[]>([])
-  const [thinkingMessage, setThinkingMessage] = React.useState("")
   const [plan, setPlan] = React.useState<TaskPlan | null>(null)
   const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
   const [sending, setSending] = React.useState(false)
@@ -83,6 +85,13 @@ export default function TaskDetailPage() {
   const planVersionRef = React.useRef<number | undefined>(undefined)
   const availableCommandsVersionRef = React.useRef<number | undefined>(undefined)
   const fileChangesVersionRef = React.useRef<number | undefined>(undefined)
+  const chatScrollRef = React.useRef<HTMLDivElement>(null)
+  const chatInputRef = React.useRef<HTMLDivElement>(null)
+  const [, setInputTargetReady] = React.useState(0)
+  const chatInputRefCallback = React.useCallback((el: HTMLDivElement | null) => {
+    (chatInputRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    if (el) setInputTargetReady((c) => c + 1)
+  }, [])
 
   const vmOnline = task?.virtualmachine?.status === TypesVirtualMachineStatus.VirtualMachineStatusOnline
   const envid = task?.virtualmachine?.id
@@ -96,11 +105,11 @@ export default function TaskDetailPage() {
     setChangedPaths([])
     setStreamStatus("inited")
     setMessages([])
-    setThinkingMessage("")
     setPlan(null)
     setAvailableCommands(null)
     setSending(false)
     setQueueSize(0)
+    setRenewDialogOpen(false)
     planVersionRef.current = undefined
     availableCommandsVersionRef.current = undefined
     fileChangesVersionRef.current = undefined
@@ -138,7 +147,6 @@ export default function TaskDetailPage() {
     setStreamStatus(state.status)
     setMessages([...state.messages])
     setSending(state.sending)
-    setThinkingMessage(state.thinkingMessage)
     setQueueSize(state.queueSize)
     if (state.plan.version !== planVersionRef.current) {
       planVersionRef.current = state.plan.version
@@ -216,19 +224,21 @@ export default function TaskDetailPage() {
   }
 
   const panelsDisabled = task?.status !== ConstsTaskStatus.TaskStatusProcessing
+  const [renewDialogOpen, setRenewDialogOpen] = React.useState(false)
 
   const chatSection = (
-    <div className={cn("flex flex-col h-full min-h-0 gap-4", hasPanel ? "max-w-full" : "")}>
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <div className={cn("h-full", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
+    <div className={cn("flex flex-col h-full min-h-0 gap-2", hasPanel ? "max-w-full" : "")}>
+      <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto min-w-0">
+        <div className={cn("min-h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
           <TaskChatPanel
+            scrollContainerRef={chatScrollRef}
+            inputPortalTargetRef={chatInputRef}
             messages={messages}
             cli={task?.cli_name}
             availableCommands={availableCommands}
             streamStatus={streamStatus}
             disabled={!vmOnline}
             sending={sending}
-            thinkingMessage={thinkingMessage}
             plan={plan}
             sendUserInput={sendUserInput}
             sendCancelCommand={sendCancelCommand}
@@ -241,6 +251,7 @@ export default function TaskDetailPage() {
           />
         </div>
       </div>
+      <div ref={chatInputRefCallback} className={cn("shrink-0 bg-background w-full", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")} />
       <div className="shrink-0 bg-background">
         <div className={cn("flex flex-col gap-2", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
           <div className="flex items-center justify-between gap-2">
@@ -273,6 +284,14 @@ export default function TaskDetailPage() {
                 label="预览"
                 onClick={() => togglePanel("preview")}
               />
+              <PanelButton
+                active={false}
+                disabled={!vmOnline}
+                icon={IconClockHour4}
+                label="续期"
+                onClick={() => setRenewDialogOpen(true)}
+                urgent={vmOnline && (task?.virtualmachine?.life_time_seconds ?? Infinity) < 3600 && (task?.virtualmachine?.life_time_seconds ?? 0) !== 0}
+              />
             </div>
             {(task?.stats?.input_tokens != null || task?.stats?.output_tokens != null || task?.stats?.total_tokens != null) ? (
               <span className="text-xs text-muted-foreground shrink-0">
@@ -294,6 +313,13 @@ export default function TaskDetailPage() {
     return (
       <div className="flex flex-col h-full min-h-0">
         {chatSection}
+        <VmRenewDialog
+          open={renewDialogOpen}
+          onOpenChange={setRenewDialogOpen}
+          hostId={task?.virtualmachine?.host?.id}
+          vmId={task?.virtualmachine?.id}
+          onSuccess={fetchTaskDetail}
+        />
       </div>
     )
   }
@@ -351,6 +377,13 @@ export default function TaskDetailPage() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+      <VmRenewDialog
+        open={renewDialogOpen}
+        onOpenChange={setRenewDialogOpen}
+        hostId={task?.virtualmachine?.host?.id}
+        vmId={task?.virtualmachine?.id}
+        onSuccess={fetchTaskDetail}
+      />
     </div>
   )
 }
