@@ -133,6 +133,7 @@ export default function TaskDetailPage() {
       activePanel={activePanel}
       onTogglePanel={togglePanel}
       panelsDisabled={panelsDisabled}
+      taskStats={task?.stats}
     />
   )
 

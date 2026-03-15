@@ -81,6 +81,13 @@ const MOCK_MESSAGES: MessageType[] = [
 
 export type PanelType = "files" | "terminal" | "changes" | "preview"
 
+const formatTokens = (tokens?: number) => {
+  if (tokens === undefined || tokens === null) return ""
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  return tokens.toString()
+}
+
 export interface TaskChatSectionProps {
   inputValue: string
   onInputChange: (value: string) => void
@@ -90,6 +97,7 @@ export interface TaskChatSectionProps {
   activePanel: PanelType | null
   onTogglePanel: (panel: PanelType) => void
   panelsDisabled?: boolean
+  taskStats?: { input_tokens?: number; output_tokens?: number; total_tokens?: number }
 }
 
 function PanelButton({
@@ -139,6 +147,7 @@ export function TaskChatSection({
   activePanel,
   onTogglePanel,
   panelsDisabled = false,
+  taskStats,
 }: TaskChatSectionProps) {
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">
@@ -172,35 +181,47 @@ export function TaskChatSection({
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
-          <div className="flex items-center gap-0.5">
-            <PanelButton
-              active={activePanel === "files"}
-              disabled={panelsDisabled}
-              icon={IconFile}
-              label="文件"
-              onClick={() => onTogglePanel("files")}
-            />
-            <PanelButton
-              active={activePanel === "terminal"}
-              disabled={panelsDisabled}
-              icon={IconTerminal2}
-              label="终端"
-              onClick={() => onTogglePanel("terminal")}
-            />
-            <PanelButton
-              active={activePanel === "changes"}
-              disabled={panelsDisabled}
-              icon={IconGitBranch}
-              label="修改"
-              onClick={() => onTogglePanel("changes")}
-            />
-            <PanelButton
-              active={activePanel === "preview"}
-              disabled={panelsDisabled}
-              icon={IconDeviceDesktop}
-              label="预览"
-              onClick={() => onTogglePanel("preview")}
-            />
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-0.5">
+              <PanelButton
+                active={activePanel === "files"}
+                disabled={panelsDisabled}
+                icon={IconFile}
+                label="文件"
+                onClick={() => onTogglePanel("files")}
+              />
+              <PanelButton
+                active={activePanel === "terminal"}
+                disabled={panelsDisabled}
+                icon={IconTerminal2}
+                label="终端"
+                onClick={() => onTogglePanel("terminal")}
+              />
+              <PanelButton
+                active={activePanel === "changes"}
+                disabled={panelsDisabled}
+                icon={IconGitBranch}
+                label="修改"
+                onClick={() => onTogglePanel("changes")}
+              />
+              <PanelButton
+                active={activePanel === "preview"}
+                disabled={panelsDisabled}
+                icon={IconDeviceDesktop}
+                label="预览"
+                onClick={() => onTogglePanel("preview")}
+              />
+            </div>
+            {(taskStats?.input_tokens != null || taskStats?.output_tokens != null || taskStats?.total_tokens != null) ? (
+              <span className="text-xs text-muted-foreground shrink-0">
+                <span className="sm:hidden">
+                  {formatTokens(taskStats?.total_tokens ?? ((taskStats?.input_tokens ?? 0) + (taskStats?.output_tokens ?? 0)))} tokens
+                </span>
+                <span className="hidden sm:inline">
+                  输入 {formatTokens(taskStats?.input_tokens) || "-"} / 输出 {formatTokens(taskStats?.output_tokens) || "-"} tokens
+                </span>
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
