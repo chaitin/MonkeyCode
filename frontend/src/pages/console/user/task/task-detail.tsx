@@ -1,32 +1,110 @@
 import { ConstsTaskStatus, type DomainProjectTask } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
+import { TaskChatPanel } from "@/components/console/task/chat-panel"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
-import { TaskWebSocketManager, type RepoFileChange, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager"
+import type { MessageType } from "@/components/console/task/message"
+import { TaskWebSocketManager, type AvailableCommands, type RepoFileChange, type TaskPlan, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager"
 import { TaskChangesPanel } from "@/components/console/task/task-changes-panel"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
-import { TaskChatSection, type PanelType } from "@/components/console/task/task-chat-section"
+import { type PanelType } from "@/components/console/task/task-chat-section"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
+import { IconDeviceDesktop, IconFile, IconGitBranch, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { TypesVirtualMachineStatus } from "@/api/Api"
+
+function PanelButton({
+  active,
+  disabled,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean
+  disabled: boolean
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  onClick: () => void
+}) {
+  const button = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", active && "text-primary bg-accent")}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <Icon className="size-3.5" />
+      {label}
+    </Button>
+  )
+  if (disabled) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent>任务已结束，无法查看</TooltipContent>
+      </Tooltip>
+    )
+  }
+  return button
+}
+
+const formatTokens = (tokens?: number) => {
+  if (tokens === undefined || tokens === null) return ""
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  return tokens.toString()
+}
 
 export default function TaskDetailPage() {
   const { taskId } = useParams()
   const { setTaskName } = useBreadcrumbTask() ?? {}
   const [task, setTask] = React.useState<DomainProjectTask | null>(null)
   const [activePanel, setActivePanel] = React.useState<PanelType | null>(null)
-  const [inputValue, setInputValue] = React.useState("")
   const [fileChangesMap, setFileChangesMap] = React.useState<Map<string, RepoFileChange>>(new Map())
   const [changedPaths, setChangedPaths] = React.useState<string[]>([])
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>("inited")
+  const [messages, setMessages] = React.useState<MessageType[]>([])
+  const [thinkingMessage, setThinkingMessage] = React.useState("")
+  const [plan, setPlan] = React.useState<TaskPlan | null>(null)
+  const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
+  const [sending, setSending] = React.useState(false)
+  const [queueSize, setQueueSize] = React.useState(0)
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const connectedRef = React.useRef(false)
+  const planVersionRef = React.useRef<number | undefined>(undefined)
+  const availableCommandsVersionRef = React.useRef<number | undefined>(undefined)
+  const fileChangesVersionRef = React.useRef<number | undefined>(undefined)
 
   const vmOnline = task?.virtualmachine?.status === TypesVirtualMachineStatus.VirtualMachineStatusOnline
   const envid = task?.virtualmachine?.id
+
+  // taskId 变化时重置所有状态，保证页面可重入
+  React.useEffect(() => {
+    if (!taskId) return
+    setTask(null)
+    setActivePanel(null)
+    setFileChangesMap(new Map())
+    setChangedPaths([])
+    setStreamStatus("inited")
+    setMessages([])
+    setThinkingMessage("")
+    setPlan(null)
+    setAvailableCommands(null)
+    setSending(false)
+    setQueueSize(0)
+    planVersionRef.current = undefined
+    availableCommandsVersionRef.current = undefined
+    fileChangesVersionRef.current = undefined
+  }, [taskId])
 
   const fetchTaskDetail = React.useCallback(async () => {
     if (!taskId) return null
@@ -58,10 +136,39 @@ export default function TaskDetailPage() {
 
   const updateTaskState = (state: TaskWebSocketState) => {
     setStreamStatus(state.status)
-    if (state.fileChanges.version !== undefined) {
+    setMessages([...state.messages])
+    setSending(state.sending)
+    setThinkingMessage(state.thinkingMessage)
+    setQueueSize(state.queueSize)
+    if (state.plan.version !== planVersionRef.current) {
+      planVersionRef.current = state.plan.version
+      setPlan(state.plan)
+    }
+    if (state.availableCommands.version !== availableCommandsVersionRef.current) {
+      availableCommandsVersionRef.current = state.availableCommands.version
+      setAvailableCommands(state.availableCommands)
+    }
+    if (state.fileChanges.version !== fileChangesVersionRef.current) {
+      fileChangesVersionRef.current = state.fileChanges.version
       fetchFileChanges()
     }
   }
+
+  const sendUserInput = React.useCallback((content: string) => {
+    taskManager.current?.sendUserInput(content)
+  }, [])
+
+  const sendCancelCommand = React.useCallback(() => {
+    taskManager.current?.sendCancelCommand()
+  }, [])
+
+  const sendResetSession = React.useCallback(() => {
+    taskManager.current?.sendResetSession()
+  }, [])
+
+  const sendReloadSession = React.useCallback(() => {
+    taskManager.current?.sendReloadSession()
+  }, [])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -103,20 +210,7 @@ export default function TaskDetailPage() {
     }
   }, [vmOnline, streamStatus, fetchFileChanges])
 
-  const handleSend = () => {
-    if (!inputValue.trim()) return
-    // TODO: 发送后续变更请求
-    setInputValue("")
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-    const hasPanel = activePanel !== null
+  const hasPanel = activePanel !== null
   const togglePanel = (panel: PanelType) => {
     setActivePanel((prev) => (prev === panel ? null : panel))
   }
@@ -124,17 +218,76 @@ export default function TaskDetailPage() {
   const panelsDisabled = task?.status !== ConstsTaskStatus.TaskStatusProcessing
 
   const chatSection = (
-    <TaskChatSection
-      inputValue={inputValue}
-      onInputChange={setInputValue}
-      onSend={handleSend}
-      onKeyDown={handleKeyDown}
-      hasPanel={hasPanel}
-      activePanel={activePanel}
-      onTogglePanel={togglePanel}
-      panelsDisabled={panelsDisabled}
-      taskStats={task?.stats}
-    />
+    <div className={cn("flex flex-col h-full min-h-0 gap-4", hasPanel ? "max-w-full" : "")}>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <div className={cn("h-full", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
+          <TaskChatPanel
+            messages={messages}
+            cli={task?.cli_name}
+            availableCommands={availableCommands}
+            streamStatus={streamStatus}
+            disabled={!vmOnline}
+            sending={sending}
+            thinkingMessage={thinkingMessage}
+            plan={plan}
+            sendUserInput={sendUserInput}
+            sendCancelCommand={sendCancelCommand}
+            sendResetSession={sendResetSession}
+            sendReloadSession={sendReloadSession}
+            queueSize={queueSize}
+            fileChanges={changedPaths}
+            fileChangesMap={fileChangesMap}
+            taskManager={taskManager.current}
+          />
+        </div>
+      </div>
+      <div className="shrink-0 bg-background">
+        <div className={cn("flex flex-col gap-2", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-0.5">
+              <PanelButton
+                active={activePanel === "files"}
+                disabled={panelsDisabled}
+                icon={IconFile}
+                label="文件"
+                onClick={() => togglePanel("files")}
+              />
+              <PanelButton
+                active={activePanel === "terminal"}
+                disabled={panelsDisabled}
+                icon={IconTerminal2}
+                label="终端"
+                onClick={() => togglePanel("terminal")}
+              />
+              <PanelButton
+                active={activePanel === "changes"}
+                disabled={panelsDisabled}
+                icon={IconGitBranch}
+                label="修改"
+                onClick={() => togglePanel("changes")}
+              />
+              <PanelButton
+                active={activePanel === "preview"}
+                disabled={panelsDisabled}
+                icon={IconDeviceDesktop}
+                label="预览"
+                onClick={() => togglePanel("preview")}
+              />
+            </div>
+            {(task?.stats?.input_tokens != null || task?.stats?.output_tokens != null || task?.stats?.total_tokens != null) ? (
+              <span className="text-xs text-muted-foreground shrink-0">
+                <span className="sm:hidden">
+                  {formatTokens(task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0)))} tokens
+                </span>
+                <span className="hidden sm:inline">
+                  输入 {formatTokens(task?.stats?.input_tokens) || "-"} / 输出 {formatTokens(task?.stats?.output_tokens) || "-"} tokens
+                </span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 
   if (!hasPanel) {
