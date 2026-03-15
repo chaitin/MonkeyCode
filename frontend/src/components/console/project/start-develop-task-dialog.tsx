@@ -10,6 +10,7 @@ import { selectHost, selectImage, selectModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 interface StartDevelopTaskDialogProps {
@@ -23,6 +24,7 @@ export default function StartDevelopTaskDialog({
   onOpenChange,
   project
 }: StartDevelopTaskDialogProps) {
+  const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
@@ -118,7 +120,7 @@ export default function StartDevelopTaskDialog({
       if (resp.code === 0) {
         toast.success('对话任务已启动')
         onOpenChange(false)
-        window.open(`/console/task/develop/${resp.data?.id}`, "_blank")
+        navigate(`/console/task/${resp.data?.id}`)
       } else {
         toast.error(resp.message || '任务启动失败')
       }

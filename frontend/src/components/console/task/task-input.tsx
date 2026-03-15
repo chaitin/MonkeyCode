@@ -20,6 +20,7 @@ import { getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShort
 import { apiRequest } from "@/utils/requestUtils";
 import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconSquareRoundedLetterOFilled, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
@@ -84,6 +85,7 @@ interface TaskInputProps {
 }
 
 export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
+  const navigate = useNavigate()
   // 输入相关状态
   const [taskContent, setTaskContent] = useState<string>("");
   const [taskType, setTaskType] = useState<ConstsTaskType>(ConstsTaskType.TaskTypeDevelop);
@@ -299,7 +301,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       if (resp.code === 0) {
         toast.success('任务启动成功');
         onTaskCreated();
-        window.open(`/console/task/develop/${resp.data?.id}`, "_blank");
+        navigate(`/console/task/${resp.data?.id}`);
       } else {
         toast.error(resp.message || "任务启动失败");
       }

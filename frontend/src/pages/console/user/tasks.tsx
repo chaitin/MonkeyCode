@@ -11,6 +11,7 @@ import { apiRequest } from "@/utils/requestUtils";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 24;
@@ -23,6 +24,7 @@ const formatTokens = (tokens?: number) => {
 }
 
 export default function TasksPage() {
+  const navigate = useNavigate()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
@@ -102,9 +104,7 @@ export default function TasksPage() {
           <ItemContent>
             <HoverCard>
               <HoverCardTrigger asChild>
-                <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => {
-                  window.open(`/console/task/develop/${task.id}`, "_blank")
-                }}>
+                <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => navigate(`/console/task/${task.id}`)}>
                   {task.summary || stripMarkdown(task.content)}
                 </ItemTitle>
               </HoverCardTrigger>

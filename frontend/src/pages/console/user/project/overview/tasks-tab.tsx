@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { type DomainProjectTask } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
@@ -32,6 +33,7 @@ interface ProjectOverviewTasksTabProps {
 }
 
 export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTasksTabProps) {
+  const navigate = useNavigate()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [tasksPage, setTasksPage] = useState(1)
   const [tasksHasMore, setTasksHasMore] = useState(true)
@@ -126,9 +128,7 @@ export default function ProjectOverviewTasksTab({ projectId }: ProjectOverviewTa
                 <HoverCardTrigger asChild>
                   <ItemTitle
                     className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer"
-                    onClick={() =>
-                      window.open(`/console/task/develop/${task.id}`, "_blank")
-                    }
+                    onClick={() => navigate(`/console/task/${task.id}`)}
                   >
                     {task.summary || stripMarkdown(task.content)}
                   </ItemTitle>

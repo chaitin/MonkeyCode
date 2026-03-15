@@ -235,17 +235,13 @@ export default function NavProject() {
                           <SidebarMenuSubButton
                             key={task.id}
                             size="sm"
-                            isActive={location.pathname === `/console/task/develop/${task.id}`}
+                            isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className={cn(
                               (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground"
                             )}
                           >
-                            <a
-                              href={`/console/task/develop/${task.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
+                            <Link to={`/console/task/${task.id}`}>
                               <TaskIcon
                                 className={cn(
                                   "size-3.5 shrink-0",
@@ -253,7 +249,7 @@ export default function NavProject() {
                                 )}
                               />
                               <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                            </a>
+                            </Link>
                           </SidebarMenuSubButton>
                         )
                       })}
@@ -328,17 +324,13 @@ export default function NavProject() {
                           <SidebarMenuSubButton
                             key={task.id}
                             size="sm"
-                            isActive={location.pathname === `/console/task/develop/${task.id}`}
+                            isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className={cn(
                               (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground"
                             )}
                           >
-                            <a
-                              href={`/console/task/develop/${task.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
+                            <Link to={`/console/task/${task.id}`}>
                               <TaskIcon
                                 className={cn(
                                   "size-3.5 shrink-0",
@@ -346,7 +338,7 @@ export default function NavProject() {
                                 )}
                               />
                               <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                            </a>
+                            </Link>
                           </SidebarMenuSubButton>
                         )
                       })}

@@ -10,6 +10,7 @@ import { selectHost, selectImage, selectModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
 interface IssueDevelopDialogProps {
@@ -29,6 +30,7 @@ export default function IssueDevelopDialog({
   project,
   onConfirm
 }: IssueDevelopDialogProps) {
+  const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
@@ -143,7 +145,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
         toast.success('开发任务已启动')
         onConfirm?.()
         handleOpenChange(false)
-        window.open(`/console/task/develop/${resp.data?.id}`, "_blank")
+        navigate(`/console/task/${resp.data?.id}`)
       } else {
         toast.error(resp.message || '任务启动失败')
       }
