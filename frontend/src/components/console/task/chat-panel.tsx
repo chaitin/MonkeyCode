@@ -7,6 +7,77 @@ import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { IconCircle, IconCircleCheck, IconLoader, IconPlayerStopFilled, IconSubtask } from "@tabler/icons-react"
 import type { AvailableCommands, PlanEntry, RepoFileChange, TaskPlan, TaskStreamStatus, TaskWebSocketManager } from "./ws-manager"
+
+export interface PlanStepsBlockProps {
+  plan: TaskPlan
+  streamStatus: TaskStreamStatus
+}
+
+export function PlanStepsBlock({ plan, streamStatus }: PlanStepsBlockProps) {
+  const [planOpened, setPlanOpened] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!plan) return
+    setPlanOpened(plan.entries.some((entry: PlanEntry) => entry.status !== "completed"))
+  }, [plan])
+
+  if (!plan || plan.entries.length === 0) return null
+
+  const renderPlan = () => {
+    if (planOpened) {
+      return plan.entries.map((entry: PlanEntry, index: number) => (
+        <div key={index} className="flex items-center gap-2">
+          {entry.status === "in_progress" && streamStatus === "executing" ? (
+            <IconLoader className="min-w-3 size-3 animate-spin" />
+          ) : entry.status === "completed" ? (
+            <IconCircleCheck className="min-w-3 size-3 text-primary" />
+          ) : (
+            <IconCircle className="min-w-3 size-3 text-muted-foreground" />
+          )}
+          <div
+            className={cn(
+              "line-clamp-1 text-xs",
+              entry.status === "completed" ? "text-muted-foreground" : "",
+              entry.status === "in_progress" && streamStatus === "executing" ? "text-primary" : ""
+            )}
+          >
+            {entry.content}
+          </div>
+        </div>
+      ))
+    } else {
+      const firstInProgress = plan.entries.find((entry: PlanEntry) => entry.status === "in_progress")
+      if (!firstInProgress || streamStatus !== "executing") return null
+      return (
+        <div className="flex items-center gap-2">
+          {firstInProgress.status === "in_progress" ? (
+            <IconLoader className="min-w-3 size-3 animate-spin" />
+          ) : firstInProgress.status === "completed" ? (
+            <IconCircleCheck className="min-w-3 size-3 text-primary" />
+          ) : (
+            <IconCircle className="min-w-3 size-3 text-muted-foreground" />
+          )}
+          <div className="line-clamp-1 text-xs text-primary">{firstInProgress.content}</div>
+        </div>
+      )
+    }
+  }
+
+  return (
+    <div className="flex w-full flex-col gap-2 border rounded-md p-2 shrink-0">
+      <div className="flex items-center justify-between">
+        <Label>
+          <IconSubtask className="size-4 text-primary" />
+          执行步骤 ({plan.entries.filter((entry: PlanEntry) => entry.status === "completed").length}/{plan.entries.length})
+        </Label>
+        <Button variant={planOpened ? "secondary" : "ghost"} size="icon-sm" className="size-5" onClick={() => setPlanOpened(!planOpened)}>
+          {planOpened ? <ChevronsDownUp className="size-4" /> : <ChevronsUpDown className="size-4" />}
+        </Button>
+      </div>
+      <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">{renderPlan()}</div>
+    </div>
+  )
+}
 import { TaskChatInputBox } from "./chat-inputbox"
 import { cn } from "@/lib/utils"
 import { FileChangesDialog } from "./file-changes-dialog"
@@ -20,6 +91,8 @@ interface TaskChatPanelProps {
   streamStatus: TaskStreamStatus
   disabled: boolean
   plan: TaskPlan | null
+  /** 当为 'sticky' 时，执行步骤由父组件渲染并固定在顶部，本组件不渲染 */
+  planPosition?: "inline" | "sticky"
   availableCommands: AvailableCommands | null
   sending: boolean
   queueSize: number
@@ -32,8 +105,7 @@ interface TaskChatPanelProps {
   taskManager: TaskWebSocketManager | null
 }
 
-export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, plan, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
-  const [planOpened, setPlanOpened] = React.useState(false)
+export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, plan, planPosition = "inline", availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
   const [timeCost, setTimeCost] = React.useState(0)
   const internalScrollRef = React.useRef<HTMLDivElement>(null)
   const scrollContainerRef = externalScrollRef ?? internalScrollRef
@@ -42,17 +114,8 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
 
 
   React.useEffect(() => {
-    setShowSubmitButton(streamStatus === 'waiting')
+    setShowSubmitButton(streamStatus === "waiting")
   }, [streamStatus])
-
-  React.useEffect(() => {
-    if (!plan) {
-      return
-    }
-    
-    setPlanOpened(plan.entries.some((entry: PlanEntry) => entry.status !== 'completed'))
-
-  }, [plan])
 
   React.useEffect(() => {
     if (streamStatus === 'executing') {
@@ -139,65 +202,11 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
     }
   }
 
-  const renderPlan = () => {
-    if (!plan || plan.entries.length === 0) {
-      return null
-    }
-    if (planOpened) {
-      return plan.entries.map((entry: PlanEntry, index: number) => (
-        <div key={index} className="flex items-center gap-2">
-          {entry.status === 'in_progress' && streamStatus === 'executing' ? (
-            <IconLoader className="min-w-3 size-3 animate-spin" />
-          ) : (
-            entry.status === 'completed' ? (
-              <IconCircleCheck className="min-w-3 size-3 text-primary" />
-            ) : (
-              <IconCircle className="min-w-3 size-3 text-muted-foreground" />
-            )
-          )}
-          <div className={cn("line-clamp-1 text-xs", entry.status === 'completed' ? 'text-muted-foreground' : '', (entry.status === 'in_progress' && streamStatus === 'executing') ? 'text-primary' : '')}>
-            {entry.content}
-          </div>
-        </div>
-      ))
-    } else {
-      const firstInProgress = plan.entries.find((entry: PlanEntry) => entry.status === 'in_progress')
-      if (!firstInProgress || streamStatus !== 'executing') {
-        return null
-      }
-      return  <div className="flex items-center gap-2">
-        {firstInProgress.status === 'in_progress' ? (
-          <IconLoader className="min-w-3 size-3 animate-spin" />
-        ) : (
-          firstInProgress.status === 'completed' ? (
-            <IconCircleCheck className="min-w-3 size-3 text-primary" />
-          ) : (
-            <IconCircle className="min-w-3 size-3 text-muted-foreground" />
-          )
-        )}
-        <div className="line-clamp-1 text-xs text-primary">
-          {firstInProgress.content}
-        </div>
-      </div>
-    }
-  }
-
   return (
     <div className={cn("flex flex-col gap-2 w-full", externalScrollRef ? "min-h-full" : "h-full")}>
-      {plan && plan.entries.length > 0 && <div className="flex w-full flex-col gap-2 border rounded-md p-2">
-        <div className="flex items-center justify-between">
-          <Label>
-            <IconSubtask className="size-4 text-primary" />
-            执行步骤 ({plan.entries.filter((entry: PlanEntry) => entry.status === 'completed').length}/{plan.entries.length})
-          </Label>
-          <Button variant={planOpened ? "secondary" : "ghost"} size="icon-sm" className="size-5" onClick={() => setPlanOpened(!planOpened)}>
-            {planOpened ? <ChevronsDownUp className="size-4" /> : <ChevronsUpDown className="size-4" />}
-          </Button>
-        </div>
-        <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
-          {renderPlan()}
-        </div>
-      </div>}
+      {planPosition === "inline" && plan && plan.entries.length > 0 && (
+        <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
+      )}
 
       <div
         ref={!externalScrollRef ? internalScrollRef : undefined}
