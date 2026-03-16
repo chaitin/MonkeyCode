@@ -117,7 +117,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const triggerContent = (
     <>
       <IconWallet className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-5"} />
-      余额: {Math.ceil(balance + bonus).toLocaleString()} 点
+      钱包
     </>
   );
 

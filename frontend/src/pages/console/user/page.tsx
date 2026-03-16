@@ -154,7 +154,7 @@ function UserConsoleContent() {
               <Button className="hidden lg:flex" variant="ghost" size="sm" asChild>
                 <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank">
                   <HelpCircle className="h-[1.2rem] w-[1.2rem]" />
-                  帮助文档
+                  帮助
                 </a>
               </Button>
               {/*<ModeToggle />*/}
