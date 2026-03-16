@@ -69,7 +69,7 @@ export function TaskPreparingView({ task }: TaskPreparingProps) {
   const detailMessage = task?.virtualmachine?.conditions?.[task?.virtualmachine?.conditions?.length - 1]?.message || "正在准备开发环境..."
 
   return (
-    <Empty className="flex-1 border border-dashed">
+    <Empty className="flex-1 bg-muted/60">
       <EmptyHeader className="md:max-w-2xl">
         <EmptyMedia variant="icon">
           <TaskPreparingIcon task={task} />
