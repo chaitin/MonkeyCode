@@ -19,6 +19,9 @@ image:
 	  --output ${OUTPUT} \
 	  .
 
+swag:
+	swag fmt && swag init -ot json --pd -g cmd/server/main.go
+
 generate:
 	go generate ./ent
 

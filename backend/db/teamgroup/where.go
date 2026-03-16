@@ -342,6 +342,52 @@ func HasTeamWith(preds ...predicate.Team) predicate.TeamGroup {
 	})
 }
 
+// HasModels applies the HasEdge predicate on the "models" edge.
+func HasModels() predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, ModelsTable, ModelsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasModelsWith applies the HasEdge predicate on the "models" edge with a given conditions (other predicates).
+func HasModelsWith(preds ...predicate.Model) predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := newModelsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasImages applies the HasEdge predicate on the "images" edge.
+func HasImages() predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, ImagesTable, ImagesPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasImagesWith applies the HasEdge predicate on the "images" edge with a given conditions (other predicates).
+func HasImagesWith(preds ...predicate.Image) predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := newImagesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamGroupMembers applies the HasEdge predicate on the "team_group_members" edge.
 func HasTeamGroupMembers() predicate.TeamGroup {
 	return predicate.TeamGroup(func(s *sql.Selector) {
@@ -357,6 +403,52 @@ func HasTeamGroupMembers() predicate.TeamGroup {
 func HasTeamGroupMembersWith(preds ...predicate.TeamGroupMember) predicate.TeamGroup {
 	return predicate.TeamGroup(func(s *sql.Selector) {
 		step := newTeamGroupMembersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTeamGroupModels applies the HasEdge predicate on the "team_group_models" edge.
+func HasTeamGroupModels() predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupModelsTable, TeamGroupModelsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTeamGroupModelsWith applies the HasEdge predicate on the "team_group_models" edge with a given conditions (other predicates).
+func HasTeamGroupModelsWith(preds ...predicate.TeamGroupModel) predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := newTeamGroupModelsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTeamGroupImages applies the HasEdge predicate on the "team_group_images" edge.
+func HasTeamGroupImages() predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupImagesTable, TeamGroupImagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTeamGroupImagesWith applies the HasEdge predicate on the "team_group_images" edge with a given conditions (other predicates).
+func HasTeamGroupImagesWith(preds ...predicate.TeamGroupImage) predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := newTeamGroupImagesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

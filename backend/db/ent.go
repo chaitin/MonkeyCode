@@ -13,10 +13,16 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 )
@@ -80,10 +86,16 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			audit.Table:           audit.ValidColumn,
+			image.Table:           image.ValidColumn,
+			model.Table:           model.ValidColumn,
 			team.Table:            team.ValidColumn,
 			teamgroup.Table:       teamgroup.ValidColumn,
+			teamgroupimage.Table:  teamgroupimage.ValidColumn,
 			teamgroupmember.Table: teamgroupmember.ValidColumn,
+			teamgroupmodel.Table:  teamgroupmodel.ValidColumn,
+			teamimage.Table:       teamimage.ValidColumn,
 			teammember.Table:      teammember.ValidColumn,
+			teammodel.Table:       teammodel.ValidColumn,
 			user.Table:            user.ValidColumn,
 			useridentity.Table:    useridentity.ValidColumn,
 		})

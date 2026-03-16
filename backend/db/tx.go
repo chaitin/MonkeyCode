@@ -16,14 +16,26 @@ type Tx struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// Image is the client for interacting with the Image builders.
+	Image *ImageClient
+	// Model is the client for interacting with the Model builders.
+	Model *ModelClient
 	// Team is the client for interacting with the Team builders.
 	Team *TeamClient
 	// TeamGroup is the client for interacting with the TeamGroup builders.
 	TeamGroup *TeamGroupClient
+	// TeamGroupImage is the client for interacting with the TeamGroupImage builders.
+	TeamGroupImage *TeamGroupImageClient
 	// TeamGroupMember is the client for interacting with the TeamGroupMember builders.
 	TeamGroupMember *TeamGroupMemberClient
+	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
+	TeamGroupModel *TeamGroupModelClient
+	// TeamImage is the client for interacting with the TeamImage builders.
+	TeamImage *TeamImageClient
 	// TeamMember is the client for interacting with the TeamMember builders.
 	TeamMember *TeamMemberClient
+	// TeamModel is the client for interacting with the TeamModel builders.
+	TeamModel *TeamModelClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -160,10 +172,16 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Audit = NewAuditClient(tx.config)
+	tx.Image = NewImageClient(tx.config)
+	tx.Model = NewModelClient(tx.config)
 	tx.Team = NewTeamClient(tx.config)
 	tx.TeamGroup = NewTeamGroupClient(tx.config)
+	tx.TeamGroupImage = NewTeamGroupImageClient(tx.config)
 	tx.TeamGroupMember = NewTeamGroupMemberClient(tx.config)
+	tx.TeamGroupModel = NewTeamGroupModelClient(tx.config)
+	tx.TeamImage = NewTeamImageClient(tx.config)
 	tx.TeamMember = NewTeamMemberClient(tx.config)
+	tx.TeamModel = NewTeamModelClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 }

@@ -12,9 +12,13 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -117,6 +121,36 @@ func (_c *TeamCreate) AddMembers(v ...*User) *TeamCreate {
 	return _c.AddMemberIDs(ids...)
 }
 
+// AddModelIDs adds the "models" edge to the Model entity by IDs.
+func (_c *TeamCreate) AddModelIDs(ids ...uuid.UUID) *TeamCreate {
+	_c.mutation.AddModelIDs(ids...)
+	return _c
+}
+
+// AddModels adds the "models" edges to the Model entity.
+func (_c *TeamCreate) AddModels(v ...*Model) *TeamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddModelIDs(ids...)
+}
+
+// AddImageIDs adds the "images" edge to the Image entity by IDs.
+func (_c *TeamCreate) AddImageIDs(ids ...uuid.UUID) *TeamCreate {
+	_c.mutation.AddImageIDs(ids...)
+	return _c
+}
+
+// AddImages adds the "images" edges to the Image entity.
+func (_c *TeamCreate) AddImages(v ...*Image) *TeamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddImageIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_c *TeamCreate) AddTeamMemberIDs(ids ...uuid.UUID) *TeamCreate {
 	_c.mutation.AddTeamMemberIDs(ids...)
@@ -130,6 +164,36 @@ func (_c *TeamCreate) AddTeamMembers(v ...*TeamMember) *TeamCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddTeamMemberIDs(ids...)
+}
+
+// AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
+func (_c *TeamCreate) AddTeamModelIDs(ids ...uuid.UUID) *TeamCreate {
+	_c.mutation.AddTeamModelIDs(ids...)
+	return _c
+}
+
+// AddTeamModels adds the "team_models" edges to the TeamModel entity.
+func (_c *TeamCreate) AddTeamModels(v ...*TeamModel) *TeamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamModelIDs(ids...)
+}
+
+// AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
+func (_c *TeamCreate) AddTeamImageIDs(ids ...uuid.UUID) *TeamCreate {
+	_c.mutation.AddTeamImageIDs(ids...)
+	return _c
+}
+
+// AddTeamImages adds the "team_images" edges to the TeamImage entity.
+func (_c *TeamCreate) AddTeamImages(v ...*TeamImage) *TeamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamImageIDs(ids...)
 }
 
 // Mutation returns the TeamMutation object of the builder.
@@ -297,6 +361,46 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.ModelsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamModelCreate{config: _c.config, mutation: newTeamModelMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ImagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamImageCreate{config: _c.config, mutation: newTeamImageMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.TeamMembersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -306,6 +410,38 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teammember.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TeamModelsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TeamImagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

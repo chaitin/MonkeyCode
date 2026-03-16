@@ -58,13 +58,17 @@ type UserEdges struct {
 	Teams []*Team `json:"teams,omitempty"`
 	// Groups holds the value of the groups edge.
 	Groups []*TeamGroup `json:"groups,omitempty"`
+	// Models holds the value of the models edge.
+	Models []*Model `json:"models,omitempty"`
+	// Images holds the value of the images edge.
+	Images []*Image `json:"images,omitempty"`
 	// TeamMembers holds the value of the team_members edge.
 	TeamMembers []*TeamMember `json:"team_members,omitempty"`
 	// TeamGroupMembers holds the value of the team_group_members edge.
 	TeamGroupMembers []*TeamGroupMember `json:"team_group_members,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [8]bool
 }
 
 // IdentitiesOrErr returns the Identities value or an error if the edge
@@ -103,10 +107,28 @@ func (e UserEdges) GroupsOrErr() ([]*TeamGroup, error) {
 	return nil, &NotLoadedError{edge: "groups"}
 }
 
+// ModelsOrErr returns the Models value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ModelsOrErr() ([]*Model, error) {
+	if e.loadedTypes[4] {
+		return e.Models, nil
+	}
+	return nil, &NotLoadedError{edge: "models"}
+}
+
+// ImagesOrErr returns the Images value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) ImagesOrErr() ([]*Image, error) {
+	if e.loadedTypes[5] {
+		return e.Images, nil
+	}
+	return nil, &NotLoadedError{edge: "images"}
+}
+
 // TeamMembersOrErr returns the TeamMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) TeamMembersOrErr() ([]*TeamMember, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[6] {
 		return e.TeamMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_members"}
@@ -115,7 +137,7 @@ func (e UserEdges) TeamMembersOrErr() ([]*TeamMember, error) {
 // TeamGroupMembersOrErr returns the TeamGroupMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[7] {
 		return e.TeamGroupMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_members"}
@@ -256,6 +278,16 @@ func (_m *User) QueryTeams() *TeamQuery {
 // QueryGroups queries the "groups" edge of the User entity.
 func (_m *User) QueryGroups() *TeamGroupQuery {
 	return NewUserClient(_m.config).QueryGroups(_m)
+}
+
+// QueryModels queries the "models" edge of the User entity.
+func (_m *User) QueryModels() *ModelQuery {
+	return NewUserClient(_m.config).QueryModels(_m)
+}
+
+// QueryImages queries the "images" edge of the User entity.
+func (_m *User) QueryImages() *ImageQuery {
+	return NewUserClient(_m.config).QueryImages(_m)
 }
 
 // QueryTeamMembers queries the "team_members" edge of the User entity.

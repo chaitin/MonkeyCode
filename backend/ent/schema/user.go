@@ -55,5 +55,7 @@ func (User) Edges() []ent.Edge {
 		edge.To("audits", Audit.Type),
 		edge.To("teams", Team.Type).Through("team_members", TeamMember.Type),
 		edge.To("groups", TeamGroup.Type).Through("team_group_members", TeamGroupMember.Type),
+		edge.To("models", Model.Type),
+		edge.To("images", Image.Type),
 	}
 }

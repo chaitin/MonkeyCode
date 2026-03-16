@@ -21,6 +21,30 @@ func (f AuditFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AuditMutation", m)
 }
 
+// The ImageFunc type is an adapter to allow the use of ordinary
+// function as Image mutator.
+type ImageFunc func(context.Context, *db.ImageMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ImageFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ImageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ImageMutation", m)
+}
+
+// The ModelFunc type is an adapter to allow the use of ordinary
+// function as Model mutator.
+type ModelFunc func(context.Context, *db.ModelMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ModelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ModelMutation", m)
+}
+
 // The TeamFunc type is an adapter to allow the use of ordinary
 // function as Team mutator.
 type TeamFunc func(context.Context, *db.TeamMutation) (db.Value, error)
@@ -45,6 +69,18 @@ func (f TeamGroupFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupMutation", m)
 }
 
+// The TeamGroupImageFunc type is an adapter to allow the use of ordinary
+// function as TeamGroupImage mutator.
+type TeamGroupImageFunc func(context.Context, *db.TeamGroupImageMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamGroupImageFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamGroupImageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupImageMutation", m)
+}
+
 // The TeamGroupMemberFunc type is an adapter to allow the use of ordinary
 // function as TeamGroupMember mutator.
 type TeamGroupMemberFunc func(context.Context, *db.TeamGroupMemberMutation) (db.Value, error)
@@ -57,6 +93,30 @@ func (f TeamGroupMemberFunc) Mutate(ctx context.Context, m db.Mutation) (db.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupMemberMutation", m)
 }
 
+// The TeamGroupModelFunc type is an adapter to allow the use of ordinary
+// function as TeamGroupModel mutator.
+type TeamGroupModelFunc func(context.Context, *db.TeamGroupModelMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamGroupModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamGroupModelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupModelMutation", m)
+}
+
+// The TeamImageFunc type is an adapter to allow the use of ordinary
+// function as TeamImage mutator.
+type TeamImageFunc func(context.Context, *db.TeamImageMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamImageFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamImageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamImageMutation", m)
+}
+
 // The TeamMemberFunc type is an adapter to allow the use of ordinary
 // function as TeamMember mutator.
 type TeamMemberFunc func(context.Context, *db.TeamMemberMutation) (db.Value, error)
@@ -67,6 +127,18 @@ func (f TeamMemberFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, er
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamMemberMutation", m)
+}
+
+// The TeamModelFunc type is an adapter to allow the use of ordinary
+// function as TeamModel mutator.
+type TeamModelFunc func(context.Context, *db.TeamModelMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamModelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamModelMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

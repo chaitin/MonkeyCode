@@ -13,10 +13,14 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -30,7 +34,11 @@ type TeamQuery struct {
 	predicates      []predicate.Team
 	withGroups      *TeamGroupQuery
 	withMembers     *UserQuery
+	withModels      *ModelQuery
+	withImages      *ImageQuery
 	withTeamMembers *TeamMemberQuery
+	withTeamModels  *TeamModelQuery
+	withTeamImages  *TeamImageQuery
 	modifiers       []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -112,6 +120,50 @@ func (_q *TeamQuery) QueryMembers() *UserQuery {
 	return query
 }
 
+// QueryModels chains the current query on the "models" edge.
+func (_q *TeamQuery) QueryModels() *ModelQuery {
+	query := (&ModelClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, selector),
+			sqlgraph.To(model.Table, model.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, team.ModelsTable, team.ModelsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryImages chains the current query on the "images" edge.
+func (_q *TeamQuery) QueryImages() *ImageQuery {
+	query := (&ImageClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, selector),
+			sqlgraph.To(image.Table, image.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, team.ImagesTable, team.ImagesPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryTeamMembers chains the current query on the "team_members" edge.
 func (_q *TeamQuery) QueryTeamMembers() *TeamMemberQuery {
 	query := (&TeamMemberClient{config: _q.config}).Query()
@@ -127,6 +179,50 @@ func (_q *TeamQuery) QueryTeamMembers() *TeamMemberQuery {
 			sqlgraph.From(team.Table, team.FieldID, selector),
 			sqlgraph.To(teammember.Table, teammember.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, team.TeamMembersTable, team.TeamMembersColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTeamModels chains the current query on the "team_models" edge.
+func (_q *TeamQuery) QueryTeamModels() *TeamModelQuery {
+	query := (&TeamModelClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, selector),
+			sqlgraph.To(teammodel.Table, teammodel.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, team.TeamModelsTable, team.TeamModelsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTeamImages chains the current query on the "team_images" edge.
+func (_q *TeamQuery) QueryTeamImages() *TeamImageQuery {
+	query := (&TeamImageClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, selector),
+			sqlgraph.To(teamimage.Table, teamimage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, team.TeamImagesTable, team.TeamImagesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -328,7 +424,11 @@ func (_q *TeamQuery) Clone() *TeamQuery {
 		predicates:      append([]predicate.Team{}, _q.predicates...),
 		withGroups:      _q.withGroups.Clone(),
 		withMembers:     _q.withMembers.Clone(),
+		withModels:      _q.withModels.Clone(),
+		withImages:      _q.withImages.Clone(),
 		withTeamMembers: _q.withTeamMembers.Clone(),
+		withTeamModels:  _q.withTeamModels.Clone(),
+		withTeamImages:  _q.withTeamImages.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -358,6 +458,28 @@ func (_q *TeamQuery) WithMembers(opts ...func(*UserQuery)) *TeamQuery {
 	return _q
 }
 
+// WithModels tells the query-builder to eager-load the nodes that are connected to
+// the "models" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TeamQuery) WithModels(opts ...func(*ModelQuery)) *TeamQuery {
+	query := (&ModelClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withModels = query
+	return _q
+}
+
+// WithImages tells the query-builder to eager-load the nodes that are connected to
+// the "images" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TeamQuery) WithImages(opts ...func(*ImageQuery)) *TeamQuery {
+	query := (&ImageClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withImages = query
+	return _q
+}
+
 // WithTeamMembers tells the query-builder to eager-load the nodes that are connected to
 // the "team_members" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *TeamQuery) WithTeamMembers(opts ...func(*TeamMemberQuery)) *TeamQuery {
@@ -366,6 +488,28 @@ func (_q *TeamQuery) WithTeamMembers(opts ...func(*TeamMemberQuery)) *TeamQuery 
 		opt(query)
 	}
 	_q.withTeamMembers = query
+	return _q
+}
+
+// WithTeamModels tells the query-builder to eager-load the nodes that are connected to
+// the "team_models" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TeamQuery) WithTeamModels(opts ...func(*TeamModelQuery)) *TeamQuery {
+	query := (&TeamModelClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTeamModels = query
+	return _q
+}
+
+// WithTeamImages tells the query-builder to eager-load the nodes that are connected to
+// the "team_images" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TeamQuery) WithTeamImages(opts ...func(*TeamImageQuery)) *TeamQuery {
+	query := (&TeamImageClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTeamImages = query
 	return _q
 }
 
@@ -447,10 +591,14 @@ func (_q *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 	var (
 		nodes       = []*Team{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [7]bool{
 			_q.withGroups != nil,
 			_q.withMembers != nil,
+			_q.withModels != nil,
+			_q.withImages != nil,
 			_q.withTeamMembers != nil,
+			_q.withTeamModels != nil,
+			_q.withTeamImages != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -488,10 +636,38 @@ func (_q *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 			return nil, err
 		}
 	}
+	if query := _q.withModels; query != nil {
+		if err := _q.loadModels(ctx, query, nodes,
+			func(n *Team) { n.Edges.Models = []*Model{} },
+			func(n *Team, e *Model) { n.Edges.Models = append(n.Edges.Models, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withImages; query != nil {
+		if err := _q.loadImages(ctx, query, nodes,
+			func(n *Team) { n.Edges.Images = []*Image{} },
+			func(n *Team, e *Image) { n.Edges.Images = append(n.Edges.Images, e) }); err != nil {
+			return nil, err
+		}
+	}
 	if query := _q.withTeamMembers; query != nil {
 		if err := _q.loadTeamMembers(ctx, query, nodes,
 			func(n *Team) { n.Edges.TeamMembers = []*TeamMember{} },
 			func(n *Team, e *TeamMember) { n.Edges.TeamMembers = append(n.Edges.TeamMembers, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTeamModels; query != nil {
+		if err := _q.loadTeamModels(ctx, query, nodes,
+			func(n *Team) { n.Edges.TeamModels = []*TeamModel{} },
+			func(n *Team, e *TeamModel) { n.Edges.TeamModels = append(n.Edges.TeamModels, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTeamImages; query != nil {
+		if err := _q.loadTeamImages(ctx, query, nodes,
+			func(n *Team) { n.Edges.TeamImages = []*TeamImage{} },
+			func(n *Team, e *TeamImage) { n.Edges.TeamImages = append(n.Edges.TeamImages, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -589,6 +765,128 @@ func (_q *TeamQuery) loadMembers(ctx context.Context, query *UserQuery, nodes []
 	}
 	return nil
 }
+func (_q *TeamQuery) loadModels(ctx context.Context, query *ModelQuery, nodes []*Team, init func(*Team), assign func(*Team, *Model)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*Team)
+	nids := make(map[uuid.UUID]map[*Team]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(team.ModelsTable)
+		s.Join(joinT).On(s.C(model.FieldID), joinT.C(team.ModelsPrimaryKey[1]))
+		s.Where(sql.InValues(joinT.C(team.ModelsPrimaryKey[0]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(team.ModelsPrimaryKey[0]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*Team]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*Model](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "models" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (_q *TeamQuery) loadImages(ctx context.Context, query *ImageQuery, nodes []*Team, init func(*Team), assign func(*Team, *Image)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*Team)
+	nids := make(map[uuid.UUID]map[*Team]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(team.ImagesTable)
+		s.Join(joinT).On(s.C(image.FieldID), joinT.C(team.ImagesPrimaryKey[1]))
+		s.Where(sql.InValues(joinT.C(team.ImagesPrimaryKey[0]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(team.ImagesPrimaryKey[0]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*Team]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*Image](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "images" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
 func (_q *TeamQuery) loadTeamMembers(ctx context.Context, query *TeamMemberQuery, nodes []*Team, init func(*Team), assign func(*Team, *TeamMember)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[uuid.UUID]*Team)
@@ -604,6 +902,66 @@ func (_q *TeamQuery) loadTeamMembers(ctx context.Context, query *TeamMemberQuery
 	}
 	query.Where(predicate.TeamMember(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(team.TeamMembersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TeamID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "team_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *TeamQuery) loadTeamModels(ctx context.Context, query *TeamModelQuery, nodes []*Team, init func(*Team), assign func(*Team, *TeamModel)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Team)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(teammodel.FieldTeamID)
+	}
+	query.Where(predicate.TeamModel(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(team.TeamModelsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TeamID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "team_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *TeamQuery) loadTeamImages(ctx context.Context, query *TeamImageQuery, nodes []*Team, init func(*Team), assign func(*Team, *TeamImage)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Team)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(teamimage.FieldTeamID)
+	}
+	query.Where(predicate.TeamImage(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(team.TeamImagesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

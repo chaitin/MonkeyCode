@@ -4,6 +4,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
+	"github.com/chaitin/MonkeyCode/backend/biz/setting"
 	"github.com/chaitin/MonkeyCode/backend/biz/team"
 	"github.com/chaitin/MonkeyCode/backend/biz/user"
 )
@@ -12,6 +13,7 @@ import (
 func RegisterAll(i *do.Injector) error {
 	public.RegisterPublic(i)
 	user.RegisterUser(i)
+	setting.RegisterSetting(i)
 
 	// 注册 team 模块
 	if err := team.RegisterTeam(i); err != nil {

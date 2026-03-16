@@ -6,10 +6,16 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/ent/schema"
@@ -25,6 +31,64 @@ func init() {
 	auditDescCreatedAt := auditFields[7].Descriptor()
 	// audit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	audit.DefaultCreatedAt = auditDescCreatedAt.Default.(func() time.Time)
+	imageMixin := schema.Image{}.Mixin()
+	imageMixinHooks0 := imageMixin[0].Hooks()
+	image.Hooks[0] = imageMixinHooks0[0]
+	imageMixinInters0 := imageMixin[0].Interceptors()
+	image.Interceptors[0] = imageMixinInters0[0]
+	imageFields := schema.Image{}.Fields()
+	_ = imageFields
+	// imageDescName is the schema descriptor for name field.
+	imageDescName := imageFields[2].Descriptor()
+	// image.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	image.NameValidator = imageDescName.Validators[0].(func(string) error)
+	// imageDescCreatedAt is the schema descriptor for created_at field.
+	imageDescCreatedAt := imageFields[4].Descriptor()
+	// image.DefaultCreatedAt holds the default value on creation for the created_at field.
+	image.DefaultCreatedAt = imageDescCreatedAt.Default.(func() time.Time)
+	// imageDescUpdatedAt is the schema descriptor for updated_at field.
+	imageDescUpdatedAt := imageFields[5].Descriptor()
+	// image.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	image.DefaultUpdatedAt = imageDescUpdatedAt.Default.(func() time.Time)
+	// image.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	image.UpdateDefaultUpdatedAt = imageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	modelMixin := schema.Model{}.Mixin()
+	modelMixinHooks0 := modelMixin[0].Hooks()
+	model.Hooks[0] = modelMixinHooks0[0]
+	modelMixinInters0 := modelMixin[0].Interceptors()
+	model.Interceptors[0] = modelMixinInters0[0]
+	modelFields := schema.Model{}.Fields()
+	_ = modelFields
+	// modelDescProvider is the schema descriptor for provider field.
+	modelDescProvider := modelFields[2].Descriptor()
+	// model.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	model.ProviderValidator = modelDescProvider.Validators[0].(func(string) error)
+	// modelDescAPIKey is the schema descriptor for api_key field.
+	modelDescAPIKey := modelFields[3].Descriptor()
+	// model.APIKeyValidator is a validator for the "api_key" field. It is called by the builders before save.
+	model.APIKeyValidator = modelDescAPIKey.Validators[0].(func(string) error)
+	// modelDescBaseURL is the schema descriptor for base_url field.
+	modelDescBaseURL := modelFields[4].Descriptor()
+	// model.BaseURLValidator is a validator for the "base_url" field. It is called by the builders before save.
+	model.BaseURLValidator = modelDescBaseURL.Validators[0].(func(string) error)
+	// modelDescModel is the schema descriptor for model field.
+	modelDescModel := modelFields[5].Descriptor()
+	// model.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	model.ModelValidator = modelDescModel.Validators[0].(func(string) error)
+	// modelDescWeight is the schema descriptor for weight field.
+	modelDescWeight := modelFields[9].Descriptor()
+	// model.DefaultWeight holds the default value on creation for the weight field.
+	model.DefaultWeight = modelDescWeight.Default.(int)
+	// modelDescCreatedAt is the schema descriptor for created_at field.
+	modelDescCreatedAt := modelFields[13].Descriptor()
+	// model.DefaultCreatedAt holds the default value on creation for the created_at field.
+	model.DefaultCreatedAt = modelDescCreatedAt.Default.(func() time.Time)
+	// modelDescUpdatedAt is the schema descriptor for updated_at field.
+	modelDescUpdatedAt := modelFields[14].Descriptor()
+	// model.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	model.DefaultUpdatedAt = modelDescUpdatedAt.Default.(func() time.Time)
+	// model.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	model.UpdateDefaultUpdatedAt = modelDescUpdatedAt.UpdateDefault.(func() time.Time)
 	teamMixin := schema.Team{}.Mixin()
 	teamMixinHooks0 := teamMixin[0].Hooks()
 	team.Hooks[0] = teamMixinHooks0[0]
@@ -61,18 +125,42 @@ func init() {
 	teamgroup.DefaultUpdatedAt = teamgroupDescUpdatedAt.Default.(func() time.Time)
 	// teamgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	teamgroup.UpdateDefaultUpdatedAt = teamgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	teamgroupimageFields := schema.TeamGroupImage{}.Fields()
+	_ = teamgroupimageFields
+	// teamgroupimageDescCreatedAt is the schema descriptor for created_at field.
+	teamgroupimageDescCreatedAt := teamgroupimageFields[3].Descriptor()
+	// teamgroupimage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamgroupimage.DefaultCreatedAt = teamgroupimageDescCreatedAt.Default.(func() time.Time)
 	teamgroupmemberFields := schema.TeamGroupMember{}.Fields()
 	_ = teamgroupmemberFields
 	// teamgroupmemberDescCreatedAt is the schema descriptor for created_at field.
 	teamgroupmemberDescCreatedAt := teamgroupmemberFields[3].Descriptor()
 	// teamgroupmember.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamgroupmember.DefaultCreatedAt = teamgroupmemberDescCreatedAt.Default.(func() time.Time)
+	teamgroupmodelFields := schema.TeamGroupModel{}.Fields()
+	_ = teamgroupmodelFields
+	// teamgroupmodelDescCreatedAt is the schema descriptor for created_at field.
+	teamgroupmodelDescCreatedAt := teamgroupmodelFields[3].Descriptor()
+	// teamgroupmodel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamgroupmodel.DefaultCreatedAt = teamgroupmodelDescCreatedAt.Default.(func() time.Time)
+	teamimageFields := schema.TeamImage{}.Fields()
+	_ = teamimageFields
+	// teamimageDescCreatedAt is the schema descriptor for created_at field.
+	teamimageDescCreatedAt := teamimageFields[3].Descriptor()
+	// teamimage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamimage.DefaultCreatedAt = teamimageDescCreatedAt.Default.(func() time.Time)
 	teammemberFields := schema.TeamMember{}.Fields()
 	_ = teammemberFields
 	// teammemberDescCreatedAt is the schema descriptor for created_at field.
 	teammemberDescCreatedAt := teammemberFields[4].Descriptor()
 	// teammember.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teammember.DefaultCreatedAt = teammemberDescCreatedAt.Default.(func() time.Time)
+	teammodelFields := schema.TeamModel{}.Fields()
+	_ = teammodelFields
+	// teammodelDescCreatedAt is the schema descriptor for created_at field.
+	teammodelDescCreatedAt := teammodelFields[3].Descriptor()
+	// teammodel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teammodel.DefaultCreatedAt = teammodelDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()
 	userMixinHooks0 := userMixin[0].Hooks()
 	user.Hooks[0] = userMixinHooks0[0]
