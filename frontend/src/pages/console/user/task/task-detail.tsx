@@ -7,6 +7,7 @@ import type { MessageType } from "@/components/console/task/message"
 import { TaskWebSocketManager, type AvailableCommands, type RepoFileChange, type TaskPlan, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager"
 import { TaskChangesPanel } from "@/components/console/task/task-changes-panel"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
+import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
 import { type PanelType } from "@/components/console/task/task-chat-section"
 import { VmRenewDialog } from "@/components/console/vm/vm-renew"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -95,6 +96,7 @@ export default function TaskDetailPage() {
 
   const vmOnline = task?.virtualmachine?.status === TypesVirtualMachineStatus.VirtualMachineStatusOnline
   const envid = task?.virtualmachine?.id
+  const showPreparing = useShouldShowPreparing(task)
 
   // taskId 变化时重置所有状态，保证页面可重入
   React.useEffect(() => {
@@ -315,10 +317,10 @@ export default function TaskDetailPage() {
     </div>
   )
 
-  if (!hasPanel) {
+  if (!hasPanel || showPreparing) {
     return (
       <div className="flex flex-col h-full min-h-0">
-        {chatSection}
+        {showPreparing ? <TaskPreparingView task={task} /> : chatSection}
         <VmRenewDialog
           open={renewDialogOpen}
           onOpenChange={setRenewDialogOpen}
