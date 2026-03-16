@@ -17,9 +17,10 @@ const Pricing = () => {
       price: "免费",
       priceUnit: "",
       features: [
-        "智能任务模式",
-        "在线 Git 机器人",
-        "IDE 辅助插件"
+        "完全免费，零成本使用",
+        "云开发环境（2 核 8GB）",
+        "多模型不限额度",
+        "智能任务 + Git 机器人",
       ],
       buttonText: "立即开始",
       buttonLink: "/console",

@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import Header from "@/components/welcome/header"
 import Banner from "@/components/welcome/banner"
+import Highlights from "@/components/welcome/highlights"
 import Task from "@/components/welcome/task";
 import Footer from "@/components/welcome/footer";
-import Numbers from "@/components/welcome/numbers";
 import Pricing from "@/components/welcome/pricing";
 import GitBot from "@/components/welcome/git-bot";
 import SDD from "@/components/welcome/sdd";
@@ -26,7 +26,7 @@ const WelcomePage = () => {
         <Header />
         <main className="flex flex-col w-full">
           <Banner />
-          <Numbers />
+          <Highlights />
           <Task />
           <SDD />
           <GitBot />

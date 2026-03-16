@@ -25,19 +25,19 @@ const Numbers = () => {
   };
 
   return (
-    <div className="w-full px-10 py-24">
-      <div className="border rounded-md flex flex-col md:flex-row gap-10 md:gap-0 justify-between max-w-[1200px] w-full mx-auto py-6 px-16">
-        <div className="text-center flex flex-col items-center gap-2">
-          <div className="text-muted-foreground">注册用户</div>
-          <div className="text-4xl cursor-default hover:font-semibold">{ntos(stats.users_count || 0)}</div>
+    <div className="w-full px-6 sm:px-10 py-12 sm:py-16">
+      <div className="max-w-[1200px] w-full mx-auto flex flex-col sm:flex-row gap-8 sm:gap-0 sm:divide-x divide-border">
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 py-4">
+          <div className="text-sm text-muted-foreground">注册用户</div>
+          <div className="text-3xl sm:text-4xl font-bold tabular-nums">{ntos(stats.users_count || 0)}</div>
         </div>
-        <div className="text-center flex flex-col items-center gap-2">
-          <div className="text-muted-foreground">完成开发任务</div>
-          <div className="text-4xl cursor-default hover:font-semibold">{ntos(stats.tasks_count || 0)}</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 py-4">
+          <div className="text-sm text-muted-foreground">完成开发任务</div>
+          <div className="text-3xl sm:text-4xl font-bold tabular-nums">{ntos(stats.tasks_count || 0)}</div>
         </div>
-        <div className="text-center flex flex-col items-center gap-2">
-          <div className="text-muted-foreground">GitHub Star</div>
-          <div className="text-4xl cursor-default hover:font-semibold cursor-pointer" onClick={() => window.open("https://github.com/chaitin/monkeycode", "_blank")}>{ntos(stats.repo_stars || 0)}</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-1 py-4">
+          <div className="text-sm text-muted-foreground">GitHub Star</div>
+          <div className="text-3xl sm:text-4xl font-bold tabular-nums cursor-pointer hover:text-primary transition-colors" onClick={() => window.open("https://github.com/chaitin/monkeycode", "_blank")}>{ntos(stats.repo_stars || 0)}</div>
         </div>
       </div>
     </div>

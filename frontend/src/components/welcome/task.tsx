@@ -16,38 +16,33 @@ const Task = () => {
   ];
 
   const features = [
-    { title: "工具无关性", description: "Code Agent 支持 OpenAI Codex、Claude Code、OpenCode 等，如果你已经熟悉了某种 Agent，可以无缝切换到 MonkeyCode 上。" },
-    { title: "模型无关性", description: "兼容 GPT、Claude、Deepseek、GLM、Kimi、Qwen、Doubao 等大模型，或其他本地模型。" },
+    { title: "云开发环境", description: "每个任务对应一台 2 核 8GB 云服务器，内置在线 IDE、终端、文件管理，开箱即用，无需本地配置。" },
+    { title: "多模型不限量", description: "内置 GLM、MiniMax、Kimi、Deepseek 等大模型，不限额度，可无限畅用。也可接入自己的 API 模型。" },
     { title: "多种任务模式", description: "开发模式根据需求执行编码任务，设计模式进行架构设计并输出技术方案，审查模式识别代码风险并提出改进建议。" },
-    { title: "开发环境隔离", description: "允许用户将自己的开发机接入 MonkeyCode，任务启动时会创建一个全新的操作系统供当前任务使用。" },
+    { title: "全流程覆盖", description: "覆盖需求 → 设计 → 开发 → 代码审查全流程，用自然语言描述需求，AI 帮你写代码、做设计、做 Review。" },
   ];
 
   return (
-    <div className="w-full px-10 py-24 bg-primary text-background" id="task">
-      <div className="w-full">
-        <div className="w-full max-w-[1200px] mx-auto flex flex-col gap-6">
-          <h1 className="text-balance text-center text-4xl font-bold mb-10">
-            智能任务模式
-          </h1>
-          <div className="">
-            <InputBox />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-10">
-            {features.map((feature, index) => (
-              <div key={index} className="flex-1 border border-background/30 rounded-md p-4 flex flex-row gap-2 hover:border-background">
-                <IconBulbFilled className="size-8 text-background/40 flex-shrink-0" />
-                <div className="flex flex-col gap-2">
-                  <div className="text-lg" >
-                    {feature.title}
-                  </div>
-                  <div className="text-background/50" >
-                    {feature.description}
-                  </div>
-                </div>
+    <div className="w-full px-6 sm:px-10 py-16 sm:py-20 bg-primary text-background" id="task">
+      <div className="w-full max-w-[1200px] mx-auto flex flex-col gap-8">
+        <h1 className="text-balance text-center text-3xl sm:text-4xl font-bold">
+          智能任务模式
+        </h1>
+        <div>
+          <InputBox />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {features.map((feature, index) => (
+            <div key={index} className="border border-background/30 rounded-lg p-4 flex gap-3 hover:border-background/50 transition-colors">
+              <IconBulbFilled className="size-6 text-background/50 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <div className="font-medium mb-1">{feature.title}</div>
+                <div className="text-sm text-background/70 leading-relaxed">{feature.description}</div>
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10">
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {images.map((image, index) => (
               <div
                 key={index}
@@ -60,7 +55,6 @@ const Task = () => {
                 </div>
               </div>
             ))}
-          </div>
         </div>
       </div>
       <Dialog open={selectedImage !== null} onOpenChange={(open) => !open && setSelectedImage(null)}>
