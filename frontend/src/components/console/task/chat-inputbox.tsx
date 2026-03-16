@@ -117,7 +117,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                     <IconTerminal2 />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
+                <DropdownMenuContent className="max-w-[min(90vw,800px)]">
                   {availableCommands?.commands?.map((command: AvailableCommand, index: number) => (
                     <DropdownMenuItem key={index} className="flex flex-col gap-1 items-start" onClick={() => setContent(`/${command.name}`)}>
                       <div className="flex flex-row gap-2 items-center">
