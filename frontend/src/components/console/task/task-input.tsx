@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getInterfaceTypeBadge, getModelHealthBadge, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconSquareRoundedLetterOFilled, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -102,8 +102,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills);
   const [skillList, setSkillList] = useState<DomainSkill[]>([]);
 
-  // 运行参数状态
-  const [selectedTool, setSelectedTool] = useState<string>("");
+  // 运行参数状态（工具固定为 opencode）
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [selectedHostId, setSelectedHostId] = useState<string>("");
   const [selectedImageId, setSelectedImageId] = useState<string>("");
@@ -222,7 +221,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
   const setDefaultConfig = () => {
     setSelectedModelId(selectModel(modelsWithEconomy, true))
-    setSelectedTool(ConstsCliName.CliNameOpencode)
     setSelectedHostId(selectHost(hosts, true))
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
@@ -247,11 +245,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       return true
     }
 
-    if (selectedTool === ConstsCliName.CliNameCodex) {
-      return model.interface_type === ConstsInterfaceType.InterfaceTypeOpenAIResponse
-    } else if (selectedTool === ConstsCliName.CliNameClaude) {
-      return model.interface_type === ConstsInterfaceType.InterfaceTypeAnthropic
-    }
+    // 固定使用 opencode，支持所有模型
     return true;
   };
 
@@ -274,7 +268,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const executeTask = async () => {
     setCreatingTask(true);
     await apiRequest('v1UsersTasksCreate', {
-      cli_name: selectedTool,
+      cli_name: ConstsCliName.CliNameOpencode,
       content: taskContent,
       git_identity_id: selectedIdentityId || undefined,
       host_id: selectedHostId,
@@ -752,30 +746,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
           <DialogHeader>
             <DialogTitle>任务参数</DialogTitle>
           </DialogHeader>
-          <Field>
-            <FieldLabel>开发工具</FieldLabel>
-            <FieldContent>
-              <Select value={selectedTool} onValueChange={setSelectedTool}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择开发工具" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ConstsCliName.CliNameClaude}>
-                    <Icon name="claude" className="size-4" />
-                    Claude Code
-                  </SelectItem>
-                  <SelectItem value={ConstsCliName.CliNameCodex} disabled>
-                    <Icon name="openai" className="size-4" />
-                    OpenAI Codex
-                  </SelectItem>
-                  <SelectItem value={ConstsCliName.CliNameOpencode}>
-                    <IconSquareRoundedLetterOFilled className="size-4 text-primary" />
-                    OpenCode
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </FieldContent>
-          </Field>
           <Field>
             <FieldLabel>大模型</FieldLabel>
             <FieldContent>
