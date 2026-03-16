@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { selectHost, selectImage, selectModel } from "@/utils/common"
@@ -29,6 +30,7 @@ export default function StartDevelopTaskDialog({
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
+  const [userMessage, setUserMessage] = useState<string>('')
   const { images, models, hosts } = useCommonData()
 
   const fetchBranches = async () => {
@@ -86,6 +88,7 @@ export default function StartDevelopTaskDialog({
   useEffect(() => {
     if (open) {
       fetchBranches()
+      setUserMessage('')
     }
   }, [open, project])
 
@@ -99,7 +102,7 @@ export default function StartDevelopTaskDialog({
 
     // 创建任务
     await apiRequest('v1UsersTasksCreate', {
-      content: `你好，MonkeyCode`,
+      content: userMessage.trim(),
       cli_name: ConstsCliName.CliNameOpencode,
       model_id: selectModel(models, false),
       image_id: selectImage(images, false),
@@ -177,6 +180,16 @@ export default function StartDevelopTaskDialog({
                </Select>
              </div>
            )}
+          <div className="space-y-2">
+            <Label>任务内容</Label>
+            <Textarea
+              value={userMessage}
+              onChange={(e) => setUserMessage(e.target.value)}
+              placeholder="请输入任务内容"
+              rows={4}
+              className="resize-none"
+            />
+          </div>
          </div>
          
          <DialogFooter>

@@ -6,7 +6,7 @@ export const renderTitle = (message: MessageType) => {
 }
 
 export const renderDetail = (message: MessageType) => {
-  return <pre className="text-xs p-2 bg-accent/50 rounded-md max-h-[50vh] overflow-auto">
+  return <pre className="text-xs p-3">
     {message.data.rawOutput?.output}
   </pre>
 }

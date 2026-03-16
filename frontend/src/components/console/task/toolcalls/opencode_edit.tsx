@@ -24,7 +24,7 @@ export const renderDetail = (message: MessageType) => {
 
   return (
     <div 
-      className="text-xs max-h-[50vh] overflow-auto border rounded-md"
+      className="text-xs"
       style={{ '--diff-font-family': 'var(--font-google-sans-code)' } as React.CSSProperties}
     >
       <style>{`
