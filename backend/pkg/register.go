@@ -14,11 +14,12 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
 	"github.com/chaitin/MonkeyCode/backend/pkg/email"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
+	"github.com/chaitin/MonkeyCode/backend/pkg/session"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
 )
 
 // RegisterInfra 注册基础设施依赖
-func RegisterInfra(i *do.Injector) error {
+func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	// Logger
 	do.Provide(i, func(i *do.Injector) (*slog.Logger, error) {
 		cfg := do.MustInvoke[*config.Config](i)
@@ -39,17 +40,21 @@ func RegisterInfra(i *do.Injector) error {
 	})
 
 	// Web
-	do.Provide(i, func(i *do.Injector) (*web.Web, error) {
-		return web.New(), nil
-	})
+	if len(w) > 0 && w[0] != nil {
+		do.ProvideValue(i, w[0])
+	} else {
+		do.Provide(i, func(i *do.Injector) (*web.Web, error) {
+			return web.New(), nil
+		})
+	}
 
 	// Captcha
 	do.Provide(i, func(i *do.Injector) (*captcha.Captcha, error) {
 		return captcha.NewCaptcha(), nil
 	})
 
-	// Email SMTP Client
-	do.Provide(i, func(i *do.Injector) (*email.SMTPClient, error) {
+	// Email Sender（默认 SMTP 实现，内部项目可通过 do.ProvideValue 覆盖）
+	do.Provide(i, func(i *do.Injector) (domain.EmailSender, error) {
 		cfg := do.MustInvoke[*config.Config](i)
 		return email.NewSMTPClient(email.SMTPConfig{
 			Host:     cfg.SMTP.Host,
@@ -60,12 +65,17 @@ func RegisterInfra(i *do.Injector) error {
 		}), nil
 	})
 
-	// Auth Middleware - 简化版本，避免循环依赖
-	do.Provide(i, func(i *do.Injector) (*middleware.AuthMiddleware, error) {
+	// Session
+	do.Provide(i, func(i *do.Injector) (*session.Session, error) {
 		cfg := do.MustInvoke[*config.Config](i)
+		return session.New(cfg), nil
+	})
+
+	// Auth Middleware
+	do.Provide(i, func(i *do.Injector) (*middleware.AuthMiddleware, error) {
+		sess := do.MustInvoke[*session.Session](i)
 		l := do.MustInvoke[*slog.Logger](i)
-		redisCli := do.MustInvoke[*redis.Client](i)
-		return middleware.NewAuthMiddleware(cfg, nil, l, redisCli), nil
+		return middleware.NewAuthMiddleware(sess, nil, l), nil
 	})
 
 	// Audit Middleware

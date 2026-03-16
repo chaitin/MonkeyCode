@@ -10,15 +10,8 @@ import (
 
 // RegisterAll 注册所有 biz 模块
 func RegisterAll(i *do.Injector) error {
-	// 注册 public 模块
-	if err := public.RegisterPublic(i); err != nil {
-		return err
-	}
-
-	// 注册 user 模块
-	if err := user.RegisterUser(i); err != nil {
-		return err
-	}
+	public.RegisterPublic(i)
+	user.RegisterUser(i)
 
 	// 注册 team 模块
 	if err := team.RegisterTeam(i); err != nil {

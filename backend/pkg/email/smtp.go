@@ -2,9 +2,12 @@ package email
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html/template"
 	"net/smtp"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 type SMTPConfig struct {
@@ -23,7 +26,7 @@ type SMTPClient struct {
 	From     string
 }
 
-func NewSMTPClient(cfg SMTPConfig) *SMTPClient {
+func NewSMTPClient(cfg SMTPConfig) domain.EmailSender {
 	return &SMTPClient{
 		Host:     cfg.Host,
 		Port:     cfg.Port,
@@ -80,7 +83,7 @@ func (c *SMTPClient) send(to, subject, body string) error {
 	return smtp.SendMail(addr, auth, c.From, []string{to}, msg)
 }
 
-func (c *SMTPClient) SendResetPasswordEmail(to, username, resetURL string) error {
+func (c *SMTPClient) SendResetPasswordEmail(ctx context.Context, to, username, resetURL string) error {
 	tmpl, err := template.New("reset").Parse(resetPasswordTpl)
 	if err != nil {
 		return err

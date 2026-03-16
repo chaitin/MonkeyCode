@@ -34,8 +34,7 @@ type Config struct {
 }
 
 type Session struct {
-	Secret string `mapstructure:"secret"`
-	Expire int    `mapstructure:"expire"`
+	ExpireDay int `mapstructure:"expire_day"`
 }
 
 type SMTP struct {
@@ -67,7 +66,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("database.conn_max_lifetime", 30)
 	v.SetDefault("root_path", "/app")
 	v.SetDefault("logger.level", "info")
-	v.SetDefault("session.expire", 86400)
+	v.SetDefault("session.expire_day", 1)
 	v.SetDefault("smtp.port", 587)
 
 	v.SetConfigType("yaml")
