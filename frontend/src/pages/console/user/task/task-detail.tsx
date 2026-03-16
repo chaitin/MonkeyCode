@@ -1,6 +1,6 @@
 import { ConstsTaskStatus, type DomainProjectTask } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
-import { TaskChatPanel } from "@/components/console/task/chat-panel"
+import { PlanStepsBlock, TaskChatPanel } from "@/components/console/task/chat-panel"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import type { MessageType } from "@/components/console/task/message"
@@ -228,6 +228,11 @@ export default function TaskDetailPage() {
 
   const chatSection = (
     <div className={cn("flex flex-col h-full min-h-0 gap-2", hasPanel ? "max-w-full" : "")}>
+      {plan && plan.entries.length > 0 && (
+        <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
+          <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
+        </div>
+      )}
       <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto min-w-0">
         <div className={cn("min-h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
           <TaskChatPanel
@@ -240,6 +245,7 @@ export default function TaskDetailPage() {
             disabled={!vmOnline}
             sending={sending}
             plan={plan}
+            planPosition="sticky"
             sendUserInput={sendUserInput}
             sendCancelCommand={sendCancelCommand}
             sendResetSession={sendResetSession}

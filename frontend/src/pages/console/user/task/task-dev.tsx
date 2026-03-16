@@ -1,5 +1,5 @@
 import { TypesVirtualMachineStatus, type DomainProjectTask } from "@/api/Api"
-import { TaskChatPanel } from "@/components/console/task/chat-panel"
+import { PlanStepsBlock, TaskChatPanel } from "@/components/console/task/chat-panel"
 import { TaskFileTree } from "@/components/console/task/file-tree"
 import type { MessageType } from "@/components/console/task/message"
 import { TaskDetailPanel, type TaskDetailPanelRef } from "@/components/console/task/task-detail-panel"
@@ -431,27 +431,35 @@ export default function TaskDevelopPage() {
         {(showTerminalPanel || showFilesPanel) && <ResizableHandle className="invisible hidden sm:block" />}
         <ResizablePanel defaultSize={40} minSize={35} style={{overflow: 'visible'}}>
           <div className="w-full h-full flex flex-col min-w-0">
+            {plan && plan.entries.length > 0 && (
+              <div className="shrink-0 flex justify-center">
+                <div className="max-w-[800px] w-full">
+                  <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
+                </div>
+              </div>
+            )}
             <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto flex justify-center">
               <div className="max-w-[800px] w-full min-h-full">
-                <TaskChatPanel 
-            scrollContainerRef={chatScrollRef}
-            inputPortalTargetRef={chatInputRef}
-            messages={messages} 
-            cli={task?.cli_name}
-            availableCommands={availableCommands}
-            streamStatus={streamStatus}
-            disabled={task?.virtualmachine?.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline} 
-            sending={sending}
-            plan={plan}
-            sendUserInput={sendUserInput}
-            sendCancelCommand={sendCancelCommand}
-            sendResetSession={sendResetSession}
-            sendReloadSession={sendReloadSession}
-            queueSize={queueSize}
-            fileChanges={changedPaths}
-            fileChangesMap={fileChangesMap}
-            taskManager={taskManager.current}
-            />
+                <TaskChatPanel
+                  scrollContainerRef={chatScrollRef}
+                  inputPortalTargetRef={chatInputRef}
+                  messages={messages}
+                  cli={task?.cli_name}
+                  availableCommands={availableCommands}
+                  streamStatus={streamStatus}
+                  disabled={task?.virtualmachine?.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline}
+                  sending={sending}
+                  plan={plan}
+                  planPosition="sticky"
+                  sendUserInput={sendUserInput}
+                  sendCancelCommand={sendCancelCommand}
+                  sendResetSession={sendResetSession}
+                  sendReloadSession={sendReloadSession}
+                  queueSize={queueSize}
+                  fileChanges={changedPaths}
+                  fileChangesMap={fileChangesMap}
+                  taskManager={taskManager.current}
+                />
               </div>
             </div>
             <div className="shrink-0 w-full flex justify-center">
