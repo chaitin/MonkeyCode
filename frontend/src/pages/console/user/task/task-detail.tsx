@@ -83,6 +83,7 @@ export default function TaskDetailPage() {
   const [queueSize, setQueueSize] = React.useState(0)
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const connectedRef = React.useRef(false)
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const planVersionRef = React.useRef<number | undefined>(undefined)
   const availableCommandsVersionRef = React.useRef<number | undefined>(undefined)
   const fileChangesVersionRef = React.useRef<number | undefined>(undefined)
@@ -117,7 +118,7 @@ export default function TaskDetailPage() {
     fileChangesVersionRef.current = undefined
   }, [taskId])
 
-  const fetchTaskDetail = React.useCallback(async () => {
+  const fetchTaskDetail = React.useCallback(async (): Promise<DomainProjectTask | null> => {
     if (!taskId) return null
     let result: DomainProjectTask | null = null
     await apiRequest("v1UsersTasksDetail", {}, [taskId], (resp) => {
@@ -130,6 +131,26 @@ export default function TaskDetailPage() {
     })
     return result
   }, [taskId])
+
+  const scheduleFetchTaskDetail = React.useCallback(async () => {
+    const currentTask = await fetchTaskDetail()
+    const vmStatus = currentTask?.virtualmachine?.status
+    let delay = 1000
+    switch (vmStatus) {
+      case TypesVirtualMachineStatus.VirtualMachineStatusPending:
+        delay = 2000
+        break
+      case TypesVirtualMachineStatus.VirtualMachineStatusOnline:
+        delay = 10000
+        break
+      case TypesVirtualMachineStatus.VirtualMachineStatusOffline:
+        delay = 30000
+        break
+      default:
+        delay = 5000
+    }
+    timeoutRef.current = setTimeout(scheduleFetchTaskDetail, delay)
+  }, [fetchTaskDetail])
 
   const fetchFileChanges = React.useCallback(() => {
     taskManager.current?.getFileChanges().then((changes: RepoFileChange[] | null) => {
@@ -180,10 +201,17 @@ export default function TaskDetailPage() {
     taskManager.current?.sendReloadSession()
   }, [])
 
+  // 定时获取任务详情
   React.useEffect(() => {
     if (!taskId) return
-    fetchTaskDetail()
-  }, [taskId, fetchTaskDetail])
+    scheduleFetchTaskDetail()
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+    }
+  }, [taskId, scheduleFetchTaskDetail])
 
   React.useEffect(() => {
     if (!setTaskName) return
