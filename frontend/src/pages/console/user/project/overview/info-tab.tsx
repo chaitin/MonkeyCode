@@ -115,7 +115,7 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-auto">
       <ProjectFileManager key={`files-${projectId}`} project={project} className="w-full" />
       {renderReadme()}
     </div>

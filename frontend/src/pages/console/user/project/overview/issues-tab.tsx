@@ -87,8 +87,8 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
   }, [projectId, fetchProjectIssues])
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      <div className="flex flex-row gap-2 items-center">
+    <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-row gap-2 items-center shrink-0">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[120px] h-8 text-sm">
             <SelectValue placeholder="全部状态" />
@@ -118,13 +118,15 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
           创建需求
         </Button>
       </div>
-      <ProjectIssueList
-        issues={filteredIssues}
-        projectId={projectId}
-        project={project}
-        onViewIssue={handleViewIssue}
-        onTaskCreated={onTaskCreated}
-      />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <ProjectIssueList
+          issues={filteredIssues}
+          projectId={projectId}
+          project={project}
+          onViewIssue={handleViewIssue}
+          onTaskCreated={onTaskCreated}
+        />
+      </div>
       <CreateIssueDialog
         open={isCreateIssueDialogOpen}
         onOpenChange={setIsCreateIssueDialogOpen}
