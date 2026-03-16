@@ -161,3 +161,9 @@ other = "Directory is not empty"
 
 [err-kb-already-exists]
 other = "Path already exists with different type"
+
+[err-model-not-found]
+other = "Model not found"
+
+[err-image-not-found]
+other = "Image not found"

@@ -31,6 +31,7 @@ type Config struct {
 	RootPath   string         `mapstructure:"root_path"`
 	Logger     *logger.Config `mapstructure:"logger"`
 	AdminToken string         `mapstructure:"admin_token"`
+	Proxies    []string       `mapstructure:"proxies"`
 }
 
 type Session struct {

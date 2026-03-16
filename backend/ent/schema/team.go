@@ -46,5 +46,7 @@ func (Team) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("groups", TeamGroup.Type),
 		edge.From("members", User.Type).Ref("teams").Through("team_members", TeamMember.Type),
+		edge.To("models", Model.Type).Through("team_models", TeamModel.Type),
+		edge.To("images", Image.Type).Through("team_images", TeamImage.Type),
 	}
 }

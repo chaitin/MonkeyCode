@@ -57,6 +57,8 @@ var (
 	// 模型配置管理
 	ErrInvalidAPIKey    = web.NewErr(http.StatusOK, 10300, "err-model-id-required")
 	ErrInvalidParameter = web.NewErr(http.StatusOK, 10301, "err-invalid-parameter")
+	ErrModelNotFound    = web.NewErr(http.StatusOK, 10302, "err-model-not-found")
+	ErrImageNotFound    = web.NewErr(http.StatusOK, 10303, "err-image-not-found")
 
 	// 项目管理
 	ErrInvalidPlatform            = web.NewErr(http.StatusOK, 10400, "err-invalid-platform")

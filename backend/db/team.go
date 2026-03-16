@@ -40,11 +40,19 @@ type TeamEdges struct {
 	Groups []*TeamGroup `json:"groups,omitempty"`
 	// Members holds the value of the members edge.
 	Members []*User `json:"members,omitempty"`
+	// Models holds the value of the models edge.
+	Models []*Model `json:"models,omitempty"`
+	// Images holds the value of the images edge.
+	Images []*Image `json:"images,omitempty"`
 	// TeamMembers holds the value of the team_members edge.
 	TeamMembers []*TeamMember `json:"team_members,omitempty"`
+	// TeamModels holds the value of the team_models edge.
+	TeamModels []*TeamModel `json:"team_models,omitempty"`
+	// TeamImages holds the value of the team_images edge.
+	TeamImages []*TeamImage `json:"team_images,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [7]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -65,13 +73,49 @@ func (e TeamEdges) MembersOrErr() ([]*User, error) {
 	return nil, &NotLoadedError{edge: "members"}
 }
 
+// ModelsOrErr returns the Models value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamEdges) ModelsOrErr() ([]*Model, error) {
+	if e.loadedTypes[2] {
+		return e.Models, nil
+	}
+	return nil, &NotLoadedError{edge: "models"}
+}
+
+// ImagesOrErr returns the Images value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamEdges) ImagesOrErr() ([]*Image, error) {
+	if e.loadedTypes[3] {
+		return e.Images, nil
+	}
+	return nil, &NotLoadedError{edge: "images"}
+}
+
 // TeamMembersOrErr returns the TeamMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[4] {
 		return e.TeamMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_members"}
+}
+
+// TeamModelsOrErr returns the TeamModels value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
+	if e.loadedTypes[5] {
+		return e.TeamModels, nil
+	}
+	return nil, &NotLoadedError{edge: "team_models"}
+}
+
+// TeamImagesOrErr returns the TeamImages value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamEdges) TeamImagesOrErr() ([]*TeamImage, error) {
+	if e.loadedTypes[6] {
+		return e.TeamImages, nil
+	}
+	return nil, &NotLoadedError{edge: "team_images"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -161,9 +205,29 @@ func (_m *Team) QueryMembers() *UserQuery {
 	return NewTeamClient(_m.config).QueryMembers(_m)
 }
 
+// QueryModels queries the "models" edge of the Team entity.
+func (_m *Team) QueryModels() *ModelQuery {
+	return NewTeamClient(_m.config).QueryModels(_m)
+}
+
+// QueryImages queries the "images" edge of the Team entity.
+func (_m *Team) QueryImages() *ImageQuery {
+	return NewTeamClient(_m.config).QueryImages(_m)
+}
+
 // QueryTeamMembers queries the "team_members" edge of the Team entity.
 func (_m *Team) QueryTeamMembers() *TeamMemberQuery {
 	return NewTeamClient(_m.config).QueryTeamMembers(_m)
+}
+
+// QueryTeamModels queries the "team_models" edge of the Team entity.
+func (_m *Team) QueryTeamModels() *TeamModelQuery {
+	return NewTeamClient(_m.config).QueryTeamModels(_m)
+}
+
+// QueryTeamImages queries the "team_images" edge of the Team entity.
+func (_m *Team) QueryTeamImages() *TeamImageQuery {
+	return NewTeamClient(_m.config).QueryTeamImages(_m)
 }
 
 // Update returns a builder for updating this Team.

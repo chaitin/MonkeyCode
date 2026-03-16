@@ -11,10 +11,14 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -146,6 +150,36 @@ func (_u *TeamUpdate) AddMembers(v ...*User) *TeamUpdate {
 	return _u.AddMemberIDs(ids...)
 }
 
+// AddModelIDs adds the "models" edge to the Model entity by IDs.
+func (_u *TeamUpdate) AddModelIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.AddModelIDs(ids...)
+	return _u
+}
+
+// AddModels adds the "models" edges to the Model entity.
+func (_u *TeamUpdate) AddModels(v ...*Model) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddModelIDs(ids...)
+}
+
+// AddImageIDs adds the "images" edge to the Image entity by IDs.
+func (_u *TeamUpdate) AddImageIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.AddImageIDs(ids...)
+	return _u
+}
+
+// AddImages adds the "images" edges to the Image entity.
+func (_u *TeamUpdate) AddImages(v ...*Image) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddImageIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *TeamUpdate) AddTeamMemberIDs(ids ...uuid.UUID) *TeamUpdate {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -159,6 +193,36 @@ func (_u *TeamUpdate) AddTeamMembers(v ...*TeamMember) *TeamUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamMemberIDs(ids...)
+}
+
+// AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
+func (_u *TeamUpdate) AddTeamModelIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.AddTeamModelIDs(ids...)
+	return _u
+}
+
+// AddTeamModels adds the "team_models" edges to the TeamModel entity.
+func (_u *TeamUpdate) AddTeamModels(v ...*TeamModel) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamModelIDs(ids...)
+}
+
+// AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
+func (_u *TeamUpdate) AddTeamImageIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.AddTeamImageIDs(ids...)
+	return _u
+}
+
+// AddTeamImages adds the "team_images" edges to the TeamImage entity.
+func (_u *TeamUpdate) AddTeamImages(v ...*TeamImage) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamImageIDs(ids...)
 }
 
 // Mutation returns the TeamMutation object of the builder.
@@ -208,6 +272,48 @@ func (_u *TeamUpdate) RemoveMembers(v ...*User) *TeamUpdate {
 	return _u.RemoveMemberIDs(ids...)
 }
 
+// ClearModels clears all "models" edges to the Model entity.
+func (_u *TeamUpdate) ClearModels() *TeamUpdate {
+	_u.mutation.ClearModels()
+	return _u
+}
+
+// RemoveModelIDs removes the "models" edge to Model entities by IDs.
+func (_u *TeamUpdate) RemoveModelIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.RemoveModelIDs(ids...)
+	return _u
+}
+
+// RemoveModels removes "models" edges to Model entities.
+func (_u *TeamUpdate) RemoveModels(v ...*Model) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveModelIDs(ids...)
+}
+
+// ClearImages clears all "images" edges to the Image entity.
+func (_u *TeamUpdate) ClearImages() *TeamUpdate {
+	_u.mutation.ClearImages()
+	return _u
+}
+
+// RemoveImageIDs removes the "images" edge to Image entities by IDs.
+func (_u *TeamUpdate) RemoveImageIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.RemoveImageIDs(ids...)
+	return _u
+}
+
+// RemoveImages removes "images" edges to Image entities.
+func (_u *TeamUpdate) RemoveImages(v ...*Image) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveImageIDs(ids...)
+}
+
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
 func (_u *TeamUpdate) ClearTeamMembers() *TeamUpdate {
 	_u.mutation.ClearTeamMembers()
@@ -227,6 +333,48 @@ func (_u *TeamUpdate) RemoveTeamMembers(v ...*TeamMember) *TeamUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamMemberIDs(ids...)
+}
+
+// ClearTeamModels clears all "team_models" edges to the TeamModel entity.
+func (_u *TeamUpdate) ClearTeamModels() *TeamUpdate {
+	_u.mutation.ClearTeamModels()
+	return _u
+}
+
+// RemoveTeamModelIDs removes the "team_models" edge to TeamModel entities by IDs.
+func (_u *TeamUpdate) RemoveTeamModelIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.RemoveTeamModelIDs(ids...)
+	return _u
+}
+
+// RemoveTeamModels removes "team_models" edges to TeamModel entities.
+func (_u *TeamUpdate) RemoveTeamModels(v ...*TeamModel) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamModelIDs(ids...)
+}
+
+// ClearTeamImages clears all "team_images" edges to the TeamImage entity.
+func (_u *TeamUpdate) ClearTeamImages() *TeamUpdate {
+	_u.mutation.ClearTeamImages()
+	return _u
+}
+
+// RemoveTeamImageIDs removes the "team_images" edge to TeamImage entities by IDs.
+func (_u *TeamUpdate) RemoveTeamImageIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.RemoveTeamImageIDs(ids...)
+	return _u
+}
+
+// RemoveTeamImages removes "team_images" edges to TeamImage entities.
+func (_u *TeamUpdate) RemoveTeamImages(v ...*TeamImage) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamImageIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -407,6 +555,120 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TeamModelCreate{config: _u.config, mutation: newTeamModelMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedModelsIDs(); len(nodes) > 0 && !_u.mutation.ModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamModelCreate{config: _u.config, mutation: newTeamModelMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ModelsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamModelCreate{config: _u.config, mutation: newTeamModelMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TeamImageCreate{config: _u.config, mutation: newTeamImageMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedImagesIDs(); len(nodes) > 0 && !_u.mutation.ImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamImageCreate{config: _u.config, mutation: newTeamImageMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ImagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamImageCreate{config: _u.config, mutation: newTeamImageMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -445,6 +707,96 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teammember.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamModelsIDs(); len(nodes) > 0 && !_u.mutation.TeamModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamModelsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamImagesIDs(); len(nodes) > 0 && !_u.mutation.TeamImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamImagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -587,6 +939,36 @@ func (_u *TeamUpdateOne) AddMembers(v ...*User) *TeamUpdateOne {
 	return _u.AddMemberIDs(ids...)
 }
 
+// AddModelIDs adds the "models" edge to the Model entity by IDs.
+func (_u *TeamUpdateOne) AddModelIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.AddModelIDs(ids...)
+	return _u
+}
+
+// AddModels adds the "models" edges to the Model entity.
+func (_u *TeamUpdateOne) AddModels(v ...*Model) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddModelIDs(ids...)
+}
+
+// AddImageIDs adds the "images" edge to the Image entity by IDs.
+func (_u *TeamUpdateOne) AddImageIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.AddImageIDs(ids...)
+	return _u
+}
+
+// AddImages adds the "images" edges to the Image entity.
+func (_u *TeamUpdateOne) AddImages(v ...*Image) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddImageIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *TeamUpdateOne) AddTeamMemberIDs(ids ...uuid.UUID) *TeamUpdateOne {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -600,6 +982,36 @@ func (_u *TeamUpdateOne) AddTeamMembers(v ...*TeamMember) *TeamUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamMemberIDs(ids...)
+}
+
+// AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
+func (_u *TeamUpdateOne) AddTeamModelIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.AddTeamModelIDs(ids...)
+	return _u
+}
+
+// AddTeamModels adds the "team_models" edges to the TeamModel entity.
+func (_u *TeamUpdateOne) AddTeamModels(v ...*TeamModel) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamModelIDs(ids...)
+}
+
+// AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
+func (_u *TeamUpdateOne) AddTeamImageIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.AddTeamImageIDs(ids...)
+	return _u
+}
+
+// AddTeamImages adds the "team_images" edges to the TeamImage entity.
+func (_u *TeamUpdateOne) AddTeamImages(v ...*TeamImage) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamImageIDs(ids...)
 }
 
 // Mutation returns the TeamMutation object of the builder.
@@ -649,6 +1061,48 @@ func (_u *TeamUpdateOne) RemoveMembers(v ...*User) *TeamUpdateOne {
 	return _u.RemoveMemberIDs(ids...)
 }
 
+// ClearModels clears all "models" edges to the Model entity.
+func (_u *TeamUpdateOne) ClearModels() *TeamUpdateOne {
+	_u.mutation.ClearModels()
+	return _u
+}
+
+// RemoveModelIDs removes the "models" edge to Model entities by IDs.
+func (_u *TeamUpdateOne) RemoveModelIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.RemoveModelIDs(ids...)
+	return _u
+}
+
+// RemoveModels removes "models" edges to Model entities.
+func (_u *TeamUpdateOne) RemoveModels(v ...*Model) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveModelIDs(ids...)
+}
+
+// ClearImages clears all "images" edges to the Image entity.
+func (_u *TeamUpdateOne) ClearImages() *TeamUpdateOne {
+	_u.mutation.ClearImages()
+	return _u
+}
+
+// RemoveImageIDs removes the "images" edge to Image entities by IDs.
+func (_u *TeamUpdateOne) RemoveImageIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.RemoveImageIDs(ids...)
+	return _u
+}
+
+// RemoveImages removes "images" edges to Image entities.
+func (_u *TeamUpdateOne) RemoveImages(v ...*Image) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveImageIDs(ids...)
+}
+
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
 func (_u *TeamUpdateOne) ClearTeamMembers() *TeamUpdateOne {
 	_u.mutation.ClearTeamMembers()
@@ -668,6 +1122,48 @@ func (_u *TeamUpdateOne) RemoveTeamMembers(v ...*TeamMember) *TeamUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamMemberIDs(ids...)
+}
+
+// ClearTeamModels clears all "team_models" edges to the TeamModel entity.
+func (_u *TeamUpdateOne) ClearTeamModels() *TeamUpdateOne {
+	_u.mutation.ClearTeamModels()
+	return _u
+}
+
+// RemoveTeamModelIDs removes the "team_models" edge to TeamModel entities by IDs.
+func (_u *TeamUpdateOne) RemoveTeamModelIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.RemoveTeamModelIDs(ids...)
+	return _u
+}
+
+// RemoveTeamModels removes "team_models" edges to TeamModel entities.
+func (_u *TeamUpdateOne) RemoveTeamModels(v ...*TeamModel) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamModelIDs(ids...)
+}
+
+// ClearTeamImages clears all "team_images" edges to the TeamImage entity.
+func (_u *TeamUpdateOne) ClearTeamImages() *TeamUpdateOne {
+	_u.mutation.ClearTeamImages()
+	return _u
+}
+
+// RemoveTeamImageIDs removes the "team_images" edge to TeamImage entities by IDs.
+func (_u *TeamUpdateOne) RemoveTeamImageIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.RemoveTeamImageIDs(ids...)
+	return _u
+}
+
+// RemoveTeamImages removes "team_images" edges to TeamImage entities.
+func (_u *TeamUpdateOne) RemoveTeamImages(v ...*TeamImage) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamImageIDs(ids...)
 }
 
 // Where appends a list predicates to the TeamUpdate builder.
@@ -878,6 +1374,120 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TeamModelCreate{config: _u.config, mutation: newTeamModelMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedModelsIDs(); len(nodes) > 0 && !_u.mutation.ModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamModelCreate{config: _u.config, mutation: newTeamModelMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ModelsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ModelsTable,
+			Columns: team.ModelsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(model.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamModelCreate{config: _u.config, mutation: newTeamModelMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TeamImageCreate{config: _u.config, mutation: newTeamImageMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedImagesIDs(); len(nodes) > 0 && !_u.mutation.ImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamImageCreate{config: _u.config, mutation: newTeamImageMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ImagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   team.ImagesTable,
+			Columns: team.ImagesPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamImageCreate{config: _u.config, mutation: newTeamImageMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -916,6 +1526,96 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teammember.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamModelsIDs(); len(nodes) > 0 && !_u.mutation.TeamModelsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamModelsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamModelsTable,
+			Columns: []string{team.TeamModelsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teammodel.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamImagesIDs(); len(nodes) > 0 && !_u.mutation.TeamImagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamImagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   team.TeamImagesTable,
+			Columns: []string{team.TeamImagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

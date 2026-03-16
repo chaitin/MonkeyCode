@@ -34,6 +34,63 @@ var (
 			},
 		},
 	}
+	// ImagesColumns holds the columns for the "images" table.
+	ImagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "remark", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// ImagesTable holds the schema information for the "images" table.
+	ImagesTable = &schema.Table{
+		Name:       "images",
+		Columns:    ImagesColumns,
+		PrimaryKey: []*schema.Column{ImagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "images_users_images",
+				Columns:    []*schema.Column{ImagesColumns[6]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// ModelsColumns holds the columns for the "models" table.
+	ModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "provider", Type: field.TypeString},
+		{Name: "api_key", Type: field.TypeString, Size: 2147483647},
+		{Name: "base_url", Type: field.TypeString, Size: 2147483647},
+		{Name: "model", Type: field.TypeString},
+		{Name: "remark", Type: field.TypeString, Nullable: true},
+		{Name: "temperature", Type: field.TypeFloat64, Nullable: true},
+		{Name: "interface_type", Type: field.TypeString, Nullable: true},
+		{Name: "weight", Type: field.TypeInt, Default: 1},
+		{Name: "last_check_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_check_success", Type: field.TypeBool, Nullable: true},
+		{Name: "last_check_error", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// ModelsTable holds the schema information for the "models" table.
+	ModelsTable = &schema.Table{
+		Name:       "models",
+		Columns:    ModelsColumns,
+		PrimaryKey: []*schema.Column{ModelsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "models_users_models",
+				Columns:    []*schema.Column{ModelsColumns[15]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// TeamsColumns holds the columns for the "teams" table.
 	TeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -72,6 +129,40 @@ var (
 			},
 		},
 	}
+	// TeamGroupImagesColumns holds the columns for the "team_group_images" table.
+	TeamGroupImagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "image_id", Type: field.TypeUUID},
+	}
+	// TeamGroupImagesTable holds the schema information for the "team_group_images" table.
+	TeamGroupImagesTable = &schema.Table{
+		Name:       "team_group_images",
+		Columns:    TeamGroupImagesColumns,
+		PrimaryKey: []*schema.Column{TeamGroupImagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_group_images_team_groups_group",
+				Columns:    []*schema.Column{TeamGroupImagesColumns[2]},
+				RefColumns: []*schema.Column{TeamGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_group_images_images_image",
+				Columns:    []*schema.Column{TeamGroupImagesColumns[3]},
+				RefColumns: []*schema.Column{ImagesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamgroupimage_group_id_image_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamGroupImagesColumns[2], TeamGroupImagesColumns[3]},
+			},
+		},
+	}
 	// TeamGroupMembersColumns holds the columns for the "team_group_members" table.
 	TeamGroupMembersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -103,6 +194,74 @@ var (
 				Name:    "teamgroupmember_user_id_group_id",
 				Unique:  true,
 				Columns: []*schema.Column{TeamGroupMembersColumns[3], TeamGroupMembersColumns[2]},
+			},
+		},
+	}
+	// TeamGroupModelsColumns holds the columns for the "team_group_models" table.
+	TeamGroupModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "model_id", Type: field.TypeUUID},
+	}
+	// TeamGroupModelsTable holds the schema information for the "team_group_models" table.
+	TeamGroupModelsTable = &schema.Table{
+		Name:       "team_group_models",
+		Columns:    TeamGroupModelsColumns,
+		PrimaryKey: []*schema.Column{TeamGroupModelsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_group_models_team_groups_group",
+				Columns:    []*schema.Column{TeamGroupModelsColumns[2]},
+				RefColumns: []*schema.Column{TeamGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_group_models_models_model",
+				Columns:    []*schema.Column{TeamGroupModelsColumns[3]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamgroupmodel_group_id_model_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamGroupModelsColumns[2], TeamGroupModelsColumns[3]},
+			},
+		},
+	}
+	// TeamImagesColumns holds the columns for the "team_images" table.
+	TeamImagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "image_id", Type: field.TypeUUID},
+	}
+	// TeamImagesTable holds the schema information for the "team_images" table.
+	TeamImagesTable = &schema.Table{
+		Name:       "team_images",
+		Columns:    TeamImagesColumns,
+		PrimaryKey: []*schema.Column{TeamImagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_images_teams_team",
+				Columns:    []*schema.Column{TeamImagesColumns[2]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_images_images_image",
+				Columns:    []*schema.Column{TeamImagesColumns[3]},
+				RefColumns: []*schema.Column{ImagesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamimage_team_id_image_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamImagesColumns[2], TeamImagesColumns[3]},
 			},
 		},
 	}
@@ -138,6 +297,40 @@ var (
 				Name:    "teammember_user_id_team_id",
 				Unique:  true,
 				Columns: []*schema.Column{TeamMembersColumns[4], TeamMembersColumns[3]},
+			},
+		},
+	}
+	// TeamModelsColumns holds the columns for the "team_models" table.
+	TeamModelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "model_id", Type: field.TypeUUID},
+	}
+	// TeamModelsTable holds the schema information for the "team_models" table.
+	TeamModelsTable = &schema.Table{
+		Name:       "team_models",
+		Columns:    TeamModelsColumns,
+		PrimaryKey: []*schema.Column{TeamModelsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_models_teams_team",
+				Columns:    []*schema.Column{TeamModelsColumns[2]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_models_models_model",
+				Columns:    []*schema.Column{TeamModelsColumns[3]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teammodel_team_id_model_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamModelsColumns[2], TeamModelsColumns[3]},
 			},
 		},
 	}
@@ -192,10 +385,16 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditsTable,
+		ImagesTable,
+		ModelsTable,
 		TeamsTable,
 		TeamGroupsTable,
+		TeamGroupImagesTable,
 		TeamGroupMembersTable,
+		TeamGroupModelsTable,
+		TeamImagesTable,
 		TeamMembersTable,
+		TeamModelsTable,
 		UsersTable,
 		UserIdentitiesTable,
 	}
@@ -206,6 +405,14 @@ func init() {
 	AuditsTable.Annotation = &entsql.Annotation{
 		Table: "audits",
 	}
+	ImagesTable.ForeignKeys[0].RefTable = UsersTable
+	ImagesTable.Annotation = &entsql.Annotation{
+		Table: "images",
+	}
+	ModelsTable.ForeignKeys[0].RefTable = UsersTable
+	ModelsTable.Annotation = &entsql.Annotation{
+		Table: "models",
+	}
 	TeamsTable.Annotation = &entsql.Annotation{
 		Table: "teams",
 	}
@@ -213,15 +420,35 @@ func init() {
 	TeamGroupsTable.Annotation = &entsql.Annotation{
 		Table: "team_groups",
 	}
+	TeamGroupImagesTable.ForeignKeys[0].RefTable = TeamGroupsTable
+	TeamGroupImagesTable.ForeignKeys[1].RefTable = ImagesTable
+	TeamGroupImagesTable.Annotation = &entsql.Annotation{
+		Table: "team_group_images",
+	}
 	TeamGroupMembersTable.ForeignKeys[0].RefTable = TeamGroupsTable
 	TeamGroupMembersTable.ForeignKeys[1].RefTable = UsersTable
 	TeamGroupMembersTable.Annotation = &entsql.Annotation{
 		Table: "team_group_members",
 	}
+	TeamGroupModelsTable.ForeignKeys[0].RefTable = TeamGroupsTable
+	TeamGroupModelsTable.ForeignKeys[1].RefTable = ModelsTable
+	TeamGroupModelsTable.Annotation = &entsql.Annotation{
+		Table: "team_group_models",
+	}
+	TeamImagesTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamImagesTable.ForeignKeys[1].RefTable = ImagesTable
+	TeamImagesTable.Annotation = &entsql.Annotation{
+		Table: "team_images",
+	}
 	TeamMembersTable.ForeignKeys[0].RefTable = TeamsTable
 	TeamMembersTable.ForeignKeys[1].RefTable = UsersTable
 	TeamMembersTable.Annotation = &entsql.Annotation{
 		Table: "team_members",
+	}
+	TeamModelsTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamModelsTable.ForeignKeys[1].RefTable = ModelsTable
+	TeamModelsTable.Annotation = &entsql.Annotation{
+		Table: "team_models",
 	}
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",

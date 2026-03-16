@@ -168,3 +168,9 @@ other = "目录非空"
 
 [err-kb-already-exists]
 other = "路径已存在但类型不同"
+
+[err-model-not-found]
+other = "模型配置未找到"
+
+[err-image-not-found]
+other = "镜像配置未找到"

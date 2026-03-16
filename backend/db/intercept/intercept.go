@@ -9,11 +9,17 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 )
@@ -101,6 +107,60 @@ func (f TraverseAudit) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.AuditQuery", q)
 }
 
+// The ImageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ImageFunc func(context.Context, *db.ImageQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ImageFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ImageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ImageQuery", q)
+}
+
+// The TraverseImage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseImage func(context.Context, *db.ImageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseImage) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseImage) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ImageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ImageQuery", q)
+}
+
+// The ModelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ModelFunc func(context.Context, *db.ModelQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ModelFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ModelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ModelQuery", q)
+}
+
+// The TraverseModel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseModel func(context.Context, *db.ModelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseModel) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseModel) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ModelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ModelQuery", q)
+}
+
 // The TeamFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamFunc func(context.Context, *db.TeamQuery) (db.Value, error)
 
@@ -155,6 +215,33 @@ func (f TraverseTeamGroup) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupQuery", q)
 }
 
+// The TeamGroupImageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamGroupImageFunc func(context.Context, *db.TeamGroupImageQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamGroupImageFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamGroupImageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamGroupImageQuery", q)
+}
+
+// The TraverseTeamGroupImage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamGroupImage func(context.Context, *db.TeamGroupImageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamGroupImage) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamGroupImage) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamGroupImageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupImageQuery", q)
+}
+
 // The TeamGroupMemberFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamGroupMemberFunc func(context.Context, *db.TeamGroupMemberQuery) (db.Value, error)
 
@@ -182,6 +269,60 @@ func (f TraverseTeamGroupMember) Traverse(ctx context.Context, q db.Query) error
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupMemberQuery", q)
 }
 
+// The TeamGroupModelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamGroupModelFunc func(context.Context, *db.TeamGroupModelQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamGroupModelFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamGroupModelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamGroupModelQuery", q)
+}
+
+// The TraverseTeamGroupModel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamGroupModel func(context.Context, *db.TeamGroupModelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamGroupModel) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamGroupModel) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamGroupModelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupModelQuery", q)
+}
+
+// The TeamImageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamImageFunc func(context.Context, *db.TeamImageQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamImageFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamImageQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamImageQuery", q)
+}
+
+// The TraverseTeamImage type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamImage func(context.Context, *db.TeamImageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamImage) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamImage) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamImageQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamImageQuery", q)
+}
+
 // The TeamMemberFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamMemberFunc func(context.Context, *db.TeamMemberQuery) (db.Value, error)
 
@@ -207,6 +348,33 @@ func (f TraverseTeamMember) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamMemberQuery", q)
+}
+
+// The TeamModelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamModelFunc func(context.Context, *db.TeamModelQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamModelFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamModelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamModelQuery", q)
+}
+
+// The TraverseTeamModel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamModel func(context.Context, *db.TeamModelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamModel) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamModel) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamModelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamModelQuery", q)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -268,14 +436,26 @@ func NewQuery(q db.Query) (Query, error) {
 	switch q := q.(type) {
 	case *db.AuditQuery:
 		return &query[*db.AuditQuery, predicate.Audit, audit.OrderOption]{typ: db.TypeAudit, tq: q}, nil
+	case *db.ImageQuery:
+		return &query[*db.ImageQuery, predicate.Image, image.OrderOption]{typ: db.TypeImage, tq: q}, nil
+	case *db.ModelQuery:
+		return &query[*db.ModelQuery, predicate.Model, model.OrderOption]{typ: db.TypeModel, tq: q}, nil
 	case *db.TeamQuery:
 		return &query[*db.TeamQuery, predicate.Team, team.OrderOption]{typ: db.TypeTeam, tq: q}, nil
 	case *db.TeamGroupQuery:
 		return &query[*db.TeamGroupQuery, predicate.TeamGroup, teamgroup.OrderOption]{typ: db.TypeTeamGroup, tq: q}, nil
+	case *db.TeamGroupImageQuery:
+		return &query[*db.TeamGroupImageQuery, predicate.TeamGroupImage, teamgroupimage.OrderOption]{typ: db.TypeTeamGroupImage, tq: q}, nil
 	case *db.TeamGroupMemberQuery:
 		return &query[*db.TeamGroupMemberQuery, predicate.TeamGroupMember, teamgroupmember.OrderOption]{typ: db.TypeTeamGroupMember, tq: q}, nil
+	case *db.TeamGroupModelQuery:
+		return &query[*db.TeamGroupModelQuery, predicate.TeamGroupModel, teamgroupmodel.OrderOption]{typ: db.TypeTeamGroupModel, tq: q}, nil
+	case *db.TeamImageQuery:
+		return &query[*db.TeamImageQuery, predicate.TeamImage, teamimage.OrderOption]{typ: db.TypeTeamImage, tq: q}, nil
 	case *db.TeamMemberQuery:
 		return &query[*db.TeamMemberQuery, predicate.TeamMember, teammember.OrderOption]{typ: db.TypeTeamMember, tq: q}, nil
+	case *db.TeamModelQuery:
+		return &query[*db.TeamModelQuery, predicate.TeamModel, teammodel.OrderOption]{typ: db.TypeTeamModel, tq: q}, nil
 	case *db.UserQuery:
 		return &query[*db.UserQuery, predicate.User, user.OrderOption]{typ: db.TypeUser, tq: q}, nil
 	case *db.UserIdentityQuery:

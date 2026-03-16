@@ -15,8 +15,23 @@ func RegisterTeam(i *do.Injector) error {
 	do.Provide(i, usecase.NewTeamGroupUserUsecase)
 	do.Provide(i, usecase.NewAuditUsecase)
 
+	// 团队模型配置
+	do.Provide(i, repo.NewTeamModelRepo)
+	do.Provide(i, usecase.NewTeamModelUsecase)
+	do.Provide(i, v1.NewTeamModelHandler)
+
+	// 团队镜像配置
+	do.Provide(i, repo.NewTeamImageRepo)
+	do.Provide(i, usecase.NewTeamImageUsecase)
+	do.Provide(i, v1.NewTeamImageHandler)
+
 	// 注册 handler
 	do.Provide(i, v1.NewTeamGroupUserHandler)
 	_, err := do.Invoke[*v1.TeamGroupUserHandler](i)
-	return err
+	if err != nil {
+		return err
+	}
+	do.MustInvoke[*v1.TeamModelHandler](i)
+	do.MustInvoke[*v1.TeamImageHandler](i)
+	return nil
 }
