@@ -103,11 +103,7 @@ func (h *TeamGroupUserHandler) Login(c *web.Context, req domain.TeamLoginReq) er
 	}
 
 	// 创建 session（内部生成 cookie 并设置到 response）
-	_, err = h.authMiddleware.Session.Save(c, consts.MonkeyCodeAITeamSession, user.ID, &domain.User{
-		ID:    user.ID,
-		Name:  user.Name,
-		Email: user.Email,
-	})
+	_, err = h.authMiddleware.Session.Save(c, consts.MonkeyCodeAITeamSession, user.ID, user)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "save session failed", "error", err)
 		return errcode.ErrInternalServer
