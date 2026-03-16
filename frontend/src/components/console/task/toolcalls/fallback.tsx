@@ -76,7 +76,7 @@ export const renderTitle = (message: MessageType) => {
   
 
     if (input.length > 0) {
-      return <div className="flex flex-col gap-2 overflow-auto max-h-[50vh] bg-accent/50 rounded-md p-2 text-xs">
+      return <div className="flex flex-col gap-2 text-xs p-3">
         <pre className="">
           <code className="text-primary">{cwd}</code>
           <code className="text-muted-foreground">$ </code>
@@ -89,7 +89,7 @@ export const renderTitle = (message: MessageType) => {
     }
 
     return <>
-      <pre className="text-xs overflow-auto p-2 bg-accent/50 rounded-md max-h-[50vh]">
+      <pre className="text-xs">
         {JSON.stringify(message.data, null, 2)}
       </pre>
     </>

@@ -1,5 +1,5 @@
 import type { MessageType } from "../message";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { IconFileText } from "@tabler/icons-react";
 
 export const renderTitle = (message: MessageType) => {
@@ -16,17 +16,17 @@ export const renderDetail = (message: MessageType) => {
   })
   
   if ((lines || []).length === 0) {
-    return <Empty className="border">
+    return <Empty className="">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <IconFileText className="" />
+          <IconFileText className="size-6 opacity-50" />
         </EmptyMedia>
-        <EmptyTitle>没有内容</EmptyTitle>
+        <EmptyDescription>没有内容</EmptyDescription>
       </EmptyHeader>
     </Empty>
   }
 
-  return <div className="text-xs flex flex-col max-h-[50vh] overflow-auto bg-accent/30 rounded-md">
+  return <div className="text-xs flex flex-col p-3">
     <div className="w-12 pl-2 bg-accent min-h-2"></div>
     {lines.map((line: any) => {
       return (
