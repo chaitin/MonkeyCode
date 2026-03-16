@@ -3,7 +3,6 @@ package v1
 import (
 	"context"
 	"log/slog"
-	"net/http"
 
 	"github.com/GoYoko/web"
 	"github.com/google/uuid"
@@ -31,26 +30,22 @@ type TeamGroupUserHandler struct {
 // NewTeamGroupUserHandler 创建团队分组用户处理器 (samber/do 风格)
 func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
-	usecase := do.MustInvoke[domain.TeamGroupUserUsecase](i)
-	repo := do.MustInvoke[domain.TeamGroupUserRepo](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
 	audit := do.MustInvoke[*middleware.AuditMiddleware](i)
-	cfg := do.MustInvoke[*config.Config](i)
 	logger := do.MustInvoke[*slog.Logger](i)
-	captchaSvc := do.MustInvoke[*captcha.Captcha](i)
 
 	h := &TeamGroupUserHandler{
-		usecase:         usecase,
-		repo:            repo,
-		config:          cfg,
+		usecase:         do.MustInvoke[domain.TeamGroupUserUsecase](i),
+		repo:            do.MustInvoke[domain.TeamGroupUserRepo](i),
+		config:          do.MustInvoke[*config.Config](i),
 		authMiddleware:  auth,
 		auditMiddleware: audit,
 		logger:          logger.With("module", "handler.team_group_user"),
-		captcha:         captchaSvc,
+		captcha:         do.MustInvoke[*captcha.Captcha](i),
 	}
 
 	adminAuth := middleware.TeamAdminAuth(func(ctx context.Context, teamID, userID uuid.UUID) bool {
-		member, err := repo.GetMember(ctx, teamID, userID)
+		member, err := h.repo.GetMember(ctx, teamID, userID)
 		if err != nil {
 			return false
 		}
@@ -73,7 +68,7 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 	g.GET("", web.BaseHandler(h.List), auth.TeamAuth())
 	g.POST("", web.BindHandler(h.Add), auth.TeamAuth(), adminAuth, audit.Audit("add_team_group"))
 	g.PUT("/:group_id", web.BindHandler(h.Update), auth.TeamAuth(), adminAuth, audit.Audit("update_team_group"))
-	g.DELETE("/:group_id", web.BaseHandler(h.Delete), auth.TeamAuth(), adminAuth, audit.Audit("delete_team_group"))
+	g.DELETE("/:group_id", web.BindHandler(h.Delete), auth.TeamAuth(), adminAuth, audit.Audit("delete_team_group"))
 
 	gu := w.Group("/api/v1/teams/groups/:group_id/users")
 	gu.Use(auth.TeamAuth())
@@ -83,53 +78,55 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 	return h, nil
 }
 
-// Login 登录
-func (h *TeamGroupUserHandler) Login(c *web.Context, req *domain.TeamLoginReq) error {
+// Login 团队用户登录
+//
+//	@Summary		团队用户登录
+//	@Description	团队用户登录，password 字段需要传 MD5 加密后的值
+//	@Tags			【Team 管理员】认证
+//	@Accept			json
+//	@Produce		json
+//	@Param			req	body		domain.TeamLoginReq				true	"请求参数"
+//	@Success		200	{object}	web.Resp{data=domain.TeamUser}	"成功"
+//	@Failure		401	{object}	web.Resp						"未授权"
+//	@Failure		500	{object}	web.Resp						"服务器内部错误"
+//	@Router			/api/v1/teams/users/login [post]
+func (h *TeamGroupUserHandler) Login(c *web.Context, req domain.TeamLoginReq) error {
 	ctx := c.Request().Context()
-
-	// 验证验证码
-	if req.CaptchaToken != "" {
-		ok, err := h.captcha.Verify(req.CaptchaToken, nil)
-		if err != nil || !ok {
-			h.logger.WarnContext(ctx, "captcha verification failed", "error", err)
-			return errcode.ErrCaptchaVerifyFailed
-		}
+	if !h.captcha.ValidateToken(ctx, req.CaptchaToken) {
+		return errcode.ErrForbidden
 	}
 
-	user, err := h.usecase.Login(ctx, req)
+	user, err := h.usecase.Login(ctx, &req)
 	if err != nil {
 		h.logger.WarnContext(ctx, "team login failed", "email", req.Email, "error", err)
 		return errcode.ErrLoginFailed
 	}
 
-	// 生成 Cookie
-	cookie, err := h.authMiddleware.GenerateCookieByUID(ctx, user.ID)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "generate cookie failed", "error", err)
-		return errcode.ErrInternalServer
-	}
-
-	// 保存到 Redis
-	err = h.authMiddleware.SetUserCookieIntoRedis(ctx, cookie, middleware.TeamUserSessionKey, &domain.User{
+	// 创建 session（内部生成 cookie 并设置到 response）
+	_, err = h.authMiddleware.Session.Save(c, consts.MonkeyCodeAITeamSession, user.ID, &domain.User{
 		ID:    user.ID,
 		Name:  user.Name,
 		Email: user.Email,
 	})
 	if err != nil {
-		h.logger.ErrorContext(ctx, "set user cookie into redis failed", "error", err)
+		h.logger.ErrorContext(ctx, "save session failed", "error", err)
 		return errcode.ErrInternalServer
 	}
 
-	// 设置 Cookie
-	h.setCookie(c, cookie)
-
-	return c.JSON(http.StatusOK, map[string]any{
-		"success": true,
-		"message": "login success",
-	})
+	return c.Success(user)
 }
 
-// Logout 登出
+// Logout 团队用户登出
+//
+//	@Summary		团队用户登出
+//	@Description	团队用户登出
+//	@Tags			【Team 管理员】认证
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	web.Resp{}	"成功"
+//	@Failure		401	{object}	web.Resp	"未授权"
+//	@Failure		500	{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/teams/users/logout [post]
 func (h *TeamGroupUserHandler) Logout(c *web.Context) error {
 	ctx := c.Request().Context()
 
@@ -138,257 +135,263 @@ func (h *TeamGroupUserHandler) Logout(c *web.Context) error {
 		return errcode.ErrUnauthorized
 	}
 
-	cookie, err := c.Cookie(consts.MonkeyCodeAITeamSession)
-	if err == nil && cookie.Value != "" {
-		err = h.authMiddleware.DeleteUserCookieFromRedis(ctx, middleware.TeamUserSessionKey, user.User.ID)
-		if err != nil {
-			h.logger.ErrorContext(ctx, "delete user cookie from redis failed", "error", err)
-		}
+	err := h.authMiddleware.Session.Del(c, consts.MonkeyCodeAITeamSession, user.User.ID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "delete session failed", "error", err)
 	}
 
-	h.clearCookie(c)
-
-	return c.JSON(http.StatusOK, map[string]string{"message": "logout success"})
+	return c.Success(nil)
 }
 
-// Status 获取状态
+// Status 获取团队用户登录状态
+//
+//	@Summary		获取团队用户登录状态
+//	@Description	获取团队用户登录状态
+//	@Tags			【Team 管理员】认证
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	web.Resp{data=domain.TeamUser}	"成功"
+//	@Failure		401	{object}	web.Resp						"未授权"
+//	@Failure		500	{object}	web.Resp						"服务器内部错误"
+//	@Router			/api/v1/teams/users/status [get]
 func (h *TeamGroupUserHandler) Status(c *web.Context) error {
 	user := middleware.GetTeamUser(c)
-	if user == nil || user.User == nil {
-		return c.JSON(http.StatusOK, map[string]bool{"login": false})
+	if user == nil {
+		return errcode.ErrNotLoggedIn
 	}
-
-	return c.JSON(http.StatusOK, map[string]any{
-		"login":    true,
-		"teamUser": user,
-	})
+	return c.Success(user)
 }
 
-// ChangePassword 修改密码
-func (h *TeamGroupUserHandler) ChangePassword(c *web.Context, req *domain.ChangePasswordReq) error {
-	ctx := c.Request().Context()
-
-	user := middleware.GetTeamUser(c)
-	if user == nil || user.User == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	err := h.usecase.ChangePassword(ctx, user.User.ID, req)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "change password failed", "error", err)
-		return errcode.ErrChangePasswordFailed
-	}
-
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
-}
-
-// AddUser 添加用户
-func (h *TeamGroupUserHandler) AddUser(c *web.Context, req *domain.AddTeamUserReq) error {
-	ctx := c.Request().Context()
-
+// ChangePassword 修改密码接口
+//
+//	@Summary		修改密码
+//	@Description	修改当前用户的密码
+//	@Tags			【Team 管理员】认证
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			req	body		domain.ChangePasswordReq	true	"修改密码请求"
+//	@Success		200	{object}	web.Resp{}					"成功"
+//	@Router			/api/v1/teams/users/passwords/change [put]
+func (h *TeamGroupUserHandler) ChangePassword(c *web.Context, req domain.ChangePasswordReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	resp, err := h.usecase.AddUser(ctx, teamUser, req)
+	err := h.usecase.ChangePassword(c.Request().Context(), teamUser.User.ID, &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "add user failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
-}
-
-// AddAdmin 添加管理员
-func (h *TeamGroupUserHandler) AddAdmin(c *web.Context, req *domain.AddTeamAdminReq) error {
-	ctx := c.Request().Context()
-
-	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	resp, err := h.usecase.AddAdmin(ctx, teamUser, req)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "add admin failed", "error", err)
+	if err := h.Logout(c); err != nil {
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(nil)
 }
 
-// MemberList 成员列表
-func (h *TeamGroupUserHandler) MemberList(c *web.Context, req *domain.MemberListReq) error {
-	ctx := c.Request().Context()
-
+// AddUser 创建团队成员
+//
+//	@Summary		创建团队成员
+//	@Description	创建团队成员，发送重置密码邮件
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			req	body		domain.AddTeamUserReq					true	"请求参数"
+//	@Success		200	{object}	web.Resp{data=domain.AddTeamUserResp}	"成功"
+//	@Failure		401	{object}	web.Resp								"未授权"
+//	@Failure		500	{object}	web.Resp								"服务器内部错误"
+//	@Router			/api/v1/teams/users [post]
+func (h *TeamGroupUserHandler) AddUser(c *web.Context, req domain.AddTeamUserReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	resp, err := h.usecase.MemberList(ctx, teamUser, req)
+	resp, err := h.usecase.AddUser(c.Request().Context(), teamUser, &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "member list failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(resp)
 }
 
-// UpdateUser 更新用户
-func (h *TeamGroupUserHandler) UpdateUser(c *web.Context, req *domain.UpdateTeamUserReq) error {
-	ctx := c.Request().Context()
-
+// AddAdmin 创建团队管理员
+//
+//	@Summary		创建团队管理员
+//	@Description	创建团队管理员，将用户添加到团队并设置为管理员角色
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			req	body		domain.AddTeamAdminReq					true	"请求参数"
+//	@Success		200	{object}	web.Resp{data=domain.AddTeamAdminResp}	"成功"
+//	@Failure		401	{object}	web.Resp								"未授权"
+//	@Failure		500	{object}	web.Resp								"服务器内部错误"
+//	@Router			/api/v1/teams/admin [post]
+func (h *TeamGroupUserHandler) AddAdmin(c *web.Context, req domain.AddTeamAdminReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	req.UserID = uuid.MustParse(c.Param("user_id"))
-
-	resp, err := h.usecase.UpdateUser(ctx, req)
+	resp, err := h.usecase.AddAdmin(c.Request().Context(), teamUser, &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "update user failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(resp)
 }
 
-// List 分组列表
+// MemberList 获取团队成员列表
+//
+//	@Summary		获取团队成员列表
+//	@Description	获取团队成员列表，支持按角色筛选
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			role	query		string									false	"团队成员角色筛选（可选值：admin, user）"
+//	@Success		200		{object}	web.Resp{data=domain.MemberListResp}	"成功"
+//	@Failure		401		{object}	web.Resp								"未授权"
+//	@Failure		500		{object}	web.Resp								"服务器内部错误"
+//	@Router			/api/v1/teams/users [get]
+func (h *TeamGroupUserHandler) MemberList(c *web.Context, req domain.MemberListReq) error {
+	teamUser := middleware.GetTeamUser(c)
+	resp, err := h.usecase.MemberList(c.Request().Context(), teamUser, &req)
+	if err != nil {
+		return err
+	}
+	return c.Success(resp)
+}
+
+// MemberList 获取团队成员列表
+//
+//	@Summary		获取团队成员列表
+//	@Description	获取团队成员列表，支持按角色筛选
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			role	query		string									false	"团队成员角色筛选（可选值：admin, user）"
+//	@Success		200		{object}	web.Resp{data=domain.MemberListResp}	"成功"
+//	@Failure		401		{object}	web.Resp								"未授权"
+//	@Failure		500		{object}	web.Resp								"服务器内部错误"
+//	@Router			/api/v1/teams/users [get]
+func (h *TeamGroupUserHandler) UpdateUser(c *web.Context, req domain.UpdateTeamUserReq) error {
+	resp, err := h.usecase.UpdateUser(c.Request().Context(), &req)
+	if err != nil {
+		return err
+	}
+	// 如果设置了禁用用户，删除该用户相关联的 cookie
+	if *req.IsBlocked {
+		err := h.authMiddleware.Session.Trunc(c.Request().Context(), consts.MonkeyCodeAITeamSession, resp.User.ID)
+		if err != nil {
+			return err
+		}
+	}
+	return c.Success(resp)
+}
+
+// List 获取团队分组列表
+//
+//	@Summary		获取团队分组列表
+//	@Description	获取团队分组列表
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Success		200	{object}	web.Resp{data=domain.ListTeamGroupsResp}	"成功"
+//	@Failure		401	{object}	web.Resp									"未授权"
+//	@Failure		500	{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/teams/groups [get]
 func (h *TeamGroupUserHandler) List(c *web.Context) error {
-	ctx := c.Request().Context()
-
 	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	resp, err := h.usecase.List(ctx, teamUser)
+	resp, err := h.usecase.List(c.Request().Context(), teamUser)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "list groups failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(resp)
 }
 
-// Add 添加分组
-func (h *TeamGroupUserHandler) Add(c *web.Context, req *domain.AddTeamGroupReq) error {
-	ctx := c.Request().Context()
-
+// Add 创建团队分组
+//
+//	@Summary		创建团队分组
+//	@Description	创建团队分组
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			req	body		domain.AddTeamGroupReq			true	"请求参数"
+//	@Success		200	{object}	web.Resp{data=domain.TeamGroup}	"成功"
+//	@Failure		401	{object}	web.Resp						"未授权"
+//	@Failure		500	{object}	web.Resp						"服务器内部错误"
+//	@Router			/api/v1/teams/groups [post]
+func (h *TeamGroupUserHandler) Add(c *web.Context, req domain.AddTeamGroupReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	resp, err := h.usecase.Add(ctx, teamUser, req)
+	resp, err := h.usecase.Add(c.Request().Context(), teamUser, &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "add group failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(resp)
 }
 
-// Update 更新分组
-func (h *TeamGroupUserHandler) Update(c *web.Context, req *domain.UpdateTeamGroupReq) error {
-	ctx := c.Request().Context()
-
-	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	req.GroupID = uuid.MustParse(c.Param("group_id"))
-
-	resp, err := h.usecase.Update(ctx, req)
+// Update 更新团队分组
+//
+//	@Summary		更新团队分组
+//	@Description	更新团队分组
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			group_id	path		string							true	"团队组ID"
+//	@Param			req			body		domain.UpdateTeamGroupReq		true	"请求参数"
+//	@Success		200			{object}	web.Resp{data=domain.TeamGroup}	"成功"
+//	@Failure		401			{object}	web.Resp						"未授权"
+//	@Failure		500			{object}	web.Resp						"服务器内部错误"
+//	@Router			/api/v1/teams/groups/{group_id} [put]
+func (h *TeamGroupUserHandler) Update(c *web.Context, req domain.UpdateTeamGroupReq) error {
+	resp, err := h.usecase.Update(c.Request().Context(), &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "update group failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(resp)
 }
 
-// Delete 删除分组
-func (h *TeamGroupUserHandler) Delete(c *web.Context) error {
-	ctx := c.Request().Context()
-
+// Delete 删除团队分组
+//
+//	@Summary		删除团队分组
+//	@Description	删除团队分组
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			group_id	path		string		true	"团队组ID"
+//	@Success		200			{object}	web.Resp{}	"成功"
+//	@Failure		401			{object}	web.Resp	"未授权"
+//	@Failure		500			{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/teams/groups/{group_id} [delete]
+func (h *TeamGroupUserHandler) Delete(c *web.Context, req domain.DeleteTeamGroupReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	groupID := uuid.MustParse(c.Param("group_id"))
-
-	err := h.usecase.Delete(ctx, teamUser, &domain.DeleteTeamGroupReq{GroupID: groupID})
-	if err != nil {
-		h.logger.ErrorContext(ctx, "delete group failed", "error", err)
+	if err := h.usecase.Delete(c.Request().Context(), teamUser, &req); err != nil {
 		return err
 	}
-
-	return c.JSON(http.StatusOK, map[string]bool{"success": true})
+	return c.Success(nil)
 }
 
 // ListGroupUsers 组成员列表
-func (h *TeamGroupUserHandler) ListGroupUsers(c *web.Context, req *domain.ListTeamGroupUsersReq) error {
-	ctx := c.Request().Context()
-
-	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	req.GroupID = uuid.MustParse(c.Param("group_id"))
-
-	resp, err := h.usecase.ListGroups(ctx, req)
+func (h *TeamGroupUserHandler) ListGroupUsers(c *web.Context, req domain.ListTeamGroupUsersReq) error {
+	resp, err := h.usecase.ListGroups(c.Request().Context(), &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "list group users failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
+	return c.Success(resp)
 }
 
-// ModifyGroupUsers 修改组成员
-func (h *TeamGroupUserHandler) ModifyGroupUsers(c *web.Context, req *domain.AddTeamGroupUsersReq) error {
-	ctx := c.Request().Context()
-
-	teamUser := middleware.GetTeamUser(c)
-	if teamUser == nil {
-		return errcode.ErrUnauthorized
-	}
-
-	req.GroupID = uuid.MustParse(c.Param("group_id"))
-
-	resp, err := h.usecase.ModifyGroups(ctx, req)
+// ModifyGroupUsers 修改团队组成员
+//
+//	@Summary		修改团队组成员
+//	@Description	修改团队组成员
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			group_id	path		string										true	"团队组ID"
+//	@Param			req			body		domain.AddTeamGroupUsersReq					true	"请求参数"
+//	@Success		200			{object}	web.Resp{data=domain.AddTeamGroupUsersResp}	"成功"
+//	@Failure		401			{object}	web.Resp									"未授权"
+//	@Failure		500			{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/teams/groups/{group_id}/users [put]
+func (h *TeamGroupUserHandler) ModifyGroupUsers(c *web.Context, req domain.AddTeamGroupUsersReq) error {
+	resp, err := h.usecase.ModifyGroups(c.Request().Context(), &req)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "modify group users failed", "error", err)
 		return err
 	}
-
-	return c.JSON(http.StatusOK, resp)
-}
-
-func (h *TeamGroupUserHandler) setCookie(c *web.Context, cookie string) {
-	c.SetCookie(&http.Cookie{
-		Name:     consts.MonkeyCodeAITeamSession,
-		Value:    cookie,
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   h.config.Session.Expire,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func (h *TeamGroupUserHandler) clearCookie(c *web.Context) {
-	c.SetCookie(&http.Cookie{
-		Name:     consts.MonkeyCodeAITeamSession,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
+	return c.Success(resp)
 }

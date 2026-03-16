@@ -138,7 +138,7 @@ type ResetUserPasswordReq struct {
 // ResetUserPasswordEmailReq 发送重置密码邮件请求
 type ResetUserPasswordEmailReq struct {
 	Emails       []string `json:"emails" validate:"required"`
-	CaptchaToken string   `json:"captcha_token" validate:"required"`
+	CaptchaToken string   `json:"captcha_token"`
 }
 
 // TeamMembersResp 团队成员列表响应

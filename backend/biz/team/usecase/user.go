@@ -16,7 +16,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
-	"github.com/chaitin/MonkeyCode/backend/pkg/email"
 )
 
 // TeamGroupUserUsecase 团队分组成员业务逻辑层
@@ -24,7 +23,7 @@ type TeamGroupUserUsecase struct {
 	repo        domain.TeamGroupUserRepo
 	logger      *slog.Logger
 	config      *config.Config
-	smtpClient  *email.SMTPClient
+	smtpClient  domain.EmailSender
 	redisClient *redis.Client
 }
 
@@ -32,19 +31,11 @@ type TeamGroupUserUsecase struct {
 func NewTeamGroupUserUsecase(i *do.Injector) (domain.TeamGroupUserUsecase, error) {
 	cfg := do.MustInvoke[*config.Config](i)
 
-	smtpClient := email.NewSMTPClient(email.SMTPConfig{
-		Host:     cfg.SMTP.Host,
-		Port:     cfg.SMTP.Port,
-		Username: cfg.SMTP.Username,
-		Password: cfg.SMTP.Password,
-		From:     cfg.SMTP.From,
-	})
-
 	return &TeamGroupUserUsecase{
 		repo:        do.MustInvoke[domain.TeamGroupUserRepo](i),
 		logger:      do.MustInvoke[*slog.Logger](i).With("module", "usecase.team_group_user"),
 		config:      cfg,
-		smtpClient:  smtpClient,
+		smtpClient:  do.MustInvoke[domain.EmailSender](i),
 		redisClient: do.MustInvoke[*redis.Client](i),
 	}, nil
 }
@@ -237,7 +228,7 @@ func (u *TeamGroupUserUsecase) generateResetPWDToken(ctx context.Context, userID
 // sendResetPasswordEmail 发送重置密码邮件
 func (u *TeamGroupUserUsecase) sendResetPasswordEmail(ctx context.Context, email, username, token string) error {
 	resetURL := fmt.Sprintf("%s/resetpassword?token=%s", u.config.Server.BaseURL, token)
-	err := u.smtpClient.SendResetPasswordEmail(email, username, resetURL)
+	err := u.smtpClient.SendResetPasswordEmail(ctx, email, username, resetURL)
 	if err != nil {
 		u.logger.ErrorContext(ctx, "send reset password email failed", "error", err)
 		return errcode.ErrHTTPRequest.Wrap(err)

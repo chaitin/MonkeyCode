@@ -14,38 +14,30 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
-	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
-	"github.com/chaitin/MonkeyCode/backend/pkg/email"
 )
 
-type userUsecase struct {
-	repo        domain.UserRepo
-	logger      *slog.Logger
-	redisClient *redis.Client
-	config      *config.Config
-	emailClient *email.SMTPClient
+type UserUsecase struct {
+	repo   domain.UserRepo
+	logger *slog.Logger
+	redis  *redis.Client
+	config *config.Config
+	email  domain.EmailSender
 }
 
 func NewUserUsecase(i *do.Injector) (domain.UserUsecase, error) {
 	cfg := do.MustInvoke[*config.Config](i)
-	return &userUsecase{
-		repo:        do.MustInvoke[domain.UserRepo](i),
-		logger:      do.MustInvoke[*slog.Logger](i),
-		redisClient: do.MustInvoke[*redis.Client](i),
-		config:      cfg,
-		emailClient: email.NewSMTPClient(email.SMTPConfig{
-			Host:     cfg.SMTP.Host,
-			Port:     cfg.SMTP.Port,
-			Username: cfg.SMTP.Username,
-			Password: cfg.SMTP.Password,
-			From:     cfg.SMTP.From,
-		}),
+	return &UserUsecase{
+		repo:   do.MustInvoke[domain.UserRepo](i),
+		logger: do.MustInvoke[*slog.Logger](i),
+		redis:  do.MustInvoke[*redis.Client](i),
+		config: cfg,
+		email:  do.MustInvoke[domain.EmailSender](i),
 	}, nil
 }
 
 // Get implements domain.UserUsecase.
-func (u *userUsecase) Get(ctx context.Context, uid uuid.UUID) (*domain.User, error) {
+func (u *UserUsecase) Get(ctx context.Context, uid uuid.UUID) (*domain.User, error) {
 	us, err := u.repo.Get(ctx, uid)
 	if err != nil {
 		return nil, err
@@ -54,7 +46,7 @@ func (u *userUsecase) Get(ctx context.Context, uid uuid.UUID) (*domain.User, err
 }
 
 // Update implements domain.UserUsecase.
-func (u *userUsecase) Update(ctx context.Context, uid uuid.UUID, avatarURL string, req domain.UpdateUserReq) (*domain.User, error) {
+func (u *UserUsecase) Update(ctx context.Context, uid uuid.UUID, avatarURL string, req domain.UpdateUserReq) (*domain.User, error) {
 	err := u.repo.Update(ctx, uid, req.Name, avatarURL)
 	if err != nil {
 		u.logger.ErrorContext(ctx, "update user failed", "error", err, "user_id", uid)
@@ -70,7 +62,7 @@ func (u *userUsecase) Update(ctx context.Context, uid uuid.UUID, avatarURL strin
 }
 
 // GetUserWithTeams implements domain.UserUsecase.
-func (u *userUsecase) GetUserWithTeams(ctx context.Context, userID uuid.UUID) (*domain.TeamUserInfo, error) {
+func (u *UserUsecase) GetUserWithTeams(ctx context.Context, userID uuid.UUID) (*domain.TeamUserInfo, error) {
 	user, err := u.repo.GetUserWithTeams(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -79,7 +71,7 @@ func (u *userUsecase) GetUserWithTeams(ctx context.Context, userID uuid.UUID) (*
 }
 
 // PasswordLogin implements domain.UserUsecase.
-func (u *userUsecase) PasswordLogin(ctx context.Context, req *domain.TeamLoginReq) (*domain.User, error) {
+func (u *UserUsecase) PasswordLogin(ctx context.Context, req *domain.TeamLoginReq) (*domain.User, error) {
 	user, err := u.repo.PasswordLogin(ctx, req)
 	if err != nil {
 		return nil, err
@@ -88,7 +80,7 @@ func (u *userUsecase) PasswordLogin(ctx context.Context, req *domain.TeamLoginRe
 }
 
 // ChangePassword implements domain.UserUsecase.
-func (u *userUsecase) ChangePassword(ctx context.Context, userID uuid.UUID, req *domain.ChangePasswordReq, isReset bool) error {
+func (u *UserUsecase) ChangePassword(ctx context.Context, userID uuid.UUID, req *domain.ChangePasswordReq, isReset bool) error {
 	err := u.repo.ChangePassword(ctx, userID, req.CurrentPassword, req.NewPassword, isReset)
 	if err != nil {
 		u.logger.ErrorContext(ctx, "change password failed", "error", err)
@@ -98,21 +90,16 @@ func (u *userUsecase) ChangePassword(ctx context.Context, userID uuid.UUID, req 
 }
 
 // SendResetPasswordEmail implements domain.UserUsecase.
-func (u *userUsecase) SendResetPasswordEmail(ctx context.Context, req *domain.ResetUserPasswordEmailReq) error {
+func (u *UserUsecase) SendResetPasswordEmail(ctx context.Context, req *domain.ResetUserPasswordEmailReq) error {
 	users, err := u.repo.GetUserByEmail(ctx, req.Emails)
 	if err != nil {
 		return err
 	}
 
 	for _, user := range users {
-		token, err := u.generateResetPWDToken(ctx, user.ID)
-		if err != nil {
-			u.logger.ErrorContext(ctx, "generate reset password token failed", "error", err)
-			continue
-		}
-
-		key := fmt.Sprintf("reset_password_token:%s", user.ID.String())
-		err = u.redisClient.Set(ctx, key, token, time.Hour*24).Err()
+		token := uuid.NewString()
+		key := fmt.Sprintf("reset_password_token:%s", token)
+		err = u.redis.Set(ctx, key, user.ID.String(), time.Hour*24).Err()
 		if err != nil {
 			u.logger.ErrorContext(ctx, "set redis key failed", "error", err)
 			continue
@@ -123,19 +110,10 @@ func (u *userUsecase) SendResetPasswordEmail(ctx context.Context, req *domain.Re
 	return nil
 }
 
-// generateResetPWDToken generates a reset password token.
-func (u *userUsecase) generateResetPWDToken(_ context.Context, userID uuid.UUID) (string, error) {
-	token, err := crypto.Simple(userID.String(), time.Now().Add(time.Hour*24))
-	if err != nil {
-		return "", err
-	}
-	return token, nil
-}
-
 // sendEmail sends a reset password email via SMTP.
-func (u *userUsecase) sendEmail(ctx context.Context, emailAddr, username, token string) {
+func (u *UserUsecase) sendEmail(ctx context.Context, emailAddr, username, token string) {
 	resetURL := fmt.Sprintf("%s/resetpassword?token=%s", u.config.Server.BaseURL, token)
-	err := u.emailClient.SendResetPasswordEmail(emailAddr, username, resetURL)
+	err := u.email.SendResetPasswordEmail(ctx, emailAddr, username, resetURL)
 	if err != nil {
 		u.logger.ErrorContext(ctx, "send email failed", "error", err, "email", emailAddr)
 		return
@@ -144,7 +122,7 @@ func (u *userUsecase) sendEmail(ctx context.Context, emailAddr, username, token 
 }
 
 // GetUserByEmail implements domain.UserUsecase.
-func (u *userUsecase) GetUserByEmail(ctx context.Context, emails []string) ([]*domain.User, error) {
+func (u *UserUsecase) GetUserByEmail(ctx context.Context, emails []string) ([]*domain.User, error) {
 	users, err := u.repo.GetUserByEmail(ctx, emails)
 	if err != nil && !db.IsNotFound(err) {
 		return nil, errcode.ErrDatabaseQuery.Wrap(err)

@@ -203,9 +203,9 @@ type JoinGroupResp struct {
 
 // TeamLoginReq 团队用户登录请求
 type TeamLoginReq struct {
-	Email        string `json:"email" validate:"required"`         // 用户邮箱
-	Password     string `json:"password" validate:"required"`      // 用户密码（MD5加密后的值）
-	CaptchaToken string `json:"captcha_token" validate:"required"` // 验证码Token
+	Email        string `json:"email" validate:"required"`    // 用户邮箱
+	Password     string `json:"password" validate:"required"` // 用户密码（MD5加密后的值）
+	CaptchaToken string `json:"captcha_token"`                // 验证码Token
 }
 
 // TeamLoginResp 团队用户登录响应
