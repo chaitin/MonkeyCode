@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -22,7 +23,20 @@ type Client struct {
 	client *http.Client
 	tr     *http.Transport
 	debug  bool
+	logger *slog.Logger
 }
+
+// SetLogger 设置日志
+func (c *Client) SetLogger(logger *slog.Logger) { c.logger = logger }
+
+// SetDebug 设置调试模式
+func (c *Client) SetDebug(debug bool) { c.debug = debug }
+
+// GetScheme 获取协议
+func (c *Client) GetScheme() string { return c.scheme }
+
+// GetHost 获取主机地址
+func (c *Client) GetHost() string { return c.host }
 
 // NewClient 创建 HTTP 客户端
 func NewClient(scheme string, host string, timeout time.Duration, opts ...ReqOpt) *Client {
@@ -141,24 +155,26 @@ func sendRequest[T any](c *Client, method, path string, opts ...Opt) (*T, error)
 }
 
 // Get 发送 GET 请求
-func Get[T any](c *Client, path string, opts ...Opt) (*T, error) {
+func Get[T any](c *Client, ctx context.Context, path string, opts ...Opt) (*T, error) {
+	opts = append(opts, WithContext(ctx))
 	return sendRequest[T](c, http.MethodGet, path, opts...)
 }
 
 // Post 发送 POST 请求
-func Post[T any](c *Client, path string, body any, opts ...Opt) (*T, error) {
-	opts = append(opts, WithBody(body))
+func Post[T any](c *Client, ctx context.Context, path string, body any, opts ...Opt) (*T, error) {
+	opts = append(opts, WithBody(body), WithContext(ctx))
 	return sendRequest[T](c, http.MethodPost, path, opts...)
 }
 
 // Put 发送 PUT 请求
-func Put[T any](c *Client, path string, body any, opts ...Opt) (*T, error) {
-	opts = append(opts, WithBody(body))
+func Put[T any](c *Client, ctx context.Context, path string, body any, opts ...Opt) (*T, error) {
+	opts = append(opts, WithBody(body), WithContext(ctx))
 	return sendRequest[T](c, http.MethodPut, path, opts...)
 }
 
 // Delete 发送 DELETE 请求
-func Delete[T any](c *Client, path string, opts ...Opt) (*T, error) {
+func Delete[T any](c *Client, ctx context.Context, path string, opts ...Opt) (*T, error) {
+	opts = append(opts, WithContext(ctx))
 	return sendRequest[T](c, http.MethodDelete, path, opts...)
 }
 
