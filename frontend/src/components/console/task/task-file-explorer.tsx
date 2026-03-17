@@ -600,19 +600,19 @@ export const TaskFileExplorer = ({
 
   return (
     <div className={cn("flex flex-col h-full min-h-0", className)}>
-      {currentFile ? (
-        <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
-          <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
-            {fileTreePanel}
-          </ResizablePanel>
-          <ResizableHandle withHandle className="shrink-0" />
-          <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
-            {previewPanel}
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      ) : (
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">{fileTreePanel}</div>
-      )}
+      <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
+        <ResizablePanel defaultSize={currentFile ? 50 : 100} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
+          {fileTreePanel}
+        </ResizablePanel>
+        {currentFile && (
+          <>
+            <ResizableHandle withHandle className="shrink-0" />
+            <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
+              {previewPanel}
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
     </div>
   )
 }
