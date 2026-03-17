@@ -12,10 +12,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -141,6 +143,21 @@ func (_c *TeamGroupCreate) AddImages(v ...*Image) *TeamGroupCreate {
 	return _c.AddImageIDs(ids...)
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by IDs.
+func (_c *TeamGroupCreate) AddHostIDs(ids ...string) *TeamGroupCreate {
+	_c.mutation.AddHostIDs(ids...)
+	return _c
+}
+
+// AddHosts adds the "hosts" edges to the Host entity.
+func (_c *TeamGroupCreate) AddHosts(v ...*Host) *TeamGroupCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddHostIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_c *TeamGroupCreate) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupCreate {
 	_c.mutation.AddTeamGroupMemberIDs(ids...)
@@ -184,6 +201,21 @@ func (_c *TeamGroupCreate) AddTeamGroupImages(v ...*TeamGroupImage) *TeamGroupCr
 		ids[i] = v[i].ID
 	}
 	return _c.AddTeamGroupImageIDs(ids...)
+}
+
+// AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
+func (_c *TeamGroupCreate) AddTeamGroupHostIDs(ids ...uuid.UUID) *TeamGroupCreate {
+	_c.mutation.AddTeamGroupHostIDs(ids...)
+	return _c
+}
+
+// AddTeamGroupHosts adds the "team_group_hosts" edges to the TeamGroupHost entity.
+func (_c *TeamGroupCreate) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamGroupHostIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -386,6 +418,26 @@ func (_c *TeamGroupCreate) createSpec() (*TeamGroup, *sqlgraph.CreateSpec) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.HostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupHostCreate{config: _c.config, mutation: newTeamGroupHostMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.TeamGroupMembersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -427,6 +479,22 @@ func (_c *TeamGroupCreate) createSpec() (*TeamGroup, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgroupimage.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TeamGroupHostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

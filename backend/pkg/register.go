@@ -12,10 +12,12 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
+	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/email"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/session"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
+	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
 // RegisterInfra 注册基础设施依赖
@@ -84,6 +86,19 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		auditUc := do.MustInvoke[domain.AuditUsecase](i)
 		userUc := do.MustInvoke[domain.UserUsecase](i)
 		return middleware.NewAuditMiddleware(l, auditUc, userUc), nil
+	})
+
+	// VM Expire Queue
+	do.Provide(i, func(i *do.Injector) (*delayqueue.VMExpireQueue, error) {
+		r := do.MustInvoke[*redis.Client](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		return delayqueue.NewVMExpireQueue(r, l), nil
+	})
+
+	do.Provide(i, func(i *do.Injector) (taskflow.Clienter, error) {
+		cfg := do.MustInvoke[*config.Config](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		return taskflow.NewClient(taskflow.WithDebug(cfg.Debug), taskflow.WithLogger(l)), nil
 	})
 
 	return nil

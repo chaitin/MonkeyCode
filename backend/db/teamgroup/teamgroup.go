@@ -33,12 +33,16 @@ const (
 	EdgeModels = "models"
 	// EdgeImages holds the string denoting the images edge name in mutations.
 	EdgeImages = "images"
+	// EdgeHosts holds the string denoting the hosts edge name in mutations.
+	EdgeHosts = "hosts"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
 	EdgeTeamGroupMembers = "team_group_members"
 	// EdgeTeamGroupModels holds the string denoting the team_group_models edge name in mutations.
 	EdgeTeamGroupModels = "team_group_models"
 	// EdgeTeamGroupImages holds the string denoting the team_group_images edge name in mutations.
 	EdgeTeamGroupImages = "team_group_images"
+	// EdgeTeamGroupHosts holds the string denoting the team_group_hosts edge name in mutations.
+	EdgeTeamGroupHosts = "team_group_hosts"
 	// Table holds the table name of the teamgroup in the database.
 	Table = "team_groups"
 	// MembersTable is the table that holds the members relation/edge. The primary key declared below.
@@ -63,6 +67,11 @@ const (
 	// ImagesInverseTable is the table name for the Image entity.
 	// It exists in this package in order to avoid circular dependency with the "image" package.
 	ImagesInverseTable = "images"
+	// HostsTable is the table that holds the hosts relation/edge. The primary key declared below.
+	HostsTable = "team_group_hosts"
+	// HostsInverseTable is the table name for the Host entity.
+	// It exists in this package in order to avoid circular dependency with the "host" package.
+	HostsInverseTable = "hosts"
 	// TeamGroupMembersTable is the table that holds the team_group_members relation/edge.
 	TeamGroupMembersTable = "team_group_members"
 	// TeamGroupMembersInverseTable is the table name for the TeamGroupMember entity.
@@ -84,6 +93,13 @@ const (
 	TeamGroupImagesInverseTable = "team_group_images"
 	// TeamGroupImagesColumn is the table column denoting the team_group_images relation/edge.
 	TeamGroupImagesColumn = "group_id"
+	// TeamGroupHostsTable is the table that holds the team_group_hosts relation/edge.
+	TeamGroupHostsTable = "team_group_hosts"
+	// TeamGroupHostsInverseTable is the table name for the TeamGroupHost entity.
+	// It exists in this package in order to avoid circular dependency with the "teamgrouphost" package.
+	TeamGroupHostsInverseTable = "team_group_hosts"
+	// TeamGroupHostsColumn is the table column denoting the team_group_hosts relation/edge.
+	TeamGroupHostsColumn = "group_id"
 )
 
 // Columns holds all SQL columns for teamgroup fields.
@@ -106,6 +122,9 @@ var (
 	// ImagesPrimaryKey and ImagesColumn2 are the table columns denoting the
 	// primary key for the images relation (M2M).
 	ImagesPrimaryKey = []string{"group_id", "image_id"}
+	// HostsPrimaryKey and HostsColumn2 are the table columns denoting the
+	// primary key for the hosts relation (M2M).
+	HostsPrimaryKey = []string{"group_id", "host_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -216,6 +235,20 @@ func ByImages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByHostsCount orders the results by hosts count.
+func ByHostsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newHostsStep(), opts...)
+	}
+}
+
+// ByHosts orders the results by hosts terms.
+func ByHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newHostsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamGroupMembersCount orders the results by team_group_members count.
 func ByTeamGroupMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -257,6 +290,20 @@ func ByTeamGroupImages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newTeamGroupImagesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByTeamGroupHostsCount orders the results by team_group_hosts count.
+func ByTeamGroupHostsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTeamGroupHostsStep(), opts...)
+	}
+}
+
+// ByTeamGroupHosts orders the results by team_group_hosts terms.
+func ByTeamGroupHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTeamGroupHostsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -285,6 +332,13 @@ func newImagesStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, false, ImagesTable, ImagesPrimaryKey...),
 	)
 }
+func newHostsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(HostsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, HostsTable, HostsPrimaryKey...),
+	)
+}
 func newTeamGroupMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -304,5 +358,12 @@ func newTeamGroupImagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TeamGroupImagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupImagesTable, TeamGroupImagesColumn),
+	)
+}
+func newTeamGroupHostsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TeamGroupHostsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupHostsTable, TeamGroupHostsColumn),
 	)
 }

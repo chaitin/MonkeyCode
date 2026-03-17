@@ -49,6 +49,10 @@ const (
 	EdgeModels = "models"
 	// EdgeImages holds the string denoting the images edge name in mutations.
 	EdgeImages = "images"
+	// EdgeHosts holds the string denoting the hosts edge name in mutations.
+	EdgeHosts = "hosts"
+	// EdgeVms holds the string denoting the vms edge name in mutations.
+	EdgeVms = "vms"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
@@ -93,6 +97,20 @@ const (
 	ImagesInverseTable = "images"
 	// ImagesColumn is the table column denoting the images relation/edge.
 	ImagesColumn = "user_id"
+	// HostsTable is the table that holds the hosts relation/edge.
+	HostsTable = "hosts"
+	// HostsInverseTable is the table name for the Host entity.
+	// It exists in this package in order to avoid circular dependency with the "host" package.
+	HostsInverseTable = "hosts"
+	// HostsColumn is the table column denoting the hosts relation/edge.
+	HostsColumn = "user_id"
+	// VmsTable is the table that holds the vms relation/edge.
+	VmsTable = "virtualmachines"
+	// VmsInverseTable is the table name for the VirtualMachine entity.
+	// It exists in this package in order to avoid circular dependency with the "virtualmachine" package.
+	VmsInverseTable = "virtualmachines"
+	// VmsColumn is the table column denoting the vms relation/edge.
+	VmsColumn = "user_id"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -306,6 +324,34 @@ func ByImages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByHostsCount orders the results by hosts count.
+func ByHostsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newHostsStep(), opts...)
+	}
+}
+
+// ByHosts orders the results by hosts terms.
+func ByHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newHostsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByVmsCount orders the results by vms count.
+func ByVmsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newVmsStep(), opts...)
+	}
+}
+
+// ByVms orders the results by vms terms.
+func ByVms(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newVmsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -373,6 +419,20 @@ func newImagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ImagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ImagesTable, ImagesColumn),
+	)
+}
+func newHostsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(HostsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, HostsTable, HostsColumn),
+	)
+}
+func newVmsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(VmsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, VmsTable, VmsColumn),
 	)
 }
 func newTeamMembersStep() *sqlgraph.Step {

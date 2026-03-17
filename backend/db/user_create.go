@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -22,6 +23,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -249,6 +251,36 @@ func (_c *UserCreate) AddImages(v ...*Image) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddImageIDs(ids...)
+}
+
+// AddHostIDs adds the "hosts" edge to the Host entity by IDs.
+func (_c *UserCreate) AddHostIDs(ids ...string) *UserCreate {
+	_c.mutation.AddHostIDs(ids...)
+	return _c
+}
+
+// AddHosts adds the "hosts" edges to the Host entity.
+func (_c *UserCreate) AddHosts(v ...*Host) *UserCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddHostIDs(ids...)
+}
+
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_c *UserCreate) AddVMIDs(ids ...string) *UserCreate {
+	_c.mutation.AddVMIDs(ids...)
+	return _c
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_c *UserCreate) AddVms(v ...*VirtualMachine) *UserCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddVMIDs(ids...)
 }
 
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
@@ -541,6 +573,38 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.HostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

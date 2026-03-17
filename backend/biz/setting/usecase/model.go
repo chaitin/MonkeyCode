@@ -198,7 +198,7 @@ func (u *modelUsecase) GetProviderModelList(ctx context.Context, req *domain.Get
 
 		client := request.NewClient(m.Scheme, m.Host, u.client.Timeout, request.WithClient(u.client))
 		resp, err := request.Get[domain.OpenAIResp](
-			client, m.Path,
+			client, ctx, m.Path,
 			request.WithHeader(
 				request.Header{
 					"Authorization": fmt.Sprintf("Bearer %s", req.APIKey),
@@ -236,7 +236,7 @@ func (u *modelUsecase) GetProviderModelList(ctx context.Context, req *domain.Get
 			maps.Copy(h, headers)
 		}
 
-		resp, err := request.Get[domain.GetProviderModelListResp](client, m.Path, request.WithHeader(h))
+		resp, err := request.Get[domain.GetProviderModelListResp](client, ctx, m.Path, request.WithHeader(h))
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +272,7 @@ func (u *modelUsecase) getModelsWithProxyRetry(
 	u.logger.DebugContext(ctx, "trying direct connection (no proxy)", "provider", req.Provider, "url", m.String())
 	client := request.NewClient(m.Scheme, m.Host, u.client.Timeout, request.WithClient(u.client))
 	resp, err := request.Get[domain.OpenAIResp](
-		client, m.Path,
+		client, ctx, m.Path,
 		request.WithHeader(header),
 		request.WithQuery(query),
 	)
@@ -329,7 +329,7 @@ func (u *modelUsecase) getModelsWithProxyRetry(
 
 		client := request.NewClient(m.Scheme, m.Host, u.client.Timeout, request.WithClient(proxyClient))
 		resp, err := request.Get[domain.OpenAIResp](
-			client, m.Path,
+			client, ctx, m.Path,
 			request.WithHeader(header),
 			request.WithQuery(query),
 		)

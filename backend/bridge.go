@@ -6,6 +6,8 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz"
+	hostrepo "github.com/chaitin/MonkeyCode/backend/biz/host/repo"
+	hostusecase "github.com/chaitin/MonkeyCode/backend/biz/host/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
@@ -18,6 +20,28 @@ type BridgeOption func(*do.Injector)
 func WithEmailSender(sender domain.EmailSender) BridgeOption {
 	return func(i *do.Injector) {
 		do.OverrideValue(i, sender)
+	}
+}
+
+// WithPublicHost 启用公共主机支持，注册 PublicHostRepo 和 PublicHostUsecase
+func WithPublicHost() BridgeOption {
+	return func(i *do.Injector) {
+		do.Provide(i, hostrepo.NewPublicHostRepo)
+		do.Provide(i, hostusecase.NewPublicHostUsecase)
+	}
+}
+
+// WithPrivilegeChecker 注入特权用户检查器
+func WithPrivilegeChecker(checker domain.PrivilegeChecker) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, checker)
+	}
+}
+
+// WithInternalHook 注入内部 handler 回调（用于 taskflow 回调中与 task 系统耦合的逻辑）
+func WithInternalHook(hook domain.InternalHook) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, hook)
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -33,6 +34,7 @@ type ModelQuery struct {
 	withUser            *UserQuery
 	withTeams           *TeamQuery
 	withGroups          *TeamGroupQuery
+	withVms             *VirtualMachineQuery
 	withTeamModels      *TeamModelQuery
 	withTeamGroupModels *TeamGroupModelQuery
 	modifiers           []func(*sql.Selector)
@@ -131,6 +133,28 @@ func (_q *ModelQuery) QueryGroups() *TeamGroupQuery {
 			sqlgraph.From(model.Table, model.FieldID, selector),
 			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, model.GroupsTable, model.GroupsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryVms chains the current query on the "vms" edge.
+func (_q *ModelQuery) QueryVms() *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, selector),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.VmsTable, model.VmsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -377,6 +401,7 @@ func (_q *ModelQuery) Clone() *ModelQuery {
 		withUser:            _q.withUser.Clone(),
 		withTeams:           _q.withTeams.Clone(),
 		withGroups:          _q.withGroups.Clone(),
+		withVms:             _q.withVms.Clone(),
 		withTeamModels:      _q.withTeamModels.Clone(),
 		withTeamGroupModels: _q.withTeamGroupModels.Clone(),
 		// clone intermediate query.
@@ -416,6 +441,17 @@ func (_q *ModelQuery) WithGroups(opts ...func(*TeamGroupQuery)) *ModelQuery {
 		opt(query)
 	}
 	_q.withGroups = query
+	return _q
+}
+
+// WithVms tells the query-builder to eager-load the nodes that are connected to
+// the "vms" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ModelQuery) WithVms(opts ...func(*VirtualMachineQuery)) *ModelQuery {
+	query := (&VirtualMachineClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withVms = query
 	return _q
 }
 
@@ -519,10 +555,11 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 	var (
 		nodes       = []*Model{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [6]bool{
 			_q.withUser != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
+			_q.withVms != nil,
 			_q.withTeamModels != nil,
 			_q.withTeamGroupModels != nil,
 		}
@@ -565,6 +602,13 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 		if err := _q.loadGroups(ctx, query, nodes,
 			func(n *Model) { n.Edges.Groups = []*TeamGroup{} },
 			func(n *Model, e *TeamGroup) { n.Edges.Groups = append(n.Edges.Groups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withVms; query != nil {
+		if err := _q.loadVms(ctx, query, nodes,
+			func(n *Model) { n.Edges.Vms = []*VirtualMachine{} },
+			func(n *Model, e *VirtualMachine) { n.Edges.Vms = append(n.Edges.Vms, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -733,6 +777,36 @@ func (_q *ModelQuery) loadGroups(ctx context.Context, query *TeamGroupQuery, nod
 		for kn := range nodes {
 			assign(kn, n)
 		}
+	}
+	return nil
+}
+func (_q *ModelQuery) loadVms(ctx context.Context, query *VirtualMachineQuery, nodes []*Model, init func(*Model), assign func(*Model, *VirtualMachine)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Model)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(virtualmachine.FieldModelID)
+	}
+	query.Where(predicate.VirtualMachine(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(model.VmsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ModelID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "model_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

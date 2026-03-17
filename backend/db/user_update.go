@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
@@ -22,6 +23,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -297,6 +299,36 @@ func (_u *UserUpdate) AddImages(v ...*Image) *UserUpdate {
 	return _u.AddImageIDs(ids...)
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by IDs.
+func (_u *UserUpdate) AddHostIDs(ids ...string) *UserUpdate {
+	_u.mutation.AddHostIDs(ids...)
+	return _u
+}
+
+// AddHosts adds the "hosts" edges to the Host entity.
+func (_u *UserUpdate) AddHosts(v ...*Host) *UserUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddHostIDs(ids...)
+}
+
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_u *UserUpdate) AddVMIDs(ids ...string) *UserUpdate {
+	_u.mutation.AddVMIDs(ids...)
+	return _u
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_u *UserUpdate) AddVms(v ...*VirtualMachine) *UserUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVMIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdate) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -456,6 +488,48 @@ func (_u *UserUpdate) RemoveImages(v ...*Image) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveImageIDs(ids...)
+}
+
+// ClearHosts clears all "hosts" edges to the Host entity.
+func (_u *UserUpdate) ClearHosts() *UserUpdate {
+	_u.mutation.ClearHosts()
+	return _u
+}
+
+// RemoveHostIDs removes the "hosts" edge to Host entities by IDs.
+func (_u *UserUpdate) RemoveHostIDs(ids ...string) *UserUpdate {
+	_u.mutation.RemoveHostIDs(ids...)
+	return _u
+}
+
+// RemoveHosts removes "hosts" edges to Host entities.
+func (_u *UserUpdate) RemoveHosts(v ...*Host) *UserUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveHostIDs(ids...)
+}
+
+// ClearVms clears all "vms" edges to the VirtualMachine entity.
+func (_u *UserUpdate) ClearVms() *UserUpdate {
+	_u.mutation.ClearVms()
+	return _u
+}
+
+// RemoveVMIDs removes the "vms" edge to VirtualMachine entities by IDs.
+func (_u *UserUpdate) RemoveVMIDs(ids ...string) *UserUpdate {
+	_u.mutation.RemoveVMIDs(ids...)
+	return _u
+}
+
+// RemoveVms removes "vms" edges to VirtualMachine entities.
+func (_u *UserUpdate) RemoveVms(v ...*VirtualMachine) *UserUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVMIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -912,6 +986,96 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedHostsIDs(); len(nodes) > 0 && !_u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.HostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVmsIDs(); len(nodes) > 0 && !_u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1282,6 +1446,36 @@ func (_u *UserUpdateOne) AddImages(v ...*Image) *UserUpdateOne {
 	return _u.AddImageIDs(ids...)
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by IDs.
+func (_u *UserUpdateOne) AddHostIDs(ids ...string) *UserUpdateOne {
+	_u.mutation.AddHostIDs(ids...)
+	return _u
+}
+
+// AddHosts adds the "hosts" edges to the Host entity.
+func (_u *UserUpdateOne) AddHosts(v ...*Host) *UserUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddHostIDs(ids...)
+}
+
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_u *UserUpdateOne) AddVMIDs(ids ...string) *UserUpdateOne {
+	_u.mutation.AddVMIDs(ids...)
+	return _u
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_u *UserUpdateOne) AddVms(v ...*VirtualMachine) *UserUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVMIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdateOne) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -1441,6 +1635,48 @@ func (_u *UserUpdateOne) RemoveImages(v ...*Image) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveImageIDs(ids...)
+}
+
+// ClearHosts clears all "hosts" edges to the Host entity.
+func (_u *UserUpdateOne) ClearHosts() *UserUpdateOne {
+	_u.mutation.ClearHosts()
+	return _u
+}
+
+// RemoveHostIDs removes the "hosts" edge to Host entities by IDs.
+func (_u *UserUpdateOne) RemoveHostIDs(ids ...string) *UserUpdateOne {
+	_u.mutation.RemoveHostIDs(ids...)
+	return _u
+}
+
+// RemoveHosts removes "hosts" edges to Host entities.
+func (_u *UserUpdateOne) RemoveHosts(v ...*Host) *UserUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveHostIDs(ids...)
+}
+
+// ClearVms clears all "vms" edges to the VirtualMachine entity.
+func (_u *UserUpdateOne) ClearVms() *UserUpdateOne {
+	_u.mutation.ClearVms()
+	return _u
+}
+
+// RemoveVMIDs removes the "vms" edge to VirtualMachine entities by IDs.
+func (_u *UserUpdateOne) RemoveVMIDs(ids ...string) *UserUpdateOne {
+	_u.mutation.RemoveVMIDs(ids...)
+	return _u
+}
+
+// RemoveVms removes "vms" edges to VirtualMachine entities.
+func (_u *UserUpdateOne) RemoveVms(v ...*VirtualMachine) *UserUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVMIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -1920,6 +2156,96 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedHostsIDs(); len(nodes) > 0 && !_u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.HostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.HostsTable,
+			Columns: []string{user.HostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVmsIDs(); len(nodes) > 0 && !_u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.VmsTable,
+			Columns: []string{user.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

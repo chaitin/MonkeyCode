@@ -16,6 +16,8 @@ type Tx struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// Host is the client for interacting with the Host builders.
+	Host *HostClient
 	// Image is the client for interacting with the Image builders.
 	Image *ImageClient
 	// Model is the client for interacting with the Model builders.
@@ -24,12 +26,16 @@ type Tx struct {
 	Team *TeamClient
 	// TeamGroup is the client for interacting with the TeamGroup builders.
 	TeamGroup *TeamGroupClient
+	// TeamGroupHost is the client for interacting with the TeamGroupHost builders.
+	TeamGroupHost *TeamGroupHostClient
 	// TeamGroupImage is the client for interacting with the TeamGroupImage builders.
 	TeamGroupImage *TeamGroupImageClient
 	// TeamGroupMember is the client for interacting with the TeamGroupMember builders.
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
 	TeamGroupModel *TeamGroupModelClient
+	// TeamHost is the client for interacting with the TeamHost builders.
+	TeamHost *TeamHostClient
 	// TeamImage is the client for interacting with the TeamImage builders.
 	TeamImage *TeamImageClient
 	// TeamMember is the client for interacting with the TeamMember builders.
@@ -40,6 +46,8 @@ type Tx struct {
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
 	UserIdentity *UserIdentityClient
+	// VirtualMachine is the client for interacting with the VirtualMachine builders.
+	VirtualMachine *VirtualMachineClient
 
 	// lazily loaded.
 	client     *Client
@@ -172,18 +180,22 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Audit = NewAuditClient(tx.config)
+	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
 	tx.Model = NewModelClient(tx.config)
 	tx.Team = NewTeamClient(tx.config)
 	tx.TeamGroup = NewTeamGroupClient(tx.config)
+	tx.TeamGroupHost = NewTeamGroupHostClient(tx.config)
 	tx.TeamGroupImage = NewTeamGroupImageClient(tx.config)
 	tx.TeamGroupMember = NewTeamGroupMemberClient(tx.config)
 	tx.TeamGroupModel = NewTeamGroupModelClient(tx.config)
+	tx.TeamHost = NewTeamHostClient(tx.config)
 	tx.TeamImage = NewTeamImageClient(tx.config)
 	tx.TeamMember = NewTeamMemberClient(tx.config)
 	tx.TeamModel = NewTeamModelClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
+	tx.VirtualMachine = NewVirtualMachineClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

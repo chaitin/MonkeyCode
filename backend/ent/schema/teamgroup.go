@@ -49,5 +49,6 @@ func (TeamGroup) Edges() []ent.Edge {
 		edge.From("team", Team.Type).Ref("groups").Field("team_id").Unique().Required(),
 		edge.To("models", Model.Type).Through("team_group_models", TeamGroupModel.Type),
 		edge.To("images", Image.Type).Through("team_group_images", TeamGroupImage.Type),
+		edge.To("hosts", Host.Type).Through("team_group_hosts", TeamGroupHost.Type),
 	}
 }

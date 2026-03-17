@@ -45,15 +45,19 @@ type TeamGroupEdges struct {
 	Models []*Model `json:"models,omitempty"`
 	// Images holds the value of the images edge.
 	Images []*Image `json:"images,omitempty"`
+	// Hosts holds the value of the hosts edge.
+	Hosts []*Host `json:"hosts,omitempty"`
 	// TeamGroupMembers holds the value of the team_group_members edge.
 	TeamGroupMembers []*TeamGroupMember `json:"team_group_members,omitempty"`
 	// TeamGroupModels holds the value of the team_group_models edge.
 	TeamGroupModels []*TeamGroupModel `json:"team_group_models,omitempty"`
 	// TeamGroupImages holds the value of the team_group_images edge.
 	TeamGroupImages []*TeamGroupImage `json:"team_group_images,omitempty"`
+	// TeamGroupHosts holds the value of the team_group_hosts edge.
+	TeamGroupHosts []*TeamGroupHost `json:"team_group_hosts,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [7]bool
+	loadedTypes [9]bool
 }
 
 // MembersOrErr returns the Members value or an error if the edge
@@ -94,10 +98,19 @@ func (e TeamGroupEdges) ImagesOrErr() ([]*Image, error) {
 	return nil, &NotLoadedError{edge: "images"}
 }
 
+// HostsOrErr returns the Hosts value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamGroupEdges) HostsOrErr() ([]*Host, error) {
+	if e.loadedTypes[4] {
+		return e.Hosts, nil
+	}
+	return nil, &NotLoadedError{edge: "hosts"}
+}
+
 // TeamGroupMembersOrErr returns the TeamGroupMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.TeamGroupMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_members"}
@@ -106,7 +119,7 @@ func (e TeamGroupEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
 // TeamGroupModelsOrErr returns the TeamGroupModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TeamGroupModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_models"}
@@ -115,10 +128,19 @@ func (e TeamGroupEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
 // TeamGroupImagesOrErr returns the TeamGroupImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.TeamGroupImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_images"}
+}
+
+// TeamGroupHostsOrErr returns the TeamGroupHosts value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamGroupEdges) TeamGroupHostsOrErr() ([]*TeamGroupHost, error) {
+	if e.loadedTypes[8] {
+		return e.TeamGroupHosts, nil
+	}
+	return nil, &NotLoadedError{edge: "team_group_hosts"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -216,6 +238,11 @@ func (_m *TeamGroup) QueryImages() *ImageQuery {
 	return NewTeamGroupClient(_m.config).QueryImages(_m)
 }
 
+// QueryHosts queries the "hosts" edge of the TeamGroup entity.
+func (_m *TeamGroup) QueryHosts() *HostQuery {
+	return NewTeamGroupClient(_m.config).QueryHosts(_m)
+}
+
 // QueryTeamGroupMembers queries the "team_group_members" edge of the TeamGroup entity.
 func (_m *TeamGroup) QueryTeamGroupMembers() *TeamGroupMemberQuery {
 	return NewTeamGroupClient(_m.config).QueryTeamGroupMembers(_m)
@@ -229,6 +256,11 @@ func (_m *TeamGroup) QueryTeamGroupModels() *TeamGroupModelQuery {
 // QueryTeamGroupImages queries the "team_group_images" edge of the TeamGroup entity.
 func (_m *TeamGroup) QueryTeamGroupImages() *TeamGroupImageQuery {
 	return NewTeamGroupClient(_m.config).QueryTeamGroupImages(_m)
+}
+
+// QueryTeamGroupHosts queries the "team_group_hosts" edge of the TeamGroup entity.
+func (_m *TeamGroup) QueryTeamGroupHosts() *TeamGroupHostQuery {
+	return NewTeamGroupClient(_m.config).QueryTeamGroupHosts(_m)
 }
 
 // Update returns a builder for updating this TeamGroup.

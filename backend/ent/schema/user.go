@@ -57,5 +57,7 @@ func (User) Edges() []ent.Edge {
 		edge.To("groups", TeamGroup.Type).Through("team_group_members", TeamGroupMember.Type),
 		edge.To("models", Model.Type),
 		edge.To("images", Image.Type),
+		edge.To("hosts", Host.Type),
+		edge.To("vms", VirtualMachine.Type),
 	}
 }
