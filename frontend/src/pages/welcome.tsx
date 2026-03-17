@@ -30,7 +30,6 @@ const WelcomePage = () => {
           <Task />
           <SDD />
           <GitBot />
-          {/* <IDE /> */}
           <Pricing />
         </main>
         <Footer />

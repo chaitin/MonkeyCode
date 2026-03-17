@@ -26,7 +26,6 @@ import PlaygroundDetailPage from "./pages/playground-detail"
 import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
 import ProjectOverviewPage from "./pages/console/user/project/overview"
-import TaskDevelopPage from "./pages/console/user/task/task-dev"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
 
 function App() {
@@ -53,7 +52,6 @@ function App() {
           </Route>
           <Route path="/console/terminal" element={<TerminalPage />} />
           <Route path="/console/files" element={<FileManagerPage />} />
-          <Route path="/console/task/develop/:taskId" element={<TaskDevelopPage />} />
           <Route path="/sharedterminal" element={<SharedTerminalPage />} />
           <Route path="/manager" element={<ManagerConsolePage />}>
             <Route index element={<Navigate to="/manager/dashboard" replace />} />
