@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import Header from "@/components/welcome/header"
 import { useSearchParams } from "react-router-dom";
 import { AuthProvider } from "@/components/auth-provider";
-import { TaskWebSocketManager, type TaskPlan, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager";
+import { TaskWebSocketManager, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager";
 import type { MessageType } from "@/components/console/task/message";
 import { TaskChatPanel } from "@/components/console/task/chat-panel";
 
@@ -12,7 +12,6 @@ const PublicTaskPage = () => {
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>('inited')
   const [messages, setMessages] = React.useState<MessageType[]>([])
-  const [plan, setPlan] = React.useState<TaskPlan | null>(null)
   const [sending, setSending] = React.useState(false)
 
   // 初始化 websocket
@@ -25,7 +24,6 @@ const PublicTaskPage = () => {
       // 直接更新状态，创建新的数组引用让 React 正确检测变化
       setStreamStatus(state.status)
       setMessages([...state.messages])
-      setPlan(state.plan)
       setSending(state.sending)
     }, searchParams.get('fast') === null, true)
     taskManager.current = manager
@@ -49,7 +47,6 @@ const PublicTaskPage = () => {
             streamStatus={streamStatus}
             disabled={true} 
             sending={sending}
-            plan={plan}
             availableCommands={null}
             queueSize={0}
             sendUserInput={() => {}}

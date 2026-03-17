@@ -40,7 +40,7 @@ import { Label } from "@/components/ui/label";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { AuthProvider } from "@/components/auth-provider";
 import { TaskChatPanel } from "@/components/console/task/chat-panel";
-import { TaskWebSocketManager, type TaskPlan, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager";
+import { TaskWebSocketManager, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager";
 import React from "react";
 import type { MessageType } from "@/components/console/task/message";
 
@@ -74,7 +74,6 @@ const PlaygroundDetailPage = () => {
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>('inited')
   const [messages, setMessages] = React.useState<MessageType[]>([])
-  const [plan, setPlan] = React.useState<TaskPlan | null>(null)
   const [sending, setSending] = React.useState(false)
   
   const [showPlayOverlay, setShowPlayOverlay] = useState(true);
@@ -90,7 +89,6 @@ const PlaygroundDetailPage = () => {
       // 直接更新状态，创建新的数组引用让 React 正确检测变化
       setStreamStatus(state.status)
       setMessages([...state.messages])
-      setPlan(state.plan)
       setSending(state.sending)
     }, true, true)
     taskManager.current = manager
@@ -381,7 +379,6 @@ const PlaygroundDetailPage = () => {
                     streamStatus={streamStatus}
                     disabled={true} 
                     sending={sending}
-                    plan={plan}
                     availableCommands={null}
                     queueSize={0}
                     sendUserInput={() => {}}

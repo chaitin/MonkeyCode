@@ -274,8 +274,6 @@ export default function TaskDetailPage() {
             streamStatus={streamStatus}
             disabled={!vmOnline}
             sending={sending}
-            plan={plan}
-            planPosition="sticky"
             sendUserInput={sendUserInput}
             sendCancelCommand={sendCancelCommand}
             sendResetSession={sendResetSession}

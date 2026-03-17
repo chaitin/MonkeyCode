@@ -90,9 +90,6 @@ interface TaskChatPanelProps {
   cli?: ConstsCliName
   streamStatus: TaskStreamStatus
   disabled: boolean
-  plan: TaskPlan | null
-  /** 当为 'sticky' 时，执行步骤由父组件渲染并固定在顶部，本组件不渲染 */
-  planPosition?: "inline" | "sticky"
   availableCommands: AvailableCommands | null
   sending: boolean
   queueSize: number
@@ -105,7 +102,7 @@ interface TaskChatPanelProps {
   taskManager: TaskWebSocketManager | null
 }
 
-export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, plan, planPosition = "inline", availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
+export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
   const [timeCost, setTimeCost] = React.useState(0)
   const internalScrollRef = React.useRef<HTMLDivElement>(null)
   const scrollContainerRef = externalScrollRef ?? internalScrollRef
@@ -204,10 +201,6 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
 
   return (
     <div className={cn("flex flex-col gap-2 w-full", externalScrollRef ? "min-h-full" : "h-full")}>
-      {planPosition === "inline" && plan && plan.entries.length > 0 && (
-        <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
-      )}
-
       <div
         ref={!externalScrollRef ? internalScrollRef : undefined}
         className={cn("py-2", !externalScrollRef && "h-full overflow-y-auto")}
