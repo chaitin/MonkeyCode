@@ -89,7 +89,7 @@ export const renderTitle = (message: MessageType) => {
     }
 
     return <>
-      <pre className="text-xs">
+      <pre className="text-xs p-3">
         {JSON.stringify(message.data, null, 2)}
       </pre>
     </>
