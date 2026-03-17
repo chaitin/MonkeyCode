@@ -1,5 +1,7 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, type DomainProject, type DomainBranch } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsInterfaceType, ConstsOwnerType, type DomainModel, type DomainProject, type DomainBranch } from "@/api/Api"
+import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -7,10 +9,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { selectHost, selectImage, selectModel } from "@/utils/common"
+import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge, getOwnerTypeBadge, selectHost, selectImage, selectModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -31,7 +33,20 @@ export default function StartDevelopTaskDialog({
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
   const [userMessage, setUserMessage] = useState<string>('')
+  const [selectedModelId, setSelectedModelId] = useState<string>('')
   const { images, models, hosts } = useCommonData()
+
+  const modelsWithEconomy = useMemo(() => {
+    const economyModel = {
+      id: "economy",
+      model: "免费模型",
+      owner: { type: "public" as const },
+      is_default: false,
+      interface_type: ConstsInterfaceType.InterfaceTypeOpenAIChat,
+      last_check_success: true
+    } as DomainModel
+    return [economyModel, ...models]
+  }, [models])
 
   const fetchBranches = async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
@@ -89,8 +104,9 @@ export default function StartDevelopTaskDialog({
     if (open) {
       fetchBranches()
       setUserMessage('')
+      setSelectedModelId(selectModel(modelsWithEconomy, true))
     }
-  }, [open, project])
+  }, [open, project, modelsWithEconomy])
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {
@@ -109,7 +125,7 @@ export default function StartDevelopTaskDialog({
     await apiRequest('v1UsersTasksCreate', {
       content: userMessage.trim(),
       cli_name: ConstsCliName.CliNameOpencode,
-      model_id: selectModel(models, false),
+      model_id: selectedModelId || selectModel(modelsWithEconomy, true),
       image_id: selectImage(images, false),
       host_id: selectHost(hosts, false),
       repo: {
@@ -150,20 +166,12 @@ export default function StartDevelopTaskDialog({
             <Input 
               value={project?.name || '-'} 
               readOnly 
-              className="bg-muted"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>仓库地址</Label>
-            <Input 
-              value={project?.repo_url || '-'} 
-              readOnly 
-              className="bg-muted"
+              className="bg-muted break-all"
             />
           </div>
           {(project?.platform !== ConstsGitPlatform.GitPlatformInternal) && (
             <div className="space-y-2">
-              <Label>选择分支</Label>
+              <Label>代码仓库分支</Label>
               <Select value={selectedBranch} onValueChange={setSelectedBranch} disabled={loadingBranches || branches.length === 0}>
                 <SelectTrigger className="w-full">
                   {loadingBranches ? (
@@ -175,7 +183,7 @@ export default function StartDevelopTaskDialog({
                     <SelectValue placeholder="请选择分支" />
                   )}
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="break-all">
                   {branches.map((branch) => (
                     <SelectItem key={branch} value={branch}>
                       {branch}
@@ -186,13 +194,41 @@ export default function StartDevelopTaskDialog({
              </div>
            )}
           <div className="space-y-2">
+            <Label>大模型</Label>
+            <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="选择大模型" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelsWithEconomy.map((model) => (
+                  <SelectItem key={model.id} value={model.id || ""}>
+                    {model.id === "economy" ? (
+                      <img src="/logo-colored.png" className="size-4" alt="" />
+                    ) : (
+                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                    )}
+                    {getModelHealthBadge(model)}
+                    {model.model}
+                    {model.is_default && <Badge>默认</Badge>}
+                    {model.owner?.type === ConstsOwnerType.OwnerTypePublic ? (
+                      <Badge>推荐</Badge>
+                    ) : (
+                      getOwnerTypeBadge(model.owner)
+                    )}
+                    {model.id !== "economy" && getInterfaceTypeBadge(model.interface_type)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
             <Label>任务内容</Label>
             <Textarea
               value={userMessage}
               onChange={(e) => setUserMessage(e.target.value)}
               placeholder="请输入任务内容"
               rows={4}
-              className="resize-none"
+              className="resize-none break-all"
             />
           </div>
          </div>
