@@ -199,3 +199,8 @@
 .animate-text-flash {
   animation: text-flash 1.5s ease-in-out infinite;
 }
+
+/* 预留滚动条空间（左右对称），避免出现/消失时布局偏移，保持内容居中 */
+.scrollbar-gutter-stable {
+  scrollbar-gutter: stable both-edges;
+}

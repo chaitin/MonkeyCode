@@ -267,7 +267,7 @@ export default function TaskDetailPage() {
           <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
         </div>
       )}
-      <div ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto min-w-0">
+      <div ref={chatScrollRef} className={cn("flex-1 min-h-0 overflow-y-auto min-w-0", !hasPanel && "scrollbar-gutter-stable")}>
         <div className={cn("min-h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
           <TaskChatPanel
             scrollContainerRef={chatScrollRef}
