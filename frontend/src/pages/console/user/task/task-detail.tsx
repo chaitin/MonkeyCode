@@ -84,6 +84,7 @@ export default function TaskDetailPage() {
   const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const connectedRef = React.useRef(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelledRef = React.useRef(false)
   const planVersionRef = React.useRef<number | undefined>(undefined)
   const availableCommandsVersionRef = React.useRef<number | undefined>(undefined)
   const fileChangesVersionRef = React.useRef<number | undefined>(undefined)
@@ -124,7 +125,7 @@ export default function TaskDetailPage() {
     await apiRequest("v1UsersTasksDetail", {}, [taskId], (resp) => {
       if (resp.code === 0) {
         result = resp.data
-        setTask(resp.data)
+        if (!cancelledRef.current) setTask(resp.data)
       } else {
         toast.error(resp.message || "获取任务详情失败")
       }
@@ -134,6 +135,7 @@ export default function TaskDetailPage() {
 
   const scheduleFetchTaskDetail = React.useCallback(async () => {
     const currentTask = await fetchTaskDetail()
+    if (cancelledRef.current) return
     const vmStatus = currentTask?.virtualmachine?.status
     let delay = 1000
     switch (vmStatus) {
@@ -204,8 +206,10 @@ export default function TaskDetailPage() {
   // 定时获取任务详情
   React.useEffect(() => {
     if (!taskId) return
+    cancelledRef.current = false
     scheduleFetchTaskDetail()
     return () => {
+      cancelledRef.current = true
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
         timeoutRef.current = null

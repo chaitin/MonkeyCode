@@ -1,4 +1,4 @@
-import { Route, BrowserRouter, Routes, Navigate } from "react-router-dom"
+import { Route, BrowserRouter, Routes, Navigate, useParams } from "react-router-dom"
 import { ThemeProvider, ThemePathListener } from "@/components/theme-provider"
 import LoginPage from "@/pages/login"
 import WelcomePage from "@/pages/welcome"
@@ -28,6 +28,11 @@ import PostCreatePage from "./pages/post-create"
 import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
 
+function TaskDetailRoute() {
+  const { taskId } = useParams()
+  return <TaskDetailPage key={taskId} />
+}
+
 function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="monkeycode-theme">
@@ -45,7 +50,7 @@ function App() {
           <Route path="/console" element={<UserConsolePage />}>
             <Route index element={<Navigate to="/console/tasks" replace />} />
             <Route path="tasks" element={<TasksPage />} />
-            <Route path="task/:taskId" element={<TaskDetailPage />} />
+            <Route path="task/:taskId" element={<TaskDetailRoute />} />
             <Route path="project/:projectId" element={<ProjectOverviewPage />} />
             <Route path="gitbot" element={<GitBotsPage />} />
             <Route path="ide" element={<IDEIDE />} />
