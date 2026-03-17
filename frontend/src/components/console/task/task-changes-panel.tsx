@@ -14,9 +14,10 @@ interface TaskChangesPanelProps {
   fileChangesMap: Map<string, RepoFileChange>
   taskManager: TaskWebSocketManager | null
   disabled?: boolean
+  onClosePanel?: () => void
 }
 
-export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, disabled }: TaskChangesPanelProps) {
+export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, disabled, onClosePanel }: TaskChangesPanelProps) {
   const sortedPaths = [...fileChanges].sort((a, b) => a.localeCompare(b))
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [diffContent, setDiffContent] = useState<string>("")
@@ -41,8 +42,13 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
   if (disabled) {
     return (
       <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
+        <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/50 shrink-0">
           <span className="text-sm font-medium">文件变更</span>
+          {onClosePanel && (
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+              <IconX className="size-4" />
+            </Button>
+          )}
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           <Empty className="border border-dashed w-full flex-1 min-h-0">
@@ -106,8 +112,13 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
 
   const fileListPanel = (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
+      <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <span className="text-sm font-medium">变更文件</span>
+        {onClosePanel && (
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+            <IconX className="size-4" />
+          </Button>
+        )}
       </div>
       <div className={cn("flex-1 min-h-0 py-2 overflow-x-hidden", sortedPaths.length === 0 ? "flex flex-col" : "overflow-y-auto")}>
         {sortedPaths.length === 0 ? (

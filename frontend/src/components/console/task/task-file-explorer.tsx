@@ -44,6 +44,7 @@ interface TaskFileExplorerProps {
   changedPaths?: string[]
   taskManager: TaskWebSocketManager | null
   onRefresh?: () => void
+  onClosePanel?: () => void
   envid?: string
 }
 
@@ -352,6 +353,7 @@ export const TaskFileExplorer = ({
   changedPaths,
   taskManager,
   onRefresh,
+  onClosePanel,
   envid,
 }: TaskFileExplorerProps): React.JSX.Element => {
   const rootRef = useRef<DirNodeRef>(null)
@@ -502,8 +504,13 @@ export const TaskFileExplorer = ({
   if (disabled) {
     return (
       <div className={cn("flex flex-col h-full min-h-0", className)}>
-        <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
+        <div className="flex items-center justify-between gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
           <span className="text-sm font-medium">项目文件</span>
+          {onClosePanel && (
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+              <IconX className="size-4" />
+            </Button>
+          )}
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           <Empty className="border border-dashed w-full flex-1 min-h-0">
@@ -523,7 +530,7 @@ export const TaskFileExplorer = ({
 
   const fileTreePanel = (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
+      <div className="flex items-center justify-between pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">项目文件</span>
         </div>
@@ -544,6 +551,16 @@ export const TaskFileExplorer = ({
             alwaysVisible
             hideDestructive
           />
+          {onClosePanel && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                  <IconX className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>关闭面板</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto py-1 flex flex-col">

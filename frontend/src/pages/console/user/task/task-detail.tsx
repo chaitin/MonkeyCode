@@ -380,6 +380,7 @@ export default function TaskDetailPage() {
                   changedPaths={changedPaths}
                   taskManager={taskManager.current}
                   onRefresh={fetchFileChanges}
+                  onClosePanel={() => setActivePanel(null)}
                   envid={envid}
                 />
               </div>
@@ -387,7 +388,7 @@ export default function TaskDetailPage() {
             {activePanel === "terminal" && (
               <div className="flex-1 min-h-0 overflow-hidden">
                 <div className="h-full w-full border rounded-md overflow-hidden">
-                  <TaskTerminalPanel envid={envid} disabled={!vmOnline} />
+                  <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setActivePanel(null)} />
                 </div>
               </div>
             )}
@@ -398,6 +399,7 @@ export default function TaskDetailPage() {
                   fileChangesMap={fileChangesMap}
                   taskManager={taskManager.current}
                   disabled={!vmOnline}
+                  onClosePanel={() => setActivePanel(null)}
                 />
               </div>
             )}
@@ -409,6 +411,7 @@ export default function TaskDetailPage() {
                   vmId={task?.virtualmachine?.id}
                   onSuccess={fetchTaskDetail}
                   disabled={!vmOnline}
+                  onClosePanel={() => setActivePanel(null)}
                 />
               </div>
             )}

@@ -23,9 +23,10 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 interface TaskTerminalPanelProps {
   envid?: string
   disabled?: boolean
+  onClosePanel?: () => void
 }
 
-export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
+export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTerminalPanelProps) {
   const [sessions, setSessions] = useState<DomainTerminal[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [signal, setSignal] = useState<number>(0)
@@ -139,9 +140,16 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
   if (disabled) {
     return (
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
-          <IconTerminal2 className="size-4 text-primary" />
-          <span className="text-sm font-medium">终端</span>
+        <div className="flex items-center justify-between gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
+          <div className="flex items-center gap-2">
+            <IconTerminal2 className="size-4 text-primary" />
+            <span className="text-sm font-medium">终端</span>
+          </div>
+          {onClosePanel && (
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+              <IconX className="size-4" />
+            </Button>
+          )}
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           <Empty className="border border-dashed w-full flex-1 min-h-0">
@@ -169,7 +177,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 cursor-pointer hover:text-primary"
+          className="size-8 shrink-0 hover:text-primary"
           onClick={handleNewSession}
           disabled={disabled}
         >
@@ -195,7 +203,7 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-primary rounded cursor-pointer"
+                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-primary rounded"
                     onClick={(e) => handleCloseTab(e, sid)}
                   >
                     <IconX className="size-3" />
@@ -207,12 +215,22 @@ export function TaskTerminalPanel({ envid, disabled }: TaskTerminalPanelProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 cursor-pointer hover:text-primary"
+          className="size-8 shrink-0 hover:text-primary"
           onClick={() => fetchSessions()}
           disabled={disabled}
         >
           <IconReload className="size-4" />
         </Button>
+        {onClosePanel && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 hover:text-primary"
+            onClick={onClosePanel}
+          >
+            <IconX className="size-4" />
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
