@@ -3,6 +3,9 @@ logs
 *.log
 .DS_Store
 
+# Editor / IDE
+.vscode/
+
 # Local build artifacts
 monkeycode-ai/
 .pnpm-store/
