@@ -93,6 +93,11 @@ export default function StartDevelopTaskDialog({
   }, [open, project])
 
   const handleSubmit = async () => {
+    if (!userMessage.trim()) {
+      toast.error('请输入任务内容')
+      return
+    }
+
     if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && !selectedBranch) {
       toast.error('请选择分支')
       return
