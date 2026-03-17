@@ -32,6 +32,21 @@ type Config struct {
 	Logger     *logger.Config `mapstructure:"logger"`
 	AdminToken string         `mapstructure:"admin_token"`
 	Proxies    []string       `mapstructure:"proxies"`
+
+	TaskFlow   TaskFlow   `mapstructure:"taskflow"`
+	PublicHost PublicHost `mapstructure:"public_host"`
+}
+
+type TaskFlow struct {
+	GrpcHost string `mapstructure:"grpc_host"`
+	GrpcPort int    `mapstructure:"grpc_port"`
+	GrpcURL  string `mapstructure:"grpc_url"`
+}
+
+// PublicHost 公共主机配置（可选，内部项目通过 WithPublicHost 注入时生效）
+type PublicHost struct {
+	CountLimit int   `mapstructure:"count_limit"` // 每用户公共主机 VM 数量限制，0 表示不限制
+	TTLLimit   int64 `mapstructure:"ttl_limit"`   // 公共主机 VM 续期上限（秒），0 表示不限制
 }
 
 type Session struct {

@@ -6,10 +6,12 @@ require (
 	entgo.io/ent v0.14.5
 	github.com/GoYoko/web v1.6.0
 	github.com/ackcoder/go-cap v1.1.3
+	github.com/coder/websocket v1.8.14
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lib/pq v1.10.9
+	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/samber/do v1.6.0
 	github.com/samber/lo v1.53.0
@@ -24,7 +26,6 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect

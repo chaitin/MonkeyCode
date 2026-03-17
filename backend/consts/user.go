@@ -1,9 +1,5 @@
 package consts
 
-const (
-	PRIVILEGED_USER_KEY = "privileged:user"
-)
-
 type UserPlatform string
 
 const (

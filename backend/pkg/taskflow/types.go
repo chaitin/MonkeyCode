@@ -260,3 +260,84 @@ type Stats struct {
 	OnlineTerminalCount    int `json:"online_terminal_count"`
 	UsingTerminalUserCount int `json:"using_terminal_user_count"`
 }
+
+// ==================== Internal Callback 类型（taskflow → 本服务回调） ====================
+
+// TokenKind token 类型
+type TokenKind string
+
+const (
+	OrchestratorToken TokenKind = "orshcestrator"
+	AgentToken        TokenKind = "agent"
+)
+
+// CheckTokenReq 认证请求
+type CheckTokenReq struct {
+	Token     string `json:"token" validate:"required"`
+	MachineID string `json:"machine_id"`
+}
+
+// TokenUser token 中的用户信息
+type TokenUser struct {
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	AvatarURL string     `json:"avatar_url"`
+	Email     string     `json:"email"`
+	Team      *TokenTeam `json:"team"`
+}
+
+// TokenTeam token 中的团队信息
+type TokenTeam struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Token 认证结果
+type Token struct {
+	Kind        TokenKind  `json:"kind"`
+	User        *TokenUser `json:"user"`
+	ParentToken string     `json:"parent_token"`
+	Token       string     `json:"token"`
+	TaskID      uuid.UUID  `json:"task_id"`
+	SessionID   string     `json:"session_id"`
+	RemoteIP    string     `json:"remote_ip"`
+	Version     string     `json:"version"`
+}
+
+// ListLLMReq 列出 LLM 请求
+type ListLLMReq struct {
+	VmID   string `json:"vm_id" validate:"required"`
+	HostID string `json:"host_id" validate:"required"`
+}
+
+// LLMInfo LLM 信息
+type LLMInfo struct {
+	ApiKey      string   `json:"api_key"`
+	BaseURL     string   `json:"base_url"`
+	Model       string   `json:"model"`
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
+// GetCodingConfigReq 获取编码配置请求
+type GetCodingConfigReq struct {
+	VmID string `json:"vm_id"`
+}
+
+// CodingConfig 编码配置
+type CodingConfig struct{}
+
+// GitCredentialRequest git 凭证请求
+type GitCredentialRequest struct {
+	TaskID   string `json:"task_id"`
+	VMID     string `json:"vm_id"`
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Path     string `json:"path"`
+}
+
+// GitCredentialResponse git 凭证响应
+type GitCredentialResponse struct {
+	Username *string `json:"username,omitempty"`
+	Password *string `json:"password,omitempty"`
+	Error    *string `json:"error,omitempty"`
+}
