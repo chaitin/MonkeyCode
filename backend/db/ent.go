@@ -13,18 +13,22 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -86,18 +90,22 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			audit.Table:           audit.ValidColumn,
+			host.Table:            host.ValidColumn,
 			image.Table:           image.ValidColumn,
 			model.Table:           model.ValidColumn,
 			team.Table:            team.ValidColumn,
 			teamgroup.Table:       teamgroup.ValidColumn,
+			teamgrouphost.Table:   teamgrouphost.ValidColumn,
 			teamgroupimage.Table:  teamgroupimage.ValidColumn,
 			teamgroupmember.Table: teamgroupmember.ValidColumn,
 			teamgroupmodel.Table:  teamgroupmodel.ValidColumn,
+			teamhost.Table:        teamhost.ValidColumn,
 			teamimage.Table:       teamimage.ValidColumn,
 			teammember.Table:      teammember.ValidColumn,
 			teammodel.Table:       teammodel.ValidColumn,
 			user.Table:            user.ValidColumn,
 			useridentity.Table:    useridentity.ValidColumn,
+			virtualmachine.Table:  virtualmachine.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

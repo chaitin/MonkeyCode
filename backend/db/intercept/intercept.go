@@ -9,19 +9,23 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -105,6 +109,33 @@ func (f TraverseAudit) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.AuditQuery", q)
+}
+
+// The HostFunc type is an adapter to allow the use of ordinary function as a Querier.
+type HostFunc func(context.Context, *db.HostQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f HostFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.HostQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.HostQuery", q)
+}
+
+// The TraverseHost type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseHost func(context.Context, *db.HostQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseHost) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseHost) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.HostQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.HostQuery", q)
 }
 
 // The ImageFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -215,6 +246,33 @@ func (f TraverseTeamGroup) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupQuery", q)
 }
 
+// The TeamGroupHostFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamGroupHostFunc func(context.Context, *db.TeamGroupHostQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamGroupHostFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamGroupHostQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamGroupHostQuery", q)
+}
+
+// The TraverseTeamGroupHost type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamGroupHost func(context.Context, *db.TeamGroupHostQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamGroupHost) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamGroupHost) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamGroupHostQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupHostQuery", q)
+}
+
 // The TeamGroupImageFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamGroupImageFunc func(context.Context, *db.TeamGroupImageQuery) (db.Value, error)
 
@@ -294,6 +352,33 @@ func (f TraverseTeamGroupModel) Traverse(ctx context.Context, q db.Query) error 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupModelQuery", q)
+}
+
+// The TeamHostFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamHostFunc func(context.Context, *db.TeamHostQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamHostFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamHostQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamHostQuery", q)
+}
+
+// The TraverseTeamHost type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamHost func(context.Context, *db.TeamHostQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamHost) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamHost) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamHostQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamHostQuery", q)
 }
 
 // The TeamImageFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -431,11 +516,40 @@ func (f TraverseUserIdentity) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.UserIdentityQuery", q)
 }
 
+// The VirtualMachineFunc type is an adapter to allow the use of ordinary function as a Querier.
+type VirtualMachineFunc func(context.Context, *db.VirtualMachineQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f VirtualMachineFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.VirtualMachineQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.VirtualMachineQuery", q)
+}
+
+// The TraverseVirtualMachine type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseVirtualMachine func(context.Context, *db.VirtualMachineQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseVirtualMachine) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseVirtualMachine) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.VirtualMachineQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.VirtualMachineQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q db.Query) (Query, error) {
 	switch q := q.(type) {
 	case *db.AuditQuery:
 		return &query[*db.AuditQuery, predicate.Audit, audit.OrderOption]{typ: db.TypeAudit, tq: q}, nil
+	case *db.HostQuery:
+		return &query[*db.HostQuery, predicate.Host, host.OrderOption]{typ: db.TypeHost, tq: q}, nil
 	case *db.ImageQuery:
 		return &query[*db.ImageQuery, predicate.Image, image.OrderOption]{typ: db.TypeImage, tq: q}, nil
 	case *db.ModelQuery:
@@ -444,12 +558,16 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TeamQuery, predicate.Team, team.OrderOption]{typ: db.TypeTeam, tq: q}, nil
 	case *db.TeamGroupQuery:
 		return &query[*db.TeamGroupQuery, predicate.TeamGroup, teamgroup.OrderOption]{typ: db.TypeTeamGroup, tq: q}, nil
+	case *db.TeamGroupHostQuery:
+		return &query[*db.TeamGroupHostQuery, predicate.TeamGroupHost, teamgrouphost.OrderOption]{typ: db.TypeTeamGroupHost, tq: q}, nil
 	case *db.TeamGroupImageQuery:
 		return &query[*db.TeamGroupImageQuery, predicate.TeamGroupImage, teamgroupimage.OrderOption]{typ: db.TypeTeamGroupImage, tq: q}, nil
 	case *db.TeamGroupMemberQuery:
 		return &query[*db.TeamGroupMemberQuery, predicate.TeamGroupMember, teamgroupmember.OrderOption]{typ: db.TypeTeamGroupMember, tq: q}, nil
 	case *db.TeamGroupModelQuery:
 		return &query[*db.TeamGroupModelQuery, predicate.TeamGroupModel, teamgroupmodel.OrderOption]{typ: db.TypeTeamGroupModel, tq: q}, nil
+	case *db.TeamHostQuery:
+		return &query[*db.TeamHostQuery, predicate.TeamHost, teamhost.OrderOption]{typ: db.TypeTeamHost, tq: q}, nil
 	case *db.TeamImageQuery:
 		return &query[*db.TeamImageQuery, predicate.TeamImage, teamimage.OrderOption]{typ: db.TypeTeamImage, tq: q}, nil
 	case *db.TeamMemberQuery:
@@ -460,6 +578,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.UserQuery, predicate.User, user.OrderOption]{typ: db.TypeUser, tq: q}, nil
 	case *db.UserIdentityQuery:
 		return &query[*db.UserIdentityQuery, predicate.UserIdentity, useridentity.OrderOption]{typ: db.TypeUserIdentity, tq: q}, nil
+	case *db.VirtualMachineQuery:
+		return &query[*db.VirtualMachineQuery, predicate.VirtualMachine, virtualmachine.OrderOption]{typ: db.TypeVirtualMachine, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

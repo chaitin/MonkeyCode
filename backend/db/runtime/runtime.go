@@ -6,18 +6,22 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/ent/schema"
 )
 
@@ -31,6 +35,27 @@ func init() {
 	auditDescCreatedAt := auditFields[7].Descriptor()
 	// audit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	audit.DefaultCreatedAt = auditDescCreatedAt.Default.(func() time.Time)
+	hostMixin := schema.Host{}.Mixin()
+	hostMixinHooks0 := hostMixin[0].Hooks()
+	host.Hooks[0] = hostMixinHooks0[0]
+	hostMixinInters0 := hostMixin[0].Interceptors()
+	host.Interceptors[0] = hostMixinInters0[0]
+	hostFields := schema.Host{}.Fields()
+	_ = hostFields
+	// hostDescWeight is the schema descriptor for weight field.
+	hostDescWeight := hostFields[5].Descriptor()
+	// host.DefaultWeight holds the default value on creation for the weight field.
+	host.DefaultWeight = hostDescWeight.Default.(int)
+	// hostDescCreatedAt is the schema descriptor for created_at field.
+	hostDescCreatedAt := hostFields[14].Descriptor()
+	// host.DefaultCreatedAt holds the default value on creation for the created_at field.
+	host.DefaultCreatedAt = hostDescCreatedAt.Default.(func() time.Time)
+	// hostDescUpdatedAt is the schema descriptor for updated_at field.
+	hostDescUpdatedAt := hostFields[15].Descriptor()
+	// host.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	host.DefaultUpdatedAt = hostDescUpdatedAt.Default.(func() time.Time)
+	// host.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	host.UpdateDefaultUpdatedAt = hostDescUpdatedAt.UpdateDefault.(func() time.Time)
 	imageMixin := schema.Image{}.Mixin()
 	imageMixinHooks0 := imageMixin[0].Hooks()
 	image.Hooks[0] = imageMixinHooks0[0]
@@ -125,6 +150,12 @@ func init() {
 	teamgroup.DefaultUpdatedAt = teamgroupDescUpdatedAt.Default.(func() time.Time)
 	// teamgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	teamgroup.UpdateDefaultUpdatedAt = teamgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	teamgrouphostFields := schema.TeamGroupHost{}.Fields()
+	_ = teamgrouphostFields
+	// teamgrouphostDescCreatedAt is the schema descriptor for created_at field.
+	teamgrouphostDescCreatedAt := teamgrouphostFields[3].Descriptor()
+	// teamgrouphost.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamgrouphost.DefaultCreatedAt = teamgrouphostDescCreatedAt.Default.(func() time.Time)
 	teamgroupimageFields := schema.TeamGroupImage{}.Fields()
 	_ = teamgroupimageFields
 	// teamgroupimageDescCreatedAt is the schema descriptor for created_at field.
@@ -143,6 +174,12 @@ func init() {
 	teamgroupmodelDescCreatedAt := teamgroupmodelFields[3].Descriptor()
 	// teamgroupmodel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamgroupmodel.DefaultCreatedAt = teamgroupmodelDescCreatedAt.Default.(func() time.Time)
+	teamhostFields := schema.TeamHost{}.Fields()
+	_ = teamhostFields
+	// teamhostDescCreatedAt is the schema descriptor for created_at field.
+	teamhostDescCreatedAt := teamhostFields[3].Descriptor()
+	// teamhost.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamhost.DefaultCreatedAt = teamhostDescCreatedAt.Default.(func() time.Time)
 	teamimageFields := schema.TeamImage{}.Fields()
 	_ = teamimageFields
 	// teamimageDescCreatedAt is the schema descriptor for created_at field.
@@ -213,6 +250,21 @@ func init() {
 	useridentityDescUpdatedAt := useridentityFields[8].Descriptor()
 	// useridentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	useridentity.UpdateDefaultUpdatedAt = useridentityDescUpdatedAt.UpdateDefault.(func() time.Time)
+	virtualmachineMixin := schema.VirtualMachine{}.Mixin()
+	virtualmachineMixinHooks0 := virtualmachineMixin[0].Hooks()
+	virtualmachine.Hooks[0] = virtualmachineMixinHooks0[0]
+	virtualmachineMixinInters0 := virtualmachineMixin[0].Interceptors()
+	virtualmachine.Interceptors[0] = virtualmachineMixinInters0[0]
+	virtualmachineFields := schema.VirtualMachine{}.Fields()
+	_ = virtualmachineFields
+	// virtualmachineDescCreatedAt is the schema descriptor for created_at field.
+	virtualmachineDescCreatedAt := virtualmachineFields[22].Descriptor()
+	// virtualmachine.DefaultCreatedAt holds the default value on creation for the created_at field.
+	virtualmachine.DefaultCreatedAt = virtualmachineDescCreatedAt.Default.(func() time.Time)
+	// virtualmachineDescUpdatedAt is the schema descriptor for updated_at field.
+	virtualmachineDescUpdatedAt := virtualmachineFields[23].Descriptor()
+	// virtualmachine.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	virtualmachine.DefaultUpdatedAt = virtualmachineDescUpdatedAt.Default.(func() time.Time)
 }
 
 const (

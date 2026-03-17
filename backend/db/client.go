@@ -17,18 +17,22 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 
 	stdsql "database/sql"
 )
@@ -40,6 +44,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// Host is the client for interacting with the Host builders.
+	Host *HostClient
 	// Image is the client for interacting with the Image builders.
 	Image *ImageClient
 	// Model is the client for interacting with the Model builders.
@@ -48,12 +54,16 @@ type Client struct {
 	Team *TeamClient
 	// TeamGroup is the client for interacting with the TeamGroup builders.
 	TeamGroup *TeamGroupClient
+	// TeamGroupHost is the client for interacting with the TeamGroupHost builders.
+	TeamGroupHost *TeamGroupHostClient
 	// TeamGroupImage is the client for interacting with the TeamGroupImage builders.
 	TeamGroupImage *TeamGroupImageClient
 	// TeamGroupMember is the client for interacting with the TeamGroupMember builders.
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
 	TeamGroupModel *TeamGroupModelClient
+	// TeamHost is the client for interacting with the TeamHost builders.
+	TeamHost *TeamHostClient
 	// TeamImage is the client for interacting with the TeamImage builders.
 	TeamImage *TeamImageClient
 	// TeamMember is the client for interacting with the TeamMember builders.
@@ -64,6 +74,8 @@ type Client struct {
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
 	UserIdentity *UserIdentityClient
+	// VirtualMachine is the client for interacting with the VirtualMachine builders.
+	VirtualMachine *VirtualMachineClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -76,18 +88,22 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Audit = NewAuditClient(c.config)
+	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
 	c.Model = NewModelClient(c.config)
 	c.Team = NewTeamClient(c.config)
 	c.TeamGroup = NewTeamGroupClient(c.config)
+	c.TeamGroupHost = NewTeamGroupHostClient(c.config)
 	c.TeamGroupImage = NewTeamGroupImageClient(c.config)
 	c.TeamGroupMember = NewTeamGroupMemberClient(c.config)
 	c.TeamGroupModel = NewTeamGroupModelClient(c.config)
+	c.TeamHost = NewTeamHostClient(c.config)
 	c.TeamImage = NewTeamImageClient(c.config)
 	c.TeamMember = NewTeamMemberClient(c.config)
 	c.TeamModel = NewTeamModelClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserIdentity = NewUserIdentityClient(c.config)
+	c.VirtualMachine = NewVirtualMachineClient(c.config)
 }
 
 type (
@@ -181,18 +197,22 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:             ctx,
 		config:          cfg,
 		Audit:           NewAuditClient(cfg),
+		Host:            NewHostClient(cfg),
 		Image:           NewImageClient(cfg),
 		Model:           NewModelClient(cfg),
 		Team:            NewTeamClient(cfg),
 		TeamGroup:       NewTeamGroupClient(cfg),
+		TeamGroupHost:   NewTeamGroupHostClient(cfg),
 		TeamGroupImage:  NewTeamGroupImageClient(cfg),
 		TeamGroupMember: NewTeamGroupMemberClient(cfg),
 		TeamGroupModel:  NewTeamGroupModelClient(cfg),
+		TeamHost:        NewTeamHostClient(cfg),
 		TeamImage:       NewTeamImageClient(cfg),
 		TeamMember:      NewTeamMemberClient(cfg),
 		TeamModel:       NewTeamModelClient(cfg),
 		User:            NewUserClient(cfg),
 		UserIdentity:    NewUserIdentityClient(cfg),
+		VirtualMachine:  NewVirtualMachineClient(cfg),
 	}, nil
 }
 
@@ -213,18 +233,22 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:             ctx,
 		config:          cfg,
 		Audit:           NewAuditClient(cfg),
+		Host:            NewHostClient(cfg),
 		Image:           NewImageClient(cfg),
 		Model:           NewModelClient(cfg),
 		Team:            NewTeamClient(cfg),
 		TeamGroup:       NewTeamGroupClient(cfg),
+		TeamGroupHost:   NewTeamGroupHostClient(cfg),
 		TeamGroupImage:  NewTeamGroupImageClient(cfg),
 		TeamGroupMember: NewTeamGroupMemberClient(cfg),
 		TeamGroupModel:  NewTeamGroupModelClient(cfg),
+		TeamHost:        NewTeamHostClient(cfg),
 		TeamImage:       NewTeamImageClient(cfg),
 		TeamMember:      NewTeamMemberClient(cfg),
 		TeamModel:       NewTeamModelClient(cfg),
 		User:            NewUserClient(cfg),
 		UserIdentity:    NewUserIdentityClient(cfg),
+		VirtualMachine:  NewVirtualMachineClient(cfg),
 	}, nil
 }
 
@@ -254,9 +278,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.Image, c.Model, c.Team, c.TeamGroup, c.TeamGroupImage,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamImage, c.TeamMember, c.TeamModel,
-		c.User, c.UserIdentity,
+		c.Audit, c.Host, c.Image, c.Model, c.Team, c.TeamGroup, c.TeamGroupHost,
+		c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage,
+		c.TeamMember, c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -266,9 +290,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.Image, c.Model, c.Team, c.TeamGroup, c.TeamGroupImage,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamImage, c.TeamMember, c.TeamModel,
-		c.User, c.UserIdentity,
+		c.Audit, c.Host, c.Image, c.Model, c.Team, c.TeamGroup, c.TeamGroupHost,
+		c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage,
+		c.TeamMember, c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -279,6 +303,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AuditMutation:
 		return c.Audit.mutate(ctx, m)
+	case *HostMutation:
+		return c.Host.mutate(ctx, m)
 	case *ImageMutation:
 		return c.Image.mutate(ctx, m)
 	case *ModelMutation:
@@ -287,12 +313,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Team.mutate(ctx, m)
 	case *TeamGroupMutation:
 		return c.TeamGroup.mutate(ctx, m)
+	case *TeamGroupHostMutation:
+		return c.TeamGroupHost.mutate(ctx, m)
 	case *TeamGroupImageMutation:
 		return c.TeamGroupImage.mutate(ctx, m)
 	case *TeamGroupMemberMutation:
 		return c.TeamGroupMember.mutate(ctx, m)
 	case *TeamGroupModelMutation:
 		return c.TeamGroupModel.mutate(ctx, m)
+	case *TeamHostMutation:
+		return c.TeamHost.mutate(ctx, m)
 	case *TeamImageMutation:
 		return c.TeamImage.mutate(ctx, m)
 	case *TeamMemberMutation:
@@ -303,6 +333,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.User.mutate(ctx, m)
 	case *UserIdentityMutation:
 		return c.UserIdentity.mutate(ctx, m)
+	case *VirtualMachineMutation:
+		return c.VirtualMachine.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("db: unknown mutation type %T", m)
 	}
@@ -454,6 +486,205 @@ func (c *AuditClient) mutate(ctx context.Context, m *AuditMutation) (Value, erro
 		return (&AuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Audit mutation op: %q", m.Op())
+	}
+}
+
+// HostClient is a client for the Host schema.
+type HostClient struct {
+	config
+}
+
+// NewHostClient returns a client for the Host from the given config.
+func NewHostClient(c config) *HostClient {
+	return &HostClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `host.Hooks(f(g(h())))`.
+func (c *HostClient) Use(hooks ...Hook) {
+	c.hooks.Host = append(c.hooks.Host, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `host.Intercept(f(g(h())))`.
+func (c *HostClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Host = append(c.inters.Host, interceptors...)
+}
+
+// Create returns a builder for creating a Host entity.
+func (c *HostClient) Create() *HostCreate {
+	mutation := newHostMutation(c.config, OpCreate)
+	return &HostCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Host entities.
+func (c *HostClient) CreateBulk(builders ...*HostCreate) *HostCreateBulk {
+	return &HostCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *HostClient) MapCreateBulk(slice any, setFunc func(*HostCreate, int)) *HostCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &HostCreateBulk{err: fmt.Errorf("calling to HostClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*HostCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &HostCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Host.
+func (c *HostClient) Update() *HostUpdate {
+	mutation := newHostMutation(c.config, OpUpdate)
+	return &HostUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *HostClient) UpdateOne(_m *Host) *HostUpdateOne {
+	mutation := newHostMutation(c.config, OpUpdateOne, withHost(_m))
+	return &HostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *HostClient) UpdateOneID(id string) *HostUpdateOne {
+	mutation := newHostMutation(c.config, OpUpdateOne, withHostID(id))
+	return &HostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Host.
+func (c *HostClient) Delete() *HostDelete {
+	mutation := newHostMutation(c.config, OpDelete)
+	return &HostDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *HostClient) DeleteOne(_m *Host) *HostDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *HostClient) DeleteOneID(id string) *HostDeleteOne {
+	builder := c.Delete().Where(host.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &HostDeleteOne{builder}
+}
+
+// Query returns a query builder for Host.
+func (c *HostClient) Query() *HostQuery {
+	return &HostQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeHost},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Host entity by its id.
+func (c *HostClient) Get(ctx context.Context, id string) (*Host, error) {
+	return c.Query().Where(host.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *HostClient) GetX(ctx context.Context, id string) *Host {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryVms queries the vms edge of a Host.
+func (c *HostClient) QueryVms(_m *Host) *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(host.Table, host.FieldID, id),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, host.VmsTable, host.VmsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUser queries the user edge of a Host.
+func (c *HostClient) QueryUser(_m *Host) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(host.Table, host.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, host.UserTable, host.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroups queries the groups edge of a Host.
+func (c *HostClient) QueryGroups(_m *Host) *TeamGroupQuery {
+	query := (&TeamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(host.Table, host.FieldID, id),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, host.GroupsTable, host.GroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamGroupHosts queries the team_group_hosts edge of a Host.
+func (c *HostClient) QueryTeamGroupHosts(_m *Host) *TeamGroupHostQuery {
+	query := (&TeamGroupHostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(host.Table, host.FieldID, id),
+			sqlgraph.To(teamgrouphost.Table, teamgrouphost.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, host.TeamGroupHostsTable, host.TeamGroupHostsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *HostClient) Hooks() []Hook {
+	hooks := c.hooks.Host
+	return append(hooks[:len(hooks):len(hooks)], host.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *HostClient) Interceptors() []Interceptor {
+	inters := c.inters.Host
+	return append(inters[:len(inters):len(inters)], host.Interceptors[:]...)
+}
+
+func (c *HostClient) mutate(ctx context.Context, m *HostMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&HostCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&HostUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&HostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&HostDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown Host mutation op: %q", m.Op())
 	}
 }
 
@@ -821,6 +1052,22 @@ func (c *ModelClient) QueryGroups(_m *Model) *TeamGroupQuery {
 			sqlgraph.From(model.Table, model.FieldID, id),
 			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, model.GroupsTable, model.GroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryVms queries the vms edge of a Model.
+func (c *ModelClient) QueryVms(_m *Model) *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, id),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.VmsTable, model.VmsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1306,6 +1553,22 @@ func (c *TeamGroupClient) QueryImages(_m *TeamGroup) *ImageQuery {
 	return query
 }
 
+// QueryHosts queries the hosts edge of a TeamGroup.
+func (c *TeamGroupClient) QueryHosts(_m *TeamGroup) *HostQuery {
+	query := (&HostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, teamgroup.HostsTable, teamgroup.HostsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamGroupMembers queries the team_group_members edge of a TeamGroup.
 func (c *TeamGroupClient) QueryTeamGroupMembers(_m *TeamGroup) *TeamGroupMemberQuery {
 	query := (&TeamGroupMemberClient{config: c.config}).Query()
@@ -1354,6 +1617,22 @@ func (c *TeamGroupClient) QueryTeamGroupImages(_m *TeamGroup) *TeamGroupImageQue
 	return query
 }
 
+// QueryTeamGroupHosts queries the team_group_hosts edge of a TeamGroup.
+func (c *TeamGroupClient) QueryTeamGroupHosts(_m *TeamGroup) *TeamGroupHostQuery {
+	query := (&TeamGroupHostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
+			sqlgraph.To(teamgrouphost.Table, teamgrouphost.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupHostsTable, teamgroup.TeamGroupHostsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *TeamGroupClient) Hooks() []Hook {
 	hooks := c.hooks.TeamGroup
@@ -1378,6 +1657,171 @@ func (c *TeamGroupClient) mutate(ctx context.Context, m *TeamGroupMutation) (Val
 		return (&TeamGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown TeamGroup mutation op: %q", m.Op())
+	}
+}
+
+// TeamGroupHostClient is a client for the TeamGroupHost schema.
+type TeamGroupHostClient struct {
+	config
+}
+
+// NewTeamGroupHostClient returns a client for the TeamGroupHost from the given config.
+func NewTeamGroupHostClient(c config) *TeamGroupHostClient {
+	return &TeamGroupHostClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamgrouphost.Hooks(f(g(h())))`.
+func (c *TeamGroupHostClient) Use(hooks ...Hook) {
+	c.hooks.TeamGroupHost = append(c.hooks.TeamGroupHost, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamgrouphost.Intercept(f(g(h())))`.
+func (c *TeamGroupHostClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamGroupHost = append(c.inters.TeamGroupHost, interceptors...)
+}
+
+// Create returns a builder for creating a TeamGroupHost entity.
+func (c *TeamGroupHostClient) Create() *TeamGroupHostCreate {
+	mutation := newTeamGroupHostMutation(c.config, OpCreate)
+	return &TeamGroupHostCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamGroupHost entities.
+func (c *TeamGroupHostClient) CreateBulk(builders ...*TeamGroupHostCreate) *TeamGroupHostCreateBulk {
+	return &TeamGroupHostCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamGroupHostClient) MapCreateBulk(slice any, setFunc func(*TeamGroupHostCreate, int)) *TeamGroupHostCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamGroupHostCreateBulk{err: fmt.Errorf("calling to TeamGroupHostClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamGroupHostCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamGroupHostCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamGroupHost.
+func (c *TeamGroupHostClient) Update() *TeamGroupHostUpdate {
+	mutation := newTeamGroupHostMutation(c.config, OpUpdate)
+	return &TeamGroupHostUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamGroupHostClient) UpdateOne(_m *TeamGroupHost) *TeamGroupHostUpdateOne {
+	mutation := newTeamGroupHostMutation(c.config, OpUpdateOne, withTeamGroupHost(_m))
+	return &TeamGroupHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamGroupHostClient) UpdateOneID(id uuid.UUID) *TeamGroupHostUpdateOne {
+	mutation := newTeamGroupHostMutation(c.config, OpUpdateOne, withTeamGroupHostID(id))
+	return &TeamGroupHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamGroupHost.
+func (c *TeamGroupHostClient) Delete() *TeamGroupHostDelete {
+	mutation := newTeamGroupHostMutation(c.config, OpDelete)
+	return &TeamGroupHostDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamGroupHostClient) DeleteOne(_m *TeamGroupHost) *TeamGroupHostDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamGroupHostClient) DeleteOneID(id uuid.UUID) *TeamGroupHostDeleteOne {
+	builder := c.Delete().Where(teamgrouphost.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamGroupHostDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamGroupHost.
+func (c *TeamGroupHostClient) Query() *TeamGroupHostQuery {
+	return &TeamGroupHostQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamGroupHost},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamGroupHost entity by its id.
+func (c *TeamGroupHostClient) Get(ctx context.Context, id uuid.UUID) (*TeamGroupHost, error) {
+	return c.Query().Where(teamgrouphost.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamGroupHostClient) GetX(ctx context.Context, id uuid.UUID) *TeamGroupHost {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a TeamGroupHost.
+func (c *TeamGroupHostClient) QueryGroup(_m *TeamGroupHost) *TeamGroupQuery {
+	query := (&TeamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgrouphost.Table, teamgrouphost.FieldID, id),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgrouphost.GroupTable, teamgrouphost.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryHost queries the host edge of a TeamGroupHost.
+func (c *TeamGroupHostClient) QueryHost(_m *TeamGroupHost) *HostQuery {
+	query := (&HostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgrouphost.Table, teamgrouphost.FieldID, id),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgrouphost.HostTable, teamgrouphost.HostColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamGroupHostClient) Hooks() []Hook {
+	return c.hooks.TeamGroupHost
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamGroupHostClient) Interceptors() []Interceptor {
+	return c.inters.TeamGroupHost
+}
+
+func (c *TeamGroupHostClient) mutate(ctx context.Context, m *TeamGroupHostMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamGroupHostCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamGroupHostUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamGroupHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamGroupHostDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamGroupHost mutation op: %q", m.Op())
 	}
 }
 
@@ -1873,6 +2317,171 @@ func (c *TeamGroupModelClient) mutate(ctx context.Context, m *TeamGroupModelMuta
 		return (&TeamGroupModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown TeamGroupModel mutation op: %q", m.Op())
+	}
+}
+
+// TeamHostClient is a client for the TeamHost schema.
+type TeamHostClient struct {
+	config
+}
+
+// NewTeamHostClient returns a client for the TeamHost from the given config.
+func NewTeamHostClient(c config) *TeamHostClient {
+	return &TeamHostClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamhost.Hooks(f(g(h())))`.
+func (c *TeamHostClient) Use(hooks ...Hook) {
+	c.hooks.TeamHost = append(c.hooks.TeamHost, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamhost.Intercept(f(g(h())))`.
+func (c *TeamHostClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamHost = append(c.inters.TeamHost, interceptors...)
+}
+
+// Create returns a builder for creating a TeamHost entity.
+func (c *TeamHostClient) Create() *TeamHostCreate {
+	mutation := newTeamHostMutation(c.config, OpCreate)
+	return &TeamHostCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamHost entities.
+func (c *TeamHostClient) CreateBulk(builders ...*TeamHostCreate) *TeamHostCreateBulk {
+	return &TeamHostCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamHostClient) MapCreateBulk(slice any, setFunc func(*TeamHostCreate, int)) *TeamHostCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamHostCreateBulk{err: fmt.Errorf("calling to TeamHostClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamHostCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamHostCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamHost.
+func (c *TeamHostClient) Update() *TeamHostUpdate {
+	mutation := newTeamHostMutation(c.config, OpUpdate)
+	return &TeamHostUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamHostClient) UpdateOne(_m *TeamHost) *TeamHostUpdateOne {
+	mutation := newTeamHostMutation(c.config, OpUpdateOne, withTeamHost(_m))
+	return &TeamHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamHostClient) UpdateOneID(id uuid.UUID) *TeamHostUpdateOne {
+	mutation := newTeamHostMutation(c.config, OpUpdateOne, withTeamHostID(id))
+	return &TeamHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamHost.
+func (c *TeamHostClient) Delete() *TeamHostDelete {
+	mutation := newTeamHostMutation(c.config, OpDelete)
+	return &TeamHostDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamHostClient) DeleteOne(_m *TeamHost) *TeamHostDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamHostClient) DeleteOneID(id uuid.UUID) *TeamHostDeleteOne {
+	builder := c.Delete().Where(teamhost.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamHostDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamHost.
+func (c *TeamHostClient) Query() *TeamHostQuery {
+	return &TeamHostQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamHost},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamHost entity by its id.
+func (c *TeamHostClient) Get(ctx context.Context, id uuid.UUID) (*TeamHost, error) {
+	return c.Query().Where(teamhost.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamHostClient) GetX(ctx context.Context, id uuid.UUID) *TeamHost {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTeam queries the team edge of a TeamHost.
+func (c *TeamHostClient) QueryTeam(_m *TeamHost) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamhost.Table, teamhost.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamhost.TeamTable, teamhost.TeamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryHost queries the host edge of a TeamHost.
+func (c *TeamHostClient) QueryHost(_m *TeamHost) *HostQuery {
+	query := (&HostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamhost.Table, teamhost.FieldID, id),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamhost.HostTable, teamhost.HostColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamHostClient) Hooks() []Hook {
+	return c.hooks.TeamHost
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamHostClient) Interceptors() []Interceptor {
+	return c.inters.TeamHost
+}
+
+func (c *TeamHostClient) mutate(ctx context.Context, m *TeamHostMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamHostCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamHostUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamHostDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamHost mutation op: %q", m.Op())
 	}
 }
 
@@ -2575,6 +3184,38 @@ func (c *UserClient) QueryImages(_m *User) *ImageQuery {
 	return query
 }
 
+// QueryHosts queries the hosts edge of a User.
+func (c *UserClient) QueryHosts(_m *User) *HostQuery {
+	query := (&HostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.HostsTable, user.HostsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryVms queries the vms edge of a User.
+func (c *UserClient) QueryVms(_m *User) *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.VmsTable, user.VmsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a User.
 func (c *UserClient) QueryTeamMembers(_m *User) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -2785,16 +3426,200 @@ func (c *UserIdentityClient) mutate(ctx context.Context, m *UserIdentityMutation
 	}
 }
 
+// VirtualMachineClient is a client for the VirtualMachine schema.
+type VirtualMachineClient struct {
+	config
+}
+
+// NewVirtualMachineClient returns a client for the VirtualMachine from the given config.
+func NewVirtualMachineClient(c config) *VirtualMachineClient {
+	return &VirtualMachineClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `virtualmachine.Hooks(f(g(h())))`.
+func (c *VirtualMachineClient) Use(hooks ...Hook) {
+	c.hooks.VirtualMachine = append(c.hooks.VirtualMachine, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `virtualmachine.Intercept(f(g(h())))`.
+func (c *VirtualMachineClient) Intercept(interceptors ...Interceptor) {
+	c.inters.VirtualMachine = append(c.inters.VirtualMachine, interceptors...)
+}
+
+// Create returns a builder for creating a VirtualMachine entity.
+func (c *VirtualMachineClient) Create() *VirtualMachineCreate {
+	mutation := newVirtualMachineMutation(c.config, OpCreate)
+	return &VirtualMachineCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of VirtualMachine entities.
+func (c *VirtualMachineClient) CreateBulk(builders ...*VirtualMachineCreate) *VirtualMachineCreateBulk {
+	return &VirtualMachineCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *VirtualMachineClient) MapCreateBulk(slice any, setFunc func(*VirtualMachineCreate, int)) *VirtualMachineCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &VirtualMachineCreateBulk{err: fmt.Errorf("calling to VirtualMachineClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*VirtualMachineCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &VirtualMachineCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for VirtualMachine.
+func (c *VirtualMachineClient) Update() *VirtualMachineUpdate {
+	mutation := newVirtualMachineMutation(c.config, OpUpdate)
+	return &VirtualMachineUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *VirtualMachineClient) UpdateOne(_m *VirtualMachine) *VirtualMachineUpdateOne {
+	mutation := newVirtualMachineMutation(c.config, OpUpdateOne, withVirtualMachine(_m))
+	return &VirtualMachineUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *VirtualMachineClient) UpdateOneID(id string) *VirtualMachineUpdateOne {
+	mutation := newVirtualMachineMutation(c.config, OpUpdateOne, withVirtualMachineID(id))
+	return &VirtualMachineUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for VirtualMachine.
+func (c *VirtualMachineClient) Delete() *VirtualMachineDelete {
+	mutation := newVirtualMachineMutation(c.config, OpDelete)
+	return &VirtualMachineDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *VirtualMachineClient) DeleteOne(_m *VirtualMachine) *VirtualMachineDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *VirtualMachineClient) DeleteOneID(id string) *VirtualMachineDeleteOne {
+	builder := c.Delete().Where(virtualmachine.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &VirtualMachineDeleteOne{builder}
+}
+
+// Query returns a query builder for VirtualMachine.
+func (c *VirtualMachineClient) Query() *VirtualMachineQuery {
+	return &VirtualMachineQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeVirtualMachine},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a VirtualMachine entity by its id.
+func (c *VirtualMachineClient) Get(ctx context.Context, id string) (*VirtualMachine, error) {
+	return c.Query().Where(virtualmachine.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *VirtualMachineClient) GetX(ctx context.Context, id string) *VirtualMachine {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryHost queries the host edge of a VirtualMachine.
+func (c *VirtualMachineClient) QueryHost(_m *VirtualMachine) *HostQuery {
+	query := (&HostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, id),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, virtualmachine.HostTable, virtualmachine.HostColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryModel queries the model edge of a VirtualMachine.
+func (c *VirtualMachineClient) QueryModel(_m *VirtualMachine) *ModelQuery {
+	query := (&ModelClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, id),
+			sqlgraph.To(model.Table, model.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, virtualmachine.ModelTable, virtualmachine.ModelColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUser queries the user edge of a VirtualMachine.
+func (c *VirtualMachineClient) QueryUser(_m *VirtualMachine) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, virtualmachine.UserTable, virtualmachine.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *VirtualMachineClient) Hooks() []Hook {
+	hooks := c.hooks.VirtualMachine
+	return append(hooks[:len(hooks):len(hooks)], virtualmachine.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *VirtualMachineClient) Interceptors() []Interceptor {
+	inters := c.inters.VirtualMachine
+	return append(inters[:len(inters):len(inters)], virtualmachine.Interceptors[:]...)
+}
+
+func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&VirtualMachineCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&VirtualMachineUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&VirtualMachineUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&VirtualMachineDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown VirtualMachine mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, Image, Model, Team, TeamGroup, TeamGroupImage, TeamGroupMember,
-		TeamGroupModel, TeamImage, TeamMember, TeamModel, User, UserIdentity []ent.Hook
+		Audit, Host, Image, Model, Team, TeamGroup, TeamGroupHost, TeamGroupImage,
+		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
+		User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
-		Audit, Image, Model, Team, TeamGroup, TeamGroupImage, TeamGroupMember,
-		TeamGroupModel, TeamImage, TeamMember, TeamModel, User,
-		UserIdentity []ent.Interceptor
+		Audit, Host, Image, Model, Team, TeamGroup, TeamGroupHost, TeamGroupImage,
+		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
+		User, UserIdentity, VirtualMachine []ent.Interceptor
 	}
 )
 

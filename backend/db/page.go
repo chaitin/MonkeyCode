@@ -25,6 +25,20 @@ func (_m *AuditQuery) Page(ctx context.Context, page, size int) ([]*Audit, *Page
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *HostQuery) Page(ctx context.Context, page, size int) ([]*Host, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *ImageQuery) Page(ctx context.Context, page, size int) ([]*Image, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
@@ -81,6 +95,20 @@ func (_m *TeamGroupQuery) Page(ctx context.Context, page, size int) ([]*TeamGrou
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *TeamGroupHostQuery) Page(ctx context.Context, page, size int) ([]*TeamGroupHost, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *TeamGroupImageQuery) Page(ctx context.Context, page, size int) ([]*TeamGroupImage, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
@@ -110,6 +138,20 @@ func (_m *TeamGroupMemberQuery) Page(ctx context.Context, page, size int) ([]*Te
 }
 
 func (_m *TeamGroupModelQuery) Page(ctx context.Context, page, size int) ([]*TeamGroupModel, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *TeamHostQuery) Page(ctx context.Context, page, size int) ([]*TeamHost, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -180,6 +222,20 @@ func (_m *UserQuery) Page(ctx context.Context, page, size int) ([]*User, *PageIn
 }
 
 func (_m *UserIdentityQuery) Page(ctx context.Context, page, size int) ([]*UserIdentity, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *VirtualMachineQuery) Page(ctx context.Context, page, size int) ([]*VirtualMachine, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
 		return nil, nil, err

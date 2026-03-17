@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -238,6 +239,21 @@ func (_c *ModelCreate) AddGroups(v ...*TeamGroup) *ModelCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddGroupIDs(ids...)
+}
+
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_c *ModelCreate) AddVMIDs(ids ...string) *ModelCreate {
+	_c.mutation.AddVMIDs(ids...)
+	return _c
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_c *ModelCreate) AddVms(v ...*VirtualMachine) *ModelCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddVMIDs(ids...)
 }
 
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
@@ -524,6 +540,22 @@ func (_c *ModelCreate) createSpec() (*Model, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.TeamModelsIDs(); len(nodes) > 0 {

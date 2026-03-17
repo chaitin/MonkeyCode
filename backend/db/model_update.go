@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -328,6 +329,21 @@ func (_u *ModelUpdate) AddGroups(v ...*TeamGroup) *ModelUpdate {
 	return _u.AddGroupIDs(ids...)
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_u *ModelUpdate) AddVMIDs(ids ...string) *ModelUpdate {
+	_u.mutation.AddVMIDs(ids...)
+	return _u
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_u *ModelUpdate) AddVms(v ...*VirtualMachine) *ModelUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVMIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdate) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdate {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -409,6 +425,27 @@ func (_u *ModelUpdate) RemoveGroups(v ...*TeamGroup) *ModelUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGroupIDs(ids...)
+}
+
+// ClearVms clears all "vms" edges to the VirtualMachine entity.
+func (_u *ModelUpdate) ClearVms() *ModelUpdate {
+	_u.mutation.ClearVms()
+	return _u
+}
+
+// RemoveVMIDs removes the "vms" edge to VirtualMachine entities by IDs.
+func (_u *ModelUpdate) RemoveVMIDs(ids ...string) *ModelUpdate {
+	_u.mutation.RemoveVMIDs(ids...)
+	return _u
+}
+
+// RemoveVms removes "vms" edges to VirtualMachine entities.
+func (_u *ModelUpdate) RemoveVms(v ...*VirtualMachine) *ModelUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVMIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -751,6 +788,51 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVmsIDs(); len(nodes) > 0 && !_u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TeamModelsCleared() {
@@ -1158,6 +1240,21 @@ func (_u *ModelUpdateOne) AddGroups(v ...*TeamGroup) *ModelUpdateOne {
 	return _u.AddGroupIDs(ids...)
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_u *ModelUpdateOne) AddVMIDs(ids ...string) *ModelUpdateOne {
+	_u.mutation.AddVMIDs(ids...)
+	return _u
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_u *ModelUpdateOne) AddVms(v ...*VirtualMachine) *ModelUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVMIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdateOne) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdateOne {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -1239,6 +1336,27 @@ func (_u *ModelUpdateOne) RemoveGroups(v ...*TeamGroup) *ModelUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGroupIDs(ids...)
+}
+
+// ClearVms clears all "vms" edges to the VirtualMachine entity.
+func (_u *ModelUpdateOne) ClearVms() *ModelUpdateOne {
+	_u.mutation.ClearVms()
+	return _u
+}
+
+// RemoveVMIDs removes the "vms" edge to VirtualMachine entities by IDs.
+func (_u *ModelUpdateOne) RemoveVMIDs(ids ...string) *ModelUpdateOne {
+	_u.mutation.RemoveVMIDs(ids...)
+	return _u
+}
+
+// RemoveVms removes "vms" edges to VirtualMachine entities.
+func (_u *ModelUpdateOne) RemoveVms(v ...*VirtualMachine) *ModelUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVMIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -1611,6 +1729,51 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVmsIDs(); len(nodes) > 0 && !_u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.VmsTable,
+			Columns: []string{model.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TeamModelsCleared() {

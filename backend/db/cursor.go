@@ -13,9 +13,11 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/google/uuid"
 )
@@ -204,6 +206,51 @@ func (q *AuditQuery) After(ctx context.Context, cursor string, limit int) ([]*Au
 	return nodes, res, nil
 }
 
+func (q *HostQuery) After(ctx context.Context, cursor string, limit int) ([]*Host, *Cursor, error) {
+	i, err := unmarshalCreatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(host.ByCreatedAt(sql.OrderDesc()), host.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("created_at"), i.CreatedAt),
+				sql.And(
+					sql.EQ(s.C("created_at"), i.CreatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &createdAtCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
 func (q *ImageQuery) After(ctx context.Context, cursor string, limit int) ([]*Image, *Cursor, error) {
 	i, err := unmarshalCreatedAt(cursor)
 	if err != nil {
@@ -300,6 +347,51 @@ func (q *TeamGroupQuery) After(ctx context.Context, cursor string, limit int) ([
 		return nil, nil, err
 	}
 	q.Order(teamgroup.ByCreatedAt(sql.OrderDesc()), teamgroup.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("created_at"), i.CreatedAt),
+				sql.And(
+					sql.EQ(s.C("created_at"), i.CreatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &createdAtCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
+func (q *TeamGroupHostQuery) After(ctx context.Context, cursor string, limit int) ([]*TeamGroupHost, *Cursor, error) {
+	i, err := unmarshalCreatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(teamgrouphost.ByCreatedAt(sql.OrderDesc()), teamgrouphost.ByID(sql.OrderDesc()))
 	q.Limit(limit + 1)
 
 	if i != nil {

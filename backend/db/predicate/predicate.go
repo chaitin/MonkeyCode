@@ -9,6 +9,9 @@ import (
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 
+// Host is the predicate function for host builders.
+type Host func(*sql.Selector)
+
 // Image is the predicate function for image builders.
 type Image func(*sql.Selector)
 
@@ -21,6 +24,9 @@ type Team func(*sql.Selector)
 // TeamGroup is the predicate function for teamgroup builders.
 type TeamGroup func(*sql.Selector)
 
+// TeamGroupHost is the predicate function for teamgrouphost builders.
+type TeamGroupHost func(*sql.Selector)
+
 // TeamGroupImage is the predicate function for teamgroupimage builders.
 type TeamGroupImage func(*sql.Selector)
 
@@ -29,6 +35,9 @@ type TeamGroupMember func(*sql.Selector)
 
 // TeamGroupModel is the predicate function for teamgroupmodel builders.
 type TeamGroupModel func(*sql.Selector)
+
+// TeamHost is the predicate function for teamhost builders.
+type TeamHost func(*sql.Selector)
 
 // TeamImage is the predicate function for teamimage builders.
 type TeamImage func(*sql.Selector)
@@ -44,3 +53,6 @@ type User func(*sql.Selector)
 
 // UserIdentity is the predicate function for useridentity builders.
 type UserIdentity func(*sql.Selector)
+
+// VirtualMachine is the predicate function for virtualmachine builders.
+type VirtualMachine func(*sql.Selector)

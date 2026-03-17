@@ -11,11 +11,13 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -155,6 +157,21 @@ func (_u *TeamGroupUpdate) AddImages(v ...*Image) *TeamGroupUpdate {
 	return _u.AddImageIDs(ids...)
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by IDs.
+func (_u *TeamGroupUpdate) AddHostIDs(ids ...string) *TeamGroupUpdate {
+	_u.mutation.AddHostIDs(ids...)
+	return _u
+}
+
+// AddHosts adds the "hosts" edges to the Host entity.
+func (_u *TeamGroupUpdate) AddHosts(v ...*Host) *TeamGroupUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddHostIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_u *TeamGroupUpdate) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupUpdate {
 	_u.mutation.AddTeamGroupMemberIDs(ids...)
@@ -198,6 +215,21 @@ func (_u *TeamGroupUpdate) AddTeamGroupImages(v ...*TeamGroupImage) *TeamGroupUp
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamGroupImageIDs(ids...)
+}
+
+// AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
+func (_u *TeamGroupUpdate) AddTeamGroupHostIDs(ids ...uuid.UUID) *TeamGroupUpdate {
+	_u.mutation.AddTeamGroupHostIDs(ids...)
+	return _u
+}
+
+// AddTeamGroupHosts adds the "team_group_hosts" edges to the TeamGroupHost entity.
+func (_u *TeamGroupUpdate) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamGroupHostIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -274,6 +306,27 @@ func (_u *TeamGroupUpdate) RemoveImages(v ...*Image) *TeamGroupUpdate {
 	return _u.RemoveImageIDs(ids...)
 }
 
+// ClearHosts clears all "hosts" edges to the Host entity.
+func (_u *TeamGroupUpdate) ClearHosts() *TeamGroupUpdate {
+	_u.mutation.ClearHosts()
+	return _u
+}
+
+// RemoveHostIDs removes the "hosts" edge to Host entities by IDs.
+func (_u *TeamGroupUpdate) RemoveHostIDs(ids ...string) *TeamGroupUpdate {
+	_u.mutation.RemoveHostIDs(ids...)
+	return _u
+}
+
+// RemoveHosts removes "hosts" edges to Host entities.
+func (_u *TeamGroupUpdate) RemoveHosts(v ...*Host) *TeamGroupUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveHostIDs(ids...)
+}
+
 // ClearTeamGroupMembers clears all "team_group_members" edges to the TeamGroupMember entity.
 func (_u *TeamGroupUpdate) ClearTeamGroupMembers() *TeamGroupUpdate {
 	_u.mutation.ClearTeamGroupMembers()
@@ -335,6 +388,27 @@ func (_u *TeamGroupUpdate) RemoveTeamGroupImages(v ...*TeamGroupImage) *TeamGrou
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamGroupImageIDs(ids...)
+}
+
+// ClearTeamGroupHosts clears all "team_group_hosts" edges to the TeamGroupHost entity.
+func (_u *TeamGroupUpdate) ClearTeamGroupHosts() *TeamGroupUpdate {
+	_u.mutation.ClearTeamGroupHosts()
+	return _u
+}
+
+// RemoveTeamGroupHostIDs removes the "team_group_hosts" edge to TeamGroupHost entities by IDs.
+func (_u *TeamGroupUpdate) RemoveTeamGroupHostIDs(ids ...uuid.UUID) *TeamGroupUpdate {
+	_u.mutation.RemoveTeamGroupHostIDs(ids...)
+	return _u
+}
+
+// RemoveTeamGroupHosts removes "team_group_hosts" edges to TeamGroupHost entities.
+func (_u *TeamGroupUpdate) RemoveTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamGroupHostIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -620,6 +694,63 @@ func (_u *TeamGroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		createE := &TeamGroupHostCreate{config: _u.config, mutation: newTeamGroupHostMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedHostsIDs(); len(nodes) > 0 && !_u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupHostCreate{config: _u.config, mutation: newTeamGroupHostMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.HostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupHostCreate{config: _u.config, mutation: newTeamGroupHostMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamGroupMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -748,6 +879,51 @@ func (_u *TeamGroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgroupimage.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamGroupHostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamGroupHostsIDs(); len(nodes) > 0 && !_u.mutation.TeamGroupHostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamGroupHostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -895,6 +1071,21 @@ func (_u *TeamGroupUpdateOne) AddImages(v ...*Image) *TeamGroupUpdateOne {
 	return _u.AddImageIDs(ids...)
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by IDs.
+func (_u *TeamGroupUpdateOne) AddHostIDs(ids ...string) *TeamGroupUpdateOne {
+	_u.mutation.AddHostIDs(ids...)
+	return _u
+}
+
+// AddHosts adds the "hosts" edges to the Host entity.
+func (_u *TeamGroupUpdateOne) AddHosts(v ...*Host) *TeamGroupUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddHostIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_u *TeamGroupUpdateOne) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
 	_u.mutation.AddTeamGroupMemberIDs(ids...)
@@ -938,6 +1129,21 @@ func (_u *TeamGroupUpdateOne) AddTeamGroupImages(v ...*TeamGroupImage) *TeamGrou
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamGroupImageIDs(ids...)
+}
+
+// AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
+func (_u *TeamGroupUpdateOne) AddTeamGroupHostIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
+	_u.mutation.AddTeamGroupHostIDs(ids...)
+	return _u
+}
+
+// AddTeamGroupHosts adds the "team_group_hosts" edges to the TeamGroupHost entity.
+func (_u *TeamGroupUpdateOne) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamGroupHostIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -1014,6 +1220,27 @@ func (_u *TeamGroupUpdateOne) RemoveImages(v ...*Image) *TeamGroupUpdateOne {
 	return _u.RemoveImageIDs(ids...)
 }
 
+// ClearHosts clears all "hosts" edges to the Host entity.
+func (_u *TeamGroupUpdateOne) ClearHosts() *TeamGroupUpdateOne {
+	_u.mutation.ClearHosts()
+	return _u
+}
+
+// RemoveHostIDs removes the "hosts" edge to Host entities by IDs.
+func (_u *TeamGroupUpdateOne) RemoveHostIDs(ids ...string) *TeamGroupUpdateOne {
+	_u.mutation.RemoveHostIDs(ids...)
+	return _u
+}
+
+// RemoveHosts removes "hosts" edges to Host entities.
+func (_u *TeamGroupUpdateOne) RemoveHosts(v ...*Host) *TeamGroupUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveHostIDs(ids...)
+}
+
 // ClearTeamGroupMembers clears all "team_group_members" edges to the TeamGroupMember entity.
 func (_u *TeamGroupUpdateOne) ClearTeamGroupMembers() *TeamGroupUpdateOne {
 	_u.mutation.ClearTeamGroupMembers()
@@ -1075,6 +1302,27 @@ func (_u *TeamGroupUpdateOne) RemoveTeamGroupImages(v ...*TeamGroupImage) *TeamG
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamGroupImageIDs(ids...)
+}
+
+// ClearTeamGroupHosts clears all "team_group_hosts" edges to the TeamGroupHost entity.
+func (_u *TeamGroupUpdateOne) ClearTeamGroupHosts() *TeamGroupUpdateOne {
+	_u.mutation.ClearTeamGroupHosts()
+	return _u
+}
+
+// RemoveTeamGroupHostIDs removes the "team_group_hosts" edge to TeamGroupHost entities by IDs.
+func (_u *TeamGroupUpdateOne) RemoveTeamGroupHostIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
+	_u.mutation.RemoveTeamGroupHostIDs(ids...)
+	return _u
+}
+
+// RemoveTeamGroupHosts removes "team_group_hosts" edges to TeamGroupHost entities.
+func (_u *TeamGroupUpdateOne) RemoveTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamGroupHostIDs(ids...)
 }
 
 // Where appends a list predicates to the TeamGroupUpdate builder.
@@ -1390,6 +1638,63 @@ func (_u *TeamGroupUpdateOne) sqlSave(ctx context.Context) (_node *TeamGroup, er
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		createE := &TeamGroupHostCreate{config: _u.config, mutation: newTeamGroupHostMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedHostsIDs(); len(nodes) > 0 && !_u.mutation.HostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupHostCreate{config: _u.config, mutation: newTeamGroupHostMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.HostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.HostsTable,
+			Columns: teamgroup.HostsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(host.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupHostCreate{config: _u.config, mutation: newTeamGroupHostMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamGroupMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1518,6 +1823,51 @@ func (_u *TeamGroupUpdateOne) sqlSave(ctx context.Context) (_node *TeamGroup, er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgroupimage.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamGroupHostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamGroupHostsIDs(); len(nodes) > 0 && !_u.mutation.TeamGroupHostsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamGroupHostsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupHostsTable,
+			Columns: []string{teamgroup.TeamGroupHostsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

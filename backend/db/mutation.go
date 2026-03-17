@@ -13,19 +13,24 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/google/uuid"
 )
 
@@ -39,18 +44,22 @@ const (
 
 	// Node types.
 	TypeAudit           = "Audit"
+	TypeHost            = "Host"
 	TypeImage           = "Image"
 	TypeModel           = "Model"
 	TypeTeam            = "Team"
 	TypeTeamGroup       = "TeamGroup"
+	TypeTeamGroupHost   = "TeamGroupHost"
 	TypeTeamGroupImage  = "TeamGroupImage"
 	TypeTeamGroupMember = "TeamGroupMember"
 	TypeTeamGroupModel  = "TeamGroupModel"
+	TypeTeamHost        = "TeamHost"
 	TypeTeamImage       = "TeamImage"
 	TypeTeamMember      = "TeamMember"
 	TypeTeamModel       = "TeamModel"
 	TypeUser            = "User"
 	TypeUserIdentity    = "UserIdentity"
+	TypeVirtualMachine  = "VirtualMachine"
 )
 
 // AuditMutation represents an operation that mutates the Audit nodes in the graph.
@@ -783,6 +792,1822 @@ func (m *AuditMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Audit edge %s", name)
+}
+
+// HostMutation represents an operation that mutates the Host nodes in the graph.
+type HostMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *string
+	deleted_at              *time.Time
+	hostname                *string
+	arch                    *string
+	cores                   *int
+	addcores                *int
+	weight                  *int
+	addweight               *int
+	memory                  *int64
+	addmemory               *int64
+	disk                    *int64
+	adddisk                 *int64
+	os                      *string
+	external_ip             *string
+	internal_ip             *string
+	version                 *string
+	machine_id              *string
+	remark                  *string
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	vms                     map[string]struct{}
+	removedvms              map[string]struct{}
+	clearedvms              bool
+	user                    *uuid.UUID
+	cleareduser             bool
+	groups                  map[uuid.UUID]struct{}
+	removedgroups           map[uuid.UUID]struct{}
+	clearedgroups           bool
+	team_group_hosts        map[uuid.UUID]struct{}
+	removedteam_group_hosts map[uuid.UUID]struct{}
+	clearedteam_group_hosts bool
+	done                    bool
+	oldValue                func(context.Context) (*Host, error)
+	predicates              []predicate.Host
+}
+
+var _ ent.Mutation = (*HostMutation)(nil)
+
+// hostOption allows management of the mutation configuration using functional options.
+type hostOption func(*HostMutation)
+
+// newHostMutation creates new mutation for the Host entity.
+func newHostMutation(c config, op Op, opts ...hostOption) *HostMutation {
+	m := &HostMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeHost,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withHostID sets the ID field of the mutation.
+func withHostID(id string) hostOption {
+	return func(m *HostMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Host
+		)
+		m.oldValue = func(ctx context.Context) (*Host, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Host.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withHost sets the old Host of the mutation.
+func withHost(node *Host) hostOption {
+	return func(m *HostMutation) {
+		m.oldValue = func(context.Context) (*Host, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m HostMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m HostMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Host entities.
+func (m *HostMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *HostMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *HostMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Host.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *HostMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *HostMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldDeletedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *HostMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[host.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *HostMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[host.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *HostMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, host.FieldDeletedAt)
+}
+
+// SetUserID sets the "user_id" field.
+func (m *HostMutation) SetUserID(u uuid.UUID) {
+	m.user = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *HostMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *HostMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetHostname sets the "hostname" field.
+func (m *HostMutation) SetHostname(s string) {
+	m.hostname = &s
+}
+
+// Hostname returns the value of the "hostname" field in the mutation.
+func (m *HostMutation) Hostname() (r string, exists bool) {
+	v := m.hostname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostname returns the old "hostname" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldHostname(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostname: %w", err)
+	}
+	return oldValue.Hostname, nil
+}
+
+// ClearHostname clears the value of the "hostname" field.
+func (m *HostMutation) ClearHostname() {
+	m.hostname = nil
+	m.clearedFields[host.FieldHostname] = struct{}{}
+}
+
+// HostnameCleared returns if the "hostname" field was cleared in this mutation.
+func (m *HostMutation) HostnameCleared() bool {
+	_, ok := m.clearedFields[host.FieldHostname]
+	return ok
+}
+
+// ResetHostname resets all changes to the "hostname" field.
+func (m *HostMutation) ResetHostname() {
+	m.hostname = nil
+	delete(m.clearedFields, host.FieldHostname)
+}
+
+// SetArch sets the "arch" field.
+func (m *HostMutation) SetArch(s string) {
+	m.arch = &s
+}
+
+// Arch returns the value of the "arch" field in the mutation.
+func (m *HostMutation) Arch() (r string, exists bool) {
+	v := m.arch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArch returns the old "arch" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldArch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArch: %w", err)
+	}
+	return oldValue.Arch, nil
+}
+
+// ClearArch clears the value of the "arch" field.
+func (m *HostMutation) ClearArch() {
+	m.arch = nil
+	m.clearedFields[host.FieldArch] = struct{}{}
+}
+
+// ArchCleared returns if the "arch" field was cleared in this mutation.
+func (m *HostMutation) ArchCleared() bool {
+	_, ok := m.clearedFields[host.FieldArch]
+	return ok
+}
+
+// ResetArch resets all changes to the "arch" field.
+func (m *HostMutation) ResetArch() {
+	m.arch = nil
+	delete(m.clearedFields, host.FieldArch)
+}
+
+// SetCores sets the "cores" field.
+func (m *HostMutation) SetCores(i int) {
+	m.cores = &i
+	m.addcores = nil
+}
+
+// Cores returns the value of the "cores" field in the mutation.
+func (m *HostMutation) Cores() (r int, exists bool) {
+	v := m.cores
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCores returns the old "cores" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldCores(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCores is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCores requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCores: %w", err)
+	}
+	return oldValue.Cores, nil
+}
+
+// AddCores adds i to the "cores" field.
+func (m *HostMutation) AddCores(i int) {
+	if m.addcores != nil {
+		*m.addcores += i
+	} else {
+		m.addcores = &i
+	}
+}
+
+// AddedCores returns the value that was added to the "cores" field in this mutation.
+func (m *HostMutation) AddedCores() (r int, exists bool) {
+	v := m.addcores
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCores clears the value of the "cores" field.
+func (m *HostMutation) ClearCores() {
+	m.cores = nil
+	m.addcores = nil
+	m.clearedFields[host.FieldCores] = struct{}{}
+}
+
+// CoresCleared returns if the "cores" field was cleared in this mutation.
+func (m *HostMutation) CoresCleared() bool {
+	_, ok := m.clearedFields[host.FieldCores]
+	return ok
+}
+
+// ResetCores resets all changes to the "cores" field.
+func (m *HostMutation) ResetCores() {
+	m.cores = nil
+	m.addcores = nil
+	delete(m.clearedFields, host.FieldCores)
+}
+
+// SetWeight sets the "weight" field.
+func (m *HostMutation) SetWeight(i int) {
+	m.weight = &i
+	m.addweight = nil
+}
+
+// Weight returns the value of the "weight" field in the mutation.
+func (m *HostMutation) Weight() (r int, exists bool) {
+	v := m.weight
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeight returns the old "weight" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldWeight(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeight is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeight requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeight: %w", err)
+	}
+	return oldValue.Weight, nil
+}
+
+// AddWeight adds i to the "weight" field.
+func (m *HostMutation) AddWeight(i int) {
+	if m.addweight != nil {
+		*m.addweight += i
+	} else {
+		m.addweight = &i
+	}
+}
+
+// AddedWeight returns the value that was added to the "weight" field in this mutation.
+func (m *HostMutation) AddedWeight() (r int, exists bool) {
+	v := m.addweight
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetWeight resets all changes to the "weight" field.
+func (m *HostMutation) ResetWeight() {
+	m.weight = nil
+	m.addweight = nil
+}
+
+// SetMemory sets the "memory" field.
+func (m *HostMutation) SetMemory(i int64) {
+	m.memory = &i
+	m.addmemory = nil
+}
+
+// Memory returns the value of the "memory" field in the mutation.
+func (m *HostMutation) Memory() (r int64, exists bool) {
+	v := m.memory
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMemory returns the old "memory" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldMemory(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMemory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMemory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMemory: %w", err)
+	}
+	return oldValue.Memory, nil
+}
+
+// AddMemory adds i to the "memory" field.
+func (m *HostMutation) AddMemory(i int64) {
+	if m.addmemory != nil {
+		*m.addmemory += i
+	} else {
+		m.addmemory = &i
+	}
+}
+
+// AddedMemory returns the value that was added to the "memory" field in this mutation.
+func (m *HostMutation) AddedMemory() (r int64, exists bool) {
+	v := m.addmemory
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMemory clears the value of the "memory" field.
+func (m *HostMutation) ClearMemory() {
+	m.memory = nil
+	m.addmemory = nil
+	m.clearedFields[host.FieldMemory] = struct{}{}
+}
+
+// MemoryCleared returns if the "memory" field was cleared in this mutation.
+func (m *HostMutation) MemoryCleared() bool {
+	_, ok := m.clearedFields[host.FieldMemory]
+	return ok
+}
+
+// ResetMemory resets all changes to the "memory" field.
+func (m *HostMutation) ResetMemory() {
+	m.memory = nil
+	m.addmemory = nil
+	delete(m.clearedFields, host.FieldMemory)
+}
+
+// SetDisk sets the "disk" field.
+func (m *HostMutation) SetDisk(i int64) {
+	m.disk = &i
+	m.adddisk = nil
+}
+
+// Disk returns the value of the "disk" field in the mutation.
+func (m *HostMutation) Disk() (r int64, exists bool) {
+	v := m.disk
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisk returns the old "disk" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldDisk(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisk is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisk requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisk: %w", err)
+	}
+	return oldValue.Disk, nil
+}
+
+// AddDisk adds i to the "disk" field.
+func (m *HostMutation) AddDisk(i int64) {
+	if m.adddisk != nil {
+		*m.adddisk += i
+	} else {
+		m.adddisk = &i
+	}
+}
+
+// AddedDisk returns the value that was added to the "disk" field in this mutation.
+func (m *HostMutation) AddedDisk() (r int64, exists bool) {
+	v := m.adddisk
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearDisk clears the value of the "disk" field.
+func (m *HostMutation) ClearDisk() {
+	m.disk = nil
+	m.adddisk = nil
+	m.clearedFields[host.FieldDisk] = struct{}{}
+}
+
+// DiskCleared returns if the "disk" field was cleared in this mutation.
+func (m *HostMutation) DiskCleared() bool {
+	_, ok := m.clearedFields[host.FieldDisk]
+	return ok
+}
+
+// ResetDisk resets all changes to the "disk" field.
+func (m *HostMutation) ResetDisk() {
+	m.disk = nil
+	m.adddisk = nil
+	delete(m.clearedFields, host.FieldDisk)
+}
+
+// SetOs sets the "os" field.
+func (m *HostMutation) SetOs(s string) {
+	m.os = &s
+}
+
+// Os returns the value of the "os" field in the mutation.
+func (m *HostMutation) Os() (r string, exists bool) {
+	v := m.os
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOs returns the old "os" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldOs(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOs: %w", err)
+	}
+	return oldValue.Os, nil
+}
+
+// ClearOs clears the value of the "os" field.
+func (m *HostMutation) ClearOs() {
+	m.os = nil
+	m.clearedFields[host.FieldOs] = struct{}{}
+}
+
+// OsCleared returns if the "os" field was cleared in this mutation.
+func (m *HostMutation) OsCleared() bool {
+	_, ok := m.clearedFields[host.FieldOs]
+	return ok
+}
+
+// ResetOs resets all changes to the "os" field.
+func (m *HostMutation) ResetOs() {
+	m.os = nil
+	delete(m.clearedFields, host.FieldOs)
+}
+
+// SetExternalIP sets the "external_ip" field.
+func (m *HostMutation) SetExternalIP(s string) {
+	m.external_ip = &s
+}
+
+// ExternalIP returns the value of the "external_ip" field in the mutation.
+func (m *HostMutation) ExternalIP() (r string, exists bool) {
+	v := m.external_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalIP returns the old "external_ip" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldExternalIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalIP: %w", err)
+	}
+	return oldValue.ExternalIP, nil
+}
+
+// ClearExternalIP clears the value of the "external_ip" field.
+func (m *HostMutation) ClearExternalIP() {
+	m.external_ip = nil
+	m.clearedFields[host.FieldExternalIP] = struct{}{}
+}
+
+// ExternalIPCleared returns if the "external_ip" field was cleared in this mutation.
+func (m *HostMutation) ExternalIPCleared() bool {
+	_, ok := m.clearedFields[host.FieldExternalIP]
+	return ok
+}
+
+// ResetExternalIP resets all changes to the "external_ip" field.
+func (m *HostMutation) ResetExternalIP() {
+	m.external_ip = nil
+	delete(m.clearedFields, host.FieldExternalIP)
+}
+
+// SetInternalIP sets the "internal_ip" field.
+func (m *HostMutation) SetInternalIP(s string) {
+	m.internal_ip = &s
+}
+
+// InternalIP returns the value of the "internal_ip" field in the mutation.
+func (m *HostMutation) InternalIP() (r string, exists bool) {
+	v := m.internal_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInternalIP returns the old "internal_ip" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldInternalIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInternalIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInternalIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInternalIP: %w", err)
+	}
+	return oldValue.InternalIP, nil
+}
+
+// ClearInternalIP clears the value of the "internal_ip" field.
+func (m *HostMutation) ClearInternalIP() {
+	m.internal_ip = nil
+	m.clearedFields[host.FieldInternalIP] = struct{}{}
+}
+
+// InternalIPCleared returns if the "internal_ip" field was cleared in this mutation.
+func (m *HostMutation) InternalIPCleared() bool {
+	_, ok := m.clearedFields[host.FieldInternalIP]
+	return ok
+}
+
+// ResetInternalIP resets all changes to the "internal_ip" field.
+func (m *HostMutation) ResetInternalIP() {
+	m.internal_ip = nil
+	delete(m.clearedFields, host.FieldInternalIP)
+}
+
+// SetVersion sets the "version" field.
+func (m *HostMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *HostMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ClearVersion clears the value of the "version" field.
+func (m *HostMutation) ClearVersion() {
+	m.version = nil
+	m.clearedFields[host.FieldVersion] = struct{}{}
+}
+
+// VersionCleared returns if the "version" field was cleared in this mutation.
+func (m *HostMutation) VersionCleared() bool {
+	_, ok := m.clearedFields[host.FieldVersion]
+	return ok
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *HostMutation) ResetVersion() {
+	m.version = nil
+	delete(m.clearedFields, host.FieldVersion)
+}
+
+// SetMachineID sets the "machine_id" field.
+func (m *HostMutation) SetMachineID(s string) {
+	m.machine_id = &s
+}
+
+// MachineID returns the value of the "machine_id" field in the mutation.
+func (m *HostMutation) MachineID() (r string, exists bool) {
+	v := m.machine_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMachineID returns the old "machine_id" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldMachineID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMachineID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMachineID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMachineID: %w", err)
+	}
+	return oldValue.MachineID, nil
+}
+
+// ClearMachineID clears the value of the "machine_id" field.
+func (m *HostMutation) ClearMachineID() {
+	m.machine_id = nil
+	m.clearedFields[host.FieldMachineID] = struct{}{}
+}
+
+// MachineIDCleared returns if the "machine_id" field was cleared in this mutation.
+func (m *HostMutation) MachineIDCleared() bool {
+	_, ok := m.clearedFields[host.FieldMachineID]
+	return ok
+}
+
+// ResetMachineID resets all changes to the "machine_id" field.
+func (m *HostMutation) ResetMachineID() {
+	m.machine_id = nil
+	delete(m.clearedFields, host.FieldMachineID)
+}
+
+// SetRemark sets the "remark" field.
+func (m *HostMutation) SetRemark(s string) {
+	m.remark = &s
+}
+
+// Remark returns the value of the "remark" field in the mutation.
+func (m *HostMutation) Remark() (r string, exists bool) {
+	v := m.remark
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemark returns the old "remark" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldRemark(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemark is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemark requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemark: %w", err)
+	}
+	return oldValue.Remark, nil
+}
+
+// ClearRemark clears the value of the "remark" field.
+func (m *HostMutation) ClearRemark() {
+	m.remark = nil
+	m.clearedFields[host.FieldRemark] = struct{}{}
+}
+
+// RemarkCleared returns if the "remark" field was cleared in this mutation.
+func (m *HostMutation) RemarkCleared() bool {
+	_, ok := m.clearedFields[host.FieldRemark]
+	return ok
+}
+
+// ResetRemark resets all changes to the "remark" field.
+func (m *HostMutation) ResetRemark() {
+	m.remark = nil
+	delete(m.clearedFields, host.FieldRemark)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *HostMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *HostMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *HostMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *HostMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *HostMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Host entity.
+// If the Host object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HostMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *HostMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by ids.
+func (m *HostMutation) AddVMIDs(ids ...string) {
+	if m.vms == nil {
+		m.vms = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.vms[ids[i]] = struct{}{}
+	}
+}
+
+// ClearVms clears the "vms" edge to the VirtualMachine entity.
+func (m *HostMutation) ClearVms() {
+	m.clearedvms = true
+}
+
+// VmsCleared reports if the "vms" edge to the VirtualMachine entity was cleared.
+func (m *HostMutation) VmsCleared() bool {
+	return m.clearedvms
+}
+
+// RemoveVMIDs removes the "vms" edge to the VirtualMachine entity by IDs.
+func (m *HostMutation) RemoveVMIDs(ids ...string) {
+	if m.removedvms == nil {
+		m.removedvms = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.vms, ids[i])
+		m.removedvms[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedVms returns the removed IDs of the "vms" edge to the VirtualMachine entity.
+func (m *HostMutation) RemovedVmsIDs() (ids []string) {
+	for id := range m.removedvms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// VmsIDs returns the "vms" edge IDs in the mutation.
+func (m *HostMutation) VmsIDs() (ids []string) {
+	for id := range m.vms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetVms resets all changes to the "vms" edge.
+func (m *HostMutation) ResetVms() {
+	m.vms = nil
+	m.clearedvms = false
+	m.removedvms = nil
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *HostMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[host.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *HostMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *HostMutation) UserIDs() (ids []uuid.UUID) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *HostMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// AddGroupIDs adds the "groups" edge to the TeamGroup entity by ids.
+func (m *HostMutation) AddGroupIDs(ids ...uuid.UUID) {
+	if m.groups == nil {
+		m.groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.groups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGroups clears the "groups" edge to the TeamGroup entity.
+func (m *HostMutation) ClearGroups() {
+	m.clearedgroups = true
+}
+
+// GroupsCleared reports if the "groups" edge to the TeamGroup entity was cleared.
+func (m *HostMutation) GroupsCleared() bool {
+	return m.clearedgroups
+}
+
+// RemoveGroupIDs removes the "groups" edge to the TeamGroup entity by IDs.
+func (m *HostMutation) RemoveGroupIDs(ids ...uuid.UUID) {
+	if m.removedgroups == nil {
+		m.removedgroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.groups, ids[i])
+		m.removedgroups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGroups returns the removed IDs of the "groups" edge to the TeamGroup entity.
+func (m *HostMutation) RemovedGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removedgroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GroupsIDs returns the "groups" edge IDs in the mutation.
+func (m *HostMutation) GroupsIDs() (ids []uuid.UUID) {
+	for id := range m.groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGroups resets all changes to the "groups" edge.
+func (m *HostMutation) ResetGroups() {
+	m.groups = nil
+	m.clearedgroups = false
+	m.removedgroups = nil
+}
+
+// AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by ids.
+func (m *HostMutation) AddTeamGroupHostIDs(ids ...uuid.UUID) {
+	if m.team_group_hosts == nil {
+		m.team_group_hosts = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.team_group_hosts[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeamGroupHosts clears the "team_group_hosts" edge to the TeamGroupHost entity.
+func (m *HostMutation) ClearTeamGroupHosts() {
+	m.clearedteam_group_hosts = true
+}
+
+// TeamGroupHostsCleared reports if the "team_group_hosts" edge to the TeamGroupHost entity was cleared.
+func (m *HostMutation) TeamGroupHostsCleared() bool {
+	return m.clearedteam_group_hosts
+}
+
+// RemoveTeamGroupHostIDs removes the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
+func (m *HostMutation) RemoveTeamGroupHostIDs(ids ...uuid.UUID) {
+	if m.removedteam_group_hosts == nil {
+		m.removedteam_group_hosts = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.team_group_hosts, ids[i])
+		m.removedteam_group_hosts[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeamGroupHosts returns the removed IDs of the "team_group_hosts" edge to the TeamGroupHost entity.
+func (m *HostMutation) RemovedTeamGroupHostsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteam_group_hosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamGroupHostsIDs returns the "team_group_hosts" edge IDs in the mutation.
+func (m *HostMutation) TeamGroupHostsIDs() (ids []uuid.UUID) {
+	for id := range m.team_group_hosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeamGroupHosts resets all changes to the "team_group_hosts" edge.
+func (m *HostMutation) ResetTeamGroupHosts() {
+	m.team_group_hosts = nil
+	m.clearedteam_group_hosts = false
+	m.removedteam_group_hosts = nil
+}
+
+// Where appends a list predicates to the HostMutation builder.
+func (m *HostMutation) Where(ps ...predicate.Host) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the HostMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *HostMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Host, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *HostMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *HostMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Host).
+func (m *HostMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *HostMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.deleted_at != nil {
+		fields = append(fields, host.FieldDeletedAt)
+	}
+	if m.user != nil {
+		fields = append(fields, host.FieldUserID)
+	}
+	if m.hostname != nil {
+		fields = append(fields, host.FieldHostname)
+	}
+	if m.arch != nil {
+		fields = append(fields, host.FieldArch)
+	}
+	if m.cores != nil {
+		fields = append(fields, host.FieldCores)
+	}
+	if m.weight != nil {
+		fields = append(fields, host.FieldWeight)
+	}
+	if m.memory != nil {
+		fields = append(fields, host.FieldMemory)
+	}
+	if m.disk != nil {
+		fields = append(fields, host.FieldDisk)
+	}
+	if m.os != nil {
+		fields = append(fields, host.FieldOs)
+	}
+	if m.external_ip != nil {
+		fields = append(fields, host.FieldExternalIP)
+	}
+	if m.internal_ip != nil {
+		fields = append(fields, host.FieldInternalIP)
+	}
+	if m.version != nil {
+		fields = append(fields, host.FieldVersion)
+	}
+	if m.machine_id != nil {
+		fields = append(fields, host.FieldMachineID)
+	}
+	if m.remark != nil {
+		fields = append(fields, host.FieldRemark)
+	}
+	if m.created_at != nil {
+		fields = append(fields, host.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, host.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *HostMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case host.FieldDeletedAt:
+		return m.DeletedAt()
+	case host.FieldUserID:
+		return m.UserID()
+	case host.FieldHostname:
+		return m.Hostname()
+	case host.FieldArch:
+		return m.Arch()
+	case host.FieldCores:
+		return m.Cores()
+	case host.FieldWeight:
+		return m.Weight()
+	case host.FieldMemory:
+		return m.Memory()
+	case host.FieldDisk:
+		return m.Disk()
+	case host.FieldOs:
+		return m.Os()
+	case host.FieldExternalIP:
+		return m.ExternalIP()
+	case host.FieldInternalIP:
+		return m.InternalIP()
+	case host.FieldVersion:
+		return m.Version()
+	case host.FieldMachineID:
+		return m.MachineID()
+	case host.FieldRemark:
+		return m.Remark()
+	case host.FieldCreatedAt:
+		return m.CreatedAt()
+	case host.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *HostMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case host.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case host.FieldUserID:
+		return m.OldUserID(ctx)
+	case host.FieldHostname:
+		return m.OldHostname(ctx)
+	case host.FieldArch:
+		return m.OldArch(ctx)
+	case host.FieldCores:
+		return m.OldCores(ctx)
+	case host.FieldWeight:
+		return m.OldWeight(ctx)
+	case host.FieldMemory:
+		return m.OldMemory(ctx)
+	case host.FieldDisk:
+		return m.OldDisk(ctx)
+	case host.FieldOs:
+		return m.OldOs(ctx)
+	case host.FieldExternalIP:
+		return m.OldExternalIP(ctx)
+	case host.FieldInternalIP:
+		return m.OldInternalIP(ctx)
+	case host.FieldVersion:
+		return m.OldVersion(ctx)
+	case host.FieldMachineID:
+		return m.OldMachineID(ctx)
+	case host.FieldRemark:
+		return m.OldRemark(ctx)
+	case host.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case host.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Host field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *HostMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case host.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case host.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case host.FieldHostname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostname(v)
+		return nil
+	case host.FieldArch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArch(v)
+		return nil
+	case host.FieldCores:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCores(v)
+		return nil
+	case host.FieldWeight:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeight(v)
+		return nil
+	case host.FieldMemory:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMemory(v)
+		return nil
+	case host.FieldDisk:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisk(v)
+		return nil
+	case host.FieldOs:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOs(v)
+		return nil
+	case host.FieldExternalIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalIP(v)
+		return nil
+	case host.FieldInternalIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInternalIP(v)
+		return nil
+	case host.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case host.FieldMachineID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMachineID(v)
+		return nil
+	case host.FieldRemark:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemark(v)
+		return nil
+	case host.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case host.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Host field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *HostMutation) AddedFields() []string {
+	var fields []string
+	if m.addcores != nil {
+		fields = append(fields, host.FieldCores)
+	}
+	if m.addweight != nil {
+		fields = append(fields, host.FieldWeight)
+	}
+	if m.addmemory != nil {
+		fields = append(fields, host.FieldMemory)
+	}
+	if m.adddisk != nil {
+		fields = append(fields, host.FieldDisk)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *HostMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case host.FieldCores:
+		return m.AddedCores()
+	case host.FieldWeight:
+		return m.AddedWeight()
+	case host.FieldMemory:
+		return m.AddedMemory()
+	case host.FieldDisk:
+		return m.AddedDisk()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *HostMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case host.FieldCores:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCores(v)
+		return nil
+	case host.FieldWeight:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWeight(v)
+		return nil
+	case host.FieldMemory:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMemory(v)
+		return nil
+	case host.FieldDisk:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDisk(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Host numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *HostMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(host.FieldDeletedAt) {
+		fields = append(fields, host.FieldDeletedAt)
+	}
+	if m.FieldCleared(host.FieldHostname) {
+		fields = append(fields, host.FieldHostname)
+	}
+	if m.FieldCleared(host.FieldArch) {
+		fields = append(fields, host.FieldArch)
+	}
+	if m.FieldCleared(host.FieldCores) {
+		fields = append(fields, host.FieldCores)
+	}
+	if m.FieldCleared(host.FieldMemory) {
+		fields = append(fields, host.FieldMemory)
+	}
+	if m.FieldCleared(host.FieldDisk) {
+		fields = append(fields, host.FieldDisk)
+	}
+	if m.FieldCleared(host.FieldOs) {
+		fields = append(fields, host.FieldOs)
+	}
+	if m.FieldCleared(host.FieldExternalIP) {
+		fields = append(fields, host.FieldExternalIP)
+	}
+	if m.FieldCleared(host.FieldInternalIP) {
+		fields = append(fields, host.FieldInternalIP)
+	}
+	if m.FieldCleared(host.FieldVersion) {
+		fields = append(fields, host.FieldVersion)
+	}
+	if m.FieldCleared(host.FieldMachineID) {
+		fields = append(fields, host.FieldMachineID)
+	}
+	if m.FieldCleared(host.FieldRemark) {
+		fields = append(fields, host.FieldRemark)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *HostMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *HostMutation) ClearField(name string) error {
+	switch name {
+	case host.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case host.FieldHostname:
+		m.ClearHostname()
+		return nil
+	case host.FieldArch:
+		m.ClearArch()
+		return nil
+	case host.FieldCores:
+		m.ClearCores()
+		return nil
+	case host.FieldMemory:
+		m.ClearMemory()
+		return nil
+	case host.FieldDisk:
+		m.ClearDisk()
+		return nil
+	case host.FieldOs:
+		m.ClearOs()
+		return nil
+	case host.FieldExternalIP:
+		m.ClearExternalIP()
+		return nil
+	case host.FieldInternalIP:
+		m.ClearInternalIP()
+		return nil
+	case host.FieldVersion:
+		m.ClearVersion()
+		return nil
+	case host.FieldMachineID:
+		m.ClearMachineID()
+		return nil
+	case host.FieldRemark:
+		m.ClearRemark()
+		return nil
+	}
+	return fmt.Errorf("unknown Host nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *HostMutation) ResetField(name string) error {
+	switch name {
+	case host.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case host.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case host.FieldHostname:
+		m.ResetHostname()
+		return nil
+	case host.FieldArch:
+		m.ResetArch()
+		return nil
+	case host.FieldCores:
+		m.ResetCores()
+		return nil
+	case host.FieldWeight:
+		m.ResetWeight()
+		return nil
+	case host.FieldMemory:
+		m.ResetMemory()
+		return nil
+	case host.FieldDisk:
+		m.ResetDisk()
+		return nil
+	case host.FieldOs:
+		m.ResetOs()
+		return nil
+	case host.FieldExternalIP:
+		m.ResetExternalIP()
+		return nil
+	case host.FieldInternalIP:
+		m.ResetInternalIP()
+		return nil
+	case host.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case host.FieldMachineID:
+		m.ResetMachineID()
+		return nil
+	case host.FieldRemark:
+		m.ResetRemark()
+		return nil
+	case host.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case host.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Host field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *HostMutation) AddedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.vms != nil {
+		edges = append(edges, host.EdgeVms)
+	}
+	if m.user != nil {
+		edges = append(edges, host.EdgeUser)
+	}
+	if m.groups != nil {
+		edges = append(edges, host.EdgeGroups)
+	}
+	if m.team_group_hosts != nil {
+		edges = append(edges, host.EdgeTeamGroupHosts)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *HostMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case host.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.vms))
+		for id := range m.vms {
+			ids = append(ids, id)
+		}
+		return ids
+	case host.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	case host.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.groups))
+		for id := range m.groups {
+			ids = append(ids, id)
+		}
+		return ids
+	case host.EdgeTeamGroupHosts:
+		ids := make([]ent.Value, 0, len(m.team_group_hosts))
+		for id := range m.team_group_hosts {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *HostMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.removedvms != nil {
+		edges = append(edges, host.EdgeVms)
+	}
+	if m.removedgroups != nil {
+		edges = append(edges, host.EdgeGroups)
+	}
+	if m.removedteam_group_hosts != nil {
+		edges = append(edges, host.EdgeTeamGroupHosts)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *HostMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case host.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.removedvms))
+		for id := range m.removedvms {
+			ids = append(ids, id)
+		}
+		return ids
+	case host.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.removedgroups))
+		for id := range m.removedgroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case host.EdgeTeamGroupHosts:
+		ids := make([]ent.Value, 0, len(m.removedteam_group_hosts))
+		for id := range m.removedteam_group_hosts {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *HostMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.clearedvms {
+		edges = append(edges, host.EdgeVms)
+	}
+	if m.cleareduser {
+		edges = append(edges, host.EdgeUser)
+	}
+	if m.clearedgroups {
+		edges = append(edges, host.EdgeGroups)
+	}
+	if m.clearedteam_group_hosts {
+		edges = append(edges, host.EdgeTeamGroupHosts)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *HostMutation) EdgeCleared(name string) bool {
+	switch name {
+	case host.EdgeVms:
+		return m.clearedvms
+	case host.EdgeUser:
+		return m.cleareduser
+	case host.EdgeGroups:
+		return m.clearedgroups
+	case host.EdgeTeamGroupHosts:
+		return m.clearedteam_group_hosts
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *HostMutation) ClearEdge(name string) error {
+	switch name {
+	case host.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown Host unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *HostMutation) ResetEdge(name string) error {
+	switch name {
+	case host.EdgeVms:
+		m.ResetVms()
+		return nil
+	case host.EdgeUser:
+		m.ResetUser()
+		return nil
+	case host.EdgeGroups:
+		m.ResetGroups()
+		return nil
+	case host.EdgeTeamGroupHosts:
+		m.ResetTeamGroupHosts()
+		return nil
+	}
+	return fmt.Errorf("unknown Host edge %s", name)
 }
 
 // ImageMutation represents an operation that mutates the Image nodes in the graph.
@@ -1847,6 +3672,9 @@ type ModelMutation struct {
 	groups                   map[uuid.UUID]struct{}
 	removedgroups            map[uuid.UUID]struct{}
 	clearedgroups            bool
+	vms                      map[string]struct{}
+	removedvms               map[string]struct{}
+	clearedvms               bool
 	team_models              map[uuid.UUID]struct{}
 	removedteam_models       map[uuid.UUID]struct{}
 	clearedteam_models       bool
@@ -2769,6 +4597,60 @@ func (m *ModelMutation) ResetGroups() {
 	m.removedgroups = nil
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by ids.
+func (m *ModelMutation) AddVMIDs(ids ...string) {
+	if m.vms == nil {
+		m.vms = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.vms[ids[i]] = struct{}{}
+	}
+}
+
+// ClearVms clears the "vms" edge to the VirtualMachine entity.
+func (m *ModelMutation) ClearVms() {
+	m.clearedvms = true
+}
+
+// VmsCleared reports if the "vms" edge to the VirtualMachine entity was cleared.
+func (m *ModelMutation) VmsCleared() bool {
+	return m.clearedvms
+}
+
+// RemoveVMIDs removes the "vms" edge to the VirtualMachine entity by IDs.
+func (m *ModelMutation) RemoveVMIDs(ids ...string) {
+	if m.removedvms == nil {
+		m.removedvms = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.vms, ids[i])
+		m.removedvms[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedVms returns the removed IDs of the "vms" edge to the VirtualMachine entity.
+func (m *ModelMutation) RemovedVmsIDs() (ids []string) {
+	for id := range m.removedvms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// VmsIDs returns the "vms" edge IDs in the mutation.
+func (m *ModelMutation) VmsIDs() (ids []string) {
+	for id := range m.vms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetVms resets all changes to the "vms" edge.
+func (m *ModelMutation) ResetVms() {
+	m.vms = nil
+	m.clearedvms = false
+	m.removedvms = nil
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by ids.
 func (m *ModelMutation) AddTeamModelIDs(ids ...uuid.UUID) {
 	if m.team_models == nil {
@@ -3320,7 +5202,7 @@ func (m *ModelMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ModelMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.user != nil {
 		edges = append(edges, model.EdgeUser)
 	}
@@ -3329,6 +5211,9 @@ func (m *ModelMutation) AddedEdges() []string {
 	}
 	if m.groups != nil {
 		edges = append(edges, model.EdgeGroups)
+	}
+	if m.vms != nil {
+		edges = append(edges, model.EdgeVms)
 	}
 	if m.team_models != nil {
 		edges = append(edges, model.EdgeTeamModels)
@@ -3359,6 +5244,12 @@ func (m *ModelMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case model.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.vms))
+		for id := range m.vms {
+			ids = append(ids, id)
+		}
+		return ids
 	case model.EdgeTeamModels:
 		ids := make([]ent.Value, 0, len(m.team_models))
 		for id := range m.team_models {
@@ -3377,12 +5268,15 @@ func (m *ModelMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ModelMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedteams != nil {
 		edges = append(edges, model.EdgeTeams)
 	}
 	if m.removedgroups != nil {
 		edges = append(edges, model.EdgeGroups)
+	}
+	if m.removedvms != nil {
+		edges = append(edges, model.EdgeVms)
 	}
 	if m.removedteam_models != nil {
 		edges = append(edges, model.EdgeTeamModels)
@@ -3409,6 +5303,12 @@ func (m *ModelMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case model.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.removedvms))
+		for id := range m.removedvms {
+			ids = append(ids, id)
+		}
+		return ids
 	case model.EdgeTeamModels:
 		ids := make([]ent.Value, 0, len(m.removedteam_models))
 		for id := range m.removedteam_models {
@@ -3427,7 +5327,7 @@ func (m *ModelMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ModelMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.cleareduser {
 		edges = append(edges, model.EdgeUser)
 	}
@@ -3436,6 +5336,9 @@ func (m *ModelMutation) ClearedEdges() []string {
 	}
 	if m.clearedgroups {
 		edges = append(edges, model.EdgeGroups)
+	}
+	if m.clearedvms {
+		edges = append(edges, model.EdgeVms)
 	}
 	if m.clearedteam_models {
 		edges = append(edges, model.EdgeTeamModels)
@@ -3456,6 +5359,8 @@ func (m *ModelMutation) EdgeCleared(name string) bool {
 		return m.clearedteams
 	case model.EdgeGroups:
 		return m.clearedgroups
+	case model.EdgeVms:
+		return m.clearedvms
 	case model.EdgeTeamModels:
 		return m.clearedteam_models
 	case model.EdgeTeamGroupModels:
@@ -3487,6 +5392,9 @@ func (m *ModelMutation) ResetEdge(name string) error {
 		return nil
 	case model.EdgeGroups:
 		m.ResetGroups()
+		return nil
+	case model.EdgeVms:
+		m.ResetVms()
 		return nil
 	case model.EdgeTeamModels:
 		m.ResetTeamModels()
@@ -4717,6 +6625,9 @@ type TeamGroupMutation struct {
 	images                    map[uuid.UUID]struct{}
 	removedimages             map[uuid.UUID]struct{}
 	clearedimages             bool
+	hosts                     map[string]struct{}
+	removedhosts              map[string]struct{}
+	clearedhosts              bool
 	team_group_members        map[uuid.UUID]struct{}
 	removedteam_group_members map[uuid.UUID]struct{}
 	clearedteam_group_members bool
@@ -4726,6 +6637,9 @@ type TeamGroupMutation struct {
 	team_group_images         map[uuid.UUID]struct{}
 	removedteam_group_images  map[uuid.UUID]struct{}
 	clearedteam_group_images  bool
+	team_group_hosts          map[uuid.UUID]struct{}
+	removedteam_group_hosts   map[uuid.UUID]struct{}
+	clearedteam_group_hosts   bool
 	done                      bool
 	oldValue                  func(context.Context) (*TeamGroup, error)
 	predicates                []predicate.TeamGroup
@@ -5217,6 +7131,60 @@ func (m *TeamGroupMutation) ResetImages() {
 	m.removedimages = nil
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by ids.
+func (m *TeamGroupMutation) AddHostIDs(ids ...string) {
+	if m.hosts == nil {
+		m.hosts = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.hosts[ids[i]] = struct{}{}
+	}
+}
+
+// ClearHosts clears the "hosts" edge to the Host entity.
+func (m *TeamGroupMutation) ClearHosts() {
+	m.clearedhosts = true
+}
+
+// HostsCleared reports if the "hosts" edge to the Host entity was cleared.
+func (m *TeamGroupMutation) HostsCleared() bool {
+	return m.clearedhosts
+}
+
+// RemoveHostIDs removes the "hosts" edge to the Host entity by IDs.
+func (m *TeamGroupMutation) RemoveHostIDs(ids ...string) {
+	if m.removedhosts == nil {
+		m.removedhosts = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.hosts, ids[i])
+		m.removedhosts[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedHosts returns the removed IDs of the "hosts" edge to the Host entity.
+func (m *TeamGroupMutation) RemovedHostsIDs() (ids []string) {
+	for id := range m.removedhosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// HostsIDs returns the "hosts" edge IDs in the mutation.
+func (m *TeamGroupMutation) HostsIDs() (ids []string) {
+	for id := range m.hosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetHosts resets all changes to the "hosts" edge.
+func (m *TeamGroupMutation) ResetHosts() {
+	m.hosts = nil
+	m.clearedhosts = false
+	m.removedhosts = nil
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by ids.
 func (m *TeamGroupMutation) AddTeamGroupMemberIDs(ids ...uuid.UUID) {
 	if m.team_group_members == nil {
@@ -5377,6 +7345,60 @@ func (m *TeamGroupMutation) ResetTeamGroupImages() {
 	m.team_group_images = nil
 	m.clearedteam_group_images = false
 	m.removedteam_group_images = nil
+}
+
+// AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by ids.
+func (m *TeamGroupMutation) AddTeamGroupHostIDs(ids ...uuid.UUID) {
+	if m.team_group_hosts == nil {
+		m.team_group_hosts = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.team_group_hosts[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeamGroupHosts clears the "team_group_hosts" edge to the TeamGroupHost entity.
+func (m *TeamGroupMutation) ClearTeamGroupHosts() {
+	m.clearedteam_group_hosts = true
+}
+
+// TeamGroupHostsCleared reports if the "team_group_hosts" edge to the TeamGroupHost entity was cleared.
+func (m *TeamGroupMutation) TeamGroupHostsCleared() bool {
+	return m.clearedteam_group_hosts
+}
+
+// RemoveTeamGroupHostIDs removes the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
+func (m *TeamGroupMutation) RemoveTeamGroupHostIDs(ids ...uuid.UUID) {
+	if m.removedteam_group_hosts == nil {
+		m.removedteam_group_hosts = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.team_group_hosts, ids[i])
+		m.removedteam_group_hosts[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeamGroupHosts returns the removed IDs of the "team_group_hosts" edge to the TeamGroupHost entity.
+func (m *TeamGroupMutation) RemovedTeamGroupHostsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteam_group_hosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamGroupHostsIDs returns the "team_group_hosts" edge IDs in the mutation.
+func (m *TeamGroupMutation) TeamGroupHostsIDs() (ids []uuid.UUID) {
+	for id := range m.team_group_hosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeamGroupHosts resets all changes to the "team_group_hosts" edge.
+func (m *TeamGroupMutation) ResetTeamGroupHosts() {
+	m.team_group_hosts = nil
+	m.clearedteam_group_hosts = false
+	m.removedteam_group_hosts = nil
 }
 
 // Where appends a list predicates to the TeamGroupMutation builder.
@@ -5589,7 +7611,7 @@ func (m *TeamGroupMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamGroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.members != nil {
 		edges = append(edges, teamgroup.EdgeMembers)
 	}
@@ -5602,6 +7624,9 @@ func (m *TeamGroupMutation) AddedEdges() []string {
 	if m.images != nil {
 		edges = append(edges, teamgroup.EdgeImages)
 	}
+	if m.hosts != nil {
+		edges = append(edges, teamgroup.EdgeHosts)
+	}
 	if m.team_group_members != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupMembers)
 	}
@@ -5610,6 +7635,9 @@ func (m *TeamGroupMutation) AddedEdges() []string {
 	}
 	if m.team_group_images != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupImages)
+	}
+	if m.team_group_hosts != nil {
+		edges = append(edges, teamgroup.EdgeTeamGroupHosts)
 	}
 	return edges
 }
@@ -5640,6 +7668,12 @@ func (m *TeamGroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeHosts:
+		ids := make([]ent.Value, 0, len(m.hosts))
+		for id := range m.hosts {
+			ids = append(ids, id)
+		}
+		return ids
 	case teamgroup.EdgeTeamGroupMembers:
 		ids := make([]ent.Value, 0, len(m.team_group_members))
 		for id := range m.team_group_members {
@@ -5658,13 +7692,19 @@ func (m *TeamGroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeTeamGroupHosts:
+		ids := make([]ent.Value, 0, len(m.team_group_hosts))
+		for id := range m.team_group_hosts {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamGroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.removedmembers != nil {
 		edges = append(edges, teamgroup.EdgeMembers)
 	}
@@ -5674,6 +7714,9 @@ func (m *TeamGroupMutation) RemovedEdges() []string {
 	if m.removedimages != nil {
 		edges = append(edges, teamgroup.EdgeImages)
 	}
+	if m.removedhosts != nil {
+		edges = append(edges, teamgroup.EdgeHosts)
+	}
 	if m.removedteam_group_members != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupMembers)
 	}
@@ -5682,6 +7725,9 @@ func (m *TeamGroupMutation) RemovedEdges() []string {
 	}
 	if m.removedteam_group_images != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupImages)
+	}
+	if m.removedteam_group_hosts != nil {
+		edges = append(edges, teamgroup.EdgeTeamGroupHosts)
 	}
 	return edges
 }
@@ -5708,6 +7754,12 @@ func (m *TeamGroupMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeHosts:
+		ids := make([]ent.Value, 0, len(m.removedhosts))
+		for id := range m.removedhosts {
+			ids = append(ids, id)
+		}
+		return ids
 	case teamgroup.EdgeTeamGroupMembers:
 		ids := make([]ent.Value, 0, len(m.removedteam_group_members))
 		for id := range m.removedteam_group_members {
@@ -5726,13 +7778,19 @@ func (m *TeamGroupMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeTeamGroupHosts:
+		ids := make([]ent.Value, 0, len(m.removedteam_group_hosts))
+		for id := range m.removedteam_group_hosts {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamGroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.clearedmembers {
 		edges = append(edges, teamgroup.EdgeMembers)
 	}
@@ -5745,6 +7803,9 @@ func (m *TeamGroupMutation) ClearedEdges() []string {
 	if m.clearedimages {
 		edges = append(edges, teamgroup.EdgeImages)
 	}
+	if m.clearedhosts {
+		edges = append(edges, teamgroup.EdgeHosts)
+	}
 	if m.clearedteam_group_members {
 		edges = append(edges, teamgroup.EdgeTeamGroupMembers)
 	}
@@ -5753,6 +7814,9 @@ func (m *TeamGroupMutation) ClearedEdges() []string {
 	}
 	if m.clearedteam_group_images {
 		edges = append(edges, teamgroup.EdgeTeamGroupImages)
+	}
+	if m.clearedteam_group_hosts {
+		edges = append(edges, teamgroup.EdgeTeamGroupHosts)
 	}
 	return edges
 }
@@ -5769,12 +7833,16 @@ func (m *TeamGroupMutation) EdgeCleared(name string) bool {
 		return m.clearedmodels
 	case teamgroup.EdgeImages:
 		return m.clearedimages
+	case teamgroup.EdgeHosts:
+		return m.clearedhosts
 	case teamgroup.EdgeTeamGroupMembers:
 		return m.clearedteam_group_members
 	case teamgroup.EdgeTeamGroupModels:
 		return m.clearedteam_group_models
 	case teamgroup.EdgeTeamGroupImages:
 		return m.clearedteam_group_images
+	case teamgroup.EdgeTeamGroupHosts:
+		return m.clearedteam_group_hosts
 	}
 	return false
 }
@@ -5806,6 +7874,9 @@ func (m *TeamGroupMutation) ResetEdge(name string) error {
 	case teamgroup.EdgeImages:
 		m.ResetImages()
 		return nil
+	case teamgroup.EdgeHosts:
+		m.ResetHosts()
+		return nil
 	case teamgroup.EdgeTeamGroupMembers:
 		m.ResetTeamGroupMembers()
 		return nil
@@ -5815,8 +7886,551 @@ func (m *TeamGroupMutation) ResetEdge(name string) error {
 	case teamgroup.EdgeTeamGroupImages:
 		m.ResetTeamGroupImages()
 		return nil
+	case teamgroup.EdgeTeamGroupHosts:
+		m.ResetTeamGroupHosts()
+		return nil
 	}
 	return fmt.Errorf("unknown TeamGroup edge %s", name)
+}
+
+// TeamGroupHostMutation represents an operation that mutates the TeamGroupHost nodes in the graph.
+type TeamGroupHostMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	group         *uuid.UUID
+	clearedgroup  bool
+	host          *string
+	clearedhost   bool
+	done          bool
+	oldValue      func(context.Context) (*TeamGroupHost, error)
+	predicates    []predicate.TeamGroupHost
+}
+
+var _ ent.Mutation = (*TeamGroupHostMutation)(nil)
+
+// teamgrouphostOption allows management of the mutation configuration using functional options.
+type teamgrouphostOption func(*TeamGroupHostMutation)
+
+// newTeamGroupHostMutation creates new mutation for the TeamGroupHost entity.
+func newTeamGroupHostMutation(c config, op Op, opts ...teamgrouphostOption) *TeamGroupHostMutation {
+	m := &TeamGroupHostMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeamGroupHost,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeamGroupHostID sets the ID field of the mutation.
+func withTeamGroupHostID(id uuid.UUID) teamgrouphostOption {
+	return func(m *TeamGroupHostMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TeamGroupHost
+		)
+		m.oldValue = func(ctx context.Context) (*TeamGroupHost, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TeamGroupHost.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeamGroupHost sets the old TeamGroupHost of the mutation.
+func withTeamGroupHost(node *TeamGroupHost) teamgrouphostOption {
+	return func(m *TeamGroupHostMutation) {
+		m.oldValue = func(context.Context) (*TeamGroupHost, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeamGroupHostMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeamGroupHostMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TeamGroupHost entities.
+func (m *TeamGroupHostMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeamGroupHostMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeamGroupHostMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TeamGroupHost.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *TeamGroupHostMutation) SetGroupID(u uuid.UUID) {
+	m.group = &u
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *TeamGroupHostMutation) GroupID() (r uuid.UUID, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the TeamGroupHost entity.
+// If the TeamGroupHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamGroupHostMutation) OldGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *TeamGroupHostMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetHostID sets the "host_id" field.
+func (m *TeamGroupHostMutation) SetHostID(s string) {
+	m.host = &s
+}
+
+// HostID returns the value of the "host_id" field in the mutation.
+func (m *TeamGroupHostMutation) HostID() (r string, exists bool) {
+	v := m.host
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostID returns the old "host_id" field's value of the TeamGroupHost entity.
+// If the TeamGroupHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamGroupHostMutation) OldHostID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostID: %w", err)
+	}
+	return oldValue.HostID, nil
+}
+
+// ResetHostID resets all changes to the "host_id" field.
+func (m *TeamGroupHostMutation) ResetHostID() {
+	m.host = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TeamGroupHostMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TeamGroupHostMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TeamGroupHost entity.
+// If the TeamGroupHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamGroupHostMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TeamGroupHostMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearGroup clears the "group" edge to the TeamGroup entity.
+func (m *TeamGroupHostMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[teamgrouphost.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the TeamGroup entity was cleared.
+func (m *TeamGroupHostMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *TeamGroupHostMutation) GroupIDs() (ids []uuid.UUID) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *TeamGroupHostMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// ClearHost clears the "host" edge to the Host entity.
+func (m *TeamGroupHostMutation) ClearHost() {
+	m.clearedhost = true
+	m.clearedFields[teamgrouphost.FieldHostID] = struct{}{}
+}
+
+// HostCleared reports if the "host" edge to the Host entity was cleared.
+func (m *TeamGroupHostMutation) HostCleared() bool {
+	return m.clearedhost
+}
+
+// HostIDs returns the "host" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// HostID instead. It exists only for internal usage by the builders.
+func (m *TeamGroupHostMutation) HostIDs() (ids []string) {
+	if id := m.host; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetHost resets all changes to the "host" edge.
+func (m *TeamGroupHostMutation) ResetHost() {
+	m.host = nil
+	m.clearedhost = false
+}
+
+// Where appends a list predicates to the TeamGroupHostMutation builder.
+func (m *TeamGroupHostMutation) Where(ps ...predicate.TeamGroupHost) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeamGroupHostMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeamGroupHostMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TeamGroupHost, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeamGroupHostMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeamGroupHostMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TeamGroupHost).
+func (m *TeamGroupHostMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeamGroupHostMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.group != nil {
+		fields = append(fields, teamgrouphost.FieldGroupID)
+	}
+	if m.host != nil {
+		fields = append(fields, teamgrouphost.FieldHostID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, teamgrouphost.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeamGroupHostMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case teamgrouphost.FieldGroupID:
+		return m.GroupID()
+	case teamgrouphost.FieldHostID:
+		return m.HostID()
+	case teamgrouphost.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeamGroupHostMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case teamgrouphost.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case teamgrouphost.FieldHostID:
+		return m.OldHostID(ctx)
+	case teamgrouphost.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TeamGroupHost field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamGroupHostMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case teamgrouphost.FieldGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case teamgrouphost.FieldHostID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostID(v)
+		return nil
+	case teamgrouphost.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupHost field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeamGroupHostMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeamGroupHostMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamGroupHostMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TeamGroupHost numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeamGroupHostMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeamGroupHostMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeamGroupHostMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown TeamGroupHost nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeamGroupHostMutation) ResetField(name string) error {
+	switch name {
+	case teamgrouphost.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case teamgrouphost.FieldHostID:
+		m.ResetHostID()
+		return nil
+	case teamgrouphost.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupHost field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeamGroupHostMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.group != nil {
+		edges = append(edges, teamgrouphost.EdgeGroup)
+	}
+	if m.host != nil {
+		edges = append(edges, teamgrouphost.EdgeHost)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeamGroupHostMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teamgrouphost.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	case teamgrouphost.EdgeHost:
+		if id := m.host; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeamGroupHostMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeamGroupHostMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeamGroupHostMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedgroup {
+		edges = append(edges, teamgrouphost.EdgeGroup)
+	}
+	if m.clearedhost {
+		edges = append(edges, teamgrouphost.EdgeHost)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeamGroupHostMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teamgrouphost.EdgeGroup:
+		return m.clearedgroup
+	case teamgrouphost.EdgeHost:
+		return m.clearedhost
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeamGroupHostMutation) ClearEdge(name string) error {
+	switch name {
+	case teamgrouphost.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	case teamgrouphost.EdgeHost:
+		m.ClearHost()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupHost unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeamGroupHostMutation) ResetEdge(name string) error {
+	switch name {
+	case teamgrouphost.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	case teamgrouphost.EdgeHost:
+		m.ResetHost()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupHost edge %s", name)
 }
 
 // TeamGroupImageMutation represents an operation that mutates the TeamGroupImage nodes in the graph.
@@ -7437,6 +10051,546 @@ func (m *TeamGroupModelMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown TeamGroupModel edge %s", name)
+}
+
+// TeamHostMutation represents an operation that mutates the TeamHost nodes in the graph.
+type TeamHostMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	team          *uuid.UUID
+	clearedteam   bool
+	host          *string
+	clearedhost   bool
+	done          bool
+	oldValue      func(context.Context) (*TeamHost, error)
+	predicates    []predicate.TeamHost
+}
+
+var _ ent.Mutation = (*TeamHostMutation)(nil)
+
+// teamhostOption allows management of the mutation configuration using functional options.
+type teamhostOption func(*TeamHostMutation)
+
+// newTeamHostMutation creates new mutation for the TeamHost entity.
+func newTeamHostMutation(c config, op Op, opts ...teamhostOption) *TeamHostMutation {
+	m := &TeamHostMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeamHost,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeamHostID sets the ID field of the mutation.
+func withTeamHostID(id uuid.UUID) teamhostOption {
+	return func(m *TeamHostMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TeamHost
+		)
+		m.oldValue = func(ctx context.Context) (*TeamHost, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TeamHost.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeamHost sets the old TeamHost of the mutation.
+func withTeamHost(node *TeamHost) teamhostOption {
+	return func(m *TeamHostMutation) {
+		m.oldValue = func(context.Context) (*TeamHost, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeamHostMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeamHostMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TeamHost entities.
+func (m *TeamHostMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeamHostMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeamHostMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TeamHost.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTeamID sets the "team_id" field.
+func (m *TeamHostMutation) SetTeamID(u uuid.UUID) {
+	m.team = &u
+}
+
+// TeamID returns the value of the "team_id" field in the mutation.
+func (m *TeamHostMutation) TeamID() (r uuid.UUID, exists bool) {
+	v := m.team
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamID returns the old "team_id" field's value of the TeamHost entity.
+// If the TeamHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamHostMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamID: %w", err)
+	}
+	return oldValue.TeamID, nil
+}
+
+// ResetTeamID resets all changes to the "team_id" field.
+func (m *TeamHostMutation) ResetTeamID() {
+	m.team = nil
+}
+
+// SetHostID sets the "host_id" field.
+func (m *TeamHostMutation) SetHostID(s string) {
+	m.host = &s
+}
+
+// HostID returns the value of the "host_id" field in the mutation.
+func (m *TeamHostMutation) HostID() (r string, exists bool) {
+	v := m.host
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostID returns the old "host_id" field's value of the TeamHost entity.
+// If the TeamHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamHostMutation) OldHostID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostID: %w", err)
+	}
+	return oldValue.HostID, nil
+}
+
+// ResetHostID resets all changes to the "host_id" field.
+func (m *TeamHostMutation) ResetHostID() {
+	m.host = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TeamHostMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TeamHostMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TeamHost entity.
+// If the TeamHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamHostMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TeamHostMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearTeam clears the "team" edge to the Team entity.
+func (m *TeamHostMutation) ClearTeam() {
+	m.clearedteam = true
+	m.clearedFields[teamhost.FieldTeamID] = struct{}{}
+}
+
+// TeamCleared reports if the "team" edge to the Team entity was cleared.
+func (m *TeamHostMutation) TeamCleared() bool {
+	return m.clearedteam
+}
+
+// TeamIDs returns the "team" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TeamID instead. It exists only for internal usage by the builders.
+func (m *TeamHostMutation) TeamIDs() (ids []uuid.UUID) {
+	if id := m.team; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTeam resets all changes to the "team" edge.
+func (m *TeamHostMutation) ResetTeam() {
+	m.team = nil
+	m.clearedteam = false
+}
+
+// ClearHost clears the "host" edge to the Host entity.
+func (m *TeamHostMutation) ClearHost() {
+	m.clearedhost = true
+	m.clearedFields[teamhost.FieldHostID] = struct{}{}
+}
+
+// HostCleared reports if the "host" edge to the Host entity was cleared.
+func (m *TeamHostMutation) HostCleared() bool {
+	return m.clearedhost
+}
+
+// HostIDs returns the "host" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// HostID instead. It exists only for internal usage by the builders.
+func (m *TeamHostMutation) HostIDs() (ids []string) {
+	if id := m.host; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetHost resets all changes to the "host" edge.
+func (m *TeamHostMutation) ResetHost() {
+	m.host = nil
+	m.clearedhost = false
+}
+
+// Where appends a list predicates to the TeamHostMutation builder.
+func (m *TeamHostMutation) Where(ps ...predicate.TeamHost) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeamHostMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeamHostMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TeamHost, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeamHostMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeamHostMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TeamHost).
+func (m *TeamHostMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeamHostMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.team != nil {
+		fields = append(fields, teamhost.FieldTeamID)
+	}
+	if m.host != nil {
+		fields = append(fields, teamhost.FieldHostID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, teamhost.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeamHostMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case teamhost.FieldTeamID:
+		return m.TeamID()
+	case teamhost.FieldHostID:
+		return m.HostID()
+	case teamhost.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeamHostMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case teamhost.FieldTeamID:
+		return m.OldTeamID(ctx)
+	case teamhost.FieldHostID:
+		return m.OldHostID(ctx)
+	case teamhost.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TeamHost field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamHostMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case teamhost.FieldTeamID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamID(v)
+		return nil
+	case teamhost.FieldHostID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostID(v)
+		return nil
+	case teamhost.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TeamHost field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeamHostMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeamHostMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamHostMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TeamHost numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeamHostMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeamHostMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeamHostMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown TeamHost nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeamHostMutation) ResetField(name string) error {
+	switch name {
+	case teamhost.FieldTeamID:
+		m.ResetTeamID()
+		return nil
+	case teamhost.FieldHostID:
+		m.ResetHostID()
+		return nil
+	case teamhost.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamHost field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeamHostMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.team != nil {
+		edges = append(edges, teamhost.EdgeTeam)
+	}
+	if m.host != nil {
+		edges = append(edges, teamhost.EdgeHost)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeamHostMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teamhost.EdgeTeam:
+		if id := m.team; id != nil {
+			return []ent.Value{*id}
+		}
+	case teamhost.EdgeHost:
+		if id := m.host; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeamHostMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeamHostMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeamHostMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedteam {
+		edges = append(edges, teamhost.EdgeTeam)
+	}
+	if m.clearedhost {
+		edges = append(edges, teamhost.EdgeHost)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeamHostMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teamhost.EdgeTeam:
+		return m.clearedteam
+	case teamhost.EdgeHost:
+		return m.clearedhost
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeamHostMutation) ClearEdge(name string) error {
+	switch name {
+	case teamhost.EdgeTeam:
+		m.ClearTeam()
+		return nil
+	case teamhost.EdgeHost:
+		m.ClearHost()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamHost unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeamHostMutation) ResetEdge(name string) error {
+	switch name {
+	case teamhost.EdgeTeam:
+		m.ResetTeam()
+		return nil
+	case teamhost.EdgeHost:
+		m.ResetHost()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamHost edge %s", name)
 }
 
 // TeamImageMutation represents an operation that mutates the TeamImage nodes in the graph.
@@ -9149,6 +12303,12 @@ type UserMutation struct {
 	images                    map[uuid.UUID]struct{}
 	removedimages             map[uuid.UUID]struct{}
 	clearedimages             bool
+	hosts                     map[string]struct{}
+	removedhosts              map[string]struct{}
+	clearedhosts              bool
+	vms                       map[string]struct{}
+	removedvms                map[string]struct{}
+	clearedvms                bool
 	team_members              map[uuid.UUID]struct{}
 	removedteam_members       map[uuid.UUID]struct{}
 	clearedteam_members       bool
@@ -10049,6 +13209,114 @@ func (m *UserMutation) ResetImages() {
 	m.removedimages = nil
 }
 
+// AddHostIDs adds the "hosts" edge to the Host entity by ids.
+func (m *UserMutation) AddHostIDs(ids ...string) {
+	if m.hosts == nil {
+		m.hosts = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.hosts[ids[i]] = struct{}{}
+	}
+}
+
+// ClearHosts clears the "hosts" edge to the Host entity.
+func (m *UserMutation) ClearHosts() {
+	m.clearedhosts = true
+}
+
+// HostsCleared reports if the "hosts" edge to the Host entity was cleared.
+func (m *UserMutation) HostsCleared() bool {
+	return m.clearedhosts
+}
+
+// RemoveHostIDs removes the "hosts" edge to the Host entity by IDs.
+func (m *UserMutation) RemoveHostIDs(ids ...string) {
+	if m.removedhosts == nil {
+		m.removedhosts = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.hosts, ids[i])
+		m.removedhosts[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedHosts returns the removed IDs of the "hosts" edge to the Host entity.
+func (m *UserMutation) RemovedHostsIDs() (ids []string) {
+	for id := range m.removedhosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// HostsIDs returns the "hosts" edge IDs in the mutation.
+func (m *UserMutation) HostsIDs() (ids []string) {
+	for id := range m.hosts {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetHosts resets all changes to the "hosts" edge.
+func (m *UserMutation) ResetHosts() {
+	m.hosts = nil
+	m.clearedhosts = false
+	m.removedhosts = nil
+}
+
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by ids.
+func (m *UserMutation) AddVMIDs(ids ...string) {
+	if m.vms == nil {
+		m.vms = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.vms[ids[i]] = struct{}{}
+	}
+}
+
+// ClearVms clears the "vms" edge to the VirtualMachine entity.
+func (m *UserMutation) ClearVms() {
+	m.clearedvms = true
+}
+
+// VmsCleared reports if the "vms" edge to the VirtualMachine entity was cleared.
+func (m *UserMutation) VmsCleared() bool {
+	return m.clearedvms
+}
+
+// RemoveVMIDs removes the "vms" edge to the VirtualMachine entity by IDs.
+func (m *UserMutation) RemoveVMIDs(ids ...string) {
+	if m.removedvms == nil {
+		m.removedvms = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.vms, ids[i])
+		m.removedvms[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedVms returns the removed IDs of the "vms" edge to the VirtualMachine entity.
+func (m *UserMutation) RemovedVmsIDs() (ids []string) {
+	for id := range m.removedvms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// VmsIDs returns the "vms" edge IDs in the mutation.
+func (m *UserMutation) VmsIDs() (ids []string) {
+	for id := range m.vms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetVms resets all changes to the "vms" edge.
+func (m *UserMutation) ResetVms() {
+	m.vms = nil
+	m.clearedvms = false
+	m.removedvms = nil
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by ids.
 func (m *UserMutation) AddTeamMemberIDs(ids ...uuid.UUID) {
 	if m.team_members == nil {
@@ -10493,7 +13761,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 8)
+	edges := make([]string, 0, 10)
 	if m.identities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -10511,6 +13779,12 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.images != nil {
 		edges = append(edges, user.EdgeImages)
+	}
+	if m.hosts != nil {
+		edges = append(edges, user.EdgeHosts)
+	}
+	if m.vms != nil {
+		edges = append(edges, user.EdgeVms)
 	}
 	if m.team_members != nil {
 		edges = append(edges, user.EdgeTeamMembers)
@@ -10561,6 +13835,18 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeHosts:
+		ids := make([]ent.Value, 0, len(m.hosts))
+		for id := range m.hosts {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.vms))
+		for id := range m.vms {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.team_members))
 		for id := range m.team_members {
@@ -10579,7 +13865,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 8)
+	edges := make([]string, 0, 10)
 	if m.removedidentities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -10597,6 +13883,12 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedimages != nil {
 		edges = append(edges, user.EdgeImages)
+	}
+	if m.removedhosts != nil {
+		edges = append(edges, user.EdgeHosts)
+	}
+	if m.removedvms != nil {
+		edges = append(edges, user.EdgeVms)
 	}
 	if m.removedteam_members != nil {
 		edges = append(edges, user.EdgeTeamMembers)
@@ -10647,6 +13939,18 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeHosts:
+		ids := make([]ent.Value, 0, len(m.removedhosts))
+		for id := range m.removedhosts {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.removedvms))
+		for id := range m.removedvms {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.removedteam_members))
 		for id := range m.removedteam_members {
@@ -10665,7 +13969,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 8)
+	edges := make([]string, 0, 10)
 	if m.clearedidentities {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -10683,6 +13987,12 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedimages {
 		edges = append(edges, user.EdgeImages)
+	}
+	if m.clearedhosts {
+		edges = append(edges, user.EdgeHosts)
+	}
+	if m.clearedvms {
+		edges = append(edges, user.EdgeVms)
 	}
 	if m.clearedteam_members {
 		edges = append(edges, user.EdgeTeamMembers)
@@ -10709,6 +14019,10 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedmodels
 	case user.EdgeImages:
 		return m.clearedimages
+	case user.EdgeHosts:
+		return m.clearedhosts
+	case user.EdgeVms:
+		return m.clearedvms
 	case user.EdgeTeamMembers:
 		return m.clearedteam_members
 	case user.EdgeTeamGroupMembers:
@@ -10746,6 +14060,12 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeImages:
 		m.ResetImages()
+		return nil
+	case user.EdgeHosts:
+		m.ResetHosts()
+		return nil
+	case user.EdgeVms:
+		m.ResetVms()
 		return nil
 	case user.EdgeTeamMembers:
 		m.ResetTeamMembers()
@@ -11652,4 +14972,2212 @@ func (m *UserIdentityMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown UserIdentity edge %s", name)
+}
+
+// VirtualMachineMutation represents an operation that mutates the VirtualMachine nodes in the graph.
+type VirtualMachineMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *string
+	deleted_at     *time.Time
+	environment_id *string
+	name           *string
+	hostname       *string
+	arch           *string
+	cores          *int
+	addcores       *int
+	memory         *int64
+	addmemory      *int64
+	os             *string
+	external_ip    *string
+	internal_ip    *string
+	ttl_kind       *consts.VirtualmachineTTLKind
+	ttl            *int64
+	addttl         *int64
+	version        *string
+	machine_id     *string
+	repo_url       *string
+	repo_filename  *string
+	branch         *string
+	is_recycled    *bool
+	conditions     **types.VirtualMachineCondition
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	host           *string
+	clearedhost    bool
+	model          *uuid.UUID
+	clearedmodel   bool
+	user           *uuid.UUID
+	cleareduser    bool
+	done           bool
+	oldValue       func(context.Context) (*VirtualMachine, error)
+	predicates     []predicate.VirtualMachine
+}
+
+var _ ent.Mutation = (*VirtualMachineMutation)(nil)
+
+// virtualmachineOption allows management of the mutation configuration using functional options.
+type virtualmachineOption func(*VirtualMachineMutation)
+
+// newVirtualMachineMutation creates new mutation for the VirtualMachine entity.
+func newVirtualMachineMutation(c config, op Op, opts ...virtualmachineOption) *VirtualMachineMutation {
+	m := &VirtualMachineMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeVirtualMachine,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withVirtualMachineID sets the ID field of the mutation.
+func withVirtualMachineID(id string) virtualmachineOption {
+	return func(m *VirtualMachineMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *VirtualMachine
+		)
+		m.oldValue = func(ctx context.Context) (*VirtualMachine, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().VirtualMachine.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withVirtualMachine sets the old VirtualMachine of the mutation.
+func withVirtualMachine(node *VirtualMachine) virtualmachineOption {
+	return func(m *VirtualMachineMutation) {
+		m.oldValue = func(context.Context) (*VirtualMachine, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m VirtualMachineMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m VirtualMachineMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of VirtualMachine entities.
+func (m *VirtualMachineMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *VirtualMachineMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *VirtualMachineMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().VirtualMachine.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *VirtualMachineMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *VirtualMachineMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldDeletedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *VirtualMachineMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[virtualmachine.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *VirtualMachineMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *VirtualMachineMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, virtualmachine.FieldDeletedAt)
+}
+
+// SetHostID sets the "host_id" field.
+func (m *VirtualMachineMutation) SetHostID(s string) {
+	m.host = &s
+}
+
+// HostID returns the value of the "host_id" field in the mutation.
+func (m *VirtualMachineMutation) HostID() (r string, exists bool) {
+	v := m.host
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostID returns the old "host_id" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldHostID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostID: %w", err)
+	}
+	return oldValue.HostID, nil
+}
+
+// ResetHostID resets all changes to the "host_id" field.
+func (m *VirtualMachineMutation) ResetHostID() {
+	m.host = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *VirtualMachineMutation) SetUserID(u uuid.UUID) {
+	m.user = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *VirtualMachineMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (m *VirtualMachineMutation) ClearUserID() {
+	m.user = nil
+	m.clearedFields[virtualmachine.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *VirtualMachineMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldUserID]
+	return ok
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *VirtualMachineMutation) ResetUserID() {
+	m.user = nil
+	delete(m.clearedFields, virtualmachine.FieldUserID)
+}
+
+// SetModelID sets the "model_id" field.
+func (m *VirtualMachineMutation) SetModelID(u uuid.UUID) {
+	m.model = &u
+}
+
+// ModelID returns the value of the "model_id" field in the mutation.
+func (m *VirtualMachineMutation) ModelID() (r uuid.UUID, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelID returns the old "model_id" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldModelID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelID: %w", err)
+	}
+	return oldValue.ModelID, nil
+}
+
+// ClearModelID clears the value of the "model_id" field.
+func (m *VirtualMachineMutation) ClearModelID() {
+	m.model = nil
+	m.clearedFields[virtualmachine.FieldModelID] = struct{}{}
+}
+
+// ModelIDCleared returns if the "model_id" field was cleared in this mutation.
+func (m *VirtualMachineMutation) ModelIDCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldModelID]
+	return ok
+}
+
+// ResetModelID resets all changes to the "model_id" field.
+func (m *VirtualMachineMutation) ResetModelID() {
+	m.model = nil
+	delete(m.clearedFields, virtualmachine.FieldModelID)
+}
+
+// SetEnvironmentID sets the "environment_id" field.
+func (m *VirtualMachineMutation) SetEnvironmentID(s string) {
+	m.environment_id = &s
+}
+
+// EnvironmentID returns the value of the "environment_id" field in the mutation.
+func (m *VirtualMachineMutation) EnvironmentID() (r string, exists bool) {
+	v := m.environment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentID returns the old "environment_id" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldEnvironmentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentID: %w", err)
+	}
+	return oldValue.EnvironmentID, nil
+}
+
+// ClearEnvironmentID clears the value of the "environment_id" field.
+func (m *VirtualMachineMutation) ClearEnvironmentID() {
+	m.environment_id = nil
+	m.clearedFields[virtualmachine.FieldEnvironmentID] = struct{}{}
+}
+
+// EnvironmentIDCleared returns if the "environment_id" field was cleared in this mutation.
+func (m *VirtualMachineMutation) EnvironmentIDCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldEnvironmentID]
+	return ok
+}
+
+// ResetEnvironmentID resets all changes to the "environment_id" field.
+func (m *VirtualMachineMutation) ResetEnvironmentID() {
+	m.environment_id = nil
+	delete(m.clearedFields, virtualmachine.FieldEnvironmentID)
+}
+
+// SetName sets the "name" field.
+func (m *VirtualMachineMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *VirtualMachineMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *VirtualMachineMutation) ResetName() {
+	m.name = nil
+}
+
+// SetHostname sets the "hostname" field.
+func (m *VirtualMachineMutation) SetHostname(s string) {
+	m.hostname = &s
+}
+
+// Hostname returns the value of the "hostname" field in the mutation.
+func (m *VirtualMachineMutation) Hostname() (r string, exists bool) {
+	v := m.hostname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostname returns the old "hostname" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldHostname(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostname: %w", err)
+	}
+	return oldValue.Hostname, nil
+}
+
+// ClearHostname clears the value of the "hostname" field.
+func (m *VirtualMachineMutation) ClearHostname() {
+	m.hostname = nil
+	m.clearedFields[virtualmachine.FieldHostname] = struct{}{}
+}
+
+// HostnameCleared returns if the "hostname" field was cleared in this mutation.
+func (m *VirtualMachineMutation) HostnameCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldHostname]
+	return ok
+}
+
+// ResetHostname resets all changes to the "hostname" field.
+func (m *VirtualMachineMutation) ResetHostname() {
+	m.hostname = nil
+	delete(m.clearedFields, virtualmachine.FieldHostname)
+}
+
+// SetArch sets the "arch" field.
+func (m *VirtualMachineMutation) SetArch(s string) {
+	m.arch = &s
+}
+
+// Arch returns the value of the "arch" field in the mutation.
+func (m *VirtualMachineMutation) Arch() (r string, exists bool) {
+	v := m.arch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArch returns the old "arch" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldArch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArch: %w", err)
+	}
+	return oldValue.Arch, nil
+}
+
+// ClearArch clears the value of the "arch" field.
+func (m *VirtualMachineMutation) ClearArch() {
+	m.arch = nil
+	m.clearedFields[virtualmachine.FieldArch] = struct{}{}
+}
+
+// ArchCleared returns if the "arch" field was cleared in this mutation.
+func (m *VirtualMachineMutation) ArchCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldArch]
+	return ok
+}
+
+// ResetArch resets all changes to the "arch" field.
+func (m *VirtualMachineMutation) ResetArch() {
+	m.arch = nil
+	delete(m.clearedFields, virtualmachine.FieldArch)
+}
+
+// SetCores sets the "cores" field.
+func (m *VirtualMachineMutation) SetCores(i int) {
+	m.cores = &i
+	m.addcores = nil
+}
+
+// Cores returns the value of the "cores" field in the mutation.
+func (m *VirtualMachineMutation) Cores() (r int, exists bool) {
+	v := m.cores
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCores returns the old "cores" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldCores(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCores is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCores requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCores: %w", err)
+	}
+	return oldValue.Cores, nil
+}
+
+// AddCores adds i to the "cores" field.
+func (m *VirtualMachineMutation) AddCores(i int) {
+	if m.addcores != nil {
+		*m.addcores += i
+	} else {
+		m.addcores = &i
+	}
+}
+
+// AddedCores returns the value that was added to the "cores" field in this mutation.
+func (m *VirtualMachineMutation) AddedCores() (r int, exists bool) {
+	v := m.addcores
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearCores clears the value of the "cores" field.
+func (m *VirtualMachineMutation) ClearCores() {
+	m.cores = nil
+	m.addcores = nil
+	m.clearedFields[virtualmachine.FieldCores] = struct{}{}
+}
+
+// CoresCleared returns if the "cores" field was cleared in this mutation.
+func (m *VirtualMachineMutation) CoresCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldCores]
+	return ok
+}
+
+// ResetCores resets all changes to the "cores" field.
+func (m *VirtualMachineMutation) ResetCores() {
+	m.cores = nil
+	m.addcores = nil
+	delete(m.clearedFields, virtualmachine.FieldCores)
+}
+
+// SetMemory sets the "memory" field.
+func (m *VirtualMachineMutation) SetMemory(i int64) {
+	m.memory = &i
+	m.addmemory = nil
+}
+
+// Memory returns the value of the "memory" field in the mutation.
+func (m *VirtualMachineMutation) Memory() (r int64, exists bool) {
+	v := m.memory
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMemory returns the old "memory" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldMemory(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMemory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMemory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMemory: %w", err)
+	}
+	return oldValue.Memory, nil
+}
+
+// AddMemory adds i to the "memory" field.
+func (m *VirtualMachineMutation) AddMemory(i int64) {
+	if m.addmemory != nil {
+		*m.addmemory += i
+	} else {
+		m.addmemory = &i
+	}
+}
+
+// AddedMemory returns the value that was added to the "memory" field in this mutation.
+func (m *VirtualMachineMutation) AddedMemory() (r int64, exists bool) {
+	v := m.addmemory
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMemory clears the value of the "memory" field.
+func (m *VirtualMachineMutation) ClearMemory() {
+	m.memory = nil
+	m.addmemory = nil
+	m.clearedFields[virtualmachine.FieldMemory] = struct{}{}
+}
+
+// MemoryCleared returns if the "memory" field was cleared in this mutation.
+func (m *VirtualMachineMutation) MemoryCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldMemory]
+	return ok
+}
+
+// ResetMemory resets all changes to the "memory" field.
+func (m *VirtualMachineMutation) ResetMemory() {
+	m.memory = nil
+	m.addmemory = nil
+	delete(m.clearedFields, virtualmachine.FieldMemory)
+}
+
+// SetOs sets the "os" field.
+func (m *VirtualMachineMutation) SetOs(s string) {
+	m.os = &s
+}
+
+// Os returns the value of the "os" field in the mutation.
+func (m *VirtualMachineMutation) Os() (r string, exists bool) {
+	v := m.os
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOs returns the old "os" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldOs(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOs: %w", err)
+	}
+	return oldValue.Os, nil
+}
+
+// ClearOs clears the value of the "os" field.
+func (m *VirtualMachineMutation) ClearOs() {
+	m.os = nil
+	m.clearedFields[virtualmachine.FieldOs] = struct{}{}
+}
+
+// OsCleared returns if the "os" field was cleared in this mutation.
+func (m *VirtualMachineMutation) OsCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldOs]
+	return ok
+}
+
+// ResetOs resets all changes to the "os" field.
+func (m *VirtualMachineMutation) ResetOs() {
+	m.os = nil
+	delete(m.clearedFields, virtualmachine.FieldOs)
+}
+
+// SetExternalIP sets the "external_ip" field.
+func (m *VirtualMachineMutation) SetExternalIP(s string) {
+	m.external_ip = &s
+}
+
+// ExternalIP returns the value of the "external_ip" field in the mutation.
+func (m *VirtualMachineMutation) ExternalIP() (r string, exists bool) {
+	v := m.external_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalIP returns the old "external_ip" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldExternalIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalIP: %w", err)
+	}
+	return oldValue.ExternalIP, nil
+}
+
+// ClearExternalIP clears the value of the "external_ip" field.
+func (m *VirtualMachineMutation) ClearExternalIP() {
+	m.external_ip = nil
+	m.clearedFields[virtualmachine.FieldExternalIP] = struct{}{}
+}
+
+// ExternalIPCleared returns if the "external_ip" field was cleared in this mutation.
+func (m *VirtualMachineMutation) ExternalIPCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldExternalIP]
+	return ok
+}
+
+// ResetExternalIP resets all changes to the "external_ip" field.
+func (m *VirtualMachineMutation) ResetExternalIP() {
+	m.external_ip = nil
+	delete(m.clearedFields, virtualmachine.FieldExternalIP)
+}
+
+// SetInternalIP sets the "internal_ip" field.
+func (m *VirtualMachineMutation) SetInternalIP(s string) {
+	m.internal_ip = &s
+}
+
+// InternalIP returns the value of the "internal_ip" field in the mutation.
+func (m *VirtualMachineMutation) InternalIP() (r string, exists bool) {
+	v := m.internal_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInternalIP returns the old "internal_ip" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldInternalIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInternalIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInternalIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInternalIP: %w", err)
+	}
+	return oldValue.InternalIP, nil
+}
+
+// ClearInternalIP clears the value of the "internal_ip" field.
+func (m *VirtualMachineMutation) ClearInternalIP() {
+	m.internal_ip = nil
+	m.clearedFields[virtualmachine.FieldInternalIP] = struct{}{}
+}
+
+// InternalIPCleared returns if the "internal_ip" field was cleared in this mutation.
+func (m *VirtualMachineMutation) InternalIPCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldInternalIP]
+	return ok
+}
+
+// ResetInternalIP resets all changes to the "internal_ip" field.
+func (m *VirtualMachineMutation) ResetInternalIP() {
+	m.internal_ip = nil
+	delete(m.clearedFields, virtualmachine.FieldInternalIP)
+}
+
+// SetTTLKind sets the "ttl_kind" field.
+func (m *VirtualMachineMutation) SetTTLKind(ctk consts.VirtualmachineTTLKind) {
+	m.ttl_kind = &ctk
+}
+
+// TTLKind returns the value of the "ttl_kind" field in the mutation.
+func (m *VirtualMachineMutation) TTLKind() (r consts.VirtualmachineTTLKind, exists bool) {
+	v := m.ttl_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTTLKind returns the old "ttl_kind" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldTTLKind(ctx context.Context) (v consts.VirtualmachineTTLKind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTTLKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTTLKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTTLKind: %w", err)
+	}
+	return oldValue.TTLKind, nil
+}
+
+// ClearTTLKind clears the value of the "ttl_kind" field.
+func (m *VirtualMachineMutation) ClearTTLKind() {
+	m.ttl_kind = nil
+	m.clearedFields[virtualmachine.FieldTTLKind] = struct{}{}
+}
+
+// TTLKindCleared returns if the "ttl_kind" field was cleared in this mutation.
+func (m *VirtualMachineMutation) TTLKindCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldTTLKind]
+	return ok
+}
+
+// ResetTTLKind resets all changes to the "ttl_kind" field.
+func (m *VirtualMachineMutation) ResetTTLKind() {
+	m.ttl_kind = nil
+	delete(m.clearedFields, virtualmachine.FieldTTLKind)
+}
+
+// SetTTL sets the "ttl" field.
+func (m *VirtualMachineMutation) SetTTL(i int64) {
+	m.ttl = &i
+	m.addttl = nil
+}
+
+// TTL returns the value of the "ttl" field in the mutation.
+func (m *VirtualMachineMutation) TTL() (r int64, exists bool) {
+	v := m.ttl
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTTL returns the old "ttl" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldTTL(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTTL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTTL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTTL: %w", err)
+	}
+	return oldValue.TTL, nil
+}
+
+// AddTTL adds i to the "ttl" field.
+func (m *VirtualMachineMutation) AddTTL(i int64) {
+	if m.addttl != nil {
+		*m.addttl += i
+	} else {
+		m.addttl = &i
+	}
+}
+
+// AddedTTL returns the value that was added to the "ttl" field in this mutation.
+func (m *VirtualMachineMutation) AddedTTL() (r int64, exists bool) {
+	v := m.addttl
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTTL clears the value of the "ttl" field.
+func (m *VirtualMachineMutation) ClearTTL() {
+	m.ttl = nil
+	m.addttl = nil
+	m.clearedFields[virtualmachine.FieldTTL] = struct{}{}
+}
+
+// TTLCleared returns if the "ttl" field was cleared in this mutation.
+func (m *VirtualMachineMutation) TTLCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldTTL]
+	return ok
+}
+
+// ResetTTL resets all changes to the "ttl" field.
+func (m *VirtualMachineMutation) ResetTTL() {
+	m.ttl = nil
+	m.addttl = nil
+	delete(m.clearedFields, virtualmachine.FieldTTL)
+}
+
+// SetVersion sets the "version" field.
+func (m *VirtualMachineMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *VirtualMachineMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ClearVersion clears the value of the "version" field.
+func (m *VirtualMachineMutation) ClearVersion() {
+	m.version = nil
+	m.clearedFields[virtualmachine.FieldVersion] = struct{}{}
+}
+
+// VersionCleared returns if the "version" field was cleared in this mutation.
+func (m *VirtualMachineMutation) VersionCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldVersion]
+	return ok
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *VirtualMachineMutation) ResetVersion() {
+	m.version = nil
+	delete(m.clearedFields, virtualmachine.FieldVersion)
+}
+
+// SetMachineID sets the "machine_id" field.
+func (m *VirtualMachineMutation) SetMachineID(s string) {
+	m.machine_id = &s
+}
+
+// MachineID returns the value of the "machine_id" field in the mutation.
+func (m *VirtualMachineMutation) MachineID() (r string, exists bool) {
+	v := m.machine_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMachineID returns the old "machine_id" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldMachineID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMachineID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMachineID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMachineID: %w", err)
+	}
+	return oldValue.MachineID, nil
+}
+
+// ClearMachineID clears the value of the "machine_id" field.
+func (m *VirtualMachineMutation) ClearMachineID() {
+	m.machine_id = nil
+	m.clearedFields[virtualmachine.FieldMachineID] = struct{}{}
+}
+
+// MachineIDCleared returns if the "machine_id" field was cleared in this mutation.
+func (m *VirtualMachineMutation) MachineIDCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldMachineID]
+	return ok
+}
+
+// ResetMachineID resets all changes to the "machine_id" field.
+func (m *VirtualMachineMutation) ResetMachineID() {
+	m.machine_id = nil
+	delete(m.clearedFields, virtualmachine.FieldMachineID)
+}
+
+// SetRepoURL sets the "repo_url" field.
+func (m *VirtualMachineMutation) SetRepoURL(s string) {
+	m.repo_url = &s
+}
+
+// RepoURL returns the value of the "repo_url" field in the mutation.
+func (m *VirtualMachineMutation) RepoURL() (r string, exists bool) {
+	v := m.repo_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepoURL returns the old "repo_url" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldRepoURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepoURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepoURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepoURL: %w", err)
+	}
+	return oldValue.RepoURL, nil
+}
+
+// ClearRepoURL clears the value of the "repo_url" field.
+func (m *VirtualMachineMutation) ClearRepoURL() {
+	m.repo_url = nil
+	m.clearedFields[virtualmachine.FieldRepoURL] = struct{}{}
+}
+
+// RepoURLCleared returns if the "repo_url" field was cleared in this mutation.
+func (m *VirtualMachineMutation) RepoURLCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldRepoURL]
+	return ok
+}
+
+// ResetRepoURL resets all changes to the "repo_url" field.
+func (m *VirtualMachineMutation) ResetRepoURL() {
+	m.repo_url = nil
+	delete(m.clearedFields, virtualmachine.FieldRepoURL)
+}
+
+// SetRepoFilename sets the "repo_filename" field.
+func (m *VirtualMachineMutation) SetRepoFilename(s string) {
+	m.repo_filename = &s
+}
+
+// RepoFilename returns the value of the "repo_filename" field in the mutation.
+func (m *VirtualMachineMutation) RepoFilename() (r string, exists bool) {
+	v := m.repo_filename
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepoFilename returns the old "repo_filename" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldRepoFilename(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepoFilename is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepoFilename requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepoFilename: %w", err)
+	}
+	return oldValue.RepoFilename, nil
+}
+
+// ClearRepoFilename clears the value of the "repo_filename" field.
+func (m *VirtualMachineMutation) ClearRepoFilename() {
+	m.repo_filename = nil
+	m.clearedFields[virtualmachine.FieldRepoFilename] = struct{}{}
+}
+
+// RepoFilenameCleared returns if the "repo_filename" field was cleared in this mutation.
+func (m *VirtualMachineMutation) RepoFilenameCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldRepoFilename]
+	return ok
+}
+
+// ResetRepoFilename resets all changes to the "repo_filename" field.
+func (m *VirtualMachineMutation) ResetRepoFilename() {
+	m.repo_filename = nil
+	delete(m.clearedFields, virtualmachine.FieldRepoFilename)
+}
+
+// SetBranch sets the "branch" field.
+func (m *VirtualMachineMutation) SetBranch(s string) {
+	m.branch = &s
+}
+
+// Branch returns the value of the "branch" field in the mutation.
+func (m *VirtualMachineMutation) Branch() (r string, exists bool) {
+	v := m.branch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBranch returns the old "branch" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldBranch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBranch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBranch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBranch: %w", err)
+	}
+	return oldValue.Branch, nil
+}
+
+// ClearBranch clears the value of the "branch" field.
+func (m *VirtualMachineMutation) ClearBranch() {
+	m.branch = nil
+	m.clearedFields[virtualmachine.FieldBranch] = struct{}{}
+}
+
+// BranchCleared returns if the "branch" field was cleared in this mutation.
+func (m *VirtualMachineMutation) BranchCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldBranch]
+	return ok
+}
+
+// ResetBranch resets all changes to the "branch" field.
+func (m *VirtualMachineMutation) ResetBranch() {
+	m.branch = nil
+	delete(m.clearedFields, virtualmachine.FieldBranch)
+}
+
+// SetIsRecycled sets the "is_recycled" field.
+func (m *VirtualMachineMutation) SetIsRecycled(b bool) {
+	m.is_recycled = &b
+}
+
+// IsRecycled returns the value of the "is_recycled" field in the mutation.
+func (m *VirtualMachineMutation) IsRecycled() (r bool, exists bool) {
+	v := m.is_recycled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsRecycled returns the old "is_recycled" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldIsRecycled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsRecycled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsRecycled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsRecycled: %w", err)
+	}
+	return oldValue.IsRecycled, nil
+}
+
+// ClearIsRecycled clears the value of the "is_recycled" field.
+func (m *VirtualMachineMutation) ClearIsRecycled() {
+	m.is_recycled = nil
+	m.clearedFields[virtualmachine.FieldIsRecycled] = struct{}{}
+}
+
+// IsRecycledCleared returns if the "is_recycled" field was cleared in this mutation.
+func (m *VirtualMachineMutation) IsRecycledCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldIsRecycled]
+	return ok
+}
+
+// ResetIsRecycled resets all changes to the "is_recycled" field.
+func (m *VirtualMachineMutation) ResetIsRecycled() {
+	m.is_recycled = nil
+	delete(m.clearedFields, virtualmachine.FieldIsRecycled)
+}
+
+// SetConditions sets the "conditions" field.
+func (m *VirtualMachineMutation) SetConditions(tmc *types.VirtualMachineCondition) {
+	m.conditions = &tmc
+}
+
+// Conditions returns the value of the "conditions" field in the mutation.
+func (m *VirtualMachineMutation) Conditions() (r *types.VirtualMachineCondition, exists bool) {
+	v := m.conditions
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConditions returns the old "conditions" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldConditions(ctx context.Context) (v *types.VirtualMachineCondition, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConditions is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConditions requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConditions: %w", err)
+	}
+	return oldValue.Conditions, nil
+}
+
+// ClearConditions clears the value of the "conditions" field.
+func (m *VirtualMachineMutation) ClearConditions() {
+	m.conditions = nil
+	m.clearedFields[virtualmachine.FieldConditions] = struct{}{}
+}
+
+// ConditionsCleared returns if the "conditions" field was cleared in this mutation.
+func (m *VirtualMachineMutation) ConditionsCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldConditions]
+	return ok
+}
+
+// ResetConditions resets all changes to the "conditions" field.
+func (m *VirtualMachineMutation) ResetConditions() {
+	m.conditions = nil
+	delete(m.clearedFields, virtualmachine.FieldConditions)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *VirtualMachineMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *VirtualMachineMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *VirtualMachineMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *VirtualMachineMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *VirtualMachineMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *VirtualMachineMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearHost clears the "host" edge to the Host entity.
+func (m *VirtualMachineMutation) ClearHost() {
+	m.clearedhost = true
+	m.clearedFields[virtualmachine.FieldHostID] = struct{}{}
+}
+
+// HostCleared reports if the "host" edge to the Host entity was cleared.
+func (m *VirtualMachineMutation) HostCleared() bool {
+	return m.clearedhost
+}
+
+// HostIDs returns the "host" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// HostID instead. It exists only for internal usage by the builders.
+func (m *VirtualMachineMutation) HostIDs() (ids []string) {
+	if id := m.host; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetHost resets all changes to the "host" edge.
+func (m *VirtualMachineMutation) ResetHost() {
+	m.host = nil
+	m.clearedhost = false
+}
+
+// ClearModel clears the "model" edge to the Model entity.
+func (m *VirtualMachineMutation) ClearModel() {
+	m.clearedmodel = true
+	m.clearedFields[virtualmachine.FieldModelID] = struct{}{}
+}
+
+// ModelCleared reports if the "model" edge to the Model entity was cleared.
+func (m *VirtualMachineMutation) ModelCleared() bool {
+	return m.ModelIDCleared() || m.clearedmodel
+}
+
+// ModelIDs returns the "model" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ModelID instead. It exists only for internal usage by the builders.
+func (m *VirtualMachineMutation) ModelIDs() (ids []uuid.UUID) {
+	if id := m.model; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetModel resets all changes to the "model" edge.
+func (m *VirtualMachineMutation) ResetModel() {
+	m.model = nil
+	m.clearedmodel = false
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *VirtualMachineMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[virtualmachine.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *VirtualMachineMutation) UserCleared() bool {
+	return m.UserIDCleared() || m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *VirtualMachineMutation) UserIDs() (ids []uuid.UUID) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *VirtualMachineMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the VirtualMachineMutation builder.
+func (m *VirtualMachineMutation) Where(ps ...predicate.VirtualMachine) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the VirtualMachineMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *VirtualMachineMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.VirtualMachine, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *VirtualMachineMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *VirtualMachineMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (VirtualMachine).
+func (m *VirtualMachineMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *VirtualMachineMutation) Fields() []string {
+	fields := make([]string, 0, 24)
+	if m.deleted_at != nil {
+		fields = append(fields, virtualmachine.FieldDeletedAt)
+	}
+	if m.host != nil {
+		fields = append(fields, virtualmachine.FieldHostID)
+	}
+	if m.user != nil {
+		fields = append(fields, virtualmachine.FieldUserID)
+	}
+	if m.model != nil {
+		fields = append(fields, virtualmachine.FieldModelID)
+	}
+	if m.environment_id != nil {
+		fields = append(fields, virtualmachine.FieldEnvironmentID)
+	}
+	if m.name != nil {
+		fields = append(fields, virtualmachine.FieldName)
+	}
+	if m.hostname != nil {
+		fields = append(fields, virtualmachine.FieldHostname)
+	}
+	if m.arch != nil {
+		fields = append(fields, virtualmachine.FieldArch)
+	}
+	if m.cores != nil {
+		fields = append(fields, virtualmachine.FieldCores)
+	}
+	if m.memory != nil {
+		fields = append(fields, virtualmachine.FieldMemory)
+	}
+	if m.os != nil {
+		fields = append(fields, virtualmachine.FieldOs)
+	}
+	if m.external_ip != nil {
+		fields = append(fields, virtualmachine.FieldExternalIP)
+	}
+	if m.internal_ip != nil {
+		fields = append(fields, virtualmachine.FieldInternalIP)
+	}
+	if m.ttl_kind != nil {
+		fields = append(fields, virtualmachine.FieldTTLKind)
+	}
+	if m.ttl != nil {
+		fields = append(fields, virtualmachine.FieldTTL)
+	}
+	if m.version != nil {
+		fields = append(fields, virtualmachine.FieldVersion)
+	}
+	if m.machine_id != nil {
+		fields = append(fields, virtualmachine.FieldMachineID)
+	}
+	if m.repo_url != nil {
+		fields = append(fields, virtualmachine.FieldRepoURL)
+	}
+	if m.repo_filename != nil {
+		fields = append(fields, virtualmachine.FieldRepoFilename)
+	}
+	if m.branch != nil {
+		fields = append(fields, virtualmachine.FieldBranch)
+	}
+	if m.is_recycled != nil {
+		fields = append(fields, virtualmachine.FieldIsRecycled)
+	}
+	if m.conditions != nil {
+		fields = append(fields, virtualmachine.FieldConditions)
+	}
+	if m.created_at != nil {
+		fields = append(fields, virtualmachine.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, virtualmachine.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *VirtualMachineMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case virtualmachine.FieldDeletedAt:
+		return m.DeletedAt()
+	case virtualmachine.FieldHostID:
+		return m.HostID()
+	case virtualmachine.FieldUserID:
+		return m.UserID()
+	case virtualmachine.FieldModelID:
+		return m.ModelID()
+	case virtualmachine.FieldEnvironmentID:
+		return m.EnvironmentID()
+	case virtualmachine.FieldName:
+		return m.Name()
+	case virtualmachine.FieldHostname:
+		return m.Hostname()
+	case virtualmachine.FieldArch:
+		return m.Arch()
+	case virtualmachine.FieldCores:
+		return m.Cores()
+	case virtualmachine.FieldMemory:
+		return m.Memory()
+	case virtualmachine.FieldOs:
+		return m.Os()
+	case virtualmachine.FieldExternalIP:
+		return m.ExternalIP()
+	case virtualmachine.FieldInternalIP:
+		return m.InternalIP()
+	case virtualmachine.FieldTTLKind:
+		return m.TTLKind()
+	case virtualmachine.FieldTTL:
+		return m.TTL()
+	case virtualmachine.FieldVersion:
+		return m.Version()
+	case virtualmachine.FieldMachineID:
+		return m.MachineID()
+	case virtualmachine.FieldRepoURL:
+		return m.RepoURL()
+	case virtualmachine.FieldRepoFilename:
+		return m.RepoFilename()
+	case virtualmachine.FieldBranch:
+		return m.Branch()
+	case virtualmachine.FieldIsRecycled:
+		return m.IsRecycled()
+	case virtualmachine.FieldConditions:
+		return m.Conditions()
+	case virtualmachine.FieldCreatedAt:
+		return m.CreatedAt()
+	case virtualmachine.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *VirtualMachineMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case virtualmachine.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case virtualmachine.FieldHostID:
+		return m.OldHostID(ctx)
+	case virtualmachine.FieldUserID:
+		return m.OldUserID(ctx)
+	case virtualmachine.FieldModelID:
+		return m.OldModelID(ctx)
+	case virtualmachine.FieldEnvironmentID:
+		return m.OldEnvironmentID(ctx)
+	case virtualmachine.FieldName:
+		return m.OldName(ctx)
+	case virtualmachine.FieldHostname:
+		return m.OldHostname(ctx)
+	case virtualmachine.FieldArch:
+		return m.OldArch(ctx)
+	case virtualmachine.FieldCores:
+		return m.OldCores(ctx)
+	case virtualmachine.FieldMemory:
+		return m.OldMemory(ctx)
+	case virtualmachine.FieldOs:
+		return m.OldOs(ctx)
+	case virtualmachine.FieldExternalIP:
+		return m.OldExternalIP(ctx)
+	case virtualmachine.FieldInternalIP:
+		return m.OldInternalIP(ctx)
+	case virtualmachine.FieldTTLKind:
+		return m.OldTTLKind(ctx)
+	case virtualmachine.FieldTTL:
+		return m.OldTTL(ctx)
+	case virtualmachine.FieldVersion:
+		return m.OldVersion(ctx)
+	case virtualmachine.FieldMachineID:
+		return m.OldMachineID(ctx)
+	case virtualmachine.FieldRepoURL:
+		return m.OldRepoURL(ctx)
+	case virtualmachine.FieldRepoFilename:
+		return m.OldRepoFilename(ctx)
+	case virtualmachine.FieldBranch:
+		return m.OldBranch(ctx)
+	case virtualmachine.FieldIsRecycled:
+		return m.OldIsRecycled(ctx)
+	case virtualmachine.FieldConditions:
+		return m.OldConditions(ctx)
+	case virtualmachine.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case virtualmachine.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown VirtualMachine field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VirtualMachineMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case virtualmachine.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case virtualmachine.FieldHostID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostID(v)
+		return nil
+	case virtualmachine.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case virtualmachine.FieldModelID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelID(v)
+		return nil
+	case virtualmachine.FieldEnvironmentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentID(v)
+		return nil
+	case virtualmachine.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case virtualmachine.FieldHostname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostname(v)
+		return nil
+	case virtualmachine.FieldArch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArch(v)
+		return nil
+	case virtualmachine.FieldCores:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCores(v)
+		return nil
+	case virtualmachine.FieldMemory:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMemory(v)
+		return nil
+	case virtualmachine.FieldOs:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOs(v)
+		return nil
+	case virtualmachine.FieldExternalIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalIP(v)
+		return nil
+	case virtualmachine.FieldInternalIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInternalIP(v)
+		return nil
+	case virtualmachine.FieldTTLKind:
+		v, ok := value.(consts.VirtualmachineTTLKind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTTLKind(v)
+		return nil
+	case virtualmachine.FieldTTL:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTTL(v)
+		return nil
+	case virtualmachine.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case virtualmachine.FieldMachineID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMachineID(v)
+		return nil
+	case virtualmachine.FieldRepoURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepoURL(v)
+		return nil
+	case virtualmachine.FieldRepoFilename:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepoFilename(v)
+		return nil
+	case virtualmachine.FieldBranch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBranch(v)
+		return nil
+	case virtualmachine.FieldIsRecycled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsRecycled(v)
+		return nil
+	case virtualmachine.FieldConditions:
+		v, ok := value.(*types.VirtualMachineCondition)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConditions(v)
+		return nil
+	case virtualmachine.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case virtualmachine.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachine field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *VirtualMachineMutation) AddedFields() []string {
+	var fields []string
+	if m.addcores != nil {
+		fields = append(fields, virtualmachine.FieldCores)
+	}
+	if m.addmemory != nil {
+		fields = append(fields, virtualmachine.FieldMemory)
+	}
+	if m.addttl != nil {
+		fields = append(fields, virtualmachine.FieldTTL)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *VirtualMachineMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case virtualmachine.FieldCores:
+		return m.AddedCores()
+	case virtualmachine.FieldMemory:
+		return m.AddedMemory()
+	case virtualmachine.FieldTTL:
+		return m.AddedTTL()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *VirtualMachineMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case virtualmachine.FieldCores:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCores(v)
+		return nil
+	case virtualmachine.FieldMemory:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMemory(v)
+		return nil
+	case virtualmachine.FieldTTL:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTTL(v)
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachine numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *VirtualMachineMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(virtualmachine.FieldDeletedAt) {
+		fields = append(fields, virtualmachine.FieldDeletedAt)
+	}
+	if m.FieldCleared(virtualmachine.FieldUserID) {
+		fields = append(fields, virtualmachine.FieldUserID)
+	}
+	if m.FieldCleared(virtualmachine.FieldModelID) {
+		fields = append(fields, virtualmachine.FieldModelID)
+	}
+	if m.FieldCleared(virtualmachine.FieldEnvironmentID) {
+		fields = append(fields, virtualmachine.FieldEnvironmentID)
+	}
+	if m.FieldCleared(virtualmachine.FieldHostname) {
+		fields = append(fields, virtualmachine.FieldHostname)
+	}
+	if m.FieldCleared(virtualmachine.FieldArch) {
+		fields = append(fields, virtualmachine.FieldArch)
+	}
+	if m.FieldCleared(virtualmachine.FieldCores) {
+		fields = append(fields, virtualmachine.FieldCores)
+	}
+	if m.FieldCleared(virtualmachine.FieldMemory) {
+		fields = append(fields, virtualmachine.FieldMemory)
+	}
+	if m.FieldCleared(virtualmachine.FieldOs) {
+		fields = append(fields, virtualmachine.FieldOs)
+	}
+	if m.FieldCleared(virtualmachine.FieldExternalIP) {
+		fields = append(fields, virtualmachine.FieldExternalIP)
+	}
+	if m.FieldCleared(virtualmachine.FieldInternalIP) {
+		fields = append(fields, virtualmachine.FieldInternalIP)
+	}
+	if m.FieldCleared(virtualmachine.FieldTTLKind) {
+		fields = append(fields, virtualmachine.FieldTTLKind)
+	}
+	if m.FieldCleared(virtualmachine.FieldTTL) {
+		fields = append(fields, virtualmachine.FieldTTL)
+	}
+	if m.FieldCleared(virtualmachine.FieldVersion) {
+		fields = append(fields, virtualmachine.FieldVersion)
+	}
+	if m.FieldCleared(virtualmachine.FieldMachineID) {
+		fields = append(fields, virtualmachine.FieldMachineID)
+	}
+	if m.FieldCleared(virtualmachine.FieldRepoURL) {
+		fields = append(fields, virtualmachine.FieldRepoURL)
+	}
+	if m.FieldCleared(virtualmachine.FieldRepoFilename) {
+		fields = append(fields, virtualmachine.FieldRepoFilename)
+	}
+	if m.FieldCleared(virtualmachine.FieldBranch) {
+		fields = append(fields, virtualmachine.FieldBranch)
+	}
+	if m.FieldCleared(virtualmachine.FieldIsRecycled) {
+		fields = append(fields, virtualmachine.FieldIsRecycled)
+	}
+	if m.FieldCleared(virtualmachine.FieldConditions) {
+		fields = append(fields, virtualmachine.FieldConditions)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *VirtualMachineMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *VirtualMachineMutation) ClearField(name string) error {
+	switch name {
+	case virtualmachine.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case virtualmachine.FieldUserID:
+		m.ClearUserID()
+		return nil
+	case virtualmachine.FieldModelID:
+		m.ClearModelID()
+		return nil
+	case virtualmachine.FieldEnvironmentID:
+		m.ClearEnvironmentID()
+		return nil
+	case virtualmachine.FieldHostname:
+		m.ClearHostname()
+		return nil
+	case virtualmachine.FieldArch:
+		m.ClearArch()
+		return nil
+	case virtualmachine.FieldCores:
+		m.ClearCores()
+		return nil
+	case virtualmachine.FieldMemory:
+		m.ClearMemory()
+		return nil
+	case virtualmachine.FieldOs:
+		m.ClearOs()
+		return nil
+	case virtualmachine.FieldExternalIP:
+		m.ClearExternalIP()
+		return nil
+	case virtualmachine.FieldInternalIP:
+		m.ClearInternalIP()
+		return nil
+	case virtualmachine.FieldTTLKind:
+		m.ClearTTLKind()
+		return nil
+	case virtualmachine.FieldTTL:
+		m.ClearTTL()
+		return nil
+	case virtualmachine.FieldVersion:
+		m.ClearVersion()
+		return nil
+	case virtualmachine.FieldMachineID:
+		m.ClearMachineID()
+		return nil
+	case virtualmachine.FieldRepoURL:
+		m.ClearRepoURL()
+		return nil
+	case virtualmachine.FieldRepoFilename:
+		m.ClearRepoFilename()
+		return nil
+	case virtualmachine.FieldBranch:
+		m.ClearBranch()
+		return nil
+	case virtualmachine.FieldIsRecycled:
+		m.ClearIsRecycled()
+		return nil
+	case virtualmachine.FieldConditions:
+		m.ClearConditions()
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachine nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *VirtualMachineMutation) ResetField(name string) error {
+	switch name {
+	case virtualmachine.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case virtualmachine.FieldHostID:
+		m.ResetHostID()
+		return nil
+	case virtualmachine.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case virtualmachine.FieldModelID:
+		m.ResetModelID()
+		return nil
+	case virtualmachine.FieldEnvironmentID:
+		m.ResetEnvironmentID()
+		return nil
+	case virtualmachine.FieldName:
+		m.ResetName()
+		return nil
+	case virtualmachine.FieldHostname:
+		m.ResetHostname()
+		return nil
+	case virtualmachine.FieldArch:
+		m.ResetArch()
+		return nil
+	case virtualmachine.FieldCores:
+		m.ResetCores()
+		return nil
+	case virtualmachine.FieldMemory:
+		m.ResetMemory()
+		return nil
+	case virtualmachine.FieldOs:
+		m.ResetOs()
+		return nil
+	case virtualmachine.FieldExternalIP:
+		m.ResetExternalIP()
+		return nil
+	case virtualmachine.FieldInternalIP:
+		m.ResetInternalIP()
+		return nil
+	case virtualmachine.FieldTTLKind:
+		m.ResetTTLKind()
+		return nil
+	case virtualmachine.FieldTTL:
+		m.ResetTTL()
+		return nil
+	case virtualmachine.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case virtualmachine.FieldMachineID:
+		m.ResetMachineID()
+		return nil
+	case virtualmachine.FieldRepoURL:
+		m.ResetRepoURL()
+		return nil
+	case virtualmachine.FieldRepoFilename:
+		m.ResetRepoFilename()
+		return nil
+	case virtualmachine.FieldBranch:
+		m.ResetBranch()
+		return nil
+	case virtualmachine.FieldIsRecycled:
+		m.ResetIsRecycled()
+		return nil
+	case virtualmachine.FieldConditions:
+		m.ResetConditions()
+		return nil
+	case virtualmachine.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case virtualmachine.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachine field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *VirtualMachineMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.host != nil {
+		edges = append(edges, virtualmachine.EdgeHost)
+	}
+	if m.model != nil {
+		edges = append(edges, virtualmachine.EdgeModel)
+	}
+	if m.user != nil {
+		edges = append(edges, virtualmachine.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *VirtualMachineMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case virtualmachine.EdgeHost:
+		if id := m.host; id != nil {
+			return []ent.Value{*id}
+		}
+	case virtualmachine.EdgeModel:
+		if id := m.model; id != nil {
+			return []ent.Value{*id}
+		}
+	case virtualmachine.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *VirtualMachineMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *VirtualMachineMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *VirtualMachineMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedhost {
+		edges = append(edges, virtualmachine.EdgeHost)
+	}
+	if m.clearedmodel {
+		edges = append(edges, virtualmachine.EdgeModel)
+	}
+	if m.cleareduser {
+		edges = append(edges, virtualmachine.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *VirtualMachineMutation) EdgeCleared(name string) bool {
+	switch name {
+	case virtualmachine.EdgeHost:
+		return m.clearedhost
+	case virtualmachine.EdgeModel:
+		return m.clearedmodel
+	case virtualmachine.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *VirtualMachineMutation) ClearEdge(name string) error {
+	switch name {
+	case virtualmachine.EdgeHost:
+		m.ClearHost()
+		return nil
+	case virtualmachine.EdgeModel:
+		m.ClearModel()
+		return nil
+	case virtualmachine.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachine unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *VirtualMachineMutation) ResetEdge(name string) error {
+	switch name {
+	case virtualmachine.EdgeHost:
+		m.ResetHost()
+		return nil
+	case virtualmachine.EdgeModel:
+		m.ResetModel()
+		return nil
+	case virtualmachine.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown VirtualMachine edge %s", name)
 }

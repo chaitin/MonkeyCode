@@ -34,6 +34,40 @@ var (
 			},
 		},
 	}
+	// HostsColumns holds the columns for the "hosts" table.
+	HostsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "hostname", Type: field.TypeString, Nullable: true},
+		{Name: "arch", Type: field.TypeString, Nullable: true},
+		{Name: "cores", Type: field.TypeInt, Nullable: true},
+		{Name: "weight", Type: field.TypeInt, Default: 1},
+		{Name: "memory", Type: field.TypeInt64, Nullable: true},
+		{Name: "disk", Type: field.TypeInt64, Nullable: true},
+		{Name: "os", Type: field.TypeString, Nullable: true},
+		{Name: "external_ip", Type: field.TypeString, Nullable: true},
+		{Name: "internal_ip", Type: field.TypeString, Nullable: true},
+		{Name: "version", Type: field.TypeString, Nullable: true},
+		{Name: "machine_id", Type: field.TypeString, Nullable: true},
+		{Name: "remark", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// HostsTable holds the schema information for the "hosts" table.
+	HostsTable = &schema.Table{
+		Name:       "hosts",
+		Columns:    HostsColumns,
+		PrimaryKey: []*schema.Column{HostsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "hosts_users_hosts",
+				Columns:    []*schema.Column{HostsColumns[16]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// ImagesColumns holds the columns for the "images" table.
 	ImagesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -126,6 +160,40 @@ var (
 				Columns:    []*schema.Column{TeamGroupsColumns[5]},
 				RefColumns: []*schema.Column{TeamsColumns[0]},
 				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// TeamGroupHostsColumns holds the columns for the "team_group_hosts" table.
+	TeamGroupHostsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "host_id", Type: field.TypeString},
+	}
+	// TeamGroupHostsTable holds the schema information for the "team_group_hosts" table.
+	TeamGroupHostsTable = &schema.Table{
+		Name:       "team_group_hosts",
+		Columns:    TeamGroupHostsColumns,
+		PrimaryKey: []*schema.Column{TeamGroupHostsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_group_hosts_team_groups_group",
+				Columns:    []*schema.Column{TeamGroupHostsColumns[2]},
+				RefColumns: []*schema.Column{TeamGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_group_hosts_hosts_host",
+				Columns:    []*schema.Column{TeamGroupHostsColumns[3]},
+				RefColumns: []*schema.Column{HostsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamgrouphost_group_id_host_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamGroupHostsColumns[2], TeamGroupHostsColumns[3]},
 			},
 		},
 	}
@@ -228,6 +296,33 @@ var (
 				Name:    "teamgroupmodel_group_id_model_id",
 				Unique:  true,
 				Columns: []*schema.Column{TeamGroupModelsColumns[2], TeamGroupModelsColumns[3]},
+			},
+		},
+	}
+	// TeamHostsColumns holds the columns for the "team_hosts" table.
+	TeamHostsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "host_id", Type: field.TypeString},
+	}
+	// TeamHostsTable holds the schema information for the "team_hosts" table.
+	TeamHostsTable = &schema.Table{
+		Name:       "team_hosts",
+		Columns:    TeamHostsColumns,
+		PrimaryKey: []*schema.Column{TeamHostsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_hosts_teams_team",
+				Columns:    []*schema.Column{TeamHostsColumns[2]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_hosts_hosts_host",
+				Columns:    []*schema.Column{TeamHostsColumns[3]},
+				RefColumns: []*schema.Column{HostsColumns[0]},
+				OnDelete:   schema.NoAction,
 			},
 		},
 	}
@@ -382,21 +477,79 @@ var (
 			},
 		},
 	}
+	// VirtualmachinesColumns holds the columns for the "virtualmachines" table.
+	VirtualmachinesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "environment_id", Type: field.TypeString, Nullable: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "hostname", Type: field.TypeString, Nullable: true},
+		{Name: "arch", Type: field.TypeString, Nullable: true},
+		{Name: "cores", Type: field.TypeInt, Nullable: true},
+		{Name: "memory", Type: field.TypeInt64, Nullable: true},
+		{Name: "os", Type: field.TypeString, Nullable: true},
+		{Name: "external_ip", Type: field.TypeString, Nullable: true},
+		{Name: "internal_ip", Type: field.TypeString, Nullable: true},
+		{Name: "ttl_kind", Type: field.TypeString, Nullable: true},
+		{Name: "ttl", Type: field.TypeInt64, Nullable: true},
+		{Name: "version", Type: field.TypeString, Nullable: true},
+		{Name: "machine_id", Type: field.TypeString, Nullable: true},
+		{Name: "repo_url", Type: field.TypeString, Nullable: true},
+		{Name: "repo_filename", Type: field.TypeString, Nullable: true},
+		{Name: "branch", Type: field.TypeString, Nullable: true},
+		{Name: "is_recycled", Type: field.TypeBool, Nullable: true},
+		{Name: "conditions", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "host_id", Type: field.TypeString},
+		{Name: "model_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
+	}
+	// VirtualmachinesTable holds the schema information for the "virtualmachines" table.
+	VirtualmachinesTable = &schema.Table{
+		Name:       "virtualmachines",
+		Columns:    VirtualmachinesColumns,
+		PrimaryKey: []*schema.Column{VirtualmachinesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "virtualmachines_hosts_vms",
+				Columns:    []*schema.Column{VirtualmachinesColumns[22]},
+				RefColumns: []*schema.Column{HostsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "virtualmachines_models_vms",
+				Columns:    []*schema.Column{VirtualmachinesColumns[23]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "virtualmachines_users_vms",
+				Columns:    []*schema.Column{VirtualmachinesColumns[24]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditsTable,
+		HostsTable,
 		ImagesTable,
 		ModelsTable,
 		TeamsTable,
 		TeamGroupsTable,
+		TeamGroupHostsTable,
 		TeamGroupImagesTable,
 		TeamGroupMembersTable,
 		TeamGroupModelsTable,
+		TeamHostsTable,
 		TeamImagesTable,
 		TeamMembersTable,
 		TeamModelsTable,
 		UsersTable,
 		UserIdentitiesTable,
+		VirtualmachinesTable,
 	}
 )
 
@@ -404,6 +557,10 @@ func init() {
 	AuditsTable.ForeignKeys[0].RefTable = UsersTable
 	AuditsTable.Annotation = &entsql.Annotation{
 		Table: "audits",
+	}
+	HostsTable.ForeignKeys[0].RefTable = UsersTable
+	HostsTable.Annotation = &entsql.Annotation{
+		Table: "hosts",
 	}
 	ImagesTable.ForeignKeys[0].RefTable = UsersTable
 	ImagesTable.Annotation = &entsql.Annotation{
@@ -420,6 +577,11 @@ func init() {
 	TeamGroupsTable.Annotation = &entsql.Annotation{
 		Table: "team_groups",
 	}
+	TeamGroupHostsTable.ForeignKeys[0].RefTable = TeamGroupsTable
+	TeamGroupHostsTable.ForeignKeys[1].RefTable = HostsTable
+	TeamGroupHostsTable.Annotation = &entsql.Annotation{
+		Table: "team_group_hosts",
+	}
 	TeamGroupImagesTable.ForeignKeys[0].RefTable = TeamGroupsTable
 	TeamGroupImagesTable.ForeignKeys[1].RefTable = ImagesTable
 	TeamGroupImagesTable.Annotation = &entsql.Annotation{
@@ -434,6 +596,11 @@ func init() {
 	TeamGroupModelsTable.ForeignKeys[1].RefTable = ModelsTable
 	TeamGroupModelsTable.Annotation = &entsql.Annotation{
 		Table: "team_group_models",
+	}
+	TeamHostsTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamHostsTable.ForeignKeys[1].RefTable = HostsTable
+	TeamHostsTable.Annotation = &entsql.Annotation{
+		Table: "team_hosts",
 	}
 	TeamImagesTable.ForeignKeys[0].RefTable = TeamsTable
 	TeamImagesTable.ForeignKeys[1].RefTable = ImagesTable
@@ -456,5 +623,11 @@ func init() {
 	UserIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	UserIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "user_identities",
+	}
+	VirtualmachinesTable.ForeignKeys[0].RefTable = HostsTable
+	VirtualmachinesTable.ForeignKeys[1].RefTable = ModelsTable
+	VirtualmachinesTable.ForeignKeys[2].RefTable = UsersTable
+	VirtualmachinesTable.Annotation = &entsql.Annotation{
+		Table: "virtualmachines",
 	}
 }

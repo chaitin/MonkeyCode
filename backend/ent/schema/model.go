@@ -58,5 +58,6 @@ func (Model) Edges() []ent.Edge {
 		edge.From("user", User.Type).Ref("models").Field("user_id").Unique().Required(),
 		edge.From("teams", Team.Type).Ref("models").Through("team_models", TeamModel.Type),
 		edge.From("groups", TeamGroup.Type).Ref("models").Through("team_group_models", TeamGroupModel.Type),
+		edge.To("vms", VirtualMachine.Type),
 	}
 }

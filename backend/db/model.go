@@ -63,13 +63,15 @@ type ModelEdges struct {
 	Teams []*Team `json:"teams,omitempty"`
 	// Groups holds the value of the groups edge.
 	Groups []*TeamGroup `json:"groups,omitempty"`
+	// Vms holds the value of the vms edge.
+	Vms []*VirtualMachine `json:"vms,omitempty"`
 	// TeamModels holds the value of the team_models edge.
 	TeamModels []*TeamModel `json:"team_models,omitempty"`
 	// TeamGroupModels holds the value of the team_group_models edge.
 	TeamGroupModels []*TeamGroupModel `json:"team_group_models,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -101,10 +103,19 @@ func (e ModelEdges) GroupsOrErr() ([]*TeamGroup, error) {
 	return nil, &NotLoadedError{edge: "groups"}
 }
 
+// VmsOrErr returns the Vms value or an error if the edge
+// was not loaded in eager-loading.
+func (e ModelEdges) VmsOrErr() ([]*VirtualMachine, error) {
+	if e.loadedTypes[3] {
+		return e.Vms, nil
+	}
+	return nil, &NotLoadedError{edge: "vms"}
+}
+
 // TeamModelsOrErr returns the TeamModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e ModelEdges) TeamModelsOrErr() ([]*TeamModel, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.TeamModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_models"}
@@ -113,7 +124,7 @@ func (e ModelEdges) TeamModelsOrErr() ([]*TeamModel, error) {
 // TeamGroupModelsOrErr returns the TeamGroupModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e ModelEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.TeamGroupModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_models"}
@@ -273,6 +284,11 @@ func (_m *Model) QueryTeams() *TeamQuery {
 // QueryGroups queries the "groups" edge of the Model entity.
 func (_m *Model) QueryGroups() *TeamGroupQuery {
 	return NewModelClient(_m.config).QueryGroups(_m)
+}
+
+// QueryVms queries the "vms" edge of the Model entity.
+func (_m *Model) QueryVms() *VirtualMachineQuery {
+	return NewModelClient(_m.config).QueryVms(_m)
 }
 
 // QueryTeamModels queries the "team_models" edge of the Model entity.

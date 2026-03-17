@@ -21,6 +21,18 @@ func (f AuditFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AuditMutation", m)
 }
 
+// The HostFunc type is an adapter to allow the use of ordinary
+// function as Host mutator.
+type HostFunc func(context.Context, *db.HostMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f HostFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.HostMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.HostMutation", m)
+}
+
 // The ImageFunc type is an adapter to allow the use of ordinary
 // function as Image mutator.
 type ImageFunc func(context.Context, *db.ImageMutation) (db.Value, error)
@@ -69,6 +81,18 @@ func (f TeamGroupFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupMutation", m)
 }
 
+// The TeamGroupHostFunc type is an adapter to allow the use of ordinary
+// function as TeamGroupHost mutator.
+type TeamGroupHostFunc func(context.Context, *db.TeamGroupHostMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamGroupHostFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamGroupHostMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupHostMutation", m)
+}
+
 // The TeamGroupImageFunc type is an adapter to allow the use of ordinary
 // function as TeamGroupImage mutator.
 type TeamGroupImageFunc func(context.Context, *db.TeamGroupImageMutation) (db.Value, error)
@@ -103,6 +127,18 @@ func (f TeamGroupModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupModelMutation", m)
+}
+
+// The TeamHostFunc type is an adapter to allow the use of ordinary
+// function as TeamHost mutator.
+type TeamHostFunc func(context.Context, *db.TeamHostMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamHostFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamHostMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamHostMutation", m)
 }
 
 // The TeamImageFunc type is an adapter to allow the use of ordinary
@@ -163,6 +199,18 @@ func (f UserIdentityFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.UserIdentityMutation", m)
+}
+
+// The VirtualMachineFunc type is an adapter to allow the use of ordinary
+// function as VirtualMachine mutator.
+type VirtualMachineFunc func(context.Context, *db.VirtualMachineMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f VirtualMachineFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.VirtualMachineMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.VirtualMachineMutation", m)
 }
 
 // Condition is a hook condition function.

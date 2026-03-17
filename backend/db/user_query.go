@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
@@ -23,6 +24,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -39,6 +41,8 @@ type UserQuery struct {
 	withGroups           *TeamGroupQuery
 	withModels           *ModelQuery
 	withImages           *ImageQuery
+	withHosts            *HostQuery
+	withVms              *VirtualMachineQuery
 	withTeamMembers      *TeamMemberQuery
 	withTeamGroupMembers *TeamGroupMemberQuery
 	modifiers            []func(*sql.Selector)
@@ -203,6 +207,50 @@ func (_q *UserQuery) QueryImages() *ImageQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(image.Table, image.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.ImagesTable, user.ImagesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryHosts chains the current query on the "hosts" edge.
+func (_q *UserQuery) QueryHosts() *HostQuery {
+	query := (&HostClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.HostsTable, user.HostsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryVms chains the current query on the "vms" edge.
+func (_q *UserQuery) QueryVms() *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.VmsTable, user.VmsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -452,6 +500,8 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withGroups:           _q.withGroups.Clone(),
 		withModels:           _q.withModels.Clone(),
 		withImages:           _q.withImages.Clone(),
+		withHosts:            _q.withHosts.Clone(),
+		withVms:              _q.withVms.Clone(),
 		withTeamMembers:      _q.withTeamMembers.Clone(),
 		withTeamGroupMembers: _q.withTeamGroupMembers.Clone(),
 		// clone intermediate query.
@@ -524,6 +574,28 @@ func (_q *UserQuery) WithImages(opts ...func(*ImageQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withImages = query
+	return _q
+}
+
+// WithHosts tells the query-builder to eager-load the nodes that are connected to
+// the "hosts" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithHosts(opts ...func(*HostQuery)) *UserQuery {
+	query := (&HostClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withHosts = query
+	return _q
+}
+
+// WithVms tells the query-builder to eager-load the nodes that are connected to
+// the "vms" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithVms(opts ...func(*VirtualMachineQuery)) *UserQuery {
+	query := (&VirtualMachineClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withVms = query
 	return _q
 }
 
@@ -627,13 +699,15 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [8]bool{
+		loadedTypes = [10]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
 			_q.withModels != nil,
 			_q.withImages != nil,
+			_q.withHosts != nil,
+			_q.withVms != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamGroupMembers != nil,
 		}
@@ -698,6 +772,20 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadImages(ctx, query, nodes,
 			func(n *User) { n.Edges.Images = []*Image{} },
 			func(n *User, e *Image) { n.Edges.Images = append(n.Edges.Images, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withHosts; query != nil {
+		if err := _q.loadHosts(ctx, query, nodes,
+			func(n *User) { n.Edges.Hosts = []*Host{} },
+			func(n *User, e *Host) { n.Edges.Hosts = append(n.Edges.Hosts, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withVms; query != nil {
+		if err := _q.loadVms(ctx, query, nodes,
+			func(n *User) { n.Edges.Vms = []*VirtualMachine{} },
+			func(n *User, e *VirtualMachine) { n.Edges.Vms = append(n.Edges.Vms, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -945,6 +1033,66 @@ func (_q *UserQuery) loadImages(ctx context.Context, query *ImageQuery, nodes []
 	}
 	query.Where(predicate.Image(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.ImagesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadHosts(ctx context.Context, query *HostQuery, nodes []*User, init func(*User), assign func(*User, *Host)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(host.FieldUserID)
+	}
+	query.Where(predicate.Host(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.HostsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadVms(ctx context.Context, query *VirtualMachineQuery, nodes []*User, init func(*User), assign func(*User, *VirtualMachine)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(virtualmachine.FieldUserID)
+	}
+	query.Where(predicate.VirtualMachine(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.VmsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

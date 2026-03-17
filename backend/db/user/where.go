@@ -855,6 +855,52 @@ func HasImagesWith(preds ...predicate.Image) predicate.User {
 	})
 }
 
+// HasHosts applies the HasEdge predicate on the "hosts" edge.
+func HasHosts() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, HostsTable, HostsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasHostsWith applies the HasEdge predicate on the "hosts" edge with a given conditions (other predicates).
+func HasHostsWith(preds ...predicate.Host) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newHostsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasVms applies the HasEdge predicate on the "vms" edge.
+func HasVms() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, VmsTable, VmsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasVmsWith applies the HasEdge predicate on the "vms" edge with a given conditions (other predicates).
+func HasVmsWith(preds ...predicate.VirtualMachine) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newVmsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamMembers applies the HasEdge predicate on the "team_members" edge.
 func HasTeamMembers() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
