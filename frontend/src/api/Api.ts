@@ -1568,6 +1568,7 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
+/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -5479,6 +5480,25 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       >({
         path: `/api/v1/users/tasks/${id}`,
         method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除任务。任务处于运行中（pending/processing）或虚拟机仍在线时不允许删除。
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksDelete
+     * @summary 删除任务
+     * @request DELETE:/api/v1/users/tasks/{id}
+     * @secure
+     */
+    v1UsersTasksDelete: (id: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/users/tasks/${id}`,
+        method: "DELETE",
         secure: true,
         type: ContentType.Json,
         format: "json",
