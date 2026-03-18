@@ -53,6 +53,16 @@ export default function AddModel({
   const [selectOpen, setSelectOpen] = useState(false)
   const selectRef = useRef<HTMLDivElement>(null)
 
+  const fetchGroups = async () => {
+    await apiRequest('v1TeamsGroupsList', {}, [], (resp) => {
+      if (resp.code === 0) {
+        setGroups(resp.data?.groups || [])
+      } else {
+        toast.error("获取分组列表失败: " + resp.message);
+      }
+    })
+  }
+
   useEffect(() => {
     if (open) {
       fetchGroups()
@@ -74,16 +84,6 @@ export default function AddModel({
       document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [selectOpen])
-
-  const fetchGroups = async () => {
-    await apiRequest('v1TeamsGroupsList', {}, [], (resp) => {
-      if (resp.code === 0) {
-        setGroups(resp.data?.groups || [])
-      } else {
-        toast.error("获取分组列表失败: " + resp.message);
-      }
-    })
-  }
 
   const handleGroupCheckboxChange = (groupId: string, checked: boolean) => {
     if (checked) {
