@@ -1,6 +1,6 @@
 import { ConstsTaskStatus, type DomainProjectTask } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
-import { PlanStepsBlock, TaskChatPanel } from "@/components/console/task/chat-panel"
+import { FileChangesPromptBlock, PlanStepsBlock, TaskChatPanel } from "@/components/console/task/chat-panel"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import type { MessageType } from "@/components/console/task/message"
@@ -278,15 +278,24 @@ export default function TaskDetailPage() {
             sendResetSession={sendResetSession}
             sendReloadSession={sendReloadSession}
             queueSize={queueSize}
-            fileChanges={changedPaths}
-            fileChangesMap={fileChangesMap}
-            taskManager={taskManager.current}
           />
         </div>
       </div>
       {plan && plan.entries.length > 0 && (
         <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
           <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
+        </div>
+      )}
+      {changedPaths.length > 0 && (
+        <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
+          <FileChangesPromptBlock
+            fileChanges={changedPaths}
+            fileChangesMap={fileChangesMap}
+            taskManager={taskManager.current}
+            sendUserInput={sendUserInput}
+            disabled={!vmOnline}
+            streamStatus={streamStatus}
+          />
         </div>
       )}
       <div ref={chatInputRefCallback} className={cn("shrink-0 bg-background w-full", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")} />

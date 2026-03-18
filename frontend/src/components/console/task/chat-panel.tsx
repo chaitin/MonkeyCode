@@ -83,6 +83,61 @@ import { cn } from "@/lib/utils"
 import { FileChangesDialog } from "./file-changes-dialog"
 import type { ConstsCliName } from "@/api/Api"
 
+export interface FileChangesPromptBlockProps {
+  fileChanges: string[]
+  fileChangesMap: Map<string, RepoFileChange>
+  taskManager: TaskWebSocketManager | null
+  sendUserInput: (content: string) => void
+  disabled: boolean
+  streamStatus: TaskStreamStatus
+}
+
+export function FileChangesPromptBlock({ fileChanges, fileChangesMap, taskManager, sendUserInput, disabled, streamStatus }: FileChangesPromptBlockProps) {
+  const [showPrompt, setShowPrompt] = React.useState(false)
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+
+  React.useEffect(() => {
+    setShowPrompt(streamStatus === "waiting")
+  }, [streamStatus])
+
+  if (!showPrompt || disabled || fileChanges.length === 0) return null
+
+  return (
+    <>
+      <div className="flex flex-row px-3 py-2 border rounded-md items-center bg-muted/50 w-full shrink-0">
+        <div
+          className="flex-1 text-xs cursor-pointer hover:text-primary transition-colors"
+          onClick={() => setDialogOpen(true)}
+        >
+          {fileChanges.length} 个文件被修改，是否提交保存
+        </div>
+        <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setShowPrompt(false)}>
+          不急
+        </Button>
+        <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => sendUserInput("用 git 提交所有修改，并推送到远程仓库")}>
+          提交
+        </Button>
+      </div>
+      <FileChangesDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        fileChanges={fileChanges}
+        fileChangesMap={fileChangesMap}
+        taskManager={taskManager}
+        onSubmit={(selectedFiles) => {
+          if (selectedFiles.length === fileChanges.length) {
+            sendUserInput("用 git 提交所有修改，并推送到远程仓库")
+          } else {
+            sendUserInput(`用 git 提交以下文件的修改，并推送到远程仓库:  \n${selectedFiles.map((file) => `- ${file}`).join('\n')}`)
+          }
+          setShowPrompt(false)
+        }}
+        onCancel={() => setShowPrompt(false)}
+      />
+    </>
+  )
+}
+
 interface TaskChatPanelProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>
   inputPortalTargetRef?: React.RefObject<HTMLDivElement | null>
@@ -97,22 +152,12 @@ interface TaskChatPanelProps {
   sendCancelCommand: () => void
   sendResetSession: () => void
   sendReloadSession: () => void
-  fileChanges: string[]
-  fileChangesMap: Map<string, RepoFileChange>
-  taskManager: TaskWebSocketManager | null
 }
 
-export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize, fileChanges, fileChangesMap, taskManager }: TaskChatPanelProps) => {
+export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize }: TaskChatPanelProps) => {
   const [timeCost, setTimeCost] = React.useState(0)
   const internalScrollRef = React.useRef<HTMLDivElement>(null)
   const scrollContainerRef = externalScrollRef ?? internalScrollRef
-  const [showSubmitButton, setShowSubmitButton] = React.useState(false)
-  const [fileChangesDialogOpen, setFileChangesDialogOpen] = React.useState(false)
-
-
-  React.useEffect(() => {
-    setShowSubmitButton(streamStatus === "waiting")
-  }, [streamStatus])
 
   React.useEffect(() => {
     if (streamStatus === 'executing') {
@@ -130,15 +175,12 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
   )
 
   const virtualRows = React.useMemo(() => {
-    const rows: Array<{ type: 'message'; message: MessageType } | { type: 'taskStatus' } | { type: 'fileChanges' }> = displayMessages.map((m) => ({ type: 'message' as const, message: m }))
+    const rows: Array<{ type: 'message'; message: MessageType } | { type: 'taskStatus' }> = displayMessages.map((m) => ({ type: 'message' as const, message: m }))
     if (streamStatus !== 'waiting') {
       rows.push({ type: 'taskStatus' })
     }
-    if (!disabled && fileChanges.length > 0 && showSubmitButton) {
-      rows.push({ type: 'fileChanges' })
-    }
     return rows
-  }, [displayMessages, streamStatus, disabled, fileChanges.length, showSubmitButton])
+  }, [displayMessages, streamStatus])
 
   const virtualizer = useVirtualizer({
     count: virtualRows.length,
@@ -146,7 +188,6 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
     estimateSize: (index) => {
       const row = virtualRows[index]
       if (row.type === 'taskStatus') return 40
-      if (row.type === 'fileChanges') return 50
       return 120
     },
     overscan: 5,
@@ -233,45 +274,11 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
                   </div>
                 )}
                 {row.type === 'taskStatus' && renderTaskStatus()}
-                {row.type === 'fileChanges' && (
-                  <div className="flex flex-row px-3 py-2 border rounded-md items-center bg-muted/50 mt-2">
-                    <div
-                      className="flex-1 text-xs cursor-pointer hover:text-primary transition-colors"
-                      onClick={() => setFileChangesDialogOpen(true)}
-                    >
-                      {fileChanges.length} 个文件被修改，是否提交保存
-                    </div>
-                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setShowSubmitButton(false)}>
-                      不急
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => sendUserInput("用 git 提交所有修改，并推送到远程仓库")}>
-                      提交
-                    </Button>
-                  </div>
-                )}
               </div>
             )
           })}
         </div>
       </div>
-      <FileChangesDialog
-        open={fileChangesDialogOpen}
-        onOpenChange={setFileChangesDialogOpen}
-        fileChanges={fileChanges}
-        fileChangesMap={fileChangesMap}
-        taskManager={taskManager}
-        onSubmit={(selectedFiles) => {
-          if (selectedFiles.length === fileChanges.length) {
-            sendUserInput("用 git 提交所有修改，并推送到远程仓库")
-          } else {
-            sendUserInput(`用 git 提交以下文件的修改，并推送到远程仓库:  \n${selectedFiles.map((file) => `- ${file}`).join('\n')}`)
-          }
-          setShowSubmitButton(false)
-        }}
-        onCancel={() => {
-          setShowSubmitButton(false)
-        }}
-      />
       {inputPortalTargetRef
         ? inputPortalTargetRef.current &&
           createPortal(
