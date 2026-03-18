@@ -61,3 +61,43 @@ func (w *WebsocketManager) Conn() *websocket.Conn {
 func (w *WebsocketManager) IP() string {
 	return w.ip
 }
+
+// RemoteAddr 返回底层连接的远程地址
+func (w *WebsocketManager) RemoteAddr() string {
+	return w.ip
+}
+
+// TaskConn 任务 WebSocket 连接池
+type TaskConn struct {
+	conns map[string]*WebsocketManager
+	mu    sync.RWMutex
+}
+
+// NewTaskConn 创建任务连接池
+func NewTaskConn() *TaskConn {
+	return &TaskConn{
+		conns: make(map[string]*WebsocketManager),
+	}
+}
+
+// Add 添加连接
+func (tc *TaskConn) Add(id string, conn *WebsocketManager) {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	tc.conns[id] = conn
+}
+
+// Remove 移除连接
+func (tc *TaskConn) Remove(id string) {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	delete(tc.conns, id)
+}
+
+// Get 获取连接
+func (tc *TaskConn) Get(id string) (*WebsocketManager, bool) {
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+	conn, ok := tc.conns[id]
+	return conn, ok
+}

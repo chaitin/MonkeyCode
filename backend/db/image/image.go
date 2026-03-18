@@ -33,6 +33,8 @@ const (
 	EdgeTeams = "teams"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
+	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
+	EdgeProjectTasks = "project_tasks"
 	// EdgeTeamImages holds the string denoting the team_images edge name in mutations.
 	EdgeTeamImages = "team_images"
 	// EdgeTeamGroupImages holds the string denoting the team_group_images edge name in mutations.
@@ -56,6 +58,13 @@ const (
 	// GroupsInverseTable is the table name for the TeamGroup entity.
 	// It exists in this package in order to avoid circular dependency with the "teamgroup" package.
 	GroupsInverseTable = "team_groups"
+	// ProjectTasksTable is the table that holds the project_tasks relation/edge.
+	ProjectTasksTable = "project_tasks"
+	// ProjectTasksInverseTable is the table name for the ProjectTask entity.
+	// It exists in this package in order to avoid circular dependency with the "projecttask" package.
+	ProjectTasksInverseTable = "project_tasks"
+	// ProjectTasksColumn is the table column denoting the project_tasks relation/edge.
+	ProjectTasksColumn = "image_id"
 	// TeamImagesTable is the table that holds the team_images relation/edge.
 	TeamImagesTable = "team_images"
 	// TeamImagesInverseTable is the table name for the TeamImage entity.
@@ -193,6 +202,20 @@ func ByGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByProjectTasksCount orders the results by project_tasks count.
+func ByProjectTasksCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectTasksStep(), opts...)
+	}
+}
+
+// ByProjectTasks orders the results by project_tasks terms.
+func ByProjectTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamImagesCount orders the results by team_images count.
 func ByTeamImagesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -239,6 +262,13 @@ func newGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GroupsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, GroupsTable, GroupsPrimaryKey...),
+	)
+}
+func newProjectTasksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectTasksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
 	)
 }
 func newTeamImagesStep() *sqlgraph.Step {

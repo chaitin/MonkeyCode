@@ -68,5 +68,6 @@ func (VirtualMachine) Edges() []ent.Edge {
 		edge.From("host", Host.Type).Ref("vms").Field("host_id").Unique().Required(),
 		edge.From("model", Model.Type).Ref("vms").Field("model_id").Unique(),
 		edge.From("user", User.Type).Ref("vms").Field("user_id").Unique(),
+		edge.To("tasks", Task.Type).Through("task_vms", TaskVirtualMachine.Type),
 	}
 }

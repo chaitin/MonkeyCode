@@ -59,5 +59,6 @@ func (User) Edges() []ent.Edge {
 		edge.To("images", Image.Type),
 		edge.To("hosts", Host.Type),
 		edge.To("vms", VirtualMachine.Type),
+		edge.To("tasks", Task.Type),
 	}
 }

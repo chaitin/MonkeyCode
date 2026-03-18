@@ -125,6 +125,198 @@ var (
 			},
 		},
 	}
+	// NotifyChannelsColumns holds the columns for the "notify_channels" table.
+	NotifyChannelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "owner_id", Type: field.TypeUUID},
+		{Name: "owner_type", Type: field.TypeString, Default: "user"},
+		{Name: "name", Type: field.TypeString, Size: 64},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "webhook_url", Type: field.TypeString, Size: 2147483647},
+		{Name: "secret", Type: field.TypeString, Nullable: true, Size: 2147483647, Default: ""},
+		{Name: "headers", Type: field.TypeJSON, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotifyChannelsTable holds the schema information for the "notify_channels" table.
+	NotifyChannelsTable = &schema.Table{
+		Name:       "notify_channels",
+		Columns:    NotifyChannelsColumns,
+		PrimaryKey: []*schema.Column{NotifyChannelsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifychannel_owner_id_owner_type",
+				Unique:  false,
+				Columns: []*schema.Column{NotifyChannelsColumns[2], NotifyChannelsColumns[3]},
+			},
+		},
+	}
+	// NotifySendLogsColumns holds the columns for the "notify_send_logs" table.
+	NotifySendLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "subscription_id", Type: field.TypeUUID},
+		{Name: "channel_id", Type: field.TypeUUID},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "event_ref_id", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString},
+		{Name: "error", Type: field.TypeString, Nullable: true, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// NotifySendLogsTable holds the schema information for the "notify_send_logs" table.
+	NotifySendLogsTable = &schema.Table{
+		Name:       "notify_send_logs",
+		Columns:    NotifySendLogsColumns,
+		PrimaryKey: []*schema.Column{NotifySendLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifysendlog_subscription_id_event_type_event_ref_id",
+				Unique:  false,
+				Columns: []*schema.Column{NotifySendLogsColumns[1], NotifySendLogsColumns[3], NotifySendLogsColumns[4]},
+			},
+			{
+				Name:    "notifysendlog_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{NotifySendLogsColumns[5], NotifySendLogsColumns[7]},
+			},
+		},
+	}
+	// NotifySubscriptionsColumns holds the columns for the "notify_subscriptions" table.
+	NotifySubscriptionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "scope", Type: field.TypeString, Default: "self"},
+		{Name: "event_types", Type: field.TypeJSON},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "channel_id", Type: field.TypeUUID},
+	}
+	// NotifySubscriptionsTable holds the schema information for the "notify_subscriptions" table.
+	NotifySubscriptionsTable = &schema.Table{
+		Name:       "notify_subscriptions",
+		Columns:    NotifySubscriptionsColumns,
+		PrimaryKey: []*schema.Column{NotifySubscriptionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "notify_subscriptions_notify_channels_subscriptions",
+				Columns:    []*schema.Column{NotifySubscriptionsColumns[7]},
+				RefColumns: []*schema.Column{NotifyChannelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifysubscription_channel_id",
+				Unique:  false,
+				Columns: []*schema.Column{NotifySubscriptionsColumns[7]},
+			},
+		},
+	}
+	// ProjectTasksColumns holds the columns for the "project_tasks" table.
+	ProjectTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "git_identity_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "project_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "issue_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "repo_url", Type: field.TypeString, Nullable: true},
+		{Name: "repo_filename", Type: field.TypeString, Nullable: true},
+		{Name: "branch", Type: field.TypeString, Nullable: true},
+		{Name: "cli_name", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "image_id", Type: field.TypeUUID},
+		{Name: "model_id", Type: field.TypeUUID},
+		{Name: "task_id", Type: field.TypeUUID},
+	}
+	// ProjectTasksTable holds the schema information for the "project_tasks" table.
+	ProjectTasksTable = &schema.Table{
+		Name:       "project_tasks",
+		Columns:    ProjectTasksColumns,
+		PrimaryKey: []*schema.Column{ProjectTasksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "project_tasks_images_project_tasks",
+				Columns:    []*schema.Column{ProjectTasksColumns[9]},
+				RefColumns: []*schema.Column{ImagesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_tasks_models_project_tasks",
+				Columns:    []*schema.Column{ProjectTasksColumns[10]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_tasks_tasks_project_tasks",
+				Columns:    []*schema.Column{ProjectTasksColumns[11]},
+				RefColumns: []*schema.Column{TasksColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// TasksColumns holds the columns for the "tasks" table.
+	TasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "sub_type", Type: field.TypeString, Nullable: true},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "status", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// TasksTable holds the schema information for the "tasks" table.
+	TasksTable = &schema.Table{
+		Name:       "tasks",
+		Columns:    TasksColumns,
+		PrimaryKey: []*schema.Column{TasksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "tasks_users_tasks",
+				Columns:    []*schema.Column{TasksColumns[10]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// TaskVirtualmachinesColumns holds the columns for the "task_virtualmachines" table.
+	TaskVirtualmachinesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "task_id", Type: field.TypeUUID},
+		{Name: "virtualmachine_id", Type: field.TypeString},
+	}
+	// TaskVirtualmachinesTable holds the schema information for the "task_virtualmachines" table.
+	TaskVirtualmachinesTable = &schema.Table{
+		Name:       "task_virtualmachines",
+		Columns:    TaskVirtualmachinesColumns,
+		PrimaryKey: []*schema.Column{TaskVirtualmachinesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "task_virtualmachines_tasks_task",
+				Columns:    []*schema.Column{TaskVirtualmachinesColumns[2]},
+				RefColumns: []*schema.Column{TasksColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "task_virtualmachines_virtualmachines_virtualmachine",
+				Columns:    []*schema.Column{TaskVirtualmachinesColumns[3]},
+				RefColumns: []*schema.Column{VirtualmachinesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "taskvirtualmachine_virtualmachine_id_task_id",
+				Unique:  true,
+				Columns: []*schema.Column{TaskVirtualmachinesColumns[3], TaskVirtualmachinesColumns[2]},
+			},
+		},
+	}
 	// TeamsColumns holds the columns for the "teams" table.
 	TeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -537,6 +729,12 @@ var (
 		HostsTable,
 		ImagesTable,
 		ModelsTable,
+		NotifyChannelsTable,
+		NotifySendLogsTable,
+		NotifySubscriptionsTable,
+		ProjectTasksTable,
+		TasksTable,
+		TaskVirtualmachinesTable,
 		TeamsTable,
 		TeamGroupsTable,
 		TeamGroupHostsTable,
@@ -569,6 +767,31 @@ func init() {
 	ModelsTable.ForeignKeys[0].RefTable = UsersTable
 	ModelsTable.Annotation = &entsql.Annotation{
 		Table: "models",
+	}
+	NotifyChannelsTable.Annotation = &entsql.Annotation{
+		Table: "notify_channels",
+	}
+	NotifySendLogsTable.Annotation = &entsql.Annotation{
+		Table: "notify_send_logs",
+	}
+	NotifySubscriptionsTable.ForeignKeys[0].RefTable = NotifyChannelsTable
+	NotifySubscriptionsTable.Annotation = &entsql.Annotation{
+		Table: "notify_subscriptions",
+	}
+	ProjectTasksTable.ForeignKeys[0].RefTable = ImagesTable
+	ProjectTasksTable.ForeignKeys[1].RefTable = ModelsTable
+	ProjectTasksTable.ForeignKeys[2].RefTable = TasksTable
+	ProjectTasksTable.Annotation = &entsql.Annotation{
+		Table: "project_tasks",
+	}
+	TasksTable.ForeignKeys[0].RefTable = UsersTable
+	TasksTable.Annotation = &entsql.Annotation{
+		Table: "tasks",
+	}
+	TaskVirtualmachinesTable.ForeignKeys[0].RefTable = TasksTable
+	TaskVirtualmachinesTable.ForeignKeys[1].RefTable = VirtualmachinesTable
+	TaskVirtualmachinesTable.Annotation = &entsql.Annotation{
+		Table: "task_virtualmachines",
 	}
 	TeamsTable.Annotation = &entsql.Annotation{
 		Table: "teams",

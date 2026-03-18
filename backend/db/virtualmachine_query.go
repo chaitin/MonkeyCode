@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
@@ -23,14 +26,16 @@ import (
 // VirtualMachineQuery is the builder for querying VirtualMachine entities.
 type VirtualMachineQuery struct {
 	config
-	ctx        *QueryContext
-	order      []virtualmachine.OrderOption
-	inters     []Interceptor
-	predicates []predicate.VirtualMachine
-	withHost   *HostQuery
-	withModel  *ModelQuery
-	withUser   *UserQuery
-	modifiers  []func(*sql.Selector)
+	ctx         *QueryContext
+	order       []virtualmachine.OrderOption
+	inters      []Interceptor
+	predicates  []predicate.VirtualMachine
+	withHost    *HostQuery
+	withModel   *ModelQuery
+	withUser    *UserQuery
+	withTasks   *TaskQuery
+	withTaskVms *TaskVirtualMachineQuery
+	modifiers   []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -126,6 +131,50 @@ func (_q *VirtualMachineQuery) QueryUser() *UserQuery {
 			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, virtualmachine.UserTable, virtualmachine.UserColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTasks chains the current query on the "tasks" edge.
+func (_q *VirtualMachineQuery) QueryTasks() *TaskQuery {
+	query := (&TaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, selector),
+			sqlgraph.To(task.Table, task.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, virtualmachine.TasksTable, virtualmachine.TasksPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTaskVms chains the current query on the "task_vms" edge.
+func (_q *VirtualMachineQuery) QueryTaskVms() *TaskVirtualMachineQuery {
+	query := (&TaskVirtualMachineClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, selector),
+			sqlgraph.To(taskvirtualmachine.Table, taskvirtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, virtualmachine.TaskVmsTable, virtualmachine.TaskVmsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -320,14 +369,16 @@ func (_q *VirtualMachineQuery) Clone() *VirtualMachineQuery {
 		return nil
 	}
 	return &VirtualMachineQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]virtualmachine.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.VirtualMachine{}, _q.predicates...),
-		withHost:   _q.withHost.Clone(),
-		withModel:  _q.withModel.Clone(),
-		withUser:   _q.withUser.Clone(),
+		config:      _q.config,
+		ctx:         _q.ctx.Clone(),
+		order:       append([]virtualmachine.OrderOption{}, _q.order...),
+		inters:      append([]Interceptor{}, _q.inters...),
+		predicates:  append([]predicate.VirtualMachine{}, _q.predicates...),
+		withHost:    _q.withHost.Clone(),
+		withModel:   _q.withModel.Clone(),
+		withUser:    _q.withUser.Clone(),
+		withTasks:   _q.withTasks.Clone(),
+		withTaskVms: _q.withTaskVms.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -365,6 +416,28 @@ func (_q *VirtualMachineQuery) WithUser(opts ...func(*UserQuery)) *VirtualMachin
 		opt(query)
 	}
 	_q.withUser = query
+	return _q
+}
+
+// WithTasks tells the query-builder to eager-load the nodes that are connected to
+// the "tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *VirtualMachineQuery) WithTasks(opts ...func(*TaskQuery)) *VirtualMachineQuery {
+	query := (&TaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTasks = query
+	return _q
+}
+
+// WithTaskVms tells the query-builder to eager-load the nodes that are connected to
+// the "task_vms" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *VirtualMachineQuery) WithTaskVms(opts ...func(*TaskVirtualMachineQuery)) *VirtualMachineQuery {
+	query := (&TaskVirtualMachineClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTaskVms = query
 	return _q
 }
 
@@ -446,10 +519,12 @@ func (_q *VirtualMachineQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	var (
 		nodes       = []*VirtualMachine{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [5]bool{
 			_q.withHost != nil,
 			_q.withModel != nil,
 			_q.withUser != nil,
+			_q.withTasks != nil,
+			_q.withTaskVms != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -488,6 +563,20 @@ func (_q *VirtualMachineQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
 			func(n *VirtualMachine, e *User) { n.Edges.User = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTasks; query != nil {
+		if err := _q.loadTasks(ctx, query, nodes,
+			func(n *VirtualMachine) { n.Edges.Tasks = []*Task{} },
+			func(n *VirtualMachine, e *Task) { n.Edges.Tasks = append(n.Edges.Tasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTaskVms; query != nil {
+		if err := _q.loadTaskVms(ctx, query, nodes,
+			func(n *VirtualMachine) { n.Edges.TaskVms = []*TaskVirtualMachine{} },
+			func(n *VirtualMachine, e *TaskVirtualMachine) { n.Edges.TaskVms = append(n.Edges.TaskVms, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -578,6 +667,97 @@ func (_q *VirtualMachineQuery) loadUser(ctx context.Context, query *UserQuery, n
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *VirtualMachineQuery) loadTasks(ctx context.Context, query *TaskQuery, nodes []*VirtualMachine, init func(*VirtualMachine), assign func(*VirtualMachine, *Task)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[string]*VirtualMachine)
+	nids := make(map[uuid.UUID]map[*VirtualMachine]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(virtualmachine.TasksTable)
+		s.Join(joinT).On(s.C(task.FieldID), joinT.C(virtualmachine.TasksPrimaryKey[1]))
+		s.Where(sql.InValues(joinT.C(virtualmachine.TasksPrimaryKey[0]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(virtualmachine.TasksPrimaryKey[0]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(sql.NullString)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := values[0].(*sql.NullString).String
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*VirtualMachine]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*Task](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "tasks" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (_q *VirtualMachineQuery) loadTaskVms(ctx context.Context, query *TaskVirtualMachineQuery, nodes []*VirtualMachine, init func(*VirtualMachine), assign func(*VirtualMachine, *TaskVirtualMachine)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*VirtualMachine)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(taskvirtualmachine.FieldVirtualmachineID)
+	}
+	query.Where(predicate.TaskVirtualMachine(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(virtualmachine.TaskVmsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.VirtualmachineID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "virtualmachine_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

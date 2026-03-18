@@ -22,6 +22,18 @@ type Tx struct {
 	Image *ImageClient
 	// Model is the client for interacting with the Model builders.
 	Model *ModelClient
+	// NotifyChannel is the client for interacting with the NotifyChannel builders.
+	NotifyChannel *NotifyChannelClient
+	// NotifySendLog is the client for interacting with the NotifySendLog builders.
+	NotifySendLog *NotifySendLogClient
+	// NotifySubscription is the client for interacting with the NotifySubscription builders.
+	NotifySubscription *NotifySubscriptionClient
+	// ProjectTask is the client for interacting with the ProjectTask builders.
+	ProjectTask *ProjectTaskClient
+	// Task is the client for interacting with the Task builders.
+	Task *TaskClient
+	// TaskVirtualMachine is the client for interacting with the TaskVirtualMachine builders.
+	TaskVirtualMachine *TaskVirtualMachineClient
 	// Team is the client for interacting with the Team builders.
 	Team *TeamClient
 	// TeamGroup is the client for interacting with the TeamGroup builders.
@@ -183,6 +195,12 @@ func (tx *Tx) init() {
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
 	tx.Model = NewModelClient(tx.config)
+	tx.NotifyChannel = NewNotifyChannelClient(tx.config)
+	tx.NotifySendLog = NewNotifySendLogClient(tx.config)
+	tx.NotifySubscription = NewNotifySubscriptionClient(tx.config)
+	tx.ProjectTask = NewProjectTaskClient(tx.config)
+	tx.Task = NewTaskClient(tx.config)
+	tx.TaskVirtualMachine = NewTaskVirtualMachineClient(tx.config)
 	tx.Team = NewTeamClient(tx.config)
 	tx.TeamGroup = NewTeamGroupClient(tx.config)
 	tx.TeamGroupHost = NewTeamGroupHostClient(tx.config)

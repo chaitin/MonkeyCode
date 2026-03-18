@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -254,6 +255,21 @@ func (_c *ModelCreate) AddVms(v ...*VirtualMachine) *ModelCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddVMIDs(ids...)
+}
+
+// AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by IDs.
+func (_c *ModelCreate) AddProjectTaskIDs(ids ...uuid.UUID) *ModelCreate {
+	_c.mutation.AddProjectTaskIDs(ids...)
+	return _c
+}
+
+// AddProjectTasks adds the "project_tasks" edges to the ProjectTask entity.
+func (_c *ModelCreate) AddProjectTasks(v ...*ProjectTask) *ModelCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddProjectTaskIDs(ids...)
 }
 
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
@@ -551,6 +567,22 @@ func (_c *ModelCreate) createSpec() (*Model, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

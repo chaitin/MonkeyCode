@@ -18,6 +18,24 @@ type Image func(*sql.Selector)
 // Model is the predicate function for model builders.
 type Model func(*sql.Selector)
 
+// NotifyChannel is the predicate function for notifychannel builders.
+type NotifyChannel func(*sql.Selector)
+
+// NotifySendLog is the predicate function for notifysendlog builders.
+type NotifySendLog func(*sql.Selector)
+
+// NotifySubscription is the predicate function for notifysubscription builders.
+type NotifySubscription func(*sql.Selector)
+
+// ProjectTask is the predicate function for projecttask builders.
+type ProjectTask func(*sql.Selector)
+
+// Task is the predicate function for task builders.
+type Task func(*sql.Selector)
+
+// TaskVirtualMachine is the predicate function for taskvirtualmachine builders.
+type TaskVirtualMachine func(*sql.Selector)
+
 // Team is the predicate function for team builders.
 type Team func(*sql.Selector)
 

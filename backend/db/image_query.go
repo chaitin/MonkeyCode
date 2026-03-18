@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
@@ -33,6 +34,7 @@ type ImageQuery struct {
 	withUser            *UserQuery
 	withTeams           *TeamQuery
 	withGroups          *TeamGroupQuery
+	withProjectTasks    *ProjectTaskQuery
 	withTeamImages      *TeamImageQuery
 	withTeamGroupImages *TeamGroupImageQuery
 	modifiers           []func(*sql.Selector)
@@ -131,6 +133,28 @@ func (_q *ImageQuery) QueryGroups() *TeamGroupQuery {
 			sqlgraph.From(image.Table, image.FieldID, selector),
 			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, image.GroupsTable, image.GroupsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjectTasks chains the current query on the "project_tasks" edge.
+func (_q *ImageQuery) QueryProjectTasks() *ProjectTaskQuery {
+	query := (&ProjectTaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(image.Table, image.FieldID, selector),
+			sqlgraph.To(projecttask.Table, projecttask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, image.ProjectTasksTable, image.ProjectTasksColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -377,6 +401,7 @@ func (_q *ImageQuery) Clone() *ImageQuery {
 		withUser:            _q.withUser.Clone(),
 		withTeams:           _q.withTeams.Clone(),
 		withGroups:          _q.withGroups.Clone(),
+		withProjectTasks:    _q.withProjectTasks.Clone(),
 		withTeamImages:      _q.withTeamImages.Clone(),
 		withTeamGroupImages: _q.withTeamGroupImages.Clone(),
 		// clone intermediate query.
@@ -416,6 +441,17 @@ func (_q *ImageQuery) WithGroups(opts ...func(*TeamGroupQuery)) *ImageQuery {
 		opt(query)
 	}
 	_q.withGroups = query
+	return _q
+}
+
+// WithProjectTasks tells the query-builder to eager-load the nodes that are connected to
+// the "project_tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ImageQuery) WithProjectTasks(opts ...func(*ProjectTaskQuery)) *ImageQuery {
+	query := (&ProjectTaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjectTasks = query
 	return _q
 }
 
@@ -519,10 +555,11 @@ func (_q *ImageQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Image,
 	var (
 		nodes       = []*Image{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [6]bool{
 			_q.withUser != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
+			_q.withProjectTasks != nil,
 			_q.withTeamImages != nil,
 			_q.withTeamGroupImages != nil,
 		}
@@ -565,6 +602,13 @@ func (_q *ImageQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Image,
 		if err := _q.loadGroups(ctx, query, nodes,
 			func(n *Image) { n.Edges.Groups = []*TeamGroup{} },
 			func(n *Image, e *TeamGroup) { n.Edges.Groups = append(n.Edges.Groups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjectTasks; query != nil {
+		if err := _q.loadProjectTasks(ctx, query, nodes,
+			func(n *Image) { n.Edges.ProjectTasks = []*ProjectTask{} },
+			func(n *Image, e *ProjectTask) { n.Edges.ProjectTasks = append(n.Edges.ProjectTasks, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -733,6 +777,36 @@ func (_q *ImageQuery) loadGroups(ctx context.Context, query *TeamGroupQuery, nod
 		for kn := range nodes {
 			assign(kn, n)
 		}
+	}
+	return nil
+}
+func (_q *ImageQuery) loadProjectTasks(ctx context.Context, query *ProjectTaskQuery, nodes []*Image, init func(*Image), assign func(*Image, *ProjectTask)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Image)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projecttask.FieldImageID)
+	}
+	query.Where(predicate.ProjectTask(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(image.ProjectTasksColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ImageID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "image_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

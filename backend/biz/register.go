@@ -4,8 +4,10 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
+	"github.com/chaitin/MonkeyCode/backend/biz/notify"
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
 	"github.com/chaitin/MonkeyCode/backend/biz/setting"
+	"github.com/chaitin/MonkeyCode/backend/biz/task"
 	"github.com/chaitin/MonkeyCode/backend/biz/team"
 	"github.com/chaitin/MonkeyCode/backend/biz/user"
 )
@@ -23,6 +25,12 @@ func RegisterAll(i *do.Injector) error {
 
 	// 注册 host 模块
 	host.RegisterHost(i)
+
+	// 注册 notify 模块
+	notify.RegisterNotify(i)
+
+	// 注册 task 模块
+	task.RegisterTask(i)
 
 	return nil
 }

@@ -45,6 +45,13 @@ func WithInternalHook(hook domain.InternalHook) BridgeOption {
 	}
 }
 
+// WithTaskHook 注入任务模块回调
+func WithTaskHook(hook domain.TaskHook) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, hook)
+	}
+}
+
 func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 	cfg, err := config.Init(dir)
 	if err != nil {

@@ -19,6 +19,22 @@ type Clienter interface {
 	VirtualMachiner() VirtualMachiner
 	Host() Hoster
 	PortForwarder() PortForwarder
+	TaskManager() TaskManager
+}
+
+// TaskManager 任务管理接口
+type TaskManager interface {
+	Create(ctx context.Context, req CreateVirtualMachineReq) error
+	Stop(ctx context.Context, req TaskReq) error
+	Restart(ctx context.Context, req RestartTaskReq) error
+	Cancel(ctx context.Context, req TaskReq) error
+	Continue(ctx context.Context, req TaskReq) error
+	AutoApprove(ctx context.Context, req TaskApproveReq) error
+	AskUserQuestion(ctx context.Context, req AskUserQuestionResponse) error
+	ListFiles(ctx context.Context, req RepoListFilesReq) (*RepoListFiles, error)
+	ReadFile(ctx context.Context, req RepoReadFileReq) (*RepoReadFile, error)
+	FileDiff(ctx context.Context, req RepoFileDiffReq) (*RepoFileDiff, error)
+	FileChanges(ctx context.Context, req RepoFileChangesReq) (*RepoFileChanges, error)
 }
 
 // Sheller 终端 shell 接口
@@ -60,6 +76,7 @@ type Client struct {
 	hostclient        Hoster
 	vmclient          VirtualMachiner
 	portForwardClient PortForwarder
+	taskManagerClient TaskManager
 	logger            *slog.Logger
 }
 
@@ -114,6 +131,7 @@ func NewClient(opts ...Opt) Clienter {
 	c.vmclient = newVirtualMachineClient(c.client)
 	c.hostclient = newHostClient(c.client)
 	c.portForwardClient = newPortForwardClient(c.client)
+	c.taskManagerClient = newTaskManagerClient(c.client)
 
 	return c
 }
@@ -121,3 +139,4 @@ func NewClient(opts ...Opt) Clienter {
 func (c *Client) VirtualMachiner() VirtualMachiner { return c.vmclient }
 func (c *Client) Host() Hoster                     { return c.hostclient }
 func (c *Client) PortForwarder() PortForwarder      { return c.portForwardClient }
+func (c *Client) TaskManager() TaskManager           { return c.taskManagerClient }

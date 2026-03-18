@@ -45,13 +45,15 @@ type ImageEdges struct {
 	Teams []*Team `json:"teams,omitempty"`
 	// Groups holds the value of the groups edge.
 	Groups []*TeamGroup `json:"groups,omitempty"`
+	// ProjectTasks holds the value of the project_tasks edge.
+	ProjectTasks []*ProjectTask `json:"project_tasks,omitempty"`
 	// TeamImages holds the value of the team_images edge.
 	TeamImages []*TeamImage `json:"team_images,omitempty"`
 	// TeamGroupImages holds the value of the team_group_images edge.
 	TeamGroupImages []*TeamGroupImage `json:"team_group_images,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -83,10 +85,19 @@ func (e ImageEdges) GroupsOrErr() ([]*TeamGroup, error) {
 	return nil, &NotLoadedError{edge: "groups"}
 }
 
+// ProjectTasksOrErr returns the ProjectTasks value or an error if the edge
+// was not loaded in eager-loading.
+func (e ImageEdges) ProjectTasksOrErr() ([]*ProjectTask, error) {
+	if e.loadedTypes[3] {
+		return e.ProjectTasks, nil
+	}
+	return nil, &NotLoadedError{edge: "project_tasks"}
+}
+
 // TeamImagesOrErr returns the TeamImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e ImageEdges) TeamImagesOrErr() ([]*TeamImage, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.TeamImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_images"}
@@ -95,7 +106,7 @@ func (e ImageEdges) TeamImagesOrErr() ([]*TeamImage, error) {
 // TeamGroupImagesOrErr returns the TeamGroupImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e ImageEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.TeamGroupImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_images"}
@@ -195,6 +206,11 @@ func (_m *Image) QueryTeams() *TeamQuery {
 // QueryGroups queries the "groups" edge of the Image entity.
 func (_m *Image) QueryGroups() *TeamGroupQuery {
 	return NewImageClient(_m.config).QueryGroups(_m)
+}
+
+// QueryProjectTasks queries the "project_tasks" edge of the Image entity.
+func (_m *Image) QueryProjectTasks() *ProjectTaskQuery {
+	return NewImageClient(_m.config).QueryProjectTasks(_m)
 }
 
 // QueryTeamImages queries the "team_images" edge of the Image entity.

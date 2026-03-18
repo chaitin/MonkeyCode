@@ -132,6 +132,7 @@ type CreateVirtualMachineReq struct {
 	Cores               string         `json:"cores"`
 	Memory              uint64         `json:"memory"`
 	InstallCodingAgents bool           `json:"install_coding_agents"`
+	Envs                []string       `json:"envs,omitempty"`
 }
 
 // Git 仓库信息
@@ -340,4 +341,158 @@ type GitCredentialResponse struct {
 	Username *string `json:"username,omitempty"`
 	Password *string `json:"password,omitempty"`
 	Error    *string `json:"error,omitempty"`
+}
+
+// ==================== Task Stream 类型 ====================
+
+// TaskChunk Loki 日志中的任务数据块
+type TaskChunk struct {
+	Data      []byte `json:"data,omitempty"`
+	Event     string `json:"event"`
+	Kind      string `json:"kind"`
+	Timestamp int64  `json:"timestamp,omitempty"`
+}
+
+// AskUserQuestionResponse 用户回答 AI 提问的响应
+type AskUserQuestionResponse struct {
+	TaskId      string `json:"task_id,omitempty"`
+	RequestId   string `json:"request_id,omitempty"`
+	AnswersJson string `json:"answers_json,omitempty"`
+	Cancelled   bool   `json:"cancelled,omitempty"`
+}
+
+// ApplyWebClientIPReq 同步 Web 客户端 IP 请求
+type ApplyWebClientIPReq struct {
+	ClientIP string `json:"client_ip"`
+}
+
+// ==================== Repo 操作类型 ====================
+
+// RepoFileChangesReq 文件变动列表请求
+type RepoFileChangesReq struct {
+	TaskId    string `json:"task_id,omitempty"`
+	RequestId string `json:"request_id"`
+}
+
+// RepoFileChanges 文件变动列表响应
+type RepoFileChanges struct {
+	TaskId     string                `json:"task_id,omitempty"`
+	RequestId  string                `json:"request_id,omitempty"`
+	Changes    []*RepoFileChangeInfo `json:"changes,omitempty"`
+	Branch     *string               `json:"branch,omitempty"`
+	CommitHash *string               `json:"commit_hash,omitempty"`
+	Success    bool                  `json:"success"`
+	Error      *string               `json:"error,omitempty"`
+}
+
+// RepoFileChangeInfo 单个文件变动信息
+type RepoFileChangeInfo struct {
+	Path      string  `json:"path,omitempty"`
+	Status    string  `json:"status,omitempty"`
+	Additions *int32  `json:"additions,omitempty"`
+	Deletions *int32  `json:"deletions,omitempty"`
+	OldPath   *string `json:"old_path,omitempty"`
+}
+
+// RepoListFilesReq 列出文件请求
+type RepoListFilesReq struct {
+	TaskId        string  `json:"task_id,omitempty"`
+	RequestId     string  `json:"request_id"`
+	Path          string  `json:"path"`
+	GlobPattern   *string `json:"glob_pattern"`
+	IncludeHidden bool    `json:"include_hidden"`
+}
+
+// RepoListFiles 列出文件响应
+type RepoListFiles struct {
+	TaskId    string          `json:"task_id,omitempty"`
+	RequestId string          `json:"request_id"`
+	Path      string          `json:"path,omitempty"`
+	Files     []*RepoFileInfo `json:"files,omitempty"`
+	Success   bool            `json:"success,omitempty"`
+	Error     *string         `json:"error,omitempty"`
+}
+
+// RepoFileInfo 文件信息
+type RepoFileInfo struct {
+	Name          string `json:"name,omitempty"`
+	Path          string `json:"path,omitempty"`
+	Size          int64  `json:"size,omitempty"`
+	ModifiedAt    int64  `json:"modified_at,omitempty"`
+}
+
+// RepoReadFileReq 读取文件请求
+type RepoReadFileReq struct {
+	TaskId    string `json:"task_id,omitempty"`
+	RequestId string `json:"request_id"`
+	Path      string `json:"path"`
+	Offset    *int64 `json:"offset"`
+	Length    *int64 `json:"length"`
+}
+
+// RepoReadFile 读取文件响应
+type RepoReadFile struct {
+	TaskId      string  `json:"task_id,omitempty"`
+	RequestId   string  `json:"request_id"`
+	Path        string  `json:"path,omitempty"`
+	Content     []byte  `json:"content,omitempty"`
+	TotalSize   int64   `json:"total_size,omitempty"`
+	Offset      int64   `json:"offset,omitempty"`
+	Length      int64   `json:"length,omitempty"`
+	IsTruncated bool    `json:"is_truncated,omitempty"`
+	Success     bool    `json:"success"`
+	Error       *string `json:"error,omitempty"`
+}
+
+// RepoFileDiffReq 文件 diff 请求
+type RepoFileDiffReq struct {
+	TaskId       string `json:"task_id,omitempty"`
+	RequestId    string `json:"request_id"`
+	Path         string `json:"path"`
+	Unified      *bool  `json:"unified"`
+	ContextLines *int32 `json:"context_lines"`
+}
+
+// RepoFileDiff 文件 diff 响应
+type RepoFileDiff struct {
+	TaskId    string  `json:"task_id,omitempty"`
+	RequestId string  `json:"request_id"`
+	Path      string  `json:"path,omitempty"`
+	Diff      string  `json:"diff,omitempty"`
+	Success   bool    `json:"success"`
+	Error     *string `json:"error,omitempty"`
+}
+
+// RestartTaskReq 重启任务请求
+type RestartTaskReq struct {
+	ID          uuid.UUID `json:"id"`
+	RequestId   string    `json:"request_id,omitempty"`
+	LoadSession bool      `json:"load_session"`
+}
+
+// RestartTaskResp 重启任务响应
+type RestartTaskResp struct {
+	ID        uuid.UUID `json:"id"`
+	RequestId string    `json:"request_id,omitempty"`
+	Success   bool      `json:"success"`
+	Message   string    `json:"message"`
+	SessionID string    `json:"session_id"`
+}
+
+// TaskApproveReq 任务自动批准请求
+type TaskApproveReq struct {
+	ID          uuid.UUID `json:"id"`
+	AutoApprove *bool     `json:"auto_approve,omitempty"`
+}
+
+// TaskReq 任务请求（通用）
+type TaskReq struct {
+	VirtualMachine *VirtualMachine `json:"virtual_machine,omitempty"`
+	Task           *TaskInfo       `json:"task,omitempty"`
+}
+
+// TaskInfo 任务信息（用于 TaskReq）
+type TaskInfo struct {
+	ID   uuid.UUID `json:"id"`
+	Text string    `json:"text"`
 }

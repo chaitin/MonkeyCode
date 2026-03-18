@@ -53,6 +53,8 @@ const (
 	EdgeGroups = "groups"
 	// EdgeVms holds the string denoting the vms edge name in mutations.
 	EdgeVms = "vms"
+	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
+	EdgeProjectTasks = "project_tasks"
 	// EdgeTeamModels holds the string denoting the team_models edge name in mutations.
 	EdgeTeamModels = "team_models"
 	// EdgeTeamGroupModels holds the string denoting the team_group_models edge name in mutations.
@@ -83,6 +85,13 @@ const (
 	VmsInverseTable = "virtualmachines"
 	// VmsColumn is the table column denoting the vms relation/edge.
 	VmsColumn = "model_id"
+	// ProjectTasksTable is the table that holds the project_tasks relation/edge.
+	ProjectTasksTable = "project_tasks"
+	// ProjectTasksInverseTable is the table name for the ProjectTask entity.
+	// It exists in this package in order to avoid circular dependency with the "projecttask" package.
+	ProjectTasksInverseTable = "project_tasks"
+	// ProjectTasksColumn is the table column denoting the project_tasks relation/edge.
+	ProjectTasksColumn = "model_id"
 	// TeamModelsTable is the table that holds the team_models relation/edge.
 	TeamModelsTable = "team_models"
 	// TeamModelsInverseTable is the table name for the TeamModel entity.
@@ -296,6 +305,20 @@ func ByVms(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByProjectTasksCount orders the results by project_tasks count.
+func ByProjectTasksCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectTasksStep(), opts...)
+	}
+}
+
+// ByProjectTasks orders the results by project_tasks terms.
+func ByProjectTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamModelsCount orders the results by team_models count.
 func ByTeamModelsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -349,6 +372,13 @@ func newVmsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(VmsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, VmsTable, VmsColumn),
+	)
+}
+func newProjectTasksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectTasksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
 	)
 }
 func newTeamModelsStep() *sqlgraph.Step {

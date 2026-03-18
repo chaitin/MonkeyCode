@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
@@ -43,6 +44,7 @@ type UserQuery struct {
 	withImages           *ImageQuery
 	withHosts            *HostQuery
 	withVms              *VirtualMachineQuery
+	withTasks            *TaskQuery
 	withTeamMembers      *TeamMemberQuery
 	withTeamGroupMembers *TeamGroupMemberQuery
 	modifiers            []func(*sql.Selector)
@@ -251,6 +253,28 @@ func (_q *UserQuery) QueryVms() *VirtualMachineQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.VmsTable, user.VmsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTasks chains the current query on the "tasks" edge.
+func (_q *UserQuery) QueryTasks() *TaskQuery {
+	query := (&TaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(task.Table, task.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.TasksTable, user.TasksColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -502,6 +526,7 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withImages:           _q.withImages.Clone(),
 		withHosts:            _q.withHosts.Clone(),
 		withVms:              _q.withVms.Clone(),
+		withTasks:            _q.withTasks.Clone(),
 		withTeamMembers:      _q.withTeamMembers.Clone(),
 		withTeamGroupMembers: _q.withTeamGroupMembers.Clone(),
 		// clone intermediate query.
@@ -596,6 +621,17 @@ func (_q *UserQuery) WithVms(opts ...func(*VirtualMachineQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withVms = query
+	return _q
+}
+
+// WithTasks tells the query-builder to eager-load the nodes that are connected to
+// the "tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithTasks(opts ...func(*TaskQuery)) *UserQuery {
+	query := (&TaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTasks = query
 	return _q
 }
 
@@ -699,7 +735,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [10]bool{
+		loadedTypes = [11]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
@@ -708,6 +744,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withImages != nil,
 			_q.withHosts != nil,
 			_q.withVms != nil,
+			_q.withTasks != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamGroupMembers != nil,
 		}
@@ -786,6 +823,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadVms(ctx, query, nodes,
 			func(n *User) { n.Edges.Vms = []*VirtualMachine{} },
 			func(n *User, e *VirtualMachine) { n.Edges.Vms = append(n.Edges.Vms, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTasks; query != nil {
+		if err := _q.loadTasks(ctx, query, nodes,
+			func(n *User) { n.Edges.Tasks = []*Task{} },
+			func(n *User, e *Task) { n.Edges.Tasks = append(n.Edges.Tasks, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1093,6 +1137,36 @@ func (_q *UserQuery) loadVms(ctx context.Context, query *VirtualMachineQuery, no
 	}
 	query.Where(predicate.VirtualMachine(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.VmsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadTasks(ctx context.Context, query *TaskQuery, nodes []*User, init func(*User), assign func(*User, *Task)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(task.FieldUserID)
+	}
+	query.Where(predicate.Task(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.TasksColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

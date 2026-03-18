@@ -33,8 +33,13 @@ type Config struct {
 	AdminToken string         `mapstructure:"admin_token"`
 	Proxies    []string       `mapstructure:"proxies"`
 
-	TaskFlow   TaskFlow   `mapstructure:"taskflow"`
-	PublicHost PublicHost `mapstructure:"public_host"`
+	TaskFlow    TaskFlow    `mapstructure:"taskflow"`
+	PublicHost  PublicHost  `mapstructure:"public_host"`
+	Task        Task        `mapstructure:"task"`
+	TaskSummary TaskSummary `mapstructure:"task_summary"`
+	Loki        Loki        `mapstructure:"loki"`
+	LLM         LLM         `mapstructure:"llm"`
+	Notify      Notify      `mapstructure:"notify"`
 }
 
 type TaskFlow struct {
@@ -47,6 +52,41 @@ type TaskFlow struct {
 type PublicHost struct {
 	CountLimit int   `mapstructure:"count_limit"` // 每用户公共主机 VM 数量限制，0 表示不限制
 	TTLLimit   int64 `mapstructure:"ttl_limit"`   // 公共主机 VM 续期上限（秒），0 表示不限制
+}
+
+// Task 任务相关配置
+type Task struct {
+	LogLimit         int `mapstructure:"log_limit"`          // Loki tail 日志 limit
+	TaskerTTLSeconds int `mapstructure:"tasker_ttl_seconds"` // Tasker 状态机 TTL（秒）
+}
+
+// TaskSummary 任务摘要生成配置
+type TaskSummary struct {
+	Enabled    bool   `mapstructure:"enabled"`     // 是否启用
+	Model      string `mapstructure:"model"`       // 摘要生成模型 ID
+	BaseURL    string `mapstructure:"base_url"`    // API Base URL
+	ApiKey     string `mapstructure:"api_key"`     // API Key // nolint:revive
+	Delay      int    `mapstructure:"delay"`       // 延迟时间（秒），默认 3600
+	MaxChars   int    `mapstructure:"max_chars"`   // 摘要最大字符数，默认 300
+	MaxWorkers int    `mapstructure:"max_workers"` // 最大消费者数量，默认 5
+}
+
+// Loki Loki 日志配置
+type Loki struct {
+	Addr string `mapstructure:"addr"` // Loki 服务地址
+}
+
+// LLM 大语言模型配置
+type LLM struct {
+	BaseURL       string `mapstructure:"base_url"`
+	APIKey        string `mapstructure:"api_key"`
+	Model         string `mapstructure:"model"`
+	InterfaceType string `mapstructure:"interface_type"` // openai_chat, openai_responses, anthropic
+}
+
+// Notify 通知配置
+type Notify struct {
+	VMExpireWarningMinutes int `mapstructure:"vm_expire_warning_minutes"` // VM 过期预警时间（分钟）
 }
 
 type Session struct {

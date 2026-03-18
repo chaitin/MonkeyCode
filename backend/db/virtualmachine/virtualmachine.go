@@ -69,6 +69,10 @@ const (
 	EdgeModel = "model"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeTasks holds the string denoting the tasks edge name in mutations.
+	EdgeTasks = "tasks"
+	// EdgeTaskVms holds the string denoting the task_vms edge name in mutations.
+	EdgeTaskVms = "task_vms"
 	// Table holds the table name of the virtualmachine in the database.
 	Table = "virtualmachines"
 	// HostTable is the table that holds the host relation/edge.
@@ -92,6 +96,18 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
+	// TasksTable is the table that holds the tasks relation/edge. The primary key declared below.
+	TasksTable = "task_virtualmachines"
+	// TasksInverseTable is the table name for the Task entity.
+	// It exists in this package in order to avoid circular dependency with the "task" package.
+	TasksInverseTable = "tasks"
+	// TaskVmsTable is the table that holds the task_vms relation/edge.
+	TaskVmsTable = "task_virtualmachines"
+	// TaskVmsInverseTable is the table name for the TaskVirtualMachine entity.
+	// It exists in this package in order to avoid circular dependency with the "taskvirtualmachine" package.
+	TaskVmsInverseTable = "task_virtualmachines"
+	// TaskVmsColumn is the table column denoting the task_vms relation/edge.
+	TaskVmsColumn = "virtualmachine_id"
 )
 
 // Columns holds all SQL columns for virtualmachine fields.
@@ -122,6 +138,12 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
+
+var (
+	// TasksPrimaryKey and TasksColumn2 are the table columns denoting the
+	// primary key for the tasks relation (M2M).
+	TasksPrimaryKey = []string{"virtualmachine_id", "task_id"}
+)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -290,6 +312,34 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByTasksCount orders the results by tasks count.
+func ByTasksCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTasksStep(), opts...)
+	}
+}
+
+// ByTasks orders the results by tasks terms.
+func ByTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByTaskVmsCount orders the results by task_vms count.
+func ByTaskVmsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTaskVmsStep(), opts...)
+	}
+}
+
+// ByTaskVms orders the results by task_vms terms.
+func ByTaskVms(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTaskVmsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newHostStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -309,5 +359,19 @@ func newUserStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newTasksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TasksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, TasksTable, TasksPrimaryKey...),
+	)
+}
+func newTaskVmsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TaskVmsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, TaskVmsTable, TaskVmsColumn),
 	)
 }

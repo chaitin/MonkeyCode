@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -35,6 +36,7 @@ type ModelQuery struct {
 	withTeams           *TeamQuery
 	withGroups          *TeamGroupQuery
 	withVms             *VirtualMachineQuery
+	withProjectTasks    *ProjectTaskQuery
 	withTeamModels      *TeamModelQuery
 	withTeamGroupModels *TeamGroupModelQuery
 	modifiers           []func(*sql.Selector)
@@ -155,6 +157,28 @@ func (_q *ModelQuery) QueryVms() *VirtualMachineQuery {
 			sqlgraph.From(model.Table, model.FieldID, selector),
 			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, model.VmsTable, model.VmsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjectTasks chains the current query on the "project_tasks" edge.
+func (_q *ModelQuery) QueryProjectTasks() *ProjectTaskQuery {
+	query := (&ProjectTaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, selector),
+			sqlgraph.To(projecttask.Table, projecttask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.ProjectTasksTable, model.ProjectTasksColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -402,6 +426,7 @@ func (_q *ModelQuery) Clone() *ModelQuery {
 		withTeams:           _q.withTeams.Clone(),
 		withGroups:          _q.withGroups.Clone(),
 		withVms:             _q.withVms.Clone(),
+		withProjectTasks:    _q.withProjectTasks.Clone(),
 		withTeamModels:      _q.withTeamModels.Clone(),
 		withTeamGroupModels: _q.withTeamGroupModels.Clone(),
 		// clone intermediate query.
@@ -452,6 +477,17 @@ func (_q *ModelQuery) WithVms(opts ...func(*VirtualMachineQuery)) *ModelQuery {
 		opt(query)
 	}
 	_q.withVms = query
+	return _q
+}
+
+// WithProjectTasks tells the query-builder to eager-load the nodes that are connected to
+// the "project_tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ModelQuery) WithProjectTasks(opts ...func(*ProjectTaskQuery)) *ModelQuery {
+	query := (&ProjectTaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjectTasks = query
 	return _q
 }
 
@@ -555,11 +591,12 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 	var (
 		nodes       = []*Model{}
 		_spec       = _q.querySpec()
-		loadedTypes = [6]bool{
+		loadedTypes = [7]bool{
 			_q.withUser != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
 			_q.withVms != nil,
+			_q.withProjectTasks != nil,
 			_q.withTeamModels != nil,
 			_q.withTeamGroupModels != nil,
 		}
@@ -609,6 +646,13 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 		if err := _q.loadVms(ctx, query, nodes,
 			func(n *Model) { n.Edges.Vms = []*VirtualMachine{} },
 			func(n *Model, e *VirtualMachine) { n.Edges.Vms = append(n.Edges.Vms, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjectTasks; query != nil {
+		if err := _q.loadProjectTasks(ctx, query, nodes,
+			func(n *Model) { n.Edges.ProjectTasks = []*ProjectTask{} },
+			func(n *Model, e *ProjectTask) { n.Edges.ProjectTasks = append(n.Edges.ProjectTasks, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -795,6 +839,36 @@ func (_q *ModelQuery) loadVms(ctx context.Context, query *VirtualMachineQuery, n
 	}
 	query.Where(predicate.VirtualMachine(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(model.VmsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ModelID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "model_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ModelQuery) loadProjectTasks(ctx context.Context, query *ProjectTaskQuery, nodes []*Model, init func(*Model), assign func(*Model, *ProjectTask)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Model)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projecttask.FieldModelID)
+	}
+	query.Where(predicate.ProjectTask(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(model.ProjectTasksColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
