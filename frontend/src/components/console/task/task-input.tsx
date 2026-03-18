@@ -140,14 +140,14 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   );
 
 
-  // 根据选中的仓库自动匹配身份凭证；若用户已显式选择（如从「我的仓库」选中），且该身份仍在匹配列表中，则保留用户选择
+  // 根据选中的仓库自动匹配身份凭证；若用户已显式选择（如从「我的仓库」选中、或选择「匿名」），且该身份仍在匹配列表中，则保留用户选择
   useEffect(() => {
     const matchedIdentities = identities.filter((identity) => {
       return selectedRepo.startsWith(identity.base_url || '');
     });
-    const userChoiceStillValid = matchedIdentities.some((id) => id.id === selectedIdentityId);
+    const userChoiceStillValid = selectedIdentityId === "none" || matchedIdentities.some((id) => id.id === selectedIdentityId);
     if (!userChoiceStillValid) {
-      setSelectedIdentityId(matchedIdentities[0]?.id || "");
+      setSelectedIdentityId(matchedIdentities[0]?.id || "none");
     }
   }, [selectedRepo, identities, selectedIdentityId])
 
@@ -270,7 +270,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     await apiRequest('v1UsersTasksCreate', {
       cli_name: ConstsCliName.CliNameOpencode,
       content: taskContent,
-      git_identity_id: selectedIdentityId || undefined,
+      git_identity_id: (selectedIdentityId && selectedIdentityId !== "none") ? selectedIdentityId : undefined,
       host_id: selectedHostId,
       image_id: selectedImageId,
       model_id: selectedModelId,
@@ -791,11 +791,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
               <Field>
                 <FieldLabel>仓库身份凭证</FieldLabel>
                 <FieldContent>
-                  <Select value={selectedIdentityId} onValueChange={setSelectedIdentityId}>
+                  <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="选择身份" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">匿名</SelectItem>
                       {identities.filter((identity) => selectedRepo.startsWith(identity.base_url || '')).length > 0 ? (
                         identities.filter((identity) => selectedRepo.startsWith(identity.base_url || '')).map((identity) => (
                           <SelectItem key={identity.id} value={identity.id as string}>
