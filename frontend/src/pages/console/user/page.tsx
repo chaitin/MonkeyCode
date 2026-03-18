@@ -182,7 +182,7 @@ function UserConsoleContent() {
             </div>
           </header>
           <div className="flex h-full w-full flex-col gap-4 pb-4 overflow-y-hidden">
-            <div className="h-full w-full px-4 overflow-y-auto">
+            <div className="h-full w-full min-w-0 px-4 overflow-x-hidden overflow-y-auto">
               <Outlet/>
             </div>
           </div>
