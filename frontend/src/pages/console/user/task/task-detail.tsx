@@ -262,11 +262,6 @@ export default function TaskDetailPage() {
 
   const chatSection = (
     <div className={cn("flex flex-col h-full min-h-0 gap-2", hasPanel ? "max-w-full" : "")}>
-      {plan && plan.entries.length > 0 && (
-        <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
-          <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
-        </div>
-      )}
       <div ref={chatScrollRef} className={cn("flex-1 min-h-0 overflow-y-auto min-w-0", !hasPanel && "scrollbar-gutter-stable")}>
         <div className={cn("min-h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
           <TaskChatPanel
@@ -289,6 +284,11 @@ export default function TaskDetailPage() {
           />
         </div>
       </div>
+      {plan && plan.entries.length > 0 && (
+        <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
+          <PlanStepsBlock plan={plan} streamStatus={streamStatus} />
+        </div>
+      )}
       <div ref={chatInputRefCallback} className={cn("shrink-0 bg-background w-full", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")} />
       <div className="shrink-0 bg-background">
         <div className={cn("flex flex-col gap-2", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
