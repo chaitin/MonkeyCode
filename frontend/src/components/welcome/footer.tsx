@@ -68,8 +68,21 @@ const Footer = () => {
           </div>
         ))}
         <div className="flex flex-col gap-4">
-          <h3 className="text-background leading-8">微信交流群</h3>
-          <img src="/wechat.png" className="size-30 rounded-sm" />
+          <h3 className="text-background leading-8">技术交流群</h3>
+          <div className="flex flex-wrap gap-4">
+            <div className="flex flex-col items-center gap-2">
+              <img src="/wechat.png" className="size-30 rounded-sm" alt="微信二维码" />
+              <span className="text-background/70 text-xs">微信群</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <img src="/feishu.png" className="size-30 rounded-sm" alt="飞书群二维码" />
+              <span className="text-background/70 text-xs">飞书群</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <img src="/dingtalk.png" className="size-30 rounded-sm" alt="钉钉群二维码" />
+              <span className="text-background/70 text-xs">钉钉群</span>
+            </div>
+          </div>
         </div>
       </div>
     </footer>

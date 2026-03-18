@@ -136,17 +136,38 @@ function UserConsoleContent() {
                 <HoverCardTrigger asChild>
                   <Button className="hidden lg:flex" variant="ghost" size="sm">
                     <Users className="h-[1.2rem] w-[1.2rem]" />
-                    微信交流群
+                    技术交流群
                   </Button>
                 </HoverCardTrigger>
                 <HoverCardContent className="w-auto p-4" align="center">
-                  <div className="flex flex-col items-center gap-2">
-                    <p className="text-sm font-medium">扫码加入微信技术交流群</p>
-                    <img
-                      src="/wechat.png"
-                      alt="微信二维码"
-                      className="w-40 h-40 rounded-md"
-                    />
+                  <div className="flex flex-col items-center gap-4">
+                    <p className="text-sm font-medium">扫码加入技术交流群</p>
+                    <div className="flex flex-wrap justify-center gap-6">
+                      <div className="flex flex-col items-center gap-2">
+                        <img
+                          src="/wechat.png"
+                          alt="微信二维码"
+                          className="w-32 h-32 rounded-md"
+                        />
+                        <span className="text-xs text-muted-foreground">微信群</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-2">
+                        <img
+                          src="/feishu.png"
+                          alt="飞书群二维码"
+                          className="w-32 h-32 rounded-md"
+                        />
+                        <span className="text-xs text-muted-foreground">飞书群</span>
+                      </div>
+                      <div className="flex flex-col items-center gap-2">
+                        <img
+                          src="/dingtalk.png"
+                          alt="钉钉群二维码"
+                          className="w-32 h-32 rounded-md"
+                        />
+                        <span className="text-xs text-muted-foreground">钉钉群</span>
+                      </div>
+                    </div>
                   </div>
                 </HoverCardContent>
               </HoverCard>
