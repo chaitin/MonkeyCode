@@ -12,7 +12,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge, getOwnerTypeBadge, selectHost, selectImage, selectModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -100,11 +100,18 @@ export default function StartDevelopTaskDialog({
     }
   }
 
+  const prevOpenRef = useRef(false)
   useEffect(() => {
     if (open) {
+      const justOpened = !prevOpenRef.current
+      prevOpenRef.current = true
+      if (justOpened) {
+        setUserMessage('')
+        setSelectedModelId(selectModel(modelsWithEconomy, true))
+      }
       fetchBranches()
-      setUserMessage('')
-      setSelectedModelId(selectModel(modelsWithEconomy, true))
+    } else {
+      prevOpenRef.current = false
     }
   }, [open, project, modelsWithEconomy])
 
