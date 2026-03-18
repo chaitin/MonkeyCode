@@ -15,6 +15,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
@@ -362,6 +364,36 @@ func (_c *VirtualMachineCreate) SetUser(v *User) *VirtualMachineCreate {
 	return _c.SetUserID(v.ID)
 }
 
+// AddTaskIDs adds the "tasks" edge to the Task entity by IDs.
+func (_c *VirtualMachineCreate) AddTaskIDs(ids ...uuid.UUID) *VirtualMachineCreate {
+	_c.mutation.AddTaskIDs(ids...)
+	return _c
+}
+
+// AddTasks adds the "tasks" edges to the Task entity.
+func (_c *VirtualMachineCreate) AddTasks(v ...*Task) *VirtualMachineCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTaskIDs(ids...)
+}
+
+// AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
+func (_c *VirtualMachineCreate) AddTaskVMIDs(ids ...uuid.UUID) *VirtualMachineCreate {
+	_c.mutation.AddTaskVMIDs(ids...)
+	return _c
+}
+
+// AddTaskVms adds the "task_vms" edges to the TaskVirtualMachine entity.
+func (_c *VirtualMachineCreate) AddTaskVms(v ...*TaskVirtualMachine) *VirtualMachineCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTaskVMIDs(ids...)
+}
+
 // Mutation returns the VirtualMachineMutation object of the builder.
 func (_c *VirtualMachineCreate) Mutation() *VirtualMachineMutation {
 	return _c.mutation
@@ -602,6 +634,42 @@ func (_c *VirtualMachineCreate) createSpec() (*VirtualMachine, *sqlgraph.CreateS
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.UserID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TaskVirtualMachineCreate{config: _c.config, mutation: newTaskVirtualMachineMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TaskVmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

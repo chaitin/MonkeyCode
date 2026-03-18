@@ -901,6 +901,167 @@ func HasVmsWith(preds ...predicate.VirtualMachine) predicate.User {
 	})
 }
 
+// HasTasks applies the HasEdge predicate on the "tasks" edge.
+func HasTasks() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, TasksTable, TasksColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTasksWith applies the HasEdge predicate on the "tasks" edge with a given conditions (other predicates).
+func HasTasksWith(preds ...predicate.Task) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newTasksStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGitIdentities applies the HasEdge predicate on the "git_identities" edge.
+func HasGitIdentities() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, GitIdentitiesTable, GitIdentitiesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitIdentitiesWith applies the HasEdge predicate on the "git_identities" edge with a given conditions (other predicates).
+func HasGitIdentitiesWith(preds ...predicate.GitIdentity) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newGitIdentitiesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProjects applies the HasEdge predicate on the "projects" edge.
+func HasProjects() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ProjectsTable, ProjectsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectsWith applies the HasEdge predicate on the "projects" edge with a given conditions (other predicates).
+func HasProjectsWith(preds ...predicate.Project) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newProjectsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProjectIssues applies the HasEdge predicate on the "project_issues" edge.
+func HasProjectIssues() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ProjectIssuesTable, ProjectIssuesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectIssuesWith applies the HasEdge predicate on the "project_issues" edge with a given conditions (other predicates).
+func HasProjectIssuesWith(preds ...predicate.ProjectIssue) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newProjectIssuesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasAssignedIssues applies the HasEdge predicate on the "assigned_issues" edge.
+func HasAssignedIssues() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, AssignedIssuesTable, AssignedIssuesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAssignedIssuesWith applies the HasEdge predicate on the "assigned_issues" edge with a given conditions (other predicates).
+func HasAssignedIssuesWith(preds ...predicate.ProjectIssue) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newAssignedIssuesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProjectCollaborators applies the HasEdge predicate on the "project_collaborators" edge.
+func HasProjectCollaborators() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ProjectCollaboratorsTable, ProjectCollaboratorsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectCollaboratorsWith applies the HasEdge predicate on the "project_collaborators" edge with a given conditions (other predicates).
+func HasProjectCollaboratorsWith(preds ...predicate.ProjectCollaborator) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newProjectCollaboratorsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProjectIssueComments applies the HasEdge predicate on the "project_issue_comments" edge.
+func HasProjectIssueComments() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ProjectIssueCommentsTable, ProjectIssueCommentsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectIssueCommentsWith applies the HasEdge predicate on the "project_issue_comments" edge with a given conditions (other predicates).
+func HasProjectIssueCommentsWith(preds ...predicate.ProjectIssueComment) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newProjectIssueCommentsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamMembers applies the HasEdge predicate on the "team_members" edge.
 func HasTeamMembers() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

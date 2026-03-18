@@ -15,6 +15,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
@@ -519,6 +521,36 @@ func (_u *VirtualMachineUpdate) SetUser(v *User) *VirtualMachineUpdate {
 	return _u.SetUserID(v.ID)
 }
 
+// AddTaskIDs adds the "tasks" edge to the Task entity by IDs.
+func (_u *VirtualMachineUpdate) AddTaskIDs(ids ...uuid.UUID) *VirtualMachineUpdate {
+	_u.mutation.AddTaskIDs(ids...)
+	return _u
+}
+
+// AddTasks adds the "tasks" edges to the Task entity.
+func (_u *VirtualMachineUpdate) AddTasks(v ...*Task) *VirtualMachineUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTaskIDs(ids...)
+}
+
+// AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
+func (_u *VirtualMachineUpdate) AddTaskVMIDs(ids ...uuid.UUID) *VirtualMachineUpdate {
+	_u.mutation.AddTaskVMIDs(ids...)
+	return _u
+}
+
+// AddTaskVms adds the "task_vms" edges to the TaskVirtualMachine entity.
+func (_u *VirtualMachineUpdate) AddTaskVms(v ...*TaskVirtualMachine) *VirtualMachineUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTaskVMIDs(ids...)
+}
+
 // Mutation returns the VirtualMachineMutation object of the builder.
 func (_u *VirtualMachineUpdate) Mutation() *VirtualMachineMutation {
 	return _u.mutation
@@ -540,6 +572,48 @@ func (_u *VirtualMachineUpdate) ClearModel() *VirtualMachineUpdate {
 func (_u *VirtualMachineUpdate) ClearUser() *VirtualMachineUpdate {
 	_u.mutation.ClearUser()
 	return _u
+}
+
+// ClearTasks clears all "tasks" edges to the Task entity.
+func (_u *VirtualMachineUpdate) ClearTasks() *VirtualMachineUpdate {
+	_u.mutation.ClearTasks()
+	return _u
+}
+
+// RemoveTaskIDs removes the "tasks" edge to Task entities by IDs.
+func (_u *VirtualMachineUpdate) RemoveTaskIDs(ids ...uuid.UUID) *VirtualMachineUpdate {
+	_u.mutation.RemoveTaskIDs(ids...)
+	return _u
+}
+
+// RemoveTasks removes "tasks" edges to Task entities.
+func (_u *VirtualMachineUpdate) RemoveTasks(v ...*Task) *VirtualMachineUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTaskIDs(ids...)
+}
+
+// ClearTaskVms clears all "task_vms" edges to the TaskVirtualMachine entity.
+func (_u *VirtualMachineUpdate) ClearTaskVms() *VirtualMachineUpdate {
+	_u.mutation.ClearTaskVms()
+	return _u
+}
+
+// RemoveTaskVMIDs removes the "task_vms" edge to TaskVirtualMachine entities by IDs.
+func (_u *VirtualMachineUpdate) RemoveTaskVMIDs(ids ...uuid.UUID) *VirtualMachineUpdate {
+	_u.mutation.RemoveTaskVMIDs(ids...)
+	return _u
+}
+
+// RemoveTaskVms removes "task_vms" edges to TaskVirtualMachine entities.
+func (_u *VirtualMachineUpdate) RemoveTaskVms(v ...*TaskVirtualMachine) *VirtualMachineUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTaskVMIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -801,6 +875,108 @@ func (_u *VirtualMachineUpdate) sqlSave(ctx context.Context) (_node int, err err
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TaskVirtualMachineCreate{config: _u.config, mutation: newTaskVirtualMachineMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTasksIDs(); len(nodes) > 0 && !_u.mutation.TasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TaskVirtualMachineCreate{config: _u.config, mutation: newTaskVirtualMachineMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TaskVirtualMachineCreate{config: _u.config, mutation: newTaskVirtualMachineMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TaskVmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTaskVmsIDs(); len(nodes) > 0 && !_u.mutation.TaskVmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TaskVmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1314,6 +1490,36 @@ func (_u *VirtualMachineUpdateOne) SetUser(v *User) *VirtualMachineUpdateOne {
 	return _u.SetUserID(v.ID)
 }
 
+// AddTaskIDs adds the "tasks" edge to the Task entity by IDs.
+func (_u *VirtualMachineUpdateOne) AddTaskIDs(ids ...uuid.UUID) *VirtualMachineUpdateOne {
+	_u.mutation.AddTaskIDs(ids...)
+	return _u
+}
+
+// AddTasks adds the "tasks" edges to the Task entity.
+func (_u *VirtualMachineUpdateOne) AddTasks(v ...*Task) *VirtualMachineUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTaskIDs(ids...)
+}
+
+// AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
+func (_u *VirtualMachineUpdateOne) AddTaskVMIDs(ids ...uuid.UUID) *VirtualMachineUpdateOne {
+	_u.mutation.AddTaskVMIDs(ids...)
+	return _u
+}
+
+// AddTaskVms adds the "task_vms" edges to the TaskVirtualMachine entity.
+func (_u *VirtualMachineUpdateOne) AddTaskVms(v ...*TaskVirtualMachine) *VirtualMachineUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTaskVMIDs(ids...)
+}
+
 // Mutation returns the VirtualMachineMutation object of the builder.
 func (_u *VirtualMachineUpdateOne) Mutation() *VirtualMachineMutation {
 	return _u.mutation
@@ -1335,6 +1541,48 @@ func (_u *VirtualMachineUpdateOne) ClearModel() *VirtualMachineUpdateOne {
 func (_u *VirtualMachineUpdateOne) ClearUser() *VirtualMachineUpdateOne {
 	_u.mutation.ClearUser()
 	return _u
+}
+
+// ClearTasks clears all "tasks" edges to the Task entity.
+func (_u *VirtualMachineUpdateOne) ClearTasks() *VirtualMachineUpdateOne {
+	_u.mutation.ClearTasks()
+	return _u
+}
+
+// RemoveTaskIDs removes the "tasks" edge to Task entities by IDs.
+func (_u *VirtualMachineUpdateOne) RemoveTaskIDs(ids ...uuid.UUID) *VirtualMachineUpdateOne {
+	_u.mutation.RemoveTaskIDs(ids...)
+	return _u
+}
+
+// RemoveTasks removes "tasks" edges to Task entities.
+func (_u *VirtualMachineUpdateOne) RemoveTasks(v ...*Task) *VirtualMachineUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTaskIDs(ids...)
+}
+
+// ClearTaskVms clears all "task_vms" edges to the TaskVirtualMachine entity.
+func (_u *VirtualMachineUpdateOne) ClearTaskVms() *VirtualMachineUpdateOne {
+	_u.mutation.ClearTaskVms()
+	return _u
+}
+
+// RemoveTaskVMIDs removes the "task_vms" edge to TaskVirtualMachine entities by IDs.
+func (_u *VirtualMachineUpdateOne) RemoveTaskVMIDs(ids ...uuid.UUID) *VirtualMachineUpdateOne {
+	_u.mutation.RemoveTaskVMIDs(ids...)
+	return _u
+}
+
+// RemoveTaskVms removes "task_vms" edges to TaskVirtualMachine entities.
+func (_u *VirtualMachineUpdateOne) RemoveTaskVms(v ...*TaskVirtualMachine) *VirtualMachineUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTaskVMIDs(ids...)
 }
 
 // Where appends a list predicates to the VirtualMachineUpdate builder.
@@ -1626,6 +1874,108 @@ func (_u *VirtualMachineUpdateOne) sqlSave(ctx context.Context) (_node *VirtualM
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TaskVirtualMachineCreate{config: _u.config, mutation: newTaskVirtualMachineMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTasksIDs(); len(nodes) > 0 && !_u.mutation.TasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TaskVirtualMachineCreate{config: _u.config, mutation: newTaskVirtualMachineMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   virtualmachine.TasksTable,
+			Columns: virtualmachine.TasksPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TaskVirtualMachineCreate{config: _u.config, mutation: newTaskVirtualMachineMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TaskVmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTaskVmsIDs(); len(nodes) > 0 && !_u.mutation.TaskVmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TaskVmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   virtualmachine.TaskVmsTable,
+			Columns: []string{virtualmachine.TaskVmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskvirtualmachine.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

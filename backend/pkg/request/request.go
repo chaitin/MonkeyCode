@@ -178,6 +178,52 @@ func Delete[T any](c *Client, ctx context.Context, path string, opts ...Opt) (*T
 	return sendRequest[T](c, http.MethodDelete, path, opts...)
 }
 
+// PostURL 向完整 URL 发送 POST 请求（无需 Client 实例）
+func PostURL[T any](ctx context.Context, rawURL string, body any, opts ...Opt) (*T, error) {
+	c := &Ctx{}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	var reader io.Reader
+	if body != nil {
+		bs, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewBuffer(bs)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, reader)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range c.header {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
+	}
+
+	var rr T
+	if err := json.Unmarshal(b, &rr); err != nil {
+		return nil, fmt.Errorf("request err: %s body: %s", err.Error(), string(b))
+	}
+	return &rr, nil
+}
+
 // GetHeaderMap 解析 header 字符串为 map
 // 格式: "Key1=Value1\nKey2=Value2"
 func GetHeaderMap(header string) map[string]string {

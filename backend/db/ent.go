@@ -13,9 +13,20 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
+	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
+	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
@@ -89,23 +100,34 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			audit.Table:           audit.ValidColumn,
-			host.Table:            host.ValidColumn,
-			image.Table:           image.ValidColumn,
-			model.Table:           model.ValidColumn,
-			team.Table:            team.ValidColumn,
-			teamgroup.Table:       teamgroup.ValidColumn,
-			teamgrouphost.Table:   teamgrouphost.ValidColumn,
-			teamgroupimage.Table:  teamgroupimage.ValidColumn,
-			teamgroupmember.Table: teamgroupmember.ValidColumn,
-			teamgroupmodel.Table:  teamgroupmodel.ValidColumn,
-			teamhost.Table:        teamhost.ValidColumn,
-			teamimage.Table:       teamimage.ValidColumn,
-			teammember.Table:      teammember.ValidColumn,
-			teammodel.Table:       teammodel.ValidColumn,
-			user.Table:            user.ValidColumn,
-			useridentity.Table:    useridentity.ValidColumn,
-			virtualmachine.Table:  virtualmachine.ValidColumn,
+			audit.Table:               audit.ValidColumn,
+			gitidentity.Table:         gitidentity.ValidColumn,
+			host.Table:                host.ValidColumn,
+			image.Table:               image.ValidColumn,
+			model.Table:               model.ValidColumn,
+			notifychannel.Table:       notifychannel.ValidColumn,
+			notifysendlog.Table:       notifysendlog.ValidColumn,
+			notifysubscription.Table:  notifysubscription.ValidColumn,
+			project.Table:             project.ValidColumn,
+			projectcollaborator.Table: projectcollaborator.ValidColumn,
+			projectissue.Table:        projectissue.ValidColumn,
+			projectissuecomment.Table: projectissuecomment.ValidColumn,
+			projecttask.Table:         projecttask.ValidColumn,
+			task.Table:                task.ValidColumn,
+			taskvirtualmachine.Table:  taskvirtualmachine.ValidColumn,
+			team.Table:                team.ValidColumn,
+			teamgroup.Table:           teamgroup.ValidColumn,
+			teamgrouphost.Table:       teamgrouphost.ValidColumn,
+			teamgroupimage.Table:      teamgroupimage.ValidColumn,
+			teamgroupmember.Table:     teamgroupmember.ValidColumn,
+			teamgroupmodel.Table:      teamgroupmodel.ValidColumn,
+			teamhost.Table:            teamhost.ValidColumn,
+			teamimage.Table:           teamimage.ValidColumn,
+			teammember.Table:          teammember.ValidColumn,
+			teammodel.Table:           teammodel.ValidColumn,
+			user.Table:                user.ValidColumn,
+			useridentity.Table:        useridentity.ValidColumn,
+			virtualmachine.Table:      virtualmachine.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

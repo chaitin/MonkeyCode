@@ -86,9 +86,13 @@ type VirtualMachineEdges struct {
 	Model *Model `json:"model,omitempty"`
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
+	// Tasks holds the value of the tasks edge.
+	Tasks []*Task `json:"tasks,omitempty"`
+	// TaskVms holds the value of the task_vms edge.
+	TaskVms []*TaskVirtualMachine `json:"task_vms,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [5]bool
 }
 
 // HostOrErr returns the Host value or an error if the edge
@@ -122,6 +126,24 @@ func (e VirtualMachineEdges) UserOrErr() (*User, error) {
 		return nil, &NotFoundError{label: user.Label}
 	}
 	return nil, &NotLoadedError{edge: "user"}
+}
+
+// TasksOrErr returns the Tasks value or an error if the edge
+// was not loaded in eager-loading.
+func (e VirtualMachineEdges) TasksOrErr() ([]*Task, error) {
+	if e.loadedTypes[3] {
+		return e.Tasks, nil
+	}
+	return nil, &NotLoadedError{edge: "tasks"}
+}
+
+// TaskVmsOrErr returns the TaskVms value or an error if the edge
+// was not loaded in eager-loading.
+func (e VirtualMachineEdges) TaskVmsOrErr() ([]*TaskVirtualMachine, error) {
+	if e.loadedTypes[4] {
+		return e.TaskVms, nil
+	}
+	return nil, &NotLoadedError{edge: "task_vms"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -334,6 +356,16 @@ func (_m *VirtualMachine) QueryModel() *ModelQuery {
 // QueryUser queries the "user" edge of the VirtualMachine entity.
 func (_m *VirtualMachine) QueryUser() *UserQuery {
 	return NewVirtualMachineClient(_m.config).QueryUser(_m)
+}
+
+// QueryTasks queries the "tasks" edge of the VirtualMachine entity.
+func (_m *VirtualMachine) QueryTasks() *TaskQuery {
+	return NewVirtualMachineClient(_m.config).QueryTasks(_m)
+}
+
+// QueryTaskVms queries the "task_vms" edge of the VirtualMachine entity.
+func (_m *VirtualMachine) QueryTaskVms() *TaskVirtualMachineQuery {
+	return NewVirtualMachineClient(_m.config).QueryTaskVms(_m)
 }
 
 // Update returns a builder for updating this VirtualMachine.

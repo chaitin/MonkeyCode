@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -344,6 +345,21 @@ func (_u *ModelUpdate) AddVms(v ...*VirtualMachine) *ModelUpdate {
 	return _u.AddVMIDs(ids...)
 }
 
+// AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by IDs.
+func (_u *ModelUpdate) AddProjectTaskIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.AddProjectTaskIDs(ids...)
+	return _u
+}
+
+// AddProjectTasks adds the "project_tasks" edges to the ProjectTask entity.
+func (_u *ModelUpdate) AddProjectTasks(v ...*ProjectTask) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddProjectTaskIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdate) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdate {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -446,6 +462,27 @@ func (_u *ModelUpdate) RemoveVms(v ...*VirtualMachine) *ModelUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveVMIDs(ids...)
+}
+
+// ClearProjectTasks clears all "project_tasks" edges to the ProjectTask entity.
+func (_u *ModelUpdate) ClearProjectTasks() *ModelUpdate {
+	_u.mutation.ClearProjectTasks()
+	return _u
+}
+
+// RemoveProjectTaskIDs removes the "project_tasks" edge to ProjectTask entities by IDs.
+func (_u *ModelUpdate) RemoveProjectTaskIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.RemoveProjectTaskIDs(ids...)
+	return _u
+}
+
+// RemoveProjectTasks removes "project_tasks" edges to ProjectTask entities.
+func (_u *ModelUpdate) RemoveProjectTasks(v ...*ProjectTask) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveProjectTaskIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -828,6 +865,51 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedProjectTasksIDs(); len(nodes) > 0 && !_u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1255,6 +1337,21 @@ func (_u *ModelUpdateOne) AddVms(v ...*VirtualMachine) *ModelUpdateOne {
 	return _u.AddVMIDs(ids...)
 }
 
+// AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by IDs.
+func (_u *ModelUpdateOne) AddProjectTaskIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.AddProjectTaskIDs(ids...)
+	return _u
+}
+
+// AddProjectTasks adds the "project_tasks" edges to the ProjectTask entity.
+func (_u *ModelUpdateOne) AddProjectTasks(v ...*ProjectTask) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddProjectTaskIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdateOne) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdateOne {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -1357,6 +1454,27 @@ func (_u *ModelUpdateOne) RemoveVms(v ...*VirtualMachine) *ModelUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveVMIDs(ids...)
+}
+
+// ClearProjectTasks clears all "project_tasks" edges to the ProjectTask entity.
+func (_u *ModelUpdateOne) ClearProjectTasks() *ModelUpdateOne {
+	_u.mutation.ClearProjectTasks()
+	return _u
+}
+
+// RemoveProjectTaskIDs removes the "project_tasks" edge to ProjectTask entities by IDs.
+func (_u *ModelUpdateOne) RemoveProjectTaskIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.RemoveProjectTaskIDs(ids...)
+	return _u
+}
+
+// RemoveProjectTasks removes "project_tasks" edges to ProjectTask entities.
+func (_u *ModelUpdateOne) RemoveProjectTasks(v ...*ProjectTask) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveProjectTaskIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -1769,6 +1887,51 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedProjectTasksIDs(); len(nodes) > 0 && !_u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ProjectTasksTable,
+			Columns: []string{model.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

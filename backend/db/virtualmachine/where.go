@@ -1671,6 +1671,52 @@ func HasUserWith(preds ...predicate.User) predicate.VirtualMachine {
 	})
 }
 
+// HasTasks applies the HasEdge predicate on the "tasks" edge.
+func HasTasks() predicate.VirtualMachine {
+	return predicate.VirtualMachine(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, TasksTable, TasksPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTasksWith applies the HasEdge predicate on the "tasks" edge with a given conditions (other predicates).
+func HasTasksWith(preds ...predicate.Task) predicate.VirtualMachine {
+	return predicate.VirtualMachine(func(s *sql.Selector) {
+		step := newTasksStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTaskVms applies the HasEdge predicate on the "task_vms" edge.
+func HasTaskVms() predicate.VirtualMachine {
+	return predicate.VirtualMachine(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, TaskVmsTable, TaskVmsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTaskVmsWith applies the HasEdge predicate on the "task_vms" edge with a given conditions (other predicates).
+func HasTaskVmsWith(preds ...predicate.TaskVirtualMachine) predicate.VirtualMachine {
+	return predicate.VirtualMachine(func(s *sql.Selector) {
+		step := newTaskVmsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.VirtualMachine) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.AndPredicates(predicates...))

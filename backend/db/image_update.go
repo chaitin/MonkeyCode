@@ -13,6 +13,8 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
@@ -158,6 +160,36 @@ func (_u *ImageUpdate) AddGroups(v ...*TeamGroup) *ImageUpdate {
 	return _u.AddGroupIDs(ids...)
 }
 
+// AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by IDs.
+func (_u *ImageUpdate) AddProjectTaskIDs(ids ...uuid.UUID) *ImageUpdate {
+	_u.mutation.AddProjectTaskIDs(ids...)
+	return _u
+}
+
+// AddProjectTasks adds the "project_tasks" edges to the ProjectTask entity.
+func (_u *ImageUpdate) AddProjectTasks(v ...*ProjectTask) *ImageUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddProjectTaskIDs(ids...)
+}
+
+// AddProjectIDs adds the "projects" edge to the Project entity by IDs.
+func (_u *ImageUpdate) AddProjectIDs(ids ...uuid.UUID) *ImageUpdate {
+	_u.mutation.AddProjectIDs(ids...)
+	return _u
+}
+
+// AddProjects adds the "projects" edges to the Project entity.
+func (_u *ImageUpdate) AddProjects(v ...*Project) *ImageUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddProjectIDs(ids...)
+}
+
 // AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
 func (_u *ImageUpdate) AddTeamImageIDs(ids ...uuid.UUID) *ImageUpdate {
 	_u.mutation.AddTeamImageIDs(ids...)
@@ -239,6 +271,48 @@ func (_u *ImageUpdate) RemoveGroups(v ...*TeamGroup) *ImageUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGroupIDs(ids...)
+}
+
+// ClearProjectTasks clears all "project_tasks" edges to the ProjectTask entity.
+func (_u *ImageUpdate) ClearProjectTasks() *ImageUpdate {
+	_u.mutation.ClearProjectTasks()
+	return _u
+}
+
+// RemoveProjectTaskIDs removes the "project_tasks" edge to ProjectTask entities by IDs.
+func (_u *ImageUpdate) RemoveProjectTaskIDs(ids ...uuid.UUID) *ImageUpdate {
+	_u.mutation.RemoveProjectTaskIDs(ids...)
+	return _u
+}
+
+// RemoveProjectTasks removes "project_tasks" edges to ProjectTask entities.
+func (_u *ImageUpdate) RemoveProjectTasks(v ...*ProjectTask) *ImageUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearProjects clears all "projects" edges to the Project entity.
+func (_u *ImageUpdate) ClearProjects() *ImageUpdate {
+	_u.mutation.ClearProjects()
+	return _u
+}
+
+// RemoveProjectIDs removes the "projects" edge to Project entities by IDs.
+func (_u *ImageUpdate) RemoveProjectIDs(ids ...uuid.UUID) *ImageUpdate {
+	_u.mutation.RemoveProjectIDs(ids...)
+	return _u
+}
+
+// RemoveProjects removes "projects" edges to Project entities.
+func (_u *ImageUpdate) RemoveProjects(v ...*Project) *ImageUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveProjectIDs(ids...)
 }
 
 // ClearTeamImages clears all "team_images" edges to the TeamImage entity.
@@ -520,6 +594,96 @@ func (_u *ImageUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectTasksTable,
+			Columns: []string{image.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedProjectTasksIDs(); len(nodes) > 0 && !_u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectTasksTable,
+			Columns: []string{image.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectTasksTable,
+			Columns: []string{image.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectsTable,
+			Columns: []string{image.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedProjectsIDs(); len(nodes) > 0 && !_u.mutation.ProjectsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectsTable,
+			Columns: []string{image.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectsTable,
+			Columns: []string{image.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamImagesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -755,6 +919,36 @@ func (_u *ImageUpdateOne) AddGroups(v ...*TeamGroup) *ImageUpdateOne {
 	return _u.AddGroupIDs(ids...)
 }
 
+// AddProjectTaskIDs adds the "project_tasks" edge to the ProjectTask entity by IDs.
+func (_u *ImageUpdateOne) AddProjectTaskIDs(ids ...uuid.UUID) *ImageUpdateOne {
+	_u.mutation.AddProjectTaskIDs(ids...)
+	return _u
+}
+
+// AddProjectTasks adds the "project_tasks" edges to the ProjectTask entity.
+func (_u *ImageUpdateOne) AddProjectTasks(v ...*ProjectTask) *ImageUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddProjectTaskIDs(ids...)
+}
+
+// AddProjectIDs adds the "projects" edge to the Project entity by IDs.
+func (_u *ImageUpdateOne) AddProjectIDs(ids ...uuid.UUID) *ImageUpdateOne {
+	_u.mutation.AddProjectIDs(ids...)
+	return _u
+}
+
+// AddProjects adds the "projects" edges to the Project entity.
+func (_u *ImageUpdateOne) AddProjects(v ...*Project) *ImageUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddProjectIDs(ids...)
+}
+
 // AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
 func (_u *ImageUpdateOne) AddTeamImageIDs(ids ...uuid.UUID) *ImageUpdateOne {
 	_u.mutation.AddTeamImageIDs(ids...)
@@ -836,6 +1030,48 @@ func (_u *ImageUpdateOne) RemoveGroups(v ...*TeamGroup) *ImageUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGroupIDs(ids...)
+}
+
+// ClearProjectTasks clears all "project_tasks" edges to the ProjectTask entity.
+func (_u *ImageUpdateOne) ClearProjectTasks() *ImageUpdateOne {
+	_u.mutation.ClearProjectTasks()
+	return _u
+}
+
+// RemoveProjectTaskIDs removes the "project_tasks" edge to ProjectTask entities by IDs.
+func (_u *ImageUpdateOne) RemoveProjectTaskIDs(ids ...uuid.UUID) *ImageUpdateOne {
+	_u.mutation.RemoveProjectTaskIDs(ids...)
+	return _u
+}
+
+// RemoveProjectTasks removes "project_tasks" edges to ProjectTask entities.
+func (_u *ImageUpdateOne) RemoveProjectTasks(v ...*ProjectTask) *ImageUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearProjects clears all "projects" edges to the Project entity.
+func (_u *ImageUpdateOne) ClearProjects() *ImageUpdateOne {
+	_u.mutation.ClearProjects()
+	return _u
+}
+
+// RemoveProjectIDs removes the "projects" edge to Project entities by IDs.
+func (_u *ImageUpdateOne) RemoveProjectIDs(ids ...uuid.UUID) *ImageUpdateOne {
+	_u.mutation.RemoveProjectIDs(ids...)
+	return _u
+}
+
+// RemoveProjects removes "projects" edges to Project entities.
+func (_u *ImageUpdateOne) RemoveProjects(v ...*Project) *ImageUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveProjectIDs(ids...)
 }
 
 // ClearTeamImages clears all "team_images" edges to the TeamImage entity.
@@ -1145,6 +1381,96 @@ func (_u *ImageUpdateOne) sqlSave(ctx context.Context) (_node *Image, err error)
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectTasksTable,
+			Columns: []string{image.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedProjectTasksIDs(); len(nodes) > 0 && !_u.mutation.ProjectTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectTasksTable,
+			Columns: []string{image.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectTasksTable,
+			Columns: []string{image.ProjectTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectsTable,
+			Columns: []string{image.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedProjectsIDs(); len(nodes) > 0 && !_u.mutation.ProjectsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectsTable,
+			Columns: []string{image.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ProjectsTable,
+			Columns: []string{image.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TeamImagesCleared() {

@@ -21,6 +21,18 @@ func (f AuditFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AuditMutation", m)
 }
 
+// The GitIdentityFunc type is an adapter to allow the use of ordinary
+// function as GitIdentity mutator.
+type GitIdentityFunc func(context.Context, *db.GitIdentityMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GitIdentityFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.GitIdentityMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.GitIdentityMutation", m)
+}
+
 // The HostFunc type is an adapter to allow the use of ordinary
 // function as Host mutator.
 type HostFunc func(context.Context, *db.HostMutation) (db.Value, error)
@@ -55,6 +67,126 @@ func (f ModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ModelMutation", m)
+}
+
+// The NotifyChannelFunc type is an adapter to allow the use of ordinary
+// function as NotifyChannel mutator.
+type NotifyChannelFunc func(context.Context, *db.NotifyChannelMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotifyChannelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.NotifyChannelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.NotifyChannelMutation", m)
+}
+
+// The NotifySendLogFunc type is an adapter to allow the use of ordinary
+// function as NotifySendLog mutator.
+type NotifySendLogFunc func(context.Context, *db.NotifySendLogMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotifySendLogFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.NotifySendLogMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.NotifySendLogMutation", m)
+}
+
+// The NotifySubscriptionFunc type is an adapter to allow the use of ordinary
+// function as NotifySubscription mutator.
+type NotifySubscriptionFunc func(context.Context, *db.NotifySubscriptionMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotifySubscriptionFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.NotifySubscriptionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.NotifySubscriptionMutation", m)
+}
+
+// The ProjectFunc type is an adapter to allow the use of ordinary
+// function as Project mutator.
+type ProjectFunc func(context.Context, *db.ProjectMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProjectFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ProjectMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectMutation", m)
+}
+
+// The ProjectCollaboratorFunc type is an adapter to allow the use of ordinary
+// function as ProjectCollaborator mutator.
+type ProjectCollaboratorFunc func(context.Context, *db.ProjectCollaboratorMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProjectCollaboratorFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ProjectCollaboratorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectCollaboratorMutation", m)
+}
+
+// The ProjectIssueFunc type is an adapter to allow the use of ordinary
+// function as ProjectIssue mutator.
+type ProjectIssueFunc func(context.Context, *db.ProjectIssueMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProjectIssueFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ProjectIssueMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectIssueMutation", m)
+}
+
+// The ProjectIssueCommentFunc type is an adapter to allow the use of ordinary
+// function as ProjectIssueComment mutator.
+type ProjectIssueCommentFunc func(context.Context, *db.ProjectIssueCommentMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProjectIssueCommentFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ProjectIssueCommentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectIssueCommentMutation", m)
+}
+
+// The ProjectTaskFunc type is an adapter to allow the use of ordinary
+// function as ProjectTask mutator.
+type ProjectTaskFunc func(context.Context, *db.ProjectTaskMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProjectTaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ProjectTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectTaskMutation", m)
+}
+
+// The TaskFunc type is an adapter to allow the use of ordinary
+// function as Task mutator.
+type TaskFunc func(context.Context, *db.TaskMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TaskMutation", m)
+}
+
+// The TaskVirtualMachineFunc type is an adapter to allow the use of ordinary
+// function as TaskVirtualMachine mutator.
+type TaskVirtualMachineFunc func(context.Context, *db.TaskVirtualMachineMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TaskVirtualMachineFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TaskVirtualMachineMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TaskVirtualMachineMutation", m)
 }
 
 // The TeamFunc type is an adapter to allow the use of ordinary

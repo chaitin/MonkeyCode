@@ -11,6 +11,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
+	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 )
 
 // BridgeOption 桥接可选配置
@@ -38,10 +39,38 @@ func WithPrivilegeChecker(checker domain.PrivilegeChecker) BridgeOption {
 	}
 }
 
+// WithTasker 注入外部 Tasker 实例
+func WithTasker(t *tasker.Tasker[*domain.TaskSession]) BridgeOption {
+	return func(i *do.Injector) {
+		do.OverrideValue(i, t)
+	}
+}
+
 // WithInternalHook 注入内部 handler 回调（用于 taskflow 回调中与 task 系统耦合的逻辑）
 func WithInternalHook(hook domain.InternalHook) BridgeOption {
 	return func(i *do.Injector) {
 		do.ProvideValue(i, hook)
+	}
+}
+
+// WithTaskHook 注入任务模块回调
+func WithTaskHook(hook domain.TaskHook) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, hook)
+	}
+}
+
+// WithProjectHook 注入项目模块回调
+func WithProjectHook(hook domain.ProjectHook) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, hook)
+	}
+}
+
+// WithSiteResolver 注入站点解析器
+func WithSiteResolver(resolver domain.SiteResolver) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, resolver)
 	}
 }
 

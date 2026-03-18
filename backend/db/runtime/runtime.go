@@ -5,10 +5,22 @@ package runtime
 import (
 	"time"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
+	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
+	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
@@ -35,6 +47,23 @@ func init() {
 	auditDescCreatedAt := auditFields[7].Descriptor()
 	// audit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	audit.DefaultCreatedAt = auditDescCreatedAt.Default.(func() time.Time)
+	gitidentityMixin := schema.GitIdentity{}.Mixin()
+	gitidentityMixinHooks0 := gitidentityMixin[0].Hooks()
+	gitidentity.Hooks[0] = gitidentityMixinHooks0[0]
+	gitidentityMixinInters0 := gitidentityMixin[0].Interceptors()
+	gitidentity.Interceptors[0] = gitidentityMixinInters0[0]
+	gitidentityFields := schema.GitIdentity{}.Fields()
+	_ = gitidentityFields
+	// gitidentityDescCreatedAt is the schema descriptor for created_at field.
+	gitidentityDescCreatedAt := gitidentityFields[11].Descriptor()
+	// gitidentity.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gitidentity.DefaultCreatedAt = gitidentityDescCreatedAt.Default.(func() time.Time)
+	// gitidentityDescUpdatedAt is the schema descriptor for updated_at field.
+	gitidentityDescUpdatedAt := gitidentityFields[12].Descriptor()
+	// gitidentity.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	gitidentity.DefaultUpdatedAt = gitidentityDescUpdatedAt.Default.(func() time.Time)
+	// gitidentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	gitidentity.UpdateDefaultUpdatedAt = gitidentityDescUpdatedAt.UpdateDefault.(func() time.Time)
 	hostMixin := schema.Host{}.Mixin()
 	hostMixinHooks0 := hostMixin[0].Hooks()
 	host.Hooks[0] = hostMixinHooks0[0]
@@ -114,6 +143,217 @@ func init() {
 	model.DefaultUpdatedAt = modelDescUpdatedAt.Default.(func() time.Time)
 	// model.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	model.UpdateDefaultUpdatedAt = modelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	notifychannelMixin := schema.NotifyChannel{}.Mixin()
+	notifychannelMixinHooks0 := notifychannelMixin[0].Hooks()
+	notifychannel.Hooks[0] = notifychannelMixinHooks0[0]
+	notifychannelMixinInters0 := notifychannelMixin[0].Interceptors()
+	notifychannel.Interceptors[0] = notifychannelMixinInters0[0]
+	notifychannelFields := schema.NotifyChannel{}.Fields()
+	_ = notifychannelFields
+	// notifychannelDescOwnerType is the schema descriptor for owner_type field.
+	notifychannelDescOwnerType := notifychannelFields[2].Descriptor()
+	// notifychannel.DefaultOwnerType holds the default value on creation for the owner_type field.
+	notifychannel.DefaultOwnerType = consts.NotifyOwnerType(notifychannelDescOwnerType.Default.(string))
+	// notifychannelDescName is the schema descriptor for name field.
+	notifychannelDescName := notifychannelFields[3].Descriptor()
+	// notifychannel.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	notifychannel.NameValidator = func() func(string) error {
+		validators := notifychannelDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// notifychannelDescWebhookURL is the schema descriptor for webhook_url field.
+	notifychannelDescWebhookURL := notifychannelFields[5].Descriptor()
+	// notifychannel.WebhookURLValidator is a validator for the "webhook_url" field. It is called by the builders before save.
+	notifychannel.WebhookURLValidator = notifychannelDescWebhookURL.Validators[0].(func(string) error)
+	// notifychannelDescSecret is the schema descriptor for secret field.
+	notifychannelDescSecret := notifychannelFields[6].Descriptor()
+	// notifychannel.DefaultSecret holds the default value on creation for the secret field.
+	notifychannel.DefaultSecret = notifychannelDescSecret.Default.(string)
+	// notifychannelDescEnabled is the schema descriptor for enabled field.
+	notifychannelDescEnabled := notifychannelFields[8].Descriptor()
+	// notifychannel.DefaultEnabled holds the default value on creation for the enabled field.
+	notifychannel.DefaultEnabled = notifychannelDescEnabled.Default.(bool)
+	// notifychannelDescCreatedAt is the schema descriptor for created_at field.
+	notifychannelDescCreatedAt := notifychannelFields[9].Descriptor()
+	// notifychannel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notifychannel.DefaultCreatedAt = notifychannelDescCreatedAt.Default.(func() time.Time)
+	// notifychannelDescUpdatedAt is the schema descriptor for updated_at field.
+	notifychannelDescUpdatedAt := notifychannelFields[10].Descriptor()
+	// notifychannel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notifychannel.DefaultUpdatedAt = notifychannelDescUpdatedAt.Default.(func() time.Time)
+	// notifychannel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notifychannel.UpdateDefaultUpdatedAt = notifychannelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	notifysendlogFields := schema.NotifySendLog{}.Fields()
+	_ = notifysendlogFields
+	// notifysendlogDescError is the schema descriptor for error field.
+	notifysendlogDescError := notifysendlogFields[6].Descriptor()
+	// notifysendlog.DefaultError holds the default value on creation for the error field.
+	notifysendlog.DefaultError = notifysendlogDescError.Default.(string)
+	// notifysendlogDescCreatedAt is the schema descriptor for created_at field.
+	notifysendlogDescCreatedAt := notifysendlogFields[7].Descriptor()
+	// notifysendlog.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notifysendlog.DefaultCreatedAt = notifysendlogDescCreatedAt.Default.(func() time.Time)
+	notifysubscriptionMixin := schema.NotifySubscription{}.Mixin()
+	notifysubscriptionMixinHooks0 := notifysubscriptionMixin[0].Hooks()
+	notifysubscription.Hooks[0] = notifysubscriptionMixinHooks0[0]
+	notifysubscriptionMixinInters0 := notifysubscriptionMixin[0].Interceptors()
+	notifysubscription.Interceptors[0] = notifysubscriptionMixinInters0[0]
+	notifysubscriptionFields := schema.NotifySubscription{}.Fields()
+	_ = notifysubscriptionFields
+	// notifysubscriptionDescScope is the schema descriptor for scope field.
+	notifysubscriptionDescScope := notifysubscriptionFields[2].Descriptor()
+	// notifysubscription.DefaultScope holds the default value on creation for the scope field.
+	notifysubscription.DefaultScope = notifysubscriptionDescScope.Default.(string)
+	// notifysubscriptionDescEnabled is the schema descriptor for enabled field.
+	notifysubscriptionDescEnabled := notifysubscriptionFields[4].Descriptor()
+	// notifysubscription.DefaultEnabled holds the default value on creation for the enabled field.
+	notifysubscription.DefaultEnabled = notifysubscriptionDescEnabled.Default.(bool)
+	// notifysubscriptionDescCreatedAt is the schema descriptor for created_at field.
+	notifysubscriptionDescCreatedAt := notifysubscriptionFields[5].Descriptor()
+	// notifysubscription.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notifysubscription.DefaultCreatedAt = notifysubscriptionDescCreatedAt.Default.(func() time.Time)
+	// notifysubscriptionDescUpdatedAt is the schema descriptor for updated_at field.
+	notifysubscriptionDescUpdatedAt := notifysubscriptionFields[6].Descriptor()
+	// notifysubscription.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notifysubscription.DefaultUpdatedAt = notifysubscriptionDescUpdatedAt.Default.(func() time.Time)
+	// notifysubscription.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notifysubscription.UpdateDefaultUpdatedAt = notifysubscriptionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectMixin := schema.Project{}.Mixin()
+	projectMixinHooks0 := projectMixin[0].Hooks()
+	project.Hooks[0] = projectMixinHooks0[0]
+	projectMixinInters0 := projectMixin[0].Interceptors()
+	project.Interceptors[0] = projectMixinInters0[0]
+	projectFields := schema.Project{}.Fields()
+	_ = projectFields
+	// projectDescName is the schema descriptor for name field.
+	projectDescName := projectFields[2].Descriptor()
+	// project.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	project.NameValidator = projectDescName.Validators[0].(func(string) error)
+	// projectDescCreatedAt is the schema descriptor for created_at field.
+	projectDescCreatedAt := projectFields[10].Descriptor()
+	// project.DefaultCreatedAt holds the default value on creation for the created_at field.
+	project.DefaultCreatedAt = projectDescCreatedAt.Default.(func() time.Time)
+	// projectDescUpdatedAt is the schema descriptor for updated_at field.
+	projectDescUpdatedAt := projectFields[11].Descriptor()
+	// project.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	project.DefaultUpdatedAt = projectDescUpdatedAt.Default.(func() time.Time)
+	// project.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	project.UpdateDefaultUpdatedAt = projectDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectcollaboratorMixin := schema.ProjectCollaborator{}.Mixin()
+	projectcollaboratorMixinHooks0 := projectcollaboratorMixin[0].Hooks()
+	projectcollaborator.Hooks[0] = projectcollaboratorMixinHooks0[0]
+	projectcollaboratorMixinInters0 := projectcollaboratorMixin[0].Interceptors()
+	projectcollaborator.Interceptors[0] = projectcollaboratorMixinInters0[0]
+	projectcollaboratorFields := schema.ProjectCollaborator{}.Fields()
+	_ = projectcollaboratorFields
+	// projectcollaboratorDescRole is the schema descriptor for role field.
+	projectcollaboratorDescRole := projectcollaboratorFields[3].Descriptor()
+	// projectcollaborator.DefaultRole holds the default value on creation for the role field.
+	projectcollaborator.DefaultRole = consts.ProjectCollaboratorRole(projectcollaboratorDescRole.Default.(string))
+	// projectcollaboratorDescCreatedAt is the schema descriptor for created_at field.
+	projectcollaboratorDescCreatedAt := projectcollaboratorFields[4].Descriptor()
+	// projectcollaborator.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectcollaborator.DefaultCreatedAt = projectcollaboratorDescCreatedAt.Default.(func() time.Time)
+	// projectcollaboratorDescUpdatedAt is the schema descriptor for updated_at field.
+	projectcollaboratorDescUpdatedAt := projectcollaboratorFields[5].Descriptor()
+	// projectcollaborator.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	projectcollaborator.DefaultUpdatedAt = projectcollaboratorDescUpdatedAt.Default.(func() time.Time)
+	// projectcollaborator.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	projectcollaborator.UpdateDefaultUpdatedAt = projectcollaboratorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectissueMixin := schema.ProjectIssue{}.Mixin()
+	projectissueMixinHooks0 := projectissueMixin[0].Hooks()
+	projectissue.Hooks[0] = projectissueMixinHooks0[0]
+	projectissueMixinInters0 := projectissueMixin[0].Interceptors()
+	projectissue.Interceptors[0] = projectissueMixinInters0[0]
+	projectissueFields := schema.ProjectIssue{}.Fields()
+	_ = projectissueFields
+	// projectissueDescStatus is the schema descriptor for status field.
+	projectissueDescStatus := projectissueFields[3].Descriptor()
+	// projectissue.DefaultStatus holds the default value on creation for the status field.
+	projectissue.DefaultStatus = consts.ProjectIssueStatus(projectissueDescStatus.Default.(string))
+	// projectissueDescTitle is the schema descriptor for title field.
+	projectissueDescTitle := projectissueFields[4].Descriptor()
+	// projectissue.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	projectissue.TitleValidator = projectissueDescTitle.Validators[0].(func(string) error)
+	// projectissueDescPriority is the schema descriptor for priority field.
+	projectissueDescPriority := projectissueFields[9].Descriptor()
+	// projectissue.DefaultPriority holds the default value on creation for the priority field.
+	projectissue.DefaultPriority = consts.ProjectIssuePriority(projectissueDescPriority.Default.(int))
+	// projectissueDescCreatedAt is the schema descriptor for created_at field.
+	projectissueDescCreatedAt := projectissueFields[10].Descriptor()
+	// projectissue.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectissue.DefaultCreatedAt = projectissueDescCreatedAt.Default.(func() time.Time)
+	// projectissueDescUpdatedAt is the schema descriptor for updated_at field.
+	projectissueDescUpdatedAt := projectissueFields[11].Descriptor()
+	// projectissue.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	projectissue.DefaultUpdatedAt = projectissueDescUpdatedAt.Default.(func() time.Time)
+	// projectissue.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	projectissue.UpdateDefaultUpdatedAt = projectissueDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectissuecommentMixin := schema.ProjectIssueComment{}.Mixin()
+	projectissuecommentMixinHooks0 := projectissuecommentMixin[0].Hooks()
+	projectissuecomment.Hooks[0] = projectissuecommentMixinHooks0[0]
+	projectissuecommentMixinInters0 := projectissuecommentMixin[0].Interceptors()
+	projectissuecomment.Interceptors[0] = projectissuecommentMixinInters0[0]
+	projectissuecommentFields := schema.ProjectIssueComment{}.Fields()
+	_ = projectissuecommentFields
+	// projectissuecommentDescComment is the schema descriptor for comment field.
+	projectissuecommentDescComment := projectissuecommentFields[4].Descriptor()
+	// projectissuecomment.CommentValidator is a validator for the "comment" field. It is called by the builders before save.
+	projectissuecomment.CommentValidator = projectissuecommentDescComment.Validators[0].(func(string) error)
+	// projectissuecommentDescCreatedAt is the schema descriptor for created_at field.
+	projectissuecommentDescCreatedAt := projectissuecommentFields[5].Descriptor()
+	// projectissuecomment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectissuecomment.DefaultCreatedAt = projectissuecommentDescCreatedAt.Default.(func() time.Time)
+	// projectissuecommentDescUpdatedAt is the schema descriptor for updated_at field.
+	projectissuecommentDescUpdatedAt := projectissuecommentFields[6].Descriptor()
+	// projectissuecomment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	projectissuecomment.DefaultUpdatedAt = projectissuecommentDescUpdatedAt.Default.(func() time.Time)
+	// projectissuecomment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	projectissuecomment.UpdateDefaultUpdatedAt = projectissuecommentDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projecttaskFields := schema.ProjectTask{}.Fields()
+	_ = projecttaskFields
+	// projecttaskDescCreatedAt is the schema descriptor for created_at field.
+	projecttaskDescCreatedAt := projecttaskFields[11].Descriptor()
+	// projecttask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projecttask.DefaultCreatedAt = projecttaskDescCreatedAt.Default.(func() time.Time)
+	taskMixin := schema.Task{}.Mixin()
+	taskMixinHooks0 := taskMixin[0].Hooks()
+	task.Hooks[0] = taskMixinHooks0[0]
+	taskMixinInters0 := taskMixin[0].Interceptors()
+	task.Interceptors[0] = taskMixinInters0[0]
+	taskFields := schema.Task{}.Fields()
+	_ = taskFields
+	// taskDescContent is the schema descriptor for content field.
+	taskDescContent := taskFields[4].Descriptor()
+	// task.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	task.ContentValidator = taskDescContent.Validators[0].(func(string) error)
+	// taskDescCreatedAt is the schema descriptor for created_at field.
+	taskDescCreatedAt := taskFields[7].Descriptor()
+	// task.DefaultCreatedAt holds the default value on creation for the created_at field.
+	task.DefaultCreatedAt = taskDescCreatedAt.Default.(func() time.Time)
+	// taskDescUpdatedAt is the schema descriptor for updated_at field.
+	taskDescUpdatedAt := taskFields[8].Descriptor()
+	// task.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	task.DefaultUpdatedAt = taskDescUpdatedAt.Default.(func() time.Time)
+	// task.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	task.UpdateDefaultUpdatedAt = taskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	taskvirtualmachineFields := schema.TaskVirtualMachine{}.Fields()
+	_ = taskvirtualmachineFields
+	// taskvirtualmachineDescCreatedAt is the schema descriptor for created_at field.
+	taskvirtualmachineDescCreatedAt := taskvirtualmachineFields[3].Descriptor()
+	// taskvirtualmachine.DefaultCreatedAt holds the default value on creation for the created_at field.
+	taskvirtualmachine.DefaultCreatedAt = taskvirtualmachineDescCreatedAt.Default.(func() time.Time)
 	teamMixin := schema.Team{}.Mixin()
 	teamMixinHooks0 := teamMixin[0].Hooks()
 	team.Hooks[0] = teamMixinHooks0[0]

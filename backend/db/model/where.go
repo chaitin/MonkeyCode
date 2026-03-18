@@ -1018,6 +1018,29 @@ func HasVmsWith(preds ...predicate.VirtualMachine) predicate.Model {
 	})
 }
 
+// HasProjectTasks applies the HasEdge predicate on the "project_tasks" edge.
+func HasProjectTasks() predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectTasksWith applies the HasEdge predicate on the "project_tasks" edge with a given conditions (other predicates).
+func HasProjectTasksWith(preds ...predicate.ProjectTask) predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := newProjectTasksStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamModels applies the HasEdge predicate on the "team_models" edge.
 func HasTeamModels() predicate.Model {
 	return predicate.Model(func(s *sql.Selector) {

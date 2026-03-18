@@ -14,10 +14,16 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
@@ -31,21 +37,28 @@ import (
 // UserQuery is the builder for querying User entities.
 type UserQuery struct {
 	config
-	ctx                  *QueryContext
-	order                []user.OrderOption
-	inters               []Interceptor
-	predicates           []predicate.User
-	withIdentities       *UserIdentityQuery
-	withAudits           *AuditQuery
-	withTeams            *TeamQuery
-	withGroups           *TeamGroupQuery
-	withModels           *ModelQuery
-	withImages           *ImageQuery
-	withHosts            *HostQuery
-	withVms              *VirtualMachineQuery
-	withTeamMembers      *TeamMemberQuery
-	withTeamGroupMembers *TeamGroupMemberQuery
-	modifiers            []func(*sql.Selector)
+	ctx                      *QueryContext
+	order                    []user.OrderOption
+	inters                   []Interceptor
+	predicates               []predicate.User
+	withIdentities           *UserIdentityQuery
+	withAudits               *AuditQuery
+	withTeams                *TeamQuery
+	withGroups               *TeamGroupQuery
+	withModels               *ModelQuery
+	withImages               *ImageQuery
+	withHosts                *HostQuery
+	withVms                  *VirtualMachineQuery
+	withTasks                *TaskQuery
+	withGitIdentities        *GitIdentityQuery
+	withProjects             *ProjectQuery
+	withProjectIssues        *ProjectIssueQuery
+	withAssignedIssues       *ProjectIssueQuery
+	withProjectCollaborators *ProjectCollaboratorQuery
+	withProjectIssueComments *ProjectIssueCommentQuery
+	withTeamMembers          *TeamMemberQuery
+	withTeamGroupMembers     *TeamGroupMemberQuery
+	modifiers                []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -251,6 +264,160 @@ func (_q *UserQuery) QueryVms() *VirtualMachineQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.VmsTable, user.VmsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTasks chains the current query on the "tasks" edge.
+func (_q *UserQuery) QueryTasks() *TaskQuery {
+	query := (&TaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(task.Table, task.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.TasksTable, user.TasksColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGitIdentities chains the current query on the "git_identities" edge.
+func (_q *UserQuery) QueryGitIdentities() *GitIdentityQuery {
+	query := (&GitIdentityClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(gitidentity.Table, gitidentity.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.GitIdentitiesTable, user.GitIdentitiesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjects chains the current query on the "projects" edge.
+func (_q *UserQuery) QueryProjects() *ProjectQuery {
+	query := (&ProjectClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(project.Table, project.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ProjectsTable, user.ProjectsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjectIssues chains the current query on the "project_issues" edge.
+func (_q *UserQuery) QueryProjectIssues() *ProjectIssueQuery {
+	query := (&ProjectIssueClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(projectissue.Table, projectissue.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ProjectIssuesTable, user.ProjectIssuesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryAssignedIssues chains the current query on the "assigned_issues" edge.
+func (_q *UserQuery) QueryAssignedIssues() *ProjectIssueQuery {
+	query := (&ProjectIssueClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(projectissue.Table, projectissue.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.AssignedIssuesTable, user.AssignedIssuesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjectCollaborators chains the current query on the "project_collaborators" edge.
+func (_q *UserQuery) QueryProjectCollaborators() *ProjectCollaboratorQuery {
+	query := (&ProjectCollaboratorClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(projectcollaborator.Table, projectcollaborator.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ProjectCollaboratorsTable, user.ProjectCollaboratorsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjectIssueComments chains the current query on the "project_issue_comments" edge.
+func (_q *UserQuery) QueryProjectIssueComments() *ProjectIssueCommentQuery {
+	query := (&ProjectIssueCommentClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(projectissuecomment.Table, projectissuecomment.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ProjectIssueCommentsTable, user.ProjectIssueCommentsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -489,21 +656,28 @@ func (_q *UserQuery) Clone() *UserQuery {
 		return nil
 	}
 	return &UserQuery{
-		config:               _q.config,
-		ctx:                  _q.ctx.Clone(),
-		order:                append([]user.OrderOption{}, _q.order...),
-		inters:               append([]Interceptor{}, _q.inters...),
-		predicates:           append([]predicate.User{}, _q.predicates...),
-		withIdentities:       _q.withIdentities.Clone(),
-		withAudits:           _q.withAudits.Clone(),
-		withTeams:            _q.withTeams.Clone(),
-		withGroups:           _q.withGroups.Clone(),
-		withModels:           _q.withModels.Clone(),
-		withImages:           _q.withImages.Clone(),
-		withHosts:            _q.withHosts.Clone(),
-		withVms:              _q.withVms.Clone(),
-		withTeamMembers:      _q.withTeamMembers.Clone(),
-		withTeamGroupMembers: _q.withTeamGroupMembers.Clone(),
+		config:                   _q.config,
+		ctx:                      _q.ctx.Clone(),
+		order:                    append([]user.OrderOption{}, _q.order...),
+		inters:                   append([]Interceptor{}, _q.inters...),
+		predicates:               append([]predicate.User{}, _q.predicates...),
+		withIdentities:           _q.withIdentities.Clone(),
+		withAudits:               _q.withAudits.Clone(),
+		withTeams:                _q.withTeams.Clone(),
+		withGroups:               _q.withGroups.Clone(),
+		withModels:               _q.withModels.Clone(),
+		withImages:               _q.withImages.Clone(),
+		withHosts:                _q.withHosts.Clone(),
+		withVms:                  _q.withVms.Clone(),
+		withTasks:                _q.withTasks.Clone(),
+		withGitIdentities:        _q.withGitIdentities.Clone(),
+		withProjects:             _q.withProjects.Clone(),
+		withProjectIssues:        _q.withProjectIssues.Clone(),
+		withAssignedIssues:       _q.withAssignedIssues.Clone(),
+		withProjectCollaborators: _q.withProjectCollaborators.Clone(),
+		withProjectIssueComments: _q.withProjectIssueComments.Clone(),
+		withTeamMembers:          _q.withTeamMembers.Clone(),
+		withTeamGroupMembers:     _q.withTeamGroupMembers.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -596,6 +770,83 @@ func (_q *UserQuery) WithVms(opts ...func(*VirtualMachineQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withVms = query
+	return _q
+}
+
+// WithTasks tells the query-builder to eager-load the nodes that are connected to
+// the "tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithTasks(opts ...func(*TaskQuery)) *UserQuery {
+	query := (&TaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTasks = query
+	return _q
+}
+
+// WithGitIdentities tells the query-builder to eager-load the nodes that are connected to
+// the "git_identities" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithGitIdentities(opts ...func(*GitIdentityQuery)) *UserQuery {
+	query := (&GitIdentityClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitIdentities = query
+	return _q
+}
+
+// WithProjects tells the query-builder to eager-load the nodes that are connected to
+// the "projects" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithProjects(opts ...func(*ProjectQuery)) *UserQuery {
+	query := (&ProjectClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjects = query
+	return _q
+}
+
+// WithProjectIssues tells the query-builder to eager-load the nodes that are connected to
+// the "project_issues" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithProjectIssues(opts ...func(*ProjectIssueQuery)) *UserQuery {
+	query := (&ProjectIssueClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjectIssues = query
+	return _q
+}
+
+// WithAssignedIssues tells the query-builder to eager-load the nodes that are connected to
+// the "assigned_issues" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithAssignedIssues(opts ...func(*ProjectIssueQuery)) *UserQuery {
+	query := (&ProjectIssueClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withAssignedIssues = query
+	return _q
+}
+
+// WithProjectCollaborators tells the query-builder to eager-load the nodes that are connected to
+// the "project_collaborators" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithProjectCollaborators(opts ...func(*ProjectCollaboratorQuery)) *UserQuery {
+	query := (&ProjectCollaboratorClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjectCollaborators = query
+	return _q
+}
+
+// WithProjectIssueComments tells the query-builder to eager-load the nodes that are connected to
+// the "project_issue_comments" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithProjectIssueComments(opts ...func(*ProjectIssueCommentQuery)) *UserQuery {
+	query := (&ProjectIssueCommentClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjectIssueComments = query
 	return _q
 }
 
@@ -699,7 +950,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [10]bool{
+		loadedTypes = [17]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
@@ -708,6 +959,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withImages != nil,
 			_q.withHosts != nil,
 			_q.withVms != nil,
+			_q.withTasks != nil,
+			_q.withGitIdentities != nil,
+			_q.withProjects != nil,
+			_q.withProjectIssues != nil,
+			_q.withAssignedIssues != nil,
+			_q.withProjectCollaborators != nil,
+			_q.withProjectIssueComments != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamGroupMembers != nil,
 		}
@@ -786,6 +1044,59 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadVms(ctx, query, nodes,
 			func(n *User) { n.Edges.Vms = []*VirtualMachine{} },
 			func(n *User, e *VirtualMachine) { n.Edges.Vms = append(n.Edges.Vms, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTasks; query != nil {
+		if err := _q.loadTasks(ctx, query, nodes,
+			func(n *User) { n.Edges.Tasks = []*Task{} },
+			func(n *User, e *Task) { n.Edges.Tasks = append(n.Edges.Tasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGitIdentities; query != nil {
+		if err := _q.loadGitIdentities(ctx, query, nodes,
+			func(n *User) { n.Edges.GitIdentities = []*GitIdentity{} },
+			func(n *User, e *GitIdentity) { n.Edges.GitIdentities = append(n.Edges.GitIdentities, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjects; query != nil {
+		if err := _q.loadProjects(ctx, query, nodes,
+			func(n *User) { n.Edges.Projects = []*Project{} },
+			func(n *User, e *Project) { n.Edges.Projects = append(n.Edges.Projects, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjectIssues; query != nil {
+		if err := _q.loadProjectIssues(ctx, query, nodes,
+			func(n *User) { n.Edges.ProjectIssues = []*ProjectIssue{} },
+			func(n *User, e *ProjectIssue) { n.Edges.ProjectIssues = append(n.Edges.ProjectIssues, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withAssignedIssues; query != nil {
+		if err := _q.loadAssignedIssues(ctx, query, nodes,
+			func(n *User) { n.Edges.AssignedIssues = []*ProjectIssue{} },
+			func(n *User, e *ProjectIssue) { n.Edges.AssignedIssues = append(n.Edges.AssignedIssues, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjectCollaborators; query != nil {
+		if err := _q.loadProjectCollaborators(ctx, query, nodes,
+			func(n *User) { n.Edges.ProjectCollaborators = []*ProjectCollaborator{} },
+			func(n *User, e *ProjectCollaborator) {
+				n.Edges.ProjectCollaborators = append(n.Edges.ProjectCollaborators, e)
+			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjectIssueComments; query != nil {
+		if err := _q.loadProjectIssueComments(ctx, query, nodes,
+			func(n *User) { n.Edges.ProjectIssueComments = []*ProjectIssueComment{} },
+			func(n *User, e *ProjectIssueComment) {
+				n.Edges.ProjectIssueComments = append(n.Edges.ProjectIssueComments, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -1093,6 +1404,216 @@ func (_q *UserQuery) loadVms(ctx context.Context, query *VirtualMachineQuery, no
 	}
 	query.Where(predicate.VirtualMachine(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.VmsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadTasks(ctx context.Context, query *TaskQuery, nodes []*User, init func(*User), assign func(*User, *Task)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(task.FieldUserID)
+	}
+	query.Where(predicate.Task(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.TasksColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadGitIdentities(ctx context.Context, query *GitIdentityQuery, nodes []*User, init func(*User), assign func(*User, *GitIdentity)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(gitidentity.FieldUserID)
+	}
+	query.Where(predicate.GitIdentity(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.GitIdentitiesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadProjects(ctx context.Context, query *ProjectQuery, nodes []*User, init func(*User), assign func(*User, *Project)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(project.FieldUserID)
+	}
+	query.Where(predicate.Project(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ProjectsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadProjectIssues(ctx context.Context, query *ProjectIssueQuery, nodes []*User, init func(*User), assign func(*User, *ProjectIssue)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projectissue.FieldUserID)
+	}
+	query.Where(predicate.ProjectIssue(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ProjectIssuesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadAssignedIssues(ctx context.Context, query *ProjectIssueQuery, nodes []*User, init func(*User), assign func(*User, *ProjectIssue)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projectissue.FieldAssigneeID)
+	}
+	query.Where(predicate.ProjectIssue(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.AssignedIssuesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.AssigneeID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "assignee_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadProjectCollaborators(ctx context.Context, query *ProjectCollaboratorQuery, nodes []*User, init func(*User), assign func(*User, *ProjectCollaborator)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projectcollaborator.FieldUserID)
+	}
+	query.Where(predicate.ProjectCollaborator(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ProjectCollaboratorsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadProjectIssueComments(ctx context.Context, query *ProjectIssueCommentQuery, nodes []*User, init func(*User), assign func(*User, *ProjectIssueComment)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projectissuecomment.FieldUserID)
+	}
+	query.Where(predicate.ProjectIssueComment(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ProjectIssueCommentsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
