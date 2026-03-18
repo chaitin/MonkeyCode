@@ -53,9 +53,6 @@ const PublicTaskPage = () => {
             sendCancelCommand={() => {}}
             sendResetSession={() => {}}
             sendReloadSession={() => {}}
-            fileChanges={[]}
-            fileChangesMap={new Map()}
-            taskManager={taskManager.current}
           />
         </div>
       </div>

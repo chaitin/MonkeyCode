@@ -385,9 +385,6 @@ const PlaygroundDetailPage = () => {
                     sendCancelCommand={() => {}}
                     sendResetSession={() => {}}
                     sendReloadSession={() => {}}
-                    fileChanges={[]}
-                    fileChangesMap={new Map()}
-                    taskManager={taskManager.current}
                   />
                   {showPlayOverlay && (
                     <div className="absolute inset-0 flex items-center justify-center cursor-pointer hover:text-primary" onClick={handlePlayClick} >
