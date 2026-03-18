@@ -193,26 +193,6 @@ func GitIdentityIDNotIn(vs ...uuid.UUID) predicate.ProjectTask {
 	return predicate.ProjectTask(sql.FieldNotIn(FieldGitIdentityID, vs...))
 }
 
-// GitIdentityIDGT applies the GT predicate on the "git_identity_id" field.
-func GitIdentityIDGT(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldGT(FieldGitIdentityID, v))
-}
-
-// GitIdentityIDGTE applies the GTE predicate on the "git_identity_id" field.
-func GitIdentityIDGTE(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldGTE(FieldGitIdentityID, v))
-}
-
-// GitIdentityIDLT applies the LT predicate on the "git_identity_id" field.
-func GitIdentityIDLT(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldLT(FieldGitIdentityID, v))
-}
-
-// GitIdentityIDLTE applies the LTE predicate on the "git_identity_id" field.
-func GitIdentityIDLTE(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldLTE(FieldGitIdentityID, v))
-}
-
 // GitIdentityIDIsNil applies the IsNil predicate on the "git_identity_id" field.
 func GitIdentityIDIsNil() predicate.ProjectTask {
 	return predicate.ProjectTask(sql.FieldIsNull(FieldGitIdentityID))
@@ -243,26 +223,6 @@ func ProjectIDNotIn(vs ...uuid.UUID) predicate.ProjectTask {
 	return predicate.ProjectTask(sql.FieldNotIn(FieldProjectID, vs...))
 }
 
-// ProjectIDGT applies the GT predicate on the "project_id" field.
-func ProjectIDGT(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldGT(FieldProjectID, v))
-}
-
-// ProjectIDGTE applies the GTE predicate on the "project_id" field.
-func ProjectIDGTE(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldGTE(FieldProjectID, v))
-}
-
-// ProjectIDLT applies the LT predicate on the "project_id" field.
-func ProjectIDLT(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldLT(FieldProjectID, v))
-}
-
-// ProjectIDLTE applies the LTE predicate on the "project_id" field.
-func ProjectIDLTE(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldLTE(FieldProjectID, v))
-}
-
 // ProjectIDIsNil applies the IsNil predicate on the "project_id" field.
 func ProjectIDIsNil() predicate.ProjectTask {
 	return predicate.ProjectTask(sql.FieldIsNull(FieldProjectID))
@@ -291,26 +251,6 @@ func IssueIDIn(vs ...uuid.UUID) predicate.ProjectTask {
 // IssueIDNotIn applies the NotIn predicate on the "issue_id" field.
 func IssueIDNotIn(vs ...uuid.UUID) predicate.ProjectTask {
 	return predicate.ProjectTask(sql.FieldNotIn(FieldIssueID, vs...))
-}
-
-// IssueIDGT applies the GT predicate on the "issue_id" field.
-func IssueIDGT(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldGT(FieldIssueID, v))
-}
-
-// IssueIDGTE applies the GTE predicate on the "issue_id" field.
-func IssueIDGTE(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldGTE(FieldIssueID, v))
-}
-
-// IssueIDLT applies the LT predicate on the "issue_id" field.
-func IssueIDLT(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldLT(FieldIssueID, v))
-}
-
-// IssueIDLTE applies the LTE predicate on the "issue_id" field.
-func IssueIDLTE(v uuid.UUID) predicate.ProjectTask {
-	return predicate.ProjectTask(sql.FieldLTE(FieldIssueID, v))
 }
 
 // IssueIDIsNil applies the IsNil predicate on the "issue_id" field.
@@ -733,6 +673,75 @@ func HasImage() predicate.ProjectTask {
 func HasImageWith(preds ...predicate.Image) predicate.ProjectTask {
 	return predicate.ProjectTask(func(s *sql.Selector) {
 		step := newImageStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGitIdentity applies the HasEdge predicate on the "git_identity" edge.
+func HasGitIdentity() predicate.ProjectTask {
+	return predicate.ProjectTask(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, GitIdentityTable, GitIdentityColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitIdentityWith applies the HasEdge predicate on the "git_identity" edge with a given conditions (other predicates).
+func HasGitIdentityWith(preds ...predicate.GitIdentity) predicate.ProjectTask {
+	return predicate.ProjectTask(func(s *sql.Selector) {
+		step := newGitIdentityStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProject applies the HasEdge predicate on the "project" edge.
+func HasProject() predicate.ProjectTask {
+	return predicate.ProjectTask(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, ProjectTable, ProjectColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectWith applies the HasEdge predicate on the "project" edge with a given conditions (other predicates).
+func HasProjectWith(preds ...predicate.Project) predicate.ProjectTask {
+	return predicate.ProjectTask(func(s *sql.Selector) {
+		step := newProjectStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasIssue applies the HasEdge predicate on the "issue" edge.
+func HasIssue() predicate.ProjectTask {
+	return predicate.ProjectTask(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, IssueTable, IssueColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasIssueWith applies the HasEdge predicate on the "issue" edge with a given conditions (other predicates).
+func HasIssueWith(preds ...predicate.ProjectIssue) predicate.ProjectTask {
+	return predicate.ProjectTask(func(s *sql.Selector) {
+		step := newIssueStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

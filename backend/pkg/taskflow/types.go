@@ -413,12 +413,27 @@ type RepoListFiles struct {
 	Error     *string         `json:"error,omitempty"`
 }
 
+// RepoEntryMode 文件条目类型
+type RepoEntryMode int32
+
+const (
+	RepoEntryModeUnspecified RepoEntryMode = 0
+	RepoEntryModeFile        RepoEntryMode = 1
+	RepoEntryModeExecutable  RepoEntryMode = 2
+	RepoEntryModeSymlink     RepoEntryMode = 3
+	RepoEntryModeTree        RepoEntryMode = 4
+	RepoEntryModeSubmodule   RepoEntryMode = 5
+)
+
 // RepoFileInfo 文件信息
 type RepoFileInfo struct {
-	Name          string `json:"name,omitempty"`
-	Path          string `json:"path,omitempty"`
-	Size          int64  `json:"size,omitempty"`
-	ModifiedAt    int64  `json:"modified_at,omitempty"`
+	Name          string        `json:"name,omitempty"`
+	Path          string        `json:"path,omitempty"`
+	EntryMode     RepoEntryMode `json:"entry_mode,omitempty"`
+	Size          int64         `json:"size,omitempty"`
+	ModifiedAt    int64         `json:"modified_at,omitempty"`
+	Mode          *uint32       `json:"mode,omitempty"`
+	SymlinkTarget *string       `json:"symlink_target,omitempty"`
 }
 
 // RepoReadFileReq 读取文件请求
@@ -488,11 +503,135 @@ type TaskApproveReq struct {
 // TaskReq 任务请求（通用）
 type TaskReq struct {
 	VirtualMachine *VirtualMachine `json:"virtual_machine,omitempty"`
-	Task           *TaskInfo       `json:"task,omitempty"`
+	Task           *Task           `json:"task,omitempty"`
 }
 
-// TaskInfo 任务信息（用于 TaskReq）
-type TaskInfo struct {
-	ID   uuid.UUID `json:"id"`
-	Text string    `json:"text"`
+// Task 任务信息
+type Task struct {
+	ID    uuid.UUID `json:"id"`
+	Text  string    `json:"text"`
+	Image string    `json:"image"`
+}
+
+// ==================== CreateTask 类型 ====================
+
+// CodingAgent 编码代理类型
+type CodingAgent int
+
+const (
+	CodingAgentCodex       CodingAgent = iota + 1
+	CodingAgentClaude
+	CodingAgentMCAIReview
+	CodingAgentOpenCode
+)
+
+// LLM 模型配置
+type LLM struct {
+	ApiKey      string   `json:"api_key"`
+	BaseURL     string   `json:"base_url"`
+	Model       string   `json:"model"`
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
+// ConfigFile 配置文件
+type ConfigFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+// McpHttpHeader MCP HTTP 头
+type McpHttpHeader struct {
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+// McpServerConfig MCP 服务器配置
+type McpServerConfig struct {
+	Type    string            `json:"type,omitempty"`
+	Name    string            `json:"name,omitempty"`
+	Url     *string           `json:"url,omitempty"`
+	Headers []*McpHttpHeader  `json:"headers,omitempty"`
+	Command *string           `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+// CreateTaskReq 创建任务请求
+type CreateTaskReq struct {
+	ID           uuid.UUID         `json:"id"`
+	VMID         string            `json:"vm_id"`
+	SystemPrompt string            `json:"system_prompt,omitempty"`
+	Text         string            `json:"text,omitempty"`
+	LLM          LLM               `json:"llm,omitzero"`
+	CodingAgent  CodingAgent       `json:"coding_agent,omitempty"`
+	Configs      []ConfigFile      `json:"configs,omitzero"`
+	McpConfigs   []McpServerConfig `json:"mcp_configs,omitzero"`
+	Env          map[string]string `json:"env,omitempty"`
+}
+
+// ==================== VirtualMachine 查询类型 ====================
+
+// VirtualMachineInfoReq 虚拟机信息查询请求
+type VirtualMachineInfoReq struct {
+	ID     string `json:"id" query:"id"`
+	UserID string `json:"user_id" query:"user_id"`
+}
+
+// ==================== Report 类型 ====================
+
+// ReportSubscribeReq 报告订阅请求
+type ReportSubscribeReq struct {
+	ID      string `json:"id" query:"id" validate:"required"`
+	History int64  `json:"history" query:"history"`
+	FromID  string `json:"from_id" query:"from_id"`
+}
+
+// ==================== FileManager 类型 ====================
+
+// FileKind 文件类型
+type FileKind string
+
+const (
+	FileKindUnknown FileKind = "unknown"
+	FileKindFile    FileKind = "file"
+	FileKindDir     FileKind = "dir"
+	FileKindSymlink FileKind = "symlink"
+)
+
+// FileOP 文件操作类型
+type FileOP string
+
+const (
+	FileOpSave     FileOP = "save"
+	FileOpDelete   FileOP = "delete"
+	FileOpCopy     FileOP = "copy"
+	FileOpMove     FileOP = "move"
+	FileOpMkdir    FileOP = "mkdir"
+	FileOpList     FileOP = "list"
+	FileOpDownload FileOP = "download"
+)
+
+// FileReq 文件操作请求
+type FileReq struct {
+	Operate FileOP `json:"operate" query:"operate"`
+	UserID  string `json:"user_id" query:"user_id"`
+	ID      string `json:"id" query:"id"`
+	Path    string `json:"path,omitempty" query:"path"`
+	Source  string `json:"source,omitempty" query:"source"`
+	Target  string `json:"target,omitempty" query:"target"`
+	Content string `json:"content,omitempty" query:"content"`
+}
+
+// File 文件信息
+type File struct {
+	Name          string   `json:"name"`
+	User          string   `json:"user"`
+	Size          uint64   `json:"size"`
+	Kind          FileKind `json:"kind"`
+	SymlinkTarget string   `json:"symlink_target,omitempty"`
+	SymlinkKind   FileKind `json:"symlink_kind,omitempty"`
+	UnixMode      uint32   `json:"unix_mode"`
+	CreatedAt     int64    `json:"created_at"`
+	AccessedAt    int64    `json:"accessed_at"`
+	UpdatedAt     int64    `json:"updated_at"`
 }

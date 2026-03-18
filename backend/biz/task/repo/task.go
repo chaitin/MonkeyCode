@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
@@ -30,6 +31,7 @@ import (
 
 // TaskRepo 任务数据访问层
 type TaskRepo struct {
+	cfg    *config.Config
 	db     *db.Client
 	logger *slog.Logger
 	rr     uint64
@@ -38,6 +40,7 @@ type TaskRepo struct {
 // NewTaskRepo 创建新的任务数据访问层实例
 func NewTaskRepo(i *do.Injector) (domain.TaskRepo, error) {
 	return &TaskRepo{
+		cfg:    do.MustInvoke[*config.Config](i),
 		db:     do.MustInvoke[*db.Client](i),
 		logger: do.MustInvoke[*slog.Logger](i).With("module", "repo.TaskRepo"),
 	}, nil
@@ -268,7 +271,7 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			if err != nil {
 				return errcode.ErrDatabaseOperation.Wrap(err)
 			}
-			if cnt >= 3 { // 默认限制 3 个
+			if cnt >= t.cfg.PublicHost.CountLimit {
 				return errcode.ErrPublicHostBeyondLimit.Wrap(fmt.Errorf("public host limit reached"))
 			}
 		}

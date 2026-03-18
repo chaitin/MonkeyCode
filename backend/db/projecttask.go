@@ -10,8 +10,11 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/google/uuid"
@@ -58,9 +61,15 @@ type ProjectTaskEdges struct {
 	Model *Model `json:"model,omitempty"`
 	// Image holds the value of the image edge.
 	Image *Image `json:"image,omitempty"`
+	// GitIdentity holds the value of the git_identity edge.
+	GitIdentity *GitIdentity `json:"git_identity,omitempty"`
+	// Project holds the value of the project edge.
+	Project *Project `json:"project,omitempty"`
+	// Issue holds the value of the issue edge.
+	Issue *ProjectIssue `json:"issue,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [6]bool
 }
 
 // TaskOrErr returns the Task value or an error if the edge
@@ -94,6 +103,39 @@ func (e ProjectTaskEdges) ImageOrErr() (*Image, error) {
 		return nil, &NotFoundError{label: image.Label}
 	}
 	return nil, &NotLoadedError{edge: "image"}
+}
+
+// GitIdentityOrErr returns the GitIdentity value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ProjectTaskEdges) GitIdentityOrErr() (*GitIdentity, error) {
+	if e.GitIdentity != nil {
+		return e.GitIdentity, nil
+	} else if e.loadedTypes[3] {
+		return nil, &NotFoundError{label: gitidentity.Label}
+	}
+	return nil, &NotLoadedError{edge: "git_identity"}
+}
+
+// ProjectOrErr returns the Project value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ProjectTaskEdges) ProjectOrErr() (*Project, error) {
+	if e.Project != nil {
+		return e.Project, nil
+	} else if e.loadedTypes[4] {
+		return nil, &NotFoundError{label: project.Label}
+	}
+	return nil, &NotLoadedError{edge: "project"}
+}
+
+// IssueOrErr returns the Issue value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ProjectTaskEdges) IssueOrErr() (*ProjectIssue, error) {
+	if e.Issue != nil {
+		return e.Issue, nil
+	} else if e.loadedTypes[5] {
+		return nil, &NotFoundError{label: projectissue.Label}
+	}
+	return nil, &NotLoadedError{edge: "issue"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -223,6 +265,21 @@ func (_m *ProjectTask) QueryModel() *ModelQuery {
 // QueryImage queries the "image" edge of the ProjectTask entity.
 func (_m *ProjectTask) QueryImage() *ImageQuery {
 	return NewProjectTaskClient(_m.config).QueryImage(_m)
+}
+
+// QueryGitIdentity queries the "git_identity" edge of the ProjectTask entity.
+func (_m *ProjectTask) QueryGitIdentity() *GitIdentityQuery {
+	return NewProjectTaskClient(_m.config).QueryGitIdentity(_m)
+}
+
+// QueryProject queries the "project" edge of the ProjectTask entity.
+func (_m *ProjectTask) QueryProject() *ProjectQuery {
+	return NewProjectTaskClient(_m.config).QueryProject(_m)
+}
+
+// QueryIssue queries the "issue" edge of the ProjectTask entity.
+func (_m *ProjectTask) QueryIssue() *ProjectIssueQuery {
+	return NewProjectTaskClient(_m.config).QueryIssue(_m)
 }
 
 // Update returns a builder for updating this ProjectTask.

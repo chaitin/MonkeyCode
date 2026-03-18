@@ -7,12 +7,17 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
@@ -42,6 +47,23 @@ func init() {
 	auditDescCreatedAt := auditFields[7].Descriptor()
 	// audit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	audit.DefaultCreatedAt = auditDescCreatedAt.Default.(func() time.Time)
+	gitidentityMixin := schema.GitIdentity{}.Mixin()
+	gitidentityMixinHooks0 := gitidentityMixin[0].Hooks()
+	gitidentity.Hooks[0] = gitidentityMixinHooks0[0]
+	gitidentityMixinInters0 := gitidentityMixin[0].Interceptors()
+	gitidentity.Interceptors[0] = gitidentityMixinInters0[0]
+	gitidentityFields := schema.GitIdentity{}.Fields()
+	_ = gitidentityFields
+	// gitidentityDescCreatedAt is the schema descriptor for created_at field.
+	gitidentityDescCreatedAt := gitidentityFields[11].Descriptor()
+	// gitidentity.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gitidentity.DefaultCreatedAt = gitidentityDescCreatedAt.Default.(func() time.Time)
+	// gitidentityDescUpdatedAt is the schema descriptor for updated_at field.
+	gitidentityDescUpdatedAt := gitidentityFields[12].Descriptor()
+	// gitidentity.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	gitidentity.DefaultUpdatedAt = gitidentityDescUpdatedAt.Default.(func() time.Time)
+	// gitidentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	gitidentity.UpdateDefaultUpdatedAt = gitidentityDescUpdatedAt.UpdateDefault.(func() time.Time)
 	hostMixin := schema.Host{}.Mixin()
 	hostMixinHooks0 := hostMixin[0].Hooks()
 	host.Hooks[0] = hostMixinHooks0[0]
@@ -207,6 +229,98 @@ func init() {
 	notifysubscription.DefaultUpdatedAt = notifysubscriptionDescUpdatedAt.Default.(func() time.Time)
 	// notifysubscription.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	notifysubscription.UpdateDefaultUpdatedAt = notifysubscriptionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectMixin := schema.Project{}.Mixin()
+	projectMixinHooks0 := projectMixin[0].Hooks()
+	project.Hooks[0] = projectMixinHooks0[0]
+	projectMixinInters0 := projectMixin[0].Interceptors()
+	project.Interceptors[0] = projectMixinInters0[0]
+	projectFields := schema.Project{}.Fields()
+	_ = projectFields
+	// projectDescName is the schema descriptor for name field.
+	projectDescName := projectFields[2].Descriptor()
+	// project.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	project.NameValidator = projectDescName.Validators[0].(func(string) error)
+	// projectDescCreatedAt is the schema descriptor for created_at field.
+	projectDescCreatedAt := projectFields[10].Descriptor()
+	// project.DefaultCreatedAt holds the default value on creation for the created_at field.
+	project.DefaultCreatedAt = projectDescCreatedAt.Default.(func() time.Time)
+	// projectDescUpdatedAt is the schema descriptor for updated_at field.
+	projectDescUpdatedAt := projectFields[11].Descriptor()
+	// project.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	project.DefaultUpdatedAt = projectDescUpdatedAt.Default.(func() time.Time)
+	// project.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	project.UpdateDefaultUpdatedAt = projectDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectcollaboratorMixin := schema.ProjectCollaborator{}.Mixin()
+	projectcollaboratorMixinHooks0 := projectcollaboratorMixin[0].Hooks()
+	projectcollaborator.Hooks[0] = projectcollaboratorMixinHooks0[0]
+	projectcollaboratorMixinInters0 := projectcollaboratorMixin[0].Interceptors()
+	projectcollaborator.Interceptors[0] = projectcollaboratorMixinInters0[0]
+	projectcollaboratorFields := schema.ProjectCollaborator{}.Fields()
+	_ = projectcollaboratorFields
+	// projectcollaboratorDescRole is the schema descriptor for role field.
+	projectcollaboratorDescRole := projectcollaboratorFields[3].Descriptor()
+	// projectcollaborator.DefaultRole holds the default value on creation for the role field.
+	projectcollaborator.DefaultRole = consts.ProjectCollaboratorRole(projectcollaboratorDescRole.Default.(string))
+	// projectcollaboratorDescCreatedAt is the schema descriptor for created_at field.
+	projectcollaboratorDescCreatedAt := projectcollaboratorFields[4].Descriptor()
+	// projectcollaborator.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectcollaborator.DefaultCreatedAt = projectcollaboratorDescCreatedAt.Default.(func() time.Time)
+	// projectcollaboratorDescUpdatedAt is the schema descriptor for updated_at field.
+	projectcollaboratorDescUpdatedAt := projectcollaboratorFields[5].Descriptor()
+	// projectcollaborator.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	projectcollaborator.DefaultUpdatedAt = projectcollaboratorDescUpdatedAt.Default.(func() time.Time)
+	// projectcollaborator.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	projectcollaborator.UpdateDefaultUpdatedAt = projectcollaboratorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectissueMixin := schema.ProjectIssue{}.Mixin()
+	projectissueMixinHooks0 := projectissueMixin[0].Hooks()
+	projectissue.Hooks[0] = projectissueMixinHooks0[0]
+	projectissueMixinInters0 := projectissueMixin[0].Interceptors()
+	projectissue.Interceptors[0] = projectissueMixinInters0[0]
+	projectissueFields := schema.ProjectIssue{}.Fields()
+	_ = projectissueFields
+	// projectissueDescStatus is the schema descriptor for status field.
+	projectissueDescStatus := projectissueFields[3].Descriptor()
+	// projectissue.DefaultStatus holds the default value on creation for the status field.
+	projectissue.DefaultStatus = consts.ProjectIssueStatus(projectissueDescStatus.Default.(string))
+	// projectissueDescTitle is the schema descriptor for title field.
+	projectissueDescTitle := projectissueFields[4].Descriptor()
+	// projectissue.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	projectissue.TitleValidator = projectissueDescTitle.Validators[0].(func(string) error)
+	// projectissueDescPriority is the schema descriptor for priority field.
+	projectissueDescPriority := projectissueFields[9].Descriptor()
+	// projectissue.DefaultPriority holds the default value on creation for the priority field.
+	projectissue.DefaultPriority = consts.ProjectIssuePriority(projectissueDescPriority.Default.(int))
+	// projectissueDescCreatedAt is the schema descriptor for created_at field.
+	projectissueDescCreatedAt := projectissueFields[10].Descriptor()
+	// projectissue.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectissue.DefaultCreatedAt = projectissueDescCreatedAt.Default.(func() time.Time)
+	// projectissueDescUpdatedAt is the schema descriptor for updated_at field.
+	projectissueDescUpdatedAt := projectissueFields[11].Descriptor()
+	// projectissue.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	projectissue.DefaultUpdatedAt = projectissueDescUpdatedAt.Default.(func() time.Time)
+	// projectissue.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	projectissue.UpdateDefaultUpdatedAt = projectissueDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectissuecommentMixin := schema.ProjectIssueComment{}.Mixin()
+	projectissuecommentMixinHooks0 := projectissuecommentMixin[0].Hooks()
+	projectissuecomment.Hooks[0] = projectissuecommentMixinHooks0[0]
+	projectissuecommentMixinInters0 := projectissuecommentMixin[0].Interceptors()
+	projectissuecomment.Interceptors[0] = projectissuecommentMixinInters0[0]
+	projectissuecommentFields := schema.ProjectIssueComment{}.Fields()
+	_ = projectissuecommentFields
+	// projectissuecommentDescComment is the schema descriptor for comment field.
+	projectissuecommentDescComment := projectissuecommentFields[4].Descriptor()
+	// projectissuecomment.CommentValidator is a validator for the "comment" field. It is called by the builders before save.
+	projectissuecomment.CommentValidator = projectissuecommentDescComment.Validators[0].(func(string) error)
+	// projectissuecommentDescCreatedAt is the schema descriptor for created_at field.
+	projectissuecommentDescCreatedAt := projectissuecommentFields[5].Descriptor()
+	// projectissuecomment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectissuecomment.DefaultCreatedAt = projectissuecommentDescCreatedAt.Default.(func() time.Time)
+	// projectissuecommentDescUpdatedAt is the schema descriptor for updated_at field.
+	projectissuecommentDescUpdatedAt := projectissuecommentFields[6].Descriptor()
+	// projectissuecomment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	projectissuecomment.DefaultUpdatedAt = projectissuecommentDescUpdatedAt.Default.(func() time.Time)
+	// projectissuecomment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	projectissuecomment.UpdateDefaultUpdatedAt = projectissuecommentDescUpdatedAt.UpdateDefault.(func() time.Time)
 	projecttaskFields := schema.ProjectTask{}.Fields()
 	_ = projecttaskFields
 	// projecttaskDescCreatedAt is the schema descriptor for created_at field.

@@ -1,12 +1,18 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
+	"text/template"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
@@ -24,6 +30,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/templates"
 )
 
 // TaskUsecase 任务业务逻辑实现
@@ -74,7 +81,7 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 
 func (a *TaskUsecase) onFailed(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
 	a.logger.With("task", task).DebugContext(ctx, "on failed")
-	err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.TaskID, func(up *db.TaskUpdateOne) error {
+	err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.ID, func(up *db.TaskUpdateOne) error {
 		up.SetStatus(consts.TaskStatusError)
 		return nil
 	})
@@ -88,7 +95,7 @@ func (a *TaskUsecase) onFailed(ctx context.Context, task tasker.Task[*domain.Tas
 
 func (a *TaskUsecase) onFinished(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
 	a.logger.With("task", task).DebugContext(ctx, "on completed")
-	err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.TaskID, func(up *db.TaskUpdateOne) error {
+	err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.ID, func(up *db.TaskUpdateOne) error {
 		up.SetStatus(consts.TaskStatusFinished)
 		return nil
 	})
@@ -112,10 +119,10 @@ func (a *TaskUsecase) onCreated(ctx context.Context, task tasker.Task[*domain.Ta
 		event := &domain.NotifyEvent{
 			EventType:     consts.NotifyEventTaskCreated,
 			SubjectUserID: task.Payload.User.ID,
-			RefID:         task.Payload.Task.TaskID.String(),
+			RefID:         task.Payload.Task.ID.String(),
 			OccurredAt:    time.Now(),
 			Payload: domain.NotifyEventPayload{
-				TaskID:     task.Payload.Task.TaskID.String(),
+				TaskID:     task.Payload.Task.ID.String(),
 				TaskStatus: string(consts.TaskStatusProcessing),
 				ModelName:  task.Payload.Task.LLM.Model,
 				UserName:   task.Payload.User.Name,
@@ -129,7 +136,7 @@ func (a *TaskUsecase) onCreated(ctx context.Context, task tasker.Task[*domain.Ta
 
 func (a *TaskUsecase) onStarted(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
 	a.logger.With("task", task).DebugContext(ctx, "on started task")
-	if err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.TaskID, func(up *db.TaskUpdateOne) error {
+	if err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.ID, func(up *db.TaskUpdateOne) error {
 		if err := a.taskflow.TaskManager().Create(ctx, *task.Payload.Task); err != nil {
 			return err
 		}
@@ -146,8 +153,9 @@ func (a *TaskUsecase) onStarted(ctx context.Context, task tasker.Task[*domain.Ta
 			ShowUrl:  t.Payload.ShowUrl,
 		}
 		if t.Payload.Task != nil {
-			minimal.Task = &taskflow.CreateVirtualMachineReq{
-				TaskID: t.Payload.Task.TaskID,
+			minimal.Task = &taskflow.CreateTaskReq{
+				ID:   t.Payload.Task.ID,
+				VMID: t.Payload.Task.VMID,
 			}
 		}
 		if t.Payload.User != nil {
@@ -266,7 +274,7 @@ func (a *TaskUsecase) List(ctx context.Context, user *domain.User, req domain.Ta
 func (a *TaskUsecase) Stop(ctx context.Context, user *domain.User, id uuid.UUID) error {
 	return a.repo.Stop(ctx, user, id, func(t *db.Task) error {
 		return a.taskflow.TaskManager().Stop(ctx, taskflow.TaskReq{
-			Task: &taskflow.TaskInfo{
+			Task: &taskflow.Task{
 				ID: id,
 			},
 		})
@@ -283,7 +291,7 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 
 	if err := a.taskflow.TaskManager().Cancel(ctx, taskflow.TaskReq{
 		VirtualMachine: &taskflow.VirtualMachine{ID: tk.VirtualMachine.ID},
-		Task: &taskflow.TaskInfo{
+		Task: &taskflow.Task{
 			ID: id,
 		},
 	}); err != nil {
@@ -303,7 +311,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 
 	if err := a.taskflow.TaskManager().Continue(ctx, taskflow.TaskReq{
 		VirtualMachine: &taskflow.VirtualMachine{ID: tk.VirtualMachine.ID},
-		Task: &taskflow.TaskInfo{
+		Task: &taskflow.Task{
 			ID:   id,
 			Text: content,
 		},
@@ -347,6 +355,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		t := pt.Edges.Task
 		if t == nil {
 			return nil, fmt.Errorf("task edge is nil")
+		}
+
+		coding, configs, err := a.getCodingConfigs(req.CliName, m, req.Extra.SkillIDs)
+		if err != nil {
+			return nil, err
 		}
 
 		git := taskflow.Git{
@@ -398,17 +411,38 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			}
 		}
 
+		mcps := []taskflow.McpServerConfig{
+			{
+				Type: "http",
+				Name: "mcaiBuiltin",
+				Url:  proto.String(fmt.Sprintf("http://127.0.0.1:65510/mcp?task_id=%s", t.ID.String())),
+			},
+			{
+				Type: "http",
+				Name: "context7",
+				Url:  proto.String("https://mcp.context7.com/mcp"),
+				Headers: []*taskflow.McpHttpHeader{
+					{
+						Name:  "CONTEXT7_API_KEY",
+						Value: a.cfg.Context7ApiKey,
+					},
+				},
+			},
+		}
 		if err := a.tasker.CreateTask(ctx, t.ID.String(), &domain.TaskSession{
-			Task: &taskflow.CreateVirtualMachineReq{
-				TaskID:   t.ID,
-				UserID:   user.ID.String(),
-				HostID:   req.HostID,
-				HostName: t.ID.String(),
-				LLM: taskflow.LLMProviderReq{
+			Task: &taskflow.CreateTaskReq{
+				ID:           t.ID,
+				VMID:         vm.ID,
+				Text:         req.Content,
+				SystemPrompt: req.SystemPrompt,
+				CodingAgent:  coding,
+				LLM: taskflow.LLM{
 					ApiKey:  m.APIKey,
 					BaseURL: m.BaseURL,
 					Model:   m.Model,
 				},
+				Configs:    configs,
+				McpConfigs: mcps,
 			},
 			User: user,
 		}); err != nil {
@@ -433,6 +467,104 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	return result, nil
+}
+
+func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs []string) (taskflow.CodingAgent, []taskflow.ConfigFile, error) {
+	var tmp string
+	var path string
+	var coding taskflow.CodingAgent
+	cfs := make([]taskflow.ConfigFile, 0)
+	switch cli {
+	case consts.CliNameClaude:
+		tmp = string(templates.Claude)
+		path = "~/.claude/settings.json"
+		coding = taskflow.CodingAgentClaude
+		m.BaseURL = strings.ReplaceAll(m.BaseURL, "/v1", "")
+
+	case consts.CliNameCodex:
+		tmp = string(templates.Codex)
+		path = "~/.codex/config.toml"
+		coding = taskflow.CodingAgentCodex
+
+	case consts.CliNameOpencode:
+		tmp = string(templates.OpenCode)
+		path = "~/.config/opencode/opencode.json"
+		coding = taskflow.CodingAgentOpenCode
+
+		authtemp, err := template.New("auth").Parse(string(templates.OpenCodeAuth))
+		if err != nil {
+			return coding, nil, err
+		}
+
+		var authBuf bytes.Buffer
+		if err := authtemp.Execute(&authBuf, map[string]any{
+			"api_key": m.APIKey,
+		}); err != nil {
+			return coding, nil, err
+		}
+		cfs = append(cfs, taskflow.ConfigFile{
+			Path:    "~/.local/share/opencode/auth.json",
+			Content: authBuf.String(),
+		})
+
+	default:
+		return coding, nil, fmt.Errorf("unexpected consts.CliName: %#v", cli)
+	}
+
+	temp, err := template.New("config").Parse(tmp)
+	if err != nil {
+		return coding, nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := temp.Execute(&buf, map[string]any{
+		"model":    m.Model,
+		"base_url": m.BaseURL,
+		"api_key":  m.APIKey,
+	}); err != nil {
+		return coding, nil, err
+	}
+
+	cfs = append(cfs, taskflow.ConfigFile{
+		Path:    path,
+		Content: buf.String(),
+	})
+
+	if len(skillIDs) == 0 {
+		return coding, cfs, nil
+	}
+
+	for _, skillID := range skillIDs {
+		skilldir := filepath.Join(consts.SkillBaseDir, skillID)
+		if _, err := os.Stat(skilldir); os.IsNotExist(err) {
+			continue
+		}
+		filepath.Walk(skilldir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			// 获取相对于 skilldir 的相对路径，保留目录结构
+			relPath, err := filepath.Rel(skilldir, path)
+			if err != nil {
+				return err
+			}
+			realSkillID := filepath.Base(skilldir)
+			agentSkillDir := "/tmp/codingmatrix-project-tpl/.ai-ready/skills/"
+			cfs = append(cfs, taskflow.ConfigFile{
+				Path:    filepath.Join(agentSkillDir, realSkillID, relPath),
+				Content: string(content),
+			})
+			return nil
+		})
+	}
+	return coding, cfs, nil
 }
 
 // GetPublic implements domain.TaskUsecase.

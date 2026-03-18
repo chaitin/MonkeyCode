@@ -225,7 +225,7 @@ func (t *Task) From(src *db.Task) *Task {
 
 // TaskSession tasker 状态机的 payload
 type TaskSession struct {
-	Task     *taskflow.CreateVirtualMachineReq `json:"task"`
+	Task     *taskflow.CreateTaskReq            `json:"task"`
 	User     *User                             `json:"user"`
 	Platform consts.GitPlatform                `json:"platform"`
 	ShowUrl  string                            `json:"show_url"`

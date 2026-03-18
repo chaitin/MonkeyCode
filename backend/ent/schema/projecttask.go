@@ -48,5 +48,8 @@ func (ProjectTask) Edges() []ent.Edge {
 		edge.From("task", Task.Type).Field("task_id").Ref("project_tasks").Unique().Required(),
 		edge.From("model", Model.Type).Field("model_id").Ref("project_tasks").Unique().Required(),
 		edge.From("image", Image.Type).Field("image_id").Ref("project_tasks").Unique().Required(),
+		edge.From("git_identity", GitIdentity.Type).Field("git_identity_id").Ref("project_tasks").Unique(),
+		edge.From("project", Project.Type).Field("project_id").Ref("project_tasks").Unique(),
+		edge.From("issue", ProjectIssue.Type).Field("issue_id").Ref("project_tasks").Unique(),
 	}
 }

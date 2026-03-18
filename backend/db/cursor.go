@@ -18,6 +18,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
@@ -395,6 +398,141 @@ func (q *NotifySendLogQuery) After(ctx context.Context, cursor string, limit int
 		return nil, nil, err
 	}
 	q.Order(notifysendlog.ByCreatedAt(sql.OrderDesc()), notifysendlog.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("created_at"), i.CreatedAt),
+				sql.And(
+					sql.EQ(s.C("created_at"), i.CreatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &createdAtCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
+func (q *ProjectQuery) After(ctx context.Context, cursor string, limit int) ([]*Project, *Cursor, error) {
+	i, err := unmarshalUpdatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(project.ByUpdatedAt(sql.OrderDesc()), project.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("updated_at"), i.UpdatedAt),
+				sql.And(
+					sql.EQ(s.C("updated_at"), i.UpdatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &updateAtCursor{
+			UpdatedAt: last.UpdatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
+func (q *ProjectIssueQuery) After(ctx context.Context, cursor string, limit int) ([]*ProjectIssue, *Cursor, error) {
+	i, err := unmarshalCreatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(projectissue.ByCreatedAt(sql.OrderDesc()), projectissue.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("created_at"), i.CreatedAt),
+				sql.And(
+					sql.EQ(s.C("created_at"), i.CreatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &createdAtCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
+func (q *ProjectIssueCommentQuery) After(ctx context.Context, cursor string, limit int) ([]*ProjectIssueComment, *Cursor, error) {
+	i, err := unmarshalCreatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(projectissuecomment.ByCreatedAt(sql.OrderDesc()), projectissuecomment.ByID(sql.OrderDesc()))
 	q.Limit(limit + 1)
 
 	if i != nil {

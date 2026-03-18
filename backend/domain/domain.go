@@ -44,3 +44,28 @@ type TaskHook interface {
 	// GitTask 获取 git 任务详情
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
 }
+
+// ProjectHook 项目模块回调接口（可选，内部项目通过 WithProjectHook 注入）
+type ProjectHook interface {
+	// GenerateIssueSummary 生成问题摘要
+	GenerateIssueSummary(ctx context.Context, issueID uuid.UUID) error
+	// GetInternalRepoToken 获取内部仓库 token
+	GetInternalRepoToken(ctx context.Context, userID uuid.UUID, projectID uuid.UUID) (string, error)
+}
+
+// SiteResolver 站点解析接口（可选，内部项目通过 WithSiteResolver 注入）
+type SiteResolver interface {
+	// ResolveByHost 通过域名解析站点配置
+	ResolveByHost(ctx context.Context, host string) (*OAuthSiteConfig, error)
+	// ResolveBySiteID 通过站点 ID 解析站点配置
+	ResolveBySiteID(ctx context.Context, siteID uuid.UUID) (*OAuthSiteConfig, error)
+}
+
+// OAuthSiteConfig OAuth 站点配置
+type OAuthSiteConfig struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
+	Scope        string
+	BaseURL      string
+}

@@ -14,9 +14,14 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -297,6 +302,96 @@ func (_c *UserCreate) AddTasks(v ...*Task) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddTaskIDs(ids...)
+}
+
+// AddGitIdentityIDs adds the "git_identities" edge to the GitIdentity entity by IDs.
+func (_c *UserCreate) AddGitIdentityIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddGitIdentityIDs(ids...)
+	return _c
+}
+
+// AddGitIdentities adds the "git_identities" edges to the GitIdentity entity.
+func (_c *UserCreate) AddGitIdentities(v ...*GitIdentity) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGitIdentityIDs(ids...)
+}
+
+// AddProjectIDs adds the "projects" edge to the Project entity by IDs.
+func (_c *UserCreate) AddProjectIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddProjectIDs(ids...)
+	return _c
+}
+
+// AddProjects adds the "projects" edges to the Project entity.
+func (_c *UserCreate) AddProjects(v ...*Project) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddProjectIDs(ids...)
+}
+
+// AddProjectIssueIDs adds the "project_issues" edge to the ProjectIssue entity by IDs.
+func (_c *UserCreate) AddProjectIssueIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddProjectIssueIDs(ids...)
+	return _c
+}
+
+// AddProjectIssues adds the "project_issues" edges to the ProjectIssue entity.
+func (_c *UserCreate) AddProjectIssues(v ...*ProjectIssue) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddProjectIssueIDs(ids...)
+}
+
+// AddAssignedIssueIDs adds the "assigned_issues" edge to the ProjectIssue entity by IDs.
+func (_c *UserCreate) AddAssignedIssueIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddAssignedIssueIDs(ids...)
+	return _c
+}
+
+// AddAssignedIssues adds the "assigned_issues" edges to the ProjectIssue entity.
+func (_c *UserCreate) AddAssignedIssues(v ...*ProjectIssue) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAssignedIssueIDs(ids...)
+}
+
+// AddProjectCollaboratorIDs adds the "project_collaborators" edge to the ProjectCollaborator entity by IDs.
+func (_c *UserCreate) AddProjectCollaboratorIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddProjectCollaboratorIDs(ids...)
+	return _c
+}
+
+// AddProjectCollaborators adds the "project_collaborators" edges to the ProjectCollaborator entity.
+func (_c *UserCreate) AddProjectCollaborators(v ...*ProjectCollaborator) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddProjectCollaboratorIDs(ids...)
+}
+
+// AddProjectIssueCommentIDs adds the "project_issue_comments" edge to the ProjectIssueComment entity by IDs.
+func (_c *UserCreate) AddProjectIssueCommentIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddProjectIssueCommentIDs(ids...)
+	return _c
+}
+
+// AddProjectIssueComments adds the "project_issue_comments" edges to the ProjectIssueComment entity.
+func (_c *UserCreate) AddProjectIssueComments(v ...*ProjectIssueComment) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddProjectIssueCommentIDs(ids...)
 }
 
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
@@ -637,6 +732,102 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitIdentitiesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.GitIdentitiesTable,
+			Columns: []string{user.GitIdentitiesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ProjectsTable,
+			Columns: []string{user.ProjectsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectIssuesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ProjectIssuesTable,
+			Columns: []string{user.ProjectIssuesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AssignedIssuesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AssignedIssuesTable,
+			Columns: []string{user.AssignedIssuesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectCollaboratorsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ProjectCollaboratorsTable,
+			Columns: []string{user.ProjectCollaboratorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectcollaborator.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectIssueCommentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ProjectIssueCommentsTable,
+			Columns: []string{user.ProjectIssueCommentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissuecomment.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

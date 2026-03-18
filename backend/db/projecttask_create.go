@@ -13,8 +13,11 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/google/uuid"
@@ -171,6 +174,21 @@ func (_c *ProjectTaskCreate) SetImage(v *Image) *ProjectTaskCreate {
 	return _c.SetImageID(v.ID)
 }
 
+// SetGitIdentity sets the "git_identity" edge to the GitIdentity entity.
+func (_c *ProjectTaskCreate) SetGitIdentity(v *GitIdentity) *ProjectTaskCreate {
+	return _c.SetGitIdentityID(v.ID)
+}
+
+// SetProject sets the "project" edge to the Project entity.
+func (_c *ProjectTaskCreate) SetProject(v *Project) *ProjectTaskCreate {
+	return _c.SetProjectID(v.ID)
+}
+
+// SetIssue sets the "issue" edge to the ProjectIssue entity.
+func (_c *ProjectTaskCreate) SetIssue(v *ProjectIssue) *ProjectTaskCreate {
+	return _c.SetIssueID(v.ID)
+}
+
 // Mutation returns the ProjectTaskMutation object of the builder.
 func (_c *ProjectTaskCreate) Mutation() *ProjectTaskMutation {
 	return _c.mutation
@@ -274,18 +292,6 @@ func (_c *ProjectTaskCreate) createSpec() (*ProjectTask, *sqlgraph.CreateSpec) {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
-	if value, ok := _c.mutation.GitIdentityID(); ok {
-		_spec.SetField(projecttask.FieldGitIdentityID, field.TypeUUID, value)
-		_node.GitIdentityID = value
-	}
-	if value, ok := _c.mutation.ProjectID(); ok {
-		_spec.SetField(projecttask.FieldProjectID, field.TypeUUID, value)
-		_node.ProjectID = &value
-	}
-	if value, ok := _c.mutation.IssueID(); ok {
-		_spec.SetField(projecttask.FieldIssueID, field.TypeUUID, value)
-		_node.IssueID = value
-	}
 	if value, ok := _c.mutation.RepoURL(); ok {
 		_spec.SetField(projecttask.FieldRepoURL, field.TypeString, value)
 		_node.RepoURL = value
@@ -355,6 +361,57 @@ func (_c *ProjectTaskCreate) createSpec() (*ProjectTask, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.ImageID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitIdentityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.GitIdentityTable,
+			Columns: []string{projecttask.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.GitIdentityID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.ProjectTable,
+			Columns: []string{projecttask.ProjectColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.ProjectID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.IssueIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.IssueTable,
+			Columns: []string{projecttask.IssueColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.IssueID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

@@ -50,5 +50,6 @@ func (Image) Edges() []ent.Edge {
 		edge.From("teams", Team.Type).Ref("images").Through("team_images", TeamImage.Type),
 		edge.From("groups", TeamGroup.Type).Ref("images").Through("team_group_images", TeamGroupImage.Type),
 		edge.To("project_tasks", ProjectTask.Type),
+		edge.To("projects", Project.Type),
 	}
 }

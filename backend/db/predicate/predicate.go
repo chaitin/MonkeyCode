@@ -9,6 +9,9 @@ import (
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 
+// GitIdentity is the predicate function for gitidentity builders.
+type GitIdentity func(*sql.Selector)
+
 // Host is the predicate function for host builders.
 type Host func(*sql.Selector)
 
@@ -26,6 +29,18 @@ type NotifySendLog func(*sql.Selector)
 
 // NotifySubscription is the predicate function for notifysubscription builders.
 type NotifySubscription func(*sql.Selector)
+
+// Project is the predicate function for project builders.
+type Project func(*sql.Selector)
+
+// ProjectCollaborator is the predicate function for projectcollaborator builders.
+type ProjectCollaborator func(*sql.Selector)
+
+// ProjectIssue is the predicate function for projectissue builders.
+type ProjectIssue func(*sql.Selector)
+
+// ProjectIssueComment is the predicate function for projectissuecomment builders.
+type ProjectIssueComment func(*sql.Selector)
 
 // ProjectTask is the predicate function for projecttask builders.
 type ProjectTask func(*sql.Selector)

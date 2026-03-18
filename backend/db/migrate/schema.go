@@ -34,6 +34,37 @@ var (
 			},
 		},
 	}
+	// GitIdentitiesColumns holds the columns for the "git_identities" table.
+	GitIdentitiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "platform", Type: field.TypeString},
+		{Name: "base_url", Type: field.TypeString, Nullable: true},
+		{Name: "access_token", Type: field.TypeString, Nullable: true},
+		{Name: "username", Type: field.TypeString, Nullable: true},
+		{Name: "email", Type: field.TypeString, Nullable: true},
+		{Name: "installation_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "remark", Type: field.TypeString, Nullable: true},
+		{Name: "oauth_refresh_token", Type: field.TypeString, Nullable: true},
+		{Name: "oauth_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// GitIdentitiesTable holds the schema information for the "git_identities" table.
+	GitIdentitiesTable = &schema.Table{
+		Name:       "git_identities",
+		Columns:    GitIdentitiesColumns,
+		PrimaryKey: []*schema.Column{GitIdentitiesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "git_identities_users_git_identities",
+				Columns:    []*schema.Column{GitIdentitiesColumns[13]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// HostsColumns holds the columns for the "hosts" table.
 	HostsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -214,19 +245,170 @@ var (
 			},
 		},
 	}
+	// ProjectsColumns holds the columns for the "projects" table.
+	ProjectsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "platform", Type: field.TypeString, Nullable: true},
+		{Name: "repo_url", Type: field.TypeString, Nullable: true},
+		{Name: "branch", Type: field.TypeString, Nullable: true},
+		{Name: "env_variables", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "git_identity_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "image_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// ProjectsTable holds the schema information for the "projects" table.
+	ProjectsTable = &schema.Table{
+		Name:       "projects",
+		Columns:    ProjectsColumns,
+		PrimaryKey: []*schema.Column{ProjectsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "projects_git_identities_projects",
+				Columns:    []*schema.Column{ProjectsColumns[10]},
+				RefColumns: []*schema.Column{GitIdentitiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "projects_images_projects",
+				Columns:    []*schema.Column{ProjectsColumns[11]},
+				RefColumns: []*schema.Column{ImagesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "projects_users_projects",
+				Columns:    []*schema.Column{ProjectsColumns[12]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// ProjectCollaboratorsColumns holds the columns for the "project_collaborators" table.
+	ProjectCollaboratorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "role", Type: field.TypeString, Default: "read_only"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// ProjectCollaboratorsTable holds the schema information for the "project_collaborators" table.
+	ProjectCollaboratorsTable = &schema.Table{
+		Name:       "project_collaborators",
+		Columns:    ProjectCollaboratorsColumns,
+		PrimaryKey: []*schema.Column{ProjectCollaboratorsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "project_collaborators_projects_collaborators",
+				Columns:    []*schema.Column{ProjectCollaboratorsColumns[5]},
+				RefColumns: []*schema.Column{ProjectsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_collaborators_users_project_collaborators",
+				Columns:    []*schema.Column{ProjectCollaboratorsColumns[6]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// ProjectIssuesColumns holds the columns for the "project_issues" table.
+	ProjectIssuesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "status", Type: field.TypeString, Default: "open"},
+		{Name: "title", Type: field.TypeString, Size: 2147483647},
+		{Name: "requirement_document", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "design_document", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "priority", Type: field.TypeInt, Default: 2},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "assignee_id", Type: field.TypeUUID, Nullable: true},
+	}
+	// ProjectIssuesTable holds the schema information for the "project_issues" table.
+	ProjectIssuesTable = &schema.Table{
+		Name:       "project_issues",
+		Columns:    ProjectIssuesColumns,
+		PrimaryKey: []*schema.Column{ProjectIssuesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "project_issues_projects_issues",
+				Columns:    []*schema.Column{ProjectIssuesColumns[10]},
+				RefColumns: []*schema.Column{ProjectsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_issues_users_project_issues",
+				Columns:    []*schema.Column{ProjectIssuesColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_issues_users_assigned_issues",
+				Columns:    []*schema.Column{ProjectIssuesColumns[12]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+	}
+	// ProjectIssueCommentsColumns holds the columns for the "project_issue_comments" table.
+	ProjectIssueCommentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "comment", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "issue_id", Type: field.TypeUUID},
+		{Name: "parent_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// ProjectIssueCommentsTable holds the schema information for the "project_issue_comments" table.
+	ProjectIssueCommentsTable = &schema.Table{
+		Name:       "project_issue_comments",
+		Columns:    ProjectIssueCommentsColumns,
+		PrimaryKey: []*schema.Column{ProjectIssueCommentsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "project_issue_comments_project_issues_comments",
+				Columns:    []*schema.Column{ProjectIssueCommentsColumns[5]},
+				RefColumns: []*schema.Column{ProjectIssuesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_issue_comments_project_issue_comments_replies",
+				Columns:    []*schema.Column{ProjectIssueCommentsColumns[6]},
+				RefColumns: []*schema.Column{ProjectIssueCommentsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "project_issue_comments_users_project_issue_comments",
+				Columns:    []*schema.Column{ProjectIssueCommentsColumns[7]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// ProjectTasksColumns holds the columns for the "project_tasks" table.
 	ProjectTasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "git_identity_id", Type: field.TypeUUID, Nullable: true},
-		{Name: "project_id", Type: field.TypeUUID, Nullable: true},
-		{Name: "issue_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "repo_url", Type: field.TypeString, Nullable: true},
 		{Name: "repo_filename", Type: field.TypeString, Nullable: true},
 		{Name: "branch", Type: field.TypeString, Nullable: true},
 		{Name: "cli_name", Type: field.TypeString},
 		{Name: "created_at", Type: field.TypeTime},
+		{Name: "git_identity_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "image_id", Type: field.TypeUUID},
 		{Name: "model_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "issue_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "task_id", Type: field.TypeUUID},
 	}
 	// ProjectTasksTable holds the schema information for the "project_tasks" table.
@@ -236,16 +418,34 @@ var (
 		PrimaryKey: []*schema.Column{ProjectTasksColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
+				Symbol:     "project_tasks_git_identities_project_tasks",
+				Columns:    []*schema.Column{ProjectTasksColumns[6]},
+				RefColumns: []*schema.Column{GitIdentitiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
 				Symbol:     "project_tasks_images_project_tasks",
-				Columns:    []*schema.Column{ProjectTasksColumns[9]},
+				Columns:    []*schema.Column{ProjectTasksColumns[7]},
 				RefColumns: []*schema.Column{ImagesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "project_tasks_models_project_tasks",
-				Columns:    []*schema.Column{ProjectTasksColumns[10]},
+				Columns:    []*schema.Column{ProjectTasksColumns[8]},
 				RefColumns: []*schema.Column{ModelsColumns[0]},
 				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_tasks_projects_project_tasks",
+				Columns:    []*schema.Column{ProjectTasksColumns[9]},
+				RefColumns: []*schema.Column{ProjectsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "project_tasks_project_issues_project_tasks",
+				Columns:    []*schema.Column{ProjectTasksColumns[10]},
+				RefColumns: []*schema.Column{ProjectIssuesColumns[0]},
+				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "project_tasks_tasks_project_tasks",
@@ -726,12 +926,17 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditsTable,
+		GitIdentitiesTable,
 		HostsTable,
 		ImagesTable,
 		ModelsTable,
 		NotifyChannelsTable,
 		NotifySendLogsTable,
 		NotifySubscriptionsTable,
+		ProjectsTable,
+		ProjectCollaboratorsTable,
+		ProjectIssuesTable,
+		ProjectIssueCommentsTable,
 		ProjectTasksTable,
 		TasksTable,
 		TaskVirtualmachinesTable,
@@ -756,6 +961,10 @@ func init() {
 	AuditsTable.Annotation = &entsql.Annotation{
 		Table: "audits",
 	}
+	GitIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
+	GitIdentitiesTable.Annotation = &entsql.Annotation{
+		Table: "git_identities",
+	}
 	HostsTable.ForeignKeys[0].RefTable = UsersTable
 	HostsTable.Annotation = &entsql.Annotation{
 		Table: "hosts",
@@ -778,9 +987,35 @@ func init() {
 	NotifySubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "notify_subscriptions",
 	}
-	ProjectTasksTable.ForeignKeys[0].RefTable = ImagesTable
-	ProjectTasksTable.ForeignKeys[1].RefTable = ModelsTable
-	ProjectTasksTable.ForeignKeys[2].RefTable = TasksTable
+	ProjectsTable.ForeignKeys[0].RefTable = GitIdentitiesTable
+	ProjectsTable.ForeignKeys[1].RefTable = ImagesTable
+	ProjectsTable.ForeignKeys[2].RefTable = UsersTable
+	ProjectsTable.Annotation = &entsql.Annotation{
+		Table: "projects",
+	}
+	ProjectCollaboratorsTable.ForeignKeys[0].RefTable = ProjectsTable
+	ProjectCollaboratorsTable.ForeignKeys[1].RefTable = UsersTable
+	ProjectCollaboratorsTable.Annotation = &entsql.Annotation{
+		Table: "project_collaborators",
+	}
+	ProjectIssuesTable.ForeignKeys[0].RefTable = ProjectsTable
+	ProjectIssuesTable.ForeignKeys[1].RefTable = UsersTable
+	ProjectIssuesTable.ForeignKeys[2].RefTable = UsersTable
+	ProjectIssuesTable.Annotation = &entsql.Annotation{
+		Table: "project_issues",
+	}
+	ProjectIssueCommentsTable.ForeignKeys[0].RefTable = ProjectIssuesTable
+	ProjectIssueCommentsTable.ForeignKeys[1].RefTable = ProjectIssueCommentsTable
+	ProjectIssueCommentsTable.ForeignKeys[2].RefTable = UsersTable
+	ProjectIssueCommentsTable.Annotation = &entsql.Annotation{
+		Table: "project_issue_comments",
+	}
+	ProjectTasksTable.ForeignKeys[0].RefTable = GitIdentitiesTable
+	ProjectTasksTable.ForeignKeys[1].RefTable = ImagesTable
+	ProjectTasksTable.ForeignKeys[2].RefTable = ModelsTable
+	ProjectTasksTable.ForeignKeys[3].RefTable = ProjectsTable
+	ProjectTasksTable.ForeignKeys[4].RefTable = ProjectIssuesTable
+	ProjectTasksTable.ForeignKeys[5].RefTable = TasksTable
 	ProjectTasksTable.Annotation = &entsql.Annotation{
 		Table: "project_tasks",
 	}

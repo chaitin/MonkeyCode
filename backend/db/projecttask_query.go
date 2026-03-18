@@ -12,9 +12,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/google/uuid"
@@ -23,14 +26,17 @@ import (
 // ProjectTaskQuery is the builder for querying ProjectTask entities.
 type ProjectTaskQuery struct {
 	config
-	ctx        *QueryContext
-	order      []projecttask.OrderOption
-	inters     []Interceptor
-	predicates []predicate.ProjectTask
-	withTask   *TaskQuery
-	withModel  *ModelQuery
-	withImage  *ImageQuery
-	modifiers  []func(*sql.Selector)
+	ctx             *QueryContext
+	order           []projecttask.OrderOption
+	inters          []Interceptor
+	predicates      []predicate.ProjectTask
+	withTask        *TaskQuery
+	withModel       *ModelQuery
+	withImage       *ImageQuery
+	withGitIdentity *GitIdentityQuery
+	withProject     *ProjectQuery
+	withIssue       *ProjectIssueQuery
+	modifiers       []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -126,6 +132,72 @@ func (_q *ProjectTaskQuery) QueryImage() *ImageQuery {
 			sqlgraph.From(projecttask.Table, projecttask.FieldID, selector),
 			sqlgraph.To(image.Table, image.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, projecttask.ImageTable, projecttask.ImageColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGitIdentity chains the current query on the "git_identity" edge.
+func (_q *ProjectTaskQuery) QueryGitIdentity() *GitIdentityQuery {
+	query := (&GitIdentityClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(projecttask.Table, projecttask.FieldID, selector),
+			sqlgraph.To(gitidentity.Table, gitidentity.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, projecttask.GitIdentityTable, projecttask.GitIdentityColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProject chains the current query on the "project" edge.
+func (_q *ProjectTaskQuery) QueryProject() *ProjectQuery {
+	query := (&ProjectClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(projecttask.Table, projecttask.FieldID, selector),
+			sqlgraph.To(project.Table, project.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, projecttask.ProjectTable, projecttask.ProjectColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryIssue chains the current query on the "issue" edge.
+func (_q *ProjectTaskQuery) QueryIssue() *ProjectIssueQuery {
+	query := (&ProjectIssueClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(projecttask.Table, projecttask.FieldID, selector),
+			sqlgraph.To(projectissue.Table, projectissue.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, projecttask.IssueTable, projecttask.IssueColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -320,14 +392,17 @@ func (_q *ProjectTaskQuery) Clone() *ProjectTaskQuery {
 		return nil
 	}
 	return &ProjectTaskQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]projecttask.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.ProjectTask{}, _q.predicates...),
-		withTask:   _q.withTask.Clone(),
-		withModel:  _q.withModel.Clone(),
-		withImage:  _q.withImage.Clone(),
+		config:          _q.config,
+		ctx:             _q.ctx.Clone(),
+		order:           append([]projecttask.OrderOption{}, _q.order...),
+		inters:          append([]Interceptor{}, _q.inters...),
+		predicates:      append([]predicate.ProjectTask{}, _q.predicates...),
+		withTask:        _q.withTask.Clone(),
+		withModel:       _q.withModel.Clone(),
+		withImage:       _q.withImage.Clone(),
+		withGitIdentity: _q.withGitIdentity.Clone(),
+		withProject:     _q.withProject.Clone(),
+		withIssue:       _q.withIssue.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -365,6 +440,39 @@ func (_q *ProjectTaskQuery) WithImage(opts ...func(*ImageQuery)) *ProjectTaskQue
 		opt(query)
 	}
 	_q.withImage = query
+	return _q
+}
+
+// WithGitIdentity tells the query-builder to eager-load the nodes that are connected to
+// the "git_identity" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProjectTaskQuery) WithGitIdentity(opts ...func(*GitIdentityQuery)) *ProjectTaskQuery {
+	query := (&GitIdentityClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitIdentity = query
+	return _q
+}
+
+// WithProject tells the query-builder to eager-load the nodes that are connected to
+// the "project" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProjectTaskQuery) WithProject(opts ...func(*ProjectQuery)) *ProjectTaskQuery {
+	query := (&ProjectClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProject = query
+	return _q
+}
+
+// WithIssue tells the query-builder to eager-load the nodes that are connected to
+// the "issue" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProjectTaskQuery) WithIssue(opts ...func(*ProjectIssueQuery)) *ProjectTaskQuery {
+	query := (&ProjectIssueClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withIssue = query
 	return _q
 }
 
@@ -446,10 +554,13 @@ func (_q *ProjectTaskQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*ProjectTask{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [6]bool{
 			_q.withTask != nil,
 			_q.withModel != nil,
 			_q.withImage != nil,
+			_q.withGitIdentity != nil,
+			_q.withProject != nil,
+			_q.withIssue != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -488,6 +599,24 @@ func (_q *ProjectTaskQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withImage; query != nil {
 		if err := _q.loadImage(ctx, query, nodes, nil,
 			func(n *ProjectTask, e *Image) { n.Edges.Image = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGitIdentity; query != nil {
+		if err := _q.loadGitIdentity(ctx, query, nodes, nil,
+			func(n *ProjectTask, e *GitIdentity) { n.Edges.GitIdentity = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProject; query != nil {
+		if err := _q.loadProject(ctx, query, nodes, nil,
+			func(n *ProjectTask, e *Project) { n.Edges.Project = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withIssue; query != nil {
+		if err := _q.loadIssue(ctx, query, nodes, nil,
+			func(n *ProjectTask, e *ProjectIssue) { n.Edges.Issue = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -581,6 +710,96 @@ func (_q *ProjectTaskQuery) loadImage(ctx context.Context, query *ImageQuery, no
 	}
 	return nil
 }
+func (_q *ProjectTaskQuery) loadGitIdentity(ctx context.Context, query *GitIdentityQuery, nodes []*ProjectTask, init func(*ProjectTask), assign func(*ProjectTask, *GitIdentity)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*ProjectTask)
+	for i := range nodes {
+		fk := nodes[i].GitIdentityID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(gitidentity.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "git_identity_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *ProjectTaskQuery) loadProject(ctx context.Context, query *ProjectQuery, nodes []*ProjectTask, init func(*ProjectTask), assign func(*ProjectTask, *Project)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*ProjectTask)
+	for i := range nodes {
+		if nodes[i].ProjectID == nil {
+			continue
+		}
+		fk := *nodes[i].ProjectID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(project.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "project_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *ProjectTaskQuery) loadIssue(ctx context.Context, query *ProjectIssueQuery, nodes []*ProjectTask, init func(*ProjectTask), assign func(*ProjectTask, *ProjectIssue)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*ProjectTask)
+	for i := range nodes {
+		fk := nodes[i].IssueID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(projectissue.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "issue_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ProjectTaskQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -618,6 +837,15 @@ func (_q *ProjectTaskQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withImage != nil {
 			_spec.Node.AddColumnOnce(projecttask.FieldImageID)
+		}
+		if _q.withGitIdentity != nil {
+			_spec.Node.AddColumnOnce(projecttask.FieldGitIdentityID)
+		}
+		if _q.withProject != nil {
+			_spec.Node.AddColumnOnce(projecttask.FieldProjectID)
+		}
+		if _q.withIssue != nil {
+			_spec.Node.AddColumnOnce(projecttask.FieldIssueID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

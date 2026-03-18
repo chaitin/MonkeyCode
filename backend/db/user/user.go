@@ -55,6 +55,18 @@ const (
 	EdgeVms = "vms"
 	// EdgeTasks holds the string denoting the tasks edge name in mutations.
 	EdgeTasks = "tasks"
+	// EdgeGitIdentities holds the string denoting the git_identities edge name in mutations.
+	EdgeGitIdentities = "git_identities"
+	// EdgeProjects holds the string denoting the projects edge name in mutations.
+	EdgeProjects = "projects"
+	// EdgeProjectIssues holds the string denoting the project_issues edge name in mutations.
+	EdgeProjectIssues = "project_issues"
+	// EdgeAssignedIssues holds the string denoting the assigned_issues edge name in mutations.
+	EdgeAssignedIssues = "assigned_issues"
+	// EdgeProjectCollaborators holds the string denoting the project_collaborators edge name in mutations.
+	EdgeProjectCollaborators = "project_collaborators"
+	// EdgeProjectIssueComments holds the string denoting the project_issue_comments edge name in mutations.
+	EdgeProjectIssueComments = "project_issue_comments"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
@@ -120,6 +132,48 @@ const (
 	TasksInverseTable = "tasks"
 	// TasksColumn is the table column denoting the tasks relation/edge.
 	TasksColumn = "user_id"
+	// GitIdentitiesTable is the table that holds the git_identities relation/edge.
+	GitIdentitiesTable = "git_identities"
+	// GitIdentitiesInverseTable is the table name for the GitIdentity entity.
+	// It exists in this package in order to avoid circular dependency with the "gitidentity" package.
+	GitIdentitiesInverseTable = "git_identities"
+	// GitIdentitiesColumn is the table column denoting the git_identities relation/edge.
+	GitIdentitiesColumn = "user_id"
+	// ProjectsTable is the table that holds the projects relation/edge.
+	ProjectsTable = "projects"
+	// ProjectsInverseTable is the table name for the Project entity.
+	// It exists in this package in order to avoid circular dependency with the "project" package.
+	ProjectsInverseTable = "projects"
+	// ProjectsColumn is the table column denoting the projects relation/edge.
+	ProjectsColumn = "user_id"
+	// ProjectIssuesTable is the table that holds the project_issues relation/edge.
+	ProjectIssuesTable = "project_issues"
+	// ProjectIssuesInverseTable is the table name for the ProjectIssue entity.
+	// It exists in this package in order to avoid circular dependency with the "projectissue" package.
+	ProjectIssuesInverseTable = "project_issues"
+	// ProjectIssuesColumn is the table column denoting the project_issues relation/edge.
+	ProjectIssuesColumn = "user_id"
+	// AssignedIssuesTable is the table that holds the assigned_issues relation/edge.
+	AssignedIssuesTable = "project_issues"
+	// AssignedIssuesInverseTable is the table name for the ProjectIssue entity.
+	// It exists in this package in order to avoid circular dependency with the "projectissue" package.
+	AssignedIssuesInverseTable = "project_issues"
+	// AssignedIssuesColumn is the table column denoting the assigned_issues relation/edge.
+	AssignedIssuesColumn = "assignee_id"
+	// ProjectCollaboratorsTable is the table that holds the project_collaborators relation/edge.
+	ProjectCollaboratorsTable = "project_collaborators"
+	// ProjectCollaboratorsInverseTable is the table name for the ProjectCollaborator entity.
+	// It exists in this package in order to avoid circular dependency with the "projectcollaborator" package.
+	ProjectCollaboratorsInverseTable = "project_collaborators"
+	// ProjectCollaboratorsColumn is the table column denoting the project_collaborators relation/edge.
+	ProjectCollaboratorsColumn = "user_id"
+	// ProjectIssueCommentsTable is the table that holds the project_issue_comments relation/edge.
+	ProjectIssueCommentsTable = "project_issue_comments"
+	// ProjectIssueCommentsInverseTable is the table name for the ProjectIssueComment entity.
+	// It exists in this package in order to avoid circular dependency with the "projectissuecomment" package.
+	ProjectIssueCommentsInverseTable = "project_issue_comments"
+	// ProjectIssueCommentsColumn is the table column denoting the project_issue_comments relation/edge.
+	ProjectIssueCommentsColumn = "user_id"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -375,6 +429,90 @@ func ByTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByGitIdentitiesCount orders the results by git_identities count.
+func ByGitIdentitiesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGitIdentitiesStep(), opts...)
+	}
+}
+
+// ByGitIdentities orders the results by git_identities terms.
+func ByGitIdentities(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitIdentitiesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByProjectsCount orders the results by projects count.
+func ByProjectsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectsStep(), opts...)
+	}
+}
+
+// ByProjects orders the results by projects terms.
+func ByProjects(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByProjectIssuesCount orders the results by project_issues count.
+func ByProjectIssuesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectIssuesStep(), opts...)
+	}
+}
+
+// ByProjectIssues orders the results by project_issues terms.
+func ByProjectIssues(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectIssuesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByAssignedIssuesCount orders the results by assigned_issues count.
+func ByAssignedIssuesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAssignedIssuesStep(), opts...)
+	}
+}
+
+// ByAssignedIssues orders the results by assigned_issues terms.
+func ByAssignedIssues(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAssignedIssuesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByProjectCollaboratorsCount orders the results by project_collaborators count.
+func ByProjectCollaboratorsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectCollaboratorsStep(), opts...)
+	}
+}
+
+// ByProjectCollaborators orders the results by project_collaborators terms.
+func ByProjectCollaborators(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectCollaboratorsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByProjectIssueCommentsCount orders the results by project_issue_comments count.
+func ByProjectIssueCommentsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectIssueCommentsStep(), opts...)
+	}
+}
+
+// ByProjectIssueComments orders the results by project_issue_comments terms.
+func ByProjectIssueComments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectIssueCommentsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -463,6 +601,48 @@ func newTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, TasksTable, TasksColumn),
+	)
+}
+func newGitIdentitiesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitIdentitiesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, GitIdentitiesTable, GitIdentitiesColumn),
+	)
+}
+func newProjectsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ProjectsTable, ProjectsColumn),
+	)
+}
+func newProjectIssuesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectIssuesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ProjectIssuesTable, ProjectIssuesColumn),
+	)
+}
+func newAssignedIssuesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AssignedIssuesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, AssignedIssuesTable, AssignedIssuesColumn),
+	)
+}
+func newProjectCollaboratorsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectCollaboratorsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ProjectCollaboratorsTable, ProjectCollaboratorsColumn),
+	)
+}
+func newProjectIssueCommentsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectIssueCommentsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ProjectIssueCommentsTable, ProjectIssueCommentsColumn),
 	)
 }
 func newTeamMembersStep() *sqlgraph.Step {

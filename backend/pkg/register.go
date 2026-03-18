@@ -22,8 +22,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/template"
 	"github.com/chaitin/MonkeyCode/backend/pkg/session"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
-	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
+	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -112,7 +112,7 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	do.Provide(i, func(i *do.Injector) (*tasker.Tasker[*domain.TaskSession], error) {
 		r := do.MustInvoke[*redis.Client](i)
 		l := do.MustInvoke[*slog.Logger](i)
-		return tasker.NewTasker[*domain.TaskSession](r, tasker.WithLogger[*domain.TaskSession](l)), nil
+		return tasker.NewTasker(r, tasker.WithLogger[*domain.TaskSession](l)), nil
 	})
 
 	// LLM Client

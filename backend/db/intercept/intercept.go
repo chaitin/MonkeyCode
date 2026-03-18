@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -16,6 +17,10 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
@@ -115,6 +120,33 @@ func (f TraverseAudit) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.AuditQuery", q)
+}
+
+// The GitIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GitIdentityFunc func(context.Context, *db.GitIdentityQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f GitIdentityFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.GitIdentityQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.GitIdentityQuery", q)
+}
+
+// The TraverseGitIdentity type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGitIdentity func(context.Context, *db.GitIdentityQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGitIdentity) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGitIdentity) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.GitIdentityQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.GitIdentityQuery", q)
 }
 
 // The HostFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -277,6 +309,114 @@ func (f TraverseNotifySubscription) Traverse(ctx context.Context, q db.Query) er
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.NotifySubscriptionQuery", q)
+}
+
+// The ProjectFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ProjectFunc func(context.Context, *db.ProjectQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ProjectFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ProjectQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ProjectQuery", q)
+}
+
+// The TraverseProject type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseProject func(context.Context, *db.ProjectQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseProject) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseProject) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ProjectQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ProjectQuery", q)
+}
+
+// The ProjectCollaboratorFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ProjectCollaboratorFunc func(context.Context, *db.ProjectCollaboratorQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ProjectCollaboratorFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ProjectCollaboratorQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ProjectCollaboratorQuery", q)
+}
+
+// The TraverseProjectCollaborator type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseProjectCollaborator func(context.Context, *db.ProjectCollaboratorQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseProjectCollaborator) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseProjectCollaborator) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ProjectCollaboratorQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ProjectCollaboratorQuery", q)
+}
+
+// The ProjectIssueFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ProjectIssueFunc func(context.Context, *db.ProjectIssueQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ProjectIssueFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ProjectIssueQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ProjectIssueQuery", q)
+}
+
+// The TraverseProjectIssue type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseProjectIssue func(context.Context, *db.ProjectIssueQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseProjectIssue) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseProjectIssue) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ProjectIssueQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ProjectIssueQuery", q)
+}
+
+// The ProjectIssueCommentFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ProjectIssueCommentFunc func(context.Context, *db.ProjectIssueCommentQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ProjectIssueCommentFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ProjectIssueCommentQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ProjectIssueCommentQuery", q)
+}
+
+// The TraverseProjectIssueComment type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseProjectIssueComment func(context.Context, *db.ProjectIssueCommentQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseProjectIssueComment) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseProjectIssueComment) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ProjectIssueCommentQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ProjectIssueCommentQuery", q)
 }
 
 // The ProjectTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -716,6 +856,8 @@ func NewQuery(q db.Query) (Query, error) {
 	switch q := q.(type) {
 	case *db.AuditQuery:
 		return &query[*db.AuditQuery, predicate.Audit, audit.OrderOption]{typ: db.TypeAudit, tq: q}, nil
+	case *db.GitIdentityQuery:
+		return &query[*db.GitIdentityQuery, predicate.GitIdentity, gitidentity.OrderOption]{typ: db.TypeGitIdentity, tq: q}, nil
 	case *db.HostQuery:
 		return &query[*db.HostQuery, predicate.Host, host.OrderOption]{typ: db.TypeHost, tq: q}, nil
 	case *db.ImageQuery:
@@ -728,6 +870,14 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.NotifySendLogQuery, predicate.NotifySendLog, notifysendlog.OrderOption]{typ: db.TypeNotifySendLog, tq: q}, nil
 	case *db.NotifySubscriptionQuery:
 		return &query[*db.NotifySubscriptionQuery, predicate.NotifySubscription, notifysubscription.OrderOption]{typ: db.TypeNotifySubscription, tq: q}, nil
+	case *db.ProjectQuery:
+		return &query[*db.ProjectQuery, predicate.Project, project.OrderOption]{typ: db.TypeProject, tq: q}, nil
+	case *db.ProjectCollaboratorQuery:
+		return &query[*db.ProjectCollaboratorQuery, predicate.ProjectCollaborator, projectcollaborator.OrderOption]{typ: db.TypeProjectCollaborator, tq: q}, nil
+	case *db.ProjectIssueQuery:
+		return &query[*db.ProjectIssueQuery, predicate.ProjectIssue, projectissue.OrderOption]{typ: db.TypeProjectIssue, tq: q}, nil
+	case *db.ProjectIssueCommentQuery:
+		return &query[*db.ProjectIssueCommentQuery, predicate.ProjectIssueComment, projectissuecomment.OrderOption]{typ: db.TypeProjectIssueComment, tq: q}, nil
 	case *db.ProjectTaskQuery:
 		return &query[*db.ProjectTaskQuery, predicate.ProjectTask, projecttask.OrderOption]{typ: db.TypeProjectTask, tq: q}, nil
 	case *db.TaskQuery:

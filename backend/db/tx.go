@@ -16,6 +16,8 @@ type Tx struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// GitIdentity is the client for interacting with the GitIdentity builders.
+	GitIdentity *GitIdentityClient
 	// Host is the client for interacting with the Host builders.
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
@@ -28,6 +30,14 @@ type Tx struct {
 	NotifySendLog *NotifySendLogClient
 	// NotifySubscription is the client for interacting with the NotifySubscription builders.
 	NotifySubscription *NotifySubscriptionClient
+	// Project is the client for interacting with the Project builders.
+	Project *ProjectClient
+	// ProjectCollaborator is the client for interacting with the ProjectCollaborator builders.
+	ProjectCollaborator *ProjectCollaboratorClient
+	// ProjectIssue is the client for interacting with the ProjectIssue builders.
+	ProjectIssue *ProjectIssueClient
+	// ProjectIssueComment is the client for interacting with the ProjectIssueComment builders.
+	ProjectIssueComment *ProjectIssueCommentClient
 	// ProjectTask is the client for interacting with the ProjectTask builders.
 	ProjectTask *ProjectTaskClient
 	// Task is the client for interacting with the Task builders.
@@ -192,12 +202,17 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Audit = NewAuditClient(tx.config)
+	tx.GitIdentity = NewGitIdentityClient(tx.config)
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
 	tx.Model = NewModelClient(tx.config)
 	tx.NotifyChannel = NewNotifyChannelClient(tx.config)
 	tx.NotifySendLog = NewNotifySendLogClient(tx.config)
 	tx.NotifySubscription = NewNotifySubscriptionClient(tx.config)
+	tx.Project = NewProjectClient(tx.config)
+	tx.ProjectCollaborator = NewProjectCollaboratorClient(tx.config)
+	tx.ProjectIssue = NewProjectIssueClient(tx.config)
+	tx.ProjectIssueComment = NewProjectIssueCommentClient(tx.config)
 	tx.ProjectTask = NewProjectTaskClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
 	tx.TaskVirtualMachine = NewTaskVirtualMachineClient(tx.config)

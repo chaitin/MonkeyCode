@@ -12,9 +12,12 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/project"
+	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/google/uuid"
@@ -239,6 +242,21 @@ func (_u *ProjectTaskUpdate) SetImage(v *Image) *ProjectTaskUpdate {
 	return _u.SetImageID(v.ID)
 }
 
+// SetGitIdentity sets the "git_identity" edge to the GitIdentity entity.
+func (_u *ProjectTaskUpdate) SetGitIdentity(v *GitIdentity) *ProjectTaskUpdate {
+	return _u.SetGitIdentityID(v.ID)
+}
+
+// SetProject sets the "project" edge to the Project entity.
+func (_u *ProjectTaskUpdate) SetProject(v *Project) *ProjectTaskUpdate {
+	return _u.SetProjectID(v.ID)
+}
+
+// SetIssue sets the "issue" edge to the ProjectIssue entity.
+func (_u *ProjectTaskUpdate) SetIssue(v *ProjectIssue) *ProjectTaskUpdate {
+	return _u.SetIssueID(v.ID)
+}
+
 // Mutation returns the ProjectTaskMutation object of the builder.
 func (_u *ProjectTaskUpdate) Mutation() *ProjectTaskMutation {
 	return _u.mutation
@@ -259,6 +277,24 @@ func (_u *ProjectTaskUpdate) ClearModel() *ProjectTaskUpdate {
 // ClearImage clears the "image" edge to the Image entity.
 func (_u *ProjectTaskUpdate) ClearImage() *ProjectTaskUpdate {
 	_u.mutation.ClearImage()
+	return _u
+}
+
+// ClearGitIdentity clears the "git_identity" edge to the GitIdentity entity.
+func (_u *ProjectTaskUpdate) ClearGitIdentity() *ProjectTaskUpdate {
+	_u.mutation.ClearGitIdentity()
+	return _u
+}
+
+// ClearProject clears the "project" edge to the Project entity.
+func (_u *ProjectTaskUpdate) ClearProject() *ProjectTaskUpdate {
+	_u.mutation.ClearProject()
+	return _u
+}
+
+// ClearIssue clears the "issue" edge to the ProjectIssue entity.
+func (_u *ProjectTaskUpdate) ClearIssue() *ProjectTaskUpdate {
+	_u.mutation.ClearIssue()
 	return _u
 }
 
@@ -320,24 +356,6 @@ func (_u *ProjectTaskUpdate) sqlSave(ctx context.Context) (_node int, err error)
 				ps[i](selector)
 			}
 		}
-	}
-	if value, ok := _u.mutation.GitIdentityID(); ok {
-		_spec.SetField(projecttask.FieldGitIdentityID, field.TypeUUID, value)
-	}
-	if _u.mutation.GitIdentityIDCleared() {
-		_spec.ClearField(projecttask.FieldGitIdentityID, field.TypeUUID)
-	}
-	if value, ok := _u.mutation.ProjectID(); ok {
-		_spec.SetField(projecttask.FieldProjectID, field.TypeUUID, value)
-	}
-	if _u.mutation.ProjectIDCleared() {
-		_spec.ClearField(projecttask.FieldProjectID, field.TypeUUID)
-	}
-	if value, ok := _u.mutation.IssueID(); ok {
-		_spec.SetField(projecttask.FieldIssueID, field.TypeUUID, value)
-	}
-	if _u.mutation.IssueIDCleared() {
-		_spec.ClearField(projecttask.FieldIssueID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.RepoURL(); ok {
 		_spec.SetField(projecttask.FieldRepoURL, field.TypeString, value)
@@ -443,6 +461,93 @@ func (_u *ProjectTaskUpdate) sqlSave(ctx context.Context) (_node int, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitIdentityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.GitIdentityTable,
+			Columns: []string{projecttask.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitIdentityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.GitIdentityTable,
+			Columns: []string{projecttask.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.ProjectTable,
+			Columns: []string{projecttask.ProjectColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.ProjectTable,
+			Columns: []string{projecttask.ProjectColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.IssueCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.IssueTable,
+			Columns: []string{projecttask.IssueColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.IssueIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.IssueTable,
+			Columns: []string{projecttask.IssueColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -677,6 +782,21 @@ func (_u *ProjectTaskUpdateOne) SetImage(v *Image) *ProjectTaskUpdateOne {
 	return _u.SetImageID(v.ID)
 }
 
+// SetGitIdentity sets the "git_identity" edge to the GitIdentity entity.
+func (_u *ProjectTaskUpdateOne) SetGitIdentity(v *GitIdentity) *ProjectTaskUpdateOne {
+	return _u.SetGitIdentityID(v.ID)
+}
+
+// SetProject sets the "project" edge to the Project entity.
+func (_u *ProjectTaskUpdateOne) SetProject(v *Project) *ProjectTaskUpdateOne {
+	return _u.SetProjectID(v.ID)
+}
+
+// SetIssue sets the "issue" edge to the ProjectIssue entity.
+func (_u *ProjectTaskUpdateOne) SetIssue(v *ProjectIssue) *ProjectTaskUpdateOne {
+	return _u.SetIssueID(v.ID)
+}
+
 // Mutation returns the ProjectTaskMutation object of the builder.
 func (_u *ProjectTaskUpdateOne) Mutation() *ProjectTaskMutation {
 	return _u.mutation
@@ -697,6 +817,24 @@ func (_u *ProjectTaskUpdateOne) ClearModel() *ProjectTaskUpdateOne {
 // ClearImage clears the "image" edge to the Image entity.
 func (_u *ProjectTaskUpdateOne) ClearImage() *ProjectTaskUpdateOne {
 	_u.mutation.ClearImage()
+	return _u
+}
+
+// ClearGitIdentity clears the "git_identity" edge to the GitIdentity entity.
+func (_u *ProjectTaskUpdateOne) ClearGitIdentity() *ProjectTaskUpdateOne {
+	_u.mutation.ClearGitIdentity()
+	return _u
+}
+
+// ClearProject clears the "project" edge to the Project entity.
+func (_u *ProjectTaskUpdateOne) ClearProject() *ProjectTaskUpdateOne {
+	_u.mutation.ClearProject()
+	return _u
+}
+
+// ClearIssue clears the "issue" edge to the ProjectIssue entity.
+func (_u *ProjectTaskUpdateOne) ClearIssue() *ProjectTaskUpdateOne {
+	_u.mutation.ClearIssue()
 	return _u
 }
 
@@ -788,24 +926,6 @@ func (_u *ProjectTaskUpdateOne) sqlSave(ctx context.Context) (_node *ProjectTask
 				ps[i](selector)
 			}
 		}
-	}
-	if value, ok := _u.mutation.GitIdentityID(); ok {
-		_spec.SetField(projecttask.FieldGitIdentityID, field.TypeUUID, value)
-	}
-	if _u.mutation.GitIdentityIDCleared() {
-		_spec.ClearField(projecttask.FieldGitIdentityID, field.TypeUUID)
-	}
-	if value, ok := _u.mutation.ProjectID(); ok {
-		_spec.SetField(projecttask.FieldProjectID, field.TypeUUID, value)
-	}
-	if _u.mutation.ProjectIDCleared() {
-		_spec.ClearField(projecttask.FieldProjectID, field.TypeUUID)
-	}
-	if value, ok := _u.mutation.IssueID(); ok {
-		_spec.SetField(projecttask.FieldIssueID, field.TypeUUID, value)
-	}
-	if _u.mutation.IssueIDCleared() {
-		_spec.ClearField(projecttask.FieldIssueID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.RepoURL(); ok {
 		_spec.SetField(projecttask.FieldRepoURL, field.TypeString, value)
@@ -911,6 +1031,93 @@ func (_u *ProjectTaskUpdateOne) sqlSave(ctx context.Context) (_node *ProjectTask
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitIdentityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.GitIdentityTable,
+			Columns: []string{projecttask.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitIdentityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.GitIdentityTable,
+			Columns: []string{projecttask.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ProjectCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.ProjectTable,
+			Columns: []string{projecttask.ProjectColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ProjectIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.ProjectTable,
+			Columns: []string{projecttask.ProjectColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.IssueCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.IssueTable,
+			Columns: []string{projecttask.IssueColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.IssueIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   projecttask.IssueTable,
+			Columns: []string{projecttask.IssueColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectissue.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	etypes "github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
@@ -30,6 +31,7 @@ type InternalHostHandler struct {
 	redis    *redis.Client
 	cache    *cache.Cache
 	hook     domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
+	tasker   *tasker.Tasker[*domain.TaskSession]
 }
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
@@ -41,6 +43,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		teamRepo: do.MustInvoke[domain.TeamHostRepo](i),
 		redis:    do.MustInvoke[*redis.Client](i),
 		cache:    cache.New(15*time.Minute, 10*time.Minute),
+		tasker:   do.MustInvoke[*tasker.Tasker[*domain.TaskSession]](i),
 	}
 
 	// 可选注入 InternalHook

@@ -42,6 +42,12 @@ const (
 	EdgeModel = "model"
 	// EdgeImage holds the string denoting the image edge name in mutations.
 	EdgeImage = "image"
+	// EdgeGitIdentity holds the string denoting the git_identity edge name in mutations.
+	EdgeGitIdentity = "git_identity"
+	// EdgeProject holds the string denoting the project edge name in mutations.
+	EdgeProject = "project"
+	// EdgeIssue holds the string denoting the issue edge name in mutations.
+	EdgeIssue = "issue"
 	// Table holds the table name of the projecttask in the database.
 	Table = "project_tasks"
 	// TaskTable is the table that holds the task relation/edge.
@@ -65,6 +71,27 @@ const (
 	ImageInverseTable = "images"
 	// ImageColumn is the table column denoting the image relation/edge.
 	ImageColumn = "image_id"
+	// GitIdentityTable is the table that holds the git_identity relation/edge.
+	GitIdentityTable = "project_tasks"
+	// GitIdentityInverseTable is the table name for the GitIdentity entity.
+	// It exists in this package in order to avoid circular dependency with the "gitidentity" package.
+	GitIdentityInverseTable = "git_identities"
+	// GitIdentityColumn is the table column denoting the git_identity relation/edge.
+	GitIdentityColumn = "git_identity_id"
+	// ProjectTable is the table that holds the project relation/edge.
+	ProjectTable = "project_tasks"
+	// ProjectInverseTable is the table name for the Project entity.
+	// It exists in this package in order to avoid circular dependency with the "project" package.
+	ProjectInverseTable = "projects"
+	// ProjectColumn is the table column denoting the project relation/edge.
+	ProjectColumn = "project_id"
+	// IssueTable is the table that holds the issue relation/edge.
+	IssueTable = "project_tasks"
+	// IssueInverseTable is the table name for the ProjectIssue entity.
+	// It exists in this package in order to avoid circular dependency with the "projectissue" package.
+	IssueInverseTable = "project_issues"
+	// IssueColumn is the table column denoting the issue relation/edge.
+	IssueColumn = "issue_id"
 )
 
 // Columns holds all SQL columns for projecttask fields.
@@ -181,6 +208,27 @@ func ByImageField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newImageStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByGitIdentityField orders the results by git_identity field.
+func ByGitIdentityField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitIdentityStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByProjectField orders the results by project field.
+func ByProjectField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByIssueField orders the results by issue field.
+func ByIssueField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newIssueStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newTaskStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -200,5 +248,26 @@ func newImageStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ImageInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, ImageTable, ImageColumn),
+	)
+}
+func newGitIdentityStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitIdentityInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, GitIdentityTable, GitIdentityColumn),
+	)
+}
+func newProjectStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, ProjectTable, ProjectColumn),
+	)
+}
+func newIssueStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(IssueInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, IssueTable, IssueColumn),
 	)
 }

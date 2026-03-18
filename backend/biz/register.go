@@ -3,8 +3,10 @@ package biz
 import (
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
+	"github.com/chaitin/MonkeyCode/backend/biz/project"
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
 	"github.com/chaitin/MonkeyCode/backend/biz/setting"
 	"github.com/chaitin/MonkeyCode/backend/biz/task"
@@ -22,6 +24,12 @@ func RegisterAll(i *do.Injector) error {
 	if err := team.RegisterTeam(i); err != nil {
 		return err
 	}
+
+	// 注册 git 模块
+	git.RegisterGit(i)
+
+	// 注册 project 模块
+	project.RegisterProject(i)
 
 	// 注册 host 模块
 	host.RegisterHost(i)
