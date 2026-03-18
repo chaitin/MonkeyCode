@@ -347,77 +347,70 @@ export default function TaskDetailPage() {
     </div>
   )
 
-  if (!hasPanel || showPreparing) {
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        {showPreparing ? <TaskPreparingView task={task} /> : chatSection}
-        <VmRenewDialog
-          open={renewDialogOpen}
-          onOpenChange={setRenewDialogOpen}
-          hostId={task?.virtualmachine?.host?.id}
-          vmId={task?.virtualmachine?.id}
-          onSuccess={fetchTaskDetail}
-        />
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col h-full min-h-0">
-      <ResizablePanelGroup direction="horizontal" className="gap-2">
-        <ResizablePanel defaultSize={50} minSize={30} className="min-w-0">
-          {chatSection}
-        </ResizablePanel>
-        <ResizableHandle withHandle className="shrink-0" />
-        <ResizablePanel defaultSize={50} minSize={30} className="min-w-0">
-          <div className="h-full overflow-hidden flex flex-col">
-            {activePanel === "files" && (
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <TaskFileExplorer
-                  disabled={!vmOnline}
-                  streamStatus={streamStatus}
-                  fileChangesMap={fileChangesMap}
-                  changedPaths={changedPaths}
-                  taskManager={taskManager.current}
-                  onRefresh={fetchFileChanges}
-                  onClosePanel={() => setActivePanel(null)}
-                  envid={envid}
-                />
-              </div>
-            )}
-            {activePanel === "terminal" && (
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <div className="h-full w-full border rounded-md overflow-hidden">
-                  <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setActivePanel(null)} />
+      {showPreparing ? (
+        <TaskPreparingView task={task} />
+      ) : (
+        <ResizablePanelGroup direction="horizontal" className="gap-2">
+          <ResizablePanel id="chat" order={1} defaultSize={hasPanel ? 50 : 100} minSize={hasPanel ? 30 : 100} className="min-w-0">
+            {chatSection}
+          </ResizablePanel>
+          {hasPanel && (
+            <>
+              <ResizableHandle withHandle className="shrink-0" />
+              <ResizablePanel id="right-panel" order={2} defaultSize={50} minSize={30} className="min-w-0">
+                <div className="h-full overflow-hidden flex flex-col">
+                  {activePanel === "files" && (
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <TaskFileExplorer
+                        disabled={!vmOnline}
+                        streamStatus={streamStatus}
+                        fileChangesMap={fileChangesMap}
+                        changedPaths={changedPaths}
+                        taskManager={taskManager.current}
+                        onRefresh={fetchFileChanges}
+                        onClosePanel={() => setActivePanel(null)}
+                        envid={envid}
+                      />
+                    </div>
+                  )}
+                  {activePanel === "terminal" && (
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <div className="h-full w-full border rounded-md overflow-hidden">
+                        <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setActivePanel(null)} />
+                      </div>
+                    </div>
+                  )}
+                  {activePanel === "changes" && (
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <TaskChangesPanel
+                        fileChanges={changedPaths}
+                        fileChangesMap={fileChangesMap}
+                        taskManager={taskManager.current}
+                        disabled={!vmOnline}
+                        onClosePanel={() => setActivePanel(null)}
+                      />
+                    </div>
+                  )}
+                  {activePanel === "preview" && (
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <TaskPreviewPanel
+                        ports={task?.virtualmachine?.ports}
+                        hostId={task?.virtualmachine?.host?.id}
+                        vmId={task?.virtualmachine?.id}
+                        onSuccess={fetchTaskDetail}
+                        disabled={!vmOnline}
+                        onClosePanel={() => setActivePanel(null)}
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-            {activePanel === "changes" && (
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <TaskChangesPanel
-                  fileChanges={changedPaths}
-                  fileChangesMap={fileChangesMap}
-                  taskManager={taskManager.current}
-                  disabled={!vmOnline}
-                  onClosePanel={() => setActivePanel(null)}
-                />
-              </div>
-            )}
-            {activePanel === "preview" && (
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <TaskPreviewPanel
-                  ports={task?.virtualmachine?.ports}
-                  hostId={task?.virtualmachine?.host?.id}
-                  vmId={task?.virtualmachine?.id}
-                  onSuccess={fetchTaskDetail}
-                  disabled={!vmOnline}
-                  onClosePanel={() => setActivePanel(null)}
-                />
-              </div>
-            )}
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+      )}
       <VmRenewDialog
         open={renewDialogOpen}
         onOpenChange={setRenewDialogOpen}
