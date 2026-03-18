@@ -1,17 +1,29 @@
 import { type DomainProjectTask } from "@/api/Api";
 import { TaskInput } from "@/components/console/task/task-input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Item, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item";
+import { Item, ItemContent, ItemDescription, ItemFooter, ItemHeader, ItemTitle } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconDotsVertical, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useCommonData } from "@/components/console/data-provider";
 import { toast } from "sonner";
 
@@ -25,14 +37,51 @@ const formatTokens = (tokens?: number) => {
 }
 
 export default function TasksPage() {
+  const location = useLocation()
   const navigate = useNavigate()
   const { reloadProjects, reloadUnlinkedTasks } = useCommonData()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
+
+  const handleConfirmDeleteTask = () => {
+    if (!taskToDelete?.id) {
+      setTaskToDelete(null)
+      return
+    }
+    const taskId = taskToDelete.id
+    const isOnDeletedPage = location.pathname === `/console/task/${taskId}`
+    setDeleting(true)
+    apiRequest(
+      "v1UsersTasksDelete",
+      {},
+      [taskId],
+      (resp) => {
+        setDeleting(false)
+        setTaskToDelete(null)
+        if (resp.code === 0) {
+          toast.success("任务已删除")
+          setTasks((prev) => prev.filter((t) => t.id !== taskId))
+          reloadProjects()
+          reloadUnlinkedTasks()
+          if (isOnDeletedPage) {
+            navigate("/console/tasks")
+          }
+        } else {
+          toast.error(resp.message || "删除失败")
+        }
+      },
+      () => {
+        setDeleting(false)
+        setTaskToDelete(null)
+      }
+    )
+  }
 
   const fetchTasks = useCallback((pageNum: number, append: boolean) => {
     if (loadingRef.current) return
@@ -104,25 +153,48 @@ export default function TasksPage() {
       {tasks?.map((task) => (
         <Item variant={"outline"} key={task.id} className="group hover:border-primary/50">
           <ItemContent>
-            <HoverCard>
-              <HoverCardTrigger asChild>
-                <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer" onClick={() => navigate(`/console/task/${task.id}`)}>
-                  {task.summary || stripMarkdown(task.content)}
-                </ItemTitle>
-              </HoverCardTrigger>
-              {renderHoverCardContent([
-                {title: "任务名称", content: task.summary || ""},
-                {title: "任务内容", content: task.content || ""},
-                {title: "任务状态", content: task.status || ""},
-                {title: "任务类型", content: `${task.type}/${task.sub_type}` || ""},
-                task.repo_url ? {title: "代码仓库", content: task.repo_url} : null,
-                task.repo_filename ? {title: "代码文件", content: task.repo_filename} : null,
-                task.repo_url ? {title: "仓库分支", content: task.branch || ""} : null,
-                {title: "开发工具", content: task.cli_name || ""},
-                {title: "大模型", content: task.model?.model || ""},
-                {title: "创建时间", content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
-              ])}
-            </HoverCard>
+            <ItemHeader className="items-start gap-2">
+              <HoverCard>
+                <HoverCardTrigger asChild>
+                  <ItemTitle className="font-normal whitespace-normal line-clamp-1 break-all hover:underline group-hover:text-primary cursor-pointer min-w-0 flex-1" onClick={() => navigate(`/console/task/${task.id}`)}>
+                    {task.summary || stripMarkdown(task.content)}
+                  </ItemTitle>
+                </HoverCardTrigger>
+                {renderHoverCardContent([
+                  {title: "任务名称", content: task.summary || ""},
+                  {title: "任务内容", content: task.content || ""},
+                  {title: "任务状态", content: task.status || ""},
+                  {title: "任务类型", content: `${task.type}/${task.sub_type}` || ""},
+                  task.repo_url ? {title: "代码仓库", content: task.repo_url} : null,
+                  task.repo_filename ? {title: "代码文件", content: task.repo_filename} : null,
+                  task.repo_url ? {title: "仓库分支", content: task.branch || ""} : null,
+                  {title: "开发工具", content: task.cli_name || ""},
+                  {title: "大模型", content: task.model?.model || ""},
+                  {title: "创建时间", content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
+                ])}
+              </HoverCard>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-5 shrink-0 text-muted-foreground/50 group-hover:text-primary hover:text-primary"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <IconDotsVertical className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="py-1">
+                  <DropdownMenuItem
+                    onClick={() => setTaskToDelete(task)}
+                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                  >
+                    <IconTrash className="mr-1" />
+                    删除
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ItemHeader>
             <ItemDescription className="whitespace-normal line-clamp-1 break-all">
               {getRepoNameFromUrl(task?.repo_url || '') || task.repo_filename || '-'}
             </ItemDescription>
@@ -151,6 +223,29 @@ export default function TasksPage() {
       <div ref={loadMoreRef} className="flex justify-center py-8">
         {loading && <Spinner className="size-6" />}
       </div>
+      <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除任务「{taskToDelete ? (taskToDelete.summary || stripMarkdown(taskToDelete.content || "")) : ""}」吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmDeleteTask()
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "删除中..." : "删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

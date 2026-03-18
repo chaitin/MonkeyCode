@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useState, useEffect } from "react"
 
 import {
@@ -11,9 +11,20 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconChevronDown, IconChevronRight, IconCircleMinus, IconLoader, IconPlus, IconReload } from "@tabler/icons-react"
+import { IconChevronDown, IconChevronRight, IconCircleMinus, IconDotsVertical, IconLoader, IconPlus, IconReload, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
@@ -23,6 +34,8 @@ import { type DomainProjectTask } from "@/api/Api"
 import { stripMarkdown } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { apiRequest } from "@/utils/requestUtils"
+import { toast } from "sonner"
 
 const STORAGE_KEY = "nav-project-expanded"
 const UNLINKED_KEY = "__unlinked__"
@@ -43,11 +56,47 @@ const saveExpandedToStorage = (state: Record<string, boolean>) => {
 
 export default function NavProject() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [startTaskProject, setStartTaskProject] = useState<{ id: string; name?: string } | null>(null)
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>(loadExpandedFromStorage)
+  const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const { projects, loadingProjects, reloadProjects, unlinkedTasks, loadingUnlinkedTasks, reloadUnlinkedTasks } = useCommonData()
+
+  const handleConfirmDeleteTask = () => {
+    if (!taskToDelete?.id) {
+      setTaskToDelete(null)
+      return
+    }
+    const taskId = taskToDelete.id
+    const isOnDeletedPage = location.pathname === `/console/task/${taskId}`
+    setDeleting(true)
+    apiRequest(
+      "v1UsersTasksDelete",
+      {},
+      [taskId],
+      (resp) => {
+        setDeleting(false)
+        setTaskToDelete(null)
+        if (resp.code === 0) {
+          toast.success("任务已删除")
+          reloadProjects()
+          reloadUnlinkedTasks()
+          if (isOnDeletedPage) {
+            navigate("/console/tasks")
+          }
+        } else {
+          toast.error(resp.message || "删除失败")
+        }
+      },
+      () => {
+        setDeleting(false)
+        setTaskToDelete(null)
+      }
+    )
+  }
 
   useEffect(() => {
     const stored = loadExpandedFromStorage()
@@ -256,18 +305,45 @@ onOpenChange={(open) => {
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className={cn(
-                              (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground"
+                              (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground",
+                              "group/task-row"
                             )}
                           >
-                            <Link to={`/console/task/${task.id}`}>
-                              <TaskIcon
-                                className={cn(
-                                  "size-3.5 shrink-0",
-                                  (task.status === "pending" || task.status === "processing") && "animate-spin"
-                                )}
-                              />
-                              <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                            </Link>
+                            <div className="flex w-full min-w-0 items-center gap-1">
+                              <Link
+                                to={`/console/task/${task.id}`}
+                                className="min-w-0 flex-1 flex items-center gap-2 truncate"
+                              >
+                                <TaskIcon
+                                  className={cn(
+                                    "size-3.5 shrink-0",
+                                    (task.status === "pending" || task.status === "processing") && "animate-spin"
+                                  )}
+                                />
+                                <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
+                              </Link>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+                                    onClick={(e) => e.preventDefault()}
+                                  >
+                                    <IconDotsVertical className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="py-1">
+                                  <DropdownMenuItem
+                                    onClick={() => setTaskToDelete(task)}
+                                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                  >
+                                    <IconTrash className="mr-1" />
+                                    删除
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </SidebarMenuSubButton>
                         )
                       })}
@@ -345,18 +421,45 @@ onOpenChange={(open) => {
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className={cn(
-                              (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground"
+                              (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground",
+                              "group/task-row"
                             )}
                           >
-                            <Link to={`/console/task/${task.id}`}>
-                              <TaskIcon
-                                className={cn(
-                                  "size-3.5 shrink-0",
-                                  (task.status === "pending" || task.status === "processing") && "animate-spin"
-                                )}
-                              />
-                              <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                            </Link>
+                            <div className="flex w-full min-w-0 items-center gap-1">
+                              <Link
+                                to={`/console/task/${task.id}`}
+                                className="min-w-0 flex-1 flex items-center gap-2 truncate"
+                              >
+                                <TaskIcon
+                                  className={cn(
+                                    "size-3.5 shrink-0",
+                                    (task.status === "pending" || task.status === "processing") && "animate-spin"
+                                  )}
+                                />
+                                <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
+                              </Link>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+                                    onClick={(e) => e.preventDefault()}
+                                  >
+                                    <IconDotsVertical className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="py-1">
+                                  <DropdownMenuItem
+                                    onClick={() => setTaskToDelete(task)}
+                                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                  >
+                                    <IconTrash className="mr-1" />
+                                    删除
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </SidebarMenuSubButton>
                         )
                       })}
@@ -374,6 +477,29 @@ onOpenChange={(open) => {
           </SidebarMenuItem>
         )}
       </SidebarMenu>
+      <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除任务「{taskToDelete ? (taskToDelete.summary || stripMarkdown(taskToDelete.content || "")) : ""}」吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmDeleteTask()
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "删除中..." : "删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarGroup>
   )
 }
