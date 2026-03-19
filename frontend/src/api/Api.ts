@@ -846,6 +846,8 @@ export interface DomainPresignResp {
 }
 
 export interface DomainProject {
+  /** 是否开启自动审查 */
+  auto_review_enabled?: boolean;
   /** 协作者列表 */
   collaborators?: DomainCollaborator[];
   /** 创建时间 */
@@ -4966,6 +4968,49 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     v1UsersProjectsDelete: (id: string, params: RequestParams = {}) =>
       this.request<WebResp, WebResp>({
         path: `/api/v1/users/projects/${id}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 开启自动审查
+     *
+     * @tags 【用户】项目管理
+     * @name V1UsersProjectsAutoReviewCreate
+     * @summary 开启自动审查
+     * @request POST:/api/v1/users/projects/{id}/auto-review
+     * @secure
+     */
+    v1UsersProjectsAutoReviewCreate: (id: string, params: RequestParams = {}) =>
+      this.request<
+        WebResp & {
+          data?: DomainProject;
+        },
+        WebResp
+      >({
+        path: `/api/v1/users/projects/${id}/auto-review`,
+        method: "POST",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 关闭自动审查
+     *
+     * @tags 【用户】项目管理
+     * @name V1UsersProjectsAutoReviewDelete
+     * @summary 关闭自动审查
+     * @request DELETE:/api/v1/users/projects/{id}/auto-review
+     * @secure
+     */
+    v1UsersProjectsAutoReviewDelete: (id: string, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/users/projects/${id}/auto-review`,
         method: "DELETE",
         secure: true,
         type: ContentType.Json,
