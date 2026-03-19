@@ -1,6 +1,6 @@
 import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsInterfaceType, ConstsOwnerType, type DomainModel, type DomainProject, type DomainBranch } from "@/api/Api"
 import Icon from "@/components/common/Icon"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -12,7 +12,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge, getOwnerTypeBadge, selectHost, selectImage, selectModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -26,7 +26,7 @@ export default function StartDevelopTaskDialog({
   open,
   onOpenChange,
   project
-}: StartDevelopTaskDialogProps) {
+}: Readonly<StartDevelopTaskDialogProps>) {
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [branches, setBranches] = useState<string[]>([])
@@ -48,7 +48,7 @@ export default function StartDevelopTaskDialog({
     return [economyModel, ...models]
   }, [models])
 
-  const fetchBranches = async () => {
+  const fetchBranches = useCallback(async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
       return
     }
@@ -61,14 +61,13 @@ export default function StartDevelopTaskDialog({
     }
 
     setLoadingBranches(true)
-    
+
     try {
       // 直接使用 full_name 字段
       const escapedRepoFullName = project?.full_name || ''
-      
+
       if (!escapedRepoFullName) {
         toast.error('无法获取仓库信息')
-        setLoadingBranches(false)
         return
       }
 
@@ -79,15 +78,14 @@ export default function StartDevelopTaskDialog({
         if (resp.code === 0 && resp.data) {
           const branchList = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
           setBranches(branchList)
-          
-          // 优先选择 main 或 master，否则选择第一个
-          if (branchList.includes('main')) {
-            setSelectedBranch('main')
-          } else if (branchList.includes('master')) {
-            setSelectedBranch('master')
-          } else if (branchList.length > 0) {
-            setSelectedBranch(branchList[0])
-          }
+
+          // 仅在当前选择不存在时才重置，避免刷新覆盖用户选择
+          setSelectedBranch((prev) => {
+            if (prev && branchList.includes(prev)) return prev
+            if (branchList.includes('main')) return 'main'
+            if (branchList.includes('master')) return 'master'
+            return branchList[0] || ''
+          })
         } else {
           toast.error('获取分支列表失败: ' + resp.message)
         }
@@ -98,22 +96,31 @@ export default function StartDevelopTaskDialog({
     } finally {
       setLoadingBranches(false)
     }
-  }
+  }, [project])
 
-  const prevOpenRef = useRef(false)
+  const prevOpenRef = useRef<boolean>(false)
+  const prevProjectIdRef = useRef<string | undefined>(undefined)
+
   useEffect(() => {
-    if (open) {
-      const justOpened = !prevOpenRef.current
-      prevOpenRef.current = true
-      if (justOpened) {
-        setUserMessage('')
-        setSelectedModelId(selectModel(modelsWithEconomy, true))
-      }
-      fetchBranches()
-    } else {
+    if (!open) {
       prevOpenRef.current = false
+      prevProjectIdRef.current = project?.id
+      return
     }
-  }, [open, project, modelsWithEconomy])
+
+    const projectId = project?.id
+    const firstOpen = !prevOpenRef.current
+    const projectChanged = projectId !== prevProjectIdRef.current
+
+    if (firstOpen || projectChanged) {
+      setUserMessage('')
+      setSelectedModelId(selectModel(modelsWithEconomy, true))
+      fetchBranches()
+    }
+
+    prevOpenRef.current = true
+    prevProjectIdRef.current = projectId
+  }, [open, project?.id, modelsWithEconomy, fetchBranches])
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {

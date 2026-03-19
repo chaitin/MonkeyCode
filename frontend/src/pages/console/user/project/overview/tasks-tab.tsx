@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/empty"
 import { IconListDetails, IconCircleCheck, IconAlertTriangle, IconDotsVertical, IconTrash } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 import { getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common"
 import dayjs from "dayjs"
 
@@ -190,7 +190,10 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                     { title: "任务名称", content: task.summary || "" },
                     { title: "任务内容", content: task.content || "" },
                     { title: "任务状态", content: task.status || "" },
-                    { title: "任务类型", content: `${task.type}/${task.sub_type}` || "" },
+                    {
+                      title: "任务类型",
+                      content: task.type ? [task.type, task.sub_type].filter(Boolean).join("/") : "",
+                    },
                     task.repo_url ? { title: "代码仓库", content: task.repo_url } : null,
                     task.repo_filename ? { title: "代码文件", content: task.repo_filename } : null,
                     task.repo_url ? { title: "仓库分支", content: task.branch || "" } : null,

@@ -24,7 +24,7 @@ import { IconAlertTriangle, IconCircleCheck, IconDotsVertical, IconTrash } from 
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useCommonData } from "@/components/console/data-provider";
+import { useCommonData } from "@/components/console/common-data";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 24;

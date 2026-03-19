@@ -54,7 +54,7 @@ export function VmPortForwardDialog({
   const [whitelistSaving, setWhitelistSaving] = useState(false)
 
   const confirmDeletePort = () => {
-    if (!hostId || !vmId || !portToDelete) {
+    if (!hostId || !vmId || !portToDelete?.forward_id) {
       setDeleteDialogOpen(false)
       return
     }
@@ -86,7 +86,7 @@ export function VmPortForwardDialog({
       }
       const data = await resp.json()
       return data.ip
-    } catch (e) {
+    } catch {
       return null
     }
   }
@@ -98,7 +98,7 @@ export function VmPortForwardDialog({
 
     setPortToOpen(port)
 
-    let ip = await getMyIP()
+    const ip = await getMyIP()
     if (!ip) {
       toast.error("获取本机 IP 失败")
       setPortToOpen(0)
@@ -129,7 +129,7 @@ export function VmPortForwardDialog({
   }
 
   const handleSaveWhitelist = async () => {
-    if (!hostId || !vmId || !portToEditWhitelist) {
+    if (!hostId || !vmId || !portToEditWhitelist?.forward_id) {
       return
     }
 
@@ -146,8 +146,8 @@ export function VmPortForwardDialog({
     setWhitelistSaving(true)
     await apiRequest('v1UsersHostsVmsPortsCreate', {
       forward_id: portToEditWhitelist.forward_id,
-      port: portToEditWhitelist.port,
-      white_list: whitelistArray
+      port: portToEditWhitelist.port ?? 0,
+      white_list: whitelistArray, 
     }, [hostId, vmId], (resp: WebResp) => {
       if (resp.code === 0) {
         toast.success("白名单更新成功")

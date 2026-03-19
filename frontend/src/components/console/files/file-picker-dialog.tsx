@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import {
   Dialog,
   DialogContent,
@@ -375,7 +375,11 @@ export default function FilePickerDialog({
                 (空目录)
               </div>
             ) : (
-              node.children.map(child => renderNode(child))
+              node.children.map(child => (
+                <React.Fragment key={child.path}>
+                  {renderNode(child)}
+                </React.Fragment>
+              ))
             )}
           </>
         )}
@@ -400,7 +404,11 @@ export default function FilePickerDialog({
             </div>
           ) : (
             <div className="flex flex-col">
-              {treeNodes.map(node => renderNode(node))}
+              {treeNodes.map(node => (
+                <React.Fragment key={node.path}>
+                  {renderNode(node)}
+                </React.Fragment>
+              ))}
             </div>
           )}
         </div>

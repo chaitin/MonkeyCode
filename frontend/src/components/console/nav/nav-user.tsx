@@ -47,7 +47,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { IconLockCode, IconLogout, IconUserHexagon, IconUpload } from "@tabler/icons-react"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 
 export default function NavUser() {
   const { isMobile } = useSidebar()
@@ -69,7 +69,7 @@ export default function NavUser() {
 
   const handleLogout = () => {
     apiRequest('v1UsersLogoutCreate', {}, [], (resp) => {
-      if (resp.code === 0) {
+      if (Number(resp.code) === 0) {
         navigate('/');
       } else {
         toast.error('登出失败: ' + resp.message);
@@ -94,7 +94,6 @@ export default function NavUser() {
     await apiRequest('v1UsersPasswordsChangeUpdate', {
       current_password: currentPassword,
       new_password: newPassword,
-      confirm_password: confirmPassword,
     }, [], (resp) => {
       if (resp?.code === 0) {
         toast.success('密码修改成功');
@@ -212,7 +211,7 @@ export default function NavUser() {
             >
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar 
+                  <Avatar
                     className="h-8 w-8 rounded-lg cursor-pointer hover:opacity-50 transition-opacity"
                     onClick={() => setShowChangeAvatarDialog(true)}
                   >

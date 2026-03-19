@@ -1,50 +1,9 @@
-import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
+import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainUser } from '@/api/Api';
 import { getImageShortName } from '@/utils/common';
 import { apiRequest } from '@/utils/requestUtils';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { DataContext } from '@/components/console/common-data';
+import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-
-type CommonData = {
-  user: DomainUser;
-  reloadUser: () => void;
-
-  hosts: DomainHost[];
-  vms: DomainVirtualMachine[];
-  loadingHosts: boolean;
-  hostsInited: boolean;
-  reloadHosts: () => void;
-
-  models: DomainModel[];
-  loadingModels: boolean;
-  reloadModels: () => void;
-
-  images: DomainImage[];
-  loadingImages: boolean;
-  reloadImages: () => void;
-
-  identities: DomainGitIdentity[];
-  loadingIdentities: boolean;
-  reloadIdentities: () => void;
-
-  balance: number;
-  bonus: number;
-  reloadWallet: () => void;
-
-  members: DomainUser[];
-  loadingMembers: boolean;
-  reloadMembers: () => void;
-
-  projects: DomainProject[];
-  loadingProjects: boolean;
-  reloadProjects: () => void;
-
-  /** 未关联项目的任务（quick_start），用于侧边栏「默认」分组展示 */
-  unlinkedTasks: DomainProjectTask[];
-  loadingUnlinkedTasks: boolean;
-  reloadUnlinkedTasks: () => void;
-};
-
-const DataContext = createContext<CommonData | null>(null);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [userInfo, setUserInfo] = useState<DomainUser>({});
@@ -228,8 +187,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchWallet = () => {
     apiRequest('v1UsersWalletList', {}, [], (resp) => {
       if (resp.code === 0) {
-        setBalance(resp.data?.balance / 1000);
-        setBonus(resp.data?.bonus / 1000);
+        setBalance((resp.data?.balance || 0) / 1000);
+        setBonus((resp.data?.bonus || 0) / 1000);
       } else {
         toast.error("获取余额失败: " + resp.message);
       }
@@ -333,10 +292,4 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </DataContext.Provider>
   );
-};
-
-export const useCommonData = () => {
-  const ctx = useContext(DataContext);
-  if (!ctx) throw new Error('useCommonData must be used within DataProvider');
-  return ctx;
 };

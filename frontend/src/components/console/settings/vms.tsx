@@ -55,7 +55,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
-import { useCommonData } from "@/components/console/data-provider";
+import { useCommonData } from "@/components/console/common-data";
 import { VmRenewDialog } from "@/components/console/vm/vm-renew";
 import { Switch } from "@/components/ui/switch";
 

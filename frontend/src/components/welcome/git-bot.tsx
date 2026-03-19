@@ -17,20 +17,29 @@ const GitBot = () => {
 
   useEffect(() => {
     let currentIndex = 0;
-    const interval = setInterval(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = () => {
       if (currentIndex <= typewriterText.length) {
         setDisplayedText(typewriterText.slice(0, currentIndex));
-        currentIndex++;
-      } else {
-        // 重置动画，循环播放
-        setTimeout(() => {
-          setDisplayedText("");
-          currentIndex = 0;
-        }, 2000);
+        currentIndex += 1;
+        timeoutId = setTimeout(tick, 100);
+        return;
       }
-    }, 100);
 
-    return () => clearInterval(interval);
+      // 完整播放结束后，停顿 2s 再重置并重新开始
+      timeoutId = setTimeout(() => {
+        setDisplayedText("");
+        currentIndex = 0;
+        tick();
+      }, 2000);
+    };
+
+    tick();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   const advantages = [

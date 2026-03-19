@@ -1,5 +1,5 @@
 import { type DomainProject } from "@/api/Api"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 import EditProjectEnvDialog from "@/components/console/project/edit-project-env"
 import EditProjectImageDialog from "@/components/console/project/edit-project-image"
 import EditProjectNameDialog from "@/components/console/project/edit-project-name"

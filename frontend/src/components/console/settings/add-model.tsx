@@ -13,7 +13,7 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import type { DomainProviderModelListItem } from "@/api/Api"
-import { ConstsInterfaceType } from "@/api/Api"
+import { ConstsInterfaceType, ConstsModelProvider } from "@/api/Api"
 import {
   Select,
   SelectContent,
@@ -100,15 +100,15 @@ export default function AddModel({
       model: model.trim(),
       base_url: baseUrl.trim(),
       interface_type: interfaceType,
-      provider: "BaiZhiCloud",
+      provider: ConstsModelProvider.ModelProviderBaiZhiCloud,
     }
 
     await apiRequest('v1UsersModelsHealthCheckCreate', healthCheckData, [], async (resp) => {
       if (resp.code === 0) {
         if (resp.data?.success) {
           // 健康检查通过，继续保存
-          const requestData: any = {
-            provider: "BaiZhiCloud",
+          const requestData = {
+            provider: ConstsModelProvider.ModelProviderBaiZhiCloud,
             model: model.trim(),
             base_url: baseUrl.trim(),
             api_key: apiToken.trim(),

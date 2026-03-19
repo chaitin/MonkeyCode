@@ -48,7 +48,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "
 import { Spinner } from "@/components/ui/spinner"
 import { Badge } from "@/components/ui/badge"
 import { IconAlertHexagon, IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconStar, IconTrash, IconX } from "@tabler/icons-react"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 
 export default function Models() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)

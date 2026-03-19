@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 
 interface VmAddDialogProps {
   open: boolean

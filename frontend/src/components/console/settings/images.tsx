@@ -42,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { IconAlertHexagon, IconPencil, IconStar, IconTrash } from "@tabler/icons-react"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 import { Badge } from "@/components/ui/badge"
 
 export default function Images() {

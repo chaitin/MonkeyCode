@@ -1,6 +1,6 @@
 import { Api, ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsTaskSubType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainModel, type DomainSkill } from "@/api/Api";
 import Icon from "@/components/common/Icon";
-import { useCommonData } from "@/components/console/data-provider";
+import { useCommonData } from "@/components/console/common-data";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

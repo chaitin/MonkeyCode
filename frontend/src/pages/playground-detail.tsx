@@ -2,7 +2,7 @@ import Header from "@/components/welcome/header"
 import Footer from "@/components/welcome/footer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import dayjs from "dayjs";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiRequest } from "@/utils/requestUtils";
 import { ConstsPostKind, type DomainPlaygroundPost } from "@/api/Api";
@@ -167,9 +167,20 @@ const PlaygroundDetailPage = () => {
 
   const fileTree = buildTree(zipFiles);
 
+  const fetchPost = useCallback(async () => {
+    if (!postId) {
+      return
+    }
+    await apiRequest('v1PlaygroundPostsDetail', {}, [postId], (resp) => {
+      if (resp.code === 0) {
+        setPost(resp.data)
+      }
+    })
+  }, [postId])
+
   useEffect(() => {
     fetchPost()
-  }, [postId])
+  }, [fetchPost])
 
   useEffect(() => {
     if (post?.task_post?.code) {
@@ -195,17 +206,6 @@ const PlaygroundDetailPage = () => {
       setExpandedDirs(allDirPaths);
     }
   }, [zipFiles])
-
-  const fetchPost = async () => {
-    if (!postId) {
-      return
-    }
-    await apiRequest('v1PlaygroundPostsDetail', {}, [postId], (resp) => {
-      if (resp.code === 0) {
-        setPost(resp.data)
-      }
-    })
-  }
 
   const loadZipFile = async (url: string) => {
     setLoadingZip(true)
@@ -321,7 +321,11 @@ const PlaygroundDetailPage = () => {
           </div>
           {isExpanded && node.children.length > 0 && (
             <div>
-              {node.children.map(child => renderTreeNode(child, depth + 1))}
+              {node.children.map(child => (
+                <React.Fragment key={child.path}>
+                  {renderTreeNode(child, depth + 1)}
+                </React.Fragment>
+              ))}
             </div>
           )}
         </div>
@@ -435,7 +439,11 @@ const PlaygroundDetailPage = () => {
                   </div>
                 ) : (
                   <div className="flex flex-col pr-3">
-                    {fileTree.map(node => renderTreeNode(node, 0))}
+                    {fileTree.map(node => (
+                      <React.Fragment key={node.path}>
+                        {renderTreeNode(node, 0)}
+                      </React.Fragment>
+                    ))}
                   </div>
                 )}
               </div>}

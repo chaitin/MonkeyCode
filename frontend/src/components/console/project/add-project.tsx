@@ -38,7 +38,7 @@ import { useNavigate } from "react-router-dom"
 import { useSettingsDialog } from "@/pages/console/user/page"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 
 interface RepoOption {
   gitIdentityId: string
