@@ -4,16 +4,19 @@ import (
 	"log/slog"
 
 	"github.com/GoYoko/web"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/email"
+	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
@@ -169,6 +172,44 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	// WebSocket TaskConn
 	do.Provide(i, func(i *do.Injector) (*ws.TaskConn, error) {
 		return ws.NewTaskConn(), nil
+	})
+
+	// 任务生命周期管理
+	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata], error) {
+		r := do.MustInvoke[*redis.Client](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		t := do.MustInvoke[taskflow.Clienter](i)
+		disp := do.MustInvoke[*dispatcher.Dispatcher](i)
+		repo := do.MustInvoke[domain.TaskRepo](i)
+		lc := lifecycle.NewManager(
+			r,
+			lifecycle.WithLogger[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata](l),
+			lifecycle.WithTransitions[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata](lifecycle.TaskTransitions()),
+		)
+
+		lc.Register(
+			lifecycle.NewTaskCreateHook(r, t, l, lc, repo),
+			lifecycle.NewTaskNotifyHook(disp, l),
+		)
+
+		return lc, nil
+	})
+
+	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata], error) {
+		r := do.MustInvoke[*redis.Client](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		disp := do.MustInvoke[*dispatcher.Dispatcher](i)
+		lc := lifecycle.NewManager(
+			r,
+			lifecycle.WithLogger[string, lifecycle.VMState, lifecycle.VMMetadata](l),
+			lifecycle.WithTransitions[string, lifecycle.VMState, lifecycle.VMMetadata](lifecycle.VMTransitions()),
+		)
+
+		lc.Register(
+			lifecycle.NewVMNotifyHook(disp, l),
+		)
+
+		return lc, nil
 	})
 
 	return nil
