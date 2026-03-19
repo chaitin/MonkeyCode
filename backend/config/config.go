@@ -65,8 +65,11 @@ type PublicHost struct {
 
 // Task 任务相关配置
 type Task struct {
-	LogLimit         int `mapstructure:"log_limit"`          // Loki tail 日志 limit
-	TaskerTTLSeconds int `mapstructure:"tasker_ttl_seconds"` // Tasker 状态机 TTL（秒）
+	LogLimit         int    `mapstructure:"log_limit"`          // Loki tail 日志 limit
+	TaskerTTLSeconds int    `mapstructure:"tasker_ttl_seconds"` // Tasker 状态机 TTL（秒）
+	ImageID          string `mapstructure:"image_id"`           // 默认镜像 ID
+	Core             int    `mapstructure:"core"`               // VM CPU 核数
+	Memory           uint64 `mapstructure:"memory"`             // VM 内存（字节）
 }
 
 // TaskSummary 任务摘要生成配置

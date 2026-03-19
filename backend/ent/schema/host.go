@@ -59,5 +59,6 @@ func (Host) Edges() []ent.Edge {
 		edge.To("vms", VirtualMachine.Type),
 		edge.From("user", User.Type).Field("user_id").Ref("hosts").Unique().Required(),
 		edge.From("groups", TeamGroup.Type).Ref("hosts").Through("team_group_hosts", TeamGroupHost.Type),
+		edge.To("git_bots", GitBot.Type),
 	}
 }

@@ -41,6 +41,8 @@ const (
 	EdgeUser = "user"
 	// EdgeVms holds the string denoting the vms edge name in mutations.
 	EdgeVms = "vms"
+	// EdgeGitBotTasks holds the string denoting the git_bot_tasks edge name in mutations.
+	EdgeGitBotTasks = "git_bot_tasks"
 	// EdgeTaskVms holds the string denoting the task_vms edge name in mutations.
 	EdgeTaskVms = "task_vms"
 	// Table holds the table name of the task in the database.
@@ -64,6 +66,13 @@ const (
 	// VmsInverseTable is the table name for the VirtualMachine entity.
 	// It exists in this package in order to avoid circular dependency with the "virtualmachine" package.
 	VmsInverseTable = "virtualmachines"
+	// GitBotTasksTable is the table that holds the git_bot_tasks relation/edge.
+	GitBotTasksTable = "git_bot_tasks"
+	// GitBotTasksInverseTable is the table name for the GitBotTask entity.
+	// It exists in this package in order to avoid circular dependency with the "gitbottask" package.
+	GitBotTasksInverseTable = "git_bot_tasks"
+	// GitBotTasksColumn is the table column denoting the git_bot_tasks relation/edge.
+	GitBotTasksColumn = "task_id"
 	// TaskVmsTable is the table that holds the task_vms relation/edge.
 	TaskVmsTable = "task_virtualmachines"
 	// TaskVmsInverseTable is the table name for the TaskVirtualMachine entity.
@@ -215,6 +224,20 @@ func ByVms(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByGitBotTasksCount orders the results by git_bot_tasks count.
+func ByGitBotTasksCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGitBotTasksStep(), opts...)
+	}
+}
+
+// ByGitBotTasks orders the results by git_bot_tasks terms.
+func ByGitBotTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitBotTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTaskVmsCount orders the results by task_vms count.
 func ByTaskVmsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -247,6 +270,13 @@ func newVmsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(VmsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, VmsTable, VmsPrimaryKey...),
+	)
+}
+func newGitBotTasksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitBotTasksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, GitBotTasksTable, GitBotTasksColumn),
 	)
 }
 func newTaskVmsStep() *sqlgraph.Step {

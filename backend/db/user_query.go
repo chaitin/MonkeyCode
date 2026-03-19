@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -56,8 +58,10 @@ type UserQuery struct {
 	withAssignedIssues       *ProjectIssueQuery
 	withProjectCollaborators *ProjectCollaboratorQuery
 	withProjectIssueComments *ProjectIssueCommentQuery
+	withGitBots              *GitBotQuery
 	withTeamMembers          *TeamMemberQuery
 	withTeamGroupMembers     *TeamGroupMemberQuery
+	withGitBotUsers          *GitBotUserQuery
 	modifiers                []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -425,6 +429,28 @@ func (_q *UserQuery) QueryProjectIssueComments() *ProjectIssueCommentQuery {
 	return query
 }
 
+// QueryGitBots chains the current query on the "git_bots" edge.
+func (_q *UserQuery) QueryGitBots() *GitBotQuery {
+	query := (&GitBotClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, user.GitBotsTable, user.GitBotsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryTeamMembers chains the current query on the "team_members" edge.
 func (_q *UserQuery) QueryTeamMembers() *TeamMemberQuery {
 	query := (&TeamMemberClient{config: _q.config}).Query()
@@ -462,6 +488,28 @@ func (_q *UserQuery) QueryTeamGroupMembers() *TeamGroupMemberQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(teamgroupmember.Table, teamgroupmember.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, user.TeamGroupMembersTable, user.TeamGroupMembersColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGitBotUsers chains the current query on the "git_bot_users" edge.
+func (_q *UserQuery) QueryGitBotUsers() *GitBotUserQuery {
+	query := (&GitBotUserClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(gitbotuser.Table, gitbotuser.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, user.GitBotUsersTable, user.GitBotUsersColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -676,8 +724,10 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withAssignedIssues:       _q.withAssignedIssues.Clone(),
 		withProjectCollaborators: _q.withProjectCollaborators.Clone(),
 		withProjectIssueComments: _q.withProjectIssueComments.Clone(),
+		withGitBots:              _q.withGitBots.Clone(),
 		withTeamMembers:          _q.withTeamMembers.Clone(),
 		withTeamGroupMembers:     _q.withTeamGroupMembers.Clone(),
+		withGitBotUsers:          _q.withGitBotUsers.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -850,6 +900,17 @@ func (_q *UserQuery) WithProjectIssueComments(opts ...func(*ProjectIssueCommentQ
 	return _q
 }
 
+// WithGitBots tells the query-builder to eager-load the nodes that are connected to
+// the "git_bots" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithGitBots(opts ...func(*GitBotQuery)) *UserQuery {
+	query := (&GitBotClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitBots = query
+	return _q
+}
+
 // WithTeamMembers tells the query-builder to eager-load the nodes that are connected to
 // the "team_members" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithTeamMembers(opts ...func(*TeamMemberQuery)) *UserQuery {
@@ -869,6 +930,17 @@ func (_q *UserQuery) WithTeamGroupMembers(opts ...func(*TeamGroupMemberQuery)) *
 		opt(query)
 	}
 	_q.withTeamGroupMembers = query
+	return _q
+}
+
+// WithGitBotUsers tells the query-builder to eager-load the nodes that are connected to
+// the "git_bot_users" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithGitBotUsers(opts ...func(*GitBotUserQuery)) *UserQuery {
+	query := (&GitBotUserClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitBotUsers = query
 	return _q
 }
 
@@ -950,7 +1022,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [17]bool{
+		loadedTypes = [19]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
@@ -966,8 +1038,10 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withAssignedIssues != nil,
 			_q.withProjectCollaborators != nil,
 			_q.withProjectIssueComments != nil,
+			_q.withGitBots != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamGroupMembers != nil,
+			_q.withGitBotUsers != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -1100,6 +1174,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			return nil, err
 		}
 	}
+	if query := _q.withGitBots; query != nil {
+		if err := _q.loadGitBots(ctx, query, nodes,
+			func(n *User) { n.Edges.GitBots = []*GitBot{} },
+			func(n *User, e *GitBot) { n.Edges.GitBots = append(n.Edges.GitBots, e) }); err != nil {
+			return nil, err
+		}
+	}
 	if query := _q.withTeamMembers; query != nil {
 		if err := _q.loadTeamMembers(ctx, query, nodes,
 			func(n *User) { n.Edges.TeamMembers = []*TeamMember{} },
@@ -1111,6 +1192,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadTeamGroupMembers(ctx, query, nodes,
 			func(n *User) { n.Edges.TeamGroupMembers = []*TeamGroupMember{} },
 			func(n *User, e *TeamGroupMember) { n.Edges.TeamGroupMembers = append(n.Edges.TeamGroupMembers, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGitBotUsers; query != nil {
+		if err := _q.loadGitBotUsers(ctx, query, nodes,
+			func(n *User) { n.Edges.GitBotUsers = []*GitBotUser{} },
+			func(n *User, e *GitBotUser) { n.Edges.GitBotUsers = append(n.Edges.GitBotUsers, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1629,6 +1717,67 @@ func (_q *UserQuery) loadProjectIssueComments(ctx context.Context, query *Projec
 	}
 	return nil
 }
+func (_q *UserQuery) loadGitBots(ctx context.Context, query *GitBotQuery, nodes []*User, init func(*User), assign func(*User, *GitBot)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*User)
+	nids := make(map[uuid.UUID]map[*User]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(user.GitBotsTable)
+		s.Join(joinT).On(s.C(gitbot.FieldID), joinT.C(user.GitBotsPrimaryKey[1]))
+		s.Where(sql.InValues(joinT.C(user.GitBotsPrimaryKey[0]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(user.GitBotsPrimaryKey[0]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*User]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*GitBot](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "git_bots" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
 func (_q *UserQuery) loadTeamMembers(ctx context.Context, query *TeamMemberQuery, nodes []*User, init func(*User), assign func(*User, *TeamMember)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[uuid.UUID]*User)
@@ -1674,6 +1823,36 @@ func (_q *UserQuery) loadTeamGroupMembers(ctx context.Context, query *TeamGroupM
 	}
 	query.Where(predicate.TeamGroupMember(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.TeamGroupMembersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadGitBotUsers(ctx context.Context, query *GitBotUserQuery, nodes []*User, init func(*User), assign func(*User, *GitBotUser)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(gitbotuser.FieldUserID)
+	}
+	query.Where(predicate.GitBotUser(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.GitBotUsersColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

@@ -12,7 +12,9 @@ import (
 // RegisterTask 注册 task 模块
 func RegisterTask(i *do.Injector) {
 	do.Provide(i, repo.NewTaskRepo)
+	do.Provide(i, repo.NewGitTaskRepo)
 	do.Provide(i, usecase.NewTaskUsecase)
+	do.Provide(i, usecase.NewGitTaskUsecase)
 	do.Provide(i, service.NewTaskSummaryService)
 	do.Provide(i, v1.NewTaskHandler)
 	do.MustInvoke[*v1.TaskHandler](i)

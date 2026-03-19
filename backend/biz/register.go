@@ -25,6 +25,9 @@ func RegisterAll(i *do.Injector) error {
 		return err
 	}
 
+	// 注册 task 模块（需在 git 模块之前，因为 webhook handler 依赖 GitTaskUsecase）
+	task.RegisterTask(i)
+
 	// 注册 git 模块
 	git.RegisterGit(i)
 
@@ -36,9 +39,6 @@ func RegisterAll(i *do.Injector) error {
 
 	// 注册 notify 模块
 	notify.RegisterNotify(i)
-
-	// 注册 task 模块
-	task.RegisterTask(i)
 
 	return nil
 }

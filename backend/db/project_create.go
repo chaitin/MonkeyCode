@@ -13,10 +13,12 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
@@ -239,6 +241,36 @@ func (_c *ProjectCreate) AddProjectTasks(v ...*ProjectTask) *ProjectCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddProjectTaskIDs(ids...)
+}
+
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_c *ProjectCreate) AddGitBotIDs(ids ...uuid.UUID) *ProjectCreate {
+	_c.mutation.AddGitBotIDs(ids...)
+	return _c
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_c *ProjectCreate) AddGitBots(v ...*GitBot) *ProjectCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGitBotIDs(ids...)
+}
+
+// AddProjectGitBotIDs adds the "project_git_bots" edge to the ProjectGitBot entity by IDs.
+func (_c *ProjectCreate) AddProjectGitBotIDs(ids ...uuid.UUID) *ProjectCreate {
+	_c.mutation.AddProjectGitBotIDs(ids...)
+	return _c
+}
+
+// AddProjectGitBots adds the "project_git_bots" edges to the ProjectGitBot entity.
+func (_c *ProjectCreate) AddProjectGitBots(v ...*ProjectGitBot) *ProjectCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddProjectGitBotIDs(ids...)
 }
 
 // Mutation returns the ProjectMutation object of the builder.
@@ -481,6 +513,45 @@ func (_c *ProjectCreate) createSpec() (*Project, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   project.GitBotsTable,
+			Columns: project.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &ProjectGitBotCreate{config: _c.config, mutation: newProjectGitBotMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ProjectGitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   project.ProjectGitBotsTable,
+			Columns: []string{project.ProjectGitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(projectgitbot.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

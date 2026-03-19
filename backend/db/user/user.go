@@ -67,10 +67,14 @@ const (
 	EdgeProjectCollaborators = "project_collaborators"
 	// EdgeProjectIssueComments holds the string denoting the project_issue_comments edge name in mutations.
 	EdgeProjectIssueComments = "project_issue_comments"
+	// EdgeGitBots holds the string denoting the git_bots edge name in mutations.
+	EdgeGitBots = "git_bots"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
 	EdgeTeamGroupMembers = "team_group_members"
+	// EdgeGitBotUsers holds the string denoting the git_bot_users edge name in mutations.
+	EdgeGitBotUsers = "git_bot_users"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// IdentitiesTable is the table that holds the identities relation/edge.
@@ -174,6 +178,11 @@ const (
 	ProjectIssueCommentsInverseTable = "project_issue_comments"
 	// ProjectIssueCommentsColumn is the table column denoting the project_issue_comments relation/edge.
 	ProjectIssueCommentsColumn = "user_id"
+	// GitBotsTable is the table that holds the git_bots relation/edge. The primary key declared below.
+	GitBotsTable = "git_bot_users"
+	// GitBotsInverseTable is the table name for the GitBot entity.
+	// It exists in this package in order to avoid circular dependency with the "gitbot" package.
+	GitBotsInverseTable = "git_bots"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -188,6 +197,13 @@ const (
 	TeamGroupMembersInverseTable = "team_group_members"
 	// TeamGroupMembersColumn is the table column denoting the team_group_members relation/edge.
 	TeamGroupMembersColumn = "user_id"
+	// GitBotUsersTable is the table that holds the git_bot_users relation/edge.
+	GitBotUsersTable = "git_bot_users"
+	// GitBotUsersInverseTable is the table name for the GitBotUser entity.
+	// It exists in this package in order to avoid circular dependency with the "gitbotuser" package.
+	GitBotUsersInverseTable = "git_bot_users"
+	// GitBotUsersColumn is the table column denoting the git_bot_users relation/edge.
+	GitBotUsersColumn = "user_id"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -213,6 +229,9 @@ var (
 	// GroupsPrimaryKey and GroupsColumn2 are the table columns denoting the
 	// primary key for the groups relation (M2M).
 	GroupsPrimaryKey = []string{"user_id", "group_id"}
+	// GitBotsPrimaryKey and GitBotsColumn2 are the table columns denoting the
+	// primary key for the git_bots relation (M2M).
+	GitBotsPrimaryKey = []string{"user_id", "git_bot_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -513,6 +532,20 @@ func ByProjectIssueComments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOpt
 	}
 }
 
+// ByGitBotsCount orders the results by git_bots count.
+func ByGitBotsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGitBotsStep(), opts...)
+	}
+}
+
+// ByGitBots orders the results by git_bots terms.
+func ByGitBots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitBotsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -538,6 +571,20 @@ func ByTeamGroupMembersCount(opts ...sql.OrderTermOption) OrderOption {
 func ByTeamGroupMembers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newTeamGroupMembersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByGitBotUsersCount orders the results by git_bot_users count.
+func ByGitBotUsersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGitBotUsersStep(), opts...)
+	}
+}
+
+// ByGitBotUsers orders the results by git_bot_users terms.
+func ByGitBotUsers(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitBotUsersStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 func newIdentitiesStep() *sqlgraph.Step {
@@ -645,6 +692,13 @@ func newProjectIssueCommentsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, ProjectIssueCommentsTable, ProjectIssueCommentsColumn),
 	)
 }
+func newGitBotsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitBotsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, GitBotsTable, GitBotsPrimaryKey...),
+	)
+}
 func newTeamMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -657,5 +711,12 @@ func newTeamGroupMembersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TeamGroupMembersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupMembersTable, TeamGroupMembersColumn),
+	)
+}
+func newGitBotUsersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitBotUsersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, GitBotUsersTable, GitBotUsersColumn),
 	)
 }

@@ -7,6 +7,9 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -16,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
@@ -35,6 +39,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/ent/schema"
+	"github.com/google/uuid"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -47,6 +52,37 @@ func init() {
 	auditDescCreatedAt := auditFields[7].Descriptor()
 	// audit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	audit.DefaultCreatedAt = auditDescCreatedAt.Default.(func() time.Time)
+	gitbotMixin := schema.GitBot{}.Mixin()
+	gitbotMixinHooks0 := gitbotMixin[0].Hooks()
+	gitbot.Hooks[0] = gitbotMixinHooks0[0]
+	gitbotMixinInters0 := gitbotMixin[0].Interceptors()
+	gitbot.Interceptors[0] = gitbotMixinInters0[0]
+	gitbotFields := schema.GitBot{}.Fields()
+	_ = gitbotFields
+	// gitbotDescCreatedAt is the schema descriptor for created_at field.
+	gitbotDescCreatedAt := gitbotFields[7].Descriptor()
+	// gitbot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gitbot.DefaultCreatedAt = gitbotDescCreatedAt.Default.(func() time.Time)
+	gitbottaskFields := schema.GitBotTask{}.Fields()
+	_ = gitbottaskFields
+	// gitbottaskDescCreatedAt is the schema descriptor for created_at field.
+	gitbottaskDescCreatedAt := gitbottaskFields[3].Descriptor()
+	// gitbottask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gitbottask.DefaultCreatedAt = gitbottaskDescCreatedAt.Default.(func() time.Time)
+	// gitbottaskDescID is the schema descriptor for id field.
+	gitbottaskDescID := gitbottaskFields[0].Descriptor()
+	// gitbottask.DefaultID holds the default value on creation for the id field.
+	gitbottask.DefaultID = gitbottaskDescID.Default.(func() uuid.UUID)
+	gitbotuserFields := schema.GitBotUser{}.Fields()
+	_ = gitbotuserFields
+	// gitbotuserDescCreatedAt is the schema descriptor for created_at field.
+	gitbotuserDescCreatedAt := gitbotuserFields[3].Descriptor()
+	// gitbotuser.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gitbotuser.DefaultCreatedAt = gitbotuserDescCreatedAt.Default.(func() time.Time)
+	// gitbotuserDescID is the schema descriptor for id field.
+	gitbotuserDescID := gitbotuserFields[0].Descriptor()
+	// gitbotuser.DefaultID holds the default value on creation for the id field.
+	gitbotuser.DefaultID = gitbotuserDescID.Default.(func() uuid.UUID)
 	gitidentityMixin := schema.GitIdentity{}.Mixin()
 	gitidentityMixinHooks0 := gitidentityMixin[0].Hooks()
 	gitidentity.Hooks[0] = gitidentityMixinHooks0[0]
@@ -271,6 +307,16 @@ func init() {
 	projectcollaborator.DefaultUpdatedAt = projectcollaboratorDescUpdatedAt.Default.(func() time.Time)
 	// projectcollaborator.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	projectcollaborator.UpdateDefaultUpdatedAt = projectcollaboratorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	projectgitbotFields := schema.ProjectGitBot{}.Fields()
+	_ = projectgitbotFields
+	// projectgitbotDescCreatedAt is the schema descriptor for created_at field.
+	projectgitbotDescCreatedAt := projectgitbotFields[3].Descriptor()
+	// projectgitbot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	projectgitbot.DefaultCreatedAt = projectgitbotDescCreatedAt.Default.(func() time.Time)
+	// projectgitbotDescID is the schema descriptor for id field.
+	projectgitbotDescID := projectgitbotFields[0].Descriptor()
+	// projectgitbot.DefaultID holds the default value on creation for the id field.
+	projectgitbot.DefaultID = projectgitbotDescID.Default.(func() uuid.UUID)
 	projectissueMixin := schema.ProjectIssue{}.Mixin()
 	projectissueMixinHooks0 := projectissueMixin[0].Hooks()
 	projectissue.Hooks[0] = projectissueMixinHooks0[0]

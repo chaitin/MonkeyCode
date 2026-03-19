@@ -59,5 +59,6 @@ func (Project) Edges() []ent.Edge {
 		edge.To("issues", ProjectIssue.Type),
 		edge.To("collaborators", ProjectCollaborator.Type),
 		edge.To("project_tasks", ProjectTask.Type),
+		edge.To("git_bots", GitBot.Type).Through("project_git_bots", ProjectGitBot.Type),
 	}
 }

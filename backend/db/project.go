@@ -67,9 +67,13 @@ type ProjectEdges struct {
 	Collaborators []*ProjectCollaborator `json:"collaborators,omitempty"`
 	// ProjectTasks holds the value of the project_tasks edge.
 	ProjectTasks []*ProjectTask `json:"project_tasks,omitempty"`
+	// GitBots holds the value of the git_bots edge.
+	GitBots []*GitBot `json:"git_bots,omitempty"`
+	// ProjectGitBots holds the value of the project_git_bots edge.
+	ProjectGitBots []*ProjectGitBot `json:"project_git_bots,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [8]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -130,6 +134,24 @@ func (e ProjectEdges) ProjectTasksOrErr() ([]*ProjectTask, error) {
 		return e.ProjectTasks, nil
 	}
 	return nil, &NotLoadedError{edge: "project_tasks"}
+}
+
+// GitBotsOrErr returns the GitBots value or an error if the edge
+// was not loaded in eager-loading.
+func (e ProjectEdges) GitBotsOrErr() ([]*GitBot, error) {
+	if e.loadedTypes[6] {
+		return e.GitBots, nil
+	}
+	return nil, &NotLoadedError{edge: "git_bots"}
+}
+
+// ProjectGitBotsOrErr returns the ProjectGitBots value or an error if the edge
+// was not loaded in eager-loading.
+func (e ProjectEdges) ProjectGitBotsOrErr() ([]*ProjectGitBot, error) {
+	if e.loadedTypes[7] {
+		return e.ProjectGitBots, nil
+	}
+	return nil, &NotLoadedError{edge: "project_git_bots"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -281,6 +303,16 @@ func (_m *Project) QueryCollaborators() *ProjectCollaboratorQuery {
 // QueryProjectTasks queries the "project_tasks" edge of the Project entity.
 func (_m *Project) QueryProjectTasks() *ProjectTaskQuery {
 	return NewProjectClient(_m.config).QueryProjectTasks(_m)
+}
+
+// QueryGitBots queries the "git_bots" edge of the Project entity.
+func (_m *Project) QueryGitBots() *GitBotQuery {
+	return NewProjectClient(_m.config).QueryGitBots(_m)
+}
+
+// QueryProjectGitBots queries the "project_git_bots" edge of the Project entity.
+func (_m *Project) QueryProjectGitBots() *ProjectGitBotQuery {
+	return NewProjectClient(_m.config).QueryProjectGitBots(_m)
 }
 
 // Update returns a builder for updating this Project.

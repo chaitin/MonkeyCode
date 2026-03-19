@@ -34,6 +34,93 @@ var (
 			},
 		},
 	}
+	// GitBotsColumns holds the columns for the "git_bots" table.
+	GitBotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Nullable: true},
+		{Name: "token", Type: field.TypeString, Nullable: true},
+		{Name: "secret_token", Type: field.TypeString, Nullable: true},
+		{Name: "platform", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "host_id", Type: field.TypeString},
+	}
+	// GitBotsTable holds the schema information for the "git_bots" table.
+	GitBotsTable = &schema.Table{
+		Name:       "git_bots",
+		Columns:    GitBotsColumns,
+		PrimaryKey: []*schema.Column{GitBotsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "git_bots_hosts_git_bots",
+				Columns:    []*schema.Column{GitBotsColumns[8]},
+				RefColumns: []*schema.Column{HostsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// GitBotTasksColumns holds the columns for the "git_bot_tasks" table.
+	GitBotTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "git_bot_id", Type: field.TypeUUID},
+		{Name: "task_id", Type: field.TypeUUID},
+	}
+	// GitBotTasksTable holds the schema information for the "git_bot_tasks" table.
+	GitBotTasksTable = &schema.Table{
+		Name:       "git_bot_tasks",
+		Columns:    GitBotTasksColumns,
+		PrimaryKey: []*schema.Column{GitBotTasksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "git_bot_tasks_git_bots_git_bot_tasks",
+				Columns:    []*schema.Column{GitBotTasksColumns[2]},
+				RefColumns: []*schema.Column{GitBotsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "git_bot_tasks_tasks_git_bot_tasks",
+				Columns:    []*schema.Column{GitBotTasksColumns[3]},
+				RefColumns: []*schema.Column{TasksColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// GitBotUsersColumns holds the columns for the "git_bot_users" table.
+	GitBotUsersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "git_bot_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// GitBotUsersTable holds the schema information for the "git_bot_users" table.
+	GitBotUsersTable = &schema.Table{
+		Name:       "git_bot_users",
+		Columns:    GitBotUsersColumns,
+		PrimaryKey: []*schema.Column{GitBotUsersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "git_bot_users_git_bots_git_bot",
+				Columns:    []*schema.Column{GitBotUsersColumns[2]},
+				RefColumns: []*schema.Column{GitBotsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "git_bot_users_users_user",
+				Columns:    []*schema.Column{GitBotUsersColumns[3]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "gitbotuser_user_id_git_bot_id",
+				Unique:  true,
+				Columns: []*schema.Column{GitBotUsersColumns[3], GitBotUsersColumns[2]},
+			},
+		},
+	}
 	// GitIdentitiesColumns holds the columns for the "git_identities" table.
 	GitIdentitiesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -314,6 +401,40 @@ var (
 				Columns:    []*schema.Column{ProjectCollaboratorsColumns[6]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// ProjectGitBotsColumns holds the columns for the "project_git_bots" table.
+	ProjectGitBotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "git_bot_id", Type: field.TypeUUID},
+	}
+	// ProjectGitBotsTable holds the schema information for the "project_git_bots" table.
+	ProjectGitBotsTable = &schema.Table{
+		Name:       "project_git_bots",
+		Columns:    ProjectGitBotsColumns,
+		PrimaryKey: []*schema.Column{ProjectGitBotsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "project_git_bots_projects_project",
+				Columns:    []*schema.Column{ProjectGitBotsColumns[2]},
+				RefColumns: []*schema.Column{ProjectsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "project_git_bots_git_bots_git_bot",
+				Columns:    []*schema.Column{ProjectGitBotsColumns[3]},
+				RefColumns: []*schema.Column{GitBotsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "projectgitbot_project_id_git_bot_id",
+				Unique:  true,
+				Columns: []*schema.Column{ProjectGitBotsColumns[2], ProjectGitBotsColumns[3]},
 			},
 		},
 	}
@@ -926,6 +1047,9 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AuditsTable,
+		GitBotsTable,
+		GitBotTasksTable,
+		GitBotUsersTable,
 		GitIdentitiesTable,
 		HostsTable,
 		ImagesTable,
@@ -935,6 +1059,7 @@ var (
 		NotifySubscriptionsTable,
 		ProjectsTable,
 		ProjectCollaboratorsTable,
+		ProjectGitBotsTable,
 		ProjectIssuesTable,
 		ProjectIssueCommentsTable,
 		ProjectTasksTable,
@@ -960,6 +1085,20 @@ func init() {
 	AuditsTable.ForeignKeys[0].RefTable = UsersTable
 	AuditsTable.Annotation = &entsql.Annotation{
 		Table: "audits",
+	}
+	GitBotsTable.ForeignKeys[0].RefTable = HostsTable
+	GitBotsTable.Annotation = &entsql.Annotation{
+		Table: "git_bots",
+	}
+	GitBotTasksTable.ForeignKeys[0].RefTable = GitBotsTable
+	GitBotTasksTable.ForeignKeys[1].RefTable = TasksTable
+	GitBotTasksTable.Annotation = &entsql.Annotation{
+		Table: "git_bot_tasks",
+	}
+	GitBotUsersTable.ForeignKeys[0].RefTable = GitBotsTable
+	GitBotUsersTable.ForeignKeys[1].RefTable = UsersTable
+	GitBotUsersTable.Annotation = &entsql.Annotation{
+		Table: "git_bot_users",
 	}
 	GitIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	GitIdentitiesTable.Annotation = &entsql.Annotation{
@@ -997,6 +1136,11 @@ func init() {
 	ProjectCollaboratorsTable.ForeignKeys[1].RefTable = UsersTable
 	ProjectCollaboratorsTable.Annotation = &entsql.Annotation{
 		Table: "project_collaborators",
+	}
+	ProjectGitBotsTable.ForeignKeys[0].RefTable = ProjectsTable
+	ProjectGitBotsTable.ForeignKeys[1].RefTable = GitBotsTable
+	ProjectGitBotsTable.Annotation = &entsql.Annotation{
+		Table: "project_git_bots",
 	}
 	ProjectIssuesTable.ForeignKeys[0].RefTable = ProjectsTable
 	ProjectIssuesTable.ForeignKeys[1].RefTable = UsersTable

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
@@ -285,6 +286,21 @@ func (_c *HostCreate) AddGroups(v ...*TeamGroup) *HostCreate {
 	return _c.AddGroupIDs(ids...)
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_c *HostCreate) AddGitBotIDs(ids ...uuid.UUID) *HostCreate {
+	_c.mutation.AddGitBotIDs(ids...)
+	return _c
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_c *HostCreate) AddGitBots(v ...*GitBot) *HostCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGitBotIDs(ids...)
+}
+
 // AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
 func (_c *HostCreate) AddTeamGroupHostIDs(ids ...uuid.UUID) *HostCreate {
 	_c.mutation.AddTeamGroupHostIDs(ids...)
@@ -522,6 +538,22 @@ func (_c *HostCreate) createSpec() (*Host, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.TeamGroupHostsIDs(); len(nodes) > 0 {

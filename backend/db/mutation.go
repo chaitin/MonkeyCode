@@ -13,6 +13,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -23,6 +26,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
@@ -55,6 +59,9 @@ const (
 
 	// Node types.
 	TypeAudit               = "Audit"
+	TypeGitBot              = "GitBot"
+	TypeGitBotTask          = "GitBotTask"
+	TypeGitBotUser          = "GitBotUser"
 	TypeGitIdentity         = "GitIdentity"
 	TypeHost                = "Host"
 	TypeImage               = "Image"
@@ -64,6 +71,7 @@ const (
 	TypeNotifySubscription  = "NotifySubscription"
 	TypeProject             = "Project"
 	TypeProjectCollaborator = "ProjectCollaborator"
+	TypeProjectGitBot       = "ProjectGitBot"
 	TypeProjectIssue        = "ProjectIssue"
 	TypeProjectIssueComment = "ProjectIssueComment"
 	TypeProjectTask         = "ProjectTask"
@@ -814,6 +822,2346 @@ func (m *AuditMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Audit edge %s", name)
+}
+
+// GitBotMutation represents an operation that mutates the GitBot nodes in the graph.
+type GitBotMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *uuid.UUID
+	deleted_at              *time.Time
+	user_id                 *uuid.UUID
+	name                    *string
+	token                   *string
+	secret_token            *string
+	platform                *consts.GitPlatform
+	created_at              *time.Time
+	clearedFields           map[string]struct{}
+	git_bot_tasks           map[uuid.UUID]struct{}
+	removedgit_bot_tasks    map[uuid.UUID]struct{}
+	clearedgit_bot_tasks    bool
+	host                    *string
+	clearedhost             bool
+	users                   map[uuid.UUID]struct{}
+	removedusers            map[uuid.UUID]struct{}
+	clearedusers            bool
+	projects                map[uuid.UUID]struct{}
+	removedprojects         map[uuid.UUID]struct{}
+	clearedprojects         bool
+	git_bot_users           map[uuid.UUID]struct{}
+	removedgit_bot_users    map[uuid.UUID]struct{}
+	clearedgit_bot_users    bool
+	project_git_bots        map[uuid.UUID]struct{}
+	removedproject_git_bots map[uuid.UUID]struct{}
+	clearedproject_git_bots bool
+	done                    bool
+	oldValue                func(context.Context) (*GitBot, error)
+	predicates              []predicate.GitBot
+}
+
+var _ ent.Mutation = (*GitBotMutation)(nil)
+
+// gitbotOption allows management of the mutation configuration using functional options.
+type gitbotOption func(*GitBotMutation)
+
+// newGitBotMutation creates new mutation for the GitBot entity.
+func newGitBotMutation(c config, op Op, opts ...gitbotOption) *GitBotMutation {
+	m := &GitBotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGitBot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGitBotID sets the ID field of the mutation.
+func withGitBotID(id uuid.UUID) gitbotOption {
+	return func(m *GitBotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GitBot
+		)
+		m.oldValue = func(ctx context.Context) (*GitBot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GitBot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGitBot sets the old GitBot of the mutation.
+func withGitBot(node *GitBot) gitbotOption {
+	return func(m *GitBotMutation) {
+		m.oldValue = func(context.Context) (*GitBot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GitBotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GitBotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GitBot entities.
+func (m *GitBotMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GitBotMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GitBotMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GitBot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *GitBotMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *GitBotMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldDeletedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *GitBotMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[gitbot.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *GitBotMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[gitbot.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *GitBotMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, gitbot.FieldDeletedAt)
+}
+
+// SetUserID sets the "user_id" field.
+func (m *GitBotMutation) SetUserID(u uuid.UUID) {
+	m.user_id = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *GitBotMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *GitBotMutation) ResetUserID() {
+	m.user_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *GitBotMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *GitBotMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ClearName clears the value of the "name" field.
+func (m *GitBotMutation) ClearName() {
+	m.name = nil
+	m.clearedFields[gitbot.FieldName] = struct{}{}
+}
+
+// NameCleared returns if the "name" field was cleared in this mutation.
+func (m *GitBotMutation) NameCleared() bool {
+	_, ok := m.clearedFields[gitbot.FieldName]
+	return ok
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *GitBotMutation) ResetName() {
+	m.name = nil
+	delete(m.clearedFields, gitbot.FieldName)
+}
+
+// SetHostID sets the "host_id" field.
+func (m *GitBotMutation) SetHostID(s string) {
+	m.host = &s
+}
+
+// HostID returns the value of the "host_id" field in the mutation.
+func (m *GitBotMutation) HostID() (r string, exists bool) {
+	v := m.host
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostID returns the old "host_id" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldHostID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostID: %w", err)
+	}
+	return oldValue.HostID, nil
+}
+
+// ResetHostID resets all changes to the "host_id" field.
+func (m *GitBotMutation) ResetHostID() {
+	m.host = nil
+}
+
+// SetToken sets the "token" field.
+func (m *GitBotMutation) SetToken(s string) {
+	m.token = &s
+}
+
+// Token returns the value of the "token" field in the mutation.
+func (m *GitBotMutation) Token() (r string, exists bool) {
+	v := m.token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToken returns the old "token" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToken: %w", err)
+	}
+	return oldValue.Token, nil
+}
+
+// ClearToken clears the value of the "token" field.
+func (m *GitBotMutation) ClearToken() {
+	m.token = nil
+	m.clearedFields[gitbot.FieldToken] = struct{}{}
+}
+
+// TokenCleared returns if the "token" field was cleared in this mutation.
+func (m *GitBotMutation) TokenCleared() bool {
+	_, ok := m.clearedFields[gitbot.FieldToken]
+	return ok
+}
+
+// ResetToken resets all changes to the "token" field.
+func (m *GitBotMutation) ResetToken() {
+	m.token = nil
+	delete(m.clearedFields, gitbot.FieldToken)
+}
+
+// SetSecretToken sets the "secret_token" field.
+func (m *GitBotMutation) SetSecretToken(s string) {
+	m.secret_token = &s
+}
+
+// SecretToken returns the value of the "secret_token" field in the mutation.
+func (m *GitBotMutation) SecretToken() (r string, exists bool) {
+	v := m.secret_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSecretToken returns the old "secret_token" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldSecretToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSecretToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSecretToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSecretToken: %w", err)
+	}
+	return oldValue.SecretToken, nil
+}
+
+// ClearSecretToken clears the value of the "secret_token" field.
+func (m *GitBotMutation) ClearSecretToken() {
+	m.secret_token = nil
+	m.clearedFields[gitbot.FieldSecretToken] = struct{}{}
+}
+
+// SecretTokenCleared returns if the "secret_token" field was cleared in this mutation.
+func (m *GitBotMutation) SecretTokenCleared() bool {
+	_, ok := m.clearedFields[gitbot.FieldSecretToken]
+	return ok
+}
+
+// ResetSecretToken resets all changes to the "secret_token" field.
+func (m *GitBotMutation) ResetSecretToken() {
+	m.secret_token = nil
+	delete(m.clearedFields, gitbot.FieldSecretToken)
+}
+
+// SetPlatform sets the "platform" field.
+func (m *GitBotMutation) SetPlatform(cp consts.GitPlatform) {
+	m.platform = &cp
+}
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *GitBotMutation) Platform() (r consts.GitPlatform, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatform returns the old "platform" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldPlatform(ctx context.Context) (v consts.GitPlatform, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+	}
+	return oldValue.Platform, nil
+}
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *GitBotMutation) ResetPlatform() {
+	m.platform = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GitBotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GitBotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GitBot entity.
+// If the GitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GitBotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// AddGitBotTaskIDs adds the "git_bot_tasks" edge to the GitBotTask entity by ids.
+func (m *GitBotMutation) AddGitBotTaskIDs(ids ...uuid.UUID) {
+	if m.git_bot_tasks == nil {
+		m.git_bot_tasks = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bot_tasks[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBotTasks clears the "git_bot_tasks" edge to the GitBotTask entity.
+func (m *GitBotMutation) ClearGitBotTasks() {
+	m.clearedgit_bot_tasks = true
+}
+
+// GitBotTasksCleared reports if the "git_bot_tasks" edge to the GitBotTask entity was cleared.
+func (m *GitBotMutation) GitBotTasksCleared() bool {
+	return m.clearedgit_bot_tasks
+}
+
+// RemoveGitBotTaskIDs removes the "git_bot_tasks" edge to the GitBotTask entity by IDs.
+func (m *GitBotMutation) RemoveGitBotTaskIDs(ids ...uuid.UUID) {
+	if m.removedgit_bot_tasks == nil {
+		m.removedgit_bot_tasks = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bot_tasks, ids[i])
+		m.removedgit_bot_tasks[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBotTasks returns the removed IDs of the "git_bot_tasks" edge to the GitBotTask entity.
+func (m *GitBotMutation) RemovedGitBotTasksIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bot_tasks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotTasksIDs returns the "git_bot_tasks" edge IDs in the mutation.
+func (m *GitBotMutation) GitBotTasksIDs() (ids []uuid.UUID) {
+	for id := range m.git_bot_tasks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBotTasks resets all changes to the "git_bot_tasks" edge.
+func (m *GitBotMutation) ResetGitBotTasks() {
+	m.git_bot_tasks = nil
+	m.clearedgit_bot_tasks = false
+	m.removedgit_bot_tasks = nil
+}
+
+// ClearHost clears the "host" edge to the Host entity.
+func (m *GitBotMutation) ClearHost() {
+	m.clearedhost = true
+	m.clearedFields[gitbot.FieldHostID] = struct{}{}
+}
+
+// HostCleared reports if the "host" edge to the Host entity was cleared.
+func (m *GitBotMutation) HostCleared() bool {
+	return m.clearedhost
+}
+
+// HostIDs returns the "host" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// HostID instead. It exists only for internal usage by the builders.
+func (m *GitBotMutation) HostIDs() (ids []string) {
+	if id := m.host; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetHost resets all changes to the "host" edge.
+func (m *GitBotMutation) ResetHost() {
+	m.host = nil
+	m.clearedhost = false
+}
+
+// AddUserIDs adds the "users" edge to the User entity by ids.
+func (m *GitBotMutation) AddUserIDs(ids ...uuid.UUID) {
+	if m.users == nil {
+		m.users = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.users[ids[i]] = struct{}{}
+	}
+}
+
+// ClearUsers clears the "users" edge to the User entity.
+func (m *GitBotMutation) ClearUsers() {
+	m.clearedusers = true
+}
+
+// UsersCleared reports if the "users" edge to the User entity was cleared.
+func (m *GitBotMutation) UsersCleared() bool {
+	return m.clearedusers
+}
+
+// RemoveUserIDs removes the "users" edge to the User entity by IDs.
+func (m *GitBotMutation) RemoveUserIDs(ids ...uuid.UUID) {
+	if m.removedusers == nil {
+		m.removedusers = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.users, ids[i])
+		m.removedusers[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedUsers returns the removed IDs of the "users" edge to the User entity.
+func (m *GitBotMutation) RemovedUsersIDs() (ids []uuid.UUID) {
+	for id := range m.removedusers {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// UsersIDs returns the "users" edge IDs in the mutation.
+func (m *GitBotMutation) UsersIDs() (ids []uuid.UUID) {
+	for id := range m.users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetUsers resets all changes to the "users" edge.
+func (m *GitBotMutation) ResetUsers() {
+	m.users = nil
+	m.clearedusers = false
+	m.removedusers = nil
+}
+
+// AddProjectIDs adds the "projects" edge to the Project entity by ids.
+func (m *GitBotMutation) AddProjectIDs(ids ...uuid.UUID) {
+	if m.projects == nil {
+		m.projects = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.projects[ids[i]] = struct{}{}
+	}
+}
+
+// ClearProjects clears the "projects" edge to the Project entity.
+func (m *GitBotMutation) ClearProjects() {
+	m.clearedprojects = true
+}
+
+// ProjectsCleared reports if the "projects" edge to the Project entity was cleared.
+func (m *GitBotMutation) ProjectsCleared() bool {
+	return m.clearedprojects
+}
+
+// RemoveProjectIDs removes the "projects" edge to the Project entity by IDs.
+func (m *GitBotMutation) RemoveProjectIDs(ids ...uuid.UUID) {
+	if m.removedprojects == nil {
+		m.removedprojects = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.projects, ids[i])
+		m.removedprojects[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedProjects returns the removed IDs of the "projects" edge to the Project entity.
+func (m *GitBotMutation) RemovedProjectsIDs() (ids []uuid.UUID) {
+	for id := range m.removedprojects {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ProjectsIDs returns the "projects" edge IDs in the mutation.
+func (m *GitBotMutation) ProjectsIDs() (ids []uuid.UUID) {
+	for id := range m.projects {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetProjects resets all changes to the "projects" edge.
+func (m *GitBotMutation) ResetProjects() {
+	m.projects = nil
+	m.clearedprojects = false
+	m.removedprojects = nil
+}
+
+// AddGitBotUserIDs adds the "git_bot_users" edge to the GitBotUser entity by ids.
+func (m *GitBotMutation) AddGitBotUserIDs(ids ...uuid.UUID) {
+	if m.git_bot_users == nil {
+		m.git_bot_users = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bot_users[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBotUsers clears the "git_bot_users" edge to the GitBotUser entity.
+func (m *GitBotMutation) ClearGitBotUsers() {
+	m.clearedgit_bot_users = true
+}
+
+// GitBotUsersCleared reports if the "git_bot_users" edge to the GitBotUser entity was cleared.
+func (m *GitBotMutation) GitBotUsersCleared() bool {
+	return m.clearedgit_bot_users
+}
+
+// RemoveGitBotUserIDs removes the "git_bot_users" edge to the GitBotUser entity by IDs.
+func (m *GitBotMutation) RemoveGitBotUserIDs(ids ...uuid.UUID) {
+	if m.removedgit_bot_users == nil {
+		m.removedgit_bot_users = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bot_users, ids[i])
+		m.removedgit_bot_users[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBotUsers returns the removed IDs of the "git_bot_users" edge to the GitBotUser entity.
+func (m *GitBotMutation) RemovedGitBotUsersIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bot_users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotUsersIDs returns the "git_bot_users" edge IDs in the mutation.
+func (m *GitBotMutation) GitBotUsersIDs() (ids []uuid.UUID) {
+	for id := range m.git_bot_users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBotUsers resets all changes to the "git_bot_users" edge.
+func (m *GitBotMutation) ResetGitBotUsers() {
+	m.git_bot_users = nil
+	m.clearedgit_bot_users = false
+	m.removedgit_bot_users = nil
+}
+
+// AddProjectGitBotIDs adds the "project_git_bots" edge to the ProjectGitBot entity by ids.
+func (m *GitBotMutation) AddProjectGitBotIDs(ids ...uuid.UUID) {
+	if m.project_git_bots == nil {
+		m.project_git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.project_git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearProjectGitBots clears the "project_git_bots" edge to the ProjectGitBot entity.
+func (m *GitBotMutation) ClearProjectGitBots() {
+	m.clearedproject_git_bots = true
+}
+
+// ProjectGitBotsCleared reports if the "project_git_bots" edge to the ProjectGitBot entity was cleared.
+func (m *GitBotMutation) ProjectGitBotsCleared() bool {
+	return m.clearedproject_git_bots
+}
+
+// RemoveProjectGitBotIDs removes the "project_git_bots" edge to the ProjectGitBot entity by IDs.
+func (m *GitBotMutation) RemoveProjectGitBotIDs(ids ...uuid.UUID) {
+	if m.removedproject_git_bots == nil {
+		m.removedproject_git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.project_git_bots, ids[i])
+		m.removedproject_git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedProjectGitBots returns the removed IDs of the "project_git_bots" edge to the ProjectGitBot entity.
+func (m *GitBotMutation) RemovedProjectGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.removedproject_git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ProjectGitBotsIDs returns the "project_git_bots" edge IDs in the mutation.
+func (m *GitBotMutation) ProjectGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.project_git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetProjectGitBots resets all changes to the "project_git_bots" edge.
+func (m *GitBotMutation) ResetProjectGitBots() {
+	m.project_git_bots = nil
+	m.clearedproject_git_bots = false
+	m.removedproject_git_bots = nil
+}
+
+// Where appends a list predicates to the GitBotMutation builder.
+func (m *GitBotMutation) Where(ps ...predicate.GitBot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GitBotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GitBotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GitBot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GitBotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GitBotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GitBot).
+func (m *GitBotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GitBotMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.deleted_at != nil {
+		fields = append(fields, gitbot.FieldDeletedAt)
+	}
+	if m.user_id != nil {
+		fields = append(fields, gitbot.FieldUserID)
+	}
+	if m.name != nil {
+		fields = append(fields, gitbot.FieldName)
+	}
+	if m.host != nil {
+		fields = append(fields, gitbot.FieldHostID)
+	}
+	if m.token != nil {
+		fields = append(fields, gitbot.FieldToken)
+	}
+	if m.secret_token != nil {
+		fields = append(fields, gitbot.FieldSecretToken)
+	}
+	if m.platform != nil {
+		fields = append(fields, gitbot.FieldPlatform)
+	}
+	if m.created_at != nil {
+		fields = append(fields, gitbot.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GitBotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case gitbot.FieldDeletedAt:
+		return m.DeletedAt()
+	case gitbot.FieldUserID:
+		return m.UserID()
+	case gitbot.FieldName:
+		return m.Name()
+	case gitbot.FieldHostID:
+		return m.HostID()
+	case gitbot.FieldToken:
+		return m.Token()
+	case gitbot.FieldSecretToken:
+		return m.SecretToken()
+	case gitbot.FieldPlatform:
+		return m.Platform()
+	case gitbot.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GitBotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gitbot.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case gitbot.FieldUserID:
+		return m.OldUserID(ctx)
+	case gitbot.FieldName:
+		return m.OldName(ctx)
+	case gitbot.FieldHostID:
+		return m.OldHostID(ctx)
+	case gitbot.FieldToken:
+		return m.OldToken(ctx)
+	case gitbot.FieldSecretToken:
+		return m.OldSecretToken(ctx)
+	case gitbot.FieldPlatform:
+		return m.OldPlatform(ctx)
+	case gitbot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GitBot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitBotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case gitbot.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case gitbot.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case gitbot.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case gitbot.FieldHostID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostID(v)
+		return nil
+	case gitbot.FieldToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToken(v)
+		return nil
+	case gitbot.FieldSecretToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSecretToken(v)
+		return nil
+	case gitbot.FieldPlatform:
+		v, ok := value.(consts.GitPlatform)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatform(v)
+		return nil
+	case gitbot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitBot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GitBotMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GitBotMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitBotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown GitBot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GitBotMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(gitbot.FieldDeletedAt) {
+		fields = append(fields, gitbot.FieldDeletedAt)
+	}
+	if m.FieldCleared(gitbot.FieldName) {
+		fields = append(fields, gitbot.FieldName)
+	}
+	if m.FieldCleared(gitbot.FieldToken) {
+		fields = append(fields, gitbot.FieldToken)
+	}
+	if m.FieldCleared(gitbot.FieldSecretToken) {
+		fields = append(fields, gitbot.FieldSecretToken)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GitBotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GitBotMutation) ClearField(name string) error {
+	switch name {
+	case gitbot.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case gitbot.FieldName:
+		m.ClearName()
+		return nil
+	case gitbot.FieldToken:
+		m.ClearToken()
+		return nil
+	case gitbot.FieldSecretToken:
+		m.ClearSecretToken()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GitBotMutation) ResetField(name string) error {
+	switch name {
+	case gitbot.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case gitbot.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case gitbot.FieldName:
+		m.ResetName()
+		return nil
+	case gitbot.FieldHostID:
+		m.ResetHostID()
+		return nil
+	case gitbot.FieldToken:
+		m.ResetToken()
+		return nil
+	case gitbot.FieldSecretToken:
+		m.ResetSecretToken()
+		return nil
+	case gitbot.FieldPlatform:
+		m.ResetPlatform()
+		return nil
+	case gitbot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GitBotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 6)
+	if m.git_bot_tasks != nil {
+		edges = append(edges, gitbot.EdgeGitBotTasks)
+	}
+	if m.host != nil {
+		edges = append(edges, gitbot.EdgeHost)
+	}
+	if m.users != nil {
+		edges = append(edges, gitbot.EdgeUsers)
+	}
+	if m.projects != nil {
+		edges = append(edges, gitbot.EdgeProjects)
+	}
+	if m.git_bot_users != nil {
+		edges = append(edges, gitbot.EdgeGitBotUsers)
+	}
+	if m.project_git_bots != nil {
+		edges = append(edges, gitbot.EdgeProjectGitBots)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GitBotMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case gitbot.EdgeGitBotTasks:
+		ids := make([]ent.Value, 0, len(m.git_bot_tasks))
+		for id := range m.git_bot_tasks {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeHost:
+		if id := m.host; id != nil {
+			return []ent.Value{*id}
+		}
+	case gitbot.EdgeUsers:
+		ids := make([]ent.Value, 0, len(m.users))
+		for id := range m.users {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeProjects:
+		ids := make([]ent.Value, 0, len(m.projects))
+		for id := range m.projects {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeGitBotUsers:
+		ids := make([]ent.Value, 0, len(m.git_bot_users))
+		for id := range m.git_bot_users {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeProjectGitBots:
+		ids := make([]ent.Value, 0, len(m.project_git_bots))
+		for id := range m.project_git_bots {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GitBotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 6)
+	if m.removedgit_bot_tasks != nil {
+		edges = append(edges, gitbot.EdgeGitBotTasks)
+	}
+	if m.removedusers != nil {
+		edges = append(edges, gitbot.EdgeUsers)
+	}
+	if m.removedprojects != nil {
+		edges = append(edges, gitbot.EdgeProjects)
+	}
+	if m.removedgit_bot_users != nil {
+		edges = append(edges, gitbot.EdgeGitBotUsers)
+	}
+	if m.removedproject_git_bots != nil {
+		edges = append(edges, gitbot.EdgeProjectGitBots)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GitBotMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case gitbot.EdgeGitBotTasks:
+		ids := make([]ent.Value, 0, len(m.removedgit_bot_tasks))
+		for id := range m.removedgit_bot_tasks {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeUsers:
+		ids := make([]ent.Value, 0, len(m.removedusers))
+		for id := range m.removedusers {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeProjects:
+		ids := make([]ent.Value, 0, len(m.removedprojects))
+		for id := range m.removedprojects {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeGitBotUsers:
+		ids := make([]ent.Value, 0, len(m.removedgit_bot_users))
+		for id := range m.removedgit_bot_users {
+			ids = append(ids, id)
+		}
+		return ids
+	case gitbot.EdgeProjectGitBots:
+		ids := make([]ent.Value, 0, len(m.removedproject_git_bots))
+		for id := range m.removedproject_git_bots {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GitBotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 6)
+	if m.clearedgit_bot_tasks {
+		edges = append(edges, gitbot.EdgeGitBotTasks)
+	}
+	if m.clearedhost {
+		edges = append(edges, gitbot.EdgeHost)
+	}
+	if m.clearedusers {
+		edges = append(edges, gitbot.EdgeUsers)
+	}
+	if m.clearedprojects {
+		edges = append(edges, gitbot.EdgeProjects)
+	}
+	if m.clearedgit_bot_users {
+		edges = append(edges, gitbot.EdgeGitBotUsers)
+	}
+	if m.clearedproject_git_bots {
+		edges = append(edges, gitbot.EdgeProjectGitBots)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GitBotMutation) EdgeCleared(name string) bool {
+	switch name {
+	case gitbot.EdgeGitBotTasks:
+		return m.clearedgit_bot_tasks
+	case gitbot.EdgeHost:
+		return m.clearedhost
+	case gitbot.EdgeUsers:
+		return m.clearedusers
+	case gitbot.EdgeProjects:
+		return m.clearedprojects
+	case gitbot.EdgeGitBotUsers:
+		return m.clearedgit_bot_users
+	case gitbot.EdgeProjectGitBots:
+		return m.clearedproject_git_bots
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GitBotMutation) ClearEdge(name string) error {
+	switch name {
+	case gitbot.EdgeHost:
+		m.ClearHost()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GitBotMutation) ResetEdge(name string) error {
+	switch name {
+	case gitbot.EdgeGitBotTasks:
+		m.ResetGitBotTasks()
+		return nil
+	case gitbot.EdgeHost:
+		m.ResetHost()
+		return nil
+	case gitbot.EdgeUsers:
+		m.ResetUsers()
+		return nil
+	case gitbot.EdgeProjects:
+		m.ResetProjects()
+		return nil
+	case gitbot.EdgeGitBotUsers:
+		m.ResetGitBotUsers()
+		return nil
+	case gitbot.EdgeProjectGitBots:
+		m.ResetProjectGitBots()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBot edge %s", name)
+}
+
+// GitBotTaskMutation represents an operation that mutates the GitBotTask nodes in the graph.
+type GitBotTaskMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	task           *uuid.UUID
+	clearedtask    bool
+	git_bot        *uuid.UUID
+	clearedgit_bot bool
+	done           bool
+	oldValue       func(context.Context) (*GitBotTask, error)
+	predicates     []predicate.GitBotTask
+}
+
+var _ ent.Mutation = (*GitBotTaskMutation)(nil)
+
+// gitbottaskOption allows management of the mutation configuration using functional options.
+type gitbottaskOption func(*GitBotTaskMutation)
+
+// newGitBotTaskMutation creates new mutation for the GitBotTask entity.
+func newGitBotTaskMutation(c config, op Op, opts ...gitbottaskOption) *GitBotTaskMutation {
+	m := &GitBotTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGitBotTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGitBotTaskID sets the ID field of the mutation.
+func withGitBotTaskID(id uuid.UUID) gitbottaskOption {
+	return func(m *GitBotTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GitBotTask
+		)
+		m.oldValue = func(ctx context.Context) (*GitBotTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GitBotTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGitBotTask sets the old GitBotTask of the mutation.
+func withGitBotTask(node *GitBotTask) gitbottaskOption {
+	return func(m *GitBotTaskMutation) {
+		m.oldValue = func(context.Context) (*GitBotTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GitBotTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GitBotTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GitBotTask entities.
+func (m *GitBotTaskMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GitBotTaskMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GitBotTaskMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GitBotTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGitBotID sets the "git_bot_id" field.
+func (m *GitBotTaskMutation) SetGitBotID(u uuid.UUID) {
+	m.git_bot = &u
+}
+
+// GitBotID returns the value of the "git_bot_id" field in the mutation.
+func (m *GitBotTaskMutation) GitBotID() (r uuid.UUID, exists bool) {
+	v := m.git_bot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGitBotID returns the old "git_bot_id" field's value of the GitBotTask entity.
+// If the GitBotTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotTaskMutation) OldGitBotID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGitBotID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGitBotID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGitBotID: %w", err)
+	}
+	return oldValue.GitBotID, nil
+}
+
+// ResetGitBotID resets all changes to the "git_bot_id" field.
+func (m *GitBotTaskMutation) ResetGitBotID() {
+	m.git_bot = nil
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *GitBotTaskMutation) SetTaskID(u uuid.UUID) {
+	m.task = &u
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *GitBotTaskMutation) TaskID() (r uuid.UUID, exists bool) {
+	v := m.task
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the GitBotTask entity.
+// If the GitBotTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotTaskMutation) OldTaskID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *GitBotTaskMutation) ResetTaskID() {
+	m.task = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GitBotTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GitBotTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GitBotTask entity.
+// If the GitBotTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GitBotTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearTask clears the "task" edge to the Task entity.
+func (m *GitBotTaskMutation) ClearTask() {
+	m.clearedtask = true
+	m.clearedFields[gitbottask.FieldTaskID] = struct{}{}
+}
+
+// TaskCleared reports if the "task" edge to the Task entity was cleared.
+func (m *GitBotTaskMutation) TaskCleared() bool {
+	return m.clearedtask
+}
+
+// TaskIDs returns the "task" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TaskID instead. It exists only for internal usage by the builders.
+func (m *GitBotTaskMutation) TaskIDs() (ids []uuid.UUID) {
+	if id := m.task; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTask resets all changes to the "task" edge.
+func (m *GitBotTaskMutation) ResetTask() {
+	m.task = nil
+	m.clearedtask = false
+}
+
+// ClearGitBot clears the "git_bot" edge to the GitBot entity.
+func (m *GitBotTaskMutation) ClearGitBot() {
+	m.clearedgit_bot = true
+	m.clearedFields[gitbottask.FieldGitBotID] = struct{}{}
+}
+
+// GitBotCleared reports if the "git_bot" edge to the GitBot entity was cleared.
+func (m *GitBotTaskMutation) GitBotCleared() bool {
+	return m.clearedgit_bot
+}
+
+// GitBotIDs returns the "git_bot" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GitBotID instead. It exists only for internal usage by the builders.
+func (m *GitBotTaskMutation) GitBotIDs() (ids []uuid.UUID) {
+	if id := m.git_bot; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGitBot resets all changes to the "git_bot" edge.
+func (m *GitBotTaskMutation) ResetGitBot() {
+	m.git_bot = nil
+	m.clearedgit_bot = false
+}
+
+// Where appends a list predicates to the GitBotTaskMutation builder.
+func (m *GitBotTaskMutation) Where(ps ...predicate.GitBotTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GitBotTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GitBotTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GitBotTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GitBotTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GitBotTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GitBotTask).
+func (m *GitBotTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GitBotTaskMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.git_bot != nil {
+		fields = append(fields, gitbottask.FieldGitBotID)
+	}
+	if m.task != nil {
+		fields = append(fields, gitbottask.FieldTaskID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, gitbottask.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GitBotTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case gitbottask.FieldGitBotID:
+		return m.GitBotID()
+	case gitbottask.FieldTaskID:
+		return m.TaskID()
+	case gitbottask.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GitBotTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gitbottask.FieldGitBotID:
+		return m.OldGitBotID(ctx)
+	case gitbottask.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case gitbottask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GitBotTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitBotTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case gitbottask.FieldGitBotID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGitBotID(v)
+		return nil
+	case gitbottask.FieldTaskID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case gitbottask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GitBotTaskMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GitBotTaskMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitBotTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown GitBotTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GitBotTaskMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GitBotTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GitBotTaskMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown GitBotTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GitBotTaskMutation) ResetField(name string) error {
+	switch name {
+	case gitbottask.FieldGitBotID:
+		m.ResetGitBotID()
+		return nil
+	case gitbottask.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case gitbottask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GitBotTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.task != nil {
+		edges = append(edges, gitbottask.EdgeTask)
+	}
+	if m.git_bot != nil {
+		edges = append(edges, gitbottask.EdgeGitBot)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GitBotTaskMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case gitbottask.EdgeTask:
+		if id := m.task; id != nil {
+			return []ent.Value{*id}
+		}
+	case gitbottask.EdgeGitBot:
+		if id := m.git_bot; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GitBotTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GitBotTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GitBotTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedtask {
+		edges = append(edges, gitbottask.EdgeTask)
+	}
+	if m.clearedgit_bot {
+		edges = append(edges, gitbottask.EdgeGitBot)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GitBotTaskMutation) EdgeCleared(name string) bool {
+	switch name {
+	case gitbottask.EdgeTask:
+		return m.clearedtask
+	case gitbottask.EdgeGitBot:
+		return m.clearedgit_bot
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GitBotTaskMutation) ClearEdge(name string) error {
+	switch name {
+	case gitbottask.EdgeTask:
+		m.ClearTask()
+		return nil
+	case gitbottask.EdgeGitBot:
+		m.ClearGitBot()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GitBotTaskMutation) ResetEdge(name string) error {
+	switch name {
+	case gitbottask.EdgeTask:
+		m.ResetTask()
+		return nil
+	case gitbottask.EdgeGitBot:
+		m.ResetGitBot()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotTask edge %s", name)
+}
+
+// GitBotUserMutation represents an operation that mutates the GitBotUser nodes in the graph.
+type GitBotUserMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	git_bot        *uuid.UUID
+	clearedgit_bot bool
+	user           *uuid.UUID
+	cleareduser    bool
+	done           bool
+	oldValue       func(context.Context) (*GitBotUser, error)
+	predicates     []predicate.GitBotUser
+}
+
+var _ ent.Mutation = (*GitBotUserMutation)(nil)
+
+// gitbotuserOption allows management of the mutation configuration using functional options.
+type gitbotuserOption func(*GitBotUserMutation)
+
+// newGitBotUserMutation creates new mutation for the GitBotUser entity.
+func newGitBotUserMutation(c config, op Op, opts ...gitbotuserOption) *GitBotUserMutation {
+	m := &GitBotUserMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGitBotUser,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGitBotUserID sets the ID field of the mutation.
+func withGitBotUserID(id uuid.UUID) gitbotuserOption {
+	return func(m *GitBotUserMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GitBotUser
+		)
+		m.oldValue = func(ctx context.Context) (*GitBotUser, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GitBotUser.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGitBotUser sets the old GitBotUser of the mutation.
+func withGitBotUser(node *GitBotUser) gitbotuserOption {
+	return func(m *GitBotUserMutation) {
+		m.oldValue = func(context.Context) (*GitBotUser, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GitBotUserMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GitBotUserMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GitBotUser entities.
+func (m *GitBotUserMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GitBotUserMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GitBotUserMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GitBotUser.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGitBotID sets the "git_bot_id" field.
+func (m *GitBotUserMutation) SetGitBotID(u uuid.UUID) {
+	m.git_bot = &u
+}
+
+// GitBotID returns the value of the "git_bot_id" field in the mutation.
+func (m *GitBotUserMutation) GitBotID() (r uuid.UUID, exists bool) {
+	v := m.git_bot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGitBotID returns the old "git_bot_id" field's value of the GitBotUser entity.
+// If the GitBotUser object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotUserMutation) OldGitBotID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGitBotID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGitBotID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGitBotID: %w", err)
+	}
+	return oldValue.GitBotID, nil
+}
+
+// ResetGitBotID resets all changes to the "git_bot_id" field.
+func (m *GitBotUserMutation) ResetGitBotID() {
+	m.git_bot = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *GitBotUserMutation) SetUserID(u uuid.UUID) {
+	m.user = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *GitBotUserMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the GitBotUser entity.
+// If the GitBotUser object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotUserMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *GitBotUserMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GitBotUserMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GitBotUserMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GitBotUser entity.
+// If the GitBotUser object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitBotUserMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GitBotUserMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearGitBot clears the "git_bot" edge to the GitBot entity.
+func (m *GitBotUserMutation) ClearGitBot() {
+	m.clearedgit_bot = true
+	m.clearedFields[gitbotuser.FieldGitBotID] = struct{}{}
+}
+
+// GitBotCleared reports if the "git_bot" edge to the GitBot entity was cleared.
+func (m *GitBotUserMutation) GitBotCleared() bool {
+	return m.clearedgit_bot
+}
+
+// GitBotIDs returns the "git_bot" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GitBotID instead. It exists only for internal usage by the builders.
+func (m *GitBotUserMutation) GitBotIDs() (ids []uuid.UUID) {
+	if id := m.git_bot; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGitBot resets all changes to the "git_bot" edge.
+func (m *GitBotUserMutation) ResetGitBot() {
+	m.git_bot = nil
+	m.clearedgit_bot = false
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *GitBotUserMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[gitbotuser.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *GitBotUserMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *GitBotUserMutation) UserIDs() (ids []uuid.UUID) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *GitBotUserMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// Where appends a list predicates to the GitBotUserMutation builder.
+func (m *GitBotUserMutation) Where(ps ...predicate.GitBotUser) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GitBotUserMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GitBotUserMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GitBotUser, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GitBotUserMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GitBotUserMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GitBotUser).
+func (m *GitBotUserMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GitBotUserMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.git_bot != nil {
+		fields = append(fields, gitbotuser.FieldGitBotID)
+	}
+	if m.user != nil {
+		fields = append(fields, gitbotuser.FieldUserID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, gitbotuser.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GitBotUserMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case gitbotuser.FieldGitBotID:
+		return m.GitBotID()
+	case gitbotuser.FieldUserID:
+		return m.UserID()
+	case gitbotuser.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GitBotUserMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gitbotuser.FieldGitBotID:
+		return m.OldGitBotID(ctx)
+	case gitbotuser.FieldUserID:
+		return m.OldUserID(ctx)
+	case gitbotuser.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GitBotUser field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitBotUserMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case gitbotuser.FieldGitBotID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGitBotID(v)
+		return nil
+	case gitbotuser.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case gitbotuser.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotUser field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GitBotUserMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GitBotUserMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitBotUserMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown GitBotUser numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GitBotUserMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GitBotUserMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GitBotUserMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown GitBotUser nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GitBotUserMutation) ResetField(name string) error {
+	switch name {
+	case gitbotuser.FieldGitBotID:
+		m.ResetGitBotID()
+		return nil
+	case gitbotuser.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case gitbotuser.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotUser field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GitBotUserMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.git_bot != nil {
+		edges = append(edges, gitbotuser.EdgeGitBot)
+	}
+	if m.user != nil {
+		edges = append(edges, gitbotuser.EdgeUser)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GitBotUserMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case gitbotuser.EdgeGitBot:
+		if id := m.git_bot; id != nil {
+			return []ent.Value{*id}
+		}
+	case gitbotuser.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GitBotUserMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GitBotUserMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GitBotUserMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedgit_bot {
+		edges = append(edges, gitbotuser.EdgeGitBot)
+	}
+	if m.cleareduser {
+		edges = append(edges, gitbotuser.EdgeUser)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GitBotUserMutation) EdgeCleared(name string) bool {
+	switch name {
+	case gitbotuser.EdgeGitBot:
+		return m.clearedgit_bot
+	case gitbotuser.EdgeUser:
+		return m.cleareduser
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GitBotUserMutation) ClearEdge(name string) error {
+	switch name {
+	case gitbotuser.EdgeGitBot:
+		m.ClearGitBot()
+		return nil
+	case gitbotuser.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotUser unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GitBotUserMutation) ResetEdge(name string) error {
+	switch name {
+	case gitbotuser.EdgeGitBot:
+		m.ResetGitBot()
+		return nil
+	case gitbotuser.EdgeUser:
+		m.ResetUser()
+		return nil
+	}
+	return fmt.Errorf("unknown GitBotUser edge %s", name)
 }
 
 // GitIdentityMutation represents an operation that mutates the GitIdentity nodes in the graph.
@@ -2263,6 +4611,9 @@ type HostMutation struct {
 	groups                  map[uuid.UUID]struct{}
 	removedgroups           map[uuid.UUID]struct{}
 	clearedgroups           bool
+	git_bots                map[uuid.UUID]struct{}
+	removedgit_bots         map[uuid.UUID]struct{}
+	clearedgit_bots         bool
 	team_group_hosts        map[uuid.UUID]struct{}
 	removedteam_group_hosts map[uuid.UUID]struct{}
 	clearedteam_group_hosts bool
@@ -3325,6 +5676,60 @@ func (m *HostMutation) ResetGroups() {
 	m.removedgroups = nil
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by ids.
+func (m *HostMutation) AddGitBotIDs(ids ...uuid.UUID) {
+	if m.git_bots == nil {
+		m.git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBots clears the "git_bots" edge to the GitBot entity.
+func (m *HostMutation) ClearGitBots() {
+	m.clearedgit_bots = true
+}
+
+// GitBotsCleared reports if the "git_bots" edge to the GitBot entity was cleared.
+func (m *HostMutation) GitBotsCleared() bool {
+	return m.clearedgit_bots
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to the GitBot entity by IDs.
+func (m *HostMutation) RemoveGitBotIDs(ids ...uuid.UUID) {
+	if m.removedgit_bots == nil {
+		m.removedgit_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bots, ids[i])
+		m.removedgit_bots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBots returns the removed IDs of the "git_bots" edge to the GitBot entity.
+func (m *HostMutation) RemovedGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotsIDs returns the "git_bots" edge IDs in the mutation.
+func (m *HostMutation) GitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBots resets all changes to the "git_bots" edge.
+func (m *HostMutation) ResetGitBots() {
+	m.git_bots = nil
+	m.clearedgit_bots = false
+	m.removedgit_bots = nil
+}
+
 // AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by ids.
 func (m *HostMutation) AddTeamGroupHostIDs(ids ...uuid.UUID) {
 	if m.team_group_hosts == nil {
@@ -3893,7 +6298,7 @@ func (m *HostMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *HostMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.vms != nil {
 		edges = append(edges, host.EdgeVms)
 	}
@@ -3902,6 +6307,9 @@ func (m *HostMutation) AddedEdges() []string {
 	}
 	if m.groups != nil {
 		edges = append(edges, host.EdgeGroups)
+	}
+	if m.git_bots != nil {
+		edges = append(edges, host.EdgeGitBots)
 	}
 	if m.team_group_hosts != nil {
 		edges = append(edges, host.EdgeTeamGroupHosts)
@@ -3929,6 +6337,12 @@ func (m *HostMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case host.EdgeGitBots:
+		ids := make([]ent.Value, 0, len(m.git_bots))
+		for id := range m.git_bots {
+			ids = append(ids, id)
+		}
+		return ids
 	case host.EdgeTeamGroupHosts:
 		ids := make([]ent.Value, 0, len(m.team_group_hosts))
 		for id := range m.team_group_hosts {
@@ -3941,12 +6355,15 @@ func (m *HostMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *HostMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedvms != nil {
 		edges = append(edges, host.EdgeVms)
 	}
 	if m.removedgroups != nil {
 		edges = append(edges, host.EdgeGroups)
+	}
+	if m.removedgit_bots != nil {
+		edges = append(edges, host.EdgeGitBots)
 	}
 	if m.removedteam_group_hosts != nil {
 		edges = append(edges, host.EdgeTeamGroupHosts)
@@ -3970,6 +6387,12 @@ func (m *HostMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case host.EdgeGitBots:
+		ids := make([]ent.Value, 0, len(m.removedgit_bots))
+		for id := range m.removedgit_bots {
+			ids = append(ids, id)
+		}
+		return ids
 	case host.EdgeTeamGroupHosts:
 		ids := make([]ent.Value, 0, len(m.removedteam_group_hosts))
 		for id := range m.removedteam_group_hosts {
@@ -3982,7 +6405,7 @@ func (m *HostMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *HostMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedvms {
 		edges = append(edges, host.EdgeVms)
 	}
@@ -3991,6 +6414,9 @@ func (m *HostMutation) ClearedEdges() []string {
 	}
 	if m.clearedgroups {
 		edges = append(edges, host.EdgeGroups)
+	}
+	if m.clearedgit_bots {
+		edges = append(edges, host.EdgeGitBots)
 	}
 	if m.clearedteam_group_hosts {
 		edges = append(edges, host.EdgeTeamGroupHosts)
@@ -4008,6 +6434,8 @@ func (m *HostMutation) EdgeCleared(name string) bool {
 		return m.cleareduser
 	case host.EdgeGroups:
 		return m.clearedgroups
+	case host.EdgeGitBots:
+		return m.clearedgit_bots
 	case host.EdgeTeamGroupHosts:
 		return m.clearedteam_group_hosts
 	}
@@ -4037,6 +6465,9 @@ func (m *HostMutation) ResetEdge(name string) error {
 		return nil
 	case host.EdgeGroups:
 		m.ResetGroups()
+		return nil
+	case host.EdgeGitBots:
+		m.ResetGitBots()
 		return nil
 	case host.EdgeTeamGroupHosts:
 		m.ResetTeamGroupHosts()
@@ -9544,37 +11975,43 @@ func (m *NotifySubscriptionMutation) ResetEdge(name string) error {
 // ProjectMutation represents an operation that mutates the Project nodes in the graph.
 type ProjectMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *uuid.UUID
-	deleted_at           *time.Time
-	name                 *string
-	description          *string
-	platform             *consts.GitPlatform
-	repo_url             *string
-	branch               *string
-	env_variables        *map[string]interface{}
-	created_at           *time.Time
-	updated_at           *time.Time
-	clearedFields        map[string]struct{}
-	user                 *uuid.UUID
-	cleareduser          bool
-	git_identity         *uuid.UUID
-	clearedgit_identity  bool
-	image                *uuid.UUID
-	clearedimage         bool
-	issues               map[uuid.UUID]struct{}
-	removedissues        map[uuid.UUID]struct{}
-	clearedissues        bool
-	collaborators        map[uuid.UUID]struct{}
-	removedcollaborators map[uuid.UUID]struct{}
-	clearedcollaborators bool
-	project_tasks        map[uuid.UUID]struct{}
-	removedproject_tasks map[uuid.UUID]struct{}
-	clearedproject_tasks bool
-	done                 bool
-	oldValue             func(context.Context) (*Project, error)
-	predicates           []predicate.Project
+	op                      Op
+	typ                     string
+	id                      *uuid.UUID
+	deleted_at              *time.Time
+	name                    *string
+	description             *string
+	platform                *consts.GitPlatform
+	repo_url                *string
+	branch                  *string
+	env_variables           *map[string]interface{}
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	user                    *uuid.UUID
+	cleareduser             bool
+	git_identity            *uuid.UUID
+	clearedgit_identity     bool
+	image                   *uuid.UUID
+	clearedimage            bool
+	issues                  map[uuid.UUID]struct{}
+	removedissues           map[uuid.UUID]struct{}
+	clearedissues           bool
+	collaborators           map[uuid.UUID]struct{}
+	removedcollaborators    map[uuid.UUID]struct{}
+	clearedcollaborators    bool
+	project_tasks           map[uuid.UUID]struct{}
+	removedproject_tasks    map[uuid.UUID]struct{}
+	clearedproject_tasks    bool
+	git_bots                map[uuid.UUID]struct{}
+	removedgit_bots         map[uuid.UUID]struct{}
+	clearedgit_bots         bool
+	project_git_bots        map[uuid.UUID]struct{}
+	removedproject_git_bots map[uuid.UUID]struct{}
+	clearedproject_git_bots bool
+	done                    bool
+	oldValue                func(context.Context) (*Project, error)
+	predicates              []predicate.Project
 }
 
 var _ ent.Mutation = (*ProjectMutation)(nil)
@@ -10460,6 +12897,114 @@ func (m *ProjectMutation) ResetProjectTasks() {
 	m.removedproject_tasks = nil
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by ids.
+func (m *ProjectMutation) AddGitBotIDs(ids ...uuid.UUID) {
+	if m.git_bots == nil {
+		m.git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBots clears the "git_bots" edge to the GitBot entity.
+func (m *ProjectMutation) ClearGitBots() {
+	m.clearedgit_bots = true
+}
+
+// GitBotsCleared reports if the "git_bots" edge to the GitBot entity was cleared.
+func (m *ProjectMutation) GitBotsCleared() bool {
+	return m.clearedgit_bots
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to the GitBot entity by IDs.
+func (m *ProjectMutation) RemoveGitBotIDs(ids ...uuid.UUID) {
+	if m.removedgit_bots == nil {
+		m.removedgit_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bots, ids[i])
+		m.removedgit_bots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBots returns the removed IDs of the "git_bots" edge to the GitBot entity.
+func (m *ProjectMutation) RemovedGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotsIDs returns the "git_bots" edge IDs in the mutation.
+func (m *ProjectMutation) GitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBots resets all changes to the "git_bots" edge.
+func (m *ProjectMutation) ResetGitBots() {
+	m.git_bots = nil
+	m.clearedgit_bots = false
+	m.removedgit_bots = nil
+}
+
+// AddProjectGitBotIDs adds the "project_git_bots" edge to the ProjectGitBot entity by ids.
+func (m *ProjectMutation) AddProjectGitBotIDs(ids ...uuid.UUID) {
+	if m.project_git_bots == nil {
+		m.project_git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.project_git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearProjectGitBots clears the "project_git_bots" edge to the ProjectGitBot entity.
+func (m *ProjectMutation) ClearProjectGitBots() {
+	m.clearedproject_git_bots = true
+}
+
+// ProjectGitBotsCleared reports if the "project_git_bots" edge to the ProjectGitBot entity was cleared.
+func (m *ProjectMutation) ProjectGitBotsCleared() bool {
+	return m.clearedproject_git_bots
+}
+
+// RemoveProjectGitBotIDs removes the "project_git_bots" edge to the ProjectGitBot entity by IDs.
+func (m *ProjectMutation) RemoveProjectGitBotIDs(ids ...uuid.UUID) {
+	if m.removedproject_git_bots == nil {
+		m.removedproject_git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.project_git_bots, ids[i])
+		m.removedproject_git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedProjectGitBots returns the removed IDs of the "project_git_bots" edge to the ProjectGitBot entity.
+func (m *ProjectMutation) RemovedProjectGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.removedproject_git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ProjectGitBotsIDs returns the "project_git_bots" edge IDs in the mutation.
+func (m *ProjectMutation) ProjectGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.project_git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetProjectGitBots resets all changes to the "project_git_bots" edge.
+func (m *ProjectMutation) ResetProjectGitBots() {
+	m.project_git_bots = nil
+	m.clearedproject_git_bots = false
+	m.removedproject_git_bots = nil
+}
+
 // Where appends a list predicates to the ProjectMutation builder.
 func (m *ProjectMutation) Where(ps ...predicate.Project) {
 	m.predicates = append(m.predicates, ps...)
@@ -10831,7 +13376,7 @@ func (m *ProjectMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ProjectMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 8)
 	if m.user != nil {
 		edges = append(edges, project.EdgeUser)
 	}
@@ -10849,6 +13394,12 @@ func (m *ProjectMutation) AddedEdges() []string {
 	}
 	if m.project_tasks != nil {
 		edges = append(edges, project.EdgeProjectTasks)
+	}
+	if m.git_bots != nil {
+		edges = append(edges, project.EdgeGitBots)
+	}
+	if m.project_git_bots != nil {
+		edges = append(edges, project.EdgeProjectGitBots)
 	}
 	return edges
 }
@@ -10887,13 +13438,25 @@ func (m *ProjectMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case project.EdgeGitBots:
+		ids := make([]ent.Value, 0, len(m.git_bots))
+		for id := range m.git_bots {
+			ids = append(ids, id)
+		}
+		return ids
+	case project.EdgeProjectGitBots:
+		ids := make([]ent.Value, 0, len(m.project_git_bots))
+		for id := range m.project_git_bots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ProjectMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 8)
 	if m.removedissues != nil {
 		edges = append(edges, project.EdgeIssues)
 	}
@@ -10902,6 +13465,12 @@ func (m *ProjectMutation) RemovedEdges() []string {
 	}
 	if m.removedproject_tasks != nil {
 		edges = append(edges, project.EdgeProjectTasks)
+	}
+	if m.removedgit_bots != nil {
+		edges = append(edges, project.EdgeGitBots)
+	}
+	if m.removedproject_git_bots != nil {
+		edges = append(edges, project.EdgeProjectGitBots)
 	}
 	return edges
 }
@@ -10928,13 +13497,25 @@ func (m *ProjectMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case project.EdgeGitBots:
+		ids := make([]ent.Value, 0, len(m.removedgit_bots))
+		for id := range m.removedgit_bots {
+			ids = append(ids, id)
+		}
+		return ids
+	case project.EdgeProjectGitBots:
+		ids := make([]ent.Value, 0, len(m.removedproject_git_bots))
+		for id := range m.removedproject_git_bots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ProjectMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 8)
 	if m.cleareduser {
 		edges = append(edges, project.EdgeUser)
 	}
@@ -10952,6 +13533,12 @@ func (m *ProjectMutation) ClearedEdges() []string {
 	}
 	if m.clearedproject_tasks {
 		edges = append(edges, project.EdgeProjectTasks)
+	}
+	if m.clearedgit_bots {
+		edges = append(edges, project.EdgeGitBots)
+	}
+	if m.clearedproject_git_bots {
+		edges = append(edges, project.EdgeProjectGitBots)
 	}
 	return edges
 }
@@ -10972,6 +13559,10 @@ func (m *ProjectMutation) EdgeCleared(name string) bool {
 		return m.clearedcollaborators
 	case project.EdgeProjectTasks:
 		return m.clearedproject_tasks
+	case project.EdgeGitBots:
+		return m.clearedgit_bots
+	case project.EdgeProjectGitBots:
+		return m.clearedproject_git_bots
 	}
 	return false
 }
@@ -11014,6 +13605,12 @@ func (m *ProjectMutation) ResetEdge(name string) error {
 		return nil
 	case project.EdgeProjectTasks:
 		m.ResetProjectTasks()
+		return nil
+	case project.EdgeGitBots:
+		m.ResetGitBots()
+		return nil
+	case project.EdgeProjectGitBots:
+		m.ResetProjectGitBots()
 		return nil
 	}
 	return fmt.Errorf("unknown Project edge %s", name)
@@ -11741,6 +14338,546 @@ func (m *ProjectCollaboratorMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown ProjectCollaborator edge %s", name)
+}
+
+// ProjectGitBotMutation represents an operation that mutates the ProjectGitBot nodes in the graph.
+type ProjectGitBotMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	project        *uuid.UUID
+	clearedproject bool
+	git_bot        *uuid.UUID
+	clearedgit_bot bool
+	done           bool
+	oldValue       func(context.Context) (*ProjectGitBot, error)
+	predicates     []predicate.ProjectGitBot
+}
+
+var _ ent.Mutation = (*ProjectGitBotMutation)(nil)
+
+// projectgitbotOption allows management of the mutation configuration using functional options.
+type projectgitbotOption func(*ProjectGitBotMutation)
+
+// newProjectGitBotMutation creates new mutation for the ProjectGitBot entity.
+func newProjectGitBotMutation(c config, op Op, opts ...projectgitbotOption) *ProjectGitBotMutation {
+	m := &ProjectGitBotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeProjectGitBot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withProjectGitBotID sets the ID field of the mutation.
+func withProjectGitBotID(id uuid.UUID) projectgitbotOption {
+	return func(m *ProjectGitBotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ProjectGitBot
+		)
+		m.oldValue = func(ctx context.Context) (*ProjectGitBot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ProjectGitBot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withProjectGitBot sets the old ProjectGitBot of the mutation.
+func withProjectGitBot(node *ProjectGitBot) projectgitbotOption {
+	return func(m *ProjectGitBotMutation) {
+		m.oldValue = func(context.Context) (*ProjectGitBot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ProjectGitBotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ProjectGitBotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ProjectGitBot entities.
+func (m *ProjectGitBotMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ProjectGitBotMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ProjectGitBotMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ProjectGitBot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *ProjectGitBotMutation) SetProjectID(u uuid.UUID) {
+	m.project = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *ProjectGitBotMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the ProjectGitBot entity.
+// If the ProjectGitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProjectGitBotMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *ProjectGitBotMutation) ResetProjectID() {
+	m.project = nil
+}
+
+// SetGitBotID sets the "git_bot_id" field.
+func (m *ProjectGitBotMutation) SetGitBotID(u uuid.UUID) {
+	m.git_bot = &u
+}
+
+// GitBotID returns the value of the "git_bot_id" field in the mutation.
+func (m *ProjectGitBotMutation) GitBotID() (r uuid.UUID, exists bool) {
+	v := m.git_bot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGitBotID returns the old "git_bot_id" field's value of the ProjectGitBot entity.
+// If the ProjectGitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProjectGitBotMutation) OldGitBotID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGitBotID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGitBotID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGitBotID: %w", err)
+	}
+	return oldValue.GitBotID, nil
+}
+
+// ResetGitBotID resets all changes to the "git_bot_id" field.
+func (m *ProjectGitBotMutation) ResetGitBotID() {
+	m.git_bot = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ProjectGitBotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ProjectGitBotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ProjectGitBot entity.
+// If the ProjectGitBot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProjectGitBotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ProjectGitBotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearProject clears the "project" edge to the Project entity.
+func (m *ProjectGitBotMutation) ClearProject() {
+	m.clearedproject = true
+	m.clearedFields[projectgitbot.FieldProjectID] = struct{}{}
+}
+
+// ProjectCleared reports if the "project" edge to the Project entity was cleared.
+func (m *ProjectGitBotMutation) ProjectCleared() bool {
+	return m.clearedproject
+}
+
+// ProjectIDs returns the "project" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ProjectID instead. It exists only for internal usage by the builders.
+func (m *ProjectGitBotMutation) ProjectIDs() (ids []uuid.UUID) {
+	if id := m.project; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetProject resets all changes to the "project" edge.
+func (m *ProjectGitBotMutation) ResetProject() {
+	m.project = nil
+	m.clearedproject = false
+}
+
+// ClearGitBot clears the "git_bot" edge to the GitBot entity.
+func (m *ProjectGitBotMutation) ClearGitBot() {
+	m.clearedgit_bot = true
+	m.clearedFields[projectgitbot.FieldGitBotID] = struct{}{}
+}
+
+// GitBotCleared reports if the "git_bot" edge to the GitBot entity was cleared.
+func (m *ProjectGitBotMutation) GitBotCleared() bool {
+	return m.clearedgit_bot
+}
+
+// GitBotIDs returns the "git_bot" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GitBotID instead. It exists only for internal usage by the builders.
+func (m *ProjectGitBotMutation) GitBotIDs() (ids []uuid.UUID) {
+	if id := m.git_bot; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGitBot resets all changes to the "git_bot" edge.
+func (m *ProjectGitBotMutation) ResetGitBot() {
+	m.git_bot = nil
+	m.clearedgit_bot = false
+}
+
+// Where appends a list predicates to the ProjectGitBotMutation builder.
+func (m *ProjectGitBotMutation) Where(ps ...predicate.ProjectGitBot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ProjectGitBotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ProjectGitBotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ProjectGitBot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ProjectGitBotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ProjectGitBotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ProjectGitBot).
+func (m *ProjectGitBotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ProjectGitBotMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.project != nil {
+		fields = append(fields, projectgitbot.FieldProjectID)
+	}
+	if m.git_bot != nil {
+		fields = append(fields, projectgitbot.FieldGitBotID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, projectgitbot.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ProjectGitBotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case projectgitbot.FieldProjectID:
+		return m.ProjectID()
+	case projectgitbot.FieldGitBotID:
+		return m.GitBotID()
+	case projectgitbot.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ProjectGitBotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case projectgitbot.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case projectgitbot.FieldGitBotID:
+		return m.OldGitBotID(ctx)
+	case projectgitbot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ProjectGitBot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProjectGitBotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case projectgitbot.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case projectgitbot.FieldGitBotID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGitBotID(v)
+		return nil
+	case projectgitbot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ProjectGitBot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ProjectGitBotMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ProjectGitBotMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ProjectGitBotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ProjectGitBot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ProjectGitBotMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ProjectGitBotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ProjectGitBotMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ProjectGitBot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ProjectGitBotMutation) ResetField(name string) error {
+	switch name {
+	case projectgitbot.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case projectgitbot.FieldGitBotID:
+		m.ResetGitBotID()
+		return nil
+	case projectgitbot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ProjectGitBot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ProjectGitBotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.project != nil {
+		edges = append(edges, projectgitbot.EdgeProject)
+	}
+	if m.git_bot != nil {
+		edges = append(edges, projectgitbot.EdgeGitBot)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ProjectGitBotMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case projectgitbot.EdgeProject:
+		if id := m.project; id != nil {
+			return []ent.Value{*id}
+		}
+	case projectgitbot.EdgeGitBot:
+		if id := m.git_bot; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ProjectGitBotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ProjectGitBotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ProjectGitBotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedproject {
+		edges = append(edges, projectgitbot.EdgeProject)
+	}
+	if m.clearedgit_bot {
+		edges = append(edges, projectgitbot.EdgeGitBot)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ProjectGitBotMutation) EdgeCleared(name string) bool {
+	switch name {
+	case projectgitbot.EdgeProject:
+		return m.clearedproject
+	case projectgitbot.EdgeGitBot:
+		return m.clearedgit_bot
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ProjectGitBotMutation) ClearEdge(name string) error {
+	switch name {
+	case projectgitbot.EdgeProject:
+		m.ClearProject()
+		return nil
+	case projectgitbot.EdgeGitBot:
+		m.ClearGitBot()
+		return nil
+	}
+	return fmt.Errorf("unknown ProjectGitBot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ProjectGitBotMutation) ResetEdge(name string) error {
+	switch name {
+	case projectgitbot.EdgeProject:
+		m.ResetProject()
+		return nil
+	case projectgitbot.EdgeGitBot:
+		m.ResetGitBot()
+		return nil
+	}
+	return fmt.Errorf("unknown ProjectGitBot edge %s", name)
 }
 
 // ProjectIssueMutation represents an operation that mutates the ProjectIssue nodes in the graph.
@@ -15342,6 +18479,9 @@ type TaskMutation struct {
 	vms                  map[string]struct{}
 	removedvms           map[string]struct{}
 	clearedvms           bool
+	git_bot_tasks        map[uuid.UUID]struct{}
+	removedgit_bot_tasks map[uuid.UUID]struct{}
+	clearedgit_bot_tasks bool
 	task_vms             map[uuid.UUID]struct{}
 	removedtask_vms      map[uuid.UUID]struct{}
 	clearedtask_vms      bool
@@ -16001,6 +19141,60 @@ func (m *TaskMutation) ResetVms() {
 	m.removedvms = nil
 }
 
+// AddGitBotTaskIDs adds the "git_bot_tasks" edge to the GitBotTask entity by ids.
+func (m *TaskMutation) AddGitBotTaskIDs(ids ...uuid.UUID) {
+	if m.git_bot_tasks == nil {
+		m.git_bot_tasks = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bot_tasks[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBotTasks clears the "git_bot_tasks" edge to the GitBotTask entity.
+func (m *TaskMutation) ClearGitBotTasks() {
+	m.clearedgit_bot_tasks = true
+}
+
+// GitBotTasksCleared reports if the "git_bot_tasks" edge to the GitBotTask entity was cleared.
+func (m *TaskMutation) GitBotTasksCleared() bool {
+	return m.clearedgit_bot_tasks
+}
+
+// RemoveGitBotTaskIDs removes the "git_bot_tasks" edge to the GitBotTask entity by IDs.
+func (m *TaskMutation) RemoveGitBotTaskIDs(ids ...uuid.UUID) {
+	if m.removedgit_bot_tasks == nil {
+		m.removedgit_bot_tasks = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bot_tasks, ids[i])
+		m.removedgit_bot_tasks[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBotTasks returns the removed IDs of the "git_bot_tasks" edge to the GitBotTask entity.
+func (m *TaskMutation) RemovedGitBotTasksIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bot_tasks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotTasksIDs returns the "git_bot_tasks" edge IDs in the mutation.
+func (m *TaskMutation) GitBotTasksIDs() (ids []uuid.UUID) {
+	for id := range m.git_bot_tasks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBotTasks resets all changes to the "git_bot_tasks" edge.
+func (m *TaskMutation) ResetGitBotTasks() {
+	m.git_bot_tasks = nil
+	m.clearedgit_bot_tasks = false
+	m.removedgit_bot_tasks = nil
+}
+
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by ids.
 func (m *TaskMutation) AddTaskVMIDs(ids ...uuid.UUID) {
 	if m.task_vms == nil {
@@ -16368,7 +19562,7 @@ func (m *TaskMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TaskMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.project_tasks != nil {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
@@ -16377,6 +19571,9 @@ func (m *TaskMutation) AddedEdges() []string {
 	}
 	if m.vms != nil {
 		edges = append(edges, task.EdgeVms)
+	}
+	if m.git_bot_tasks != nil {
+		edges = append(edges, task.EdgeGitBotTasks)
 	}
 	if m.task_vms != nil {
 		edges = append(edges, task.EdgeTaskVms)
@@ -16404,6 +19601,12 @@ func (m *TaskMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case task.EdgeGitBotTasks:
+		ids := make([]ent.Value, 0, len(m.git_bot_tasks))
+		for id := range m.git_bot_tasks {
+			ids = append(ids, id)
+		}
+		return ids
 	case task.EdgeTaskVms:
 		ids := make([]ent.Value, 0, len(m.task_vms))
 		for id := range m.task_vms {
@@ -16416,12 +19619,15 @@ func (m *TaskMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TaskMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedproject_tasks != nil {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
 	if m.removedvms != nil {
 		edges = append(edges, task.EdgeVms)
+	}
+	if m.removedgit_bot_tasks != nil {
+		edges = append(edges, task.EdgeGitBotTasks)
 	}
 	if m.removedtask_vms != nil {
 		edges = append(edges, task.EdgeTaskVms)
@@ -16445,6 +19651,12 @@ func (m *TaskMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case task.EdgeGitBotTasks:
+		ids := make([]ent.Value, 0, len(m.removedgit_bot_tasks))
+		for id := range m.removedgit_bot_tasks {
+			ids = append(ids, id)
+		}
+		return ids
 	case task.EdgeTaskVms:
 		ids := make([]ent.Value, 0, len(m.removedtask_vms))
 		for id := range m.removedtask_vms {
@@ -16457,7 +19669,7 @@ func (m *TaskMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TaskMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearedproject_tasks {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
@@ -16466,6 +19678,9 @@ func (m *TaskMutation) ClearedEdges() []string {
 	}
 	if m.clearedvms {
 		edges = append(edges, task.EdgeVms)
+	}
+	if m.clearedgit_bot_tasks {
+		edges = append(edges, task.EdgeGitBotTasks)
 	}
 	if m.clearedtask_vms {
 		edges = append(edges, task.EdgeTaskVms)
@@ -16483,6 +19698,8 @@ func (m *TaskMutation) EdgeCleared(name string) bool {
 		return m.cleareduser
 	case task.EdgeVms:
 		return m.clearedvms
+	case task.EdgeGitBotTasks:
+		return m.clearedgit_bot_tasks
 	case task.EdgeTaskVms:
 		return m.clearedtask_vms
 	}
@@ -16512,6 +19729,9 @@ func (m *TaskMutation) ResetEdge(name string) error {
 		return nil
 	case task.EdgeVms:
 		m.ResetVms()
+		return nil
+	case task.EdgeGitBotTasks:
+		m.ResetGitBotTasks()
 		return nil
 	case task.EdgeTaskVms:
 		m.ResetTaskVms()
@@ -23984,12 +27204,18 @@ type UserMutation struct {
 	project_issue_comments        map[uuid.UUID]struct{}
 	removedproject_issue_comments map[uuid.UUID]struct{}
 	clearedproject_issue_comments bool
+	git_bots                      map[uuid.UUID]struct{}
+	removedgit_bots               map[uuid.UUID]struct{}
+	clearedgit_bots               bool
 	team_members                  map[uuid.UUID]struct{}
 	removedteam_members           map[uuid.UUID]struct{}
 	clearedteam_members           bool
 	team_group_members            map[uuid.UUID]struct{}
 	removedteam_group_members     map[uuid.UUID]struct{}
 	clearedteam_group_members     bool
+	git_bot_users                 map[uuid.UUID]struct{}
+	removedgit_bot_users          map[uuid.UUID]struct{}
+	clearedgit_bot_users          bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -25370,6 +28596,60 @@ func (m *UserMutation) ResetProjectIssueComments() {
 	m.removedproject_issue_comments = nil
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by ids.
+func (m *UserMutation) AddGitBotIDs(ids ...uuid.UUID) {
+	if m.git_bots == nil {
+		m.git_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBots clears the "git_bots" edge to the GitBot entity.
+func (m *UserMutation) ClearGitBots() {
+	m.clearedgit_bots = true
+}
+
+// GitBotsCleared reports if the "git_bots" edge to the GitBot entity was cleared.
+func (m *UserMutation) GitBotsCleared() bool {
+	return m.clearedgit_bots
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to the GitBot entity by IDs.
+func (m *UserMutation) RemoveGitBotIDs(ids ...uuid.UUID) {
+	if m.removedgit_bots == nil {
+		m.removedgit_bots = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bots, ids[i])
+		m.removedgit_bots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBots returns the removed IDs of the "git_bots" edge to the GitBot entity.
+func (m *UserMutation) RemovedGitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotsIDs returns the "git_bots" edge IDs in the mutation.
+func (m *UserMutation) GitBotsIDs() (ids []uuid.UUID) {
+	for id := range m.git_bots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBots resets all changes to the "git_bots" edge.
+func (m *UserMutation) ResetGitBots() {
+	m.git_bots = nil
+	m.clearedgit_bots = false
+	m.removedgit_bots = nil
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by ids.
 func (m *UserMutation) AddTeamMemberIDs(ids ...uuid.UUID) {
 	if m.team_members == nil {
@@ -25476,6 +28756,60 @@ func (m *UserMutation) ResetTeamGroupMembers() {
 	m.team_group_members = nil
 	m.clearedteam_group_members = false
 	m.removedteam_group_members = nil
+}
+
+// AddGitBotUserIDs adds the "git_bot_users" edge to the GitBotUser entity by ids.
+func (m *UserMutation) AddGitBotUserIDs(ids ...uuid.UUID) {
+	if m.git_bot_users == nil {
+		m.git_bot_users = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.git_bot_users[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGitBotUsers clears the "git_bot_users" edge to the GitBotUser entity.
+func (m *UserMutation) ClearGitBotUsers() {
+	m.clearedgit_bot_users = true
+}
+
+// GitBotUsersCleared reports if the "git_bot_users" edge to the GitBotUser entity was cleared.
+func (m *UserMutation) GitBotUsersCleared() bool {
+	return m.clearedgit_bot_users
+}
+
+// RemoveGitBotUserIDs removes the "git_bot_users" edge to the GitBotUser entity by IDs.
+func (m *UserMutation) RemoveGitBotUserIDs(ids ...uuid.UUID) {
+	if m.removedgit_bot_users == nil {
+		m.removedgit_bot_users = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.git_bot_users, ids[i])
+		m.removedgit_bot_users[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGitBotUsers returns the removed IDs of the "git_bot_users" edge to the GitBotUser entity.
+func (m *UserMutation) RemovedGitBotUsersIDs() (ids []uuid.UUID) {
+	for id := range m.removedgit_bot_users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GitBotUsersIDs returns the "git_bot_users" edge IDs in the mutation.
+func (m *UserMutation) GitBotUsersIDs() (ids []uuid.UUID) {
+	for id := range m.git_bot_users {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGitBotUsers resets all changes to the "git_bot_users" edge.
+func (m *UserMutation) ResetGitBotUsers() {
+	m.git_bot_users = nil
+	m.clearedgit_bot_users = false
+	m.removedgit_bot_users = nil
 }
 
 // Where appends a list predicates to the UserMutation builder.
@@ -25814,7 +29148,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 17)
+	edges := make([]string, 0, 19)
 	if m.identities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -25860,11 +29194,17 @@ func (m *UserMutation) AddedEdges() []string {
 	if m.project_issue_comments != nil {
 		edges = append(edges, user.EdgeProjectIssueComments)
 	}
+	if m.git_bots != nil {
+		edges = append(edges, user.EdgeGitBots)
+	}
 	if m.team_members != nil {
 		edges = append(edges, user.EdgeTeamMembers)
 	}
 	if m.team_group_members != nil {
 		edges = append(edges, user.EdgeTeamGroupMembers)
+	}
+	if m.git_bot_users != nil {
+		edges = append(edges, user.EdgeGitBotUsers)
 	}
 	return edges
 }
@@ -25963,6 +29303,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeGitBots:
+		ids := make([]ent.Value, 0, len(m.git_bots))
+		for id := range m.git_bots {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.team_members))
 		for id := range m.team_members {
@@ -25975,13 +29321,19 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeGitBotUsers:
+		ids := make([]ent.Value, 0, len(m.git_bot_users))
+		for id := range m.git_bot_users {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 17)
+	edges := make([]string, 0, 19)
 	if m.removedidentities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -26027,11 +29379,17 @@ func (m *UserMutation) RemovedEdges() []string {
 	if m.removedproject_issue_comments != nil {
 		edges = append(edges, user.EdgeProjectIssueComments)
 	}
+	if m.removedgit_bots != nil {
+		edges = append(edges, user.EdgeGitBots)
+	}
 	if m.removedteam_members != nil {
 		edges = append(edges, user.EdgeTeamMembers)
 	}
 	if m.removedteam_group_members != nil {
 		edges = append(edges, user.EdgeTeamGroupMembers)
+	}
+	if m.removedgit_bot_users != nil {
+		edges = append(edges, user.EdgeGitBotUsers)
 	}
 	return edges
 }
@@ -26130,6 +29488,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeGitBots:
+		ids := make([]ent.Value, 0, len(m.removedgit_bots))
+		for id := range m.removedgit_bots {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.removedteam_members))
 		for id := range m.removedteam_members {
@@ -26142,13 +29506,19 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeGitBotUsers:
+		ids := make([]ent.Value, 0, len(m.removedgit_bot_users))
+		for id := range m.removedgit_bot_users {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 17)
+	edges := make([]string, 0, 19)
 	if m.clearedidentities {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -26194,11 +29564,17 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedproject_issue_comments {
 		edges = append(edges, user.EdgeProjectIssueComments)
 	}
+	if m.clearedgit_bots {
+		edges = append(edges, user.EdgeGitBots)
+	}
 	if m.clearedteam_members {
 		edges = append(edges, user.EdgeTeamMembers)
 	}
 	if m.clearedteam_group_members {
 		edges = append(edges, user.EdgeTeamGroupMembers)
+	}
+	if m.clearedgit_bot_users {
+		edges = append(edges, user.EdgeGitBotUsers)
 	}
 	return edges
 }
@@ -26237,10 +29613,14 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedproject_collaborators
 	case user.EdgeProjectIssueComments:
 		return m.clearedproject_issue_comments
+	case user.EdgeGitBots:
+		return m.clearedgit_bots
 	case user.EdgeTeamMembers:
 		return m.clearedteam_members
 	case user.EdgeTeamGroupMembers:
 		return m.clearedteam_group_members
+	case user.EdgeGitBotUsers:
+		return m.clearedgit_bot_users
 	}
 	return false
 }
@@ -26302,11 +29682,17 @@ func (m *UserMutation) ResetEdge(name string) error {
 	case user.EdgeProjectIssueComments:
 		m.ResetProjectIssueComments()
 		return nil
+	case user.EdgeGitBots:
+		m.ResetGitBots()
+		return nil
 	case user.EdgeTeamMembers:
 		m.ResetTeamMembers()
 		return nil
 	case user.EdgeTeamGroupMembers:
 		m.ResetTeamGroupMembers()
+		return nil
+	case user.EdgeGitBotUsers:
+		m.ResetGitBotUsers()
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)

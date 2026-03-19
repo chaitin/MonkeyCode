@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
@@ -226,6 +227,21 @@ func (_u *TaskUpdate) AddVms(v ...*VirtualMachine) *TaskUpdate {
 	return _u.AddVMIDs(ids...)
 }
 
+// AddGitBotTaskIDs adds the "git_bot_tasks" edge to the GitBotTask entity by IDs.
+func (_u *TaskUpdate) AddGitBotTaskIDs(ids ...uuid.UUID) *TaskUpdate {
+	_u.mutation.AddGitBotTaskIDs(ids...)
+	return _u
+}
+
+// AddGitBotTasks adds the "git_bot_tasks" edges to the GitBotTask entity.
+func (_u *TaskUpdate) AddGitBotTasks(v ...*GitBotTask) *TaskUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotTaskIDs(ids...)
+}
+
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
 func (_u *TaskUpdate) AddTaskVMIDs(ids ...uuid.UUID) *TaskUpdate {
 	_u.mutation.AddTaskVMIDs(ids...)
@@ -292,6 +308,27 @@ func (_u *TaskUpdate) RemoveVms(v ...*VirtualMachine) *TaskUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveVMIDs(ids...)
+}
+
+// ClearGitBotTasks clears all "git_bot_tasks" edges to the GitBotTask entity.
+func (_u *TaskUpdate) ClearGitBotTasks() *TaskUpdate {
+	_u.mutation.ClearGitBotTasks()
+	return _u
+}
+
+// RemoveGitBotTaskIDs removes the "git_bot_tasks" edge to GitBotTask entities by IDs.
+func (_u *TaskUpdate) RemoveGitBotTaskIDs(ids ...uuid.UUID) *TaskUpdate {
+	_u.mutation.RemoveGitBotTaskIDs(ids...)
+	return _u
+}
+
+// RemoveGitBotTasks removes "git_bot_tasks" edges to GitBotTask entities.
+func (_u *TaskUpdate) RemoveGitBotTasks(v ...*GitBotTask) *TaskUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotTaskIDs(ids...)
 }
 
 // ClearTaskVms clears all "task_vms" edges to the TaskVirtualMachine entity.
@@ -558,6 +595,51 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.GitBotTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotTasksIDs(); len(nodes) > 0 && !_u.mutation.GitBotTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TaskVmsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -816,6 +898,21 @@ func (_u *TaskUpdateOne) AddVms(v ...*VirtualMachine) *TaskUpdateOne {
 	return _u.AddVMIDs(ids...)
 }
 
+// AddGitBotTaskIDs adds the "git_bot_tasks" edge to the GitBotTask entity by IDs.
+func (_u *TaskUpdateOne) AddGitBotTaskIDs(ids ...uuid.UUID) *TaskUpdateOne {
+	_u.mutation.AddGitBotTaskIDs(ids...)
+	return _u
+}
+
+// AddGitBotTasks adds the "git_bot_tasks" edges to the GitBotTask entity.
+func (_u *TaskUpdateOne) AddGitBotTasks(v ...*GitBotTask) *TaskUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotTaskIDs(ids...)
+}
+
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
 func (_u *TaskUpdateOne) AddTaskVMIDs(ids ...uuid.UUID) *TaskUpdateOne {
 	_u.mutation.AddTaskVMIDs(ids...)
@@ -882,6 +979,27 @@ func (_u *TaskUpdateOne) RemoveVms(v ...*VirtualMachine) *TaskUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveVMIDs(ids...)
+}
+
+// ClearGitBotTasks clears all "git_bot_tasks" edges to the GitBotTask entity.
+func (_u *TaskUpdateOne) ClearGitBotTasks() *TaskUpdateOne {
+	_u.mutation.ClearGitBotTasks()
+	return _u
+}
+
+// RemoveGitBotTaskIDs removes the "git_bot_tasks" edge to GitBotTask entities by IDs.
+func (_u *TaskUpdateOne) RemoveGitBotTaskIDs(ids ...uuid.UUID) *TaskUpdateOne {
+	_u.mutation.RemoveGitBotTaskIDs(ids...)
+	return _u
+}
+
+// RemoveGitBotTasks removes "git_bot_tasks" edges to GitBotTask entities.
+func (_u *TaskUpdateOne) RemoveGitBotTasks(v ...*GitBotTask) *TaskUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotTaskIDs(ids...)
 }
 
 // ClearTaskVms clears all "task_vms" edges to the TaskVirtualMachine entity.
@@ -1176,6 +1294,51 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitBotTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotTasksIDs(); len(nodes) > 0 && !_u.mutation.GitBotTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TaskVmsCleared() {

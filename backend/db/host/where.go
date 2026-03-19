@@ -1155,6 +1155,29 @@ func HasGroupsWith(preds ...predicate.TeamGroup) predicate.Host {
 	})
 }
 
+// HasGitBots applies the HasEdge predicate on the "git_bots" edge.
+func HasGitBots() predicate.Host {
+	return predicate.Host(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, GitBotsTable, GitBotsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitBotsWith applies the HasEdge predicate on the "git_bots" edge with a given conditions (other predicates).
+func HasGitBotsWith(preds ...predicate.GitBot) predicate.Host {
+	return predicate.Host(func(s *sql.Selector) {
+		step := newGitBotsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamGroupHosts applies the HasEdge predicate on the "team_group_hosts" edge.
 func HasTeamGroupHosts() predicate.Host {
 	return predicate.Host(func(s *sql.Selector) {

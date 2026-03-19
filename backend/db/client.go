@@ -17,6 +17,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -26,6 +29,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
@@ -55,6 +59,12 @@ type Client struct {
 	Schema *migrate.Schema
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// GitBot is the client for interacting with the GitBot builders.
+	GitBot *GitBotClient
+	// GitBotTask is the client for interacting with the GitBotTask builders.
+	GitBotTask *GitBotTaskClient
+	// GitBotUser is the client for interacting with the GitBotUser builders.
+	GitBotUser *GitBotUserClient
 	// GitIdentity is the client for interacting with the GitIdentity builders.
 	GitIdentity *GitIdentityClient
 	// Host is the client for interacting with the Host builders.
@@ -73,6 +83,8 @@ type Client struct {
 	Project *ProjectClient
 	// ProjectCollaborator is the client for interacting with the ProjectCollaborator builders.
 	ProjectCollaborator *ProjectCollaboratorClient
+	// ProjectGitBot is the client for interacting with the ProjectGitBot builders.
+	ProjectGitBot *ProjectGitBotClient
 	// ProjectIssue is the client for interacting with the ProjectIssue builders.
 	ProjectIssue *ProjectIssueClient
 	// ProjectIssueComment is the client for interacting with the ProjectIssueComment builders.
@@ -121,6 +133,9 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Audit = NewAuditClient(c.config)
+	c.GitBot = NewGitBotClient(c.config)
+	c.GitBotTask = NewGitBotTaskClient(c.config)
+	c.GitBotUser = NewGitBotUserClient(c.config)
 	c.GitIdentity = NewGitIdentityClient(c.config)
 	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
@@ -130,6 +145,7 @@ func (c *Client) init() {
 	c.NotifySubscription = NewNotifySubscriptionClient(c.config)
 	c.Project = NewProjectClient(c.config)
 	c.ProjectCollaborator = NewProjectCollaboratorClient(c.config)
+	c.ProjectGitBot = NewProjectGitBotClient(c.config)
 	c.ProjectIssue = NewProjectIssueClient(c.config)
 	c.ProjectIssueComment = NewProjectIssueCommentClient(c.config)
 	c.ProjectTask = NewProjectTaskClient(c.config)
@@ -241,6 +257,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:                 ctx,
 		config:              cfg,
 		Audit:               NewAuditClient(cfg),
+		GitBot:              NewGitBotClient(cfg),
+		GitBotTask:          NewGitBotTaskClient(cfg),
+		GitBotUser:          NewGitBotUserClient(cfg),
 		GitIdentity:         NewGitIdentityClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
@@ -250,6 +269,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		NotifySubscription:  NewNotifySubscriptionClient(cfg),
 		Project:             NewProjectClient(cfg),
 		ProjectCollaborator: NewProjectCollaboratorClient(cfg),
+		ProjectGitBot:       NewProjectGitBotClient(cfg),
 		ProjectIssue:        NewProjectIssueClient(cfg),
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
@@ -288,6 +308,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:                 ctx,
 		config:              cfg,
 		Audit:               NewAuditClient(cfg),
+		GitBot:              NewGitBotClient(cfg),
+		GitBotTask:          NewGitBotTaskClient(cfg),
+		GitBotUser:          NewGitBotUserClient(cfg),
 		GitIdentity:         NewGitIdentityClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
@@ -297,6 +320,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		NotifySubscription:  NewNotifySubscriptionClient(cfg),
 		Project:             NewProjectClient(cfg),
 		ProjectCollaborator: NewProjectCollaboratorClient(cfg),
+		ProjectGitBot:       NewProjectGitBotClient(cfg),
 		ProjectIssue:        NewProjectIssueClient(cfg),
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
@@ -344,12 +368,13 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.GitIdentity, c.Host, c.Image, c.Model, c.NotifyChannel,
-		c.NotifySendLog, c.NotifySubscription, c.Project, c.ProjectCollaborator,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
-		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
-		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
+		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
+		c.Model, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
+		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
+		c.ProjectTask, c.Task, c.TaskVirtualMachine, c.Team, c.TeamGroup,
+		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
+		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
+		c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -359,12 +384,13 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.GitIdentity, c.Host, c.Image, c.Model, c.NotifyChannel,
-		c.NotifySendLog, c.NotifySubscription, c.Project, c.ProjectCollaborator,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
-		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
-		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
+		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
+		c.Model, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
+		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
+		c.ProjectTask, c.Task, c.TaskVirtualMachine, c.Team, c.TeamGroup,
+		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
+		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
+		c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -375,6 +401,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *AuditMutation:
 		return c.Audit.mutate(ctx, m)
+	case *GitBotMutation:
+		return c.GitBot.mutate(ctx, m)
+	case *GitBotTaskMutation:
+		return c.GitBotTask.mutate(ctx, m)
+	case *GitBotUserMutation:
+		return c.GitBotUser.mutate(ctx, m)
 	case *GitIdentityMutation:
 		return c.GitIdentity.mutate(ctx, m)
 	case *HostMutation:
@@ -393,6 +425,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Project.mutate(ctx, m)
 	case *ProjectCollaboratorMutation:
 		return c.ProjectCollaborator.mutate(ctx, m)
+	case *ProjectGitBotMutation:
+		return c.ProjectGitBot.mutate(ctx, m)
 	case *ProjectIssueMutation:
 		return c.ProjectIssue.mutate(ctx, m)
 	case *ProjectIssueCommentMutation:
@@ -580,6 +614,567 @@ func (c *AuditClient) mutate(ctx context.Context, m *AuditMutation) (Value, erro
 		return (&AuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Audit mutation op: %q", m.Op())
+	}
+}
+
+// GitBotClient is a client for the GitBot schema.
+type GitBotClient struct {
+	config
+}
+
+// NewGitBotClient returns a client for the GitBot from the given config.
+func NewGitBotClient(c config) *GitBotClient {
+	return &GitBotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gitbot.Hooks(f(g(h())))`.
+func (c *GitBotClient) Use(hooks ...Hook) {
+	c.hooks.GitBot = append(c.hooks.GitBot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gitbot.Intercept(f(g(h())))`.
+func (c *GitBotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GitBot = append(c.inters.GitBot, interceptors...)
+}
+
+// Create returns a builder for creating a GitBot entity.
+func (c *GitBotClient) Create() *GitBotCreate {
+	mutation := newGitBotMutation(c.config, OpCreate)
+	return &GitBotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GitBot entities.
+func (c *GitBotClient) CreateBulk(builders ...*GitBotCreate) *GitBotCreateBulk {
+	return &GitBotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GitBotClient) MapCreateBulk(slice any, setFunc func(*GitBotCreate, int)) *GitBotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GitBotCreateBulk{err: fmt.Errorf("calling to GitBotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GitBotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GitBotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GitBot.
+func (c *GitBotClient) Update() *GitBotUpdate {
+	mutation := newGitBotMutation(c.config, OpUpdate)
+	return &GitBotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GitBotClient) UpdateOne(_m *GitBot) *GitBotUpdateOne {
+	mutation := newGitBotMutation(c.config, OpUpdateOne, withGitBot(_m))
+	return &GitBotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GitBotClient) UpdateOneID(id uuid.UUID) *GitBotUpdateOne {
+	mutation := newGitBotMutation(c.config, OpUpdateOne, withGitBotID(id))
+	return &GitBotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GitBot.
+func (c *GitBotClient) Delete() *GitBotDelete {
+	mutation := newGitBotMutation(c.config, OpDelete)
+	return &GitBotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GitBotClient) DeleteOne(_m *GitBot) *GitBotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GitBotClient) DeleteOneID(id uuid.UUID) *GitBotDeleteOne {
+	builder := c.Delete().Where(gitbot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GitBotDeleteOne{builder}
+}
+
+// Query returns a query builder for GitBot.
+func (c *GitBotClient) Query() *GitBotQuery {
+	return &GitBotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGitBot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GitBot entity by its id.
+func (c *GitBotClient) Get(ctx context.Context, id uuid.UUID) (*GitBot, error) {
+	return c.Query().Where(gitbot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GitBotClient) GetX(ctx context.Context, id uuid.UUID) *GitBot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGitBotTasks queries the git_bot_tasks edge of a GitBot.
+func (c *GitBotClient) QueryGitBotTasks(_m *GitBot) *GitBotTaskQuery {
+	query := (&GitBotTaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbot.Table, gitbot.FieldID, id),
+			sqlgraph.To(gitbottask.Table, gitbottask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, gitbot.GitBotTasksTable, gitbot.GitBotTasksColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryHost queries the host edge of a GitBot.
+func (c *GitBotClient) QueryHost(_m *GitBot) *HostQuery {
+	query := (&HostClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbot.Table, gitbot.FieldID, id),
+			sqlgraph.To(host.Table, host.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, gitbot.HostTable, gitbot.HostColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUsers queries the users edge of a GitBot.
+func (c *GitBotClient) QueryUsers(_m *GitBot) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbot.Table, gitbot.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, gitbot.UsersTable, gitbot.UsersPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryProjects queries the projects edge of a GitBot.
+func (c *GitBotClient) QueryProjects(_m *GitBot) *ProjectQuery {
+	query := (&ProjectClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbot.Table, gitbot.FieldID, id),
+			sqlgraph.To(project.Table, project.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, gitbot.ProjectsTable, gitbot.ProjectsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitBotUsers queries the git_bot_users edge of a GitBot.
+func (c *GitBotClient) QueryGitBotUsers(_m *GitBot) *GitBotUserQuery {
+	query := (&GitBotUserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbot.Table, gitbot.FieldID, id),
+			sqlgraph.To(gitbotuser.Table, gitbotuser.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, gitbot.GitBotUsersTable, gitbot.GitBotUsersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryProjectGitBots queries the project_git_bots edge of a GitBot.
+func (c *GitBotClient) QueryProjectGitBots(_m *GitBot) *ProjectGitBotQuery {
+	query := (&ProjectGitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbot.Table, gitbot.FieldID, id),
+			sqlgraph.To(projectgitbot.Table, projectgitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, gitbot.ProjectGitBotsTable, gitbot.ProjectGitBotsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GitBotClient) Hooks() []Hook {
+	hooks := c.hooks.GitBot
+	return append(hooks[:len(hooks):len(hooks)], gitbot.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *GitBotClient) Interceptors() []Interceptor {
+	inters := c.inters.GitBot
+	return append(inters[:len(inters):len(inters)], gitbot.Interceptors[:]...)
+}
+
+func (c *GitBotClient) mutate(ctx context.Context, m *GitBotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GitBotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GitBotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GitBotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GitBotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown GitBot mutation op: %q", m.Op())
+	}
+}
+
+// GitBotTaskClient is a client for the GitBotTask schema.
+type GitBotTaskClient struct {
+	config
+}
+
+// NewGitBotTaskClient returns a client for the GitBotTask from the given config.
+func NewGitBotTaskClient(c config) *GitBotTaskClient {
+	return &GitBotTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gitbottask.Hooks(f(g(h())))`.
+func (c *GitBotTaskClient) Use(hooks ...Hook) {
+	c.hooks.GitBotTask = append(c.hooks.GitBotTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gitbottask.Intercept(f(g(h())))`.
+func (c *GitBotTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GitBotTask = append(c.inters.GitBotTask, interceptors...)
+}
+
+// Create returns a builder for creating a GitBotTask entity.
+func (c *GitBotTaskClient) Create() *GitBotTaskCreate {
+	mutation := newGitBotTaskMutation(c.config, OpCreate)
+	return &GitBotTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GitBotTask entities.
+func (c *GitBotTaskClient) CreateBulk(builders ...*GitBotTaskCreate) *GitBotTaskCreateBulk {
+	return &GitBotTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GitBotTaskClient) MapCreateBulk(slice any, setFunc func(*GitBotTaskCreate, int)) *GitBotTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GitBotTaskCreateBulk{err: fmt.Errorf("calling to GitBotTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GitBotTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GitBotTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GitBotTask.
+func (c *GitBotTaskClient) Update() *GitBotTaskUpdate {
+	mutation := newGitBotTaskMutation(c.config, OpUpdate)
+	return &GitBotTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GitBotTaskClient) UpdateOne(_m *GitBotTask) *GitBotTaskUpdateOne {
+	mutation := newGitBotTaskMutation(c.config, OpUpdateOne, withGitBotTask(_m))
+	return &GitBotTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GitBotTaskClient) UpdateOneID(id uuid.UUID) *GitBotTaskUpdateOne {
+	mutation := newGitBotTaskMutation(c.config, OpUpdateOne, withGitBotTaskID(id))
+	return &GitBotTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GitBotTask.
+func (c *GitBotTaskClient) Delete() *GitBotTaskDelete {
+	mutation := newGitBotTaskMutation(c.config, OpDelete)
+	return &GitBotTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GitBotTaskClient) DeleteOne(_m *GitBotTask) *GitBotTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GitBotTaskClient) DeleteOneID(id uuid.UUID) *GitBotTaskDeleteOne {
+	builder := c.Delete().Where(gitbottask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GitBotTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for GitBotTask.
+func (c *GitBotTaskClient) Query() *GitBotTaskQuery {
+	return &GitBotTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGitBotTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GitBotTask entity by its id.
+func (c *GitBotTaskClient) Get(ctx context.Context, id uuid.UUID) (*GitBotTask, error) {
+	return c.Query().Where(gitbottask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GitBotTaskClient) GetX(ctx context.Context, id uuid.UUID) *GitBotTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTask queries the task edge of a GitBotTask.
+func (c *GitBotTaskClient) QueryTask(_m *GitBotTask) *TaskQuery {
+	query := (&TaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbottask.Table, gitbottask.FieldID, id),
+			sqlgraph.To(task.Table, task.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, gitbottask.TaskTable, gitbottask.TaskColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitBot queries the git_bot edge of a GitBotTask.
+func (c *GitBotTaskClient) QueryGitBot(_m *GitBotTask) *GitBotQuery {
+	query := (&GitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbottask.Table, gitbottask.FieldID, id),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, gitbottask.GitBotTable, gitbottask.GitBotColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GitBotTaskClient) Hooks() []Hook {
+	return c.hooks.GitBotTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *GitBotTaskClient) Interceptors() []Interceptor {
+	return c.inters.GitBotTask
+}
+
+func (c *GitBotTaskClient) mutate(ctx context.Context, m *GitBotTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GitBotTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GitBotTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GitBotTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GitBotTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown GitBotTask mutation op: %q", m.Op())
+	}
+}
+
+// GitBotUserClient is a client for the GitBotUser schema.
+type GitBotUserClient struct {
+	config
+}
+
+// NewGitBotUserClient returns a client for the GitBotUser from the given config.
+func NewGitBotUserClient(c config) *GitBotUserClient {
+	return &GitBotUserClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gitbotuser.Hooks(f(g(h())))`.
+func (c *GitBotUserClient) Use(hooks ...Hook) {
+	c.hooks.GitBotUser = append(c.hooks.GitBotUser, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gitbotuser.Intercept(f(g(h())))`.
+func (c *GitBotUserClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GitBotUser = append(c.inters.GitBotUser, interceptors...)
+}
+
+// Create returns a builder for creating a GitBotUser entity.
+func (c *GitBotUserClient) Create() *GitBotUserCreate {
+	mutation := newGitBotUserMutation(c.config, OpCreate)
+	return &GitBotUserCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GitBotUser entities.
+func (c *GitBotUserClient) CreateBulk(builders ...*GitBotUserCreate) *GitBotUserCreateBulk {
+	return &GitBotUserCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GitBotUserClient) MapCreateBulk(slice any, setFunc func(*GitBotUserCreate, int)) *GitBotUserCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GitBotUserCreateBulk{err: fmt.Errorf("calling to GitBotUserClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GitBotUserCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GitBotUserCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GitBotUser.
+func (c *GitBotUserClient) Update() *GitBotUserUpdate {
+	mutation := newGitBotUserMutation(c.config, OpUpdate)
+	return &GitBotUserUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GitBotUserClient) UpdateOne(_m *GitBotUser) *GitBotUserUpdateOne {
+	mutation := newGitBotUserMutation(c.config, OpUpdateOne, withGitBotUser(_m))
+	return &GitBotUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GitBotUserClient) UpdateOneID(id uuid.UUID) *GitBotUserUpdateOne {
+	mutation := newGitBotUserMutation(c.config, OpUpdateOne, withGitBotUserID(id))
+	return &GitBotUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GitBotUser.
+func (c *GitBotUserClient) Delete() *GitBotUserDelete {
+	mutation := newGitBotUserMutation(c.config, OpDelete)
+	return &GitBotUserDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GitBotUserClient) DeleteOne(_m *GitBotUser) *GitBotUserDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GitBotUserClient) DeleteOneID(id uuid.UUID) *GitBotUserDeleteOne {
+	builder := c.Delete().Where(gitbotuser.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GitBotUserDeleteOne{builder}
+}
+
+// Query returns a query builder for GitBotUser.
+func (c *GitBotUserClient) Query() *GitBotUserQuery {
+	return &GitBotUserQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGitBotUser},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GitBotUser entity by its id.
+func (c *GitBotUserClient) Get(ctx context.Context, id uuid.UUID) (*GitBotUser, error) {
+	return c.Query().Where(gitbotuser.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GitBotUserClient) GetX(ctx context.Context, id uuid.UUID) *GitBotUser {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGitBot queries the git_bot edge of a GitBotUser.
+func (c *GitBotUserClient) QueryGitBot(_m *GitBotUser) *GitBotQuery {
+	query := (&GitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbotuser.Table, gitbotuser.FieldID, id),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, gitbotuser.GitBotTable, gitbotuser.GitBotColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUser queries the user edge of a GitBotUser.
+func (c *GitBotUserClient) QueryUser(_m *GitBotUser) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitbotuser.Table, gitbotuser.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, gitbotuser.UserTable, gitbotuser.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GitBotUserClient) Hooks() []Hook {
+	return c.hooks.GitBotUser
+}
+
+// Interceptors returns the client interceptors.
+func (c *GitBotUserClient) Interceptors() []Interceptor {
+	return c.inters.GitBotUser
+}
+
+func (c *GitBotUserClient) mutate(ctx context.Context, m *GitBotUserMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GitBotUserCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GitBotUserUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GitBotUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GitBotUserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown GitBotUser mutation op: %q", m.Op())
 	}
 }
 
@@ -915,6 +1510,22 @@ func (c *HostClient) QueryGroups(_m *Host) *TeamGroupQuery {
 			sqlgraph.From(host.Table, host.FieldID, id),
 			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, host.GroupsTable, host.GroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitBots queries the git_bots edge of a Host.
+func (c *HostClient) QueryGitBots(_m *Host) *GitBotQuery {
+	query := (&GitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(host.Table, host.FieldID, id),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, host.GitBotsTable, host.GitBotsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -2098,6 +2709,38 @@ func (c *ProjectClient) QueryProjectTasks(_m *Project) *ProjectTaskQuery {
 	return query
 }
 
+// QueryGitBots queries the git_bots edge of a Project.
+func (c *ProjectClient) QueryGitBots(_m *Project) *GitBotQuery {
+	query := (&GitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(project.Table, project.FieldID, id),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, project.GitBotsTable, project.GitBotsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryProjectGitBots queries the project_git_bots edge of a Project.
+func (c *ProjectClient) QueryProjectGitBots(_m *Project) *ProjectGitBotQuery {
+	query := (&ProjectGitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(project.Table, project.FieldID, id),
+			sqlgraph.To(projectgitbot.Table, projectgitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, project.ProjectGitBotsTable, project.ProjectGitBotsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ProjectClient) Hooks() []Hook {
 	hooks := c.hooks.Project
@@ -2289,6 +2932,171 @@ func (c *ProjectCollaboratorClient) mutate(ctx context.Context, m *ProjectCollab
 		return (&ProjectCollaboratorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown ProjectCollaborator mutation op: %q", m.Op())
+	}
+}
+
+// ProjectGitBotClient is a client for the ProjectGitBot schema.
+type ProjectGitBotClient struct {
+	config
+}
+
+// NewProjectGitBotClient returns a client for the ProjectGitBot from the given config.
+func NewProjectGitBotClient(c config) *ProjectGitBotClient {
+	return &ProjectGitBotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `projectgitbot.Hooks(f(g(h())))`.
+func (c *ProjectGitBotClient) Use(hooks ...Hook) {
+	c.hooks.ProjectGitBot = append(c.hooks.ProjectGitBot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `projectgitbot.Intercept(f(g(h())))`.
+func (c *ProjectGitBotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ProjectGitBot = append(c.inters.ProjectGitBot, interceptors...)
+}
+
+// Create returns a builder for creating a ProjectGitBot entity.
+func (c *ProjectGitBotClient) Create() *ProjectGitBotCreate {
+	mutation := newProjectGitBotMutation(c.config, OpCreate)
+	return &ProjectGitBotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ProjectGitBot entities.
+func (c *ProjectGitBotClient) CreateBulk(builders ...*ProjectGitBotCreate) *ProjectGitBotCreateBulk {
+	return &ProjectGitBotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ProjectGitBotClient) MapCreateBulk(slice any, setFunc func(*ProjectGitBotCreate, int)) *ProjectGitBotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ProjectGitBotCreateBulk{err: fmt.Errorf("calling to ProjectGitBotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ProjectGitBotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ProjectGitBotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ProjectGitBot.
+func (c *ProjectGitBotClient) Update() *ProjectGitBotUpdate {
+	mutation := newProjectGitBotMutation(c.config, OpUpdate)
+	return &ProjectGitBotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProjectGitBotClient) UpdateOne(_m *ProjectGitBot) *ProjectGitBotUpdateOne {
+	mutation := newProjectGitBotMutation(c.config, OpUpdateOne, withProjectGitBot(_m))
+	return &ProjectGitBotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProjectGitBotClient) UpdateOneID(id uuid.UUID) *ProjectGitBotUpdateOne {
+	mutation := newProjectGitBotMutation(c.config, OpUpdateOne, withProjectGitBotID(id))
+	return &ProjectGitBotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ProjectGitBot.
+func (c *ProjectGitBotClient) Delete() *ProjectGitBotDelete {
+	mutation := newProjectGitBotMutation(c.config, OpDelete)
+	return &ProjectGitBotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ProjectGitBotClient) DeleteOne(_m *ProjectGitBot) *ProjectGitBotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ProjectGitBotClient) DeleteOneID(id uuid.UUID) *ProjectGitBotDeleteOne {
+	builder := c.Delete().Where(projectgitbot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProjectGitBotDeleteOne{builder}
+}
+
+// Query returns a query builder for ProjectGitBot.
+func (c *ProjectGitBotClient) Query() *ProjectGitBotQuery {
+	return &ProjectGitBotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeProjectGitBot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ProjectGitBot entity by its id.
+func (c *ProjectGitBotClient) Get(ctx context.Context, id uuid.UUID) (*ProjectGitBot, error) {
+	return c.Query().Where(projectgitbot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProjectGitBotClient) GetX(ctx context.Context, id uuid.UUID) *ProjectGitBot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryProject queries the project edge of a ProjectGitBot.
+func (c *ProjectGitBotClient) QueryProject(_m *ProjectGitBot) *ProjectQuery {
+	query := (&ProjectClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(projectgitbot.Table, projectgitbot.FieldID, id),
+			sqlgraph.To(project.Table, project.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, projectgitbot.ProjectTable, projectgitbot.ProjectColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitBot queries the git_bot edge of a ProjectGitBot.
+func (c *ProjectGitBotClient) QueryGitBot(_m *ProjectGitBot) *GitBotQuery {
+	query := (&GitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(projectgitbot.Table, projectgitbot.FieldID, id),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, projectgitbot.GitBotTable, projectgitbot.GitBotColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ProjectGitBotClient) Hooks() []Hook {
+	return c.hooks.ProjectGitBot
+}
+
+// Interceptors returns the client interceptors.
+func (c *ProjectGitBotClient) Interceptors() []Interceptor {
+	return c.inters.ProjectGitBot
+}
+
+func (c *ProjectGitBotClient) mutate(ctx context.Context, m *ProjectGitBotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ProjectGitBotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ProjectGitBotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ProjectGitBotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ProjectGitBotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown ProjectGitBot mutation op: %q", m.Op())
 	}
 }
 
@@ -3084,6 +3892,22 @@ func (c *TaskClient) QueryVms(_m *Task) *VirtualMachineQuery {
 			sqlgraph.From(task.Table, task.FieldID, id),
 			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, task.VmsTable, task.VmsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitBotTasks queries the git_bot_tasks edge of a Task.
+func (c *TaskClient) QueryGitBotTasks(_m *Task) *GitBotTaskQuery {
+	query := (&GitBotTaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(task.Table, task.FieldID, id),
+			sqlgraph.To(gitbottask.Table, gitbottask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, task.GitBotTasksTable, task.GitBotTasksColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5493,6 +6317,22 @@ func (c *UserClient) QueryProjectIssueComments(_m *User) *ProjectIssueCommentQue
 	return query
 }
 
+// QueryGitBots queries the git_bots edge of a User.
+func (c *UserClient) QueryGitBots(_m *User) *GitBotQuery {
+	query := (&GitBotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, user.GitBotsTable, user.GitBotsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a User.
 func (c *UserClient) QueryTeamMembers(_m *User) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -5518,6 +6358,22 @@ func (c *UserClient) QueryTeamGroupMembers(_m *User) *TeamGroupMemberQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(teamgroupmember.Table, teamgroupmember.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, user.TeamGroupMembersTable, user.TeamGroupMembersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitBotUsers queries the git_bot_users edge of a User.
+func (c *UserClient) QueryGitBotUsers(_m *User) *GitBotUserQuery {
+	query := (&GitBotUserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(gitbotuser.Table, gitbotuser.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, user.GitBotUsersTable, user.GitBotUsersColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5921,19 +6777,20 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, GitIdentity, Host, Image, Model, NotifyChannel, NotifySendLog,
-		NotifySubscription, Project, ProjectCollaborator, ProjectIssue,
-		ProjectIssueComment, ProjectTask, Task, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
+		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
+		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
+		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
+		TaskVirtualMachine, Team, TeamGroup, TeamGroupHost, TeamGroupImage,
+		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
+		User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
-		Audit, GitIdentity, Host, Image, Model, NotifyChannel, NotifySendLog,
-		NotifySubscription, Project, ProjectCollaborator, ProjectIssue,
-		ProjectIssueComment, ProjectTask, Task, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity,
-		VirtualMachine []ent.Interceptor
+		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
+		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
+		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
+		TaskVirtualMachine, Team, TeamGroup, TeamGroupHost, TeamGroupImage,
+		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
+		User, UserIdentity, VirtualMachine []ent.Interceptor
 	}
 )
 
