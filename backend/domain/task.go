@@ -38,6 +38,7 @@ type TaskRepo interface {
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
+	UpdateStatus(ctx context.Context, taskID string, status consts.TaskStatus) error
 }
 
 // repoFullName 从 repo_url 中提取 full_name

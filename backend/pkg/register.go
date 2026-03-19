@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/GoYoko/web"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/email"
+	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
@@ -169,6 +171,30 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	// WebSocket TaskConn
 	do.Provide(i, func(i *do.Injector) (*ws.TaskConn, error) {
 		return ws.NewTaskConn(), nil
+	})
+
+	// Lifecycle Manager（泛型版本）
+	// I = uuid.UUID (ID 类型), S = TaskState (状态类型), M = TaskMetadata (元数据类型)
+	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata], error) {
+		r := do.MustInvoke[*redis.Client](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		return lifecycle.NewManager[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata](
+			r,
+			lifecycle.WithLogger[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata](l),
+			lifecycle.WithTransitions[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata](lifecycle.TaskTransitions()),
+		), nil
+	})
+
+	// VM Lifecycle Manager
+	// I = string (VM ID 在 taskflow 中是 string), S = VMState, M = VMMetadata
+	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata], error) {
+		r := do.MustInvoke[*redis.Client](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		return lifecycle.NewManager[string, lifecycle.VMState, lifecycle.VMMetadata](
+			r,
+			lifecycle.WithLogger[string, lifecycle.VMState, lifecycle.VMMetadata](l),
+			lifecycle.WithTransitions[string, lifecycle.VMState, lifecycle.VMMetadata](lifecycle.VMTransitions()),
+		), nil
 	})
 
 	return nil

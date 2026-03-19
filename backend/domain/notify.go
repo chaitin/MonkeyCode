@@ -95,6 +95,7 @@ type NotifyEventPayload struct {
 	UserName    string     `json:"user_name,omitempty"`
 	TaskURL     string     `json:"task_url,omitempty"`
 	VMID        string     `json:"vm_id,omitempty"`
+	VMStatus    string     `json:"vm_status,omitempty"`
 	HostID      string     `json:"host_id,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 	VMName      string     `json:"vm_name,omitempty"`
