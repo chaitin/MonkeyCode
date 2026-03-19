@@ -1,73 +1,77 @@
 CREATE TABLE IF NOT EXISTS models (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    provider VARCHAR(50) NOT NULL,
-    api_key VARCHAR(512) NOT NULL,
-    base_url VARCHAR(512) NOT NULL,
-    model VARCHAR(255) NOT NULL,
-    remark VARCHAR(512),
-    temperature DOUBLE PRECISION DEFAULT 0,
-    interface_type VARCHAR(50) DEFAULT '',
-    weight INTEGER DEFAULT 0,
-    last_check_at TIMESTAMP WITH TIME ZONE,
-    last_check_success BOOLEAN DEFAULT FALSE,
-    last_check_error VARCHAR(512),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    deleted_at TIMESTAMP WITH TIME ZONE
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    provider character varying(255) NOT NULL,
+    api_key text NOT NULL,
+    base_url text NOT NULL,
+    model character varying(255) NOT NULL,
+    temperature real,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at timestamp with time zone,
+    remark character varying(128),
+    interface_type character varying(255),
+    last_check_at timestamp with time zone,
+    last_check_success boolean,
+    last_check_error text,
+    weight integer DEFAULT 1 NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_models_api_key ON models USING btree (api_key);
+CREATE INDEX IF NOT EXISTS idx_models_created_at_id ON models USING btree (created_at, id);
+CREATE INDEX IF NOT EXISTS idx_models_model ON models USING btree (model);
+CREATE INDEX IF NOT EXISTS idx_models_provider ON models USING btree (provider);
+
 
 CREATE TABLE IF NOT EXISTS images (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    remark VARCHAR(512),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    deleted_at TIMESTAMP WITH TIME ZONE
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    remark character varying(255),
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at timestamp with time zone
 );
+
+CREATE INDEX IF NOT EXISTS idx_images_created_at_id ON images USING btree (created_at, id);
+CREATE INDEX IF NOT EXISTS idx_images_name ON images USING btree (name);
+
 
 CREATE TABLE IF NOT EXISTS team_models (
-    id UUID PRIMARY KEY,
-    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    model_id UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(team_id, model_id)
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+    team_id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_team_models ON team_models USING btree (team_id, model_id);
+
 
 CREATE TABLE IF NOT EXISTS team_group_models (
-    id UUID PRIMARY KEY,
-    group_id UUID NOT NULL REFERENCES team_groups(id) ON DELETE CASCADE,
-    model_id UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(group_id, model_id)
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+    group_id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at timestamp with time zone
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_teams_group_models ON team_group_models USING btree (group_id, model_id) WHERE (deleted_at IS NULL);
 
 CREATE TABLE IF NOT EXISTS team_images (
-    id UUID PRIMARY KEY,
-    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    image_id UUID NOT NULL REFERENCES images(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(team_id, image_id)
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+    team_id uuid NOT NULL,
+    image_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_team_images ON team_images USING btree (team_id, image_id);
 
 CREATE TABLE IF NOT EXISTS team_group_images (
-    id UUID PRIMARY KEY,
-    group_id UUID NOT NULL REFERENCES team_groups(id) ON DELETE CASCADE,
-    image_id UUID NOT NULL REFERENCES images(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(group_id, image_id)
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+    group_id uuid NOT NULL,
+    image_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at timestamp with time zone
 );
 
-CREATE INDEX IF NOT EXISTS idx_models_user_id ON models(user_id);
-CREATE INDEX IF NOT EXISTS idx_models_deleted_at ON models(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_images_user_id ON images(user_id);
-CREATE INDEX IF NOT EXISTS idx_images_deleted_at ON images(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_team_models_team_id ON team_models(team_id);
-CREATE INDEX IF NOT EXISTS idx_team_models_model_id ON team_models(model_id);
-CREATE INDEX IF NOT EXISTS idx_team_group_models_group_id ON team_group_models(group_id);
-CREATE INDEX IF NOT EXISTS idx_team_group_models_model_id ON team_group_models(model_id);
-CREATE INDEX IF NOT EXISTS idx_team_images_team_id ON team_images(team_id);
-CREATE INDEX IF NOT EXISTS idx_team_images_image_id ON team_images(image_id);
-CREATE INDEX IF NOT EXISTS idx_team_group_images_group_id ON team_group_images(group_id);
-CREATE INDEX IF NOT EXISTS idx_team_group_images_image_id ON team_group_images(image_id);
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_team_group_images ON team_group_images USING btree (group_id, image_id) WHERE (deleted_at IS NULL);

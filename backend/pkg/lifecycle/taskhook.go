@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -25,19 +26,17 @@ type TaskHook struct {
 }
 
 // NewTaskCreateHook 创建 TaskCreateHook
+// 注意：taskLifecycle 需要在使用时已经创建完成，避免循环依赖
 func NewTaskCreateHook(
-	redis *redis.Client,
-	taskflow taskflow.Clienter,
-	logger *slog.Logger,
+	i *do.Injector,
 	taskLifecycle *Manager[uuid.UUID, consts.TaskStatus, TaskMetadata],
-	repo domain.TaskRepo,
 ) *TaskHook {
 	return &TaskHook{
-		redis:         redis,
-		taskflow:      taskflow,
-		logger:        logger.With("hook", "task-hook"),
+		redis:         do.MustInvoke[*redis.Client](i),
+		taskflow:      do.MustInvoke[taskflow.Clienter](i),
+		logger:        do.MustInvoke[*slog.Logger](i).With("hook", "task-hook"),
 		taskLifecycle: taskLifecycle,
-		repo:          repo,
+		repo:          do.MustInvoke[domain.TaskRepo](i),
 	}
 }
 

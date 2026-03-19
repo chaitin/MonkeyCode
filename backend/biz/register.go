@@ -16,6 +16,7 @@ import (
 
 // RegisterAll 注册所有 biz 模块
 func RegisterAll(i *do.Injector) error {
+	notify.RegisterNotify(i)
 	public.RegisterPublic(i)
 	user.RegisterUser(i)
 	setting.RegisterSetting(i)
@@ -36,9 +37,6 @@ func RegisterAll(i *do.Injector) error {
 
 	// 注册 host 模块
 	host.RegisterHost(i)
-
-	// 注册 notify 模块
-	notify.RegisterNotify(i)
 
 	return nil
 }

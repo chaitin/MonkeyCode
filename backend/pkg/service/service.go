@@ -19,6 +19,12 @@ func WithPprof() Option {
 	}
 }
 
+func WithLogger(l *slog.Logger) Option {
+	return func(sv *Service) {
+		sv.logger = l
+	}
+}
+
 type Servicer interface {
 	Name() string
 	// Start never returns

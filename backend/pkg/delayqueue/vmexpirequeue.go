@@ -14,13 +14,10 @@ type VMExpireQueue struct {
 	*RedisDelayQueue[*domain.VmExpireInfo]
 }
 
-// NewVMExpireQueue 创建 VM 过期队列
-func NewVMExpireQueue(redis *redis.Client, logger *slog.Logger) *VMExpireQueue {
-	queue := NewRedisDelayQueue(
-		redis, logger,
+func NewVMExpireQueue(rdb *redis.Client, logger *slog.Logger) *VMExpireQueue {
+	return &VMExpireQueue{NewRedisDelayQueue[*domain.VmExpireInfo](rdb, logger,
 		WithPrefix[*domain.VmExpireInfo]("mcai:vmexpire"),
-		WithRequeueDelay[*domain.VmExpireInfo](1*time.Minute),
 		WithPollInterval[*domain.VmExpireInfo](5*time.Second),
-	)
-	return &VMExpireQueue{queue}
+		WithRequeueDelay[*domain.VmExpireInfo](1*time.Minute),
+	)}
 }

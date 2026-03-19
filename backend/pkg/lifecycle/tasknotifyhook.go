@@ -5,9 +5,11 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 )
 
 // TaskNotifyHook 任务状态变更时发送通知
@@ -17,10 +19,10 @@ type TaskNotifyHook struct {
 }
 
 // NewTaskNotifyHook 创建任务通知 Hook
-func NewTaskNotifyHook(notify NotifyPublisher, logger *slog.Logger) *TaskNotifyHook {
+func NewTaskNotifyHook(i *do.Injector) *TaskNotifyHook {
 	return &TaskNotifyHook{
-		notify: notify,
-		logger: logger.With("hook", "task-notify-hook"),
+		notify: do.MustInvoke[*dispatcher.Dispatcher](i),
+		logger: do.MustInvoke[*slog.Logger](i).With("hook", "task-notify-hook"),
 	}
 }
 

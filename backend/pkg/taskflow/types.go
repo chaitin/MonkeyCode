@@ -48,10 +48,11 @@ type IsOnlineResp struct {
 type VirtualMachineStatus string
 
 const (
-	VirtualMachineStatusUnknown VirtualMachineStatus = "unknown"
-	VirtualMachineStatusPending VirtualMachineStatus = "pending"
-	VirtualMachineStatusOnline  VirtualMachineStatus = "online"
-	VirtualMachineStatusOffline VirtualMachineStatus = "offline"
+	VirtualMachineStatusUnknown  VirtualMachineStatus = "unknown"
+	VirtualMachineStatusPending  VirtualMachineStatus = "pending"
+	VirtualMachineStatusOnline   VirtualMachineStatus = "online"
+	VirtualMachineStatusOffline  VirtualMachineStatus = "offline"
+	VirtualMachineStatusSleeping VirtualMachineStatus = "sleeping"
 )
 
 // TTLKind TTL 类型

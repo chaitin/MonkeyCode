@@ -24,7 +24,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
-	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
@@ -41,7 +40,6 @@ type TaskUsecase struct {
 	logger           *slog.Logger
 	taskflow         taskflow.Clienter
 	loki             *loki.Client
-	vmexpireQueue    *delayqueue.VMExpireQueue
 	redis            *redis.Client
 	notifyDispatcher *dispatcher.Dispatcher
 	taskHook         domain.TaskHook
@@ -58,7 +56,6 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		logger:           do.MustInvoke[*slog.Logger](i).With("module", "usecase.TaskUsecase"),
 		taskflow:         do.MustInvoke[taskflow.Clienter](i),
 		loki:             do.MustInvoke[*loki.Client](i),
-		vmexpireQueue:    do.MustInvoke[*delayqueue.VMExpireQueue](i),
 		redis:            do.MustInvoke[*redis.Client](i),
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
 		taskLifecycle:    do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
@@ -301,17 +298,6 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 
 		if vm == nil {
 			return nil, fmt.Errorf("vm is nil")
-		}
-
-		if req.Resource.Life > 0 {
-			if _, err := a.vmexpireQueue.Enqueue(ctx, consts.VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
-				UID:    user.ID,
-				VmID:   vm.ID,
-				HostID: req.HostID,
-				EnvID:  vm.EnvironmentID,
-			}, time.Now().Add(time.Duration(req.Resource.Life)*time.Second), vm.ID); err != nil {
-				a.logger.With("error", err, "vm", vm).ErrorContext(ctx, "failed to enqueue countdown vm")
-			}
 		}
 
 		mcps := []taskflow.McpServerConfig{

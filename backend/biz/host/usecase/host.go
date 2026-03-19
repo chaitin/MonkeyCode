@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -36,19 +37,25 @@ type HostUsecase struct {
 	logger           *slog.Logger
 	repo             domain.HostRepo
 	userRepo         domain.UserRepo
+	vmSleepQueue     *delayqueue.VMSleepQueue
+	vmNotifyQueue    *delayqueue.VMNotifyQueue
+	vmRecycleQueue   *delayqueue.VMRecycleQueue
 	vmexpireQueue    *delayqueue.VMExpireQueue
 	privilegeChecker domain.PrivilegeChecker // 可选，由内部项目通过 WithPrivilegeChecker 注入
 }
 
 func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 	h := &HostUsecase{
-		cfg:           do.MustInvoke[*config.Config](i),
-		redis:         do.MustInvoke[*redis.Client](i),
-		taskflow:      do.MustInvoke[taskflow.Clienter](i),
-		logger:        do.MustInvoke[*slog.Logger](i).With("module", "HostUsecase"),
-		repo:          do.MustInvoke[domain.HostRepo](i),
-		userRepo:      do.MustInvoke[domain.UserRepo](i),
-		vmexpireQueue: do.MustInvoke[*delayqueue.VMExpireQueue](i),
+		cfg:            do.MustInvoke[*config.Config](i),
+		redis:          do.MustInvoke[*redis.Client](i),
+		taskflow:       do.MustInvoke[taskflow.Clienter](i),
+		logger:         do.MustInvoke[*slog.Logger](i).With("module", "HostUsecase"),
+		repo:           do.MustInvoke[domain.HostRepo](i),
+		userRepo:       do.MustInvoke[domain.UserRepo](i),
+		vmSleepQueue:   do.MustInvoke[*delayqueue.VMSleepQueue](i),
+		vmNotifyQueue:  do.MustInvoke[*delayqueue.VMNotifyQueue](i),
+		vmRecycleQueue: do.MustInvoke[*delayqueue.VMRecycleQueue](i),
+		vmexpireQueue:  do.MustInvoke[*delayqueue.VMExpireQueue](i),
 	}
 
 	// 可选注入 PrivilegeChecker
@@ -57,9 +64,19 @@ func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 	}
 
 	go h.periodicEnqueueVm()
+	go h.vmSleepConsumer()
+	go h.vmNotifyConsumer()
+	go h.vmRecycleConsumer()
 	go h.vmexpireConsumer()
 	return h, nil
 }
+
+const (
+	VM_SLEEP_QUEUE_KEY   = "vm:idle:sleep"
+	VM_NOTIFY_QUEUE_KEY  = "vm:idle:notify"
+	VM_RECYCLE_QUEUE_KEY = "vm:idle:recycle"
+	VM_EXPIRE_QUEUE_KEY  = "vm:expire"
+)
 
 func (h *HostUsecase) periodicEnqueueVm() {
 	t := time.NewTicker(10 * time.Minute)
@@ -75,7 +92,7 @@ func (h *HostUsecase) periodicEnqueueVm() {
 				continue
 			}
 
-			if _, err := h.vmexpireQueue.Enqueue(context.Background(), consts.VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
+			if _, err := h.vmexpireQueue.Enqueue(context.Background(), VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
 				UID:    vm.UserID,
 				VmID:   vm.ID,
 				HostID: vm.HostID,
@@ -91,7 +108,7 @@ func (h *HostUsecase) vmexpireConsumer() {
 	logger := h.logger.With("fn", "vmexpireConsumer")
 	index := 1
 	for {
-		err := h.vmexpireQueue.StartConsumer(context.Background(), consts.VM_EXPIRE_QUEUE_KEY, func(ctx context.Context, job *delayqueue.Job[*domain.VmExpireInfo]) error {
+		err := h.vmexpireQueue.StartConsumer(context.Background(), VM_EXPIRE_QUEUE_KEY, func(ctx context.Context, job *delayqueue.Job[*domain.VmExpireInfo]) error {
 			innerLogger := logger.With("job", job)
 			innerLogger.InfoContext(ctx, "received expired virtualmachine")
 
@@ -123,6 +140,115 @@ func (h *HostUsecase) vmexpireConsumer() {
 
 		h.logger.With("error", err, "index", index).WarnContext(context.Background(), "start consumer error retrying...")
 		index++
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func (h *HostUsecase) RefreshIdleTimers(ctx context.Context, vmID string, payload *domain.VmIdleInfo) error {
+	// 仅对任务创建的 VM 使用空闲检测逻辑
+	// 手动创建的 VM（TTLKind=CountDown）保留原有的 TTL 过期逻辑
+	vm, err := h.repo.GetVirtualMachine(ctx, vmID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to get vm for refresh idle timers", "vmID", vmID, "error", err)
+		return fmt.Errorf("get vm %s: %w", vmID, err)
+	}
+
+	// 如果是 CountDown 类型的 VM（手动创建），跳过空闲检测逻辑
+	if vm.TTLKind == consts.CountDown {
+		h.logger.DebugContext(ctx, "skip idle timer for countdown VM", "vmID", vmID)
+		return nil
+	}
+
+	debounceKey := fmt.Sprintf("vm:idle:debounce:%s", vmID)
+	ok, err := h.redis.SetNX(ctx, debounceKey, "1", 30*time.Second).Result()
+	if err != nil {
+		h.logger.ErrorContext(ctx, "redis SetNX failed for idle debounce", "vmID", vmID, "error", err)
+		return fmt.Errorf("redis debounce SetNX for vm %s: %w", vmID, err)
+	}
+	if !ok {
+		return nil
+	}
+
+	now := time.Now()
+	var errs []error
+	if _, err := h.vmSleepQueue.Enqueue(ctx, VM_SLEEP_QUEUE_KEY, payload, now.Add(10*time.Minute), vmID); err != nil {
+		h.logger.ErrorContext(ctx, "failed to enqueue sleep", "error", err, "vmID", vmID)
+		errs = append(errs, fmt.Errorf("enqueue sleep: %w", err))
+	}
+	if _, err := h.vmNotifyQueue.Enqueue(ctx, VM_NOTIFY_QUEUE_KEY, payload, now.Add(7*24*time.Hour-1*time.Hour), vmID); err != nil {
+		h.logger.ErrorContext(ctx, "failed to enqueue notify", "error", err, "vmID", vmID)
+		errs = append(errs, fmt.Errorf("enqueue notify: %w", err))
+	}
+	if _, err := h.vmRecycleQueue.Enqueue(ctx, VM_RECYCLE_QUEUE_KEY, payload, now.Add(7*24*time.Hour), vmID); err != nil {
+		h.logger.ErrorContext(ctx, "failed to enqueue recycle", "error", err, "vmID", vmID)
+		errs = append(errs, fmt.Errorf("enqueue recycle: %w", err))
+	}
+	return errors.Join(errs...)
+}
+
+func (h *HostUsecase) vmSleepConsumer() {
+	logger := h.logger.With("fn", "vmSleepConsumer")
+	for {
+		err := h.vmSleepQueue.StartConsumer(context.Background(), VM_SLEEP_QUEUE_KEY,
+			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
+				logger.InfoContext(ctx, "vm idle sleep triggered", "vmID", job.Payload.VmID)
+				// TODO: VirtualMachine ent schema does not have a status field yet;
+				// update this once SetStatus is available on VirtualMachineUpdateOne.
+				return nil
+			})
+		logger.Warn("sleep consumer error, retrying...", "error", err)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func (h *HostUsecase) vmNotifyConsumer() {
+	logger := h.logger.With("fn", "vmNotifyConsumer")
+	for {
+		err := h.vmNotifyQueue.StartConsumer(context.Background(), VM_NOTIFY_QUEUE_KEY,
+			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
+				logger.InfoContext(ctx, "vm recycle notify triggered", "vmID", job.Payload.VmID)
+				// TODO: 对接现有 Notify 模块，发送回收预警（任务维度）
+				return nil
+			})
+		logger.Warn("notify consumer error, retrying...", "error", err)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func (h *HostUsecase) vmRecycleConsumer() {
+	logger := h.logger.With("fn", "vmRecycleConsumer")
+	for {
+		err := h.vmRecycleQueue.StartConsumer(context.Background(), VM_RECYCLE_QUEUE_KEY,
+			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
+				innerLogger := logger.With("job", job)
+				innerLogger.InfoContext(ctx, "vm recycle triggered")
+
+				ctx = entx.SkipSoftDelete(ctx)
+				vm, err := h.repo.GetVirtualMachine(ctx, job.Payload.VmID)
+				if err != nil {
+					innerLogger.ErrorContext(ctx, "failed to get vm", "error", err)
+					return fmt.Errorf("get vm %s: %w", job.Payload.VmID, err)
+				}
+
+				if err := h.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
+					UserID: vm.UserID.String(),
+					HostID: vm.HostID,
+					ID:     vm.EnvironmentID,
+				}); err != nil {
+					innerLogger.ErrorContext(ctx, "failed to delete vm, will retry", "error", err)
+					return fmt.Errorf("delete vm %s: %w", vm.ID, err)
+				}
+
+				if err := h.repo.UpdateVirtualMachine(ctx, vm.ID, func(vmuo *db.VirtualMachineUpdateOne) error {
+					vmuo.SetIsRecycled(true)
+					return nil
+				}); err != nil {
+					innerLogger.ErrorContext(ctx, "failed to update vm", "error", err)
+					return err
+				}
+				return nil
+			})
+		logger.Warn("recycle consumer error, retrying...", "error", err)
 		time.Sleep(10 * time.Second)
 	}
 }
@@ -372,8 +498,10 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 
 		h.logger.InfoContext(ctx, "create vm success", "vm", tfvm)
 
+		// 手动创建的 VM 使用 TTL 过期逻辑，任务创建的 VM 使用空闲检测逻辑
+		// 通过 Life 参数区分：Life > 0 为手动创建的 VM，使用 TTL 过期逻辑
 		if req.Life > 0 {
-			if _, err := h.vmexpireQueue.Enqueue(ctx, consts.VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
+			if _, err := h.vmexpireQueue.Enqueue(ctx, VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
 				UID:    user.ID,
 				VmID:   tfvm.ID,
 				HostID: req.HostID,
@@ -381,6 +509,14 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 			}, time.Now().Add(time.Duration(req.Life)*time.Second), tfvm.ID); err != nil {
 				h.logger.With("error", err, "vm", tfvm).ErrorContext(ctx, "failed to enqueue countdown vm")
 			}
+		} else {
+			// 永久的 VM 使用空闲检测逻辑
+			h.RefreshIdleTimers(ctx, tfvm.ID, &domain.VmIdleInfo{
+				UID:    user.ID,
+				VmID:   tfvm.ID,
+				HostID: req.HostID,
+				EnvID:  tfvm.EnvironmentID,
+			})
 		}
 
 		return &domain.VirtualMachine{
@@ -415,8 +551,11 @@ func (h *HostUsecase) DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID 
 			h.logger.ErrorContext(ctx, "failed to delete vm", "error", err)
 		}
 
-		// 清理延迟队列中的残留任务
-		_ = h.vmexpireQueue.Remove(ctx, consts.VM_EXPIRE_QUEUE_KEY, vm.ID)
+		// 清理延迟队列中的残留任务（空闲检测队列 + TTL 过期队列）
+		_ = h.vmSleepQueue.Remove(ctx, VM_SLEEP_QUEUE_KEY, vm.ID)
+		_ = h.vmNotifyQueue.Remove(ctx, VM_NOTIFY_QUEUE_KEY, vm.ID)
+		_ = h.vmRecycleQueue.Remove(ctx, VM_RECYCLE_QUEUE_KEY, vm.ID)
+		_ = h.vmexpireQueue.Remove(ctx, VM_EXPIRE_QUEUE_KEY, vm.ID)
 
 		return nil
 	})
@@ -571,7 +710,7 @@ func (h *HostUsecase) FireExpiredVM(ctx context.Context, fire bool) ([]domain.Fi
 				Message: "checked",
 			}
 			if fire {
-				if _, err := h.vmexpireQueue.Enqueue(context.Background(), consts.VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
+				if _, err := h.vmexpireQueue.Enqueue(context.Background(), VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
 					UID:    vm.UserID,
 					VmID:   vm.ID,
 					HostID: vm.HostID,
@@ -604,7 +743,7 @@ func (h *HostUsecase) EnqueueAllCountDownVM(ctx context.Context) ([]string, erro
 			continue
 		}
 
-		if _, err := h.vmexpireQueue.Enqueue(context.Background(), consts.VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
+		if _, err := h.vmexpireQueue.Enqueue(context.Background(), VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
 			UID:    vm.UserID,
 			VmID:   vm.ID,
 			HostID: vm.HostID,
@@ -624,14 +763,16 @@ func (h *HostUsecase) UpdateVM(ctx context.Context, req domain.UpdateVMReq) (*do
 	vm, _, err := h.repo.UpdateVM(ctx, req, func(vm *db.VirtualMachine) error {
 		newExpiresAt := vm.CreatedAt.Add(time.Duration(vm.TTL) * time.Second)
 
-		// 更新回收队列
-		if _, err := h.vmexpireQueue.Enqueue(ctx, consts.VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
-			UID:    vm.UserID,
-			VmID:   vm.ID,
-			HostID: vm.HostID,
-			EnvID:  vm.EnvironmentID,
-		}, newExpiresAt, vm.ID); err != nil {
-			return err
+		// 更新回收队列（仅针对 CountDown 类型的 VM）
+		if vm.TTLKind == consts.CountDown {
+			if _, err := h.vmexpireQueue.Enqueue(ctx, VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
+				UID:    vm.UserID,
+				VmID:   vm.ID,
+				HostID: vm.HostID,
+				EnvID:  vm.EnvironmentID,
+			}, newExpiresAt, vm.ID); err != nil {
+				return err
+			}
 		}
 
 		return nil

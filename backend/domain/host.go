@@ -30,7 +30,7 @@ type HostUsecase interface {
 	DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID string) error
 	DeleteHost(ctx context.Context, uid uuid.UUID, id string) error
 	UpdateHost(ctx context.Context, uid uuid.UUID, req *UpdateHostReq) error
-	EnqueueAllCountDownVM(ctx context.Context) ([]string, error)
+	RefreshIdleTimers(ctx context.Context, vmID string, payload *VmIdleInfo) error
 	FireExpiredVM(ctx context.Context, fire bool) ([]FireExpiredVMItem, error)
 	UpdateVM(ctx context.Context, req UpdateVMReq) (*VirtualMachine, error)
 	ApplyPort(ctx context.Context, uid uuid.UUID, req *ApplyPortReq) (*VMPort, error)
@@ -57,7 +57,17 @@ type HostRepo interface {
 	UpdateVM(ctx context.Context, req UpdateVMReq, fn func(*db.VirtualMachine) error) (*db.VirtualMachine, int64, error)
 }
 
-// VmExpireInfo VM 过期信息
+// VmIdleInfo 空闲队列 payload（任务创建的 VM）
+type VmIdleInfo struct {
+	UID    uuid.UUID `json:"uid"`
+	VmID   string    `json:"vm_id"`
+	HostID string    `json:"host_id"`
+	EnvID  string    `json:"env_id"`
+	TaskID string    `json:"task_id,omitempty"`   // 关联的任务 ID，用于通知
+	Name   string    `json:"name,omitempty"`      // 任务名称，用于通知内容
+}
+
+// VmExpireInfo VM 过期信息（手动创建的 VM）
 type VmExpireInfo struct {
 	UID    uuid.UUID `json:"uid"`
 	VmID   string    `json:"vm_id"`
@@ -354,14 +364,9 @@ type VMPort struct {
 	Success      *bool             `json:"success,omitempty"`
 }
 
-// FireExpiredVMReq 触发过期 VM 请求
-type FireExpiredVMReq struct {
-	ID   string `json:"id" query:"id"`
-	Fire bool   `json:"fire" query:"fire"`
-}
-
 // FireExpiredVMItem 触发过期 VM 结果
 type FireExpiredVMItem struct {
 	ID      string `json:"id"`
 	Message string `json:"message"`
 }
+

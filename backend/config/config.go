@@ -28,10 +28,10 @@ type Config struct {
 	Session Session `mapstructure:"session"`
 	SMTP    SMTP    `mapstructure:"smtp"`
 
-	RootPath   string         `mapstructure:"root_path"`
-	Logger     *logger.Config `mapstructure:"logger"`
-	AdminToken string         `mapstructure:"admin_token"`
-	Proxies    []string       `mapstructure:"proxies"`
+	RootPath   string        `mapstructure:"root_path"`
+	Logger     logger.Config `mapstructure:"logger"`
+	AdminToken string        `mapstructure:"admin_token"`
+	Proxies    []string      `mapstructure:"proxies"`
 
 	TaskFlow    TaskFlow    `mapstructure:"taskflow"`
 	PublicHost  PublicHost  `mapstructure:"public_host"`
@@ -124,11 +124,14 @@ type Database struct {
 func Init(dir string) (*Config, error) {
 	v := viper.New()
 	v.AutomaticEnv()
+	v.SetEnvPrefix("MCAI")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	v.SetDefault("debug", true)
+	v.SetDefault("debug", false)
 	v.SetDefault("server.addr", ":8888")
 	v.SetDefault("server.base_url", "http://localhost:8888")
+	v.SetDefault("database.master", "")
+	v.SetDefault("database.slave", "")
 	v.SetDefault("database.max_open_conns", 100)
 	v.SetDefault("database.max_idle_conns", 50)
 	v.SetDefault("database.conn_max_lifetime", 30)
@@ -136,13 +139,15 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("session.expire_day", 1)
 	v.SetDefault("smtp.port", 587)
+	v.SetDefault("redis.host", "")
+	v.SetDefault("redis.port", 6379)
+	v.SetDefault("redis.pass", "")
+	v.SetDefault("redis.db", 0)
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
 	v.SetConfigName("config")
-	if err := v.ReadInConfig(); err != nil {
-		return nil, err
-	}
+	v.ReadInConfig()
 
 	c := Config{}
 	if err := v.Unmarshal(&c); err != nil {
