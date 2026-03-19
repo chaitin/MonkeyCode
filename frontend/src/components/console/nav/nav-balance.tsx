@@ -16,7 +16,7 @@ import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCommonData } from "../data-provider";
+import { useCommonData } from "../common-data";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";

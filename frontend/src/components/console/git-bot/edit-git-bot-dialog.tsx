@@ -22,7 +22,7 @@ import type { DomainGitBot } from "@/api/Api"
 import { ConstsGitPlatform, ConstsHostStatus } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { Badge } from "@/components/ui/badge"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 import { getHostBadges } from "@/utils/common"
 
 interface EditGitBotDialogProps {

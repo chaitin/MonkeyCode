@@ -1,6 +1,6 @@
 import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsInterfaceType, ConstsOwnerType, type DomainModel, type DomainProject, type DomainBranch } from "@/api/Api"
 import Icon from "@/components/common/Icon"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"

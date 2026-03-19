@@ -30,7 +30,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { useGitHubSetupCallback } from "@/hooks/useGitHubSetupCallback"
-import { useCommonData } from "@/components/console/data-provider"
+import { useCommonData } from "@/components/console/common-data"
 import {
   AlertDialog,
   AlertDialogAction,

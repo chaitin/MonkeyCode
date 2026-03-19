@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 import { IconChevronDown, IconChevronRight, IconCircleMinus, IconDotsVertical, IconLoader, IconPlus, IconReload, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
@@ -44,14 +44,18 @@ const loadExpandedFromStorage = (): Record<string, boolean> => {
   try {
     const cached = localStorage.getItem(STORAGE_KEY)
     if (cached) return JSON.parse(cached)
-  } catch {}
+  } catch {
+    // ignore: storage unavailable or cached value is not valid JSON
+  }
   return {}
 }
 
 const saveExpandedToStorage = (state: Record<string, boolean>) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {}
+  } catch {
+    // ignore: storage unavailable (e.g. private mode / quota exceeded)
+  }
 }
 
 export default function NavProject() {

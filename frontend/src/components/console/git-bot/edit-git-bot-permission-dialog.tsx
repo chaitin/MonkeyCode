@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { IconLoader } from "@tabler/icons-react"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 
 interface EditGitBotPermissionDialogProps {
   open: boolean

@@ -12,8 +12,8 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/
 import { Checkbox } from "@/components/ui/checkbox"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import type { DomainTeamModel, DomainProviderModelListItem, DomainTeamGroup } from "@/api/Api"
-import { ConstsInterfaceType } from "@/api/Api"
+import type { DomainTeamModel, DomainProviderModelListItem, DomainTeamGroup, DomainUpdateTeamModelReq } from "@/api/Api"
+import { ConstsInterfaceType, ConstsModelProvider } from "@/api/Api"
 import { getModelUrlDescription, modelProviderList } from "@/utils/common"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -117,23 +117,24 @@ export default function EditModel({
     }
 
     setLoadingModels(true)
+    const provider = (model?.provider as ConstsModelProvider | undefined) ?? ConstsModelProvider.ModelProviderBaiZhiCloud
     await apiRequest('getProviderModelList', {
-        api_key: apiToken.trim(),
-        base_url: baseUrl.trim() || model?.base_url || "https://model-square.app.baizhi.cloud/v1",
-        provider: model?.provider || "BaiZhiCloud",
-      }, [], (resp) => {
-        if (resp.code === 0) {
-          const models = resp.data?.models || []
-          setModelList(models)
-          if (models.length === 0) {
-            toast.warning("未获取到可用模型")
-          } else {
-            toast.success(`获取到 ${models.length} 个可用模型`)
-          }
+      api_key: apiToken.trim(),
+      base_url: baseUrl.trim() || model?.base_url || "https://model-square.app.baizhi.cloud/v1",
+      provider,
+    }, [], (resp) => {
+      if (resp.code === 0) {
+        const models = resp.data?.models || []
+        setModelList(models)
+        if (models.length === 0) {
+          toast.warning("未获取到可用模型")
         } else {
-          toast.error("获取模型列表失败: " + resp.message);
+          toast.success(`获取到 ${models.length} 个可用模型`)
         }
-      })
+      } else {
+        toast.error("获取模型列表失败: " + resp.message);
+      }
+    })
     setLoadingModels(false)
   }
 
@@ -159,7 +160,7 @@ export default function EditModel({
     setSaving(true)
 
     // 先进行健康检查
-    const provider = model.provider || "BaiZhiCloud"
+    const provider = (model.provider as ConstsModelProvider | undefined) ?? ConstsModelProvider.ModelProviderBaiZhiCloud
     const healthCheckData = {
       api_key: apiToken.trim(),
       model: selectedModel.trim(),
@@ -172,17 +173,13 @@ export default function EditModel({
       if (resp.code === 0) {
         if (resp.data?.success) {
           // 健康检查通过，继续保存
-          const requestData: any = {
+          const requestData: DomainUpdateTeamModelReq = {
             api_key: apiToken.trim(),
             model: selectedModel.trim(),
             base_url: baseUrl.trim(),
             interface_type: interfaceType,
-            group_ids: selectedGroupIds
-          }
-
-          // 如果 provider 存在，也一起更新
-          if (model.provider) {
-            requestData.provider = model.provider
+            group_ids: selectedGroupIds,
+            provider,
           }
 
           await apiRequest('v1TeamsModelsUpdate', requestData, [model.id!], (resp) => {
@@ -206,7 +203,7 @@ export default function EditModel({
         }
       }
     })
-    
+
     setSaving(false)
   }
 
@@ -224,18 +221,18 @@ export default function EditModel({
   // 对模型列表进行分组和排序
   const getGroupedModels = () => {
     const groups: Record<string, DomainProviderModelListItem[]> = {}
-    
+
     modelList.forEach((item) => {
       const modelName = item.model || ""
       const parts = modelName.split("-")
       const groupKey = parts.length > 0 ? parts[0] : "其他"
-      
+
       if (!groups[groupKey]) {
         groups[groupKey] = []
       }
       groups[groupKey].push(item)
     })
-    
+
     // 对每个组内的模型按字符串排序
     Object.keys(groups).forEach((key) => {
       groups[key].sort((a, b) => {
@@ -244,10 +241,10 @@ export default function EditModel({
         return aName.localeCompare(bName)
       })
     })
-    
+
     // 对组名进行排序
     const sortedGroupKeys = Object.keys(groups).sort()
-    
+
     return { groups, sortedGroupKeys }
   }
 
@@ -372,8 +369,8 @@ export default function EditModel({
                     {selectedGroupIds.length === 0
                       ? "请选择分组"
                       : selectedGroupIds.length === 1
-                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
-                      : `已选择 ${selectedGroupIds.length} 个分组`}
+                        ? groups.find((g) => g.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
+                        : `已选择 ${selectedGroupIds.length} 个分组`}
                   </span>
                   <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
                 </Button>

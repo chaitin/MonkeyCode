@@ -54,7 +54,7 @@ export function TaskPreviewPanel({
   const [whitelistSaving, setWhitelistSaving] = useState(false)
 
   const confirmDeletePort = () => {
-    if (!hostId || !vmId || !portToDelete) {
+    if (!hostId || !vmId || !portToDelete?.forward_id) {
       setDeleteDialogOpen(false)
       return
     }
@@ -63,7 +63,7 @@ export function TaskPreviewPanel({
     setDeleteDialogOpen(false)
 
     apiRequest('v1UsersHostsVmsPortsDelete', {
-      forward_id: portToDelete.forward_id
+      forward_id: portToDelete.forward_id,
     }, [hostId, vmId, String(portToDelete.port)], (resp) => {
       if (resp.code === 0) {
         toast.success("端口已关闭访问")
@@ -137,9 +137,9 @@ export function TaskPreviewPanel({
     setWhitelistSaving(true)
     await apiRequest('v1UsersHostsVmsPortsCreate', {
       forward_id: portToEditWhitelist.forward_id,
-      port: portToEditWhitelist.port,
-      white_list: whitelistArray
-    }, [hostId, vmId], (resp: WebResp) => {
+      port: portToEditWhitelist.port ?? 0,
+      white_list: whitelistArray,
+    }, [hostId!, vmId!], (resp: WebResp) => {
       if (resp.code === 0) {
         toast.success("白名单更新成功")
         setWhitelistDialogOpen(false)

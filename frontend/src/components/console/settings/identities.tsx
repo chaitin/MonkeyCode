@@ -39,7 +39,7 @@ import { Badge } from "@/components/ui/badge"
 import { IconPasswordFingerprint, IconPencil, IconPlugConnected, IconTrash } from "@tabler/icons-react"
 import { getGitPlatformIcon, getGithubAppInstallUrl } from "@/utils/common"
 import Icon from "@/components/common/Icon"
-import { useCommonData } from "../data-provider"
+import { useCommonData } from "../common-data"
 import { Spinner } from "@/components/ui/spinner"
 
 export default function Identities() {

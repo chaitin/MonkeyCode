@@ -11,8 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import type { DomainModel, DomainProviderModelListItem } from "@/api/Api"
-import { ConstsInterfaceType } from "@/api/Api"
+import type { DomainModel, DomainProviderModelListItem, DomainUpdateModelReq } from "@/api/Api"
+import { ConstsInterfaceType, ConstsModelProvider } from "@/api/Api"
 import {
   Select,
   SelectContent,
@@ -69,10 +69,11 @@ export default function EditModel({
     }
 
     setLoadingModels(true)
-    await apiRequest('getProviderModelList', {
+    const provider = (model?.provider as ConstsModelProvider | undefined) ?? ConstsModelProvider.ModelProviderBaiZhiCloud
+    await apiRequest('getProviderModelList',  {
       api_key: apiToken.trim(),
       base_url: baseUrl.trim() || model?.base_url || "https://model-square.app.baizhi.cloud/v1",
-      provider: model?.provider || "BaiZhiCloud",
+      provider,
     }, [], (resp) => {
       if (resp.code === 0) {
         const models = resp.data?.models || []
@@ -112,7 +113,7 @@ export default function EditModel({
     setSaving(true)
 
     // 先进行健康检查
-    const provider = model.provider || "BaiZhiCloud"
+    const provider = (model.provider as ConstsModelProvider | undefined) ?? ConstsModelProvider.ModelProviderBaiZhiCloud
     const healthCheckData = {
       api_key: apiToken.trim(),
       model: selectedModel.trim(),
@@ -125,7 +126,7 @@ export default function EditModel({
       if (resp.code === 0) {
         if (resp.data?.success) {
           // 健康检查通过，继续保存
-          const requestData: any = {
+          const requestData: DomainUpdateModelReq = {
             api_key: apiToken.trim(),
             model: selectedModel.trim(),
             base_url: baseUrl.trim(),
