@@ -16,6 +16,12 @@ type Tx struct {
 	config
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
+	// GitBot is the client for interacting with the GitBot builders.
+	GitBot *GitBotClient
+	// GitBotTask is the client for interacting with the GitBotTask builders.
+	GitBotTask *GitBotTaskClient
+	// GitBotUser is the client for interacting with the GitBotUser builders.
+	GitBotUser *GitBotUserClient
 	// GitIdentity is the client for interacting with the GitIdentity builders.
 	GitIdentity *GitIdentityClient
 	// Host is the client for interacting with the Host builders.
@@ -34,6 +40,8 @@ type Tx struct {
 	Project *ProjectClient
 	// ProjectCollaborator is the client for interacting with the ProjectCollaborator builders.
 	ProjectCollaborator *ProjectCollaboratorClient
+	// ProjectGitBot is the client for interacting with the ProjectGitBot builders.
+	ProjectGitBot *ProjectGitBotClient
 	// ProjectIssue is the client for interacting with the ProjectIssue builders.
 	ProjectIssue *ProjectIssueClient
 	// ProjectIssueComment is the client for interacting with the ProjectIssueComment builders.
@@ -202,6 +210,9 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Audit = NewAuditClient(tx.config)
+	tx.GitBot = NewGitBotClient(tx.config)
+	tx.GitBotTask = NewGitBotTaskClient(tx.config)
+	tx.GitBotUser = NewGitBotUserClient(tx.config)
 	tx.GitIdentity = NewGitIdentityClient(tx.config)
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
@@ -211,6 +222,7 @@ func (tx *Tx) init() {
 	tx.NotifySubscription = NewNotifySubscriptionClient(tx.config)
 	tx.Project = NewProjectClient(tx.config)
 	tx.ProjectCollaborator = NewProjectCollaboratorClient(tx.config)
+	tx.ProjectGitBot = NewProjectGitBotClient(tx.config)
 	tx.ProjectIssue = NewProjectIssueClient(tx.config)
 	tx.ProjectIssueComment = NewProjectIssueCommentClient(tx.config)
 	tx.ProjectTask = NewProjectTaskClient(tx.config)

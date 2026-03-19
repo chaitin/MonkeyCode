@@ -855,6 +855,52 @@ func HasProjectTasksWith(preds ...predicate.ProjectTask) predicate.Project {
 	})
 }
 
+// HasGitBots applies the HasEdge predicate on the "git_bots" edge.
+func HasGitBots() predicate.Project {
+	return predicate.Project(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, GitBotsTable, GitBotsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitBotsWith applies the HasEdge predicate on the "git_bots" edge with a given conditions (other predicates).
+func HasGitBotsWith(preds ...predicate.GitBot) predicate.Project {
+	return predicate.Project(func(s *sql.Selector) {
+		step := newGitBotsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasProjectGitBots applies the HasEdge predicate on the "project_git_bots" edge.
+func HasProjectGitBots() predicate.Project {
+	return predicate.Project(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, ProjectGitBotsTable, ProjectGitBotsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasProjectGitBotsWith applies the HasEdge predicate on the "project_git_bots" edge with a given conditions (other predicates).
+func HasProjectGitBotsWith(preds ...predicate.ProjectGitBot) predicate.Project {
+	return predicate.Project(func(s *sql.Selector) {
+		step := newProjectGitBotsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Project) predicate.Project {
 	return predicate.Project(sql.AndPredicates(predicates...))

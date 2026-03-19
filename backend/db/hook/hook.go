@@ -21,6 +21,42 @@ func (f AuditFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AuditMutation", m)
 }
 
+// The GitBotFunc type is an adapter to allow the use of ordinary
+// function as GitBot mutator.
+type GitBotFunc func(context.Context, *db.GitBotMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GitBotFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.GitBotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.GitBotMutation", m)
+}
+
+// The GitBotTaskFunc type is an adapter to allow the use of ordinary
+// function as GitBotTask mutator.
+type GitBotTaskFunc func(context.Context, *db.GitBotTaskMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GitBotTaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.GitBotTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.GitBotTaskMutation", m)
+}
+
+// The GitBotUserFunc type is an adapter to allow the use of ordinary
+// function as GitBotUser mutator.
+type GitBotUserFunc func(context.Context, *db.GitBotUserMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GitBotUserFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.GitBotUserMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.GitBotUserMutation", m)
+}
+
 // The GitIdentityFunc type is an adapter to allow the use of ordinary
 // function as GitIdentity mutator.
 type GitIdentityFunc func(context.Context, *db.GitIdentityMutation) (db.Value, error)
@@ -127,6 +163,18 @@ func (f ProjectCollaboratorFunc) Mutate(ctx context.Context, m db.Mutation) (db.
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectCollaboratorMutation", m)
+}
+
+// The ProjectGitBotFunc type is an adapter to allow the use of ordinary
+// function as ProjectGitBot mutator.
+type ProjectGitBotFunc func(context.Context, *db.ProjectGitBotMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ProjectGitBotFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ProjectGitBotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectGitBotMutation", m)
 }
 
 // The ProjectIssueFunc type is an adapter to allow the use of ordinary

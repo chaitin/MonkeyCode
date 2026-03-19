@@ -13,6 +13,8 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -440,6 +442,21 @@ func (_u *UserUpdate) AddProjectIssueComments(v ...*ProjectIssueComment) *UserUp
 	return _u.AddProjectIssueCommentIDs(ids...)
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_u *UserUpdate) AddGitBotIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddGitBotIDs(ids...)
+	return _u
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_u *UserUpdate) AddGitBots(v ...*GitBot) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdate) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -468,6 +485,21 @@ func (_u *UserUpdate) AddTeamGroupMembers(v ...*TeamGroupMember) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamGroupMemberIDs(ids...)
+}
+
+// AddGitBotUserIDs adds the "git_bot_users" edge to the GitBotUser entity by IDs.
+func (_u *UserUpdate) AddGitBotUserIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddGitBotUserIDs(ids...)
+	return _u
+}
+
+// AddGitBotUsers adds the "git_bot_users" edges to the GitBotUser entity.
+func (_u *UserUpdate) AddGitBotUsers(v ...*GitBotUser) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotUserIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -790,6 +822,27 @@ func (_u *UserUpdate) RemoveProjectIssueComments(v ...*ProjectIssueComment) *Use
 	return _u.RemoveProjectIssueCommentIDs(ids...)
 }
 
+// ClearGitBots clears all "git_bots" edges to the GitBot entity.
+func (_u *UserUpdate) ClearGitBots() *UserUpdate {
+	_u.mutation.ClearGitBots()
+	return _u
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to GitBot entities by IDs.
+func (_u *UserUpdate) RemoveGitBotIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveGitBotIDs(ids...)
+	return _u
+}
+
+// RemoveGitBots removes "git_bots" edges to GitBot entities.
+func (_u *UserUpdate) RemoveGitBots(v ...*GitBot) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotIDs(ids...)
+}
+
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
 func (_u *UserUpdate) ClearTeamMembers() *UserUpdate {
 	_u.mutation.ClearTeamMembers()
@@ -830,6 +883,27 @@ func (_u *UserUpdate) RemoveTeamGroupMembers(v ...*TeamGroupMember) *UserUpdate 
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamGroupMemberIDs(ids...)
+}
+
+// ClearGitBotUsers clears all "git_bot_users" edges to the GitBotUser entity.
+func (_u *UserUpdate) ClearGitBotUsers() *UserUpdate {
+	_u.mutation.ClearGitBotUsers()
+	return _u
+}
+
+// RemoveGitBotUserIDs removes the "git_bot_users" edge to GitBotUser entities by IDs.
+func (_u *UserUpdate) RemoveGitBotUserIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveGitBotUserIDs(ids...)
+	return _u
+}
+
+// RemoveGitBotUsers removes "git_bot_users" edges to GitBotUser entities.
+func (_u *UserUpdate) RemoveGitBotUsers(v ...*GitBotUser) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotUserIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1649,6 +1723,72 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &GitBotUserCreate{config: _u.config, mutation: newGitBotUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotsIDs(); len(nodes) > 0 && !_u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &GitBotUserCreate{config: _u.config, mutation: newGitBotUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &GitBotUserCreate{config: _u.config, mutation: newGitBotUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1732,6 +1872,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgroupmember.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitBotUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotUsersIDs(); len(nodes) > 0 && !_u.mutation.GitBotUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -2154,6 +2339,21 @@ func (_u *UserUpdateOne) AddProjectIssueComments(v ...*ProjectIssueComment) *Use
 	return _u.AddProjectIssueCommentIDs(ids...)
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_u *UserUpdateOne) AddGitBotIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddGitBotIDs(ids...)
+	return _u
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_u *UserUpdateOne) AddGitBots(v ...*GitBot) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdateOne) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -2182,6 +2382,21 @@ func (_u *UserUpdateOne) AddTeamGroupMembers(v ...*TeamGroupMember) *UserUpdateO
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamGroupMemberIDs(ids...)
+}
+
+// AddGitBotUserIDs adds the "git_bot_users" edge to the GitBotUser entity by IDs.
+func (_u *UserUpdateOne) AddGitBotUserIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddGitBotUserIDs(ids...)
+	return _u
+}
+
+// AddGitBotUsers adds the "git_bot_users" edges to the GitBotUser entity.
+func (_u *UserUpdateOne) AddGitBotUsers(v ...*GitBotUser) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotUserIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -2504,6 +2719,27 @@ func (_u *UserUpdateOne) RemoveProjectIssueComments(v ...*ProjectIssueComment) *
 	return _u.RemoveProjectIssueCommentIDs(ids...)
 }
 
+// ClearGitBots clears all "git_bots" edges to the GitBot entity.
+func (_u *UserUpdateOne) ClearGitBots() *UserUpdateOne {
+	_u.mutation.ClearGitBots()
+	return _u
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to GitBot entities by IDs.
+func (_u *UserUpdateOne) RemoveGitBotIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveGitBotIDs(ids...)
+	return _u
+}
+
+// RemoveGitBots removes "git_bots" edges to GitBot entities.
+func (_u *UserUpdateOne) RemoveGitBots(v ...*GitBot) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotIDs(ids...)
+}
+
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
 func (_u *UserUpdateOne) ClearTeamMembers() *UserUpdateOne {
 	_u.mutation.ClearTeamMembers()
@@ -2544,6 +2780,27 @@ func (_u *UserUpdateOne) RemoveTeamGroupMembers(v ...*TeamGroupMember) *UserUpda
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamGroupMemberIDs(ids...)
+}
+
+// ClearGitBotUsers clears all "git_bot_users" edges to the GitBotUser entity.
+func (_u *UserUpdateOne) ClearGitBotUsers() *UserUpdateOne {
+	_u.mutation.ClearGitBotUsers()
+	return _u
+}
+
+// RemoveGitBotUserIDs removes the "git_bot_users" edge to GitBotUser entities by IDs.
+func (_u *UserUpdateOne) RemoveGitBotUserIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveGitBotUserIDs(ids...)
+	return _u
+}
+
+// RemoveGitBotUsers removes "git_bot_users" edges to GitBotUser entities.
+func (_u *UserUpdateOne) RemoveGitBotUsers(v ...*GitBotUser) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotUserIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -3393,6 +3650,72 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &GitBotUserCreate{config: _u.config, mutation: newGitBotUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotsIDs(); len(nodes) > 0 && !_u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &GitBotUserCreate{config: _u.config, mutation: newGitBotUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &GitBotUserCreate{config: _u.config, mutation: newGitBotUserMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -3476,6 +3799,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgroupmember.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitBotUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotUsersIDs(); len(nodes) > 0 && !_u.mutation.GitBotUsersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

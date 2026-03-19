@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -394,6 +396,21 @@ func (_c *UserCreate) AddProjectIssueComments(v ...*ProjectIssueComment) *UserCr
 	return _c.AddProjectIssueCommentIDs(ids...)
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_c *UserCreate) AddGitBotIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddGitBotIDs(ids...)
+	return _c
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_c *UserCreate) AddGitBots(v ...*GitBot) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGitBotIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_c *UserCreate) AddTeamMemberIDs(ids ...uuid.UUID) *UserCreate {
 	_c.mutation.AddTeamMemberIDs(ids...)
@@ -422,6 +439,21 @@ func (_c *UserCreate) AddTeamGroupMembers(v ...*TeamGroupMember) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddTeamGroupMemberIDs(ids...)
+}
+
+// AddGitBotUserIDs adds the "git_bot_users" edge to the GitBotUser entity by IDs.
+func (_c *UserCreate) AddGitBotUserIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddGitBotUserIDs(ids...)
+	return _c
+}
+
+// AddGitBotUsers adds the "git_bot_users" edges to the GitBotUser entity.
+func (_c *UserCreate) AddGitBotUsers(v ...*GitBotUser) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGitBotUserIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -835,6 +867,29 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   user.GitBotsTable,
+			Columns: user.GitBotsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &GitBotUserCreate{config: _c.config, mutation: newGitBotUserMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		if specE.ID.Value != nil {
+			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.TeamMembersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -860,6 +915,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgroupmember.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitBotUsersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   user.GitBotUsersTable,
+			Columns: []string{user.GitBotUsersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbotuser.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

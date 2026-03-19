@@ -51,6 +51,10 @@ const (
 	EdgeCollaborators = "collaborators"
 	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
 	EdgeProjectTasks = "project_tasks"
+	// EdgeGitBots holds the string denoting the git_bots edge name in mutations.
+	EdgeGitBots = "git_bots"
+	// EdgeProjectGitBots holds the string denoting the project_git_bots edge name in mutations.
+	EdgeProjectGitBots = "project_git_bots"
 	// Table holds the table name of the project in the database.
 	Table = "projects"
 	// UserTable is the table that holds the user relation/edge.
@@ -95,6 +99,18 @@ const (
 	ProjectTasksInverseTable = "project_tasks"
 	// ProjectTasksColumn is the table column denoting the project_tasks relation/edge.
 	ProjectTasksColumn = "project_id"
+	// GitBotsTable is the table that holds the git_bots relation/edge. The primary key declared below.
+	GitBotsTable = "project_git_bots"
+	// GitBotsInverseTable is the table name for the GitBot entity.
+	// It exists in this package in order to avoid circular dependency with the "gitbot" package.
+	GitBotsInverseTable = "git_bots"
+	// ProjectGitBotsTable is the table that holds the project_git_bots relation/edge.
+	ProjectGitBotsTable = "project_git_bots"
+	// ProjectGitBotsInverseTable is the table name for the ProjectGitBot entity.
+	// It exists in this package in order to avoid circular dependency with the "projectgitbot" package.
+	ProjectGitBotsInverseTable = "project_git_bots"
+	// ProjectGitBotsColumn is the table column denoting the project_git_bots relation/edge.
+	ProjectGitBotsColumn = "project_id"
 )
 
 // Columns holds all SQL columns for project fields.
@@ -113,6 +129,12 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
+
+var (
+	// GitBotsPrimaryKey and GitBotsColumn2 are the table columns denoting the
+	// primary key for the git_bots relation (M2M).
+	GitBotsPrimaryKey = []string{"project_id", "git_bot_id"}
+)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -267,6 +289,34 @@ func ByProjectTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newProjectTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByGitBotsCount orders the results by git_bots count.
+func ByGitBotsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGitBotsStep(), opts...)
+	}
+}
+
+// ByGitBots orders the results by git_bots terms.
+func ByGitBots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitBotsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByProjectGitBotsCount orders the results by project_git_bots count.
+func ByProjectGitBotsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProjectGitBotsStep(), opts...)
+	}
+}
+
+// ByProjectGitBots orders the results by project_git_bots terms.
+func ByProjectGitBots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProjectGitBotsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -307,5 +357,19 @@ func newProjectTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProjectTasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
+	)
+}
+func newGitBotsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitBotsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, GitBotsTable, GitBotsPrimaryKey...),
+	)
+}
+func newProjectGitBotsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProjectGitBotsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, ProjectGitBotsTable, ProjectGitBotsColumn),
 	)
 }

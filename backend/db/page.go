@@ -25,6 +25,48 @@ func (_m *AuditQuery) Page(ctx context.Context, page, size int) ([]*Audit, *Page
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *GitBotQuery) Page(ctx context.Context, page, size int) ([]*GitBot, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *GitBotTaskQuery) Page(ctx context.Context, page, size int) ([]*GitBotTask, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *GitBotUserQuery) Page(ctx context.Context, page, size int) ([]*GitBotUser, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *GitIdentityQuery) Page(ctx context.Context, page, size int) ([]*GitIdentity, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
@@ -138,6 +180,20 @@ func (_m *ProjectQuery) Page(ctx context.Context, page, size int) ([]*Project, *
 }
 
 func (_m *ProjectCollaboratorQuery) Page(ctx context.Context, page, size int) ([]*ProjectCollaborator, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *ProjectGitBotQuery) Page(ctx context.Context, page, size int) ([]*ProjectGitBot, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
 		return nil, nil, err

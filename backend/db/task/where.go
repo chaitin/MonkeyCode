@@ -781,6 +781,29 @@ func HasVmsWith(preds ...predicate.VirtualMachine) predicate.Task {
 	})
 }
 
+// HasGitBotTasks applies the HasEdge predicate on the "git_bot_tasks" edge.
+func HasGitBotTasks() predicate.Task {
+	return predicate.Task(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, GitBotTasksTable, GitBotTasksColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitBotTasksWith applies the HasEdge predicate on the "git_bot_tasks" edge with a given conditions (other predicates).
+func HasGitBotTasksWith(preds ...predicate.GitBotTask) predicate.Task {
+	return predicate.Task(func(s *sql.Selector) {
+		step := newGitBotTasksStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTaskVms applies the HasEdge predicate on the "task_vms" edge.
 func HasTaskVms() predicate.Task {
 	return predicate.Task(func(s *sql.Selector) {

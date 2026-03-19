@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -32,6 +33,7 @@ type HostQuery struct {
 	withVms            *VirtualMachineQuery
 	withUser           *UserQuery
 	withGroups         *TeamGroupQuery
+	withGitBots        *GitBotQuery
 	withTeamGroupHosts *TeamGroupHostQuery
 	modifiers          []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
@@ -129,6 +131,28 @@ func (_q *HostQuery) QueryGroups() *TeamGroupQuery {
 			sqlgraph.From(host.Table, host.FieldID, selector),
 			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, true, host.GroupsTable, host.GroupsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGitBots chains the current query on the "git_bots" edge.
+func (_q *HostQuery) QueryGitBots() *GitBotQuery {
+	query := (&GitBotClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(host.Table, host.FieldID, selector),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, host.GitBotsTable, host.GitBotsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -353,6 +377,7 @@ func (_q *HostQuery) Clone() *HostQuery {
 		withVms:            _q.withVms.Clone(),
 		withUser:           _q.withUser.Clone(),
 		withGroups:         _q.withGroups.Clone(),
+		withGitBots:        _q.withGitBots.Clone(),
 		withTeamGroupHosts: _q.withTeamGroupHosts.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
@@ -391,6 +416,17 @@ func (_q *HostQuery) WithGroups(opts ...func(*TeamGroupQuery)) *HostQuery {
 		opt(query)
 	}
 	_q.withGroups = query
+	return _q
+}
+
+// WithGitBots tells the query-builder to eager-load the nodes that are connected to
+// the "git_bots" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *HostQuery) WithGitBots(opts ...func(*GitBotQuery)) *HostQuery {
+	query := (&GitBotClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitBots = query
 	return _q
 }
 
@@ -483,10 +519,11 @@ func (_q *HostQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Host, e
 	var (
 		nodes       = []*Host{}
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			_q.withVms != nil,
 			_q.withUser != nil,
 			_q.withGroups != nil,
+			_q.withGitBots != nil,
 			_q.withTeamGroupHosts != nil,
 		}
 	)
@@ -528,6 +565,13 @@ func (_q *HostQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Host, e
 		if err := _q.loadGroups(ctx, query, nodes,
 			func(n *Host) { n.Edges.Groups = []*TeamGroup{} },
 			func(n *Host, e *TeamGroup) { n.Edges.Groups = append(n.Edges.Groups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGitBots; query != nil {
+		if err := _q.loadGitBots(ctx, query, nodes,
+			func(n *Host) { n.Edges.GitBots = []*GitBot{} },
+			func(n *Host, e *GitBot) { n.Edges.GitBots = append(n.Edges.GitBots, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -658,6 +702,36 @@ func (_q *HostQuery) loadGroups(ctx context.Context, query *TeamGroupQuery, node
 		for kn := range nodes {
 			assign(kn, n)
 		}
+	}
+	return nil
+}
+func (_q *HostQuery) loadGitBots(ctx context.Context, query *GitBotQuery, nodes []*Host, init func(*Host), assign func(*Host, *GitBot)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Host)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(gitbot.FieldHostID)
+	}
+	query.Where(predicate.GitBot(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(host.GitBotsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.HostID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "host_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

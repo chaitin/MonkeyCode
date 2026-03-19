@@ -1062,6 +1062,29 @@ func HasProjectIssueCommentsWith(preds ...predicate.ProjectIssueComment) predica
 	})
 }
 
+// HasGitBots applies the HasEdge predicate on the "git_bots" edge.
+func HasGitBots() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, GitBotsTable, GitBotsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitBotsWith applies the HasEdge predicate on the "git_bots" edge with a given conditions (other predicates).
+func HasGitBotsWith(preds ...predicate.GitBot) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newGitBotsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamMembers applies the HasEdge predicate on the "team_members" edge.
 func HasTeamMembers() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1100,6 +1123,29 @@ func HasTeamGroupMembers() predicate.User {
 func HasTeamGroupMembersWith(preds ...predicate.TeamGroupMember) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newTeamGroupMembersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGitBotUsers applies the HasEdge predicate on the "git_bot_users" edge.
+func HasGitBotUsers() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, GitBotUsersTable, GitBotUsersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitBotUsersWith applies the HasEdge predicate on the "git_bot_users" edge with a given conditions (other predicates).
+func HasGitBotUsersWith(preds ...predicate.GitBotUser) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newGitBotUsersStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

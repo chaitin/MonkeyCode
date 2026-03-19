@@ -13,11 +13,13 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
@@ -27,17 +29,19 @@ import (
 // ProjectQuery is the builder for querying Project entities.
 type ProjectQuery struct {
 	config
-	ctx               *QueryContext
-	order             []project.OrderOption
-	inters            []Interceptor
-	predicates        []predicate.Project
-	withUser          *UserQuery
-	withGitIdentity   *GitIdentityQuery
-	withImage         *ImageQuery
-	withIssues        *ProjectIssueQuery
-	withCollaborators *ProjectCollaboratorQuery
-	withProjectTasks  *ProjectTaskQuery
-	modifiers         []func(*sql.Selector)
+	ctx                *QueryContext
+	order              []project.OrderOption
+	inters             []Interceptor
+	predicates         []predicate.Project
+	withUser           *UserQuery
+	withGitIdentity    *GitIdentityQuery
+	withImage          *ImageQuery
+	withIssues         *ProjectIssueQuery
+	withCollaborators  *ProjectCollaboratorQuery
+	withProjectTasks   *ProjectTaskQuery
+	withGitBots        *GitBotQuery
+	withProjectGitBots *ProjectGitBotQuery
+	modifiers          []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -199,6 +203,50 @@ func (_q *ProjectQuery) QueryProjectTasks() *ProjectTaskQuery {
 			sqlgraph.From(project.Table, project.FieldID, selector),
 			sqlgraph.To(projecttask.Table, projecttask.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, project.ProjectTasksTable, project.ProjectTasksColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGitBots chains the current query on the "git_bots" edge.
+func (_q *ProjectQuery) QueryGitBots() *GitBotQuery {
+	query := (&GitBotClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(project.Table, project.FieldID, selector),
+			sqlgraph.To(gitbot.Table, gitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, project.GitBotsTable, project.GitBotsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryProjectGitBots chains the current query on the "project_git_bots" edge.
+func (_q *ProjectQuery) QueryProjectGitBots() *ProjectGitBotQuery {
+	query := (&ProjectGitBotClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(project.Table, project.FieldID, selector),
+			sqlgraph.To(projectgitbot.Table, projectgitbot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, project.ProjectGitBotsTable, project.ProjectGitBotsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -393,17 +441,19 @@ func (_q *ProjectQuery) Clone() *ProjectQuery {
 		return nil
 	}
 	return &ProjectQuery{
-		config:            _q.config,
-		ctx:               _q.ctx.Clone(),
-		order:             append([]project.OrderOption{}, _q.order...),
-		inters:            append([]Interceptor{}, _q.inters...),
-		predicates:        append([]predicate.Project{}, _q.predicates...),
-		withUser:          _q.withUser.Clone(),
-		withGitIdentity:   _q.withGitIdentity.Clone(),
-		withImage:         _q.withImage.Clone(),
-		withIssues:        _q.withIssues.Clone(),
-		withCollaborators: _q.withCollaborators.Clone(),
-		withProjectTasks:  _q.withProjectTasks.Clone(),
+		config:             _q.config,
+		ctx:                _q.ctx.Clone(),
+		order:              append([]project.OrderOption{}, _q.order...),
+		inters:             append([]Interceptor{}, _q.inters...),
+		predicates:         append([]predicate.Project{}, _q.predicates...),
+		withUser:           _q.withUser.Clone(),
+		withGitIdentity:    _q.withGitIdentity.Clone(),
+		withImage:          _q.withImage.Clone(),
+		withIssues:         _q.withIssues.Clone(),
+		withCollaborators:  _q.withCollaborators.Clone(),
+		withProjectTasks:   _q.withProjectTasks.Clone(),
+		withGitBots:        _q.withGitBots.Clone(),
+		withProjectGitBots: _q.withProjectGitBots.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -474,6 +524,28 @@ func (_q *ProjectQuery) WithProjectTasks(opts ...func(*ProjectTaskQuery)) *Proje
 		opt(query)
 	}
 	_q.withProjectTasks = query
+	return _q
+}
+
+// WithGitBots tells the query-builder to eager-load the nodes that are connected to
+// the "git_bots" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProjectQuery) WithGitBots(opts ...func(*GitBotQuery)) *ProjectQuery {
+	query := (&GitBotClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitBots = query
+	return _q
+}
+
+// WithProjectGitBots tells the query-builder to eager-load the nodes that are connected to
+// the "project_git_bots" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProjectQuery) WithProjectGitBots(opts ...func(*ProjectGitBotQuery)) *ProjectQuery {
+	query := (&ProjectGitBotClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withProjectGitBots = query
 	return _q
 }
 
@@ -555,13 +627,15 @@ func (_q *ProjectQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Proj
 	var (
 		nodes       = []*Project{}
 		_spec       = _q.querySpec()
-		loadedTypes = [6]bool{
+		loadedTypes = [8]bool{
 			_q.withUser != nil,
 			_q.withGitIdentity != nil,
 			_q.withImage != nil,
 			_q.withIssues != nil,
 			_q.withCollaborators != nil,
 			_q.withProjectTasks != nil,
+			_q.withGitBots != nil,
+			_q.withProjectGitBots != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -621,6 +695,20 @@ func (_q *ProjectQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Proj
 		if err := _q.loadProjectTasks(ctx, query, nodes,
 			func(n *Project) { n.Edges.ProjectTasks = []*ProjectTask{} },
 			func(n *Project, e *ProjectTask) { n.Edges.ProjectTasks = append(n.Edges.ProjectTasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGitBots; query != nil {
+		if err := _q.loadGitBots(ctx, query, nodes,
+			func(n *Project) { n.Edges.GitBots = []*GitBot{} },
+			func(n *Project, e *GitBot) { n.Edges.GitBots = append(n.Edges.GitBots, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withProjectGitBots; query != nil {
+		if err := _q.loadProjectGitBots(ctx, query, nodes,
+			func(n *Project) { n.Edges.ProjectGitBots = []*ProjectGitBot{} },
+			func(n *Project, e *ProjectGitBot) { n.Edges.ProjectGitBots = append(n.Edges.ProjectGitBots, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -802,6 +890,97 @@ func (_q *ProjectQuery) loadProjectTasks(ctx context.Context, query *ProjectTask
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "project_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ProjectQuery) loadGitBots(ctx context.Context, query *GitBotQuery, nodes []*Project, init func(*Project), assign func(*Project, *GitBot)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*Project)
+	nids := make(map[uuid.UUID]map[*Project]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(project.GitBotsTable)
+		s.Join(joinT).On(s.C(gitbot.FieldID), joinT.C(project.GitBotsPrimaryKey[1]))
+		s.Where(sql.InValues(joinT.C(project.GitBotsPrimaryKey[0]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(project.GitBotsPrimaryKey[0]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*Project]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*GitBot](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "git_bots" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (_q *ProjectQuery) loadProjectGitBots(ctx context.Context, query *ProjectGitBotQuery, nodes []*Project, init func(*Project), assign func(*Project, *ProjectGitBot)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Project)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(projectgitbot.FieldProjectID)
+	}
+	query.Where(predicate.ProjectGitBot(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(project.ProjectGitBotsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ProjectID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "project_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

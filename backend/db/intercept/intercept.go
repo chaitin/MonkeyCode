@@ -9,6 +9,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -19,6 +22,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
@@ -120,6 +124,87 @@ func (f TraverseAudit) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.AuditQuery", q)
+}
+
+// The GitBotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GitBotFunc func(context.Context, *db.GitBotQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f GitBotFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.GitBotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.GitBotQuery", q)
+}
+
+// The TraverseGitBot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGitBot func(context.Context, *db.GitBotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGitBot) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGitBot) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.GitBotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.GitBotQuery", q)
+}
+
+// The GitBotTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GitBotTaskFunc func(context.Context, *db.GitBotTaskQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f GitBotTaskFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.GitBotTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.GitBotTaskQuery", q)
+}
+
+// The TraverseGitBotTask type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGitBotTask func(context.Context, *db.GitBotTaskQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGitBotTask) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGitBotTask) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.GitBotTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.GitBotTaskQuery", q)
+}
+
+// The GitBotUserFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GitBotUserFunc func(context.Context, *db.GitBotUserQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f GitBotUserFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.GitBotUserQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.GitBotUserQuery", q)
+}
+
+// The TraverseGitBotUser type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGitBotUser func(context.Context, *db.GitBotUserQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGitBotUser) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGitBotUser) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.GitBotUserQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.GitBotUserQuery", q)
 }
 
 // The GitIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -363,6 +448,33 @@ func (f TraverseProjectCollaborator) Traverse(ctx context.Context, q db.Query) e
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.ProjectCollaboratorQuery", q)
+}
+
+// The ProjectGitBotFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ProjectGitBotFunc func(context.Context, *db.ProjectGitBotQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ProjectGitBotFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ProjectGitBotQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ProjectGitBotQuery", q)
+}
+
+// The TraverseProjectGitBot type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseProjectGitBot func(context.Context, *db.ProjectGitBotQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseProjectGitBot) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseProjectGitBot) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ProjectGitBotQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ProjectGitBotQuery", q)
 }
 
 // The ProjectIssueFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -856,6 +968,12 @@ func NewQuery(q db.Query) (Query, error) {
 	switch q := q.(type) {
 	case *db.AuditQuery:
 		return &query[*db.AuditQuery, predicate.Audit, audit.OrderOption]{typ: db.TypeAudit, tq: q}, nil
+	case *db.GitBotQuery:
+		return &query[*db.GitBotQuery, predicate.GitBot, gitbot.OrderOption]{typ: db.TypeGitBot, tq: q}, nil
+	case *db.GitBotTaskQuery:
+		return &query[*db.GitBotTaskQuery, predicate.GitBotTask, gitbottask.OrderOption]{typ: db.TypeGitBotTask, tq: q}, nil
+	case *db.GitBotUserQuery:
+		return &query[*db.GitBotUserQuery, predicate.GitBotUser, gitbotuser.OrderOption]{typ: db.TypeGitBotUser, tq: q}, nil
 	case *db.GitIdentityQuery:
 		return &query[*db.GitIdentityQuery, predicate.GitIdentity, gitidentity.OrderOption]{typ: db.TypeGitIdentity, tq: q}, nil
 	case *db.HostQuery:
@@ -874,6 +992,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.ProjectQuery, predicate.Project, project.OrderOption]{typ: db.TypeProject, tq: q}, nil
 	case *db.ProjectCollaboratorQuery:
 		return &query[*db.ProjectCollaboratorQuery, predicate.ProjectCollaborator, projectcollaborator.OrderOption]{typ: db.TypeProjectCollaborator, tq: q}, nil
+	case *db.ProjectGitBotQuery:
+		return &query[*db.ProjectGitBotQuery, predicate.ProjectGitBot, projectgitbot.OrderOption]{typ: db.TypeProjectGitBot, tq: q}, nil
 	case *db.ProjectIssueQuery:
 		return &query[*db.ProjectIssueQuery, predicate.ProjectIssue, projectissue.OrderOption]{typ: db.TypeProjectIssue, tq: q}, nil
 	case *db.ProjectIssueCommentQuery:

@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -385,6 +386,21 @@ func (_u *HostUpdate) AddGroups(v ...*TeamGroup) *HostUpdate {
 	return _u.AddGroupIDs(ids...)
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_u *HostUpdate) AddGitBotIDs(ids ...uuid.UUID) *HostUpdate {
+	_u.mutation.AddGitBotIDs(ids...)
+	return _u
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_u *HostUpdate) AddGitBots(v ...*GitBot) *HostUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotIDs(ids...)
+}
+
 // AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
 func (_u *HostUpdate) AddTeamGroupHostIDs(ids ...uuid.UUID) *HostUpdate {
 	_u.mutation.AddTeamGroupHostIDs(ids...)
@@ -451,6 +467,27 @@ func (_u *HostUpdate) RemoveGroups(v ...*TeamGroup) *HostUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGroupIDs(ids...)
+}
+
+// ClearGitBots clears all "git_bots" edges to the GitBot entity.
+func (_u *HostUpdate) ClearGitBots() *HostUpdate {
+	_u.mutation.ClearGitBots()
+	return _u
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to GitBot entities by IDs.
+func (_u *HostUpdate) RemoveGitBotIDs(ids ...uuid.UUID) *HostUpdate {
+	_u.mutation.RemoveGitBotIDs(ids...)
+	return _u
+}
+
+// RemoveGitBots removes "git_bots" edges to GitBot entities.
+func (_u *HostUpdate) RemoveGitBots(v ...*GitBot) *HostUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotIDs(ids...)
 }
 
 // ClearTeamGroupHosts clears all "team_group_hosts" edges to the TeamGroupHost entity.
@@ -764,6 +801,51 @@ func (_u *HostUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotsIDs(); len(nodes) > 0 && !_u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TeamGroupHostsCleared() {
@@ -1184,6 +1266,21 @@ func (_u *HostUpdateOne) AddGroups(v ...*TeamGroup) *HostUpdateOne {
 	return _u.AddGroupIDs(ids...)
 }
 
+// AddGitBotIDs adds the "git_bots" edge to the GitBot entity by IDs.
+func (_u *HostUpdateOne) AddGitBotIDs(ids ...uuid.UUID) *HostUpdateOne {
+	_u.mutation.AddGitBotIDs(ids...)
+	return _u
+}
+
+// AddGitBots adds the "git_bots" edges to the GitBot entity.
+func (_u *HostUpdateOne) AddGitBots(v ...*GitBot) *HostUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddGitBotIDs(ids...)
+}
+
 // AddTeamGroupHostIDs adds the "team_group_hosts" edge to the TeamGroupHost entity by IDs.
 func (_u *HostUpdateOne) AddTeamGroupHostIDs(ids ...uuid.UUID) *HostUpdateOne {
 	_u.mutation.AddTeamGroupHostIDs(ids...)
@@ -1250,6 +1347,27 @@ func (_u *HostUpdateOne) RemoveGroups(v ...*TeamGroup) *HostUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGroupIDs(ids...)
+}
+
+// ClearGitBots clears all "git_bots" edges to the GitBot entity.
+func (_u *HostUpdateOne) ClearGitBots() *HostUpdateOne {
+	_u.mutation.ClearGitBots()
+	return _u
+}
+
+// RemoveGitBotIDs removes the "git_bots" edge to GitBot entities by IDs.
+func (_u *HostUpdateOne) RemoveGitBotIDs(ids ...uuid.UUID) *HostUpdateOne {
+	_u.mutation.RemoveGitBotIDs(ids...)
+	return _u
+}
+
+// RemoveGitBots removes "git_bots" edges to GitBot entities.
+func (_u *HostUpdateOne) RemoveGitBots(v ...*GitBot) *HostUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveGitBotIDs(ids...)
 }
 
 // ClearTeamGroupHosts clears all "team_group_hosts" edges to the TeamGroupHost entity.
@@ -1593,6 +1711,51 @@ func (_u *HostUpdateOne) sqlSave(ctx context.Context) (_node *Host, err error) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedGitBotsIDs(); len(nodes) > 0 && !_u.mutation.GitBotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitBotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   host.GitBotsTable,
+			Columns: []string{host.GitBotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbot.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _u.mutation.TeamGroupHostsCleared() {

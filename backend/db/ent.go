@@ -13,6 +13,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
@@ -22,6 +25,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
+	"github.com/chaitin/MonkeyCode/backend/db/projectgitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
@@ -101,6 +105,9 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			audit.Table:               audit.ValidColumn,
+			gitbot.Table:              gitbot.ValidColumn,
+			gitbottask.Table:          gitbottask.ValidColumn,
+			gitbotuser.Table:          gitbotuser.ValidColumn,
 			gitidentity.Table:         gitidentity.ValidColumn,
 			host.Table:                host.ValidColumn,
 			image.Table:               image.ValidColumn,
@@ -110,6 +117,7 @@ func checkColumn(t, c string) error {
 			notifysubscription.Table:  notifysubscription.ValidColumn,
 			project.Table:             project.ValidColumn,
 			projectcollaborator.Table: projectcollaborator.ValidColumn,
+			projectgitbot.Table:       projectgitbot.ValidColumn,
 			projectissue.Table:        projectissue.ValidColumn,
 			projectissuecomment.Table: projectissuecomment.ValidColumn,
 			projecttask.Table:         projecttask.ValidColumn,

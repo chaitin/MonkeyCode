@@ -53,6 +53,8 @@ const (
 	EdgeUser = "user"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
+	// EdgeGitBots holds the string denoting the git_bots edge name in mutations.
+	EdgeGitBots = "git_bots"
 	// EdgeTeamGroupHosts holds the string denoting the team_group_hosts edge name in mutations.
 	EdgeTeamGroupHosts = "team_group_hosts"
 	// Table holds the table name of the host in the database.
@@ -76,6 +78,13 @@ const (
 	// GroupsInverseTable is the table name for the TeamGroup entity.
 	// It exists in this package in order to avoid circular dependency with the "teamgroup" package.
 	GroupsInverseTable = "team_groups"
+	// GitBotsTable is the table that holds the git_bots relation/edge.
+	GitBotsTable = "git_bots"
+	// GitBotsInverseTable is the table name for the GitBot entity.
+	// It exists in this package in order to avoid circular dependency with the "gitbot" package.
+	GitBotsInverseTable = "git_bots"
+	// GitBotsColumn is the table column denoting the git_bots relation/edge.
+	GitBotsColumn = "host_id"
 	// TeamGroupHostsTable is the table that holds the team_group_hosts relation/edge.
 	TeamGroupHostsTable = "team_group_hosts"
 	// TeamGroupHostsInverseTable is the table name for the TeamGroupHost entity.
@@ -263,6 +272,20 @@ func ByGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByGitBotsCount orders the results by git_bots count.
+func ByGitBotsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGitBotsStep(), opts...)
+	}
+}
+
+// ByGitBots orders the results by git_bots terms.
+func ByGitBots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitBotsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamGroupHostsCount orders the results by team_group_hosts count.
 func ByTeamGroupHostsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -295,6 +318,13 @@ func newGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GroupsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, true, GroupsTable, GroupsPrimaryKey...),
+	)
+}
+func newGitBotsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitBotsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, GitBotsTable, GitBotsColumn),
 	)
 }
 func newTeamGroupHostsStep() *sqlgraph.Step {

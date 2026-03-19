@@ -65,11 +65,13 @@ type HostEdges struct {
 	User *User `json:"user,omitempty"`
 	// Groups holds the value of the groups edge.
 	Groups []*TeamGroup `json:"groups,omitempty"`
+	// GitBots holds the value of the git_bots edge.
+	GitBots []*GitBot `json:"git_bots,omitempty"`
 	// TeamGroupHosts holds the value of the team_group_hosts edge.
 	TeamGroupHosts []*TeamGroupHost `json:"team_group_hosts,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // VmsOrErr returns the Vms value or an error if the edge
@@ -101,10 +103,19 @@ func (e HostEdges) GroupsOrErr() ([]*TeamGroup, error) {
 	return nil, &NotLoadedError{edge: "groups"}
 }
 
+// GitBotsOrErr returns the GitBots value or an error if the edge
+// was not loaded in eager-loading.
+func (e HostEdges) GitBotsOrErr() ([]*GitBot, error) {
+	if e.loadedTypes[3] {
+		return e.GitBots, nil
+	}
+	return nil, &NotLoadedError{edge: "git_bots"}
+}
+
 // TeamGroupHostsOrErr returns the TeamGroupHosts value or an error if the edge
 // was not loaded in eager-loading.
 func (e HostEdges) TeamGroupHostsOrErr() ([]*TeamGroupHost, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.TeamGroupHosts, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_hosts"}
@@ -266,6 +277,11 @@ func (_m *Host) QueryUser() *UserQuery {
 // QueryGroups queries the "groups" edge of the Host entity.
 func (_m *Host) QueryGroups() *TeamGroupQuery {
 	return NewHostClient(_m.config).QueryGroups(_m)
+}
+
+// QueryGitBots queries the "git_bots" edge of the Host entity.
+func (_m *Host) QueryGitBots() *GitBotQuery {
+	return NewHostClient(_m.config).QueryGitBots(_m)
 }
 
 // QueryTeamGroupHosts queries the "team_group_hosts" edge of the Host entity.

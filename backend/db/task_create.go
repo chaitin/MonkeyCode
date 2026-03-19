@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
@@ -176,6 +177,21 @@ func (_c *TaskCreate) AddVms(v ...*VirtualMachine) *TaskCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddVMIDs(ids...)
+}
+
+// AddGitBotTaskIDs adds the "git_bot_tasks" edge to the GitBotTask entity by IDs.
+func (_c *TaskCreate) AddGitBotTaskIDs(ids ...uuid.UUID) *TaskCreate {
+	_c.mutation.AddGitBotTaskIDs(ids...)
+	return _c
+}
+
+// AddGitBotTasks adds the "git_bot_tasks" edges to the GitBotTask entity.
+func (_c *TaskCreate) AddGitBotTasks(v ...*GitBotTask) *TaskCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGitBotTaskIDs(ids...)
 }
 
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
@@ -398,6 +414,22 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitBotTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.GitBotTasksTable,
+			Columns: []string{task.GitBotTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.TaskVmsIDs(); len(nodes) > 0 {
