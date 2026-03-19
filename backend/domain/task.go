@@ -38,7 +38,6 @@ type TaskRepo interface {
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
-	UpdateStatus(ctx context.Context, taskID string, status consts.TaskStatus) error
 }
 
 // repoFullName 从 repo_url 中提取 full_name
@@ -226,10 +225,10 @@ func (t *Task) From(src *db.Task) *Task {
 
 // TaskSession tasker 状态机的 payload
 type TaskSession struct {
-	Task     *taskflow.CreateTaskReq            `json:"task"`
-	User     *User                             `json:"user"`
-	Platform consts.GitPlatform                `json:"platform"`
-	ShowUrl  string                            `json:"show_url"`
+	Task     *taskflow.CreateTaskReq `json:"task"`
+	User     *User                   `json:"user"`
+	Platform consts.GitPlatform      `json:"platform"`
+	ShowUrl  string                  `json:"show_url"`
 }
 
 // TaskStream 任务 WebSocket 流消息

@@ -15,35 +15,36 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	etypes "github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
-	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
+	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
 type InternalHostHandler struct {
-	logger   *slog.Logger
-	repo     domain.HostRepo
-	teamRepo domain.TeamHostRepo
-	redis    *redis.Client
-	cache    *cache.Cache
-	hook     domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
-	tasker   *tasker.Tasker[*domain.TaskSession]
+	logger        *slog.Logger
+	repo          domain.HostRepo
+	teamRepo      domain.TeamHostRepo
+	redis         *redis.Client
+	cache         *cache.Cache
+	hook          domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
+	taskLifecycle *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 }
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 
 	h := &InternalHostHandler{
-		logger:   do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
-		repo:     do.MustInvoke[domain.HostRepo](i),
-		teamRepo: do.MustInvoke[domain.TeamHostRepo](i),
-		redis:    do.MustInvoke[*redis.Client](i),
-		cache:    cache.New(15*time.Minute, 10*time.Minute),
-		tasker:   do.MustInvoke[*tasker.Tasker[*domain.TaskSession]](i),
+		logger:        do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
+		repo:          do.MustInvoke[domain.HostRepo](i),
+		teamRepo:      do.MustInvoke[domain.TeamHostRepo](i),
+		redis:         do.MustInvoke[*redis.Client](i),
+		cache:         cache.New(15*time.Minute, 10*time.Minute),
+		taskLifecycle: do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 	}
 
 	// 可选注入 InternalHook
@@ -326,9 +327,22 @@ return nil
 func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachine) error {
 	h.logger.With("req", req).DebugContext(c.Request().Context(), "recv vm ready req")
 
-	if h.hook != nil {
-		if err := h.hook.OnVmReady(c.Request().Context(), req.ID); err != nil {
-			return err
+	vm, err := h.repo.GetVirtualMachine(c.Request().Context(), req.ID)
+	if err != nil {
+		return err
+	}
+
+	for _, t := range vm.Edges.Tasks {
+		h.logger.With("task", t).DebugContext(c.Request().Context(), "vm-ready")
+
+		if t.Kind == consts.TaskTypeReview && t.SubType == consts.TaskSubTypePrReview {
+		} else {
+			if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
+				TaskID: t.ID,
+				UserID: t.UserID,
+			}); err != nil {
+				h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
+			}
 		}
 	}
 

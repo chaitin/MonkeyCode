@@ -26,9 +26,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
+	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
-	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/templates"
 )
@@ -39,13 +39,14 @@ type TaskUsecase struct {
 	repo             domain.TaskRepo
 	modelRepo        domain.ModelRepo
 	logger           *slog.Logger
-	tasker           *tasker.Tasker[*domain.TaskSession]
 	taskflow         taskflow.Clienter
 	loki             *loki.Client
 	vmexpireQueue    *delayqueue.VMExpireQueue
 	redis            *redis.Client
 	notifyDispatcher *dispatcher.Dispatcher
-	taskHook         domain.TaskHook // 可选，由内部项目通过 TaskHook 注入
+	taskHook         domain.TaskHook
+	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
+	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -55,12 +56,13 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		repo:             do.MustInvoke[domain.TaskRepo](i),
 		modelRepo:        do.MustInvoke[domain.ModelRepo](i),
 		logger:           do.MustInvoke[*slog.Logger](i).With("module", "usecase.TaskUsecase"),
-		tasker:           do.MustInvoke[*tasker.Tasker[*domain.TaskSession]](i),
 		taskflow:         do.MustInvoke[taskflow.Clienter](i),
 		loki:             do.MustInvoke[*loki.Client](i),
 		vmexpireQueue:    do.MustInvoke[*delayqueue.VMExpireQueue](i),
 		redis:            do.MustInvoke[*redis.Client](i),
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
+		taskLifecycle:    do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
+		vmLifecycle:      do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
 	}
 
 	// 可选注入 TaskHook
@@ -68,106 +70,7 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		u.taskHook = hook
 	}
 
-	u.tasker.On(tasker.PhaseCreated, u.onCreated)
-	u.tasker.On(tasker.PhaseStarted, u.onStarted)
-	u.tasker.On(tasker.PhaseRunning, u.onRunning)
-	u.tasker.On(tasker.PhaseFinished, u.onFinished)
-	u.tasker.On(tasker.PhaseFailed, u.onFailed)
-
-	go u.tasker.StartGroupConsumers(context.Background(), "task", "consumer-1", 0, 20)
-
 	return u, nil
-}
-
-func (a *TaskUsecase) onFailed(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
-	a.logger.With("task", task).DebugContext(ctx, "on failed")
-	err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.ID, func(up *db.TaskUpdateOne) error {
-		up.SetStatus(consts.TaskStatusError)
-		return nil
-	})
-	if err != nil {
-		a.logger.With("error", err, "task", task).ErrorContext(ctx, "failed to update task to failed")
-	}
-	if err := a.tasker.CleanupTask(ctx, task.ID, task.Phase); err != nil {
-		a.logger.With("error", err, "task", task).ErrorContext(ctx, "failed to cleanup task data")
-	}
-}
-
-func (a *TaskUsecase) onFinished(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
-	a.logger.With("task", task).DebugContext(ctx, "on completed")
-	err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.ID, func(up *db.TaskUpdateOne) error {
-		up.SetStatus(consts.TaskStatusFinished)
-		return nil
-	})
-	if err != nil {
-		a.logger.With("error", err, "task", task).ErrorContext(ctx, "failed to update task to completed")
-	}
-	if err := a.tasker.CleanupTask(ctx, task.ID, task.Phase); err != nil {
-		a.logger.With("error", err, "task", task).ErrorContext(ctx, "failed to cleanup task data")
-	}
-}
-
-func (a *TaskUsecase) onRunning(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
-	a.logger.With("task", task).DebugContext(ctx, "on running")
-}
-
-func (a *TaskUsecase) onCreated(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
-	a.logger.With("task", task).DebugContext(ctx, "on created")
-
-	// 发布 task.created 通知事件
-	if task.Payload != nil && task.Payload.User != nil && task.Payload.Task != nil {
-		event := &domain.NotifyEvent{
-			EventType:     consts.NotifyEventTaskCreated,
-			SubjectUserID: task.Payload.User.ID,
-			RefID:         task.Payload.Task.ID.String(),
-			OccurredAt:    time.Now(),
-			Payload: domain.NotifyEventPayload{
-				TaskID:     task.Payload.Task.ID.String(),
-				TaskStatus: string(consts.TaskStatusProcessing),
-				ModelName:  task.Payload.Task.LLM.Model,
-				UserName:   task.Payload.User.Name,
-			},
-		}
-		if err := a.notifyDispatcher.Publish(ctx, event); err != nil {
-			a.logger.WarnContext(ctx, "failed to publish task.created event", "error", err)
-		}
-	}
-}
-
-func (a *TaskUsecase) onStarted(ctx context.Context, task tasker.Task[*domain.TaskSession]) {
-	a.logger.With("task", task).DebugContext(ctx, "on started task")
-	if err := a.repo.Update(ctx, task.Payload.User, task.Payload.Task.ID, func(up *db.TaskUpdateOne) error {
-		if err := a.taskflow.TaskManager().Create(ctx, *task.Payload.Task); err != nil {
-			return err
-		}
-		up.SetStatus(consts.TaskStatusProcessing)
-		return nil
-	}); err != nil {
-		a.logger.With("error", err, "task", task).ErrorContext(ctx, "failed to update task status")
-		return
-	}
-
-	if err := a.tasker.TransitionWithUpdate(ctx, task.ID, tasker.PhaseRunning, func(t *tasker.Task[*domain.TaskSession]) error {
-		minimal := &domain.TaskSession{
-			Platform: t.Payload.Platform,
-			ShowUrl:  t.Payload.ShowUrl,
-		}
-		if t.Payload.Task != nil {
-			minimal.Task = &taskflow.CreateTaskReq{
-				ID:   t.Payload.Task.ID,
-				VMID: t.Payload.Task.VMID,
-			}
-		}
-		if t.Payload.User != nil {
-			minimal.User = &domain.User{ID: t.Payload.User.ID}
-		}
-		t.Payload = minimal
-		return nil
-	}); err != nil {
-		a.logger.With("error", err, "task", task).ErrorContext(ctx, "failed to transition task to running phase")
-	} else {
-		a.logger.With("task", task).DebugContext(ctx, "transition to running")
-	}
 }
 
 // AutoApprove implements domain.TaskUsecase.
@@ -429,24 +332,42 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				},
 			},
 		}
-		if err := a.tasker.CreateTask(ctx, t.ID.String(), &domain.TaskSession{
-			Task: &taskflow.CreateTaskReq{
-				ID:           t.ID,
-				VMID:         vm.ID,
-				Text:         req.Content,
-				SystemPrompt: req.SystemPrompt,
-				CodingAgent:  coding,
-				LLM: taskflow.LLM{
-					ApiKey:  m.APIKey,
-					BaseURL: m.BaseURL,
-					Model:   m.Model,
-				},
-				Configs:    configs,
-				McpConfigs: mcps,
+
+		taskMeta := lifecycle.TaskMetadata{
+			TaskID: t.ID,
+			UserID: user.ID,
+		}
+		if err := a.taskLifecycle.Transition(ctx, t.ID, consts.TaskStatusPending, taskMeta); err != nil {
+			a.logger.WarnContext(ctx, "task lifecycle transition failed", "error", err)
+		}
+
+		vmMeta := lifecycle.VMMetadata{
+			VMID:   vm.ID,
+			TaskID: &t.ID,
+			UserID: user.ID,
+		}
+		if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStatePending, vmMeta); err != nil {
+			a.logger.WarnContext(ctx, "vm lifecycle transition failed", "error", err)
+		}
+
+		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
+		createTaskReq := &taskflow.CreateTaskReq{
+			ID:           t.ID,
+			VMID:         vm.ID,
+			Text:         req.Content,
+			SystemPrompt: req.SystemPrompt,
+			CodingAgent:  coding,
+			LLM: taskflow.LLM{
+				ApiKey:  m.APIKey,
+				BaseURL: m.BaseURL,
+				Model:   m.Model,
 			},
-			User: user,
-		}); err != nil {
-			return nil, err
+			Configs:    configs,
+			McpConfigs: mcps,
+		}
+		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
+		if err := a.redis.Set(ctx, reqKey, createTaskReq, 10*time.Minute).Err(); err != nil {
+			a.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
 		}
 
 		return vm, nil

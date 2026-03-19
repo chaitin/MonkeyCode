@@ -24,30 +24,22 @@ func NewTaskNotifyHook(notify NotifyPublisher, logger *slog.Logger) *TaskNotifyH
 	}
 }
 
-func (h *TaskNotifyHook) Name() string     { return "task-notify-hook" }
-func (h *TaskNotifyHook) Priority() int    { return 50 }
-func (h *TaskNotifyHook) Async() bool      { return true } // 异步执行，不阻塞状态转换
+func (h *TaskNotifyHook) Name() string  { return "task-notify-hook" }
+func (h *TaskNotifyHook) Priority() int { return 50 }
+func (h *TaskNotifyHook) Async() bool   { return true } // 异步执行，不阻塞状态转换
 
-func (h *TaskNotifyHook) OnStateChange(ctx context.Context, taskID uuid.UUID, from, to TaskState, metadata TaskMetadata) error {
+func (h *TaskNotifyHook) OnStateChange(ctx context.Context, taskID uuid.UUID, from, to consts.TaskStatus, metadata TaskMetadata) error {
 	var eventType consts.NotifyEventType
 	switch to {
-	case TaskStatePending:
+	case consts.TaskStatusPending:
 		eventType = consts.NotifyEventTaskCreated
-	case TaskStateRunning:
-		eventType = consts.NotifyEventTaskStarted
-	case TaskStateSucceeded:
-		eventType = consts.NotifyEventTaskCompleted
-	case TaskStateFailed:
-		eventType = consts.NotifyEventTaskFailed
 	default:
 		return nil
 	}
 
-	subjectUserID, _ := uuid.Parse(metadata.UserID)
-
 	event := &domain.NotifyEvent{
 		EventType:     eventType,
-		SubjectUserID: subjectUserID,
+		SubjectUserID: metadata.UserID,
 		RefID:         taskID.String(),
 		Payload: domain.NotifyEventPayload{
 			TaskID:     taskID.String(),

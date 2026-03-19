@@ -9,6 +9,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
@@ -173,28 +174,42 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return ws.NewTaskConn(), nil
 	})
 
-	// Lifecycle Manager（泛型版本）
-	// I = uuid.UUID (ID 类型), S = TaskState (状态类型), M = TaskMetadata (元数据类型)
-	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata], error) {
+	// 任务生命周期管理
+	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata], error) {
 		r := do.MustInvoke[*redis.Client](i)
 		l := do.MustInvoke[*slog.Logger](i)
-		return lifecycle.NewManager[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata](
+		t := do.MustInvoke[taskflow.Clienter](i)
+		disp := do.MustInvoke[*dispatcher.Dispatcher](i)
+		repo := do.MustInvoke[domain.TaskRepo](i)
+		lc := lifecycle.NewManager(
 			r,
-			lifecycle.WithLogger[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata](l),
-			lifecycle.WithTransitions[uuid.UUID, lifecycle.TaskState, lifecycle.TaskMetadata](lifecycle.TaskTransitions()),
-		), nil
+			lifecycle.WithLogger[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata](l),
+			lifecycle.WithTransitions[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata](lifecycle.TaskTransitions()),
+		)
+
+		lc.Register(
+			lifecycle.NewTaskCreateHook(r, t, l, lc, repo),
+			lifecycle.NewTaskNotifyHook(disp, l),
+		)
+
+		return lc, nil
 	})
 
-	// VM Lifecycle Manager
-	// I = string (VM ID 在 taskflow 中是 string), S = VMState, M = VMMetadata
 	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata], error) {
 		r := do.MustInvoke[*redis.Client](i)
 		l := do.MustInvoke[*slog.Logger](i)
-		return lifecycle.NewManager[string, lifecycle.VMState, lifecycle.VMMetadata](
+		disp := do.MustInvoke[*dispatcher.Dispatcher](i)
+		lc := lifecycle.NewManager(
 			r,
 			lifecycle.WithLogger[string, lifecycle.VMState, lifecycle.VMMetadata](l),
 			lifecycle.WithTransitions[string, lifecycle.VMState, lifecycle.VMMetadata](lifecycle.VMTransitions()),
-		), nil
+		)
+
+		lc.Register(
+			lifecycle.NewVMNotifyHook(disp, l),
+		)
+
+		return lc, nil
 	})
 
 	return nil

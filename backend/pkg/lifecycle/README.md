@@ -6,10 +6,10 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│         LifecycleManager[S, M]          │
-│  - Register(hooks...)                   │
+│      Manager[I, S, M]                   │
 │  - Transition(ctx, id, to, metadata)    │
 │  - GetState(ctx, id)                    │
+│  - Register(hooks...)                   │
 └─────────────────────────────────────────┘
            │
            │ 触发
@@ -27,41 +27,41 @@
 
 | 组件 | 说明 |
 |------|------|
-| `Manager[S, M]` | 泛型生命周期管理器，`S` 为状态类型，`M` 为元数据类型 |
-| `Hook[S, M]` | 生命周期钩子接口，支持同步/异步执行 |
-| `State` | 状态类型约束（基于 `string`） |
+| `Manager[I, S, M]` | 泛型生命周期管理器，`I` 为 ID 类型（comparable），`S` 为状态类型（基于 string），`M` 为元数据类型 |
+| `Hook[I, S, M]` | 生命周期钩子接口，支持同步/异步执行 |
+| `State` | 状态类型约束（`~string`，支持 string 及其派生类型） |
 
 ### 设计特点
 
-- **泛型化设计**: 支持任意基于 `string` 的状态类型和任意元数据类型
-- **Hook 链**: 支持多个 Hook 按优先级顺序执行
+- **完全泛型化**: 支持任意 `comparable` 的 ID 类型（`string`/`uuid.UUID`/`int` 等）、任意基于 `string` 的状态类型、任意元数据类型
+- **Hook 链**: 支持多个 Hook 按优先级排序执行（优先级数字越大越先执行）
 - **异步支持**: Hook 可配置为异步执行，不阻塞状态转换
-- **Redis 持久化**: 状态存储使用 Redis Hash 结构
+- **Redis 持久化**: 状态和元数据存储使用 Redis Hash 结构
+- **状态转换验证**: 内置状态转换规则验证，防止非法状态跳转
 
 ---
 
 ## 使用示例
 
-### 1. 定义状态类型
+### 1. 定义状态类型和元数据
 
 ```go
 package lifecycle
 
-// 订单状态
-type OrderState string
+// 任务状态
+type TaskState string
 
 const (
-    OrderStatePending   OrderState = "pending"
-    OrderStatePaid      OrderState = "paid"
-    OrderStateShipped   OrderState = "shipped"
-    OrderStateDelivered OrderState = "delivered"
+    TaskStatePending   TaskState = "pending"
+    TaskStateRunning   TaskState = "running"
+    TaskStateFailed    TaskState = "failed"
+    TaskStateSucceeded TaskState = "succeeded"
 )
 
-// 订单元数据
-type OrderMetadata struct {
-    OrderID string
-    UserID  string
-    Amount  float64
+// 任务元数据
+type TaskMetadata struct {
+    TaskID uuid.UUID `json:"task_id"`
+    UserID string    `json:"user_id"`
 }
 ```
 
@@ -70,13 +70,17 @@ type OrderMetadata struct {
 ```go
 import "github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 
-// 创建 Manager
-mgr := lifecycle.NewManager[OrderState, OrderMetadata](redisClient)
+// 创建 Manager（Task 用 uuid.UUID 作 ID）
+taskMgr := lifecycle.NewManager[uuid.UUID, TaskState, TaskMetadata](
+    redisClient,
+    lifecycle.WithTransitions[uuid.UUID, TaskState, TaskMetadata](lifecycle.TaskTransitions()),
+    lifecycle.WithLogger(logger),
+)
 
-// 注册 Hooks
-mgr.Register(
-    &OrderNotifyHook{notify: dispatcher},
-    &OrderAuditHook{audit: auditor},
+// 注册 Hooks（按优先级自动排序）
+taskMgr.Register(
+    lifecycle.NewTaskNotifyHook(notifyDispatcher, logger),
+    lifecycle.NewTaskCreateHook(redisClient, taskflowClient, logger),
 )
 ```
 
@@ -84,28 +88,26 @@ mgr.Register(
 
 ```go
 ctx := context.Background()
-meta := OrderMetadata{
-    OrderID: "order-123",
-    UserID:  "user-456",
-    Amount:  99.99,
-}
 
-// 执行状态转换：pending -> paid
-err := mgr.Transition(ctx, "order-123", OrderStatePaid, meta)
+// 执行状态转换：pending -> running
+meta := TaskMetadata{
+    TaskID: taskID,
+    UserID: "user-456",
+}
+err := taskMgr.Transition(ctx, taskID, TaskStateRunning, meta)
 if err != nil {
     return err
 }
-// Hooks 自动触发
+// Hooks 自动触发（按优先级：TaskCreateHook -> TaskNotifyHook）
 ```
 
 ### 4. 获取当前状态
 
 ```go
-state, err := mgr.GetState(ctx, "order-123")
+state, err := taskMgr.GetState(ctx, taskID)
 if err != nil {
     return err
 }
-fmt.Printf("Current state: %s\n", state)
 ```
 
 ---
@@ -113,7 +115,7 @@ fmt.Printf("Current state: %s\n", state)
 ## Hook 接口定义
 
 ```go
-type Hook[S State, M any] interface {
+type Hook[I comparable, S State, M any] interface {
     // Name 返回 Hook 名称
     Name() string
 
@@ -124,27 +126,27 @@ type Hook[S State, M any] interface {
     Async() bool
 
     // OnStateChange 状态变更回调
-    OnStateChange(ctx context.Context, id string, from, to S, metadata M) error
+    OnStateChange(ctx context.Context, id I, from, to S, metadata M) error
 }
 ```
 
 ### Hook 实现示例
 
 ```go
-type OrderNotifyHook struct {
+type TaskNotifyHook struct {
     notify *dispatcher.Dispatcher
     logger *slog.Logger
 }
 
-func (h *OrderNotifyHook) Name() string     { return "order-notify-hook" }
-func (h *OrderNotifyHook) Priority() int    { return 50 }
-func (h *OrderNotifyHook) Async() bool      { return true }
+func (h *TaskNotifyHook) Name() string     { return "task-notify-hook" }
+func (h *TaskNotifyHook) Priority() int    { return 50 }
+func (h *TaskNotifyHook) Async() bool      { return true }
 
-func (h *OrderNotifyHook) OnStateChange(ctx context.Context, id string, from, to OrderState, meta OrderMetadata) error {
+func (h *TaskNotifyHook) OnStateChange(ctx context.Context, taskID uuid.UUID, from, to TaskState, meta TaskMetadata) error {
     // 发送通知逻辑
     event := &NotifyEvent{
-        EventType: "order_status_changed",
-        Payload:   map[string]any{"status": to},
+        EventType: consts.NotifyEventTaskCompleted,
+        Payload:   map[string]any{"status": to, "task_id": taskID},
     }
     return h.notify.Publish(ctx, event)
 }
@@ -154,19 +156,33 @@ func (h *OrderNotifyHook) OnStateChange(ctx context.Context, id string, from, to
 
 ## 状态转换规则
 
-### 默认状态转换表
+### 默认状态转换规则
+
+#### Task 状态转换
 
 | 当前状态 (from) | 允许转换到 (to)       | 说明         |
 |-----------------|----------------------|--------------|
-| (空)            | pending, running     | 初始状态     |
+| (空)            | pending, running     | 初始创建     |
 | pending         | running, failed      | 待处理状态   |
 | running         | succeeded, failed    | 执行中状态   |
+| failed          | running              | 失败可重试   |
+| succeeded       | (无)                 | 终态         |
+
+#### VM 状态转换
+
+| 当前状态 (from) | 允许转换到 (to)       | 说明         |
+|-----------------|----------------------|--------------|
+| (空)            | pending, creating    | 初始创建     |
+| pending         | creating, failed     | 待处理状态   |
+| creating        | running, failed      | 创建中状态   |
+| running         | succeeded, failed    | 运行中状态   |
 | failed          | running              | 失败可重试   |
 | succeeded       | (无)                 | 终态         |
 
 ### 状态转换流程图
 
 ```
+Task 生命周期：
     (empty)
        │
        ├─────────────┐
@@ -180,21 +196,49 @@ func (h *OrderNotifyHook) OnStateChange(ctx context.Context, id string, from, to
        ├─────────────┐             │
        ▼             ▼             │
    succeeded      failed ──────────┘
+
+VM 生命周期：
+    (empty)
+       │
+       ├─────────────┐
+       ▼             ▼
+   pending       creating
+       │             │
+       │             ├─────────────┐
+       ▼             ▼             ▼
+    creating     running      failed
+       │             │             │
+       │             ├─────────────┤
+       ▼             ▼             │
+   succeeded     failed ───────────┘
 ```
 
 ### 自定义状态转换
 
-如需自定义状态转换规则，可修改 `allowedTransitions` 映射：
+使用 `WithTransitions` 选项自定义状态转换规则：
 
 ```go
-// 在 manager.go 中定义
-var allowedTransitions = map[string]map[string]bool{
-    "":          {"pending": true, "running": true},
-    "pending":   {"running": true, "failed": true},
-    "running":   {"succeeded": true, "failed": true},
-    "failed":    {"running": true},
-    "succeeded": {},
+// 订单状态示例
+type OrderState string
+
+const (
+    OrderStatePending   OrderState = "pending"
+    OrderStatePaid      OrderState = "paid"
+    OrderStateShipped   OrderState = "shipped"
+    OrderStateDelivered OrderState = "delivered"
+)
+
+customTransitions := map[OrderState][]OrderState{
+    OrderStatePending:   {OrderStatePaid},
+    OrderStatePaid:      {OrderStateShipped, OrderStateRefunded},
+    OrderStateShipped:   {OrderStateDelivered},
+    OrderStateDelivered: {},
 }
+
+mgr := lifecycle.NewManager[string, OrderState, OrderMetadata](
+    redisClient,
+    lifecycle.WithTransitions(customTransitions),
+)
 ```
 
 ---
@@ -203,16 +247,93 @@ var allowedTransitions = map[string]map[string]bool{
 
 ### Task 相关 Hooks
 
-| Hook | 说明 | 执行方式 |
-|------|------|---------|
-| `TaskNotifyHook` | 任务状态变更时发送通知 | 异步 |
+| Hook | 说明 | 优先级 | 执行方式 |
+|------|------|--------|---------|
+| `TaskNotifyHook` | 任务状态变更时发送通知 | 50 | 异步 |
+| `TaskCreateHook` | TaskStateRunning 时从 Redis 读取 CreateTaskReq 创建 taskflow 任务 | 80 | 同步 |
 
 ### VM 相关 Hooks
 
-| Hook | 说明 | 执行方式 |
-|------|------|---------|
-| `VMTaskHook` | VM 状态变更时更新关联任务状态 | 同步 |
-| `VMNotifyHook` | VM 状态变更时发送通知 | 异步 |
+| Hook | 说明 | 优先级 | 执行方式 |
+|------|------|--------|---------|
+| `VMTaskHook` | VM 状态变更时更新关联任务状态 | 100 | 同步 |
+| `VMNotifyHook` | VM 状态变更时发送通知 | 50 | 异步 |
+
+### Hook 执行顺序示例
+
+当 VM 状态变为 `Running` 时：
+
+```
+1. VMTaskHook (Priority=100, sync)
+   └─→ 更新任务状态为 Processing
+
+2. TaskCreateHook (Priority=80, sync)
+   └─→ 从 Redis 读取 CreateTaskReq，创建 taskflow 任务
+
+3. VMNotifyHook (Priority=50, async)
+   └─→ 发送 VMReady 通知
+```
+
+---
+
+## 典型使用场景：任务 + VM 生命周期管理
+
+### 完整流程
+
+```
+1. TaskUsecase.Create()
+   ├─ 创建任务记录（数据库）
+   ├─ 创建 VM（taskflow）
+   ├─ 存储 CreateTaskReq 到 Redis（10 分钟过期）
+   │   key: task:create_req:{taskID}
+   ├─ taskMgr.Transition(taskID, TaskStatePending, meta)
+   └─ vmMgr.Transition(vmID, VMStatePending, meta)
+
+2. VM 就绪（InternalHandler.VmReady）
+   └─ vmMgr.Transition(vmID, VMStateRunning, meta)
+       ├─ VMTaskHook: 更新任务状态为 Processing
+       ├─ TaskCreateHook: 从 Redis 读取 CreateTaskReq → 创建 taskflow 任务 → 删除 key
+       └─ VMNotifyHook: 发送 VMReady 通知
+
+3. 任务完成
+   └─ taskMgr.Transition(taskID, TaskStateSucceeded, meta)
+       └─ TaskNotifyHook: 发送 TaskCompleted 通知
+```
+
+### 代码示例
+
+```go
+// 创建任务
+func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq, token string) (*domain.ProjectTask, error) {
+    // 1. 创建任务记录
+    pt, err := a.repo.Create(ctx, user, req, token, func(...) {
+        // 2. 创建 VM
+        vm := a.taskflow.VirtualMachiner().Create(...)
+
+        // 3. 临时存储 CreateTaskReq（10 分钟过期）
+        reqKey := fmt.Sprintf("task:create_req:%s", task.ID)
+        a.redis.Set(ctx, reqKey, createReq, 10*time.Minute)
+
+        // 4. 初始化状态（Transition 会自动触发 Hook）
+        taskMeta := lifecycle.TaskMetadata{TaskID: t.ID, UserID: user.ID.String()}
+        a.taskLifecycle.Transition(ctx, t.ID, lifecycle.TaskStatePending, taskMeta)
+
+        vmMeta := lifecycle.VMMetadata{VMID: vm.ID, TaskID: t.ID.String(), UserID: user.ID.String()}
+        a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStatePending, vmMeta)
+
+        return vm, nil
+    })
+
+    return pt, nil
+}
+
+// VM 就绪回调
+func (h *InternalHandler) VmReady(vmID string) error {
+    // 转换 VM 状态，自动触发 Hook 链
+    meta := lifecycle.VMMetadata{...}
+    return h.vmLifecycle.Transition(ctx, vmID, lifecycle.VMStateRunning, meta)
+}
+```
 
 ---
 
@@ -222,16 +343,95 @@ var allowedTransitions = map[string]map[string]bool{
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `NewManager` | `func NewManager[S State, M any](redis *redis.Client, opts ...Opt[S, M]) *Manager[S, M]` | 创建生命周期管理器 |
-| `Register` | `func (m *Manager[S, M]) Register(hooks ...Hook[S, M])` | 注册 Hook |
-| `Transition` | `func (m *Manager[S, M]) Transition(ctx context.Context, id string, to S, metadata M) error` | 执行状态转换 |
-| `GetState` | `func (m *Manager[S, M]) GetState(ctx context.Context, id string) (S, error)` | 获取当前状态 |
+| `NewManager` | `func NewManager[I comparable, S State, M any](redis *redis.Client, opts ...Opt) *Manager[I, S, M]` | 创建生命周期管理器 |
+| `Transition` | `func (m *Manager) Transition(ctx context.Context, id I, to S, metadata M) error` | 执行状态转换（触发 Hook 链） |
+| `GetState` | `func (m *Manager) GetState(ctx context.Context, id I) (S, error)` | 获取当前状态 |
+| `Register` | `func (m *Manager[I, S, M]) Register(hooks ...Hook[I, S, M])` | 注册 Hook（按优先级自动排序） |
 
 ### 配置选项
 
 | 选项 | 签名 | 说明 |
 |------|------|------|
-| `WithLogger` | `func WithLogger[S State, M any](logger *slog.Logger) Opt[S, M]` | 设置日志器 |
+| `WithLogger` | `func WithLogger[I, S, M](logger *slog.Logger) Opt[I, S, M]` | 设置日志器 |
+| `WithTransitions` | `func WithTransitions[I, S, M](transitions map[S][]S) Opt[I, S, M]` | 设置状态转换规则 |
+
+### 内置工具函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `TaskTransitions` | `func TaskTransitions() map[TaskState][]TaskState` | 获取 Task 默认状态转换规则 |
+| `VMTransitions` | `func VMTransitions() map[VMState][]VMState` | 获取 VM 默认状态转换规则 |
+
+---
+
+## Redis 存储结构
+
+```
+Key: lifecycle:{id}
+Type: Hash
+Fields:
+  - state: 当前状态（string）
+  - from_state: 前一个状态（string）
+  - updated_at: 更新时间戳（毫秒）
+
+示例:
+lifecycle:task-uuid-123
+  state: "running"
+  from_state: "pending"
+  updated_at: 1710891245678
+```
+
+**注意**: 元数据（metadata）目前未持久化存储，由调用方通过 `Transition` 方法传入，供 Hook 使用。
+
+---
+
+## 类型定义
+
+### TaskState
+
+```go
+type TaskState string
+
+const (
+    TaskStatePending   TaskState = "pending"
+    TaskStateRunning   TaskState = "running"
+    TaskStateFailed    TaskState = "failed"
+    TaskStateSucceeded TaskState = "succeeded"
+)
+```
+
+### VMState
+
+```go
+type VMState string
+
+const (
+    VMStatePending  VMState = "pending"
+    VMStateCreating VMState = "creating"
+    VMStateRunning  VMState = "running"
+    VMStateFailed   VMState = "failed"
+    VMStateSucceeded VMState = "succeeded"
+)
+```
+
+### TaskMetadata
+
+```go
+type TaskMetadata struct {
+    TaskID uuid.UUID `json:"task_id"`
+    UserID string    `json:"user_id"`
+}
+```
+
+### VMMetadata
+
+```go
+type VMMetadata struct {
+    VMID   string `json:"vm_id"`
+    TaskID string `json:"task_id"`
+    UserID string `json:"user_id"`
+}
+```
 
 ---
 
@@ -247,4 +447,10 @@ go test ./pkg/lifecycle/... -v
 
 ```bash
 go test ./pkg/lifecycle/... -v -run Integration
+```
+
+运行特定 Hook 测试：
+
+```bash
+go test ./pkg/lifecycle/... -v -run TestTaskCreateHook
 ```

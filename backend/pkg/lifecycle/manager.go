@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/chaitin/MonkeyCode/backend/consts"
 )
 
 // Manager 泛型生命周期管理器
@@ -165,12 +167,12 @@ func (m *Manager[I, S, M]) isValidTransition(from, to S) bool {
 // 以下是预定义的状态转换规则，可直接使用
 
 // TaskTransitions 任务的默认状态转换规则
-func TaskTransitions() map[TaskState][]TaskState {
-	return map[TaskState][]TaskState{
-		"":               {TaskStatePending, TaskStateRunning},
-		TaskStatePending: {TaskStateRunning, TaskStateFailed},
-		TaskStateRunning: {TaskStateSucceeded, TaskStateFailed},
-		TaskStateFailed:  {TaskStateRunning},
+func TaskTransitions() map[consts.TaskStatus][]consts.TaskStatus {
+	return map[consts.TaskStatus][]consts.TaskStatus{
+		"":                          {consts.TaskStatusPending},
+		consts.TaskStatusPending:    {consts.TaskStatusProcessing, consts.TaskStatusError},
+		consts.TaskStatusProcessing: {consts.TaskStatusFinished, consts.TaskStatusError},
+		consts.TaskStatusError:      {consts.TaskStatusProcessing},
 	}
 }
 
