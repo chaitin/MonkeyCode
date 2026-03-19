@@ -1,5 +1,6 @@
 import { type DomainProject } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
+import AutoReviewDialog from "@/components/console/project/auto-review-dialog"
 import EditProjectEnvDialog from "@/components/console/project/edit-project-env"
 import EditProjectImageDialog from "@/components/console/project/edit-project-image"
 import EditProjectNameDialog from "@/components/console/project/edit-project-name"
@@ -9,9 +10,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconBrandGithub, IconDeviceImacCode, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash } from "@tabler/icons-react"
+import { IconBrandGithub, IconDeviceImacCode, IconLoader, IconPencil, IconSettings, IconSparkles, IconTrash, IconViewfinder } from "@tabler/icons-react"
 import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -34,6 +36,7 @@ const ProjectInfo = ({
   const [conversationDialogOpen, setConversationDialogOpen] = useState(false)
   const [envDialogOpen, setEnvDialogOpen] = useState(false)
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
+  const [autoReviewDialogOpen, setAutoReviewDialogOpen] = useState(false)
   const navigate = useNavigate()
   const { projects, reloadProjects, reloadUnlinkedTasks } = useCommonData()
 
@@ -90,6 +93,11 @@ const ProjectInfo = ({
     setConversationDialogOpen(true)
   }
 
+  const handleAutoReview = () => {
+    if (!project) return
+    setAutoReviewDialogOpen(true)
+  }
+
   const isRepoUnbound = isProjectRepoUnbound(project)
 
   return (
@@ -118,12 +126,29 @@ const ProjectInfo = ({
           </ItemDescription>
         </ItemContent>
         <ItemActions>
-          
-        <Button 
-            variant="secondary" 
-            size="sm" 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={project?.auto_review_enabled ? "secondary" : "ghost"}
+                size="sm"
+                disabled={isRepoUnbound}
+                onClick={handleAutoReview}
+                className={`cursor-pointer disabled:cursor-not-allowed ${project?.auto_review_enabled ? "" : "text-muted-foreground"}`}
+              >
+                <IconViewfinder className="size-4" />
+                {project?.auto_review_enabled ? "已开启自动 Review" : "未开启自动 Review"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {project?.auto_review_enabled ? "已开启自动 Review" : "未开启自动 Review"}
+            </TooltipContent>
+          </Tooltip>
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={isRepoUnbound}
             onClick={handleStartConversation}
+            className="cursor-pointer disabled:cursor-not-allowed"
           >
             <IconSparkles className="size-4" />
             启动 AI
@@ -178,6 +203,13 @@ const ProjectInfo = ({
         open={imageDialogOpen}
         onOpenChange={setImageDialogOpen}
         project={editingProject}
+        onSuccess={onRefresh}
+      />
+
+      <AutoReviewDialog
+        open={autoReviewDialogOpen}
+        onOpenChange={setAutoReviewDialogOpen}
+        project={project}
         onSuccess={onRefresh}
       />
 
