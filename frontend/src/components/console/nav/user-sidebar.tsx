@@ -10,7 +10,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import NavMain from "./nav-main"
 import { useSettingsDialog } from "@/pages/console/user/page"
 import { Settings } from "lucide-react"
 
@@ -36,7 +35,6 @@ export default function UserSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain />
         <NavProject />
       </SidebarContent>
       <SidebarFooter>
