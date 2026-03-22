@@ -6,6 +6,9 @@ logs
 # Editor / IDE
 .vscode/
 
+# Worktrees
+.worktrees/
+
 # Local build artifacts
 monkeycode-ai/
 .pnpm-store/
