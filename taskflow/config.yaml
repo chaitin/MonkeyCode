@@ -1,0 +1,11 @@
+server:
+  http_addr: ":8888"
+  grpc_addr: ":50051"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+log:
+  level: "info"
