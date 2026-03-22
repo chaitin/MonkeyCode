@@ -8,4 +8,8 @@ redis:
   db: 0
 
 log:
-  level: "info"
+  level: "debug"
+
+runner:
+  token: "test-runner-token"
+  heartbeat_timeout: 60
