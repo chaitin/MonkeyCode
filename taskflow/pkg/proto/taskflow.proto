@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package taskflow;
+
+option go_package = "github.com/chaitin/MonkeyCode/taskflow/pkg/proto;proto";
+
+service RunnerService {
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+    rpc CreateVM(CreateVMRequest) returns (CreateVMResponse);
+    rpc DeleteVM(DeleteVMRequest) returns (DeleteVMResponse);
+    rpc ListVMs(ListVMsRequest) returns (ListVMsResponse);
+    rpc GetVMInfo(GetVMInfoRequest) returns (GetVMInfoResponse);
+    rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+    rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+    rpc TerminalStream(stream TerminalData) returns (stream TerminalData);
+    rpc ReportStream(ReportRequest) returns (stream ReportEntry);
+}
+
+message RegisterRequest {
+    string token = 1;
+    string hostname = 2;
+    string ip = 3;
+    int32 cores = 4;
+    int64 memory = 5;
+    int64 disk = 6;
+}
+
+message RegisterResponse {
+    string runner_id = 1;
+    bool success = 2;
+    string message = 3;
+}
+
+message HeartbeatRequest {
+    string runner_id = 1;
+    int64 timestamp = 2;
+    int32 running_vms = 3;
+    int32 running_tasks = 4;
+}
+
+message HeartbeatResponse {
+    bool success = 1;
+}
+
+message CreateVMRequest {
+    string vm_id = 1;
+    string user_id = 2;
+    string image_url = 3;
+    string git_url = 4;
+    string git_token = 5;
+    int32 cores = 6;
+    int64 memory = 7;
+    map<string, string> env_vars = 8;
+    int64 ttl_seconds = 9;
+}
+
+message CreateVMResponse {
+    string vm_id = 1;
+    string container_id = 2;
+    bool success = 3;
+    string message = 4;
+}
+
+message DeleteVMRequest {
+    string vm_id = 1;
+    string runner_id = 2;
+}
+
+message DeleteVMResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message ListVMsRequest {
+    string runner_id = 1;
+}
+
+message ListVMsResponse {
+    repeated VMInfo vms = 1;
+}
+
+message GetVMInfoRequest {
+    string vm_id = 1;
+}
+
+message GetVMInfoResponse {
+    VMInfo vm = 1;
+}
+
+message VMInfo {
+    string id = 1;
+    string container_id = 2;
+    string status = 3;
+    int64 created_at = 4;
+}
+
+message CreateTaskRequest {
+    string task_id = 1;
+    string vm_id = 2;
+    string text = 3;
+    string model = 4;
+    string api_key = 5;
+    string base_url = 6;
+    map<string, string> env_vars = 7;
+}
+
+message CreateTaskResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message StopTaskRequest {
+    string task_id = 1;
+    string vm_id = 2;
+}
+
+message StopTaskResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message TerminalData {
+    string vm_id = 1;
+    string terminal_id = 2;
+    bytes data = 3;
+    TerminalResize resize = 4;
+}
+
+message TerminalResize {
+    uint32 cols = 1;
+    uint32 rows = 2;
+}
+
+message ReportRequest {
+    string task_id = 1;
+}
+
+message ReportEntry {
+    string task_id = 1;
+    string source = 2;
+    int64 timestamp = 3;
+    bytes data = 4;
+}

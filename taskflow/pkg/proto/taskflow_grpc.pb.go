@@ -1,0 +1,456 @@
+package proto
+
+import (
+	context "context"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+)
+
+type RunnerServiceServer interface {
+	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
+	CreateVM(context.Context, *CreateVMRequest) (*CreateVMResponse, error)
+	DeleteVM(context.Context, *DeleteVMRequest) (*DeleteVMResponse, error)
+	ListVMs(context.Context, *ListVMsRequest) (*ListVMsResponse, error)
+	GetVMInfo(context.Context, *GetVMInfoRequest) (*GetVMInfoResponse, error)
+	CreateTask(context.Context, *CreateTaskRequest) (*CreateTaskResponse, error)
+	StopTask(context.Context, *StopTaskRequest) (*StopTaskResponse, error)
+	TerminalStream(RunnerService_TerminalStreamServer) error
+	ReportStream(*ReportRequest, RunnerService_ReportStreamServer) error
+}
+
+type UnimplementedRunnerServiceServer struct{}
+
+func (UnimplementedRunnerServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
+}
+func (UnimplementedRunnerServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedRunnerServiceServer) CreateVM(context.Context, *CreateVMRequest) (*CreateVMResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateVM not implemented")
+}
+func (UnimplementedRunnerServiceServer) DeleteVM(context.Context, *DeleteVMRequest) (*DeleteVMResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteVM not implemented")
+}
+func (UnimplementedRunnerServiceServer) ListVMs(context.Context, *ListVMsRequest) (*ListVMsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListVMs not implemented")
+}
+func (UnimplementedRunnerServiceServer) GetVMInfo(context.Context, *GetVMInfoRequest) (*GetVMInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetVMInfo not implemented")
+}
+func (UnimplementedRunnerServiceServer) CreateTask(context.Context, *CreateTaskRequest) (*CreateTaskResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateTask not implemented")
+}
+func (UnimplementedRunnerServiceServer) StopTask(context.Context, *StopTaskRequest) (*StopTaskResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopTask not implemented")
+}
+func (UnimplementedRunnerServiceServer) TerminalStream(RunnerService_TerminalStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method TerminalStream not implemented")
+}
+func (UnimplementedRunnerServiceServer) ReportStream(*ReportRequest, RunnerService_ReportStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method ReportStream not implemented")
+}
+
+type RunnerService_TerminalStreamServer interface {
+	Send(*TerminalData) error
+	Recv() (*TerminalData, error)
+	grpc.ServerStream
+}
+
+type RunnerService_ReportStreamServer interface {
+	Send(*ReportEntry) error
+	grpc.ServerStream
+}
+
+func RegisterRunnerServiceServer(s grpc.ServiceRegistrar, srv RunnerServiceServer) {
+	s.RegisterService(&RunnerService_ServiceDesc, srv)
+}
+
+type RunnerServiceClient interface {
+	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
+	CreateVM(ctx context.Context, in *CreateVMRequest, opts ...grpc.CallOption) (*CreateVMResponse, error)
+	DeleteVM(ctx context.Context, in *DeleteVMRequest, opts ...grpc.CallOption) (*DeleteVMResponse, error)
+	ListVMs(ctx context.Context, in *ListVMsRequest, opts ...grpc.CallOption) (*ListVMsResponse, error)
+	GetVMInfo(ctx context.Context, in *GetVMInfoRequest, opts ...grpc.CallOption) (*GetVMInfoResponse, error)
+	CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*CreateTaskResponse, error)
+	StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*StopTaskResponse, error)
+	TerminalStream(ctx context.Context, opts ...grpc.CallOption) (RunnerService_TerminalStreamClient, error)
+	ReportStream(ctx context.Context, in *ReportRequest, opts ...grpc.CallOption) (RunnerService_ReportStreamClient, error)
+}
+
+type runnerServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewRunnerServiceClient(cc grpc.ClientConnInterface) RunnerServiceClient {
+	return &runnerServiceClient{cc}
+}
+
+func (c *runnerServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
+	out := new(RegisterResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/Register", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+	out := new(HeartbeatResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/Heartbeat", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) CreateVM(ctx context.Context, in *CreateVMRequest, opts ...grpc.CallOption) (*CreateVMResponse, error) {
+	out := new(CreateVMResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/CreateVM", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) DeleteVM(ctx context.Context, in *DeleteVMRequest, opts ...grpc.CallOption) (*DeleteVMResponse, error) {
+	out := new(DeleteVMResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/DeleteVM", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) ListVMs(ctx context.Context, in *ListVMsRequest, opts ...grpc.CallOption) (*ListVMsResponse, error) {
+	out := new(ListVMsResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/ListVMs", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) GetVMInfo(ctx context.Context, in *GetVMInfoRequest, opts ...grpc.CallOption) (*GetVMInfoResponse, error) {
+	out := new(GetVMInfoResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/GetVMInfo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*CreateTaskResponse, error) {
+	out := new(CreateTaskResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/CreateTask", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *runnerServiceClient) StopTask(ctx context.Context, in *StopTaskRequest, opts ...grpc.CallOption) (*StopTaskResponse, error) {
+	out := new(StopTaskResponse)
+	err := c.cc.Invoke(ctx, "/taskflow.RunnerService/StopTask", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+type RunnerService_TerminalStreamClient interface {
+	Send(*TerminalData) error
+	Recv() (*TerminalData, error)
+	grpc.ClientStream
+}
+
+type runnerServiceTerminalStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *runnerServiceTerminalStreamClient) Send(m *TerminalData) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *runnerServiceTerminalStreamClient) Recv() (*TerminalData, error) {
+	m := new(TerminalData)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *runnerServiceClient) TerminalStream(ctx context.Context, opts ...grpc.CallOption) (RunnerService_TerminalStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &RunnerService_ServiceDesc.Streams[0], "/taskflow.RunnerService/TerminalStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &runnerServiceTerminalStreamClient{ClientStream: stream}, nil
+}
+
+type RunnerService_ReportStreamClient interface {
+	Recv() (*ReportEntry, error)
+	grpc.ClientStream
+}
+
+type runnerServiceReportStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *runnerServiceReportStreamClient) Recv() (*ReportEntry, error) {
+	m := new(ReportEntry)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *runnerServiceClient) ReportStream(ctx context.Context, in *ReportRequest, opts ...grpc.CallOption) (RunnerService_ReportStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &RunnerService_ServiceDesc.Streams[1], "/taskflow.RunnerService/ReportStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	if err := stream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := stream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return &runnerServiceReportStreamClient{ClientStream: stream}, nil
+}
+
+var RunnerService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "taskflow.RunnerService",
+	HandlerType: (*RunnerServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Register",
+			Handler:    _RunnerService_Register_Handler,
+		},
+		{
+			MethodName: "Heartbeat",
+			Handler:    _RunnerService_Heartbeat_Handler,
+		},
+		{
+			MethodName: "CreateVM",
+			Handler:    _RunnerService_CreateVM_Handler,
+		},
+		{
+			MethodName: "DeleteVM",
+			Handler:    _RunnerService_DeleteVM_Handler,
+		},
+		{
+			MethodName: "ListVMs",
+			Handler:    _RunnerService_ListVMs_Handler,
+		},
+		{
+			MethodName: "GetVMInfo",
+			Handler:    _RunnerService_GetVMInfo_Handler,
+		},
+		{
+			MethodName: "CreateTask",
+			Handler:    _RunnerService_CreateTask_Handler,
+		},
+		{
+			MethodName: "StopTask",
+			Handler:    _RunnerService_StopTask_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "TerminalStream",
+			Handler:       _RunnerService_TerminalStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "ReportStream",
+			Handler:       _RunnerService_ReportStream_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "taskflow.proto",
+}
+
+func _RunnerService_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).Register(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/Register",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).Register(ctx, req.(*RegisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/Heartbeat",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).Heartbeat(ctx, req.(*HeartbeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_CreateVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).CreateVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/CreateVM",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).CreateVM(ctx, req.(*CreateVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_DeleteVM_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteVMRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).DeleteVM(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/DeleteVM",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).DeleteVM(ctx, req.(*DeleteVMRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_ListVMs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVMsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).ListVMs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/ListVMs",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).ListVMs(ctx, req.(*ListVMsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_GetVMInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVMInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).GetVMInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/GetVMInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).GetVMInfo(ctx, req.(*GetVMInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_CreateTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).CreateTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/CreateTask",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).CreateTask(ctx, req.(*CreateTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_StopTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).StopTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/taskflow.RunnerService/StopTask",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).StopTask(ctx, req.(*StopTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RunnerService_TerminalStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(RunnerServiceServer).TerminalStream(&runnerServiceTerminalStreamServer{ServerStream: stream})
+}
+
+type runnerServiceTerminalStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *runnerServiceTerminalStreamServer) Send(m *TerminalData) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *runnerServiceTerminalStreamServer) Recv() (*TerminalData, error) {
+	m := new(TerminalData)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _RunnerService_ReportStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ReportRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(RunnerServiceServer).ReportStream(m, &runnerServiceReportStreamServer{ServerStream: stream})
+}
+
+type runnerServiceReportStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *runnerServiceReportStreamServer) Send(m *ReportEntry) error {
+	return x.ServerStream.SendMsg(m)
+}
