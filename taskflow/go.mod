@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.37.0
+	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/redis/go-redis/v9 v9.18.0
 	google.golang.org/grpc v1.79.3

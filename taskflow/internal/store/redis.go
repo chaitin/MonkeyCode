@@ -26,6 +26,8 @@ type VM struct {
 	Status      string `json:"status"`
 	ContainerID string `json:"container_id"`
 	CreatedAt   int64  `json:"created_at"`
+	ImageURL    string `json:"image_url"`
+	GitURL      string `json:"git_url"`
 }
 
 type Task struct {
@@ -172,6 +174,11 @@ func (s *RedisStore) AddUserTask(ctx context.Context, userID, taskID string) err
 func (s *RedisStore) GetUserTasks(ctx context.Context, userID string) ([]string, error) {
 	key := fmt.Sprintf("user:tasks:%s", userID)
 	return s.client.SMembers(ctx, key).Result()
+}
+
+func (s *RedisStore) RemoveUserTask(ctx context.Context, userID, taskID string) error {
+	key := fmt.Sprintf("user:tasks:%s", userID)
+	return s.client.SRem(ctx, key, taskID).Err()
 }
 
 func (s *RedisStore) Ping(ctx context.Context) error {
