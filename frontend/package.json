@@ -1,7 +1,7 @@
 {
   "name": "monkeycode-ai",
   "private": true,
-  "version": "260323.2",
+  "version": "260323.2.0",
   "description": "MonkeyCode 桌面客户端",
   "author": "MonkeyCode",
   "type": "module",
