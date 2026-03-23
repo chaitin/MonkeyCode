@@ -43,10 +43,6 @@ const (
 	TerminalTypeInteractive TerminalType = "terminal_interactive"
 )
 
-const (
-	VM_EXPIRE_QUEUE_KEY = "vmexpire:queue"
-)
-
 type VM_PORT_PROTOCOL string
 
 const (

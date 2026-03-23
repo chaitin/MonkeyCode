@@ -2,84 +2,105 @@
 
 -- tasks 任务表
 CREATE TABLE IF NOT EXISTS tasks (
-    id UUID PRIMARY KEY,
-    deleted_at TIMESTAMPTZ,
-    user_id UUID NOT NULL REFERENCES users(id),
-    kind VARCHAR NOT NULL,
-    sub_type VARCHAR,
-    content TEXT NOT NULL,
-    summary TEXT,
-    status VARCHAR NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
+    user_id uuid NOT NULL,
+    kind character varying(50) NOT NULL,
+    content text NOT NULL,
+    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    deleted_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    sub_type character varying(255),
+    summary text
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks USING btree (completed_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_at_id ON tasks USING btree (created_at, id);
+CREATE INDEX IF NOT EXISTS idx_tasks_kind ON tasks USING btree (kind);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks USING btree (status);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks USING btree (user_id);
+
 
 -- project_tasks 项目任务关联表
 CREATE TABLE IF NOT EXISTS project_tasks (
-    id UUID PRIMARY KEY,
-    task_id UUID NOT NULL REFERENCES tasks(id),
-    model_id UUID NOT NULL REFERENCES models(id),
-    image_id UUID NOT NULL REFERENCES images(id),
-    git_identity_id UUID,
-    project_id UUID,
-    issue_id UUID,
-    repo_url VARCHAR,
-    repo_filename VARCHAR,
-    branch VARCHAR,
-    cli_name VARCHAR,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
+    task_id uuid NOT NULL,
+    model_id uuid NOT NULL,
+    image_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    git_identity_id uuid,
+    branch text,
+    cli_name character varying(16) DEFAULT 'codex'::character varying NOT NULL,
+    repo_url text,
+    repo_filename text,
+    project_id uuid,
+    issue_id uuid
 );
+
+CREATE INDEX IF NOT EXISTS idx_project_tasks_created_at_id ON project_tasks USING btree (created_at, id);
+CREATE INDEX IF NOT EXISTS idx_project_tasks_git_identity_id ON project_tasks USING btree (git_identity_id);
+CREATE INDEX IF NOT EXISTS idx_project_tasks_image_id ON project_tasks USING btree (image_id);
+CREATE INDEX IF NOT EXISTS idx_project_tasks_model_id ON project_tasks USING btree (model_id);
+CREATE INDEX IF NOT EXISTS idx_project_tasks_task_id ON project_tasks USING btree (task_id);
+
 
 -- task_virtualmachines 任务-虚拟机关联表
 CREATE TABLE IF NOT EXISTS task_virtualmachines (
-    id UUID PRIMARY KEY,
-    task_id UUID NOT NULL REFERENCES tasks(id),
-    virtualmachine_id VARCHAR NOT NULL REFERENCES virtualmachines(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
+    task_id uuid NOT NULL,
+    virtualmachine_id character varying(64),
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_task_virtualmachines ON task_virtualmachines USING btree (task_id, virtualmachine_id);
 
 -- notify_channels 通知渠道表
 CREATE TABLE IF NOT EXISTS notify_channels (
-    id UUID PRIMARY KEY,
-    deleted_at TIMESTAMPTZ,
-    owner_id UUID NOT NULL,
-    owner_type VARCHAR NOT NULL DEFAULT 'user',
-    name VARCHAR(64) NOT NULL,
-    kind VARCHAR NOT NULL,
-    webhook_url TEXT NOT NULL,
-    secret TEXT DEFAULT '',
-    headers JSONB,
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
+    owner_id uuid NOT NULL,
+    owner_type character varying(16) DEFAULT 'user'::character varying NOT NULL,
+    name character varying(64) NOT NULL,
+    kind character varying(32) NOT NULL,
+    webhook_url text NOT NULL,
+    secret text DEFAULT ''::text NOT NULL,
+    headers jsonb,
+    enabled boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
 );
-CREATE INDEX IF NOT EXISTS idx_notify_channels_owner ON notify_channels(owner_id, owner_type);
+
+CREATE INDEX IF NOT EXISTS idx_notify_channels_created_at ON notify_channels USING btree (created_at);
+CREATE INDEX IF NOT EXISTS idx_notify_channels_owner ON notify_channels USING btree (owner_id, owner_type);
 
 -- notify_subscriptions 通知订阅表
 CREATE TABLE IF NOT EXISTS notify_subscriptions (
-    id UUID PRIMARY KEY,
-    deleted_at TIMESTAMPTZ,
-    channel_id UUID NOT NULL REFERENCES notify_channels(id),
-    scope VARCHAR NOT NULL DEFAULT 'self',
-    event_types JSONB NOT NULL,
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
+    channel_id uuid NOT NULL,
+    scope character varying(128) DEFAULT 'self'::character varying NOT NULL,
+    event_types jsonb DEFAULT '[]'::jsonb NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
 );
-CREATE INDEX IF NOT EXISTS idx_notify_subscriptions_channel ON notify_subscriptions(channel_id);
+
+CREATE INDEX idx_notify_subscriptions_channel_id ON notify_subscriptions USING btree (channel_id);
+ALTER TABLE ONLY notify_subscriptions
+    ADD CONSTRAINT notify_subscriptions_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES notify_channels(id);
 
 -- notify_send_logs 通知发送日志表
 CREATE TABLE IF NOT EXISTS notify_send_logs (
-    id UUID PRIMARY KEY,
-    subscription_id UUID NOT NULL,
-    channel_id UUID NOT NULL,
-    event_type VARCHAR NOT NULL,
-    event_ref_id VARCHAR NOT NULL,
-    status VARCHAR NOT NULL,
-    error TEXT DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
+    subscription_id uuid NOT NULL,
+    channel_id uuid NOT NULL,
+    event_type character varying(64) NOT NULL,
+    event_ref_id character varying(128) NOT NULL,
+    status character varying(16) NOT NULL,
+    error text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_notify_send_logs_dedup ON notify_send_logs(subscription_id, event_type, event_ref_id);
-CREATE INDEX IF NOT EXISTS idx_notify_send_logs_status ON notify_send_logs(status, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_notify_send_logs_dedup ON notify_send_logs USING btree (subscription_id, event_type, event_ref_id);
+CREATE INDEX IF NOT EXISTS idx_notify_send_logs_status ON notify_send_logs USING btree (status, created_at);

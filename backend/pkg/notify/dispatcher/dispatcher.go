@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -34,22 +35,17 @@ type Dispatcher struct {
 
 // NewDispatcher 创建事件分发器
 func NewDispatcher(
-	redis *redis.Client,
-	channelRepo domain.NotifyChannelRepo,
-	sendLogRepo domain.NotifySendLogRepo,
-	senderReg *channel.Registry,
-	templateReg *template.Registry,
+	i *do.Injector,
 	teamResolver func(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error),
-	logger *slog.Logger,
 ) *Dispatcher {
 	return &Dispatcher{
-		redis:         redis,
-		channelRepo:   channelRepo,
-		sendLogRepo:   sendLogRepo,
-		senderReg:     senderReg,
-		templateReg:   templateReg,
+		redis:         do.MustInvoke[*redis.Client](i),
+		channelRepo:   do.MustInvoke[domain.NotifyChannelRepo](i),
+		sendLogRepo:   do.MustInvoke[domain.NotifySendLogRepo](i),
+		senderReg:     do.MustInvoke[*channel.Registry](i),
+		templateReg:   do.MustInvoke[*template.Registry](i),
 		teamResolver:  teamResolver,
-		logger:        logger.With("module", "notify.dispatcher"),
+		logger:        do.MustInvoke[*slog.Logger](i).With("module", "notify.dispatcher"),
 		sendSemaphore: make(chan struct{}, 20),
 	}
 }

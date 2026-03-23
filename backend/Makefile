@@ -14,7 +14,7 @@ image:
 	  --build-arg REPO_COMMIT=$(shell git rev-parse HEAD) \
 	  --build-arg BUILD_TARGET=server \
 	  --platform ${PLATFORM} \
-	  --tag ${REGISTRY}/monkeycode-ai-server:${TAG} \
+	  --tag ${REGISTRY}/monkeycode-ai-backend:${TAG} \
 	  --secret id=netrc,src=${HOME}/.netrc \
 	  --output ${OUTPUT} \
 	  .

@@ -4,8 +4,11 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/samber/do"
+
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 )
 
 // NotifyPublisher 通知发布接口
@@ -20,10 +23,10 @@ type VMNotifyHook struct {
 }
 
 // NewVMNotifyHook 创建 VM 通知 Hook
-func NewVMNotifyHook(notify NotifyPublisher, logger *slog.Logger) *VMNotifyHook {
+func NewVMNotifyHook(i *do.Injector) *VMNotifyHook {
 	return &VMNotifyHook{
-		notify: notify,
-		logger: logger.With("hook", "vm-notify-hook"),
+		notify: do.MustInvoke[*dispatcher.Dispatcher](i),
+		logger: do.MustInvoke[*slog.Logger](i).With("hook", "vm-notify-hook"),
 	}
 }
 

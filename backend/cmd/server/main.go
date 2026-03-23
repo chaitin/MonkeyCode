@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
-	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/service"
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
 )
@@ -43,8 +43,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 获取 logger
-	l := logger.NewLogger(cfg.Logger)
+	l := do.MustInvoke[*slog.Logger](injector)
+	l.With("config", cfg).Debug("print config")
 
 	// 运行数据库迁移
 	if err := store.MigrateSQL(cfg, l); err != nil {
@@ -53,8 +53,10 @@ func main() {
 
 	// 获取 web 实例并启动服务
 	w := do.MustInvoke[*web.Web](injector)
+	w.PrintRoutes()
 	svc := service.NewService(
 		service.WithPprof(),
+		service.WithLogger(l),
 	)
 	svc.Add(&server{w: w, addr: cfg.Server.Addr})
 
