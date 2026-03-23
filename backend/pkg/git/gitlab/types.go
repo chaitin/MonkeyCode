@@ -66,10 +66,3 @@ type GetRepoArchiveResp struct {
 	ContentType   string
 	Reader        io.ReadCloser
 }
-
-// AuthRepository 授权仓库信息
-type AuthRepository struct {
-	FullName    string `json:"full_name"`
-	URL         string `json:"url"`
-	Description string `json:"description"`
-}

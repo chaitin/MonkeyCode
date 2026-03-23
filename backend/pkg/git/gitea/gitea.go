@@ -13,13 +13,19 @@ import (
 
 // Gitea 客户端
 type Gitea struct {
-	logger *slog.Logger
+	logger  *slog.Logger
+	baseURL string
 }
 
 // NewGitea 创建 Gitea 客户端
-func NewGitea(logger *slog.Logger) *Gitea {
+func NewGitea(logger *slog.Logger, baseURL string) *Gitea {
+	if baseURL == "" {
+		baseURL = "https://gitea.com"
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
 	return &Gitea{
-		logger: logger.With("module", "gitea"),
+		logger:  logger.With("module", "gitea"),
+		baseURL: baseURL,
 	}
 }
 

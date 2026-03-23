@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	domainpkg "github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // giteaAPIGet 通用 Gitea API GET 请求
@@ -283,6 +285,44 @@ func ListBranches(ctx context.Context, baseURL, token, owner, repo string, page,
 		result = append(result, &BranchInfo{Name: b.Name})
 	}
 	return result, nil
+}
+
+// GetAuthorizedRepositories 获取 token 可访问的仓库列表
+func (g *Gitea) GetAuthorizedRepositories(ctx context.Context, token string) ([]domainpkg.AuthRepository, error) {
+	apiURL := fmt.Sprintf("%s/api/v1/user/repos?limit=100", g.baseURL)
+	var all []domainpkg.AuthRepository
+	page := 1
+	for {
+		pagedURL := fmt.Sprintf("%s&page=%d", apiURL, page)
+		body, err := giteaAPIGet(ctx, pagedURL, token)
+		if err != nil {
+			return nil, fmt.Errorf("list repos: %w", err)
+		}
+		type giteaRepo struct {
+			FullName    string `json:"full_name"`
+			CloneURL    string `json:"clone_url"`
+			Description string `json:"description"`
+		}
+		var repos []giteaRepo
+		if err := json.Unmarshal(body, &repos); err != nil {
+			return nil, fmt.Errorf("unmarshal repos: %w", err)
+		}
+		if len(repos) == 0 {
+			break
+		}
+		for _, r := range repos {
+			all = append(all, domainpkg.AuthRepository{
+				FullName:    r.FullName,
+				URL:         r.CloneURL,
+				Description: r.Description,
+			})
+		}
+		if len(repos) < 100 {
+			break
+		}
+		page++
+	}
+	return all, nil
 }
 
 func giteaTypeToMode(entryType string) int {
