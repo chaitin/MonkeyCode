@@ -1,14 +1,31 @@
 {
   "name": "monkeycode-ai",
   "private": true,
-  "version": "0.0.0",
+  "version": "260323.0.1",
+  "description": "MonkeyCode 桌面客户端",
+  "author": "MonkeyCode",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "api": "sta --path ${SWAGGER} --output src/api"
+    "api": "sta --path ${SWAGGER} --output src/api",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build:dist": "ELECTRON=true pnpm build",
+    "electron:pack": "electron-builder --mac --publish never",
+    "electron:pack:dir": "electron-builder --mac dir --publish never",
+    "electron:pack:with-dist": "pnpm electron:build:dist && electron-builder --mac -c electron-builder.full.json --publish never",
+    "electron:pack:win": "node scripts/pack-win.mjs",
+    "electron:pack:win:portable": "node scripts/pack-win.mjs -- --win portable --x64 --publish never",
+    "electron:pack:win:nsis": "node scripts/pack-win.mjs -- --win nsis --x64 --publish never",
+    "electron:pack:win:dir": "node scripts/pack-win.mjs -- --win dir --x64 --publish never",
+    "electron:sync-icon": "node -e \"require('fs').copyFileSync('public/logo-colored.png','electron/icon.png')\"",
+    "electron:ci:win": "electron-builder --win portable nsis --x64 --publish never",
+    "electron:ci:win:native": "electron-builder --win portable nsis --x64 --publish never -c electron-builder.ci-win.json",
+    "electron:ci:mac": "electron-builder --mac --arm64 --x64 --publish never",
+    "postinstall": "node scripts/electron-postinstall.cjs"
   },
   "dependencies": {
     "@cap.js/widget": "^0.1.32",
@@ -49,7 +66,6 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dayjs": "^1.11.19",
-    "dev": "^0.1.3",
     "diff": "^8.0.3",
     "gray-matter": "^4.0.3",
     "jszip": "^3.10.1",
@@ -95,6 +111,55 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.3",
     "vite": "^7.2.2",
-    "vite-plugin-node-polyfills": "^0.23.0"
+    "vite-plugin-node-polyfills": "^0.23.0",
+    "concurrently": "^9.2.1",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.monkeycode.desktop",
+    "productName": "MonkeyCode",
+    "directories": {
+      "output": "release"
+    },
+    "npmRebuild": false,
+    "icon": "electron/icon.png",
+    "asarUnpack": [
+      "electron/icon.png"
+    ],
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "asar": true
   }
 }

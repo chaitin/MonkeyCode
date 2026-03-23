@@ -261,7 +261,7 @@ export default function TaskDetailPage() {
   const [renewDialogOpen, setRenewDialogOpen] = React.useState(false)
 
   const chatSection = (
-    <div className={cn("flex flex-col h-full min-h-0 gap-2 px-2 pb-2", hasPanel ? "max-w-full" : "")}>
+    <div className={cn("flex flex-col h-full min-h-0 gap-2", hasPanel ? "max-w-full" : "")}>
       <div ref={chatScrollRef} className={cn("flex-1 min-h-0 overflow-y-auto min-w-0", !hasPanel && "scrollbar-gutter-stable")}>
         <div className={cn("min-h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
           <TaskChatPanel

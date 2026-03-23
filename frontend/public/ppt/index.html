@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MonkeyCode - 企业级 AI 开发平台</title>
+    <title>MonkeyCode AI — 产品介绍</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.min.css">
@@ -25,82 +25,56 @@
             --orange-glow: #fb923c;
         }
 
-        .reveal {
-            font-weight: 400;
-        }
-
-        .reveal .slides {
-            text-align: left;
-        }
-
+        .reveal { font-weight: 400; }
+        .reveal .slides { text-align: left; }
         .reveal .slides section {
-            padding: 50px 60px;
+            padding: 48px 56px;
             box-sizing: border-box;
             height: 100%;
         }
-
         .reveal h1, .reveal h2, .reveal h3 {
             text-transform: none;
             font-weight: 700;
             letter-spacing: -0.02em;
         }
-
         .reveal h1 {
-            font-size: 2.5em;
+            font-size: 2.4em;
             background: var(--accent-gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-
         .reveal h2 {
-            font-size: 1.8em;
+            font-size: 1.7em;
             color: var(--cyan-glow);
-            margin-bottom: 0.6em;
+            margin-bottom: 0.45em;
         }
-
         .reveal h3 {
-            font-size: 1.15em;
+            font-size: 1.05em;
             color: var(--purple-glow);
+            margin-top: 0.65em;
         }
-
         .reveal p, .reveal li {
-            font-size: 0.95em;
+            font-size: 0.92em;
             line-height: 1.7;
             color: #b8c0cc;
         }
-
         .reveal ul {
             list-style: none;
             padding-left: 0;
-            margin-top: 20px;
+            margin-top: 14px;
         }
-
         .reveal ul li {
             position: relative;
-            padding-left: 1.8em;
-            margin-bottom: 0.7em;
+            padding-left: 1.55em;
+            margin-bottom: 0.55em;
         }
-
         .reveal ul li::before {
             content: "▹";
             position: absolute;
             left: 0;
             color: var(--cyan-glow);
-            font-size: 1em;
         }
-
-        .reveal code {
-            font-family: var(--r-code-font);
-            background: rgba(100, 255, 218, 0.1);
-            border: 1px solid rgba(100, 255, 218, 0.2);
-            border-radius: 4px;
-            padding: 0.1em 0.4em;
-            color: var(--cyan-glow);
-            font-size: 0.9em;
-        }
-
-        /* Title slide styling */
         .title-slide {
             text-align: center !important;
             display: flex !important;
@@ -108,169 +82,120 @@
             justify-content: center;
             align-items: center;
         }
-
-        .title-slide h1 {
-            font-size: 3.5em;
-            margin-bottom: 0.2em;
-        }
-
+        .title-slide h1 { font-size: 3.2em; margin-bottom: 0.12em; }
         .title-slide .subtitle {
-            font-size: 1.2em;
+            font-size: 1.25em;
+            color: #c4cad4;
+            font-weight: 400;
+            max-width: 28em;
+            line-height: 1.5;
+        }
+        .title-slide .hint {
+            font-size: 0.8em;
             color: #8892a6;
-            font-weight: 300;
+            margin-top: 36px;
         }
-
-        .title-slide .company {
-            font-size: 0.9em;
-            color: var(--orange-glow);
-            margin-top: 30px;
-        }
-
-        /* Flow diagram */
         .flow-box {
             display: inline-flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
+            flex-wrap: wrap;
             background: rgba(100, 255, 218, 0.08);
             border: 1px solid rgba(100, 255, 218, 0.2);
             border-radius: 8px;
             padding: 12px 20px;
-            margin: 20px 0;
+            margin: 22px 0;
         }
-
         .flow-box .step {
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             padding: 8px 16px;
             border-radius: 6px;
-            font-size: 0.85em;
+            font-size: 0.82em;
             font-weight: 500;
         }
-
-        .flow-box .arrow {
-            color: var(--cyan-glow);
-            font-size: 1.2em;
-        }
-
-        /* Feature cards */
+        .flow-box .arrow { color: var(--cyan-glow); font-size: 1.1em; }
         .feature-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 24px;
-            margin-top: 30px;
+            gap: 20px;
+            margin-top: 22px;
         }
-
-        .feature-grid.three-col {
-            grid-template-columns: repeat(3, 1fr);
-        }
-
+        .feature-grid.three-col { grid-template-columns: repeat(3, 1fr); }
         .feature-card {
             background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
             border: 1px solid rgba(100, 255, 218, 0.15);
             border-radius: 14px;
-            padding: 24px;
-            transition: all 0.3s ease;
+            padding: 22px;
+            transition: border-color 0.25s ease;
         }
-
         .feature-card:hover {
-            border-color: rgba(100, 255, 218, 0.4);
-            transform: translateY(-3px);
-            box-shadow: 0 15px 30px rgba(100, 255, 218, 0.08);
+            border-color: rgba(100, 255, 218, 0.35);
         }
-
-        .feature-card h3 {
-            margin-top: 0;
-            font-size: 1.05em;
+        .feature-card h3 { margin-top: 0; font-size: 1.02em; }
+        .feature-card p { font-size: 0.82em; margin-bottom: 0; line-height: 1.65; }
+        .icon { font-size: 1.6em; margin-bottom: 10px; display: block; }
+        .pull-quote {
+            font-size: 1.15em;
+            font-weight: 400;
+            color: #e8eaed;
+            line-height: 1.65;
+            border-left: 4px solid var(--cyan-glow);
+            padding: 8px 0 8px 26px;
+            margin: 28px 0;
         }
-
-        .feature-card p {
-            font-size: 0.85em;
-            margin-bottom: 0;
+        .pull-quote footer {
+            margin-top: 16px;
+            font-size: 0.75em;
+            color: #8892a6;
+            font-style: normal;
         }
-
-        /* Icon styling */
-        .icon {
-            font-size: 1.8em;
-            margin-bottom: 12px;
-            display: block;
-        }
-
-        /* Highlight box */
         .highlight-box {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(118, 75, 162, 0.1));
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.08));
             border-left: 3px solid var(--purple-glow);
             padding: 16px 24px;
-            border-radius: 0 10px 10px 0;
+            border-radius: 0 12px 12px 0;
             margin: 20px 0;
         }
-
-        .highlight-box p {
-            margin: 0;
-            font-size: 0.9em;
-        }
-
-        /* Two column layout */
+        .highlight-box p { margin: 0; font-size: 0.88em; }
         .two-col {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 40px;
+            gap: 36px;
             align-items: start;
         }
-
-        /* Tag list */
-        .tag-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 16px;
-        }
-
+        .tag-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
         .tag {
-            background: rgba(167, 139, 250, 0.15);
-            border: 1px solid rgba(167, 139, 250, 0.3);
+            background: rgba(167, 139, 250, 0.12);
+            border: 1px solid rgba(167, 139, 250, 0.28);
             color: var(--purple-glow);
             padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 0.8em;
+            border-radius: 999px;
+            font-size: 0.76em;
         }
-
-        /* Animated background */
         .reveal .slides::before {
             content: "";
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: 
+            inset: 0;
+            background:
                 radial-gradient(ellipse at 20% 80%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
                 radial-gradient(ellipse at 80% 20%, rgba(167, 139, 250, 0.1) 0%, transparent 50%),
                 radial-gradient(ellipse at 50% 50%, rgba(240, 147, 251, 0.05) 0%, transparent 70%);
             pointer-events: none;
             z-index: -1;
         }
-
-        /* CTA button */
         .cta-button {
             display: inline-block;
-            padding: 14px 36px;
+            padding: 14px 38px;
             background: var(--accent-gradient);
-            color: white;
+            color: white !important;
             text-decoration: none;
             border-radius: 50px;
             font-weight: 600;
             font-size: 1em;
-            margin-top: 30px;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.3);
+            margin-top: 28px;
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.35);
         }
-
-        .cta-button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.5);
-        }
-
-        /* Center helper */
         .centered {
             text-align: center !important;
             display: flex !important;
@@ -278,318 +203,154 @@
             justify-content: center;
             align-items: center;
         }
-
-        /* Slide number */
-        .reveal .slide-number {
-            font-family: var(--r-code-font);
-            font-size: 0.8em;
-            color: #8892a6;
-            background: transparent;
-        }
-
-        /* Progress bar */
-        .reveal .progress {
-            height: 3px;
-            background: rgba(100, 255, 218, 0.1);
-        }
-
-        .reveal .progress span {
-            background: var(--accent-gradient);
-        }
-
-        /* Role cards */
-        .role-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-top: 24px;
-        }
-
-        .role-card {
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid rgba(100, 255, 218, 0.1);
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-        }
-
-        .role-card .role-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .role-card h4 {
-            color: var(--cyan-glow);
-            font-size: 0.95em;
-            margin: 0 0 8px 0;
-        }
-
-        .role-card p {
-            font-size: 0.8em;
-            margin: 0;
-        }
-
-        /* Git platforms */
-        .platform-list {
-            display: flex;
-            gap: 16px;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }
-
-        .platform {
-            background: rgba(100, 255, 218, 0.08);
-            border: 1px solid rgba(100, 255, 218, 0.2);
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 0.9em;
-            color: var(--cyan-glow);
-        }
-
-        /* Quote */
-        .quote {
-            font-size: 1.1em;
-            font-style: italic;
-            color: #e8eaed;
-            border-left: 3px solid var(--cyan-glow);
-            padding-left: 24px;
-            margin: 24px 0;
-        }
-
-        /* Compact list */
-        .compact-list li {
-            margin-bottom: 0.5em;
-            font-size: 0.88em;
+        .reveal .progress span { background: var(--accent-gradient); }
+        .lede {
+            font-size: 1.02em;
+            color: #d1d5db;
+            margin-bottom: 8px;
         }
     </style>
 </head>
 <body>
     <div class="reveal">
         <div class="slides">
-            <!-- Slide 1: Title -->
             <section class="title-slide">
-                <h1>MonkeyCode</h1>
-                <p class="subtitle">企业级 AI 开发平台</p>
-                <p class="company">长亭科技 出品</p>
-                <p style="margin-top: 50px; color: #64ffda; font-size: 0.75em;">
-                    按 <code>Space</code> 或 <code>→</code> 键继续
-                </p>
+                <h1>MonkeyCode AI</h1>
+                <p class="subtitle">让 AI 走进真实研发流程——从想法到合并请求，可治理、可协作、可落地。</p>
+                <p class="hint">按 Space 或 → 翻页</p>
             </section>
 
-            <!-- Slide 2: 产品介绍 -->
             <section>
-                <h2>什么是 MonkeyCode？</h2>
-                <p style="font-size: 1.05em; color: #e8eaed; margin-bottom: 24px;">
-                    MonkeyCode 不只是一个 AI 编程工具，而是一个<strong style="color: var(--cyan-glow);">面向专业团队的 AI 研发基础设施</strong>
-                </p>
-                
+                <h2>我们相信</h2>
+                <blockquote class="pull-quote">
+                    优秀的 AI 编程，不该停留在「单次补全」或「一次性对话」，而应嵌入<strong style="color: var(--cyan-glow);">需求、设计、实现与审查</strong>的闭环，并运行在团队信得过的边界里。
+                    <footer>—— 产品哲学</footer>
+                </blockquote>
+                <p>MonkeyCode 面向<strong>专业研发团队</strong>：把自然语言变成可执行、可回顾、可审计的工程活动，而不是孤立的代码片段。</p>
+            </section>
+
+            <section>
+                <h2>一条链路，拉通研发</h2>
+                <p class="lede">同一套产品叙事，覆盖从意图到质量门禁的完整路径：</p>
                 <div class="flow-box">
-                    <span class="step">需求</span>
+                    <span class="step">需求与意图</span>
                     <span class="arrow">→</span>
-                    <span class="step">设计</span>
+                    <span class="step">方案与设计</span>
                     <span class="arrow">→</span>
-                    <span class="step">开发</span>
+                    <span class="step">编码与验证</span>
                     <span class="arrow">→</span>
-                    <span class="step">Review</span>
+                    <span class="step">审查与合并</span>
                 </div>
-
-                <p>覆盖研发全流程，提供安全、隔离、可并行的开发环境</p>
-
                 <div class="highlight-box">
-                    <p>📢 当前提供 SaaS 版，后续计划推出<strong style="color: var(--purple-glow);"> 离线部署版</strong> 和 <strong style="color: var(--purple-glow);">开源版</strong></p>
+                    <p>目标很简单：<strong style="color: #e8eaed;">少换工具、少丢上下文、少踩安全雷</strong>——让人与 AI 在同一条流水线上协作。</p>
                 </div>
             </section>
 
-            <!-- Slide 3: 产品定位 -->
             <section>
-                <h2>✨ 产品定位</h2>
-                <ul>
-                    <li class="fragment">企业级 AI Coding 平台</li>
-                    <li class="fragment">面向专业开发者与研发团队</li>
-                    <li class="fragment">支持真实工程场景，支持复杂项目与多人协作</li>
-                    <li class="fragment">不只是写代码，而是参与完整研发流程</li>
-                </ul>
-
-                <div class="flow-box fragment" style="margin-top: 40px;">
-                    <span class="step">需求</span>
-                    <span class="arrow">→</span>
-                    <span class="step">设计</span>
-                    <span class="arrow">→</span>
-                    <span class="step">开发</span>
-                    <span class="arrow">→</span>
-                    <span class="step">Review</span>
-                </div>
-            </section>
-
-            <!-- Slide 4: AI 智能任务 -->
-            <section>
-                <h2>🚀 AI 智能任务</h2>
-                <p>核心能力：通过<strong style="color: var(--cyan-glow);">自然语言</strong>驱动 AI 执行任务</p>
-                
-                <div class="two-col" style="margin-top: 24px;">
-                    <div>
-                        <h3>底层能力</h3>
-                        <p>由业内顶尖工具驱动：</p>
-                        <div class="tag-list">
-                            <span class="tag">OpenAI Codex</span>
-                            <span class="tag">Claude Code</span>
-                        </div>
-                        <p style="margin-top: 16px; font-size: 0.85em;">已使用 Codex 或 Claude Code？<br>可无缝迁移至 MonkeyCode</p>
-                    </div>
-                    <div>
-                        <h3>国产模型适配</h3>
-                        <p>完整支持国内主流模型：</p>
-                        <div class="tag-list">
-                            <span class="tag">DeepSeek</span>
-                            <span class="tag">Qwen</span>
-                            <span class="tag">Kimi</span>
-                            <span class="tag">GLM</span>
-                            <span class="tag">Doubao</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Slide 5: SDD 项目开发 -->
-            <section>
-                <h2>🚀 SDD 项目开发</h2>
-                <p>基于 <strong style="color: var(--cyan-glow);">SDD（规范驱动开发）</strong> 的项目开发模式</p>
-                <p style="font-size: 0.85em; color: #8892a6;">相比 "Vibe coding"，更强调可控性、可追溯性与工程质量</p>
-
-                <div class="flow-box" style="margin: 24px 0;">
-                    <span class="step">原始需求</span>
-                    <span class="arrow">→</span>
-                    <span class="step">产品设计</span>
-                    <span class="arrow">→</span>
-                    <span class="step">技术设计</span>
-                    <span class="arrow">→</span>
-                    <span class="step">任务列表</span>
-                </div>
-
-                <div class="role-grid">
-                    <div class="role-card fragment">
-                        <div class="role-icon">👔</div>
-                        <h4>产品经理</h4>
-                        <p>需求拆解与产品设计</p>
-                    </div>
-                    <div class="role-card fragment">
-                        <div class="role-icon">📋</div>
-                        <h4>项目管理</h4>
-                        <p>流程与进度管理</p>
-                    </div>
-                    <div class="role-card fragment">
-                        <div class="role-icon">💻</div>
-                        <h4>研发工程师</h4>
-                        <p>技术设计与实现</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Slide 6: Git Review Bot -->
-            <section>
-                <h2>🚀 Git Review Bot</h2>
-                <p>深度集成主流 Git 平台，支持 AI 驱动的代码审查</p>
-
-                <div class="platform-list">
-                    <span class="platform">GitHub</span>
-                    <span class="platform">GitLab</span>
-                    <span class="platform">Gitea</span>
-                    <span class="platform">Gitee</span>
-                </div>
-
-                <h3 style="margin-top: 24px;">使用场景</h3>
-                <ul class="compact-list">
-                    <li class="fragment">在 PR / MR 中 <code>@MonkeyCode</code>，自动进行代码 Review</li>
-                    <li class="fragment">接入 DevOps 流程，代码提交时自动触发 AI Review</li>
-                    <li class="fragment">支持独立部署的私有化 GitLab 集成</li>
-                </ul>
-            </section>
-
-            <!-- Slide 7: 在线开发环境 -->
-            <section>
-                <h2>🚀 在线开发环境</h2>
-                <p>灵活、安全的开发环境：<strong style="color: var(--cyan-glow);">本地开发机 + 云端控制</strong></p>
-
-                <div class="feature-grid" style="margin-top: 24px;">
+                <h2>三大差异化</h2>
+                <div class="feature-grid three-col">
                     <div class="feature-card fragment">
-                        <span class="icon">🔒</span>
-                        <h3>环境隔离</h3>
-                        <p>每次任务自动创建虚拟机，AI 操作仅在虚拟机内执行，不影响真实环境</p>
-                    </div>
-                    <div class="feature-card fragment">
-                        <span class="icon">⚡</span>
-                        <h3>并行运行</h3>
-                        <p>多个 AI 任务并行，每个任务独立虚拟环境，互不影响</p>
-                    </div>
-                    <div class="feature-card fragment">
-                        <span class="icon">🔄</span>
-                        <h3>失败重试</h3>
-                        <p>任务失败可直接重试，系统自动创建新虚拟机</p>
-                    </div>
-                    <div class="feature-card fragment">
-                        <span class="icon">📱</span>
-                        <h3>多端访问</h3>
-                        <p>支持 PC 与移动端，随时随地驱动 AI 执行研发任务</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Slide 8: 特色功能 -->
-            <section>
-                <h2>✨ 核心特色</h2>
-                <div class="feature-grid three-col" style="margin-top: 20px;">
-                    <div class="feature-card fragment">
-                        <span class="icon">🔧</span>
-                        <h3>工具无关性</h3>
-                        <p>支持 Codex、Claude Code 等，无缝切换</p>
-                    </div>
-                    <div class="feature-card fragment">
-                        <span class="icon">🤖</span>
-                        <h3>模型无关性</h3>
-                        <p>兼容 GPT、Claude、DeepSeek、Kimi 等</p>
-                    </div>
-                    <div class="feature-card fragment">
-                        <span class="icon">📐</span>
-                        <h3>SDD 驱动</h3>
-                        <p>严格管理技术设计，解决 AI 放飞自我问题</p>
-                    </div>
-                    <div class="feature-card fragment">
-                        <span class="icon">🌐</span>
-                        <h3>多入口触发</h3>
-                        <p>IDE / Web / Git / API 多种方式发起任务</p>
+                        <span class="icon">🧭</span>
+                        <h3>流程，而不是插件</h3>
+                        <p>智能任务、项目与需求相互承接；开发、设计、审查可按场景切换，沉淀在工程资产里，而不是散落在聊天记录中。</p>
                     </div>
                     <div class="feature-card fragment">
                         <span class="icon">🛡️</span>
-                        <h3>环境隔离</h3>
-                        <p>任务启动创建全新 OS，安全可控</p>
+                        <h3>边界清晰的执行环境</h3>
+                        <p>任务在隔离环境中运行，与本地和线上资产解耦；支持并行、失败重来与资源治理，让企业敢把真仓库交进来。</p>
                     </div>
                     <div class="feature-card fragment">
-                        <span class="icon">🏢</span>
-                        <h3>企业级配置</h3>
-                        <p>支持离线大模型，支持企业内网使用</p>
+                        <span class="icon">⚙️</span>
+                        <h3>可运营、可扩展</h3>
+                        <p>模型与镜像、宿主机与通知可配置；团队侧支持分组、配额与审计——AI 能力可<strong>按组织方式落地</strong>，而非个人英雄主义。</p>
                     </div>
                 </div>
             </section>
 
-            <!-- Slide 9: CTA -->
-            <section class="centered">
-                <h1>开始使用 MonkeyCode</h1>
-                <p style="font-size: 1em; color: #8892a6; margin: 20px 0;">
-                    让 AI 成为你的研发基础设施
-                </p>
-                <a href="https://monkeycode-ai.com/" class="cta-button" target="_blank">立即体验</a>
-                <p style="margin-top: 40px; font-size: 0.8em; color: #64ffda;">
-                    monkeycode-ai.com
-                </p>
+            <section>
+                <h2>自然语言，驱动工程</h2>
+                <p class="lede">用描述替代繁琐编排：想做什么、对哪份代码做、希望产出什么形态，交给统一体验。</p>
+                <ul>
+                    <li class="fragment"><strong>开发</strong>：在真实仓库语境下迭代实现，对话、终端、文件与预览同一屏协作。</li>
+                    <li class="fragment"><strong>设计</strong>：把模糊需求推成可讨论、可落地的技术叙述与设计产出。</li>
+                    <li class="fragment"><strong>审查</strong>：以评审视角审视改动，提前消化风险与债务。</li>
+                </ul>
             </section>
 
-            <!-- Slide 10: Thank you -->
+            <section>
+                <h2>项目，即协作的「锚点」</h2>
+                <div class="two-col">
+                    <div>
+                        <p>仓库、需求文档、任务历史被组织在<strong>项目</strong>这一层：团队对「我们在做什么」有共同画面，AI 的每次介入都可追溯到业务上下文。</p>
+                    </div>
+                    <div>
+                        <ul>
+                            <li class="fragment">需求可演进：从原始描述到方案，再到实现任务。</li>
+                            <li class="fragment">可选的自动化审查策略，让质量意识长在仓库上，而不是依赖个人习惯。</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>审查，回到流水线中央</h2>
+                <p class="lede">代码审查不应是「另一个网站里的附加功能」，而应紧贴 PR / MR 与团队习惯。</p>
+                <ul>
+                    <li class="fragment">对接主流 Git 平台，Webhook 驱动，审查任务与合并请求天然关联。</li>
+                    <li class="fragment">机器人可配置、可共享权限，适合多仓库、多团队协作。</li>
+                    <li class="fragment">把 AI Review 从「尝鲜」推进为「流程默认项」。</li>
+                </ul>
+            </section>
+
+            <section>
+                <h2>开放栈，保持选择权</h2>
+                <p>不在模型与基础设施上绑架用户：</p>
+                <div class="tag-list">
+                    <span class="tag">多模型接入</span>
+                    <span class="tag">自建或托管 API</span>
+                    <span class="tag">多平台 Git</span>
+                    <span class="tag">自有宿主机</span>
+                    <span class="tag">自定义镜像</span>
+                    <span class="tag">消息通知打通</span>
+                </div>
+                <p style="margin-top: 22px;">在「能用」与「可控」之间取平衡：团队按合规与成本选择栈，MonkeyCode 负责把能力<strong>接到同一条产品链路</strong>上。</p>
+            </section>
+
+            <section>
+                <h2>面向组织，也面向社区</h2>
+                <div class="two-col">
+                    <div>
+                        <h3>企业侧</h3>
+                        <p>成员与分组、宿主与镜像、模型与操作审计——为规模化使用预留管理平面，让 AI 研发<strong>可授权、可追责、可优化</strong>。</p>
+                    </div>
+                    <div>
+                        <h3>开放与分享</h3>
+                        <p>开发者广场与任务分享，让实践可被看见、被复用；核心方向持续开源，与社区共同演进工具链。</p>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>路线图愿景</h2>
+                <ul>
+                    <li class="fragment">更深的 IDE 与本地工具集成，减少上下文切换。</li>
+                    <li class="fragment">更丰富的团队洞察与治理视图，服务技术管理者。</li>
+                    <li class="fragment">持续强化安全与隔离叙事，成为企业愿意标准化的 AI 研发底座。</li>
+                </ul>
+            </section>
+
             <section class="centered">
-                <h1>感谢观看</h1>
-                <p class="subtitle" style="font-size: 1em; color: #8892a6;">Q & A</p>
-                <p style="margin-top: 40px; font-size: 0.85em; color: var(--orange-glow);">
-                    长亭科技 · MonkeyCode 团队
+                <h1 style="margin-bottom: 0.2em;">一起重塑研发流水线</h1>
+                <p style="font-size: 1em; color: #8892a6; max-width: 26em;">
+                    官网体验产品 · 文档了解细节 · 欢迎交流场景与合作
                 </p>
+                <a href="https://monkeycode-ai.com/" class="cta-button" target="_blank" rel="noopener">访问 MonkeyCode</a>
+                <p style="margin-top: 32px; font-size: 0.85em; color: var(--orange-glow);">长亭科技 · MonkeyCode</p>
+            </section>
+
+            <section class="centered">
+                <h1>谢谢</h1>
+                <p style="font-size: 1.05em; color: #8892a6;">欢迎提问与交流</p>
             </section>
         </div>
     </div>
@@ -608,22 +369,15 @@
             transitionSpeed: 'default',
             backgroundTransition: 'fade',
             plugins: [RevealHighlight, RevealNotes, RevealMarkdown],
-            // 16:9 宽高比
             width: 1920,
             height: 1080,
-            // 自适应缩放
             margin: 0.04,
             minScale: 0.2,
             maxScale: 2.0,
-            // 键盘控制
             keyboard: true,
-            // 触摸滑动
             touch: true,
-            // 循环播放
             loop: false,
-            // 右下角控制按钮
             controls: true,
-            // 显示幻灯片编号
             showSlideNumber: 'all',
         });
     </script>

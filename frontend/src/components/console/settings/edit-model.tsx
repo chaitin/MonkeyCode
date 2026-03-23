@@ -46,6 +46,20 @@ export default function EditModel({
   const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [modelListFetchFailed, setModelListFetchFailed] = useState(false)
+  const [modelListAttempted, setModelListAttempted] = useState(false)
+
+  const resetModelListState = () => {
+    setModelList([])
+    setModelListAttempted(false)
+    setModelListFetchFailed(false)
+  }
+
+  const showManualModelInput =
+    apiToken.trim() &&
+    !loadingModels &&
+    modelListAttempted &&
+    (modelListFetchFailed || modelList.length === 0)
 
   useEffect(() => {
     if (model && open) {
@@ -53,7 +67,7 @@ export default function EditModel({
       setBaseUrl(model.base_url || "https://model-square.app.baizhi.cloud/v1")
       setSelectedModel(model.model || "")
       setInterfaceType(model.interface_type || ConstsInterfaceType.InterfaceTypeOpenAIChat)
-      setModelList([])
+      resetModelListState()
     }
   }, [model, open])
 
@@ -62,6 +76,9 @@ export default function EditModel({
       toast.error("请先输入 API Token")
       return
     }
+
+    setModelListAttempted(true)
+    setModelListFetchFailed(false)
 
     if (modelProviderList[baseUrl.trim()]) {
       setModelList(modelProviderList[baseUrl.trim()])
@@ -77,14 +94,16 @@ export default function EditModel({
       if (resp.code === 0) {
         const models = resp.data?.models || []
         setModelList(models)
+        setModelListFetchFailed(false)
         if (models.length === 0) {
-          toast.warning("未获取到可用模型")
+          toast.warning("未获取到可用模型，可手动填写模型名称")
         } else {
           toast.success(`获取到 ${models.length} 个可用模型`)
         }
       } else {
-        toast.error("获取模型列表失败: " + resp.message)
+        toast.error("获取模型列表失败: " + resp.message + "，可手动填写模型名称")
         setModelList([])
+        setModelListFetchFailed(true)
       }
     })
     setLoadingModels(false)
@@ -144,7 +163,7 @@ export default function EditModel({
               setBaseUrl("")
               setSelectedModel("")
               setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-              setModelList([])
+              resetModelListState()
               onOpenChange(false)
               onRefresh?.()
             }
@@ -163,7 +182,7 @@ export default function EditModel({
     setBaseUrl("")
     setSelectedModel("")
     setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
-    setModelList([])
+    resetModelListState()
     onOpenChange(false)
   }
 
@@ -234,7 +253,10 @@ export default function EditModel({
               <Input
                 placeholder="请输入模型 API 地址"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => {
+                  setBaseUrl(e.target.value)
+                  resetModelListState()
+                }}
               />
             </FieldContent>
             <FieldDescription>
@@ -247,59 +269,77 @@ export default function EditModel({
               <Input
                 placeholder="请输入 API Token"
                 value={apiToken}
-                onChange={(e) => setApiToken(e.target.value)}
+                onChange={(e) => {
+                  setApiToken(e.target.value)
+                  resetModelListState()
+                }}
               />
             </FieldContent>
           </Field>
           <Field>
             <FieldLabel>模型名称</FieldLabel>
             <FieldContent>
-              <Select
-                value={selectedModel}
-                onValueChange={setSelectedModel}
-                onOpenChange={(open) => {
-                  if (open && apiToken.trim() && !loadingModels) {
-                    fetchModelList()
-                  }
-                }}
-                disabled={loadingModels || !apiToken.trim()}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={loadingModels ? "加载中..." : selectedModel || "请选择模型"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {loadingModels ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Spinner />
-                      <span className="ml-2 text-sm text-muted-foreground">加载模型中...</span>
-                    </div>
-                  ) : modelList.length > 0 ? (() => {
-                    const { groups, sortedGroupKeys } = getGroupedModels()
-                    return (
-                      <>
-                        {sortedGroupKeys.map((groupKey) => (
-                          <SelectGroup key={groupKey}>
-                            <SelectLabel>{groupKey}</SelectLabel>
-                            {groups[groupKey].map((item, index) => (
-                              <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
-                                {item.model}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))}
-                      </>
-                    )
-                  })() : selectedModel ? (
-                    <SelectItem value={selectedModel}>
-                      {selectedModel}
-                    </SelectItem>
-                  ) : (
-                    <div className="py-4 text-center text-sm text-muted-foreground">
-                      {apiToken.trim() ? "暂无可用模型" : "请先输入 API Token"}
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
+              {showManualModelInput ? (
+                <>
+                  <Input
+                    placeholder="请输入模型名称（与服务商 API 一致）"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                  />
+                  <FieldDescription>
+                    {modelListFetchFailed
+                      ? "无法拉取模型列表，请按服务商文档填写模型 ID。"
+                      : "当前未返回可用模型，请手动填写模型名称。"}
+                  </FieldDescription>
+                </>
+              ) : (
+                <Select
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                  onOpenChange={(open) => {
+                    if (open && apiToken.trim() && !loadingModels) {
+                      fetchModelList()
+                    }
+                  }}
+                  disabled={loadingModels || !apiToken.trim()}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={loadingModels ? "加载中..." : selectedModel || "请选择模型"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingModels ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Spinner />
+                        <span className="ml-2 text-sm text-muted-foreground">加载模型中...</span>
+                      </div>
+                    ) : modelList.length > 0 ? (() => {
+                      const { groups, sortedGroupKeys } = getGroupedModels()
+                      return (
+                        <>
+                          {sortedGroupKeys.map((groupKey) => (
+                            <SelectGroup key={groupKey}>
+                              <SelectLabel>{groupKey}</SelectLabel>
+                              {groups[groupKey].map((item, index) => (
+                                <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
+                                  {item.model}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          ))}
+                        </>
+                      )
+                    })() : selectedModel ? (
+                      <SelectItem value={selectedModel}>
+                        {selectedModel}
+                      </SelectItem>
+                    ) : (
+                      <div className="py-4 text-center text-sm text-muted-foreground">
+                        {apiToken.trim() ? "暂无可用模型" : "请先输入 API Token"}
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
             </FieldContent>
           </Field>
         </div>
