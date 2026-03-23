@@ -53,26 +53,28 @@ jobs:
           fi
           node -e "const fs=require('fs');const p='package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
 
+      # windows-latest 默认 run 用 pwsh；pnpm/electron-builder 在 Git Bash 下 cwd 更可靠
       - name: Install dependencies
         working-directory: frontend
+        shell: bash
         run: pnpm install --frozen-lockfile
 
-      # 显式 frontend + pwsh：避免 defaults.run 在 windows-latest 上未生效导致在仓库根执行、产物不在 frontend/release
-      # 仅在 Windows Runner 上开启 signAndEditExecutable（写入 exe 图标等）
+      # 用 bash + pnpm exec，避免 pwsh 下子进程 cwd/退出码异常；ci-win.json 显式 directories.output
       - name: Build Windows (portable + NSIS)
         working-directory: frontend
-        shell: pwsh
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
-          Write-Host "CWD before build: $(Get-Location)"
-          pnpm run electron:ci:win:native
-          if (-not (Test-Path -LiteralPath "release")) {
-            Write-Error "electron-builder 结束后未找到 ./release（当前应在 frontend 目录）。列出当前目录："
-            Get-ChildItem -Force | Format-Table -AutoSize
+          set -euxo pipefail
+          pwd
+          test -f package.json
+          test -f electron/main.cjs
+          pnpm exec electron-builder --win portable nsis --x64 --publish never -c electron-builder.ci-win.json
+          if [[ ! -d release ]]; then
+            echo "electron-builder 已结束但 ./release 不存在，当前目录："
+            ls -la
             exit 1
-          }
-          Write-Host "release 目录内容:"
-          Get-ChildItem -Recurse release | ForEach-Object { $_.FullName }
+          fi
+          ls -laR release
 
       - uses: actions/upload-artifact@v4
         with:
