@@ -4,6 +4,23 @@ const path = require("path")
 
 const isDev = !app.isPackaged
 const DEFAULT_PROD_URL = "https://monkeycode-ai.com"
+/** 桌面端启动路径（相对站点根），可用 MONKEYCODE_DESKTOP_START_PATH 覆盖 */
+const START_PATH = (process.env.MONKEYCODE_DESKTOP_START_PATH || "/login").replace(/\/$/, "") || "/login"
+
+function desktopEntryUrl(base) {
+  const href = (base || "").trim() || DEFAULT_PROD_URL
+  return new URL(`${START_PATH.startsWith("/") ? START_PATH : `/${START_PATH}`}`, href).href
+}
+
+/** Windows 任务栏/窗口图标不能从 app.asar 内读，需配合 package.json 的 asarUnpack */
+function windowIconPath() {
+  if (app.isPackaged) {
+    const unpacked = path.join(process.resourcesPath, "app.asar.unpacked", "electron", "icon.png")
+    if (fs.existsSync(unpacked)) return unpacked
+  }
+  const local = path.join(__dirname, "icon.png")
+  return fs.existsSync(local) ? local : undefined
+}
 
 /** 避免 ready-to-show 迟迟不触发时窗口永远隐藏（用户以为程序没启动） */
 function ensureWindowVisible(win, ms = 2000) {
@@ -25,6 +42,7 @@ function createWindow() {
     minHeight: 640,
     show: false,
     autoHideMenuBar: true,
+    icon: windowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -52,8 +70,8 @@ function createWindow() {
   })
 
   if (isDev) {
-    const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173"
-    win.loadURL(devUrl)
+    const devBase = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173"
+    win.loadURL(desktopEntryUrl(devBase))
     win.webContents.openDevTools({ mode: "detach" })
   } else if (process.env.MONKEYCODE_LOAD_LOCAL_DIST === "1") {
     const indexHtml = path.join(__dirname, "..", "dist", "index.html")
@@ -65,9 +83,11 @@ function createWindow() {
       app.quit()
       return
     }
+    // 本地 file:// + BrowserRouter 无法可靠使用 /login，仍打开入口页
     win.loadFile(indexHtml)
   } else {
-    win.loadURL(process.env.MONKEYCODE_DESKTOP_URL || DEFAULT_PROD_URL)
+    const base = process.env.MONKEYCODE_DESKTOP_URL || DEFAULT_PROD_URL
+    win.loadURL(desktopEntryUrl(base))
   }
 }
 
@@ -87,6 +107,9 @@ if (!gotLock) {
     // Windows / Linux：去掉顶部「文件、编辑…」应用菜单栏
     if (process.platform !== "darwin") {
       Menu.setApplicationMenu(null)
+    } else {
+      const icon = windowIconPath()
+      if (icon) app.dock.setIcon(icon)
     }
     createWindow()
   })

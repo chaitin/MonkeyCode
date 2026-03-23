@@ -1,7 +1,7 @@
 {
   "name": "monkeycode-ai",
   "private": true,
-  "version": "260323.0.0",
+  "version": "260323.0.1",
   "description": "MonkeyCode 桌面客户端",
   "author": "MonkeyCode",
   "type": "module",
@@ -21,7 +21,9 @@
     "electron:pack:win:portable": "node scripts/pack-win.mjs -- --win portable --x64 --publish never",
     "electron:pack:win:nsis": "node scripts/pack-win.mjs -- --win nsis --x64 --publish never",
     "electron:pack:win:dir": "node scripts/pack-win.mjs -- --win dir --x64 --publish never",
+    "electron:sync-icon": "node -e \"require('fs').copyFileSync('public/logo-colored.png','electron/icon.png')\"",
     "electron:ci:win": "electron-builder --win portable nsis --x64 --publish never",
+    "electron:ci:win:native": "electron-builder --win portable nsis --x64 --publish never -c electron-builder.ci-win.json",
     "electron:ci:mac": "electron-builder --mac --arm64 --x64 --publish never",
     "postinstall": "node scripts/electron-postinstall.cjs"
   },
@@ -122,6 +124,10 @@
       "output": "release"
     },
     "npmRebuild": false,
+    "icon": "electron/icon.png",
+    "asarUnpack": [
+      "electron/icon.png"
+    ],
     "files": [
       "electron/**/*",
       "package.json"

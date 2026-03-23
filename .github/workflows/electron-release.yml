@@ -56,8 +56,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # 仅在 Windows Runner 上开启 signAndEditExecutable（写入 exe 图标等）；Linux/WSL 需 false，否则会要求 wine
       - name: Build Windows (portable + NSIS)
-        run: pnpm run electron:ci:win
+        run: pnpm run electron:ci:win:native
 
       - name: Collect artifacts
         shell: bash

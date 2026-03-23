@@ -2,5 +2,7 @@
   "directories": {
     "output": "release-full"
   },
-  "files": ["dist/**/*", "electron/**/*", "package.json"]
+  "icon": "electron/icon.png",
+  "files": ["dist/**/*", "electron/**/*", "package.json"],
+  "asarUnpack": ["electron/icon.png"]
 }
