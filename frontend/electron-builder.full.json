@@ -1,0 +1,6 @@
+{
+  "directories": {
+    "output": "release-full"
+  },
+  "files": ["dist/**/*", "electron/**/*", "package.json"]
+}

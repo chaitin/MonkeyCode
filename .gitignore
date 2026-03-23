@@ -9,3 +9,6 @@ logs
 # Local build artifacts
 monkeycode-ai/
 .pnpm-store/
+
+# Electron (electron-builder)
+frontend/release/

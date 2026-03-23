@@ -1,0 +1,148 @@
+# 打 tag（如 v1.2.3）后自动构建 Windows / macOS(Intel+Apple Silicon) 桌面包并发布到 GitHub Release。
+# 手动运行 workflow 仅上传 Actions Artifact，不创建 Release（便于试打）。
+
+name: Electron Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: electron-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  CSC_IDENTITY_AUTO_DISCOVERY: false
+
+jobs:
+  electron-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Set package.json version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="0.0.0-ci.${{ github.run_number }}"
+          fi
+          node -e "const fs=require('fs');const p='package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows (portable + NSIS)
+        run: pnpm run electron:ci:win
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p ../_electron_upload
+          shopt -s nullglob
+          cp release/*.exe ../_electron_upload/ || true
+          cp release/*.yml ../_electron_upload/ || true
+          ls -la ../_electron_upload/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-windows-x64
+          path: _electron_upload/
+
+  electron-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Set package.json version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="0.0.0-ci.${{ github.run_number }}"
+          fi
+          node -e "const fs=require('fs');const p='package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 目标格式（dmg / zip）取自 package.json 的 build.mac.target
+      - name: Build macOS (arm64 + x64)
+        run: pnpm run electron:ci:mac
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p ../_electron_upload
+          shopt -s nullglob
+          cp release/*.dmg ../_electron_upload/ || true
+          cp release/*.zip ../_electron_upload/ || true
+          cp release/*.yml ../_electron_upload/ || true
+          ls -la ../_electron_upload/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-macos-universal
+          path: _electron_upload/
+
+  publish-release:
+    needs: [electron-windows, electron-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: electron-windows-x64
+          path: release-assets/windows
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: electron-macos-universal
+          path: release-assets/macos
+
+      - name: List release files
+        run: find release-assets -type f -exec ls -lh {} \;
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: MonkeyCode Desktop ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            release-assets/windows/*
+            release-assets/macos/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
