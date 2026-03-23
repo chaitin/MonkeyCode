@@ -63,7 +63,7 @@ func NewProjectUsecase(i *do.Injector) (domain.ProjectUsecase, error) {
 		cfg:             cfg,
 		gh:              github.NewGithub(logger),
 		gte:             gitee.NewGitee(cfg.Gitee.BaseURL, logger),
-		gta:             gitea.NewGitea(logger),
+		gta:             gitea.NewGitea(logger, cfg.GetGiteaBaseURL()),
 		glDomestic:      glDomestic,
 		glInternational: glInternational,
 		tokenCache:      cache.New(repoTokenCacheTTL, 10*time.Minute),

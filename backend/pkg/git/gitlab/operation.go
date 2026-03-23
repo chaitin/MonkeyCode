@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+
+	domainpkg "github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // ParseProjectPath 从仓库 URL 解析出项目路径（path_with_namespace）
@@ -48,15 +50,15 @@ func (g *Gitlab) GetRepoDescription(ctx context.Context, token, repoURL string, 
 }
 
 // GetAuthorizedRepositories 获取 token 可访问的仓库列表
-func (g *Gitlab) GetAuthorizedRepositories(ctx context.Context, token string, isOAuth bool) ([]AuthRepository, error) {
-	client, err := g.newClientWithToken(token, isOAuth)
+func (g *Gitlab) GetAuthorizedRepositories(ctx context.Context, token string) ([]domainpkg.AuthRepository, error) {
+	client, err := g.newClientWithToken(token, false)
 	if err != nil {
 		return nil, fmt.Errorf("new client: %w", err)
 	}
 	return g.listProjects(ctx, client)
 }
 
-func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]AuthRepository, error) {
+func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]domainpkg.AuthRepository, error) {
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{PerPage: 100},
 		Membership:  ptr(true),
@@ -73,13 +75,13 @@ func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]Aut
 		}
 		opt.Page = resp.NextPage
 	}
-	out := make([]AuthRepository, 0, len(all))
+	out := make([]domainpkg.AuthRepository, 0, len(all))
 	for _, p := range all {
 		cloneURL := p.HTTPURLToRepo
 		if cloneURL == "" {
 			cloneURL = p.SSHURLToRepo
 		}
-		out = append(out, AuthRepository{
+		out = append(out, domainpkg.AuthRepository{
 			FullName:    p.PathWithNamespace,
 			URL:         cloneURL,
 			Description: p.Description,

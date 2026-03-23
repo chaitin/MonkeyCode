@@ -64,40 +64,33 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	}
 	gi := cvt.From(identity, &domain.GitIdentity{})
 
-	// PAT 模式：获取 GitHub 授权仓库列表
-	if identity.Platform == consts.GitPlatformGithub && identity.AccessToken != "" && u.gh != nil {
-		repos, err := u.gh.GetAuthorizedRepositories(ctx, identity.AccessToken)
-		if err != nil {
-			u.logger.WarnContext(ctx, "failed to get github authorized repositories", "error", err, "identity_id", id)
-		} else {
-			gi.AuthorizedRepositories = make([]domain.AuthRepository, 0, len(repos))
-			for _, r := range repos {
-				gi.AuthorizedRepositories = append(gi.AuthorizedRepositories, domain.AuthRepository{
-					FullName:    r.FullName,
-					URL:         r.URL,
-					Description: r.Description,
-				})
-			}
-		}
+	// PAT 模式：获取授权仓库列表
+	if identity.AccessToken == "" {
+		return gi, nil
 	}
-
-	// GitLab PAT 模式：获取授权仓库列表
-	if identity.Platform == consts.GitPlatformGitLab && identity.AccessToken != "" {
-		glClient := gitlab.NewGitlab(identity.BaseURL, identity.AccessToken, u.logger)
-		if glClient != nil {
-			glRepos, err := glClient.GetAuthorizedRepositories(ctx, identity.AccessToken, false)
-			if err != nil {
-				u.logger.WarnContext(ctx, "failed to get gitlab repositories", "error", err, "identity_id", id)
-			} else {
-				gi.AuthorizedRepositories = make([]domain.AuthRepository, 0, len(glRepos))
-				for _, r := range glRepos {
-					gi.AuthorizedRepositories = append(gi.AuthorizedRepositories, domain.AuthRepository{
-						FullName:    r.FullName,
-						URL:         r.URL,
-						Description: r.Description,
-					})
-				}
-			}
+	var client domain.GitPlatformClient[domain.AuthRepository]
+	switch identity.Platform {
+	case consts.GitPlatformGithub:
+		client = u.gh
+	case consts.GitPlatformGitLab:
+		client = gitlab.NewGitlab(identity.BaseURL, identity.AccessToken, u.logger)
+	case consts.GitPlatformGitea:
+		client = gitea.NewGitea(u.logger, identity.BaseURL)
+	default:
+		// 该平台不支持获取授权仓库列表
+		return gi, nil
+	}
+	repos, err := client.GetAuthorizedRepositories(ctx, identity.AccessToken)
+	if err != nil {
+		u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", id)
+	} else {
+		gi.AuthorizedRepositories = make([]domain.AuthRepository, 0, len(repos))
+		for _, r := range repos {
+			gi.AuthorizedRepositories = append(gi.AuthorizedRepositories, domain.AuthRepository{
+				FullName:    r.FullName,
+				URL:         r.URL,
+				Description: r.Description,
+			})
 		}
 	}
 

@@ -38,6 +38,21 @@ type AuthRepository struct {
 	Description string `json:"description"`
 }
 
+// GitPlatformClient 各 Git 平台的统一客户端接口
+type GitPlatformClient[T any] interface {
+	// GetAuthorizedRepositories 获取 PAT 可访问的仓库列表
+	GetAuthorizedRepositories(ctx context.Context, token string) ([]T, error)
+}
+
+// AuthRepositoryInterface 用于约束平台客户端返回的仓库类型
+type AuthRepositoryInterface interface {
+	~struct {
+		FullName    string
+		URL         string
+		Description string
+	}
+}
+
 // GitIdentity Git 身份认证
 type GitIdentity struct {
 	ID                     uuid.UUID          `json:"id"`
