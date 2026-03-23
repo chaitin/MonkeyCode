@@ -62,19 +62,19 @@ jobs:
       - name: Build Windows (portable + NSIS)
         run: pnpm run electron:ci:win:native
 
-      - name: Collect artifacts
-        shell: bash
+      # 不要用 bash 拷到 ../_electron_upload：在 windows-latest 上常与 workspace 路径不一致，导致上传目录为空
+      - name: List release output
+        shell: pwsh
+        working-directory: frontend
         run: |
-          mkdir -p ../_electron_upload
-          shopt -s nullglob
-          cp release/*.exe ../_electron_upload/ || true
-          cp release/*.yml ../_electron_upload/ || true
-          ls -la ../_electron_upload/
+          if (Test-Path release) { Get-ChildItem -Recurse release | ForEach-Object { $_.FullName } } else { Write-Error "frontend/release missing"; exit 1 }
 
       - uses: actions/upload-artifact@v4
         with:
           name: electron-windows-x64
-          path: ${{ github.workspace }}/_electron_upload/
+          path: |
+            frontend/release/*.exe
+            frontend/release/*.yml
           if-no-files-found: error
 
   electron-macos:
@@ -114,19 +114,17 @@ jobs:
       - name: Build macOS (arm64 + x64)
         run: pnpm run electron:ci:mac
 
-      - name: Collect artifacts
-        run: |
-          mkdir -p ../_electron_upload
-          shopt -s nullglob
-          cp release/*.dmg ../_electron_upload/ || true
-          cp release/*.zip ../_electron_upload/ || true
-          cp release/*.yml ../_electron_upload/ || true
-          ls -la ../_electron_upload/
+      - name: List release output
+        run: ls -laR release || true
+        working-directory: frontend
 
       - uses: actions/upload-artifact@v4
         with:
           name: electron-macos-universal
-          path: ${{ github.workspace }}/_electron_upload/
+          path: |
+            frontend/release/*.dmg
+            frontend/release/*.zip
+            frontend/release/*.yml
           if-no-files-found: error
 
   publish-release:
