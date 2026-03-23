@@ -48,8 +48,8 @@ func RepoFullName(raw string) (string, error) {
 // 处理 GitHub 的 tree URL，例如: https://github.com/owner/repo/tree/feat-schema
 func ParseBranchFromURL(gitURL string) string {
 	const treeSegment = "/tree/"
-	if idx := strings.Index(gitURL, treeSegment); idx != -1 {
-		branchPart := gitURL[idx+len(treeSegment):]
+	if _, after, ok := strings.Cut(gitURL, treeSegment); ok {
+		branchPart := after
 		if slashIdx := strings.Index(branchPart, "/"); slashIdx != -1 {
 			branchPart = branchPart[:slashIdx]
 		}

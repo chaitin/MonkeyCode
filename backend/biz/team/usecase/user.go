@@ -31,13 +31,35 @@ type TeamGroupUserUsecase struct {
 func NewTeamGroupUserUsecase(i *do.Injector) (domain.TeamGroupUserUsecase, error) {
 	cfg := do.MustInvoke[*config.Config](i)
 
-	return &TeamGroupUserUsecase{
+	t := &TeamGroupUserUsecase{
 		repo:        do.MustInvoke[domain.TeamGroupUserRepo](i),
 		logger:      do.MustInvoke[*slog.Logger](i).With("module", "usecase.team_group_user"),
 		config:      cfg,
 		smtpClient:  do.MustInvoke[domain.EmailSender](i),
 		redisClient: do.MustInvoke[*redis.Client](i),
-	}, nil
+	}
+
+	go t.initTeam()
+
+	return t, nil
+}
+
+func (u *TeamGroupUserUsecase) initTeam() {
+	if u.config.InitTeam.Email == "" || u.config.InitTeam.Password == "" {
+		return
+	}
+
+	name := u.config.InitTeam.Name
+	if name == "" {
+		name = u.config.InitTeam.Email
+	}
+
+	ctx := context.Background()
+	if err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password); err != nil {
+		u.logger.ErrorContext(ctx, "init team failed", "error", err)
+		return
+	}
+	u.logger.InfoContext(ctx, "init team success", "email", u.config.InitTeam.Email)
 }
 
 // List 获取团队分组列表

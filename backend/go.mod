@@ -16,7 +16,6 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/samber/do v1.6.0
-	github.com/samber/lo v1.53.0
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/spf13/viper v1.21.0
 	gitlab.com/gitlab-org/api/client-go v1.46.0

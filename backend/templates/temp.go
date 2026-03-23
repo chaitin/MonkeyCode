@@ -18,3 +18,6 @@ var OpenCode []byte
 
 //go:embed opencodeauth.tmpl
 var OpenCodeAuth []byte
+
+//go:embed reset_password.html.tmpl
+var ResetPassword []byte

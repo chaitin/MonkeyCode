@@ -3,14 +3,11 @@ package repo
 import (
 	"context"
 	"log/slog"
-	"net/mail"
-	"strings"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
-	"github.com/samber/lo"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
@@ -22,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 // TeamGroupUserRepo 团队分组成员数据访问层
@@ -102,6 +100,7 @@ func (r *TeamGroupUserRepo) CreateUsers(ctx context.Context, teamID uuid.UUID, r
 		newUser, err := r.db.User.Create().
 			SetName(emailAddr).
 			SetEmail(emailAddr).
+			SetStatus(consts.UserStatusActive).
 			SetPassword("").
 			SetRole(consts.UserRoleIndividual).
 			Save(ctx)
@@ -324,16 +323,52 @@ func (r *TeamGroupUserRepo) GetMember(ctx context.Context, teamID, userID uuid.U
 		First(ctx)
 }
 
-// isValidEmail 验证邮箱格式
-func isValidEmail(email string) bool {
-	_, err := mail.ParseAddress(email)
-	return err == nil
-}
+// InitTeam 初始化团队：创建用户（如果不存在）、创建团队、并将用户设为管理员。
+func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string) error {
+	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+		// 检查用户是否已存在
+		exists, err := tx.User.Query().Where(user.EmailEQ(email)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
 
-// parseEmails 解析邮箱列表
-func parseEmails(emails string) []string {
-	return lo.Filter(strings.Split(emails, ","), func(email string, _ int) bool {
-		email = strings.TrimSpace(email)
-		return email != "" && isValidEmail(email)
+		// 哈希密码
+		hashedPassword, err := crypto.HashPassword(password)
+		if err != nil {
+			return err
+		}
+
+		// 创建用户
+		newUser, err := tx.User.Create().
+			SetName(name).
+			SetEmail(email).
+			SetStatus(consts.UserStatusActive).
+			SetPassword(hashedPassword).
+			SetRole(consts.UserRoleEnterprise).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+
+		// 创建团队
+		newTeam, err := tx.Team.Create().
+			SetID(uuid.New()).
+			SetName(name).
+			SetMemberLimit(1000).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+
+		// 将用户添加为团队管理员
+		_, err = tx.TeamMember.Create().
+			SetTeamID(newTeam.ID).
+			SetUserID(newUser.ID).
+			SetRole(consts.TeamMemberRoleAdmin).
+			Save(ctx)
+		return err
 	})
 }

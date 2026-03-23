@@ -65,17 +65,7 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return captcha.NewCaptcha(), nil
 	})
 
-	// Email Sender（默认 SMTP 实现，内部项目可通过 do.ProvideValue 覆盖）
-	do.Provide(i, func(i *do.Injector) (domain.EmailSender, error) {
-		cfg := do.MustInvoke[*config.Config](i)
-		return email.NewSMTPClient(email.SMTPConfig{
-			Host:     cfg.SMTP.Host,
-			Port:     cfg.SMTP.Port,
-			Username: cfg.SMTP.Username,
-			Password: cfg.SMTP.Password,
-			From:     cfg.SMTP.From,
-		}), nil
-	})
+	do.Provide(i, email.NewSMTPClient)
 
 	// Session
 	do.Provide(i, func(i *do.Injector) (*session.Session, error) {
