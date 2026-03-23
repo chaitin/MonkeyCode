@@ -290,10 +290,8 @@ func (h *HostUsecase) InstallScript(ctx context.Context, token *domain.InstallRe
 	}
 	buf := bytes.NewBuffer([]byte(""))
 	param := map[string]any{
-		"token":     token.Token,
-		"grpc_host": h.cfg.TaskFlow.GrpcHost,
-		"grpc_port": h.cfg.TaskFlow.GrpcPort,
-		"grpc_url":  h.cfg.TaskFlow.GrpcURL,
+		"token":    token.Token,
+		"grpc_url": h.cfg.TaskFlow.GrpcURL,
 	}
 	if err := tmp.Execute(buf, param); err != nil {
 		return "", fmt.Errorf("failed to execute template %s", err)

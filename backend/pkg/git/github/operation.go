@@ -91,10 +91,8 @@ func fillLastModifiedAt(ctx context.Context, cli *github.Client, owner, repo, re
 	close(ch)
 	unix := make([]int64, len(entries))
 	var wg sync.WaitGroup
-	for n := 0; n < concurrency; n++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range concurrency {
+		wg.Go(func() {
 			for it := range ch {
 				opts := &github.CommitsListOptions{
 					SHA:         ref,
@@ -109,7 +107,7 @@ func fillLastModifiedAt(ctx context.Context, cli *github.Client, owner, repo, re
 					unix[it.i] = c.GetCommitter().GetDate().Unix()
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	for i, t := range unix {

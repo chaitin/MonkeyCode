@@ -49,6 +49,14 @@ type Config struct {
 	Gitlab GitlabConfig `mapstructure:"gitlab"`
 	Gitea  GiteaConfig  `mapstructure:"gitea"`
 	Gitee  GiteeConfig  `mapstructure:"gitee"`
+
+	InitTeam InitTeam `mapstructure:"init_team"`
+}
+
+type InitTeam struct {
+	Email    string `mapstructure:"email"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
 }
 
 type TaskFlow struct {
@@ -107,10 +115,11 @@ type Session struct {
 
 type SMTP struct {
 	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
+	Port     string `mapstructure:"port"`
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	From     string `mapstructure:"from"`
+	TLS      bool   `mapstructure:"tls"`
 }
 
 type Database struct {
@@ -138,11 +147,20 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("root_path", "/app")
 	v.SetDefault("logger.level", "info")
 	v.SetDefault("session.expire_day", 1)
+	v.SetDefault("smtp.host", "")
 	v.SetDefault("smtp.port", 587)
+	v.SetDefault("smtp.username", "")
+	v.SetDefault("smtp.password", "")
+	v.SetDefault("smtp.from", "")
+	v.SetDefault("smtp.tls", false)
 	v.SetDefault("redis.host", "")
 	v.SetDefault("redis.port", 6379)
 	v.SetDefault("redis.pass", "")
 	v.SetDefault("redis.db", 0)
+	v.SetDefault("init_team.email", "")
+	v.SetDefault("init_team.name", "")
+	v.SetDefault("init_team.password", "")
+	v.SetDefault("taskflow.grpc_url", "")
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)

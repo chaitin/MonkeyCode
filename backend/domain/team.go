@@ -48,6 +48,7 @@ type TeamGroupUserRepo interface {
 	UpdateUser(ctx context.Context, userID uuid.UUID, req *UpdateTeamUserReq) (*db.User, error)
 	GetMembersByIDs(ctx context.Context, teamID uuid.UUID, userIDs []uuid.UUID) ([]*db.TeamMember, error)
 	GetMember(ctx context.Context, teamID, userID uuid.UUID) (*db.TeamMember, error)
+	InitTeam(ctx context.Context, email, name, password string) error
 }
 
 type Team struct {

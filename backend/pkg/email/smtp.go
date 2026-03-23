@@ -3,128 +3,131 @@ package email
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"html/template"
+	"log"
+	"net"
 	"net/smtp"
+	"strings"
 
+	"github.com/samber/do"
+
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/templates"
 )
 
-type SMTPConfig struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
+type EmailClient struct {
+	*Smtp
 }
 
-type SMTPClient struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
+func NewSMTPClient(i *do.Injector) (domain.EmailSender, error) {
+	return &EmailClient{
+		Smtp: NewSmtp(do.MustInvoke[*config.Config](i)),
+	}, nil
 }
 
-func NewSMTPClient(cfg SMTPConfig) domain.EmailSender {
-	return &SMTPClient{
-		Host:     cfg.Host,
-		Port:     cfg.Port,
-		Username: cfg.Username,
-		Password: cfg.Password,
-		From:     cfg.From,
-	}
-}
-
-const resetPasswordTpl = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body>
-<h2>Password Reset</h2>
-<p>Hi {{.Username}},</p>
-<p>Click the link below to reset your password:</p>
-<p><a href="{{.ResetURL}}">{{.ResetURL}}</a></p>
-<p>This link will expire in 30 minutes.</p>
-<p>If you did not request this, please ignore this email.</p>
-</body>
-</html>`
-
-const inviteTpl = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body>
-<h2>Team Invitation</h2>
-<p>Hi,</p>
-<p>You have been invited to join team <b>{{.TeamName}}</b>.</p>
-<p>Click the link below to accept:</p>
-<p><a href="{{.InviteURL}}">{{.InviteURL}}</a></p>
-</body>
-</html>`
-
-const verifyCodeTpl = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body>
-<h2>Verification Code</h2>
-<p>Hi {{.Username}},</p>
-<p>Your verification code is: <b>{{.Code}}</b></p>
-<p>This code will expire in {{.ExpireMinutes}} minutes.</p>
-</body>
-</html>`
-
-func (c *SMTPClient) send(to, subject, body string) error {
-	addr := fmt.Sprintf("%s:%d", c.Host, c.Port)
-	auth := smtp.PlainAuth("", c.Username, c.Password, c.Host)
-
-	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
-	msg := fmt.Appendf(nil, "From: %s\r\nTo: %s\r\nSubject: %s\r\n%s\r\n%s",
-		c.From, to, subject, mime, body)
-
-	return smtp.SendMail(addr, auth, c.From, []string{to}, msg)
-}
-
-func (c *SMTPClient) SendResetPasswordEmail(ctx context.Context, to, username, resetURL string) error {
-	tmpl, err := template.New("reset").Parse(resetPasswordTpl)
+func (c *EmailClient) SendResetPasswordEmail(ctx context.Context, to, username, resetURL string) error {
+	tmpl, err := template.New("reset").Parse(string(templates.ResetPassword))
 	if err != nil {
 		return err
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, map[string]string{
-		"Username": username,
-		"ResetURL": resetURL,
+		"user":      username,
+		"reset_url": resetURL,
 	}); err != nil {
 		return err
 	}
-	return c.send(to, "Reset Your Password", buf.String())
+	return c.Send("Reset Your Password", to, buf.String())
 }
 
-func (c *SMTPClient) SendInviteEmail(to, teamName, inviteURL string) error {
-	tmpl, err := template.New("invite").Parse(inviteTpl)
+type Smtp struct {
+	cfg *config.Config
+}
+
+func NewSmtp(cfg *config.Config) *Smtp {
+	return &Smtp{
+		cfg: cfg,
+	}
+}
+
+func (s *Smtp) Send(subject, receiver, content string) error {
+	addr := net.JoinHostPort(s.cfg.SMTP.Host, s.cfg.SMTP.Port)
+	c, err := dial(addr, s.cfg.SMTP.TLS)
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, map[string]string{
-		"TeamName":  teamName,
-		"InviteURL": inviteURL,
-	}); err != nil {
+	defer c.Close()
+
+	header := make(map[string]string)
+	header["From"] = "MonkeyCode-AI" + "<" + s.cfg.SMTP.From + ">"
+	header["To"] = receiver
+	header["Subject"] = subject
+	header["Content-Type"] = "text/html; charset=UTF-8"
+
+	var message strings.Builder
+	for k, v := range header {
+		fmt.Fprintf(&message, "%s: %s\r\n", k, v)
+	}
+	message.WriteString("\r\n" + content)
+
+	auth := smtp.PlainAuth(
+		"",
+		s.cfg.SMTP.From,
+		s.cfg.SMTP.Password,
+		s.cfg.SMTP.Host,
+	)
+
+	if ok, _ := c.Extension("AUTH"); ok {
+		if err = c.Auth(auth); err != nil {
+			log.Println("Error during AUTH", err)
+			return err
+		}
+	}
+
+	if err = c.Mail(s.cfg.SMTP.From); err != nil {
 		return err
 	}
-	return c.send(to, "Team Invitation", buf.String())
-}
 
-func (c *SMTPClient) SendVerifyCodeEmail(to, username, code string, expireMinutes int) error {
-	tmpl, err := template.New("verify").Parse(verifyCodeTpl)
+	if err = c.Rcpt(receiver); err != nil {
+		return err
+	}
+
+	w, err := c.Data()
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, map[string]any{
-		"Username":      username,
-		"Code":          code,
-		"ExpireMinutes": expireMinutes,
-	}); err != nil {
+
+	_, err = w.Write([]byte(message.String()))
+	if err != nil {
 		return err
 	}
-	return c.send(to, "Verification Code", buf.String())
+
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+
+	return c.Quit()
+}
+
+// return a smtp client
+func dial(addr string, useTLS bool) (*smtp.Client, error) {
+	host, _, _ := net.SplitHostPort(addr)
+	if useTLS {
+		conn, err := tls.Dial("tcp", addr, nil)
+		if err != nil {
+			log.Println("Dialing Error:", err)
+			return nil, err
+		}
+		return smtp.NewClient(conn, host)
+	}
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		log.Println("Dialing Error:", err)
+		return nil, err
+	}
+	return c, nil
 }

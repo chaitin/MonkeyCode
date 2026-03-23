@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/go-github/v74/github"
@@ -254,10 +255,5 @@ func isBinaryContent(content []byte) bool {
 }
 
 func containsNull(b []byte) bool {
-	for _, c := range b {
-		if c == 0 {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(b, 0)
 }

@@ -26,6 +26,7 @@ smtp:
   username: ""
   password: ""
   from: "noreply@example.com"
+  tls: false
 
 root_path: "/app"
 admin_token: "change-me"
