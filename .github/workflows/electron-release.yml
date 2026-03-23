@@ -25,9 +25,6 @@ env:
 jobs:
   electron-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +40,7 @@ jobs:
 
       - name: Set package.json version
         shell: bash
+        working-directory: frontend
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
@@ -56,18 +54,25 @@ jobs:
           node -e "const fs=require('fs');const p='package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
 
       - name: Install dependencies
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      # 仅在 Windows Runner 上开启 signAndEditExecutable（写入 exe 图标等）；Linux/WSL 需 false，否则会要求 wine
+      # 显式 frontend + pwsh：避免 defaults.run 在 windows-latest 上未生效导致在仓库根执行、产物不在 frontend/release
+      # 仅在 Windows Runner 上开启 signAndEditExecutable（写入 exe 图标等）
       - name: Build Windows (portable + NSIS)
-        run: pnpm run electron:ci:win:native
-
-      # 不要用 bash 拷到 ../_electron_upload：在 windows-latest 上常与 workspace 路径不一致，导致上传目录为空
-      - name: List release output
-        shell: pwsh
         working-directory: frontend
+        shell: pwsh
         run: |
-          if (Test-Path release) { Get-ChildItem -Recurse release | ForEach-Object { $_.FullName } } else { Write-Error "frontend/release missing"; exit 1 }
+          $ErrorActionPreference = "Stop"
+          Write-Host "CWD before build: $(Get-Location)"
+          pnpm run electron:ci:win:native
+          if (-not (Test-Path -LiteralPath "release")) {
+            Write-Error "electron-builder 结束后未找到 ./release（当前应在 frontend 目录）。列出当前目录："
+            Get-ChildItem -Force | Format-Table -AutoSize
+            exit 1
+          }
+          Write-Host "release 目录内容:"
+          Get-ChildItem -Recurse release | ForEach-Object { $_.FullName }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -79,9 +84,6 @@ jobs:
 
   electron-macos:
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -96,6 +98,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Set package.json version
+        working-directory: frontend
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
@@ -108,15 +111,18 @@ jobs:
           node -e "const fs=require('fs');const p='package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
 
       - name: Install dependencies
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       # 目标格式（dmg / zip）取自 package.json 的 build.mac.target
       - name: Build macOS (arm64 + x64)
-        run: pnpm run electron:ci:mac
-
-      - name: List release output
-        run: ls -laR release || true
         working-directory: frontend
+        run: |
+          set -euo pipefail
+          pwd
+          pnpm run electron:ci:mac
+          test -d release || (echo "missing frontend/release"; ls -la; exit 1)
+          ls -laR release
 
       - uses: actions/upload-artifact@v4
         with:
