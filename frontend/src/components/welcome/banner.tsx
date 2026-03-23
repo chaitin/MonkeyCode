@@ -8,7 +8,7 @@ const Banner = () => {
           MonkeyCode — 免费的 AI 编程平台
         </h1>
         <p className="text-base text-muted-foreground sm:text-lg leading-relaxed">
-          说需求，AI 写代码、做设计、做 Review。云开发环境开箱即用，多模型不限量。
+          说需求，AI 写代码、做设计、做 Review。云开发环境开箱即用，基础版免费起步，专业版支持多模型自选与多任务并行。
         </p>
         <div className="flex flex-row gap-4">
           <Button size="lg" asChild><a href="/console/">开始使用</a></Button>

@@ -9,8 +9,8 @@ const Highlights = () => {
   const items = [
     {
       icon: IconGift,
-      title: "完全免费",
-      description: "零成本使用，无需订阅费用，节省开发环境和大模型费用。",
+      title: "基础版免费",
+      description: "注册即可使用云开发环境与大模型，零订阅门槛。",
     },
     {
       icon: IconCloud,
@@ -24,8 +24,9 @@ const Highlights = () => {
     },
     {
       icon: IconBrandOpenai,
-      title: "多模型不限量",
-      description: "内置 GLM、MiniMax、Kimi、Deepseek 等大模型，不限额度，无限畅用。",
+      title: "大模型能力",
+      description:
+        "基础版使用平台指定模型免费畅用；专业版可从多种内置模型中自主选择，并支持多任务并行。",
     },
   ];
 
