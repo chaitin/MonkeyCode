@@ -47,6 +47,8 @@ type Hoster interface {
 type VirtualMachiner interface {
 	Create(ctx context.Context, req *CreateVirtualMachineReq) (*VirtualMachine, error)
 	Delete(ctx context.Context, req *DeleteVirtualMachineReq) error
+	Hibernate(ctx context.Context, req *HibernateVirtualMachineReq) error
+	Resume(ctx context.Context, req *ResumeVirtualMachineReq) error
 	List(ctx context.Context, id string) ([]*VirtualMachine, error)
 	Info(ctx context.Context, req VirtualMachineInfoReq) (*VirtualMachine, error)
 	Terminal(ctx context.Context, req *TerminalReq) (Sheller, error)

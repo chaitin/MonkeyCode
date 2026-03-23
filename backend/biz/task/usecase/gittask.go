@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -119,8 +120,12 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 			},
 			Env: req.Env,
 		}
+		b, err := json.Marshal(createTaskReq)
+		if err != nil {
+			return vm, err
+		}
 		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
-		if err := g.redis.Set(ctx, reqKey, createTaskReq, 10*time.Minute).Err(); err != nil {
+		if err := g.redis.Set(ctx, reqKey, string(b), 10*time.Minute).Err(); err != nil {
 			g.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
 		}
 

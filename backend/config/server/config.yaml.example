@@ -33,3 +33,7 @@ admin_token: "change-me"
 
 logger:
   level: "info"
+
+vm_idle:
+  sleep_seconds: 600
+  recycle_seconds: 604800

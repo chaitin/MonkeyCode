@@ -215,6 +215,7 @@ func (h *HostRepo) GetVirtualMachineWithUser(ctx context.Context, uid uuid.UUID,
 		ForUpdate().
 		WithHost().
 		WithModel().
+		WithTasks().
 		WithUser().
 		Where(virtualmachine.HasHostWith(hostWithUserPredicate(uid))).
 		Where(virtualmachine.UserID(uid)).
@@ -233,6 +234,7 @@ func (h *HostRepo) GetVirtualMachine(ctx context.Context, id string) (*db.Virtua
 		ForUpdate().
 		WithHost().
 		WithModel().
+		WithTasks().
 		WithUser().
 		Where(virtualmachine.ID(id)).
 		First(ctx)
@@ -548,6 +550,7 @@ func (h *HostRepo) UpdateVM(ctx context.Context, req domain.UpdateVMReq, fn func
 // GetVirtualMachineByEnvID implements domain.HostRepo.
 func (h *HostRepo) GetVirtualMachineByEnvID(ctx context.Context, envID string) (*db.VirtualMachine, error) {
 	return h.db.VirtualMachine.Query().
+		WithTasks().
 		Where(virtualmachine.EnvironmentID(envID)).
 		First(ctx)
 }
