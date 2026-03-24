@@ -99,6 +99,7 @@ platform :ios do
         "-workspace", app_path("App.xcworkspace"),
         "-scheme", "App",
         "-configuration", "Release",
+        "-destination", "generic/platform=iOS",
         "-archivePath", archive_path,
         "archive",
       ].shelljoin
