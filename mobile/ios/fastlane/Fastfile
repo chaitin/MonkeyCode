@@ -42,17 +42,13 @@ platform :ios do
       archive_path: "App/output/App.xcarchive",
       output_directory: "App/output",
       output_name: output_name,
-      export_method: "app-store",
+      export_method: "app-store-connect",
       xcargs: [
         "DEVELOPMENT_TEAM=#{Shellwords.escape(team_id)}",
         "PRODUCT_BUNDLE_IDENTIFIER=#{Shellwords.escape(bundle_id)}",
       ].join(" "),
       export_options: {
-        signingStyle: "manual",
-        signingCertificate: sign_identity,
-        provisioningProfiles: {
-          bundle_id => profile_name,
-        },
+        signingStyle: "automatic",
         teamID: team_id,
         manageAppVersionAndBuildNumber: false,
       }
