@@ -2,12 +2,12 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import Header from "@/components/welcome/header"
 import Banner from "@/components/welcome/banner"
+import Downloads from "@/components/welcome/downloads"
 import Highlights from "@/components/welcome/highlights"
 import Task from "@/components/welcome/task";
 import Footer from "@/components/welcome/footer";
 import Pricing from "@/components/welcome/pricing";
 import GitBot from "@/components/welcome/git-bot";
-import SDD from "@/components/welcome/sdd";
 import { AuthProvider } from "@/components/auth-provider";
 
 const WelcomePage = () => {
@@ -27,8 +27,8 @@ const WelcomePage = () => {
         <main className="flex flex-col w-full">
           <Banner />
           <Highlights />
+          <Downloads />
           <Task />
-          <SDD />
           <GitBot />
           <Pricing />
         </main>
@@ -39,5 +39,3 @@ const WelcomePage = () => {
 }
 
 export default WelcomePage
-
-

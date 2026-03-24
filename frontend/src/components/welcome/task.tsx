@@ -23,7 +23,7 @@ const Task = () => {
   ];
 
   return (
-    <div className="w-full px-6 sm:px-10 py-16 sm:py-20 bg-primary text-background" id="task">
+    <div className="w-full px-6 sm:px-10 py-16 sm:py-20 bg-background" id="task">
       <div className="w-full max-w-[1200px] mx-auto flex flex-col gap-8">
         <h1 className="text-balance text-center text-3xl sm:text-4xl font-bold">
           智能任务模式
@@ -33,11 +33,11 @@ const Task = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {features.map((feature, index) => (
-            <div key={index} className="border border-background/30 rounded-lg p-4 flex gap-3 hover:border-background/50 transition-colors">
-              <IconBulbFilled className="size-6 text-background/50 flex-shrink-0 mt-0.5" />
+            <div key={index} className="border rounded-lg p-4 flex gap-3 bg-card/40 hover:bg-card hover:shadow-sm transition-all">
+              <IconBulbFilled className="size-6 text-primary/70 flex-shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
                 <div className="font-medium mb-1">{feature.title}</div>
-                <div className="text-sm text-background/70 leading-relaxed">{feature.description}</div>
+                <div className="text-sm text-muted-foreground leading-relaxed">{feature.description}</div>
               </div>
             </div>
           ))}
