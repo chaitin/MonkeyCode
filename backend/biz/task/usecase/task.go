@@ -365,6 +365,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				ApiKey:  m.APIKey,
 				BaseURL: m.BaseURL,
 				Model:   m.Model,
+				ApiType: apiType(m),
 			},
 			Configs:    configs,
 			McpConfigs: mcps,
@@ -396,6 +397,18 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	return result, nil
+}
+
+func apiType(m *db.Model) string {
+	if m.InterfaceType == "anthropic" {
+		return "anthropic"
+	}
+
+	if strings.HasPrefix(m.InterfaceType, "openai") {
+		return "openai"
+	}
+
+	return ""
 }
 
 func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs []string) (taskflow.CodingAgent, []taskflow.ConfigFile, error) {
