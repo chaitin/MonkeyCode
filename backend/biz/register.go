@@ -3,6 +3,7 @@ package biz
 import (
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/file"
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
@@ -37,6 +38,9 @@ func RegisterAll(i *do.Injector) error {
 
 	// 注册 host 模块
 	host.RegisterHost(i)
+
+	// 注册 file 模块（依赖 HostUsecase）
+	file.RegisterFile(i)
 
 	return nil
 }

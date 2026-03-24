@@ -97,6 +97,9 @@ var (
 
 	ErrDepositFailed = web.NewErr(http.StatusOK, 10801, "err-deposit-failed")
 
+	// 任务管理
+	ErrTaskCannotDelete = web.NewErr(http.StatusOK, 10810, "err-task-cannot-delete")
+
 	// 知识库索引管理
 	ErrKBNilTree       = web.NewErr(http.StatusOK, 10900, "err-kb-nil-tree")
 	ErrKBEmptyPath     = web.NewErr(http.StatusOK, 10901, "err-kb-empty-path")

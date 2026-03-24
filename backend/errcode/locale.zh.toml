@@ -169,6 +169,9 @@ other = "目录非空"
 [err-kb-already-exists]
 other = "路径已存在但类型不同"
 
+[err-task-cannot-delete]
+other = "任务运行中或虚拟机在线，无法删除"
+
 [err-model-not-found]
 other = "模型配置未找到"
 

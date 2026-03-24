@@ -162,6 +162,9 @@ other = "Directory is not empty"
 [err-kb-already-exists]
 other = "Path already exists with different type"
 
+[err-task-cannot-delete]
+other = "Task is running or VM is online, cannot delete"
+
 [err-model-not-found]
 other = "Model not found"
 

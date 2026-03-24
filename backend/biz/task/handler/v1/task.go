@@ -83,8 +83,29 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	v1.GET("/stream", web.BindHandler(h.Stream))
 	v1.POST("", web.BindHandler(h.Create))
 	v1.PUT("/stop", web.BindHandler(h.Stop))
+	v1.DELETE("/:id", web.BindHandler(h.Delete))
 
 	return h, nil
+}
+
+// Delete 删除任务
+//
+//	@Summary		删除任务
+//	@Description	删除任务。任务处于运行中（pending/processing）或虚拟机仍在线时不允许删除。
+//	@Tags			【用户】任务管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id	path		string		true	"任务 ID"
+//	@Success		200	{object}	web.Resp{}	"成功"
+//	@Failure		500	{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/users/tasks/{id} [delete]
+func (h *TaskHandler) Delete(c *web.Context, req domain.IDReq[uuid.UUID]) error {
+	user := middleware.GetUser(c)
+	if err := h.usecase.Delete(c.Request().Context(), user, req.ID); err != nil {
+		return err
+	}
+	return c.Success(nil)
 }
 
 // Stop 停止任务

@@ -26,6 +26,7 @@ type TaskUsecase interface {
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
+	Delete(ctx context.Context, user *User, id uuid.UUID) error
 }
 
 // TaskRepo 任务数据访问接口
@@ -38,6 +39,7 @@ type TaskRepo interface {
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
+	Delete(ctx context.Context, user *User, id uuid.UUID) error
 }
 
 // repoFullName 从 repo_url 中提取 full_name

@@ -200,6 +200,15 @@ func (t *TaskRepo) Update(ctx context.Context, _ *domain.User, id uuid.UUID, fn 
 	})
 }
 
+// Delete implements domain.TaskRepo.
+func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
+	_, err := t.db.Task.Delete().
+		Where(task.UserID(user.ID)).
+		Where(task.ID(id)).
+		Exec(ctx)
+	return err
+}
+
 func (t *TaskRepo) pickModelWeighted(cliname consts.CliName, ms []*db.Model) *db.Model {
 	// 按 CLI 类型过滤候选模型
 	filtered := cvt.Filter(ms, func(_ int, m *db.Model) (*db.Model, bool) {

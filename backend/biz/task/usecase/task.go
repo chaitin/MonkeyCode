@@ -496,6 +496,37 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 	return coding, cfs, nil
 }
 
+// Delete implements domain.TaskUsecase.
+func (a *TaskUsecase) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
+	t, err := a.repo.Info(ctx, user, id)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return errcode.ErrNotFound
+		}
+		return err
+	}
+
+	// 运行中不允许删除
+	if t.Status == consts.TaskStatusPending || t.Status == consts.TaskStatusProcessing {
+		return errcode.ErrTaskCannotDelete
+	}
+
+	// VM 在线不允许删除
+	if vms := t.Edges.Vms; len(vms) > 0 {
+		resp, err := a.taskflow.VirtualMachiner().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
+			IDs: []string{vms[0].ID},
+		})
+		if err != nil {
+			return err
+		}
+		if resp.OnlineMap[vms[0].ID] {
+			return errcode.ErrTaskCannotDelete
+		}
+	}
+
+	return a.repo.Delete(ctx, user, id)
+}
+
 // GetPublic implements domain.TaskUsecase.
 func (a *TaskUsecase) GetPublic(ctx context.Context, _ *domain.User, id uuid.UUID) (*domain.Task, error) {
 	t, err := a.repo.GetByID(ctx, id)
