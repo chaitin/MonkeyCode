@@ -46,8 +46,9 @@ import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { IconLockCode, IconLogout, IconUserHexagon, IconUpload } from "@tabler/icons-react"
+import { IconLockCode, IconLogout, IconMail, IconUserHexagon, IconUpload } from "@tabler/icons-react"
 import { useCommonData } from "@/components/console/data-provider"
+import { isValidEmail } from "@/utils/common"
 
 export default function NavUser() {
   const { isMobile } = useSidebar()
@@ -57,6 +58,9 @@ export default function NavUser() {
   const [newPassword, setNewPassword] = React.useState<string>('');
   const [confirmPassword, setConfirmPassword] = React.useState<string>('');
   const [changingPassword, setChangingPassword] = React.useState<boolean>(false);
+  const [showBindEmailDialog, setShowBindEmailDialog] = React.useState(false);
+  const [bindEmail, setBindEmail] = React.useState<string>('');
+  const [bindingEmail, setBindingEmail] = React.useState<boolean>(false);
   const [showChangeNameDialog, setShowChangeNameDialog] = React.useState(false);
   const [newName, setNewName] = React.useState<string>('');
   const [changingName, setChangingName] = React.useState<boolean>(false);
@@ -66,6 +70,8 @@ export default function NavUser() {
   const [changingAvatar, setChangingAvatar] = React.useState<boolean>(false);
   const navigate = useNavigate()
   const { user, reloadUser } = useCommonData()
+  const requiresCurrentPassword = !!user?.has_password
+  const passwordActionLabel = requiresCurrentPassword ? '修改密码' : '设置密码'
 
   const handleLogout = () => {
     apiRequest('v1UsersLogoutCreate', {}, [], (resp) => {
@@ -78,6 +84,11 @@ export default function NavUser() {
   };
 
   const handleChangePassword = async () => {
+    if (requiresCurrentPassword && !currentPassword) {
+      toast.error('请输入当前密码');
+      return;
+    }
+
     // 验证新密码和确认密码是否一致
     if (newPassword !== confirmPassword) {
       toast.error('新密码和确认密码不一致');
@@ -85,16 +96,15 @@ export default function NavUser() {
     }
 
     // 验证密码长度
-    if (newPassword.length < 6) {
-      toast.error('新密码长度至少为6位');
+    if (newPassword.length < 8) {
+      toast.error('新密码长度至少为8位');
       return;
     }
 
     setChangingPassword(true);
     await apiRequest('v1UsersPasswordsChangeUpdate', {
-      current_password: currentPassword,
+      current_password: requiresCurrentPassword ? currentPassword : undefined,
       new_password: newPassword,
-      confirm_password: confirmPassword,
     }, [], (resp) => {
       if (resp?.code === 0) {
         toast.success('密码修改成功');
@@ -107,6 +117,28 @@ export default function NavUser() {
       }
     })
     setChangingPassword(false);
+  };
+
+  const handleBindEmail = async () => {
+    const email = bindEmail.trim();
+    if (!isValidEmail(email)) {
+      toast.error('请输入正确的邮箱地址');
+      return;
+    }
+
+    setBindingEmail(true);
+    await apiRequest('v1UsersEmailBindRequestUpdate', {
+      email,
+    }, [], (resp) => {
+      if (resp?.code === 0) {
+        toast.success('绑定邮件已发送，请前往邮箱完成验证');
+        setShowBindEmailDialog(false);
+        setBindEmail('');
+      } else {
+        toast.error(`绑定邮箱失败：${resp?.message || '未知错误'}`);
+      }
+    });
+    setBindingEmail(false);
   };
 
   const handleChangeName = async () => {
@@ -233,9 +265,21 @@ export default function NavUser() {
                 <IconUserHexagon />
                 修改昵称
               </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!!user?.email}
+                onClick={() => {
+                  if (!user?.email) {
+                    setBindEmail('');
+                    setShowBindEmailDialog(true);
+                  }
+                }}
+              >
+                <IconMail />
+                绑定邮箱
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowChangePasswordDialog(true)}>
                 <IconLockCode />
-                修改密码
+                {passwordActionLabel}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowLogoutDialog(true)}>
@@ -303,20 +347,22 @@ export default function NavUser() {
       <Dialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>修改密码</DialogTitle>
+            <DialogTitle>{passwordActionLabel}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">当前密码</Label>
-              <Input
-                id="current-password"
-                type="password"
-                placeholder="请输入当前密码"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
+            {requiresCurrentPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="current-password">当前密码</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  placeholder="请输入当前密码"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="new-password">新密码</Label>
               <Input
@@ -354,10 +400,48 @@ export default function NavUser() {
             </Button>
             <Button
               onClick={handleChangePassword}
-              disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
+              disabled={changingPassword || (requiresCurrentPassword && !currentPassword) || !newPassword || !confirmPassword}
             >
               {changingPassword && <Spinner className="size-4 mr-2" />}
               确认修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showBindEmailDialog} onOpenChange={setShowBindEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>绑定邮箱</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="bind-email">邮箱</Label>
+              <Input
+                id="bind-email"
+                type="email"
+                placeholder="请输入要绑定的邮箱"
+                value={bindEmail}
+                onChange={(e) => setBindEmail(e.target.value)}
+                autoComplete="email"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowBindEmailDialog(false);
+                setBindEmail('');
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleBindEmail}
+              disabled={bindingEmail || !bindEmail.trim()}
+            >
+              {bindingEmail && <Spinner className="size-4 mr-2" />}
+              发送验证邮件
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -335,6 +335,7 @@ export interface DomainCheckModelResp {
 export interface DomainCollaborator {
   avatar_url?: string;
   email?: string;
+  has_password?: boolean;
   id?: string;
   /** 用户绑定的身份列表，例如 github, gitlab */
   identities?: DomainUserIdentity[];
@@ -1044,6 +1045,11 @@ export interface DomainResource {
   memory?: number;
 }
 
+export interface DomainSendBindEmailVerificationReq {
+  /** 要绑定的邮箱地址 */
+  email: string;
+}
+
 export interface DomainShareGitBotReq {
   /** git bot ID */
   id?: string;
@@ -1161,10 +1167,6 @@ export interface DomainSpeechRecognitionEvent {
 export interface DomainStats {
   /** @example 5672 */
   repo_stars?: number;
-  /** @example 2847392 */
-  tasks_count?: number;
-  /** @example 18429 */
-  users_count?: number;
 }
 
 export interface DomainTask {
@@ -1477,6 +1479,7 @@ export interface DomainUpdateVMReq {
 export interface DomainUser {
   avatar_url?: string;
   email?: string;
+  has_password?: boolean;
   id?: string;
   /** 用户绑定的身份列表，例如 github, gitlab */
   identities?: DomainUserIdentity[];
@@ -3301,6 +3304,26 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         method: "GET",
         query: query,
         type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 用户已登录状态下请求绑定邮箱，系统发送验证邮件
+     *
+     * @tags 【用户】邮箱绑定
+     * @name V1UsersEmailBindRequestUpdate
+     * @summary 发送邮箱绑定验证邮件
+     * @request PUT:/api/v1/users/email/bind-request
+     * @secure
+     */
+    v1UsersEmailBindRequestUpdate: (req: DomainSendBindEmailVerificationReq, params: RequestParams = {}) =>
+      this.request<WebResp, WebResp>({
+        path: `/api/v1/users/email/bind-request`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
         ...params,
       }),
 

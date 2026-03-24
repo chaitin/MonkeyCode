@@ -7,6 +7,14 @@ import { defineConfig, loadEnv } from "vite"
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const electronBuild = process.env.ELECTRON === 'true'
+  const devPort = 11180
+  const proxyBasicAuthUsername = env.PROXY_BASIC_AUTH_USERNAME?.trim()
+  const proxyBasicAuthPassword = env.PROXY_BASIC_AUTH_PASSWORD?.trim()
+  const proxyHeaders: Record<string, string> = {}
+
+  if (proxyBasicAuthUsername && proxyBasicAuthPassword) {
+    proxyHeaders.Authorization = `Basic ${Buffer.from(`${proxyBasicAuthUsername}:${proxyBasicAuthPassword}`).toString('base64')}`
+  }
 
   return {
     base: electronBuild ? './' : '/',
@@ -28,12 +36,18 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      port: devPort,
       allowedHosts: ['.monkeycode-ai.online'],
       proxy: {
         '/api': {
           target: env.TARGET,
           changeOrigin: true,
-          ws: true
+          ws: true,
+          ...(Object.keys(proxyHeaders).length > 0
+            ? {
+                headers: proxyHeaders,
+              }
+            : {}),
         }
       }
     }

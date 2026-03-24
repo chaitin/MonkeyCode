@@ -78,7 +78,7 @@ function createWindow() {
   })
 
   if (isDev) {
-    const devBase = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173"
+    const devBase = process.env.VITE_DEV_SERVER_URL || "http://localhost:11180"
     win.loadURL(desktopEntryUrl(devBase))
     win.webContents.openDevTools({ mode: "detach" })
   } else if (process.env.MONKEYCODE_LOAD_LOCAL_DIST === "1") {
