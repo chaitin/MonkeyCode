@@ -24,6 +24,16 @@ platform :ios do
     UI.user_error!("IOS_PROFILE_NAME is required") if profile_name.to_s.empty?
     UI.user_error!("IOS_TEAM_ID is required") if team_id.to_s.empty?
 
+    update_code_signing_settings(
+      path: "App/App.xcodeproj",
+      use_automatic_signing: false,
+      team_id: team_id,
+      targets: ["App"],
+      bundle_identifier: bundle_id,
+      profile_name: profile_name,
+      code_sign_identity: sign_identity
+    )
+
     build_ios_app(
       workspace: "App/App.xcworkspace",
       scheme: "App",
@@ -35,10 +45,7 @@ platform :ios do
       export_method: "app-store",
       xcargs: [
         "DEVELOPMENT_TEAM=#{Shellwords.escape(team_id)}",
-        "CODE_SIGN_STYLE=Manual",
         "PRODUCT_BUNDLE_IDENTIFIER=#{Shellwords.escape(bundle_id)}",
-        "PROVISIONING_PROFILE_SPECIFIER=#{Shellwords.escape(profile_name)}",
-        "CODE_SIGN_IDENTITY=#{Shellwords.escape(sign_identity)}",
       ].join(" "),
       export_options: {
         signingStyle: "manual",
