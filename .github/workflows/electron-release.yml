@@ -283,15 +283,20 @@ jobs:
           while IFS= read -r XCODE_APP; do
             [[ -n "$XCODE_APP" ]] || continue
             DEV_DIR="$XCODE_APP/Contents/Developer"
+            SDK_DIR="$DEV_DIR/Platforms/iPhoneOS.platform/Developer/SDKs"
             XCODE_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')"
             SDK_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)"
-            echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}"
-            if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* ]]; then
+            HAS_PLATFORM="no"
+            if [[ -d "$SDK_DIR" ]] && find "$SDK_DIR" -maxdepth 1 -name 'iPhoneOS*.sdk' | grep -q .; then
+              HAS_PLATFORM="yes"
+            fi
+            echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}, platform installed: $HAS_PLATFORM"
+            if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* && "$HAS_PLATFORM" == "yes" ]]; then
               SELECTED_XCODE_APP="$XCODE_APP"
               break
             fi
           done <<< "$CANDIDATES"
-          [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK found under /Applications"; exit 1; }
+          [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK platform found under /Applications"; exit 1; }
           sudo xcode-select -s "$SELECTED_XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
           SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
@@ -465,15 +470,20 @@ jobs:
           while IFS= read -r XCODE_APP; do
             [[ -n "$XCODE_APP" ]] || continue
             DEV_DIR="$XCODE_APP/Contents/Developer"
+            SDK_DIR="$DEV_DIR/Platforms/iPhoneOS.platform/Developer/SDKs"
             XCODE_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')"
             SDK_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)"
-            echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}"
-            if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* ]]; then
+            HAS_PLATFORM="no"
+            if [[ -d "$SDK_DIR" ]] && find "$SDK_DIR" -maxdepth 1 -name 'iPhoneOS*.sdk' | grep -q .; then
+              HAS_PLATFORM="yes"
+            fi
+            echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}, platform installed: $HAS_PLATFORM"
+            if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* && "$HAS_PLATFORM" == "yes" ]]; then
               SELECTED_XCODE_APP="$XCODE_APP"
               break
             fi
           done <<< "$CANDIDATES"
-          [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK found under /Applications"; exit 1; }
+          [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK platform found under /Applications"; exit 1; }
           sudo xcode-select -s "$SELECTED_XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
           SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
