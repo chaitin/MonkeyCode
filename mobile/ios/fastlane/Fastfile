@@ -62,7 +62,7 @@ platform :ios do
     bundle_id = options[:bundle_id] || ENV.fetch("IOS_BUNDLE_ID", "com.monkeycode.mobile")
     profile_name = options[:profile_name] || ENV["IOS_PROFILE_NAME"]
     team_id = options[:team_id] || ENV["IOS_TEAM_ID"]
-    output_name = options[:output_name] || ENV.fetch("IOS_OUTPUT_NAME", "MonkeyCode.ipa")
+    output_name = options[:output_name] || ENV.fetch("IOS_OUTPUT_NAME", "MonkeyCode-ios.ipa")
     sign_identity = options[:sign_identity] || ENV.fetch("IOS_CODE_SIGN_IDENTITY", "Apple Distribution")
 
     UI.user_error!("IOS_PROFILE_NAME is required") if profile_name.to_s.empty?

@@ -290,7 +290,7 @@ jobs:
           BUILD_NUMBER="${{ github.run_number }}"
           echo "APP_VERSION=$V" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
-          echo "IPA_NAME=MonkeyCode-${V}-ios-release.ipa" >> "$GITHUB_ENV"
+          echo "IPA_NAME=MonkeyCode-ios.ipa" >> "$GITHUB_ENV"
           node -e "const fs=require('fs');const p='mobile/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
           perl -0pi -e "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${V};/g; s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER};/g" mobile/ios/App/App.xcodeproj/project.pbxproj
 
