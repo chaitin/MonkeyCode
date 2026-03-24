@@ -14,7 +14,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { HelpCircle } from "lucide-react"
+import { HelpCircle, RefreshCw } from "lucide-react"
 import ManagerSidebar from "@/components/manager/manager-sidebar"
 import { Fragment } from "react/jsx-runtime"
 
@@ -102,6 +102,15 @@ export default function ManagerConsolePage() {
                 <HelpCircle className="h-[1.2rem] w-[1.2rem]" />
                 帮助
               </a>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.location.reload()}
+              title="刷新页面"
+            >
+              <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
+              刷新
             </Button>
             {/*<ModeToggle />*/}
           </div>
