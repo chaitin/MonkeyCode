@@ -39,6 +39,18 @@ jobs:
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
 
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\electron\Cache
+          key: electron-win-${{ hashFiles('desktop/package.json') }}
+
+      - name: Cache electron-builder tools
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-win-${{ hashFiles('desktop/package.json') }}
+
       - name: Set package.json version
         shell: bash
         working-directory: desktop
@@ -99,6 +111,18 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-mac-${{ hashFiles('desktop/package.json') }}
+
+      - name: Cache electron-builder tools
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron-builder
+          key: electron-builder-mac-${{ hashFiles('desktop/package.json') }}
 
       - name: Set package.json version
         working-directory: desktop
