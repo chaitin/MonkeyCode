@@ -1,3 +1,5 @@
+require "shellwords"
+
 default_platform(:ios)
 
 def app_store_api_key!
@@ -17,6 +19,7 @@ platform :ios do
     profile_name = options[:profile_name] || ENV["IOS_PROFILE_NAME"]
     team_id = options[:team_id] || ENV["IOS_TEAM_ID"]
     output_name = options[:output_name] || ENV.fetch("IOS_OUTPUT_NAME", "MonkeyCode.ipa")
+    sign_identity = options[:sign_identity] || ENV.fetch("IOS_CODE_SIGN_IDENTITY", "Apple Distribution")
 
     UI.user_error!("IOS_PROFILE_NAME is required") if profile_name.to_s.empty?
     UI.user_error!("IOS_TEAM_ID is required") if team_id.to_s.empty?
@@ -30,9 +33,16 @@ platform :ios do
       output_directory: "App/output",
       output_name: output_name,
       export_method: "app-store",
-      xcargs: "DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Manual PRODUCT_BUNDLE_IDENTIFIER=#{bundle_id}",
+      xcargs: [
+        "DEVELOPMENT_TEAM=#{Shellwords.escape(team_id)}",
+        "CODE_SIGN_STYLE=Manual",
+        "PRODUCT_BUNDLE_IDENTIFIER=#{Shellwords.escape(bundle_id)}",
+        "PROVISIONING_PROFILE_SPECIFIER=#{Shellwords.escape(profile_name)}",
+        "CODE_SIGN_IDENTITY=#{Shellwords.escape(sign_identity)}",
+      ].join(" "),
       export_options: {
         signingStyle: "manual",
+        signingCertificate: sign_identity,
         provisioningProfiles: {
           bundle_id => profile_name,
         },
