@@ -99,7 +99,6 @@ platform :ios do
         "-workspace", app_path("App.xcworkspace"),
         "-scheme", "App",
         "-configuration", "Release",
-        "-destination", "generic/platform=iOS",
         "-archivePath", archive_path,
         "archive",
       ].shelljoin
@@ -148,9 +147,6 @@ platform :ios do
       ipa: ipa_path,
       skip_metadata: true,
       skip_screenshots: true,
-      submission_information: {
-        export_compliance_uses_encryption: false
-      },
       submit_for_review: true,
       automatic_release: false,
       force: true,
