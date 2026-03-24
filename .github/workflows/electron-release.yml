@@ -275,17 +275,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          XCODE_APP="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort | tail -n 1)"
-          if [[ -z "$XCODE_APP" && -d /Applications/Xcode.app ]]; then
-            XCODE_APP="/Applications/Xcode.app"
+          CANDIDATES="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort -r)"
+          if [[ -z "$CANDIDATES" && -d /Applications/Xcode.app ]]; then
+            CANDIDATES="/Applications/Xcode.app"
           fi
-          [[ -n "$XCODE_APP" ]] || { echo "No Xcode 26 installation found under /Applications"; exit 1; }
-          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          SELECTED_XCODE_APP=""
+          while IFS= read -r XCODE_APP; do
+            [[ -n "$XCODE_APP" ]] || continue
+            DEV_DIR="$XCODE_APP/Contents/Developer"
+            XCODE_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')"
+            SDK_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)"
+            echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}"
+            if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* ]]; then
+              SELECTED_XCODE_APP="$XCODE_APP"
+              break
+            fi
+          done <<< "$CANDIDATES"
+          [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK found under /Applications"; exit 1; }
+          sudo xcode-select -s "$SELECTED_XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
           [[ "$XCODE_VERSION" == 26.* ]] || { echo "Expected Xcode 26.x but found $XCODE_VERSION"; exit 1; }
-          echo "Selected $XCODE_APP"
+          [[ "$SDK_VERSION" == 26.* ]] || { echo "Expected iPhoneOS 26.x SDK but found $SDK_VERSION"; exit 1; }
+          echo "Selected $SELECTED_XCODE_APP"
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
+          echo "iPhoneOS SDK: $SDK_VERSION"
 
       - name: Install fastlane gems
         working-directory: mobile/ios
@@ -443,17 +457,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          XCODE_APP="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort | tail -n 1)"
-          if [[ -z "$XCODE_APP" && -d /Applications/Xcode.app ]]; then
-            XCODE_APP="/Applications/Xcode.app"
+          CANDIDATES="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort -r)"
+          if [[ -z "$CANDIDATES" && -d /Applications/Xcode.app ]]; then
+            CANDIDATES="/Applications/Xcode.app"
           fi
-          [[ -n "$XCODE_APP" ]] || { echo "No Xcode 26 installation found under /Applications"; exit 1; }
-          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          SELECTED_XCODE_APP=""
+          while IFS= read -r XCODE_APP; do
+            [[ -n "$XCODE_APP" ]] || continue
+            DEV_DIR="$XCODE_APP/Contents/Developer"
+            XCODE_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')"
+            SDK_VERSION="$(DEVELOPER_DIR="$DEV_DIR" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null || true)"
+            echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}"
+            if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* ]]; then
+              SELECTED_XCODE_APP="$XCODE_APP"
+              break
+            fi
+          done <<< "$CANDIDATES"
+          [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK found under /Applications"; exit 1; }
+          sudo xcode-select -s "$SELECTED_XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
           [[ "$XCODE_VERSION" == 26.* ]] || { echo "Expected Xcode 26.x but found $XCODE_VERSION"; exit 1; }
-          echo "Selected $XCODE_APP"
+          [[ "$SDK_VERSION" == 26.* ]] || { echo "Expected iPhoneOS 26.x SDK but found $SDK_VERSION"; exit 1; }
+          echo "Selected $SELECTED_XCODE_APP"
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
+          echo "iPhoneOS SDK: $SDK_VERSION"
 
       - name: Install fastlane gems
         working-directory: mobile/ios
