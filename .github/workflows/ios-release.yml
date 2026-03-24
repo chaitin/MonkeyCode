@@ -108,7 +108,7 @@ jobs:
 
       - name: Capacitor sync iOS
         working-directory: mobile
-        run: pnpm exec cap sync ios --no-build
+        run: pnpm exec cap sync ios
 
       - name: Install signing assets
         shell: bash
