@@ -9,6 +9,7 @@ logs
 # Local build artifacts
 monkeycode-ai/
 .pnpm-store/
+frontend/.vite/
 
 # Electron (electron-builder)
 desktop/release/
