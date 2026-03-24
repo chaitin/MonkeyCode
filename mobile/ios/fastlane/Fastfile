@@ -42,7 +42,7 @@ platform :ios do
       archive_path: "App/output/App.xcarchive",
       output_directory: "App/output",
       output_name: output_name,
-      export_method: "app-store-connect",
+      export_method: "app-store",
       xcargs: [
         "DEVELOPMENT_TEAM=#{Shellwords.escape(team_id)}",
         "PRODUCT_BUNDLE_IDENTIFIER=#{Shellwords.escape(bundle_id)}",
