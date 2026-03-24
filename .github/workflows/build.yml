@@ -94,14 +94,3 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/monkeycode-frontend:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/monkeycode-frontend:latest
           platforms: linux/amd64
-
-      - name: Build and push backend image
-        uses: docker/build-push-action@v6
-        with:
-          context: backend
-          file: backend/build/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/monkeycode-backend:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/monkeycode-backend:latest
-          platforms: linux/amd64
