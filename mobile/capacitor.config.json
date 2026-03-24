@@ -3,7 +3,7 @@
   "appName": "MonkeyCode",
   "webDir": "../frontend/dist",
   "server": {
-    "url": "https://monkeycode-ai.com/login",
+    "url": "https://monkeycode-ai.com/console/",
     "androidScheme": "https"
   }
 }

@@ -5,7 +5,7 @@ const path = require("path")
 const isDev = !app.isPackaged
 const DEFAULT_PROD_URL = "https://monkeycode-ai.com"
 /** 桌面端启动路径（相对站点根），可用 MONKEYCODE_DESKTOP_START_PATH 覆盖 */
-const START_PATH = (process.env.MONKEYCODE_DESKTOP_START_PATH || "/login").replace(/\/$/, "") || "/login"
+const START_PATH = (process.env.MONKEYCODE_DESKTOP_START_PATH || "/console/").replace(/\/$/, "") || "/console"
 
 function desktopEntryUrl(base) {
   const href = (base || "").trim() || DEFAULT_PROD_URL
