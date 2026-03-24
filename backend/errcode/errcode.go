@@ -89,6 +89,9 @@ var (
 	ErrResetPasswordFailed  = web.NewErr(http.StatusOK, 10608, "err-reset-password-failed")
 	ErrWalletInsufficient   = web.NewErr(http.StatusOK, 10609, "err-wallet-insufficient")
 	ErrAccountOverdraft     = web.NewErr(http.StatusOK, 10610, "err-account-overdraft")
+	ErrEmailVerifyFailed    = web.NewErr(http.StatusOK, 10611, "err-email-verify-failed")
+	ErrEmailAlreadyBound    = web.NewErr(http.StatusOK, 10612, "err-email-already-bound")
+	ErrEmailTaken           = web.NewErr(http.StatusOK, 10613, "err-email-taken")
 
 	// captcha 模块
 	ErrCreateCaptchaFailed  = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")

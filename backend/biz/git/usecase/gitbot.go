@@ -17,8 +17,8 @@ import (
 
 // GitBotUsecase GitBot 业务逻辑
 type GitBotUsecase struct {
-	cfg  *config.Config
-	repo domain.GitBotRepo
+	cfg    *config.Config
+	repo   domain.GitBotRepo
 	logger *slog.Logger
 }
 
@@ -40,9 +40,9 @@ func (u *GitBotUsecase) GetByID(ctx context.Context, id uuid.UUID) (*domain.GitB
 		}
 		return nil, err
 	}
-	return (&domain.GitBot{
+	return cvt.From(bot, &domain.GitBot{
 		WebhookURL: u.webhookURL(bot),
-	}).From(bot), nil
+	}), nil
 }
 
 // GetInstallationID 获取 installation_id
@@ -78,9 +78,9 @@ func (u *GitBotUsecase) List(ctx context.Context, uid uuid.UUID) (*domain.ListGi
 	}
 	return &domain.ListGitBotResp{
 		Bots: cvt.Iter(bots, func(_ int, bot *db.GitBot) *domain.GitBot {
-			return (&domain.GitBot{
+			return cvt.From(bot, &domain.GitBot{
 				WebhookURL: u.webhookURL(bot),
-			}).From(bot)
+			})
 		}),
 	}, nil
 }
@@ -91,9 +91,9 @@ func (u *GitBotUsecase) Create(ctx context.Context, uid uuid.UUID, req domain.Cr
 	if err != nil {
 		return nil, err
 	}
-	return (&domain.GitBot{
+	return cvt.From(bot, &domain.GitBot{
 		WebhookURL: u.webhookURL(bot),
-	}).From(bot), nil
+	}), nil
 }
 
 // Update 更新 GitBot
@@ -102,9 +102,9 @@ func (u *GitBotUsecase) Update(ctx context.Context, uid uuid.UUID, req domain.Up
 	if err != nil {
 		return nil, err
 	}
-	return (&domain.GitBot{
+	return cvt.From(bot, &domain.GitBot{
 		WebhookURL: u.webhookURL(bot),
-	}).From(bot), nil
+	}), nil
 }
 
 // Delete 删除 GitBot
@@ -120,7 +120,7 @@ func (u *GitBotUsecase) ListTask(ctx context.Context, uid uuid.UUID, req domain.
 	}
 	return &domain.ListGitBotTaskResp{
 		Tasks: cvt.Iter(tasks, func(_ int, t *db.GitBotTask) *domain.GitBotTask {
-			return (&domain.GitBotTask{}).From(t)
+			return cvt.From(t, &domain.GitBotTask{})
 		}),
 		Page:  pageInfo.TotalCount,
 		Size:  int64(req.Size),

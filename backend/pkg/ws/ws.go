@@ -11,9 +11,10 @@ import (
 
 // WebsocketManager 管理 coder/websocket 连接，提供并发安全的写入
 type WebsocketManager struct {
-	conn *websocket.Conn
-	ip   string
-	mu   sync.Mutex
+	conn   *websocket.Conn
+	ip     string
+	realIP string
+	mu     sync.Mutex
 }
 
 // Accept 从 HTTP 请求升级到 WebSocket 连接
@@ -64,7 +65,19 @@ func (w *WebsocketManager) IP() string {
 
 // RemoteAddr 返回底层连接的远程地址
 func (w *WebsocketManager) RemoteAddr() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.realIP != "" {
+		return w.realIP
+	}
 	return w.ip
+}
+
+// SetRealIP 设置客户端真实 IP（由浏览器上报）
+func (w *WebsocketManager) SetRealIP(ip string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.realIP = ip
 }
 
 // TaskConn 任务 WebSocket 连接池

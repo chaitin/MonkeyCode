@@ -155,6 +155,7 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 	v.Memory = uint64(vm.Memory)
 	v.Name = vm.Name
 	v.Version = vm.Version
+	v.EnvironmentID = vm.EnvironmentID
 	v.CreatedAt = vm.CreatedAt.Unix()
 
 	if vm.Conditions != nil {
@@ -207,6 +208,7 @@ type Host struct {
 	Groups          []*TeamGroup      `json:"groups,omitempty"`
 	Remark          string            `json:"remark,omitempty"`
 	Weight          int               `json:"weight"`
+	InternalID      string            `json:"-"`
 }
 
 // From 从数据库模型转换
@@ -223,6 +225,7 @@ func (h *Host) From(e *db.Host) *Host {
 	h.Name = e.Hostname
 	h.ExternalIP = e.ExternalIP
 	h.Version = e.Version
+	h.InternalID = e.ID
 	h.VirtualMachines = cvt.Iter(e.Edges.Vms, func(_ int, v *db.VirtualMachine) *VirtualMachine {
 		return cvt.From(v, &VirtualMachine{})
 	})

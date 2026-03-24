@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
@@ -34,6 +36,7 @@ type InternalHostHandler struct {
 	hook          domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
 	taskLifecycle *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	hostUsecase   domain.HostUsecase
+	taskConns     *ws.TaskConn
 }
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
@@ -47,6 +50,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		cache:         cache.New(15*time.Minute, 10*time.Minute),
 		taskLifecycle: do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		hostUsecase:   do.MustInvoke[domain.HostUsecase](i),
+		taskConns:     do.MustInvoke[*ws.TaskConn](i),
 	}
 
 	// 可选注入 InternalHook
@@ -65,6 +69,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	g.POST("/git-credential", web.BindHandler(h.GitCredential))
 	g.GET("/vm/list", web.BaseHandler(h.VMList))
 	g.POST("/vm/activity", web.BindHandler(h.VMActivity))
+	g.POST("/task-stream-ips", web.BindHandler(h.GetTaskStreamIPs))
 
 	return h, nil
 }
@@ -438,4 +443,18 @@ func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) erro
 		}
 	}()
 	return c.Success(nil)
+}
+
+// GetTaskStreamIPs 获取任务 WebSocket 连接的客户端 IP
+func (h *InternalHostHandler) GetTaskStreamIPs(c *web.Context, req taskflow.GetTaskStreamIPsReq) error {
+	var ips []string
+	if wsConn, ok := h.taskConns.Get(req.TaskID); ok {
+		addr := wsConn.RemoteAddr()
+		if host, _, err := net.SplitHostPort(addr); err == nil {
+			ips = append(ips, host)
+		} else {
+			ips = append(ips, addr)
+		}
+	}
+	return c.Success(taskflow.GetTaskStreamIPsResp{IPs: ips})
 }

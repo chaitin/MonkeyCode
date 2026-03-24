@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
@@ -45,6 +46,7 @@ func (r *ProjectRepo) getProjectQuery(uid uuid.UUID) predicate.Project {
 		project.HasCollaboratorsWith(projectcollaborator.UserID(uid)),
 	)
 }
+
 // Get 获取项目
 func (r *ProjectRepo) Get(ctx context.Context, uid, id uuid.UUID) (*db.Project, error) {
 	return r.db.Project.Query().
@@ -60,6 +62,7 @@ func (r *ProjectRepo) Get(ctx context.Context, uid, id uuid.UUID) (*db.Project, 
 		WithIssues(func(piq *db.ProjectIssueQuery) {
 			piq.WithUser()
 		}).
+		WithGitBots().
 		First(ctx)
 }
 
@@ -83,8 +86,12 @@ func (r *ProjectRepo) List(ctx context.Context, uid uuid.UUID, cursor domain.Cur
 			piq.Where(projectissue.StatusEQ(consts.ProjectIssueStatusOpen))
 		}).
 		WithProjectTasks(func(ptq *db.ProjectTaskQuery) {
-			ptq.WithTask().Order(projecttask.ByCreatedAt(sql.OrderDesc()))
+			ptq.
+				WithTask().
+				Where(projecttask.HasTaskWith(task.DeletedAtIsNil())).
+				Order(projecttask.ByCreatedAt(sql.OrderDesc()))
 		}).
+		WithGitBots().
 		After(ctx, cursor.Cursor, cursor.Limit)
 	if err != nil {
 		return nil, nil, err
@@ -140,6 +147,7 @@ func (r *ProjectRepo) Create(ctx context.Context, uid uuid.UUID, req *domain.Cre
 	}
 	return r.db.Project.Query().Where(project.IDEQ(projectID)).First(ctx)
 }
+
 // Update 更新项目
 func (r *ProjectRepo) Update(ctx context.Context, u *domain.User, req *domain.UpdateProjectReq) (*db.Project, error) {
 	teamIDs := []uuid.UUID{}
@@ -307,6 +315,7 @@ func (r *ProjectRepo) Delete(ctx context.Context, uid, id uuid.UUID) error {
 		return err
 	})
 }
+
 // ListIssues 列出项目问题
 func (r *ProjectRepo) ListIssues(ctx context.Context, uid uuid.UUID, req *domain.ListIssuesReq) ([]*db.ProjectIssue, *db.Cursor, error) {
 	return r.db.ProjectIssue.Query().
@@ -463,6 +472,7 @@ func (r *ProjectRepo) UpdateIssueSummary(ctx context.Context, issueID uuid.UUID,
 	}
 	return nil
 }
+
 // ListCollaborators 列出项目协作者
 func (r *ProjectRepo) ListCollaborators(ctx context.Context, uid uuid.UUID, req *domain.ListCollaboratorsReq) ([]*db.ProjectCollaborator, error) {
 	return r.db.ProjectCollaborator.Query().

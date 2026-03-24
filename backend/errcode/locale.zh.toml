@@ -136,6 +136,15 @@ other = "余额不足"
 [err-account-overdraft]
 other = "账户超支"
 
+[err-email-verify-failed]
+other = "邮箱验证失败"
+
+[err-email-already-bound]
+other = "该邮箱已绑定"
+
+[err-email-taken]
+other = "该邮箱已被使用"
+
 [err-deposit-failed]
 other = "充值失败"
 

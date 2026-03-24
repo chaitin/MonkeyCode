@@ -41,6 +41,7 @@ type ProjectUsecase struct {
 	glInternational *gitlab.Gitlab
 	tokenCache      *cache.Cache
 }
+
 // NewProjectUsecase 创建项目业务逻辑层实例
 func NewProjectUsecase(i *do.Injector) (domain.ProjectUsecase, error) {
 	cfg := do.MustInvoke[*config.Config](i)
@@ -61,7 +62,7 @@ func NewProjectUsecase(i *do.Injector) (domain.ProjectUsecase, error) {
 		gitidentityUC:   do.MustInvoke[domain.GitIdentityUsecase](i),
 		logger:          logger.With("module", "usecase.ProjectUsecase"),
 		cfg:             cfg,
-		gh:              github.NewGithub(logger),
+		gh:              github.NewGithub(logger, cfg),
 		gte:             gitee.NewGitee(cfg.Gitee.BaseURL, logger),
 		gta:             gitea.NewGitea(logger, cfg.GetGiteaBaseURL()),
 		glDomestic:      glDomestic,
@@ -104,6 +105,7 @@ func (u *ProjectUsecase) List(ctx context.Context, uid uuid.UUID, cursor domain.
 		Page: cur,
 	}, nil
 }
+
 // Create 创建项目
 func (u *ProjectUsecase) Create(ctx context.Context, uid uuid.UUID, req *domain.CreateProjectReq) (*domain.Project, error) {
 	p, err := u.repo.Create(ctx, uid, req)
@@ -181,6 +183,7 @@ func (u *ProjectUsecase) ListCollaborators(ctx context.Context, uid uuid.UUID, r
 		}),
 	}, nil
 }
+
 // ListIssueComments 列出问题评论
 func (u *ProjectUsecase) ListIssueComments(ctx context.Context, uid uuid.UUID, req *domain.ListIssueCommentsReq) (*domain.ListIssueCommentsResp, error) {
 	if req.Limit <= 0 {
@@ -247,6 +250,7 @@ func (u *ProjectUsecase) GetIssueByTaskID(ctx context.Context, taskID string) (*
 	}
 	return cvt.From(issue, &domain.ProjectIssue{}), nil
 }
+
 // gitlabProjectInfo GitLab 项目信息
 type gitlabProjectInfo struct {
 	client        *gitlab.Gitlab
@@ -311,6 +315,7 @@ func getGithubInfo(p *db.Project) *githubProjectInfo {
 		defaultBranch: defaultBranch,
 	}
 }
+
 // giteeProjectInfo Gitee 项目信息
 type giteeProjectInfo struct {
 	owner         string
@@ -376,6 +381,7 @@ func (u *ProjectUsecase) getRepoToken(ctx context.Context, p *db.Project) (strin
 	}
 	return gi.AccessToken, nil
 }
+
 // treeEntryToAdapter 将 github TreeEntry 转为 domain adapter
 func githubTreeEntryToAdapter(e *github.TreeEntry) *domain.TreeEntryAdapter {
 	return &domain.TreeEntryAdapter{Mode: e.Mode, Name: e.Name, Path: e.Path, Sha: e.Sha, Size: e.Size, LastModifiedAt: e.LastModifiedAt}
@@ -465,6 +471,7 @@ func (u *ProjectUsecase) GetProjectTree(ctx context.Context, uid uuid.UUID, req 
 		return nil, errcode.ErrGitOperation.Wrap(fmt.Errorf("unsupported platform: %s", p.Platform))
 	}
 }
+
 // GetProjectBlob 获取项目文件内容
 func (u *ProjectUsecase) GetProjectBlob(ctx context.Context, uid uuid.UUID, req *domain.GetProjectBlobReq) (*domain.ProjectBlob, error) {
 	p, err := u.repo.Get(ctx, uid, req.ID)
@@ -541,6 +548,7 @@ func (u *ProjectUsecase) GetProjectBlob(ctx context.Context, uid uuid.UUID, req 
 		return nil, errcode.ErrGitOperation.Wrap(fmt.Errorf("unsupported platform: %s", p.Platform))
 	}
 }
+
 // commitEntryToDomain 将平台 commit entry 转为 domain
 func commitEntryToDomain(sha, message, treeSha string, parentShas []string, author, committer *domain.CommitUserAdapter) *domain.ProjectCommitEntry {
 	entry := &domain.ProjectCommitEntry{
@@ -703,6 +711,7 @@ func giteaLogsToProjectLogs(resp *gitea.GetGitLogsResp) *domain.ProjectLogs {
 		}),
 	}
 }
+
 // GetProjectArchive 获取项目仓库压缩包
 func (u *ProjectUsecase) GetProjectArchive(ctx context.Context, uid uuid.UUID, req *domain.GetProjectArchiveReq) (*domain.GetProjectArchiveResp, error) {
 	p, err := u.repo.Get(ctx, uid, req.ID)

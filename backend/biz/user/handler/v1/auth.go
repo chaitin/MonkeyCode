@@ -3,6 +3,7 @@ package v1
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"github.com/GoYoko/web"
 	"github.com/google/uuid"
@@ -58,6 +59,10 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	v1.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.Check())
 	v1.GET("/status", web.BaseHandler(h.Status), auth.Check())
 	v1.POST("/logout", web.BaseHandler(h.Logout), auth.Auth())
+
+	// 邮箱绑定接口
+	v1.PUT("/email/bind-request", web.BindHandler(h.SendBindEmailVerification), auth.Auth())
+	v1.GET("/email/verify", web.BindHandler(h.VerifyBindEmail))
 
 	return h, nil
 }
@@ -314,4 +319,27 @@ func (h *AuthHandler) ResetPassword(c *web.Context, req domain.ResetUserPassword
 	}
 
 	return c.Success(nil)
+}
+
+// SendBindEmailVerification 发送邮箱绑定验证邮件
+func (h *AuthHandler) SendBindEmailVerification(c *web.Context, req domain.SendBindEmailVerificationReq) error {
+	user := middleware.GetUser(c)
+	if user == nil {
+		return errcode.ErrUnauthorized
+	}
+
+	err := h.usecase.SendBindEmailVerification(c.Request().Context(), user.ID, &req)
+	if err != nil {
+		return err
+	}
+	return c.Success(nil)
+}
+
+// VerifyBindEmail 验证邮箱绑定
+func (h *AuthHandler) VerifyBindEmail(c *web.Context, req domain.VerifyBindEmailReq) error {
+	err := h.usecase.VerifyBindEmail(c.Request().Context(), req.Token)
+	if err != nil {
+		return err
+	}
+	return c.Redirect(http.StatusFound, h.config.Server.BaseURL)
 }

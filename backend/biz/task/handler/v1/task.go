@@ -330,10 +330,19 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 		return err
 	}
 
-	if task.VirtualMachine == nil {
-		logger.DebugContext(ctx, "no virtual machine for task", "task_id", task.ID)
-		h.writeError(wsConn, fmt.Errorf("no virtual machine for task"))
+	if task.VirtualMachine == nil || task.VirtualMachine.Host == nil {
+		logger.DebugContext(ctx, "no virtual machine or host for task", "task_id", task.ID)
+		h.writeError(wsConn, fmt.Errorf("no virtual machine or host for task"))
 		return nil
+	}
+
+	if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
+		HostID:        task.VirtualMachine.Host.InternalID,
+		UserID:        task.UserID.String(),
+		ID:            task.VirtualMachine.ID,
+		EnvironmentID: task.VirtualMachine.EnvironmentID,
+	}); err != nil {
+		logger.With("error", err).WarnContext(c.Request().Context(), "failed to resume virtual")
 	}
 
 	// 对于离线的机器，只拉取历史数据
@@ -481,7 +490,15 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 			}
 
 		case consts.TaskStreamTypeSyncWebClientIP:
-			// coder/websocket 的 WebsocketManager 不支持 SetRealIP，忽略此消息类型
+			var req taskflow.ApplyWebClientIPReq
+			if err := json.Unmarshal(m.Data, &req); err != nil {
+				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal apply web client ip")
+				continue
+			}
+			if req.ClientIP != "" {
+				wsConn.SetRealIP(req.ClientIP)
+				logger.With("client_ip", req.ClientIP).DebugContext(ctx, "updated websocket client ip")
+			}
 
 		case consts.TaskStreamTypeCall:
 			switch m.Kind {

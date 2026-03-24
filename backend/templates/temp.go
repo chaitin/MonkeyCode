@@ -21,3 +21,6 @@ var OpenCodeAuth []byte
 
 //go:embed reset_password.html.tmpl
 var ResetPassword []byte
+
+//go:embed bind_email.html.tmpl
+var BindEmail []byte

@@ -113,3 +113,8 @@ func (u *userRepo) ChangePassword(ctx context.Context, userID uuid.UUID, current
 func (u *userRepo) GetUserByEmail(ctx context.Context, emails []string) ([]*db.User, error) {
 	return u.db.User.Query().WithTeams().Where(user.EmailIn(emails...)).All(ctx)
 }
+
+// SetEmail implements domain.UserRepo.
+func (u *userRepo) SetEmail(ctx context.Context, userID uuid.UUID, email string) error {
+	return u.db.User.UpdateOneID(userID).SetEmail(email).Exec(ctx)
+}

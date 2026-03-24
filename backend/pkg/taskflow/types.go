@@ -367,6 +367,16 @@ type ApplyWebClientIPReq struct {
 	ClientIP string `json:"client_ip"`
 }
 
+// GetTaskStreamIPsReq 获取任务 WebSocket 连接 IP 请求
+type GetTaskStreamIPsReq struct {
+	TaskID string `json:"task_id"`
+}
+
+// GetTaskStreamIPsResp 获取任务 WebSocket 连接 IP 响应
+type GetTaskStreamIPsResp struct {
+	IPs []string `json:"ips"`
+}
+
 // ==================== Repo 操作类型 ====================
 
 // RepoFileChangesReq 文件变动列表请求
@@ -639,13 +649,15 @@ type File struct {
 }
 
 type HibernateVirtualMachineReq struct {
-	HostID string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
-	UserID string `json:"user_id" query:"user_id" validate:"required"` // 用户id
-	ID     string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	HostID        string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
+	UserID        string `json:"user_id" query:"user_id" validate:"required"` // 用户id
+	ID            string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	EnvironmentID string `json:"environment_id" query:"environment_id"`       // environment id
 }
 
 type ResumeVirtualMachineReq struct {
-	HostID string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
-	UserID string `json:"user_id" query:"user_id" validate:"required"` // 用户id
-	ID     string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	HostID        string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
+	UserID        string `json:"user_id" query:"user_id" validate:"required"` // 用户id
+	ID            string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	EnvironmentID string `json:"environment_id" query:"environment_id"`       // environment id
 }

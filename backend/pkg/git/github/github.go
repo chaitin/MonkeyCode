@@ -4,28 +4,50 @@ package github
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/google/go-github/v74/github"
+	"github.com/palantir/go-githubapp/githubapp"
 	"golang.org/x/oauth2"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	domainpkg "github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // Github GitHub 客户端（PAT 模式）
 type Github struct {
-	logger  *slog.Logger
-	baseURL string
+	logger    *slog.Logger
+	baseURL   string
+	githubapp githubapp.ClientCreator
 }
 
 // NewGithub 创建 GitHub 客户端
-func NewGithub(logger *slog.Logger) *Github {
+func NewGithub(logger *slog.Logger, cfg *config.Config) *Github {
+	ga, err := githubapp.NewDefaultCachingClientCreator(
+		githubapp.Config{
+			V3APIURL: "https://api.github.com/",
+			App: struct {
+				IntegrationID int64  "yaml:\"integration_id\" json:\"integrationId\""
+				WebhookSecret string "yaml:\"webhook_secret\" json:\"webhookSecret\""
+				PrivateKey    string "yaml:\"private_key\" json:\"privateKey\""
+			}{
+				IntegrationID: cfg.Github.App.ID,
+				WebhookSecret: cfg.Github.App.WebhookSecret,
+				PrivateKey:    cfg.Github.App.PrivateKey,
+			},
+		},
+	)
+	if err != nil {
+		log.Fatalf("failed to create github app client creator: %v", err)
+	}
 	return &Github{
-		logger:  logger.With("module", "github"),
-		baseURL: "https://github.com",
+		logger:    logger.With("module", "github"),
+		baseURL:   "https://github.com",
+		githubapp: ga,
 	}
 }
 
@@ -140,6 +162,27 @@ func (g *Github) GetRepoDescription(ctx context.Context, token, owner, repo stri
 		return "", fmt.Errorf("get repo: %w", err)
 	}
 	return r.GetDescription(), nil
+}
+
+func (g *Github) ListInstallationRepos(ctx context.Context, installID int64) ([]*github.Repository, error) {
+	cli, err := g.githubapp.NewInstallationClient(installID)
+	if err != nil {
+		return nil, err
+	}
+	opts := &github.ListOptions{Page: 1, PerPage: 100}
+	var all []*github.Repository
+	for {
+		ls, resp, err := cli.Apps.ListRepos(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, ls.Repositories...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
 }
 
 // GetAuthorizedRepositories 获取 PAT 可访问的仓库列表

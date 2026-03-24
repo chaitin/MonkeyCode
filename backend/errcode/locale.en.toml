@@ -129,6 +129,15 @@ other = "Insufficient wallet balance"
 [err-account-overdraft]
 other = "Account overdraft"
 
+[err-email-verify-failed]
+other = "Email verification failed"
+
+[err-email-already-bound]
+other = "Email already bound"
+
+[err-email-taken]
+other = "Email already taken by another user"
+
 [err-deposit-failed]
 other = "Deposit failed"
 

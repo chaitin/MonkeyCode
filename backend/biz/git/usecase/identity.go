@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"strings"
 
+	gh "github.com/google/go-github/v74/github"
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -32,7 +34,7 @@ func NewGitIdentityUsecase(i *do.Injector) (domain.GitIdentityUsecase, error) {
 	logger := do.MustInvoke[*slog.Logger](i)
 	return &GitIdentityUsecase{
 		repo:   do.MustInvoke[domain.GitIdentityRepo](i),
-		gh:     github.NewGithub(logger),
+		gh:     github.NewGithub(logger, do.MustInvoke[*config.Config](i)),
 		logger: logger.With("module", "GitIdentityUsecase"),
 	}, nil
 }
@@ -63,6 +65,23 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 		return nil, errcode.ErrNotFound
 	}
 	gi := cvt.From(identity, &domain.GitIdentity{})
+
+	// 返回 GitHub App 授权仓库的 fullname 和 repo-url
+	if identity.InstallationID != 0 {
+		repos, err := u.gh.ListInstallationRepos(ctx, identity.InstallationID)
+		if err != nil {
+			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "installation_id", identity.InstallationID)
+		} else {
+			gi.AuthorizedRepositories = cvt.Iter(repos, func(_ int, r *gh.Repository) domain.AuthRepository {
+				return domain.AuthRepository{
+					FullName:    *cvt.NilWithDefault(r.FullName, cvt.Zero[string]()),
+					URL:         *cvt.NilWithDefault(r.HTMLURL, cvt.Zero[string]()),
+					Description: *cvt.NilWithDefault(r.Description, cvt.Zero[string]()),
+				}
+			})
+		}
+		return gi, nil
+	}
 
 	// PAT 模式：获取授权仓库列表
 	if identity.AccessToken == "" {

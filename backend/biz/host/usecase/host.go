@@ -240,9 +240,10 @@ func (h *HostUsecase) vmSleepConsumer() {
 				}
 
 				if err := h.taskflow.VirtualMachiner().Hibernate(ctx, &taskflow.HibernateVirtualMachineReq{
-					HostID: vm.HostID,
-					UserID: vm.UserID.String(),
-					ID:     vm.ID,
+					HostID:        vm.HostID,
+					UserID:        vm.UserID.String(),
+					ID:            vm.ID,
+					EnvironmentID: vm.EnvironmentID,
 				}); err != nil {
 					return fmt.Errorf("hibernate vm %s: %w", vm.ID, err)
 				}

@@ -161,6 +161,7 @@ func (pt *ProjectTask) From(src *db.ProjectTask) *ProjectTask {
 // Task 任务
 type Task struct {
 	ID             uuid.UUID          `json:"id"`
+	UserID         uuid.UUID          `json:"user_id"`
 	Type           consts.TaskType    `json:"type"`
 	SubType        consts.TaskSubType `json:"sub_type"`
 	Content        string             `json:"content"`
@@ -195,6 +196,7 @@ func (t *Task) From(src *db.Task) *Task {
 	}
 
 	t.ID = src.ID
+	t.UserID = src.UserID
 	t.Type = src.Kind
 	t.SubType = src.SubType
 	t.Content = src.Content
