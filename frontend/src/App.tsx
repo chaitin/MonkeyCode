@@ -27,6 +27,8 @@ import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
 import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
+import PrivacyPolicyPage from "./pages/privacy-policy"
+import UserAgreementPage from "./pages/user-agreement"
 
 function TaskDetailRoute() {
   const { taskId } = useParams()
@@ -43,6 +45,8 @@ function App() {
           <Route path="/playground" element={<PlaygroundPage />} />
           <Route path="/playground/create" element={<PostCreatePage />} />
           <Route path="/playground/detail" element={<PlaygroundDetailPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/user-agreement" element={<UserAgreementPage />} />
           <Route path="/tasks/public" element={<PublicTaskPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/findpassword" element={<FindPasswordPage />} />

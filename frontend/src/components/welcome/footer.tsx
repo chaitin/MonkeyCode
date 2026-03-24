@@ -1,4 +1,6 @@
 
+import { Link } from "react-router-dom"
+
 const LINKS = [
   {
     title: "资源",
@@ -33,6 +35,14 @@ const LINKS = [
         href: "https://www.baizhi.cloud/"
       },
       {
+        title: "隐私政策",
+        href: "/privacy-policy"
+      },
+      {
+        title: "用户协议",
+        href: "/user-agreement"
+      },
+      {
         title: "京ICP备2024055124号-12",
         href: "https://beian.miit.gov.cn/"
       }
@@ -59,9 +69,15 @@ const Footer = () => {
             <ul className="text-background/50 text-sm flex flex-col gap-2">
               {link.links.map((link) => (
                 <li key={link.title}>
-                  <a href={link.href} target="_blank" className="flex items-center gap-2 hover:text-background">
-                    {link.title}
-                  </a>
+                  {link.href.startsWith("/") ? (
+                    <Link to={link.href} className="flex items-center gap-2 hover:text-background">
+                      {link.title}
+                    </Link>
+                  ) : (
+                    <a href={link.href} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-background">
+                      {link.title}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
