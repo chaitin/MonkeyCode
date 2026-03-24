@@ -39,6 +39,7 @@ platform :ios do
       scheme: "App",
       configuration: "Release",
       clean: true,
+      skip_profile_detection: true,
       archive_path: "App/output/App.xcarchive",
       output_directory: "App/output",
       output_name: output_name,
