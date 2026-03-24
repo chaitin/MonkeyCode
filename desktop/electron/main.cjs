@@ -4,6 +4,7 @@ const path = require("path")
 
 const isDev = !app.isPackaged
 const DEFAULT_PROD_URL = "https://monkeycode-ai.com"
+const ERR_ABORTED = -3
 /** 桌面端启动路径（相对站点根），可用 MONKEYCODE_DESKTOP_START_PATH 覆盖 */
 const START_PATH = (process.env.MONKEYCODE_DESKTOP_START_PATH || "/console/").replace(/\/$/, "") || "/console"
 
@@ -42,6 +43,10 @@ function ensureWindowVisible(win, ms = 2000) {
   setTimeout(show, ms)
 }
 
+function isBenignLoadFailure(code, desc) {
+  return code === ERR_ABORTED || desc === "ERR_ABORTED"
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -64,6 +69,7 @@ function createWindow() {
 
   win.webContents.on("did-fail-load", (_event, code, desc, url, isMainFrame) => {
     if (!isMainFrame) return
+    if (isBenignLoadFailure(code, desc)) return
     if (!win.isDestroyed() && !win.isVisible()) win.show()
     if (isDev) return
     dialog.showErrorBox(

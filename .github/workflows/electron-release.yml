@@ -76,7 +76,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # 用 bash + pnpm exec，避免 pwsh 下子进程 cwd/退出码异常；ci-win.json 显式 directories.output
-      - name: Build Windows (portable + NSIS)
+      - name: Build Windows (NSIS installer)
         working-directory: desktop
         shell: bash
         run: |
@@ -84,7 +84,7 @@ jobs:
           pwd
           test -f package.json
           test -f electron/main.cjs
-          pnpm exec electron-builder --win portable --x64 --publish never -c electron-builder.ci-win.json
+          pnpm exec electron-builder --win nsis --x64 --publish never -c electron-builder.ci-win.json
           if [[ ! -d release ]]; then
             echo "electron-builder 已结束但 ./release 不存在，当前目录："
             ls -la
@@ -94,12 +94,12 @@ jobs:
 
       - name: Rename Windows artifact
         shell: bash
-        run: cp "$(ls desktop/release/*.exe | head -1)" desktop/release/MonkeyCode-windows-x86.exe
+        run: cp "$(ls desktop/release/*.exe | head -1)" desktop/release/MonkeyCode-windows.exe
 
       - uses: actions/upload-artifact@v4
         with:
           name: electron-windows-x64
-          path: desktop/release/MonkeyCode-windows-x86.exe
+          path: desktop/release/MonkeyCode-windows.exe
           if-no-files-found: error
 
   electron-macos:
@@ -241,7 +241,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p mobile/release-apk
-          cp mobile/android/app/build/outputs/apk/release/app-release.apk mobile/release-apk/MonkeyCode-android-arm64.apk
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk mobile/release-apk/MonkeyCode-android.apk
           ls -lh mobile/release-apk/
 
       - uses: actions/upload-artifact@v4
