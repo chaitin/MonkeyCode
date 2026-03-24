@@ -101,8 +101,6 @@ platform :ios do
         "-configuration", "Release",
         "-archivePath", archive_path,
         "archive",
-        "DEVELOPMENT_TEAM=#{team_id}",
-        "PRODUCT_BUNDLE_IDENTIFIER=#{bundle_id}",
       ].shelljoin
     )
 
