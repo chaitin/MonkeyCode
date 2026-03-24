@@ -232,22 +232,23 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     }
   };
 
-  const adaptedModelForTool = (model: DomainModel): boolean => {
-    if (selectedHostId === "public_host" && model.owner?.type !== ConstsOwnerType.OwnerTypePublic) {
-      return false
-    }
-
-    if (model.owner?.type === ConstsOwnerType.OwnerTypePublic) {
-      return true
-    }
-
-    if (model.interface_type === undefined) {
-      return true
-    }
-
+  const adaptedModelForTool = (): boolean => {
     // 固定使用 opencode，支持所有模型
     return true;
   };
+
+  const selectedModel = useMemo(
+    () => modelsWithEconomy.find((model) => model.id === selectedModelId),
+    [modelsWithEconomy, selectedModelId]
+  );
+
+  const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic;
+
+  useEffect(() => {
+    if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
+      setSelectedHostId("public_host");
+    }
+  }, [selectedPublicModel, selectedHostId]);
 
   const readyToExecuteTask = () => {
     if (!taskContent.trim()) {
@@ -256,7 +257,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     }
 
     // 检查公共模型与非公共宿主机的组合
-    const selectedModel = modelsWithEconomy.find(m => m.id === selectedModelId);
     if (selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
       toast.warning('内置模型只能在内置宿主机上使用');
       return;
@@ -758,7 +758,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                     <SelectItem 
                       key={model.id} 
                       value={model.id || ""} 
-                      disabled={!adaptedModelForTool(model || "")}>
+                      disabled={!adaptedModelForTool()}>
                       {model.id === "economy" ? (
                         <img src="/logo-colored.png" className="size-4" alt="" />
                       ) : (
@@ -829,7 +829,10 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   </SelectItem>
                   {hosts.map((host) => {
                     return (
-                      <SelectItem key={host.id} value={host.id!} disabled={host.status !== ConstsHostStatus.HostStatusOnline}>
+                      <SelectItem
+                        key={host.id}
+                        value={host.id!}
+                        disabled={host.status !== ConstsHostStatus.HostStatusOnline || selectedPublicModel}>
                         <div className="flex items-center gap-2">
                           <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
                           {getHostBadges(host)}
