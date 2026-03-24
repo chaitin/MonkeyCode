@@ -306,8 +306,10 @@ export async function captchaChallenge(): Promise<string | null> {
     if (data.success) {
       return data.token
     }
+    console.error('[captcha] solve() returned success=false', data)
     return null
-  } catch {
+  } catch (err) {
+    console.error('[captcha] exception:', err)
     return null
   }
 }

@@ -12,6 +12,8 @@
     <meta name="author" content="MonkeyCode AI" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://monkeycode-ai.com" />
+    <!-- 必须在所有模块代码之前设置，确保 cap.js 使用本地 WASM 而非 CDN（jsdelivr.net 在国内不稳定） -->
+    <script>window.CAP_CUSTOM_WASM_URL = location.origin + "/captcha/cap_wasm.js";</script>
   </head>
   <body>
     <div id="root" class="font-google-sans-code"></div>
