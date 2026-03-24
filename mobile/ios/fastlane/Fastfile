@@ -1,4 +1,5 @@
 require "shellwords"
+require "fileutils"
 
 default_platform(:ios)
 
@@ -9,6 +10,34 @@ def app_store_api_key!
     key_content: ENV.fetch("APP_STORE_CONNECT_PRIVATE_KEY_BASE64"),
     is_key_content_base64: true,
     duration: 1200
+  )
+end
+
+def write_export_options_plist(path:, team_id:)
+  File.write(
+    path,
+    <<~PLIST
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+        <key>destination</key>
+        <string>export</string>
+        <key>manageAppVersionAndBuildNumber</key>
+        <false/>
+        <key>method</key>
+        <string>app-store-connect</string>
+        <key>signingStyle</key>
+        <string>automatic</string>
+        <key>stripSwiftSymbols</key>
+        <true/>
+        <key>teamID</key>
+        <string>#{team_id}</string>
+        <key>uploadSymbols</key>
+        <true/>
+      </dict>
+      </plist>
+    PLIST
   )
 end
 
@@ -24,6 +53,15 @@ platform :ios do
     UI.user_error!("IOS_PROFILE_NAME is required") if profile_name.to_s.empty?
     UI.user_error!("IOS_TEAM_ID is required") if team_id.to_s.empty?
 
+    output_dir = "App/output"
+    archive_path = File.join(output_dir, "App.xcarchive")
+    export_path = File.join(output_dir, "export")
+    export_options_path = File.join(output_dir, "ExportOptions.plist")
+
+    FileUtils.rm_rf(export_path)
+    FileUtils.mkdir_p(output_dir)
+    write_export_options_plist(path: export_options_path, team_id: team_id)
+
     update_code_signing_settings(
       path: "App/App.xcodeproj",
       use_automatic_signing: false,
@@ -34,26 +72,34 @@ platform :ios do
       code_sign_identity: sign_identity
     )
 
-    build_ios_app(
-      workspace: "App/App.xcworkspace",
-      scheme: "App",
-      configuration: "Release",
-      clean: true,
-      skip_profile_detection: true,
-      archive_path: "App/output/App.xcarchive",
-      output_directory: "App/output",
-      output_name: output_name,
-      export_method: "app-store",
-      xcargs: [
-        "DEVELOPMENT_TEAM=#{Shellwords.escape(team_id)}",
-        "PRODUCT_BUNDLE_IDENTIFIER=#{Shellwords.escape(bundle_id)}",
-      ].join(" "),
-      export_options: {
-        signingStyle: "automatic",
-        teamID: team_id,
-        manageAppVersionAndBuildNumber: false,
-      }
+    sh(
+      [
+        "xcodebuild",
+        "-workspace", "App/App.xcworkspace",
+        "-scheme", "App",
+        "-configuration", "Release",
+        "-archivePath", archive_path,
+        "archive",
+        "DEVELOPMENT_TEAM=#{team_id}",
+        "PRODUCT_BUNDLE_IDENTIFIER=#{bundle_id}",
+      ].shelljoin
     )
+
+    sh(
+      [
+        "xcodebuild",
+        "-exportArchive",
+        "-archivePath", archive_path,
+        "-exportPath", export_path,
+        "-exportOptionsPlist", export_options_path,
+      ].shelljoin
+    )
+
+    ipa_path = Dir[File.join(export_path, "*.ipa")].first
+    UI.user_error!("No IPA was produced in #{export_path}") if ipa_path.to_s.empty?
+
+    final_ipa_path = File.join(output_dir, output_name)
+    FileUtils.cp(ipa_path, final_ipa_path)
   end
 
   desc "Upload an existing IPA to TestFlight"
