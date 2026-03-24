@@ -1,6 +1,7 @@
 # 打 tag（如 v1.2.3）后自动构建 Windows / macOS 桌面与 Android APK，并发布到 GitHub Release。
 # 手动运行 workflow 仅上传 Actions Artifact，不创建 Release（便于试打）。
-# Android 产物为 debug APK（无需仓库密钥签名）；上架 Play 需自行配置 release 签名。
+# Android 产物为 release APK，需在仓库 Secrets 配置签名密钥：
+#   ANDROID_KEYSTORE_BASE64 / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD / ANDROID_STORE_PASSWORD
 
 name: Desktop & Android Release
 
@@ -221,18 +222,24 @@ jobs:
           (cd frontend && ELECTRON=true pnpm run build)
           (cd mobile && pnpm exec cap sync)
 
-      - name: Build Android APK (debug)
+      - name: Build Android APK (release)
         working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euxo pipefail
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$ANDROID_KEYSTORE_PATH"
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4096m
+          ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4096m
 
       - name: Stage APK for artifact / release
         shell: bash
         run: |
           mkdir -p mobile/release-apk
-          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk mobile/release-apk/MonkeyCode-android-arm64.apk
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk mobile/release-apk/MonkeyCode-android-arm64.apk
           ls -lh mobile/release-apk/
 
       - uses: actions/upload-artifact@v4
