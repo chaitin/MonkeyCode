@@ -275,11 +275,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATES="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort -r)"
-          if [[ -z "$CANDIDATES" && -d /Applications/Xcode.app ]]; then
+          CANDIDATES=""
+          if [[ -d /Applications/Xcode.app ]]; then
             CANDIDATES="/Applications/Xcode.app"
           fi
+          EXTRA_CANDIDATES="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) ! -name 'Xcode.app' | sort -r)"
+          if [[ -n "$EXTRA_CANDIDATES" ]]; then
+            CANDIDATES="${CANDIDATES:+${CANDIDATES}"$'\n'}${EXTRA_CANDIDATES}"
+          fi
           SELECTED_XCODE_APP=""
+          BETA_FALLBACK=""
           while IFS= read -r XCODE_APP; do
             [[ -n "$XCODE_APP" ]] || continue
             DEV_DIR="$XCODE_APP/Contents/Developer"
@@ -292,10 +297,15 @@ jobs:
             fi
             echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}, platform installed: $HAS_PLATFORM"
             if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* && "$HAS_PLATFORM" == "yes" ]]; then
+              if [[ "$(basename "$XCODE_APP" | tr '[:upper:]' '[:lower:]')" == *beta* ]]; then
+                [[ -n "$BETA_FALLBACK" ]] || BETA_FALLBACK="$XCODE_APP"
+                continue
+              fi
               SELECTED_XCODE_APP="$XCODE_APP"
               break
             fi
           done <<< "$CANDIDATES"
+          [[ -n "$SELECTED_XCODE_APP" ]] || SELECTED_XCODE_APP="$BETA_FALLBACK"
           [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK platform found under /Applications"; exit 1; }
           sudo xcode-select -s "$SELECTED_XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
@@ -462,11 +472,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATES="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort -r)"
-          if [[ -z "$CANDIDATES" && -d /Applications/Xcode.app ]]; then
+          CANDIDATES=""
+          if [[ -d /Applications/Xcode.app ]]; then
             CANDIDATES="/Applications/Xcode.app"
           fi
+          EXTRA_CANDIDATES="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) ! -name 'Xcode.app' | sort -r)"
+          if [[ -n "$EXTRA_CANDIDATES" ]]; then
+            CANDIDATES="${CANDIDATES:+${CANDIDATES}"$'\n'}${EXTRA_CANDIDATES}"
+          fi
           SELECTED_XCODE_APP=""
+          BETA_FALLBACK=""
           while IFS= read -r XCODE_APP; do
             [[ -n "$XCODE_APP" ]] || continue
             DEV_DIR="$XCODE_APP/Contents/Developer"
@@ -479,10 +494,15 @@ jobs:
             fi
             echo "Candidate: $XCODE_APP, Xcode ${XCODE_VERSION:-unknown}, iPhoneOS SDK ${SDK_VERSION:-missing}, platform installed: $HAS_PLATFORM"
             if [[ "$XCODE_VERSION" == 26.* && "$SDK_VERSION" == 26.* && "$HAS_PLATFORM" == "yes" ]]; then
+              if [[ "$(basename "$XCODE_APP" | tr '[:upper:]' '[:lower:]')" == *beta* ]]; then
+                [[ -n "$BETA_FALLBACK" ]] || BETA_FALLBACK="$XCODE_APP"
+                continue
+              fi
               SELECTED_XCODE_APP="$XCODE_APP"
               break
             fi
           done <<< "$CANDIDATES"
+          [[ -n "$SELECTED_XCODE_APP" ]] || SELECTED_XCODE_APP="$BETA_FALLBACK"
           [[ -n "$SELECTED_XCODE_APP" ]] || { echo "No Xcode 26 installation with iPhoneOS 26 SDK platform found under /Applications"; exit 1; }
           sudo xcode-select -s "$SELECTED_XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
