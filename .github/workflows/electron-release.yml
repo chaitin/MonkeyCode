@@ -436,8 +436,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IPA_PATH="$(find mobile/release-ios -name '*.ipa' | head -1)"
+          IPA_PATH="$(find "$GITHUB_WORKSPACE/mobile/release-ios" -name '*.ipa' | head -1)"
           test -n "$IPA_PATH"
+          test -f "$IPA_PATH"
           echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
       - name: Upload to TestFlight

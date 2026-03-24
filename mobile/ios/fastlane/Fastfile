@@ -3,6 +3,14 @@ require "fileutils"
 
 default_platform(:ios)
 
+def ios_root
+  @ios_root ||= File.expand_path("..", __dir__)
+end
+
+def app_path(*parts)
+  File.join(ios_root, "App", *parts)
+end
+
 def app_store_api_key!
   app_store_connect_api_key(
     key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
@@ -53,7 +61,7 @@ platform :ios do
     UI.user_error!("IOS_PROFILE_NAME is required") if profile_name.to_s.empty?
     UI.user_error!("IOS_TEAM_ID is required") if team_id.to_s.empty?
 
-    output_dir = "App/output"
+    output_dir = app_path("output")
     archive_path = File.join(output_dir, "App.xcarchive")
     export_path = File.join(output_dir, "export")
     export_options_path = File.join(output_dir, "ExportOptions.plist")
@@ -63,7 +71,7 @@ platform :ios do
     write_export_options_plist(path: export_options_path, team_id: team_id)
 
     update_code_signing_settings(
-      path: "App/App.xcodeproj",
+      path: app_path("App.xcodeproj"),
       use_automatic_signing: false,
       team_id: team_id,
       targets: ["App"],
@@ -75,7 +83,7 @@ platform :ios do
     sh(
       [
         "xcodebuild",
-        "-workspace", "App/App.xcworkspace",
+        "-workspace", app_path("App.xcworkspace"),
         "-scheme", "App",
         "-configuration", "Release",
         "-archivePath", archive_path,
