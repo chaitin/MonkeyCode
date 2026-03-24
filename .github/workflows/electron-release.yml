@@ -89,12 +89,14 @@ jobs:
           fi
           ls -laR release
 
+      - name: Rename Windows artifact
+        shell: bash
+        run: cp "$(ls desktop/release/*.exe | head -1)" desktop/release/MonkeyCode-windows-x86.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: electron-windows-x64
-          path: |
-            desktop/release/*.exe
-            desktop/release/*.yml
+          path: desktop/release/MonkeyCode-windows-x86.exe
           if-no-files-found: error
 
   electron-macos:
@@ -151,11 +153,19 @@ jobs:
           test -d release || (echo "missing desktop/release"; ls -la; exit 1)
           ls -laR release
 
+      - name: Rename macOS artifacts
+        run: |
+          ARM64=$(ls desktop/release/*arm64*.dmg 2>/dev/null | head -1)
+          X64=$(ls desktop/release/*.dmg | grep -v arm64 | head -1)
+          [ -n "$ARM64" ] && cp "$ARM64" desktop/release/MonkeyCode-macos-arm64.dmg
+          [ -n "$X64" ]   && cp "$X64"   desktop/release/MonkeyCode-macos-x86.dmg
+
       - uses: actions/upload-artifact@v4
         with:
           name: electron-macos-universal
           path: |
-            desktop/release/*.dmg
+            desktop/release/MonkeyCode-macos-arm64.dmg
+            desktop/release/MonkeyCode-macos-x86.dmg
           if-no-files-found: error
 
   capacitor-android:
@@ -221,14 +231,8 @@ jobs:
       - name: Stage APK for artifact / release
         shell: bash
         run: |
-          set -euo pipefail
           mkdir -p mobile/release-apk
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            NAME="MonkeyCode-${{ github.ref_name }}-android-debug.apk"
-          else
-            NAME="MonkeyCode-0.0.0-ci.${{ github.run_number }}-android-debug.apk"
-          fi
-          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "mobile/release-apk/${NAME}"
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk mobile/release-apk/MonkeyCode-android-arm64.apk
           ls -lh mobile/release-apk/
 
       - uses: actions/upload-artifact@v4
