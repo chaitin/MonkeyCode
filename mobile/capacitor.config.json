@@ -2,8 +2,15 @@
   "appId": "com.monkeycode.mobile",
   "appName": "MonkeyCode",
   "webDir": "../frontend/dist",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#faf9f5"
+  },
   "server": {
     "url": "https://monkeycode-ai.com/console/",
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "allowNavigation": [
+      "monkeycode-ai.com"
+    ]
   }
 }
