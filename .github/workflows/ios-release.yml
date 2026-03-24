@@ -1,0 +1,215 @@
+name: iOS Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Attach the built IPA to this GitHub Release tag (optional)"
+        required: false
+        type: string
+      publish_target:
+        description: "Where to publish after the IPA is built"
+        required: true
+        type: choice
+        default: all
+        options:
+          - none
+          - all
+          - testflight
+          - app-store
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  RUBY_VERSION: "3.3"
+  IOS_BUNDLE_ID: "com.monkeycode.mobile"
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure iOS project exists
+        run: test -d mobile/ios/App
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            frontend/pnpm-lock.yaml
+            mobile/pnpm-lock.yaml
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+
+      - name: Install fastlane gems
+        working-directory: mobile/ios
+        run: bundle install --jobs 4 --retry 3
+
+      - name: Set version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V=$(node -p "require('./frontend/package.json').version")
+          fi
+
+          if [[ "$V" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            V="${V}.0"
+          fi
+
+          BUILD_NUMBER="${{ github.run_number }}"
+          IPA_NAME="MonkeyCode-${V}-ios-release.ipa"
+
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
+
+          node -e "
+            const fs=require('fs');
+            const p='mobile/package.json';
+            const j=JSON.parse(fs.readFileSync(p,'utf8'));
+            j.version=process.argv[1];
+            fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');
+          " "$V"
+
+          perl -0pi -e "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${V};/g; s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER};/g" mobile/ios/App/App.xcodeproj/project.pbxproj
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run build
+
+      - name: Capacitor sync iOS
+        working-directory: mobile
+        run: pnpm exec cap sync ios --no-build
+
+      - name: Install signing assets
+        shell: bash
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          : "${IOS_CERTIFICATE_BASE64:?Missing IOS_CERTIFICATE_BASE64}"
+          : "${IOS_CERTIFICATE_PASSWORD:?Missing IOS_CERTIFICATE_PASSWORD}"
+          : "${IOS_PROVISIONING_PROFILE_BASE64:?Missing IOS_PROVISIONING_PROFILE_BASE64}"
+
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/build_profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          echo "$IOS_CERTIFICATE_BASE64" | base64 -D > "$CERT_PATH"
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -D > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$RUNNER_TEMP/profile.plist")
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "IOS_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+          echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+
+      - name: Build signed IPA
+        working-directory: mobile/ios
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ env.IOS_BUNDLE_ID }}
+          IOS_PROFILE_NAME: ${{ env.IOS_PROFILE_NAME }}
+          IOS_OUTPUT_NAME: ${{ env.IPA_NAME }}
+        run: bundle exec fastlane ios build_release
+
+      - name: Resolve IPA path
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA_PATH="mobile/ios/App/output/${IPA_NAME}"
+          test -f "$IPA_PATH"
+          echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: ${{ env.IPA_PATH }}
+          if-no-files-found: error
+
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          elif [[ -n "${{ inputs.release_tag }}" ]]; then
+            echo "RELEASE_TAG=${{ inputs.release_tag }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload to GitHub Release
+        if: env.RELEASE_TAG != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: ${{ env.IPA_PATH }}
+
+      - name: Upload to TestFlight
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_target == 'testflight' || inputs.publish_target == 'all'))
+        working-directory: mobile/ios
+        env:
+          IOS_IPA_PATH: ${{ env.IPA_PATH }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+        run: bundle exec fastlane ios upload_testflight ipa:"$IOS_IPA_PATH"
+
+      - name: Submit to App Store
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_target == 'app-store' || inputs.publish_target == 'all'))
+        working-directory: mobile/ios
+        env:
+          IOS_IPA_PATH: ${{ env.IPA_PATH }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+        run: bundle exec fastlane ios submit_app_store ipa:"$IOS_IPA_PATH"
+
+      - name: Cleanup signing keychain
+        if: always() && env.IOS_KEYCHAIN_PATH != ''
+        shell: bash
+        run: |
+          security delete-keychain "$IOS_KEYCHAIN_PATH" || true

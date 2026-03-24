@@ -1,0 +1,77 @@
+default_platform(:ios)
+
+def app_store_api_key!
+  app_store_connect_api_key(
+    key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+    issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+    key_content: ENV.fetch("APP_STORE_CONNECT_PRIVATE_KEY_BASE64"),
+    is_key_content_base64: true,
+    duration: 1200
+  )
+end
+
+platform :ios do
+  desc "Build a signed App Store IPA"
+  lane :build_release do |options|
+    bundle_id = options[:bundle_id] || ENV.fetch("IOS_BUNDLE_ID", "com.monkeycode.mobile")
+    profile_name = options[:profile_name] || ENV["IOS_PROFILE_NAME"]
+    team_id = options[:team_id] || ENV["IOS_TEAM_ID"]
+    output_name = options[:output_name] || ENV.fetch("IOS_OUTPUT_NAME", "MonkeyCode.ipa")
+
+    UI.user_error!("IOS_PROFILE_NAME is required") if profile_name.to_s.empty?
+    UI.user_error!("IOS_TEAM_ID is required") if team_id.to_s.empty?
+
+    build_ios_app(
+      workspace: "App/App.xcworkspace",
+      scheme: "App",
+      configuration: "Release",
+      clean: true,
+      archive_path: "App/output/App.xcarchive",
+      output_directory: "App/output",
+      output_name: output_name,
+      export_method: "app-store",
+      xcargs: "DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Manual PRODUCT_BUNDLE_IDENTIFIER=#{bundle_id}",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          bundle_id => profile_name,
+        },
+        teamID: team_id,
+        manageAppVersionAndBuildNumber: false,
+      }
+    )
+  end
+
+  desc "Upload an existing IPA to TestFlight"
+  lane :upload_testflight do |options|
+    ipa_path = options[:ipa] || ENV["IOS_IPA_PATH"]
+    skip_waiting = options[:skip_waiting_for_build_processing]
+    skip_waiting = true if skip_waiting.nil?
+
+    UI.user_error!("An IPA path is required") if ipa_path.to_s.empty?
+
+    upload_to_testflight(
+      api_key: app_store_api_key!,
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: skip_waiting
+    )
+  end
+
+  desc "Upload an existing IPA and submit it to App Store review"
+  lane :submit_app_store do |options|
+    ipa_path = options[:ipa] || ENV["IOS_IPA_PATH"]
+
+    UI.user_error!("An IPA path is required") if ipa_path.to_s.empty?
+
+    upload_to_app_store(
+      api_key: app_store_api_key!,
+      ipa: ipa_path,
+      skip_metadata: true,
+      skip_screenshots: true,
+      submit_for_review: true,
+      automatic_release: false,
+      force: true,
+      precheck_include_in_app_purchases: false
+    )
+  end
+end

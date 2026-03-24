@@ -1,0 +1,3 @@
+app_identifier(ENV.fetch("IOS_BUNDLE_ID", "com.monkeycode.mobile"))
+
+team_id(ENV["IOS_TEAM_ID"]) if ENV["IOS_TEAM_ID"]
