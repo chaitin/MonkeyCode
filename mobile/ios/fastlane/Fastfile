@@ -147,6 +147,9 @@ platform :ios do
       ipa: ipa_path,
       skip_metadata: true,
       skip_screenshots: true,
+      submission_information: {
+        export_compliance_uses_encryption: false
+      },
       submit_for_review: true,
       automatic_release: false,
       force: true,
