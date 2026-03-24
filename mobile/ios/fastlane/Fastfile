@@ -21,7 +21,7 @@ def app_store_api_key!
   )
 end
 
-def write_export_options_plist(path:, team_id:)
+def write_export_options_plist(path:, team_id:, bundle_id:, profile_name:, sign_identity:)
   File.write(
     path,
     <<~PLIST
@@ -35,8 +35,15 @@ def write_export_options_plist(path:, team_id:)
         <false/>
         <key>method</key>
         <string>app-store-connect</string>
+        <key>provisioningProfiles</key>
+        <dict>
+          <key>#{bundle_id}</key>
+          <string>#{profile_name}</string>
+        </dict>
+        <key>signingCertificate</key>
+        <string>#{sign_identity}</string>
         <key>signingStyle</key>
-        <string>automatic</string>
+        <string>manual</string>
         <key>stripSwiftSymbols</key>
         <true/>
         <key>teamID</key>
@@ -68,7 +75,13 @@ platform :ios do
 
     FileUtils.rm_rf(export_path)
     FileUtils.mkdir_p(output_dir)
-    write_export_options_plist(path: export_options_path, team_id: team_id)
+    write_export_options_plist(
+      path: export_options_path,
+      team_id: team_id,
+      bundle_id: bundle_id,
+      profile_name: profile_name,
+      sign_identity: sign_identity
+    )
 
     update_code_signing_settings(
       path: app_path("App.xcodeproj"),
