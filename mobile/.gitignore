@@ -1,0 +1,5 @@
+node_modules/
+
+# Capacitor 同步的前端编译产物
+android/app/src/main/assets/public/
+ios/App/App/public/

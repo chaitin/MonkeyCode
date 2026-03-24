@@ -1,0 +1,8 @@
+{
+  "appId": "com.monkeycode.mobile",
+  "appName": "MonkeyCode",
+  "webDir": "../frontend/dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "monkeycode-mobile",
+  "private": true,
+  "version": "260323.0.5",
+  "description": "MonkeyCode 移动端壳（Capacitor）",
+  "type": "module",
+  "scripts": {
+    "build:web": "cross-env ELECTRON=true pnpm --dir ../frontend run build",
+    "cap:sync": "cap sync",
+    "sync": "pnpm run build:web && cap sync",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.2.0",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/ios": "^7.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.2.0",
+    "cross-env": "^7.0.3"
+  }
+}
