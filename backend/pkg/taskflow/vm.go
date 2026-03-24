@@ -171,3 +171,21 @@ func (v *virtualMachineClient) CloseTerminal(ctx context.Context, req *CloseTerm
 	_, err := request.Delete[any](v.client, ctx, "/internal/terminal", request.WithBody(req))
 	return err
 }
+
+// Hibernate implements [VirtualMachiner].
+func (v *virtualMachineClient) Hibernate(ctx context.Context, req *HibernateVirtualMachineReq) error {
+	_, err := request.Post[Resp[any]](v.client, ctx, "/internal/vm/hibernate", req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Resume implements [VirtualMachiner].
+func (v *virtualMachineClient) Resume(ctx context.Context, req *ResumeVirtualMachineReq) error {
+	_, err := request.Post[Resp[any]](v.client, ctx, "/internal/vm/resume", req)
+	if err != nil {
+		return err
+	}
+	return nil
+}

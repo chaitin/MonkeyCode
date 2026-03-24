@@ -9,7 +9,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
-// VMSleepQueue 10 分钟空闲休眠队列
+// VMSleepQueue 空闲休眠队列
 type VMSleepQueue struct {
 	*RedisDelayQueue[*domain.VmIdleInfo]
 }
@@ -19,13 +19,13 @@ type VMNotifyQueue struct {
 	*RedisDelayQueue[*domain.VmIdleInfo]
 }
 
-// VMRecycleQueue 7 天空闲回收队列
+// VMRecycleQueue 空闲回收队列
 type VMRecycleQueue struct {
 	*RedisDelayQueue[*domain.VmIdleInfo]
 }
 
 func NewVMSleepQueue(rdb *redis.Client, logger *slog.Logger) *VMSleepQueue {
-	return &VMSleepQueue{NewRedisDelayQueue[*domain.VmIdleInfo](rdb, logger,
+	return &VMSleepQueue{NewRedisDelayQueue(rdb, logger,
 		WithPrefix[*domain.VmIdleInfo]("mcai:vmsleep"),
 		WithPollInterval[*domain.VmIdleInfo](5*time.Second),
 		WithRequeueDelay[*domain.VmIdleInfo](1*time.Minute),
@@ -33,7 +33,7 @@ func NewVMSleepQueue(rdb *redis.Client, logger *slog.Logger) *VMSleepQueue {
 }
 
 func NewVMNotifyQueue(rdb *redis.Client, logger *slog.Logger) *VMNotifyQueue {
-	return &VMNotifyQueue{NewRedisDelayQueue[*domain.VmIdleInfo](rdb, logger,
+	return &VMNotifyQueue{NewRedisDelayQueue(rdb, logger,
 		WithPrefix[*domain.VmIdleInfo]("mcai:vmnotify"),
 		WithPollInterval[*domain.VmIdleInfo](30*time.Second),
 		WithRequeueDelay[*domain.VmIdleInfo](1*time.Minute),
@@ -42,7 +42,7 @@ func NewVMNotifyQueue(rdb *redis.Client, logger *slog.Logger) *VMNotifyQueue {
 }
 
 func NewVMRecycleQueue(rdb *redis.Client, logger *slog.Logger) *VMRecycleQueue {
-	return &VMRecycleQueue{NewRedisDelayQueue[*domain.VmIdleInfo](rdb, logger,
+	return &VMRecycleQueue{NewRedisDelayQueue(rdb, logger,
 		WithPrefix[*domain.VmIdleInfo]("mcai:vmrecycle"),
 		WithPollInterval[*domain.VmIdleInfo](30*time.Second),
 		WithRequeueDelay[*domain.VmIdleInfo](1*time.Minute),

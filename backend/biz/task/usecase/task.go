@@ -3,6 +3,7 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -172,8 +173,18 @@ func (a *TaskUsecase) List(ctx context.Context, user *domain.User, req domain.Ta
 
 // Stop implements domain.TaskUsecase.
 func (a *TaskUsecase) Stop(ctx context.Context, user *domain.User, id uuid.UUID) error {
+	t, err := a.repo.Info(ctx, user, id)
+	if err != nil {
+		return err
+	}
+	tk := cvt.From(t, &domain.Task{})
 	return a.repo.Stop(ctx, user, id, func(t *db.Task) error {
 		return a.taskflow.TaskManager().Stop(ctx, taskflow.TaskReq{
+			VirtualMachine: &taskflow.VirtualMachine{
+				ID:            tk.VirtualMachine.ID,
+				HostID:        tk.VirtualMachine.Host.ID,
+				EnvironmentID: tk.VirtualMachine.EnvironmentID,
+			},
 			Task: &taskflow.Task{
 				ID: id,
 			},
@@ -190,7 +201,11 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 	tk := cvt.From(t, &domain.Task{})
 
 	if err := a.taskflow.TaskManager().Cancel(ctx, taskflow.TaskReq{
-		VirtualMachine: &taskflow.VirtualMachine{ID: tk.VirtualMachine.ID},
+		VirtualMachine: &taskflow.VirtualMachine{
+			ID:            tk.VirtualMachine.ID,
+			HostID:        tk.VirtualMachine.Host.ID,
+			EnvironmentID: tk.VirtualMachine.EnvironmentID,
+		},
 		Task: &taskflow.Task{
 			ID: id,
 		},
@@ -208,9 +223,12 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 		return err
 	}
 	tk := cvt.From(t, &domain.Task{})
-
 	if err := a.taskflow.TaskManager().Continue(ctx, taskflow.TaskReq{
-		VirtualMachine: &taskflow.VirtualMachine{ID: tk.VirtualMachine.ID},
+		VirtualMachine: &taskflow.VirtualMachine{
+			ID:            tk.VirtualMachine.ID,
+			HostID:        tk.VirtualMachine.Host.ID,
+			EnvironmentID: tk.VirtualMachine.EnvironmentID,
+		},
 		Task: &taskflow.Task{
 			ID:   id,
 			Text: content,
@@ -351,8 +369,12 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			Configs:    configs,
 			McpConfigs: mcps,
 		}
+		b, err := json.Marshal(createTaskReq)
+		if err != nil {
+			return vm, err
+		}
 		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
-		if err := a.redis.Set(ctx, reqKey, createTaskReq, 10*time.Minute).Err(); err != nil {
+		if err := a.redis.Set(ctx, reqKey, string(b), 10*time.Minute).Err(); err != nil {
 			a.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
 		}
 

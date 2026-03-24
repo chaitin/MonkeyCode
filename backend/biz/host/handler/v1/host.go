@@ -371,9 +371,7 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	defer cancel()
 
-	var vmInfo *domain.VirtualMachine
 	if err := h.usecase.WithVMPermission(ctx, user.ID, req.ID, func(v *domain.VirtualMachine) error {
-		vmInfo = v
 		return nil
 	}); err != nil {
 		logger.With("error", err).ErrorContext(ctx, "failed to check permission")
@@ -403,20 +401,6 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 		return err
 	}
 	defer shell.Stop()
-
-	// 刷新空闲计时器
-	if vmInfo != nil {
-		hostID := ""
-		if vmInfo.Host != nil {
-			hostID = vmInfo.Host.ID
-		}
-		_ = h.usecase.RefreshIdleTimers(ctx, vmInfo.ID, &domain.VmIdleInfo{
-			UID:    user.ID,
-			VmID:   vmInfo.ID,
-			HostID: hostID,
-			EnvID:  vmInfo.EnvironmentID,
-		})
-	}
 
 	go func() {
 		defer cancel()
@@ -577,17 +561,6 @@ func (h *HostHandler) ShareTerminal(c *web.Context, req domain.ShareTerminalReq)
 		if err != nil {
 			return err
 		}
-		// 刷新空闲计时器
-		hostID := ""
-		if v.Host != nil {
-			hostID = v.Host.ID
-		}
-		_ = h.usecase.RefreshIdleTimers(c.Request().Context(), v.ID, &domain.VmIdleInfo{
-			UID:    user.ID,
-			VmID:   v.ID,
-			HostID: hostID,
-			EnvID:  v.EnvironmentID,
-		})
 		return c.Success(resp)
 	})
 }
@@ -752,21 +725,6 @@ func (h *HostHandler) ApplyPort(c *web.Context, req domain.ApplyPortReq) error {
 		h.logger.With("error", err).ErrorContext(c.Request().Context(), "failed to apply port")
 		return errcode.ErrApplyPortFailed.Wrap(err)
 	}
-
-	// 刷新空闲计时器
-	_ = h.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
-		hostID := ""
-		if v.Host != nil {
-			hostID = v.Host.ID
-		}
-		return h.usecase.RefreshIdleTimers(c.Request().Context(), v.ID, &domain.VmIdleInfo{
-			UID:    user.ID,
-			VmID:   v.ID,
-			HostID: hostID,
-			EnvID:  v.EnvironmentID,
-		})
-	})
-
 	return c.Success(port)
 }
 

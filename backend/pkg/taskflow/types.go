@@ -520,7 +520,7 @@ type Task struct {
 type CodingAgent int
 
 const (
-	CodingAgentCodex       CodingAgent = iota + 1
+	CodingAgentCodex CodingAgent = iota + 1
 	CodingAgentClaude
 	CodingAgentMCAIReview
 	CodingAgentOpenCode
@@ -635,4 +635,16 @@ type File struct {
 	CreatedAt     int64    `json:"created_at"`
 	AccessedAt    int64    `json:"accessed_at"`
 	UpdatedAt     int64    `json:"updated_at"`
+}
+
+type HibernateVirtualMachineReq struct {
+	HostID string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
+	UserID string `json:"user_id" query:"user_id" validate:"required"` // 用户id
+	ID     string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+}
+
+type ResumeVirtualMachineReq struct {
+	HostID string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
+	UserID string `json:"user_id" query:"user_id" validate:"required"` // 用户id
+	ID     string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
 }

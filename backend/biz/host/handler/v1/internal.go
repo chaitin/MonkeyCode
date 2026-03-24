@@ -230,8 +230,8 @@ return nil
 
 	// 通过 hook 获取关联的 TaskID（内部项目注入时生效）
 	taskID := uuid.Nil
-	if h.hook != nil {
-		taskID = h.hook.OnAgentAuth(ctx, vm.ID)
+	if len(vm.Edges.Tasks) > 0 {
+		taskID = vm.Edges.Tasks[0].ID
 	}
 
 	return &taskflow.Token{
@@ -347,6 +347,15 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 				h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
 			}
 		}
+
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := h.hostUsecase.RefreshIdleTimers(ctx, vm.ID); err != nil {
+				h.logger.With("error", err).ErrorContext(ctx, "failed to refresh idel timers")
+			}
+		}()
+
 	}
 
 	return c.Success(nil)
@@ -421,17 +430,12 @@ type VMActivityReq struct {
 
 // VMActivity VM 活动回调，用于刷新空闲计时器
 func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) error {
-	vm, err := h.repo.GetVirtualMachine(c.Request().Context(), req.VMID)
-	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "vm activity: vm not found", "vmID", req.VMID, "error", err)
-		return err
-	}
-
-	payload := &domain.VmIdleInfo{
-		UID:    vm.UserID,
-		VmID:   vm.ID,
-		HostID: vm.HostID,
-		EnvID:  vm.EnvironmentID,
-	}
-	return h.hostUsecase.RefreshIdleTimers(c.Request().Context(), req.VMID, payload)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := h.hostUsecase.RefreshIdleTimers(ctx, req.VMID); err != nil {
+			h.logger.With("error", err).ErrorContext(ctx, "failed to refresh idel timers")
+		}
+	}()
+	return c.Success(nil)
 }

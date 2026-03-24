@@ -19,6 +19,15 @@ image:
 	  --output ${OUTPUT} \
 	  .
 
+# make ingress PLATFORM= TAG= OUTPUT_INGRESS=
+ingress:
+	docker buildx build \
+	  -f build/Dockerfile.ingress \
+	  --platform ${PLATFORM} \
+	  --tag ${REGISTRY}/monkeycode-ai-ingress:${TAG} \
+	  --output ${OUTPUT} \
+	  .
+
 swag:
 	swag fmt && swag init -ot json --pd -g cmd/server/main.go
 

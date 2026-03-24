@@ -40,6 +40,7 @@ type Config struct {
 	Loki        Loki        `mapstructure:"loki"`
 	LLM         LLM         `mapstructure:"llm"`
 	Notify      Notify      `mapstructure:"notify"`
+	VMIdle      VMIdle      `mapstructure:"vm_idle"`
 
 	// Context7 API 配置
 	Context7ApiKey string `mapstructure:"context7_api_key"`
@@ -109,6 +110,11 @@ type Notify struct {
 	VMExpireWarningMinutes int `mapstructure:"vm_expire_warning_minutes"` // VM 过期预警时间（分钟）
 }
 
+type VMIdle struct {
+	SleepSeconds   int `mapstructure:"sleep_seconds"`   // VM 空闲休眠时间（秒）
+	RecycleSeconds int `mapstructure:"recycle_seconds"` // VM 空闲回收时间（秒）
+}
+
 type Session struct {
 	ExpireDay int `mapstructure:"expire_day"`
 }
@@ -139,6 +145,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("debug", false)
 	v.SetDefault("server.addr", ":8888")
 	v.SetDefault("server.base_url", "http://localhost:8888")
+	v.SetDefault("loki.addr", "http://monkeycode-ai-loki:3100")
 	v.SetDefault("database.master", "")
 	v.SetDefault("database.slave", "")
 	v.SetDefault("database.max_open_conns", 100)
@@ -157,6 +164,8 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("redis.port", 6379)
 	v.SetDefault("redis.pass", "")
 	v.SetDefault("redis.db", 0)
+	v.SetDefault("vm_idle.sleep_seconds", 600)
+	v.SetDefault("vm_idle.recycle_seconds", 604800)
 	v.SetDefault("init_team.email", "")
 	v.SetDefault("init_team.name", "")
 	v.SetDefault("init_team.password", "")
