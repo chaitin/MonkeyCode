@@ -19,8 +19,8 @@
     "electron:pack:win:nsis": "node scripts/pack-win.mjs -- --win nsis --x64 --publish never",
     "electron:pack:win:dir": "node scripts/pack-win.mjs -- --win dir --x64 --publish never",
     "electron:sync-icon": "node scripts/sync-icon.cjs",
-    "electron:ci:win": "electron-builder --win portable nsis --x64 --publish never",
-    "electron:ci:win:native": "electron-builder --win portable nsis --x64 --publish never -c electron-builder.ci-win.json",
+    "electron:ci:win": "electron-builder --win portable --x64 --publish never",
+    "electron:ci:win:native": "electron-builder --win portable --x64 --publish never -c electron-builder.ci-win.json",
     "electron:ci:mac": "electron-builder --mac --arm64 --x64 --publish never"
   },
   "devDependencies": {
@@ -48,8 +48,7 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ]
     },
     "win": {
@@ -60,18 +59,8 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
         }
       ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
     },
     "asar": true
   }

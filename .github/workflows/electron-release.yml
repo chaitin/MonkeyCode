@@ -81,7 +81,7 @@ jobs:
           pwd
           test -f package.json
           test -f electron/main.cjs
-          pnpm exec electron-builder --win portable nsis --x64 --publish never -c electron-builder.ci-win.json
+          pnpm exec electron-builder --win portable --x64 --publish never -c electron-builder.ci-win.json
           if [[ ! -d release ]]; then
             echo "electron-builder 已结束但 ./release 不存在，当前目录："
             ls -la
@@ -156,8 +156,6 @@ jobs:
           name: electron-macos-universal
           path: |
             desktop/release/*.dmg
-            desktop/release/*.zip
-            desktop/release/*.yml
           if-no-files-found: error
 
   capacitor-android:
