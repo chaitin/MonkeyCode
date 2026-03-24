@@ -12,6 +12,14 @@ function desktopEntryUrl(base) {
   return new URL(`${START_PATH.startsWith("/") ? START_PATH : `/${START_PATH}`}`, href).href
 }
 
+/** 开发 / 源码运行：前端构建产物在仓库 frontend/dist；安装包内为 web-dist */
+function localDistIndexHtml() {
+  if (app.isPackaged) {
+    return path.join(__dirname, "..", "web-dist", "index.html")
+  }
+  return path.join(__dirname, "..", "..", "frontend", "dist", "index.html")
+}
+
 /** Windows 任务栏/窗口图标不能从 app.asar 内读，需配合 package.json 的 asarUnpack */
 function windowIconPath() {
   if (app.isPackaged) {
@@ -74,16 +82,15 @@ function createWindow() {
     win.loadURL(desktopEntryUrl(devBase))
     win.webContents.openDevTools({ mode: "detach" })
   } else if (process.env.MONKEYCODE_LOAD_LOCAL_DIST === "1") {
-    const indexHtml = path.join(__dirname, "..", "dist", "index.html")
+    const indexHtml = localDistIndexHtml()
     if (!fs.existsSync(indexHtml)) {
       dialog.showErrorBox(
         "MonkeyCode",
-        "未找到 dist/index.html。请先执行 ELECTRON=true pnpm build，或不要使用 MONKEYCODE_LOAD_LOCAL_DIST。"
+        "未找到本地前端构建。请先于仓库根执行：cd desktop && pnpm electron:build:dist（或先 pnpm electron:sync-web 再打安装包），或不要使用 MONKEYCODE_LOAD_LOCAL_DIST。"
       )
       app.quit()
       return
     }
-    // 本地 file:// + BrowserRouter 无法可靠使用 /login，仍打开入口页
     win.loadFile(indexHtml)
   } else {
     const base = process.env.MONKEYCODE_DESKTOP_URL || DEFAULT_PROD_URL

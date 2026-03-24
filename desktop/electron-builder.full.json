@@ -3,6 +3,6 @@
     "output": "release-full"
   },
   "icon": "electron/icon.png",
-  "files": ["dist/**/*", "electron/**/*", "package.json"],
+  "files": ["web-dist/**/*", "electron/**/*", "package.json"],
   "asarUnpack": ["electron/icon.png"]
 }

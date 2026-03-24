@@ -11,4 +11,6 @@ monkeycode-ai/
 .pnpm-store/
 
 # Electron (electron-builder)
+desktop/release/
+desktop/release-full/
 frontend/release/

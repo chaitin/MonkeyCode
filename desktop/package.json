@@ -1,0 +1,78 @@
+{
+  "name": "monkeycode-desktop",
+  "private": true,
+  "version": "260323.0.5",
+  "description": "MonkeyCode 桌面客户端（Electron）",
+  "author": "MonkeyCode",
+  "type": "commonjs",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "postinstall": "node scripts/postinstall.cjs",
+    "electron:build:dist": "cross-env ELECTRON=true pnpm --dir ../frontend run build",
+    "electron:sync-web": "node scripts/sync-web-dist.mjs",
+    "electron:dev": "concurrently -k \"pnpm --dir ../frontend dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:pack": "electron-builder --mac --publish never",
+    "electron:pack:dir": "electron-builder --mac dir --publish never",
+    "electron:pack:with-dist": "pnpm electron:build:dist && pnpm electron:sync-web && electron-builder --mac -c electron-builder.full.json --publish never",
+    "electron:pack:win": "node scripts/pack-win.mjs",
+    "electron:pack:win:portable": "node scripts/pack-win.mjs -- --win portable --x64 --publish never",
+    "electron:pack:win:nsis": "node scripts/pack-win.mjs -- --win nsis --x64 --publish never",
+    "electron:pack:win:dir": "node scripts/pack-win.mjs -- --win dir --x64 --publish never",
+    "electron:sync-icon": "node scripts/sync-icon.cjs",
+    "electron:ci:win": "electron-builder --win portable nsis --x64 --publish never",
+    "electron:ci:win:native": "electron-builder --win portable nsis --x64 --publish never -c electron-builder.ci-win.json",
+    "electron:ci:mac": "electron-builder --mac --arm64 --x64 --publish never"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.monkeycode.desktop",
+    "productName": "MonkeyCode",
+    "directories": {
+      "output": "release"
+    },
+    "npmRebuild": false,
+    "icon": "electron/icon.png",
+    "asarUnpack": [
+      "electron/icon.png"
+    ],
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "asar": true
+  }
+}
