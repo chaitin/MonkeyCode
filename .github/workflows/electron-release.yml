@@ -275,12 +275,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t XCODE_APPS < <(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort -V)
-          if [[ ${#XCODE_APPS[@]} -eq 0 && -d /Applications/Xcode.app ]]; then
-            XCODE_APPS=(/Applications/Xcode.app)
+          XCODE_APP="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort | tail -n 1)"
+          if [[ -z "$XCODE_APP" && -d /Applications/Xcode.app ]]; then
+            XCODE_APP="/Applications/Xcode.app"
           fi
-          [[ ${#XCODE_APPS[@]} -gt 0 ]] || { echo "No Xcode 26 installation found under /Applications"; exit 1; }
-          XCODE_APP="${XCODE_APPS[-1]}"
+          [[ -n "$XCODE_APP" ]] || { echo "No Xcode 26 installation found under /Applications"; exit 1; }
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
           [[ "$XCODE_VERSION" == 26.* ]] || { echo "Expected Xcode 26.x but found $XCODE_VERSION"; exit 1; }
@@ -444,12 +443,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t XCODE_APPS < <(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort -V)
-          if [[ ${#XCODE_APPS[@]} -eq 0 && -d /Applications/Xcode.app ]]; then
-            XCODE_APPS=(/Applications/Xcode.app)
+          XCODE_APP="$(find /Applications -maxdepth 1 -type d \( -name 'Xcode_26*.app' -o -name 'Xcode-26*.app' \) | sort | tail -n 1)"
+          if [[ -z "$XCODE_APP" && -d /Applications/Xcode.app ]]; then
+            XCODE_APP="/Applications/Xcode.app"
           fi
-          [[ ${#XCODE_APPS[@]} -gt 0 ]] || { echo "No Xcode 26 installation found under /Applications"; exit 1; }
-          XCODE_APP="${XCODE_APPS[-1]}"
+          [[ -n "$XCODE_APP" ]] || { echo "No Xcode 26 installation found under /Applications"; exit 1; }
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
           XCODE_VERSION="$(xcodebuild -version | awk 'NR==1 {print $2}')"
           [[ "$XCODE_VERSION" == 26.* ]] || { echo "Expected Xcode 26.x but found $XCODE_VERSION"; exit 1; }
