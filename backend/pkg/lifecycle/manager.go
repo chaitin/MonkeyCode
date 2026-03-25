@@ -179,10 +179,11 @@ func TaskTransitions() map[consts.TaskStatus][]consts.TaskStatus {
 // VMTransitions VM 的默认状态转换规则
 func VMTransitions() map[VMState][]VMState {
 	return map[VMState][]VMState{
-		"":              {VMStatePending, VMStateCreating},
-		VMStatePending:  {VMStateCreating, VMStateFailed},
-		VMStateCreating: {VMStateRunning, VMStateFailed},
-		VMStateRunning:  {VMStateSucceeded, VMStateFailed},
-		VMStateFailed:   {VMStateRunning},
+		"":               {VMStatePending, VMStateCreating, VMStateRecycled},
+		VMStatePending:   {VMStateCreating, VMStateFailed, VMStateRecycled},
+		VMStateCreating:  {VMStateRunning, VMStateFailed, VMStateRecycled},
+		VMStateRunning:   {VMStateSucceeded, VMStateFailed, VMStateRecycled},
+		VMStateFailed:    {VMStateRunning, VMStateRecycled},
+		VMStateSucceeded: {VMStateRecycled},
 	}
 }

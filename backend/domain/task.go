@@ -243,6 +243,35 @@ type TaskStream struct {
 	Timestamp int64                 `json:"timestamp"`
 }
 
+// TaskStreamReq 任务数据流请求
+type TaskStreamReq struct {
+	ID   uuid.UUID `json:"id" query:"id" validate:"required"`
+	Mode string    `json:"mode" query:"mode"` // new|attach，默认 new
+}
+
+// TaskRoundsReq 查询任务历史论次请求（向前翻页）
+type TaskRoundsReq struct {
+	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
+	Cursor string    `json:"cursor" query:"cursor"`             // 游标（时间戳 Unix ns，从此时间点往前查询）
+	Limit  int       `json:"limit" query:"limit"`               // 返回的论次数（默认 2，上限 10）
+}
+
+// TaskRoundsResp 查询任务历史论次响应
+type TaskRoundsResp struct {
+	Chunks     []*TaskChunkEntry `json:"chunks"`
+	NextCursor string            `json:"next_cursor,omitempty"` // 下一页游标（最早条目的时间戳 ns）
+	HasMore    bool              `json:"has_more"`
+}
+
+// TaskChunkEntry 原始日志条目（不聚合）
+type TaskChunkEntry struct {
+	Data      []byte            `json:"data,omitempty"`
+	Event     string            `json:"event"`
+	Kind      string            `json:"kind"`
+	Timestamp int64             `json:"timestamp"`
+	Labels    map[string]string `json:"labels,omitempty"`
+}
+
 // GitTask git 任务（由内部项目通过 TaskHook 提供）
 type GitTask struct {
 	ID                   uuid.UUID          `json:"id"`

@@ -95,6 +95,7 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 		resp, _ := a.taskflow.VirtualMachiner().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
 			IDs: []string{vm.ID},
 		})
+		a.logger.With("resp", resp, "id", vm.ID).DebugContext(ctx, "is online check")
 
 		if resp != nil && resp.OnlineMap[vm.ID] {
 			vm.Status = taskflow.VirtualMachineStatusOnline
@@ -105,6 +106,8 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 				switch cond.Type {
 				case types.ConditionTypeFailed:
 					vm.Status = taskflow.VirtualMachineStatusOffline
+				case types.ConditionTypeHibernated:
+					vm.Status = taskflow.VirtualMachineStatusHibernated
 				case types.ConditionTypeReady:
 					if time.Since(time.Unix(vm.CreatedAt, 0)) > 2*time.Minute {
 						vm.Status = taskflow.VirtualMachineStatusOffline
@@ -178,18 +181,19 @@ func (a *TaskUsecase) Stop(ctx context.Context, user *domain.User, id uuid.UUID)
 		return err
 	}
 	tk := cvt.From(t, &domain.Task{})
-	return a.repo.Stop(ctx, user, id, func(t *db.Task) error {
-		return a.taskflow.TaskManager().Stop(ctx, taskflow.TaskReq{
-			VirtualMachine: &taskflow.VirtualMachine{
-				ID:            tk.VirtualMachine.ID,
-				HostID:        tk.VirtualMachine.Host.ID,
-				EnvironmentID: tk.VirtualMachine.EnvironmentID,
-			},
-			Task: &taskflow.Task{
-				ID: id,
-			},
-		})
-	})
+
+	// 通过 lifecycle 回收 VM
+	if vm := tk.VirtualMachine; vm != nil {
+		if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
+			VMID:   vm.ID,
+			TaskID: &id,
+			UserID: user.ID,
+		}); err != nil {
+			a.logger.WarnContext(ctx, "vm recycle transition failed", "error", err, "vm_id", vm.ID)
+		}
+	}
+
+	return nil
 }
 
 // Cancel implements domain.TaskUsecase.
@@ -255,11 +259,6 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		return nil, errcode.ErrHostOffline
 	}
 
-	TTLType := taskflow.TTLCountDown
-	if req.Resource.Life <= 0 {
-		TTLType = taskflow.TTLForever
-	}
-
 	req.Now = time.Now()
 
 	// 如果有 TaskHook，获取系统提示词
@@ -296,11 +295,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			ZipUrl:   req.RepoReq.ZipURL,
 			ImageURL: i.Name,
 			ProxyURL: "",
-			TTL: taskflow.TTL{
-				Kind:    TTLType,
-				Seconds: req.Resource.Life,
-			},
-			TaskID: t.ID,
+			TaskID:   t.ID,
 			LLM: taskflow.LLMProviderReq{
 				Provider: taskflow.LlmProviderOpenAI,
 				ApiKey:   m.APIKey,
@@ -365,7 +360,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				ApiKey:  m.APIKey,
 				BaseURL: m.BaseURL,
 				Model:   m.Model,
-				ApiType: apiType(m),
+				ApiType: m.InterfaceType,
 			},
 			Configs:    configs,
 			McpConfigs: mcps,
@@ -397,18 +392,6 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	return result, nil
-}
-
-func apiType(m *db.Model) string {
-	if m.InterfaceType == "anthropic" {
-		return "anthropic"
-	}
-
-	if strings.HasPrefix(m.InterfaceType, "openai") {
-		return "openai"
-	}
-
-	return ""
 }
 
 func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs []string) (taskflow.CodingAgent, []taskflow.ConfigFile, error) {
@@ -519,21 +502,17 @@ func (a *TaskUsecase) Delete(ctx context.Context, user *domain.User, id uuid.UUI
 		return err
 	}
 
-	// 运行中不允许删除
-	if t.Status == consts.TaskStatusPending || t.Status == consts.TaskStatusProcessing {
-		return errcode.ErrTaskCannotDelete
-	}
-
-	// VM 在线不允许删除
+	// 回收 VM（如果有且未回收）
 	if vms := t.Edges.Vms; len(vms) > 0 {
-		resp, err := a.taskflow.VirtualMachiner().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
-			IDs: []string{vms[0].ID},
-		})
-		if err != nil {
-			return err
-		}
-		if resp.OnlineMap[vms[0].ID] {
-			return errcode.ErrTaskCannotDelete
+		vm := vms[0]
+		if !vm.IsRecycled {
+			if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
+				VMID:   vm.ID,
+				TaskID: &id,
+				UserID: user.ID,
+			}); err != nil {
+				a.logger.WarnContext(ctx, "vm recycle transition failed on delete", "error", err, "vm_id", vm.ID)
+			}
 		}
 	}
 

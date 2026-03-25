@@ -28,6 +28,7 @@ const (
 	TaskStreamTypeCall               TaskStreamType = "call"
 	TaskStreamTypeCallResponse       TaskStreamType = "call-response"
 	TaskStreamTypeSyncWebClientIP    TaskStreamType = "sync-my-ip"
+	TaskStreamTypeCursor             TaskStreamType = "cursor"
 )
 
 // CliName 命令行工具名称

@@ -48,11 +48,11 @@ type IsOnlineResp struct {
 type VirtualMachineStatus string
 
 const (
-	VirtualMachineStatusUnknown  VirtualMachineStatus = "unknown"
-	VirtualMachineStatusPending  VirtualMachineStatus = "pending"
-	VirtualMachineStatusOnline   VirtualMachineStatus = "online"
-	VirtualMachineStatusOffline  VirtualMachineStatus = "offline"
-	VirtualMachineStatusSleeping VirtualMachineStatus = "sleeping"
+	VirtualMachineStatusUnknown    VirtualMachineStatus = "unknown"
+	VirtualMachineStatusPending    VirtualMachineStatus = "pending"
+	VirtualMachineStatusOnline     VirtualMachineStatus = "online"
+	VirtualMachineStatusOffline    VirtualMachineStatus = "offline"
+	VirtualMachineStatusHibernated VirtualMachineStatus = "hibernated"
 )
 
 // TTLKind TTL 类型
@@ -127,7 +127,6 @@ type CreateVirtualMachineReq struct {
 	ZipUrl              string         `json:"zip_url"`
 	ImageURL            string         `json:"image_url"`
 	ProxyURL            string         `json:"proxy_url"`
-	TTL                 TTL            `json:"ttl" validate:"required"`
 	TaskID              uuid.UUID      `json:"task_id"`
 	LLM                 LLMProviderReq `json:"llm"`
 	Cores               string         `json:"cores"`

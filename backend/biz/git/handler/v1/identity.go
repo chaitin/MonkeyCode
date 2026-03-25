@@ -41,6 +41,16 @@ func NewGitIdentityHandler(i *do.Injector) (*GitIdentityHandler, error) {
 }
 
 // List 获取当前用户的 Git 身份认证列表
+//
+//	@Summary		列表
+//	@Description	获取当前用户的 Git 身份认证列表
+//	@Tags			【用户】git 身份管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Success		200	{object}	web.Resp{data=[]domain.GitIdentity}	"成功"
+//	@Failure		500	{object}	web.Resp							"服务器内部错误"
+//	@Router			/api/v1/users/git-identities [get]
 func (h *GitIdentityHandler) List(c *web.Context) error {
 	user := middleware.GetUser(c)
 	list, err := h.usecase.List(c.Request().Context(), user.ID)
@@ -51,6 +61,19 @@ func (h *GitIdentityHandler) List(c *web.Context) error {
 }
 
 // Get 获取单个 Git 身份认证详情
+//
+//	@Summary		详情
+//	@Description	获取单个 Git 身份认证详情
+//	@Tags			【用户】git 身份管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id	path		string								true	"Git 身份认证ID"
+//	@Success		200	{object}	web.Resp{data=domain.GitIdentity}	"成功"
+//	@Failure		400	{object}	web.Resp							"请求参数错误"
+//	@Failure		404	{object}	web.Resp							"资源不存在"
+//	@Failure		500	{object}	web.Resp							"服务器内部错误"
+//	@Router			/api/v1/users/git-identities/{id} [get]
 func (h *GitIdentityHandler) Get(c *web.Context, req domain.GetGitIdentityReq) error {
 	user := middleware.GetUser(c)
 	identity, err := h.usecase.Get(c.Request().Context(), user.ID, req.ID)
@@ -61,6 +84,18 @@ func (h *GitIdentityHandler) Get(c *web.Context, req domain.GetGitIdentityReq) e
 }
 
 // Add 添加 Git 身份认证
+//
+//	@Summary		添加
+//	@Description	添加 Git 身份认证
+//	@Tags			【用户】git 身份管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			req	body		domain.AddGitIdentityReq			true	"添加 Git 身份认证请求"
+//	@Success		200	{object}	web.Resp{data=domain.GitIdentity}	"成功"
+//	@Failure		400	{object}	web.Resp							"请求参数错误"
+//	@Failure		500	{object}	web.Resp							"服务器内部错误"
+//	@Router			/api/v1/users/git-identities [post]
 func (h *GitIdentityHandler) Add(c *web.Context, req domain.AddGitIdentityReq) error {
 	user := middleware.GetUser(c)
 	identity, err := h.usecase.Add(c.Request().Context(), user.ID, &req)
@@ -71,6 +106,20 @@ func (h *GitIdentityHandler) Add(c *web.Context, req domain.AddGitIdentityReq) e
 }
 
 // Update 更新 Git 身份认证
+//
+//	@Summary		更新
+//	@Description	更新 Git 身份认证
+//	@Tags			【用户】git 身份管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id	path		string						true	"Git 身份认证ID"
+//	@Param			req	body		domain.UpdateGitIdentityReq	true	"更新 Git 身份认证请求"
+//	@Success		200	{object}	web.Resp{}					"成功"
+//	@Failure		400	{object}	web.Resp					"请求参数错误"
+//	@Failure		404	{object}	web.Resp					"资源不存在"
+//	@Failure		500	{object}	web.Resp					"服务器内部错误"
+//	@Router			/api/v1/users/git-identities/{id} [put]
 func (h *GitIdentityHandler) Update(c *web.Context, req domain.UpdateGitIdentityReq) error {
 	user := middleware.GetUser(c)
 	if err := h.usecase.Update(c.Request().Context(), user.ID, &req); err != nil {
@@ -80,6 +129,20 @@ func (h *GitIdentityHandler) Update(c *web.Context, req domain.UpdateGitIdentity
 }
 
 // Delete 删除 Git 身份认证
+//
+//	@Summary		删除
+//	@Description	删除 Git 身份认证
+//	@Tags			【用户】git 身份管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id	path		string		true	"Git 身份认证ID"
+//	@Success		200	{object}	web.Resp{}	"成功"
+//	@Failure		400	{object}	web.Resp	"请求参数错误"
+//	@Failure		404	{object}	web.Resp	"资源不存在"
+//	@Failure		409	{object}	web.Resp	"该 Git 身份已被项目使用，无法删除"
+//	@Failure		500	{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/users/git-identities/{id} [delete]
 func (h *GitIdentityHandler) Delete(c *web.Context, req domain.DeleteGitIdentityReq) error {
 	user := middleware.GetUser(c)
 	if err := h.usecase.Delete(c.Request().Context(), user.ID, req.ID); err != nil {
@@ -89,6 +152,22 @@ func (h *GitIdentityHandler) Delete(c *web.Context, req domain.DeleteGitIdentity
 }
 
 // ListBranches 获取仓库分支列表
+//
+//	@Summary		获取仓库分支列表
+//	@Description	根据 Git 身份获取指定仓库的分支列表
+//	@Tags			【用户】git 身份管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			identity_id				path		string							true	"Git 身份认证ID"
+//	@Param			escaped_repo_full_name	path		string							true	"URL 编码的仓库全名 (owner%2Frepo)"
+//	@Param			page					query		int								false	"页码（默认1）"
+//	@Param			per_page				query		int								false	"每页数量（默认50，最大100）"
+//	@Success		200						{object}	web.Resp{data=[]domain.Branch}	"成功"
+//	@Failure		400						{object}	web.Resp						"请求参数错误"
+//	@Failure		404						{object}	web.Resp						"资源不存在"
+//	@Failure		500						{object}	web.Resp						"服务器内部错误"
+//	@Router			/api/v1/users/git-identities/{identity_id}/{escaped_repo_full_name}/branches [get]
 func (h *GitIdentityHandler) ListBranches(c *web.Context, req domain.ListBranchesReq) error {
 	user := middleware.GetUser(c)
 

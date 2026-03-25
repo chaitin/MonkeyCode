@@ -88,7 +88,10 @@ func (r *ProjectRepo) List(ctx context.Context, uid uuid.UUID, cursor domain.Cur
 		WithProjectTasks(func(ptq *db.ProjectTaskQuery) {
 			ptq.
 				WithTask().
-				Where(projecttask.HasTaskWith(task.DeletedAtIsNil())).
+				Where(projecttask.HasTaskWith(task.And(
+					task.DeletedAtIsNil(),
+					task.UserID(uid),
+				))).
 				Order(projecttask.ByCreatedAt(sql.OrderDesc()))
 		}).
 		WithGitBots().

@@ -18,31 +18,34 @@ import (
 // treeCommitInfoPath 为 GitHub 专属的「树+最近提交信息」接口
 const treeCommitInfoPath = "repos/%s/%s/tree-commit-info/%s"
 
-// GetRepoTree 获取仓库文件树（PAT 模式）
-func (g *Github) GetRepoTree(ctx context.Context, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
+// GetRepoTree 获取仓库文件树（Installation App 模式优先）
+func (g *Github) GetRepoTree(ctx context.Context, installID int64, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
 	if ref == "" {
 		ref = "HEAD"
 	}
 
 	// 优先使用 GitHub 专属 tree-commit-info 接口
-	if resp, err := g.getRepoTreeCommitInfo(ctx, token, owner, repo, ref, path, recursive); err == nil {
+	if resp, err := g.getRepoTreeCommitInfo(ctx, installID, token, owner, repo, ref, path, recursive); err == nil {
 		return resp, nil
 	}
 
-	cli := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, installID)
+	if err != nil {
+		return nil, err
+	}
 
 	// Non-recursive sub-path: use Contents API
 	if path != "" && !recursive {
-		_, dirContent, _, err := cli.Repositories.GetContents(ctx, owner, repo, path, &github.RepositoryContentGetOptions{Ref: ref})
+		_, dirContent, _, err := client.Repositories.GetContents(ctx, owner, repo, path, &github.RepositoryContentGetOptions{Ref: ref})
 		if err != nil {
 			return nil, fmt.Errorf("get contents for path %s: %w", path, err)
 		}
-		resp := dirContentToTreeResp(dirContent, path)
-		fillLastModifiedAt(ctx, cli, owner, repo, ref, path, resp.Entries)
+		resp := dirContentToTreeResp(dirContent)
+		fillLastModifiedAt(ctx, client, owner, repo, ref, path, resp.Entries)
 		return resp, nil
 	}
 
-	tree, _, err := cli.Git.GetTree(ctx, owner, repo, ref, recursive)
+	tree, _, err := client.Git.GetTree(ctx, owner, repo, ref, recursive)
 	if err != nil {
 		return nil, fmt.Errorf("get tree: %w", err)
 	}
@@ -70,7 +73,7 @@ func (g *Github) GetRepoTree(ctx context.Context, token, owner, repo, ref, path 
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Path < entries[j].Path
 	})
-	fillLastModifiedAt(ctx, cli, owner, repo, ref, path, entries)
+	fillLastModifiedAt(ctx, client, owner, repo, ref, path, entries)
 	return &GetRepoTreeResp{
 		Entries: entries,
 		SHA:     tree.GetSHA(),
@@ -135,7 +138,13 @@ type treeCommitInfoEntryRaw struct {
 }
 
 // getRepoTreeCommitInfo 调用 GitHub tree-commit-info 接口
-func (g *Github) getRepoTreeCommitInfo(ctx context.Context, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
+func (g *Github) getRepoTreeCommitInfo(ctx context.Context, installID int64, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
+	// 获取正确的认证客户端
+	client, err := g.GetClient(ctx, token, installID)
+	if err != nil {
+		return nil, err
+	}
+
 	refEscaped := url.PathEscape(ref)
 	apiPath := fmt.Sprintf(treeCommitInfoPath, owner, repo, refEscaped)
 	baseURL := "https://api.github.com/"
@@ -156,11 +165,9 @@ func (g *Github) getRepoTreeCommitInfo(ctx context.Context, token, owner, repo, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := http.DefaultClient.Do(req)
+	// 使用 client 的 transport 来发送请求，这样会自动带上正确的认证
+	resp, err := client.Client().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -241,13 +248,17 @@ func parseTreeCommitInfoDate(e *treeCommitInfoEntryRaw) int64 {
 }
 
 // GetBlob 获取单文件内容（PAT 模式）
-func (g *Github) GetBlob(ctx context.Context, token, owner, repo, ref, path string) (*GetBlobResp, error) {
-	cli := newClientWithToken(ctx, token)
+func (g *Github) GetBlob(ctx context.Context, installID int64, token, owner, repo, ref, path string) (*GetBlobResp, error) {
+	client, err := g.GetClient(ctx, token, installID)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &github.RepositoryContentGetOptions{}
 	if ref != "" {
 		opts.Ref = ref
 	}
-	fileContent, _, _, err := cli.Repositories.GetContents(ctx, owner, repo, path, opts)
+	fileContent, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, opts)
 	if err != nil {
 		return nil, fmt.Errorf("get file content: %w", err)
 	}
@@ -268,8 +279,12 @@ func (g *Github) GetBlob(ctx context.Context, token, owner, repo, ref, path stri
 }
 
 // GetGitLogs 获取提交历史（PAT 模式）
-func (g *Github) GetGitLogs(ctx context.Context, token, owner, repo, ref, path string, limit, offset int) (*GetGitLogsResp, error) {
-	cli := newClientWithToken(ctx, token)
+func (g *Github) GetGitLogs(ctx context.Context, installID int64, token, owner, repo, ref, path string, limit, offset int) (*GetGitLogsResp, error) {
+	client, err := g.GetClient(ctx, token, installID)
+	if err != nil {
+		return nil, err
+	}
+
 	if limit <= 0 {
 		limit = 100
 	}
@@ -285,7 +300,7 @@ func (g *Github) GetGitLogs(ctx context.Context, token, owner, repo, ref, path s
 	if path != "" {
 		opts.Path = path
 	}
-	commits, _, err := cli.Repositories.ListCommits(ctx, owner, repo, opts)
+	commits, _, err := client.Repositories.ListCommits(ctx, owner, repo, opts)
 	if err != nil {
 		return nil, fmt.Errorf("list commits: %w", err)
 	}
@@ -334,13 +349,17 @@ func (g *Github) GetGitLogs(ctx context.Context, token, owner, repo, ref, path s
 }
 
 // GetRepoArchive 获取仓库压缩包（PAT 模式）
-func (g *Github) GetRepoArchive(ctx context.Context, token, owner, repo, ref string) (*GetRepoArchiveResp, error) {
-	cli := newClientWithToken(ctx, token)
+func (g *Github) GetRepoArchive(ctx context.Context, installID int64, token, owner, repo, ref string) (*GetRepoArchiveResp, error) {
+	client, err := g.GetClient(ctx, token, installID)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &github.RepositoryContentGetOptions{}
 	if ref != "" {
 		opts.Ref = ref
 	}
-	archiveURL, _, err := cli.Repositories.GetArchiveLink(ctx, owner, repo, github.Tarball, opts, 5)
+	archiveURL, _, err := client.Repositories.GetArchiveLink(ctx, owner, repo, github.Tarball, opts, 5)
 	if err != nil {
 		return nil, fmt.Errorf("get archive link: %w", err)
 	}
@@ -363,7 +382,7 @@ func (g *Github) GetRepoArchive(ctx context.Context, token, owner, repo, ref str
 	}, nil
 }
 
-func dirContentToTreeResp(contents []*github.RepositoryContent, basePath string) *GetRepoTreeResp {
+func dirContentToTreeResp(contents []*github.RepositoryContent) *GetRepoTreeResp {
 	entries := make([]*TreeEntry, 0, len(contents))
 	for _, c := range contents {
 		mode := gitModeToInt(c.GetType(), "")

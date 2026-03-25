@@ -212,7 +212,10 @@ func (u *GitIdentityUsecase) listGithubBranches(ctx context.Context, identity *d
 	if u.gh == nil {
 		return nil, fmt.Errorf("github client not configured")
 	}
-	branches, err := u.gh.ListBranches(ctx, identity.AccessToken, owner, repo, page, perPage)
+	if identity.InstallationID == 0 {
+		return nil, errcode.ErrInvalidParameter.Wrap(fmt.Errorf("github identity has no installation_id"))
+	}
+	branches, err := u.gh.ListBranches(ctx, identity.InstallationID, identity.AccessToken, owner, repo, page, perPage)
 	if err != nil {
 		return nil, fmt.Errorf("list github branches: %w", err)
 	}

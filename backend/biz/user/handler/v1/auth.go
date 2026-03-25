@@ -322,6 +322,18 @@ func (h *AuthHandler) ResetPassword(c *web.Context, req domain.ResetUserPassword
 }
 
 // SendBindEmailVerification 发送邮箱绑定验证邮件
+//
+//	@Summary		发送邮箱绑定验证邮件
+//	@Description	用户已登录状态下请求绑定邮箱，系统发送验证邮件
+//	@Tags			【用户】邮箱绑定
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			req	body		domain.SendBindEmailVerificationReq	true	"邮箱绑定请求"
+//	@Success		200	{object}	web.Resp{}
+//	@Failure		401	{object}	web.Resp	"未授权"
+//	@Failure		500	{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/users/email/bind-request [put]
 func (h *AuthHandler) SendBindEmailVerification(c *web.Context, req domain.SendBindEmailVerificationReq) error {
 	user := middleware.GetUser(c)
 	if user == nil {
