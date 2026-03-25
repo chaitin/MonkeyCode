@@ -23,6 +23,10 @@ import { toast } from "sonner"
 import { apiRequest } from "@/utils/requestUtils"
 import { Link, useNavigate } from "react-router-dom"
 import { captchaChallenge } from "@/utils/common"
+import { Eye, EyeOff } from "lucide-react"
+
+const USER_STORAGE_KEY = 'login_user'
+const MANAGER_STORAGE_KEY = 'login_manager'
 
 export default function LoginPage({
   className,
@@ -33,14 +37,35 @@ export default function LoginPage({
   const [teamManagerEmail, setTeamManagerEmail] = React.useState('')
   const [teamManagerPassword, setTeamManagerPassword] = React.useState('')
   const [logging, setLogging] = React.useState(false)
+  const [showUserPassword, setShowUserPassword] = React.useState(false)
+  const [showManagerPassword, setShowManagerPassword] = React.useState(false)
   const navigate = useNavigate()
+
+  React.useEffect(() => {
+    try {
+      const savedUser = localStorage.getItem(USER_STORAGE_KEY)
+      if (savedUser) {
+        const { email, password } = JSON.parse(savedUser)
+        if (email) setUserEmail(email)
+        if (password) setUserPassword(password)
+      }
+      const savedManager = localStorage.getItem(MANAGER_STORAGE_KEY)
+      if (savedManager) {
+        const { email, password } = JSON.parse(savedManager)
+        if (email) setTeamManagerEmail(email)
+        if (password) setTeamManagerPassword(password)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
 
   const handleUserLogin = async () => {
     if (userEmail.trim() === '' || userPassword.trim() === '') {
       toast.error('请输入账号和密码')
       return
     }
-    
+
     setLogging(true)
 
     const token = await captchaChallenge();
@@ -51,6 +76,7 @@ export default function LoginPage({
         captcha_token: token,
       }, [], (resp) => {
         if (resp.code === 0) {
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ email: userEmail.trim(), password: userPassword.trim() }))
           navigate('/console/')
         } else {
           toast.error('登录失败，请重试')
@@ -67,18 +93,19 @@ export default function LoginPage({
       toast.error('请输入账号和密码')
       return
     }
-    
+
     setLogging(true)
 
     const token = await captchaChallenge();
     if (token) {
-    
+
       await apiRequest('v1TeamsUsersLoginCreate', {
         email: teamManagerEmail.trim(),
         password: teamManagerPassword.trim(),
         captcha_token: token,
       }, [], (resp) => {
         if (resp.code === 0) {
+          localStorage.setItem(MANAGER_STORAGE_KEY, JSON.stringify({ email: teamManagerEmail.trim(), password: teamManagerPassword.trim() }))
           navigate('/manager/')
         } else {
           toast.error('登录失败，请重试')
@@ -124,19 +151,30 @@ export default function LoginPage({
                       <Field>
                         <div className="flex flex-row items-center justify-between">
                           <FieldLabel htmlFor="user-password">密码</FieldLabel>
-                          <Link to="/findpassword" className="text-sm text-muted-foreground hover:underline">
+                          <Link to="/findpassword" tabIndex={-1} className="text-sm text-muted-foreground hover:underline">
                             找回密码
                           </Link>
                         </div>
-                        <Input
-                          value={userPassword}
-                          placeholder="************"
-                          onChange={(e) => setUserPassword(e.target.value)}
-                          id="user-password"
-                          type="password"
-                          required
-                          disabled={logging}
-                        />
+                        <div className="relative">
+                          <Input
+                            value={userPassword}
+                            placeholder="************"
+                            onChange={(e) => setUserPassword(e.target.value)}
+                            id="user-password"
+                            type={showUserPassword ? "text" : "password"}
+                            required
+                            disabled={logging}
+                            className="pr-9"
+                          />
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => setShowUserPassword(v => !v)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showUserPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
                       </Field>
                       <Field>
                         <Button type="submit" disabled={logging} variant="outline">
@@ -173,15 +211,26 @@ export default function LoginPage({
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="password">密码</FieldLabel>
-                        <Input 
-                          id="password"
-                          placeholder="************"
-                          type="password"
-                          required
-                          disabled={logging} 
-                          value={teamManagerPassword} 
-                          onChange={(e) => setTeamManagerPassword(e.target.value)}
-                        />
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            placeholder="************"
+                            type={showManagerPassword ? "text" : "password"}
+                            required
+                            disabled={logging}
+                            value={teamManagerPassword}
+                            onChange={(e) => setTeamManagerPassword(e.target.value)}
+                            className="pr-9"
+                          />
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onClick={() => setShowManagerPassword(v => !v)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showManagerPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
                       </Field>
                       <Field>
                         <Button type="submit" disabled={logging}>
