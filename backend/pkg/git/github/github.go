@@ -51,11 +51,14 @@ func NewGithub(logger *slog.Logger, cfg *config.Config) *Github {
 	}
 }
 
-// newClientWithToken 使用 PAT 创建 GitHub 客户端
-func newClientWithToken(ctx context.Context, token string) *github.Client {
+// newClient 使用 PAT 创建 GitHub 客户端
+func (g *Github) GetClient(ctx context.Context, token string, installID int64) (*github.Client, error) {
+	if installID > 0 {
+		return g.githubapp.NewInstallationClient(installID)
+	}
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
-	return github.NewClient(tc)
+	return github.NewClient(tc), nil
 }
 
 func parseRepoURL(repoURL string) (owner, repo string, err error) {
@@ -92,7 +95,10 @@ func (g *Github) GetRepoInfoByPAT(ctx context.Context, token string, repoURL str
 	if err != nil {
 		return nil, err
 	}
-	client := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return nil, err
+	}
 	repository, _, err := client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		return nil, err
@@ -102,7 +108,10 @@ func (g *Github) GetRepoInfoByPAT(ctx context.Context, token string, repoURL str
 
 // GetUserInfoByPAT 根据 PAT 获取用户信息
 func (g *Github) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformUserInfo, error) {
-	client := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return nil, err
+	}
 	user, _, err := client.Users.Get(ctx, "")
 	if err != nil {
 		return nil, err
@@ -138,8 +147,12 @@ func (g *Github) CheckPAT(ctx context.Context, token string, repoURL string) (bo
 }
 
 // ListBranches 获取仓库分支列表（PAT 模式）
-func (g *Github) ListBranches(ctx context.Context, token, owner, repo string, page, perPage int) ([]*BranchInfo, error) {
-	client := newClientWithToken(ctx, token)
+func (g *Github) ListBranches(ctx context.Context, installID int64, token, owner, repo string, page, perPage int) ([]*BranchInfo, error) {
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &github.BranchListOptions{
 		ListOptions: github.ListOptions{Page: page, PerPage: perPage},
 	}
@@ -156,7 +169,11 @@ func (g *Github) ListBranches(ctx context.Context, token, owner, repo string, pa
 
 // GetRepoDescription 获取仓库描述（PAT 模式）
 func (g *Github) GetRepoDescription(ctx context.Context, token, owner, repo string) (string, error) {
-	client := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return "", err
+	}
+
 	r, _, err := client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		return "", fmt.Errorf("get repo: %w", err)
@@ -187,7 +204,11 @@ func (g *Github) ListInstallationRepos(ctx context.Context, installID int64) ([]
 
 // GetAuthorizedRepositories 获取 PAT 可访问的仓库列表
 func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([]domainpkg.AuthRepository, error) {
-	client := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := &github.RepositoryListByAuthenticatedUserOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 		Sort:        "updated",
@@ -215,7 +236,11 @@ func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([
 
 // DeleteWebhookByURL 根据 webhook URL 精确匹配删除 GitHub 仓库上的 webhook
 func (g *Github) DeleteWebhookByURL(ctx context.Context, token, owner, repo, webhookURL string) error {
-	client := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return err
+	}
+
 	opts := &github.ListOptions{Page: 1, PerPage: 100}
 	for {
 		hooks, resp, err := client.Repositories.ListHooks(ctx, owner, repo, opts)
@@ -241,7 +266,11 @@ func (g *Github) DeleteWebhookByURL(ctx context.Context, token, owner, repo, web
 
 // CreateRepoWebhook 在仓库上注册 webhook
 func (g *Github) CreateRepoWebhook(ctx context.Context, token, owner, repo, webhookURL, secret string, events []string) error {
-	client := newClientWithToken(ctx, token)
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return err
+	}
+
 	hook := &github.Hook{
 		Config: &github.HookConfig{
 			URL:         github.Ptr(webhookURL),
@@ -252,7 +281,7 @@ func (g *Github) CreateRepoWebhook(ctx context.Context, token, owner, repo, webh
 		Events: events,
 		Active: github.Ptr(true),
 	}
-	_, _, err := client.Repositories.CreateHook(ctx, owner, repo, hook)
+	_, _, err = client.Repositories.CreateHook(ctx, owner, repo, hook)
 	if err != nil {
 		return fmt.Errorf("create repo webhook: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
-	"github.com/chaitin/MonkeyCode/backend/pkg/acp"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
@@ -81,6 +81,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	v1.GET("", web.BindHandler(h.List, web.WithPage()))
 	v1.GET("/:id", web.BindHandler(h.Info))
 	v1.GET("/stream", web.BindHandler(h.Stream))
+	v1.GET("/rounds", web.BindHandler(h.TaskRounds))
 	v1.POST("", web.BindHandler(h.Create))
 	v1.PUT("/stop", web.BindHandler(h.Stop))
 	v1.DELETE("/:id", web.BindHandler(h.Delete))
@@ -267,7 +268,7 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。
 //	@Description	数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：
 //	@Description	```json
-//	@Description	{ "type": "string", "data": "string", "timestamp": 0 }
+//	@Description	{ "type": "string", "data": "string", "kind": "string", "timestamp": 0 }
 //	@Description	```
 //	@Description	type 字段说明：
 //	@Description	- task-started: 本轮任务启动
@@ -275,6 +276,7 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	- task-error: 本轮任务发生错误
 //	@Description	- task-running: 任务正在运行
 //	@Description	- task-event: 任务临时事件, 不持久化
+//	@Description	- round-segment: 聚合后的消息段（写入时已聚合）
 //	@Description	- file-change: 文件变动事件
 //	@Description	- permission-resp: 用户的权限响应
 //	@Description	- auto-approve: 开启自动批准
@@ -284,6 +286,14 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	- reply-question: 回复 AI 的提问
 //	@Description	- call: 同步请求 (repo_file_diff, repo_file_list, repo_read_file, repo_file_changes, restart)
 //	@Description	- call-response: 同步请求响应
+//	@Description	- cursor: 历史游标，用于通过 /rounds 接口加载更早的论次
+//	@Description
+//	@Description	cursor 消息结构：
+//	@Description	```json
+//	@Description	{ "type": "cursor", "data": { "cursor": "<lastTaskStartedTS_ns>", "has_more": true }, "timestamp": 0 }
+//	@Description	```
+//	@Description	- cursor: 当前论次 task-started 的时间戳（Unix 纳秒），作为 GET /rounds 接口的 cursor 参数向前翻页
+//	@Description	- has_more: 是否存在更早的论次。为 false 时表示当前论次即为第一论次，无需再翻页
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
@@ -321,80 +331,58 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 	h.taskConns.Add(task.ID.String(), wsConn)
 	defer h.taskConns.Remove(task.ID.String())
 
-	// 发送初始用户输入消息
-	if err := wsConn.WriteJSON(domain.TaskStream{
-		Type:      consts.TaskStreamTypeUserInput,
-		Data:      []byte(task.Content),
-		Timestamp: task.CreatedAt * 1000,
-	}); err != nil {
-		return err
-	}
-
 	if task.VirtualMachine == nil || task.VirtualMachine.Host == nil {
 		logger.DebugContext(ctx, "no virtual machine or host for task", "task_id", task.ID)
 		h.writeError(wsConn, fmt.Errorf("no virtual machine or host for task"))
 		return nil
 	}
 
-	if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
-		HostID:        task.VirtualMachine.Host.InternalID,
-		UserID:        task.UserID.String(),
-		ID:            task.VirtualMachine.ID,
-		EnvironmentID: task.VirtualMachine.EnvironmentID,
-	}); err != nil {
-		logger.With("error", err).WarnContext(c.Request().Context(), "failed to resume virtual")
+	// 找到最后一个完整 round 的起始位置：先找 task-ended，再从那个时间点往前找 task-started
+	taskCreatedAt := time.Unix(task.CreatedAt, 0)
+	var tailStart time.Time
+
+	lastTaskEndedTS, err := h.loki.FindLastEvent(ctx, task.ID.String(), "task-ended", taskCreatedAt, time.Time{})
+	if err != nil {
+		logger.With("error", err).WarnContext(ctx, "failed to find last task-ended")
 	}
 
-	// 对于离线的机器，只拉取历史数据
-	if task.VirtualMachine.Status == taskflow.VirtualMachineStatusOffline {
-		aggregator := acp.NewChunkAggregator(func(stream domain.TaskStream) error {
-			return wsConn.WriteJSON(stream)
-		})
-		err := h.loki.History(ctx, task.ID.String(), time.Unix(task.CreatedAt, 0), func(le []loki.LogEntry) {
-			chunks := make([]taskflow.TaskChunk, 0, len(le))
-			for _, l := range le {
-				if l.Line == "" {
-					continue
-				}
-				var chunk taskflow.TaskChunk
-				if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
-					logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
-					continue
-				}
-				chunk.Timestamp = l.Timestamp.UnixMilli()
-				chunks = append(chunks, chunk)
-			}
-
-			if err := aggregator.Process(chunks); err != nil {
-				logger.ErrorContext(ctx, "failed to process batch", "error", err)
-			}
-		})
+	if !lastTaskEndedTS.IsZero() {
+		// 有完整 round，从 task-ended 往前找对应的 user-input
+		startTS, err := h.loki.FindLastEvent(ctx, task.ID.String(), "user-input", taskCreatedAt, lastTaskEndedTS)
 		if err != nil {
-			logger.ErrorContext(ctx, "failed to get history logs", "error", err)
-			h.writeError(wsConn, fmt.Errorf("failed to get history logs %w", err))
+			logger.With("error", err).WarnContext(ctx, "failed to find task-started before task-ended")
 		}
-
-		select {
-		case <-time.After(30 * time.Second):
-			return nil
-		case <-ctx.Done():
-			return nil
+		if !startTS.IsZero() {
+			tailStart = startTS
 		}
 	}
 
-	// 对于在线的机器，启动 Tail 追踪
-	go func() {
-		aggregator := acp.NewChunkAggregator(func(stream domain.TaskStream) error {
-			return wsConn.WriteJSON(stream)
-		})
+	if tailStart.IsZero() {
+		// 没有完整 round（任务还在运行），找最后一个 user-input
+		startTS, err := h.loki.FindLastEvent(ctx, task.ID.String(), "user-input", taskCreatedAt, time.Time{})
+		if err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to find last task-started")
+		}
+		if !startTS.IsZero() {
+			tailStart = startTS
+		} else {
+			tailStart = taskCreatedAt
+		}
+	}
 
+	cursorTS := strconv.FormatInt(tailStart.UnixNano(), 10)
+	hasMore := tailStart.After(taskCreatedAt)
+
+	// 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的论次
+	h.writeCursor(wsConn, cursorTS, hasMore)
+
+	go func() {
 		logLimit := h.cfg.Task.LogLimit
 		if logLimit <= 0 {
 			logLimit = 200
 		}
 
-		err := h.loki.Tail(ctx, task.ID.String(), time.Unix(task.CreatedAt, 0).Add(-1*time.Minute), logLimit, func(le []loki.LogEntry) error {
-			chunks := make([]taskflow.TaskChunk, 0, len(le))
+		err := h.loki.Tail(ctx, task.ID.String(), tailStart, logLimit, time.Time{}, func(le []loki.LogEntry) error {
 			for _, l := range le {
 				if l.Line == "" {
 					continue
@@ -404,12 +392,14 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 					logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
 					continue
 				}
-				chunk.Timestamp = l.Timestamp.UnixMilli()
-				chunks = append(chunks, chunk)
-			}
-
-			if err := aggregator.Process(chunks); err != nil {
-				logger.ErrorContext(ctx, "failed to process batch", "error", err)
+				if err := wsConn.WriteJSON(domain.TaskStream{
+					Type:      consts.TaskStreamType(chunk.Event),
+					Data:      chunk.Data,
+					Kind:      chunk.Kind,
+					Timestamp: l.Timestamp.UnixMilli(),
+				}); err != nil {
+					return fmt.Errorf("failed to write to websocket: %w", err)
+				}
 			}
 			return nil
 		})
@@ -438,6 +428,15 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 
 		if !writable {
 			continue
+		}
+
+		if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
+			HostID:        task.VirtualMachine.Host.InternalID,
+			UserID:        task.UserID.String(),
+			ID:            task.VirtualMachine.ID,
+			EnvironmentID: task.VirtualMachine.EnvironmentID,
+		}); err != nil {
+			logger.With("error", err).WarnContext(c.Request().Context(), "failed to resume virtual")
 		}
 
 		var m domain.TaskStream
@@ -623,10 +622,105 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 }
 
 func (h *TaskHandler) writeError(wsConn *ws.WebsocketManager, err error) {
+	errMsg, _ := json.Marshal(err.Error())
 	wsConn.WriteJSON(domain.TaskStream{
 		Type: consts.TaskStreamTypeError,
-		Data: fmt.Appendf(nil, "%s", err),
+		Data: errMsg,
 	})
+}
+
+// writeCursor 向 WebSocket 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的历史
+func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, hasMore bool) {
+	if cursor == "" {
+		return
+	}
+	data, _ := json.Marshal(map[string]any{
+		"cursor":   cursor,
+		"has_more": hasMore,
+	})
+	wsConn.WriteJSON(domain.TaskStream{
+		Type:      consts.TaskStreamTypeCursor,
+		Data:      data,
+		Timestamp: time.Now().UnixMilli(),
+	})
+}
+
+// TaskRounds 查询任务历史论次（原始 TaskChunk，向前翻页）
+//
+//	@Summary		查询任务历史论次
+//	@Description	根据 cursor 向前翻页查询任务的历史论次。limit 为论次数（非条目数），
+//	@Description	limit=2 表示返回 2 论的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+//	@Tags			【用户】任务管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id		query		string									true	"任务 ID"
+//	@Param			cursor	query		string									false	"游标（时间戳 Unix ns）"
+//	@Param			limit	query		int										false	"论次数（默认 2，上限 10）"
+//	@Success		200		{object}	web.Resp{data=domain.TaskRoundsResp}	"成功"
+//	@Failure		500		{object}	web.Resp								"服务器内部错误"
+//	@Router			/api/v1/users/tasks/rounds [get]
+func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error {
+	ctx := c.Request().Context()
+	user := middleware.GetUser(c)
+
+	// 验证任务属于当前用户
+	task, _, err := h.usecase.Info(ctx, user, req.ID)
+	if err != nil {
+		return err
+	}
+
+	// 确定查询时间范围：从 cursor 往前查
+	var end time.Time
+	if req.Cursor != "" {
+		ns, err := strconv.ParseInt(req.Cursor, 10, 64)
+		if err != nil {
+			return errcode.ErrBadRequest.Wrap(fmt.Errorf("invalid cursor: %w", err))
+		}
+		end = time.Unix(0, ns)
+	} else {
+		end = time.Now()
+	}
+	start := time.Unix(task.CreatedAt, 0)
+
+	result, err := h.loki.QueryRounds(ctx, task.ID.String(), start, end, req.Limit)
+	if err != nil {
+		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query rounds")
+		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query rounds: %w", err))
+	}
+
+	chunks := make([]*domain.TaskChunkEntry, 0, len(result.Chunks)+1)
+	for _, c := range result.Chunks {
+		chunks = append(chunks, &domain.TaskChunkEntry{
+			Data:      c.Data,
+			Event:     c.Event,
+			Kind:      c.Kind,
+			Timestamp: c.Timestamp,
+			Labels:    c.Labels,
+		})
+	}
+
+	// 兼容逻辑：当拉到最老的数据且第一条不是 user-input 时，从 db content 补充
+	if !result.HasMore && len(chunks) > 0 && chunks[0].Event != "user-input" {
+		contentData, _ := json.Marshal(task.Content)
+		chunks = append([]*domain.TaskChunkEntry{{
+			Data:      contentData,
+			Event:     "user-input",
+			Kind:      "",
+			Timestamp: start.UnixNano(),
+			Labels:    nil,
+		}}, chunks...)
+	}
+
+	resp := domain.TaskRoundsResp{
+		Chunks:  chunks,
+		HasMore: result.HasMore,
+	}
+	if result.HasMore && result.NextTS > 0 {
+		resp.NextCursor = strconv.FormatInt(result.NextTS, 10)
+	}
+
+	return c.Success(resp)
 }
 
 func (h *TaskHandler) ping(

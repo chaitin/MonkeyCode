@@ -69,6 +69,16 @@ func wraperr(err error, path string) error {
 }
 
 // ListFolder 目录列表
+//
+//	@Summary		目录列表
+//	@Description	目录列表
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	query		domain.FilePathReq				false	"参数"
+//	@Success		200		{object}	web.Resp{data=[]taskflow.File}	"成功"
+//	@Router			/api/v1/users/folders [get]
 func (f *FileHandler) ListFolder(c *web.Context, req domain.FilePathReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
@@ -85,6 +95,16 @@ func (f *FileHandler) ListFolder(c *web.Context, req domain.FilePathReq) error {
 }
 
 // Mkdir 创建目录
+//
+//	@Summary		创建目录
+//	@Description	创建目录
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	body		domain.FilePathReq	false	"参数"
+//	@Success		200		{object}	web.Resp{}			"成功"
+//	@Router			/api/v1/users/folders [post]
 func (f *FileHandler) Mkdir(c *web.Context, req domain.FilePathReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
@@ -102,6 +122,16 @@ func (f *FileHandler) Mkdir(c *web.Context, req domain.FilePathReq) error {
 }
 
 // Move 移动文件/目录
+//
+//	@Summary		移动文件/目录
+//	@Description	移动文件/目录
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	body		domain.FileChangeReq	false	"参数"
+//	@Success		200		{object}	web.Resp{}				"成功"
+//	@Router			/api/v1/users/files/move [put]
 func (f *FileHandler) Move(c *web.Context, req domain.FileChangeReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
@@ -119,6 +149,16 @@ func (f *FileHandler) Move(c *web.Context, req domain.FileChangeReq) error {
 }
 
 // Copy 复制文件/目录
+//
+//	@Summary		复制文件/目录
+//	@Description	复制文件/目录
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	body		domain.FileChangeReq	false	"参数"
+//	@Success		200		{object}	web.Resp{}				"成功"
+//	@Router			/api/v1/users/files/copy [post]
 func (f *FileHandler) Copy(c *web.Context, req domain.FileChangeReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
@@ -136,6 +176,16 @@ func (f *FileHandler) Copy(c *web.Context, req domain.FileChangeReq) error {
 }
 
 // Delete 删除文件/目录
+//
+//	@Summary		删除文件/目录
+//	@Description	删除文件/目录
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	query		domain.FilePathReq	false	"参数"
+//	@Success		200		{object}	web.Resp{}			"成功"
+//	@Router			/api/v1/users/files [delete]
 func (f *FileHandler) Delete(c *web.Context, req domain.FilePathReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
@@ -152,6 +202,16 @@ func (f *FileHandler) Delete(c *web.Context, req domain.FilePathReq) error {
 }
 
 // Save 保存文件内容
+//
+//	@Summary		保存文件内容
+//	@Description	保存文件内容
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	body		domain.FileSaveReq	false	"参数"
+//	@Success		200		{object}	web.Resp{}			"成功"
+//	@Router			/api/v1/users/files/save [put]
 func (f *FileHandler) Save(c *web.Context, req domain.FileSaveReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
@@ -168,7 +228,19 @@ func (f *FileHandler) Save(c *web.Context, req domain.FileSaveReq) error {
 	}), req.Path)
 }
 
-// Upload 上传文件到 VM
+// Upload 上传文件
+//
+//	@Summary		上传文件
+//	@Description	上传文件
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id		query		string		true	"虚拟机 id"
+//	@Param			path	query		string		true	"文件上传的绝对地址"
+//	@Param			file	formData	file		true	"文件"
+//	@Success		200		{object}	web.Resp{}	"成功"
+//	@Router			/api/v1/users/files/upload [post]
 func (f *FileHandler) Upload(c *web.Context) error {
 	id := c.QueryParam("id")
 	path := c.QueryParam("path")
@@ -287,6 +359,16 @@ func (f *FileHandler) Upload(c *web.Context) error {
 }
 
 // Download 下载文件
+//
+//	@Summary		下载文件
+//	@Description	下载文件
+//	@Tags			【用户】文件管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			param	query		domain.FilePathReq	false	"参数"
+//	@Success		200		{object}	web.Resp{}			"成功"
+//	@Router			/api/v1/users/files/download [get]
 func (f *FileHandler) Download(c *web.Context, req domain.FilePathReq) error {
 	user := middleware.GetUser(c)
 	if err := f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {

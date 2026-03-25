@@ -291,28 +291,27 @@ func (u *ProjectUsecase) getGitlabProjectInfo(p *db.Project) *gitlabProjectInfo 
 
 // githubProjectInfo GitHub 项目信息
 type githubProjectInfo struct {
-	owner         string
-	repo          string
-	defaultBranch string
+	InstallationID int64
+	Owner          string
+	Repo           string
+	DefaultBranch  string
 }
 
 // getGithubInfo 获取 GitHub 项目信息
 func getGithubInfo(p *db.Project) *githubProjectInfo {
-	if p.Platform != consts.GitPlatformGithub {
+	gi := p.Edges.GitIdentity
+	if p.Platform != consts.GitPlatformGithub || gi == nil || gi.InstallationID <= 0 {
 		return nil
 	}
 	parsed, err := giturl.Parse(p.RepoURL)
 	if err != nil {
 		return nil
 	}
-	defaultBranch := p.Branch
-	if defaultBranch == "" {
-		defaultBranch = "main"
-	}
 	return &githubProjectInfo{
-		owner:         parsed.Owner,
-		repo:          parsed.Repo,
-		defaultBranch: defaultBranch,
+		InstallationID: gi.InstallationID,
+		Owner:          parsed.Owner,
+		Repo:           parsed.Repo,
+		DefaultBranch:  p.Branch,
 	}
 }
 
@@ -374,7 +373,7 @@ func (u *ProjectUsecase) getGiteaProjectInfo(p *db.Project) *giteaProjectInfo {
 }
 
 // getRepoToken 获取平台 token
-func (u *ProjectUsecase) getRepoToken(ctx context.Context, p *db.Project) (string, error) {
+func (u *ProjectUsecase) getRepoToken(p *db.Project) (string, error) {
 	gi := p.Edges.GitIdentity
 	if gi == nil {
 		return "", errcode.ErrGitOperation.Wrap(fmt.Errorf("project has no git identity"))
@@ -393,7 +392,7 @@ func (u *ProjectUsecase) GetProjectTree(ctx context.Context, uid uuid.UUID, req 
 	if err != nil {
 		return nil, err
 	}
-	token, err := u.getRepoToken(ctx, p)
+	token, err := u.getRepoToken(p)
 	if err != nil {
 		return nil, err
 	}
@@ -406,9 +405,9 @@ func (u *ProjectUsecase) GetProjectTree(ctx context.Context, uid uuid.UUID, req 
 		}
 		ref := req.Ref
 		if ref == "" {
-			ref = ghInfo.defaultBranch
+			ref = ghInfo.DefaultBranch
 		}
-		treeResp, err := u.gh.GetRepoTree(ctx, token, ghInfo.owner, ghInfo.repo, ref, req.Path, req.Recursive)
+		treeResp, err := u.gh.GetRepoTree(ctx, ghInfo.InstallationID, token, ghInfo.Owner, ghInfo.Repo, ref, req.Path, req.Recursive)
 		if err != nil {
 			return nil, errcode.ErrGitOperation.Wrap(err)
 		}
@@ -478,7 +477,7 @@ func (u *ProjectUsecase) GetProjectBlob(ctx context.Context, uid uuid.UUID, req 
 	if err != nil {
 		return nil, err
 	}
-	token, err := u.getRepoToken(ctx, p)
+	token, err := u.getRepoToken(p)
 	if err != nil {
 		return nil, err
 	}
@@ -491,9 +490,9 @@ func (u *ProjectUsecase) GetProjectBlob(ctx context.Context, uid uuid.UUID, req 
 		}
 		ref := req.Ref
 		if ref == "" {
-			ref = ghInfo.defaultBranch
+			ref = ghInfo.DefaultBranch
 		}
-		resp, err := u.gh.GetBlob(ctx, token, ghInfo.owner, ghInfo.repo, ref, req.Path)
+		resp, err := u.gh.GetBlob(ctx, ghInfo.InstallationID, token, ghInfo.Owner, ghInfo.Repo, ref, req.Path)
 		if err != nil {
 			return nil, errcode.ErrGitOperation.Wrap(err)
 		}
@@ -574,7 +573,7 @@ func (u *ProjectUsecase) GetProjectLogs(ctx context.Context, uid uuid.UUID, req 
 	if err != nil {
 		return nil, err
 	}
-	token, err := u.getRepoToken(ctx, p)
+	token, err := u.getRepoToken(p)
 	if err != nil {
 		return nil, err
 	}
@@ -587,9 +586,9 @@ func (u *ProjectUsecase) GetProjectLogs(ctx context.Context, uid uuid.UUID, req 
 		}
 		ref := req.Ref
 		if ref == "" {
-			ref = ghInfo.defaultBranch
+			ref = ghInfo.DefaultBranch
 		}
-		resp, err := u.gh.GetGitLogs(ctx, token, ghInfo.owner, ghInfo.repo, ref, req.Path, req.Limit, req.Offset)
+		resp, err := u.gh.GetGitLogs(ctx, ghInfo.InstallationID, token, ghInfo.Owner, ghInfo.Repo, ref, req.Path, req.Limit, req.Offset)
 		if err != nil {
 			return nil, errcode.ErrGitOperation.Wrap(err)
 		}
@@ -718,7 +717,7 @@ func (u *ProjectUsecase) GetProjectArchive(ctx context.Context, uid uuid.UUID, r
 	if err != nil {
 		return nil, err
 	}
-	token, err := u.getRepoToken(ctx, p)
+	token, err := u.getRepoToken(p)
 	if err != nil {
 		return nil, err
 	}
@@ -731,9 +730,9 @@ func (u *ProjectUsecase) GetProjectArchive(ctx context.Context, uid uuid.UUID, r
 		}
 		ref := req.Ref
 		if ref == "" {
-			ref = ghInfo.defaultBranch
+			ref = ghInfo.DefaultBranch
 		}
-		resp, err := u.gh.GetRepoArchive(ctx, token, ghInfo.owner, ghInfo.repo, ref)
+		resp, err := u.gh.GetRepoArchive(ctx, ghInfo.InstallationID, token, ghInfo.Owner, ghInfo.Repo, ref)
 		if err != nil {
 			return nil, errcode.ErrGitOperation.Wrap(err)
 		}

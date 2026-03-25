@@ -41,6 +41,17 @@ func NewGitBotHandler(i *do.Injector) (*GitBotHandler, error) {
 }
 
 // List 获取用户的 GitBot 列表
+//
+//	@Summary		Git Bot 列表
+//	@Description	Git Bot 列表
+//	@Tags			【用户】Git Bot
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Success		200	{object}	web.Resp{data=domain.ListGitBotResp}	"成功"
+//	@Failure		401	{object}	web.Resp								"未授权"
+//	@Failure		500	{object}	web.Resp								"服务器错误"
+//	@Router			/api/v1/users/git-bots [get]
 func (h *GitBotHandler) List(c *web.Context) error {
 	user := middleware.GetUser(c)
 	resp, err := h.usecase.List(c.Request().Context(), user.ID)
@@ -51,6 +62,18 @@ func (h *GitBotHandler) List(c *web.Context) error {
 }
 
 // Create 创建 GitBot
+//
+//	@Summary		创建 Git Bot
+//	@Description	创建 Git Bot
+//	@Tags			【用户】Git Bot
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			req	body		domain.CreateGitBotReq			true	"参数"
+//	@Success		200	{object}	web.Resp{data=domain.GitBot}	"成功"
+//	@Failure		401	{object}	web.Resp						"未授权"
+//	@Failure		500	{object}	web.Resp						"服务器错误"
+//	@Router			/api/v1/users/git-bots [post]
 func (h *GitBotHandler) Create(c *web.Context, req domain.CreateGitBotReq) error {
 	user := middleware.GetUser(c)
 	resp, err := h.usecase.Create(c.Request().Context(), user.ID, req)
@@ -61,6 +84,18 @@ func (h *GitBotHandler) Create(c *web.Context, req domain.CreateGitBotReq) error
 }
 
 // Update 更新 GitBot
+//
+//	@Summary		更新 Git Bot
+//	@Description	更新 Git Bot
+//	@Tags			【用户】Git Bot
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			req	body		domain.UpdateGitBotReq	true	"参数"
+//	@Success		200	{object}	web.Resp{}				"成功"
+//	@Failure		401	{object}	web.Resp				"未授权"
+//	@Failure		500	{object}	web.Resp				"服务器错误"
+//	@Router			/api/v1/users/git-bots [put]
 func (h *GitBotHandler) Update(c *web.Context, req domain.UpdateGitBotReq) error {
 	user := middleware.GetUser(c)
 	resp, err := h.usecase.Update(c.Request().Context(), user.ID, req)
@@ -71,6 +106,18 @@ func (h *GitBotHandler) Update(c *web.Context, req domain.UpdateGitBotReq) error
 }
 
 // Delete 删除 GitBot
+//
+//	@Summary		删除 Git Bot
+//	@Description	删除 Git Bot
+//	@Tags			【用户】Git Bot
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id	path		string		true	"ID"
+//	@Success		200	{object}	web.Resp{}	"成功"
+//	@Failure		401	{object}	web.Resp	"未授权"
+//	@Failure		500	{object}	web.Resp	"服务器错误"
+//	@Router			/api/v1/users/git-bots/{id} [delete]
 func (h *GitBotHandler) Delete(c *web.Context, req domain.IDReq[uuid.UUID]) error {
 	user := middleware.GetUser(c)
 	if err := h.usecase.Delete(c.Request().Context(), user.ID, req.ID); err != nil {
@@ -80,6 +127,18 @@ func (h *GitBotHandler) Delete(c *web.Context, req domain.IDReq[uuid.UUID]) erro
 }
 
 // ListTask 获取 GitBot 任务列表
+//
+//	@Summary		Git Bot 任务列表
+//	@Description	Git Bot 任务列表，支持分页
+//	@Tags			【用户】Git Bot
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			req	query		domain.ListGitBotTaskReq					true	"分页参数，可选 id 指定 Git Bot"
+//	@Success		200	{object}	web.Resp{data=domain.ListGitBotTaskResp}	"成功"
+//	@Failure		401	{object}	web.Resp									"未授权"
+//	@Failure		500	{object}	web.Resp									"服务器错误"
+//	@Router			/api/v1/users/git-bots/tasks [get]
 func (h *GitBotHandler) ListTask(c *web.Context, req domain.ListGitBotTaskReq) error {
 	user := middleware.GetUser(c)
 	if req.Page <= 0 {
@@ -96,6 +155,18 @@ func (h *GitBotHandler) ListTask(c *web.Context, req domain.ListGitBotTaskReq) e
 }
 
 // ShareBot 共享 GitBot
+//
+//	@Summary		分享 Git Bot
+//	@Description	分享 Git Bot
+//	@Tags			【用户】Git Bot
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			req	body		domain.ShareGitBotReq	true	"参数"
+//	@Success		200	{object}	web.Resp{}				"成功"
+//	@Failure		401	{object}	web.Resp				"未授权"
+//	@Failure		500	{object}	web.Resp				"服务器错误"
+//	@Router			/api/v1/users/git-bots/share [post]
 func (h *GitBotHandler) ShareBot(c *web.Context, req domain.ShareGitBotReq) error {
 	user := middleware.GetUser(c)
 	if err := h.usecase.ShareBot(c.Request().Context(), user.ID, req); err != nil {

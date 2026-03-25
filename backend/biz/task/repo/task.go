@@ -249,10 +249,6 @@ func (t *TaskRepo) pickModelWeighted(cliname consts.CliName, ms []*db.Model) *db
 // Create implements domain.TaskRepo.
 func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error) {
 	resource := req.Resource
-	TTLKind := consts.CountDown
-	if resource.Life <= 0 {
-		TTLKind = consts.Forever
-	}
 
 	var res *db.ProjectTask
 	err := entx.WithTx2(ctx, t.db, func(tx *db.Tx) error {
@@ -374,8 +370,8 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetName(fmt.Sprintf("task-%s", id.String())).
 			SetHostID(h.ID).
 			SetEnvironmentID(vm.EnvironmentID).
-			SetTTLKind(TTLKind).
-			SetTTL(resource.Life).
+			SetTTLKind(consts.Forever).
+			SetTTL(0).
 			SetCores(resource.Core).
 			SetMemory(int64(resource.Memory)).
 			SetModelID(m.ID).

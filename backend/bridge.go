@@ -2,14 +2,17 @@ package backend
 
 import (
 	"github.com/GoYoko/web"
+	"github.com/GoYoko/web/locale"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/do"
+	"golang.org/x/text/language"
 
 	"github.com/chaitin/MonkeyCode/backend/biz"
 	hostrepo "github.com/chaitin/MonkeyCode/backend/biz/host/repo"
 	hostusecase "github.com/chaitin/MonkeyCode/backend/biz/host/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 )
@@ -84,6 +87,8 @@ func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 	do.ProvideValue(injector, cfg)
 
 	w := web.NewFromEcho(e)
+	l := locale.NewLocalizerWithFile(language.Chinese, errcode.LocalFS, []string{"locale.zh.toml", "locale.en.toml"})
+	w.SetLocale(l)
 
 	// 注册 infra
 	if err := pkg.RegisterInfra(injector, w); err != nil {

@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -150,42 +152,57 @@ func (c *Client) QueryByTaskID(ctx context.Context, taskID string, start, end ti
 			})
 		}
 	}
+	// Loki 加了 structured metadata 后，同一个 task_id 的日志可能分布在多个 stream 中，
+	// 每个 stream 内部有序，但跨 stream 无全局排序保证，需要在这里做归并排序。
+	sort.SliceStable(out, func(i, j int) bool {
+		if direction == "backward" {
+			return out[i].Timestamp.After(out[j].Timestamp)
+		}
+		return out[i].Timestamp.Before(out[j].Timestamp)
+	})
 	return out, nil
 }
 
 // History 分页获取历史日志
-func (c *Client) History(ctx context.Context, taskID string, start time.Time, fn func([]LogEntry)) error {
+// History 分页获取历史日志，返回最后一条日志的时间戳。
+// 如果没有日志，返回零时间戳。
+func (c *Client) History(ctx context.Context, taskID string, start time.Time, fn func([]LogEntry)) (time.Time, error) {
 	if start.IsZero() {
 		start = time.Now().Add(-24 * time.Hour)
 	}
 	end := time.Now()
 	limit := 200
+	var lastTS time.Time
 	for {
 		logs, err := c.QueryByTaskID(ctx, taskID, start, end, limit, "forward")
 		if err != nil {
-			return err
+			return lastTS, err
 		}
 
 		fn(logs)
+		if len(logs) > 0 {
+			lastTS = logs[len(logs)-1].Timestamp
+		}
 		if len(logs) < limit {
 			break
 		}
 		start = logs[len(logs)-1].Timestamp.Add(time.Nanosecond)
 	}
-	return nil
+	return lastTS, nil
 }
 
 // Tail 使用 WebSocket 替代 HTTP 轮询，提供完整的实时日志流
 // 策略：
-//  1. 历史阶段：通过 HTTP 查询从 start 到 now-2s 的所有历史日志
-//  2. 实时阶段：建立 WebSocket 连接，从 lastTS-2s 开始接收实时日志
+//  1. 历史阶段：通过 HTTP 查询从 start 到 now-skew 的所有历史日志
+//  2. 实时阶段：建立 WebSocket 连接，从 lastTS-skew 开始接收实时日志
 //  3. 去重机制：基于"时间戳+日志内容"的复合键去重，处理同一纳秒的多条日志
 //  4. 每收到一条日志立即调用回调函数（无批处理）
 //
-// start: 日志查询起始时间
-// limit: 单次查询/接收的最大日志条数
-// fn: 日志回调函数，接收单条日志的切片，返回 error 可中断处理
-func (c *Client) Tail(ctx context.Context, taskID string, start time.Time, limit int, fn func([]LogEntry) error) error {
+// start:       日志查询起始时间
+// limit:       单次查询/接收的最大日志条数
+// lastTS:      历史阶段已发送的最后一条日志时间戳，用于初始化去重状态，防止重复推送
+// fn:          日志回调函数，接收单条日志的切片，返回 error 可中断处理
+func (c *Client) Tail(ctx context.Context, taskID string, start time.Time, limit int, lastTS time.Time, fn func([]LogEntry) error) error {
 	// 参数校验与初始化
 	if limit <= 0 {
 		limit = 200
@@ -196,8 +213,11 @@ func (c *Client) Tail(ctx context.Context, taskID string, start time.Time, limit
 	query := fmt.Sprintf(`{task_id="%s"}`, escapeLabelValue(taskID))
 
 	// 去重状态：仅跟踪最新时间戳的日志
-	var lastTS time.Time
+	// 如果 lastTS 不为零（表示历史阶段已推送过日志），用 lastTS 初始化去重状态
 	seenAtLastTS := make(map[string]struct{})
+	if lastTS.IsZero() {
+		lastTS = time.Time{}
+	}
 
 	// === 阶段 1: 历史数据查询 ===
 	c.logger.With("task_id", taskID, "start", start).DebugContext(ctx, "Tail: starting historical phase")
@@ -509,6 +529,54 @@ func (c *Client) tailWebSocketSession(
 	}
 }
 
+// FindLastEvent 倒序分页扫描 Loki 日志，找到最后一个匹配 event 的条目，返回其时间戳。
+// 优先从 Loki structured metadata (labels) 中读取 event 字段，回退到解析 JSON body。
+// end 为搜索的结束时间上界，零值表示 time.Now()。
+func (c *Client) FindLastEvent(ctx context.Context, taskID string, event string, start, end time.Time) (time.Time, error) {
+	const pageSize = 200
+
+	if end.IsZero() {
+		end = time.Now()
+	}
+	if start.IsZero() {
+		start = time.Unix(0, 0)
+	}
+
+	for {
+		entries, err := c.QueryByTaskID(ctx, taskID, start, end, pageSize, "backward")
+		if err != nil {
+			return time.Time{}, fmt.Errorf("FindLastEvent query failed: %w", err)
+		}
+
+		for _, entry := range entries {
+			// 优先从 labels（structured metadata）读取
+			if ev, ok := entry.Labels["event"]; ok {
+				if ev == event {
+					return entry.Timestamp, nil
+				}
+				continue
+			}
+			// 回退：解析 JSON body
+			var chunk struct {
+				Event string `json:"event"`
+			}
+			if err := json.Unmarshal([]byte(entry.Line), &chunk); err != nil {
+				continue
+			}
+			if chunk.Event == event {
+				return entry.Timestamp, nil
+			}
+		}
+
+		if len(entries) < pageSize {
+			return time.Time{}, nil
+		}
+
+		// 继续往前扫描
+		end = entries[len(entries)-1].Timestamp
+	}
+}
+
 func (c *Client) toWebSocketURL(path string, q url.Values) (string, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -570,4 +638,110 @@ type lokiQueryFrame struct {
 type lokiTailMessage struct {
 	Streams []lokiQueryFrame `json:"streams"`
 	// dropped_entries 字段可能存在于某些版本，这里不强依赖
+}
+
+// RoundChunk 论次日志条目
+type RoundChunk struct {
+	Data      []byte            `json:"data,omitempty"`
+	Event     string            `json:"event"`
+	Kind      string            `json:"kind"`
+	Timestamp int64             `json:"timestamp"` // Unix Nano
+	Labels    map[string]string `json:"labels,omitempty"`
+}
+
+// QueryRoundsResp 查询论次响应
+type QueryRoundsResp struct {
+	Chunks  []*RoundChunk // 正序排列（user-input 在前，task-ended 在后），论次间也是最新在前
+	HasMore bool
+	NextTS  int64 // 下一页起始时间戳（Unix Nano），仅当 HasMore 时有效
+}
+
+// QueryRounds 按 user-input 切分论次，倒序分页查询。
+// 每个论次从 user-input 到 task-ended。从 end 往前扫描到 start，
+// 凑满 limit 论后停止，返回正序排列的 chunks。
+func (c *Client) QueryRounds(ctx context.Context, taskID string, start, end time.Time, limit int) (*QueryRoundsResp, error) {
+	if limit <= 0 {
+		limit = 2
+	}
+	if limit > 10 {
+		limit = 10
+	}
+
+	raw, hasMore, err := c.scanRounds(ctx, taskID, start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// reverse: backward 收集 → 正序
+	slices.Reverse(raw)
+
+	resp := &QueryRoundsResp{
+		Chunks:  raw,
+		HasMore: hasMore,
+	}
+	if hasMore && len(raw) > 0 {
+		resp.NextTS = raw[0].Timestamp
+	}
+	return resp, nil
+}
+
+// scanRounds 倒序扫描 Loki 日志，按 user-input 切分论次。
+// 倒序中先遇到论次内容（task-ended..task-started），再遇到 user-input 边界。
+// 用 buf 缓存当前论次内容，遇到 user-input 时连同 buf 一起 flush 到 raw。
+// 未被 flush 的 buf（如 auto-start 数据）自动丢弃。
+func (c *Client) scanRounds(ctx context.Context, taskID string, start, end time.Time, limit int) ([]*RoundChunk, bool, error) {
+	const pageSize = 200
+
+	var raw []*RoundChunk
+	var buf []*RoundChunk // 当前论次内容缓冲，遇到 user-input 时 flush
+	roundCount := 0
+	scanEnd := end
+
+	for {
+		entries, err := c.QueryByTaskID(ctx, taskID, start, scanEnd, pageSize, "backward")
+		if err != nil {
+			return nil, false, fmt.Errorf("QueryRounds query failed: %w", err)
+		}
+		if len(entries) == 0 {
+			return raw, false, nil
+		}
+
+		for _, entry := range entries {
+			var chunk struct {
+				Event string `json:"event"`
+				Data  []byte `json:"data,omitempty"`
+				Kind  string `json:"kind"`
+			}
+			if err := json.Unmarshal([]byte(entry.Line), &chunk); err != nil {
+				continue
+			}
+
+			rc := &RoundChunk{
+				Data:      chunk.Data,
+				Event:     chunk.Event,
+				Kind:      chunk.Kind,
+				Timestamp: entry.Timestamp.UnixNano(),
+				Labels:    entry.Labels,
+			}
+
+			if chunk.Event == "user-input" {
+				if roundCount >= limit {
+					// 已凑满，再遇到 user-input 说明还有更早的论次
+					return raw, true, nil
+				}
+				// flush: 论次内容 + user-input 本身
+				raw = append(raw, buf...)
+				raw = append(raw, rc)
+				buf = buf[:0]
+				roundCount++
+			} else if roundCount < limit {
+				buf = append(buf, rc)
+			}
+		}
+
+		if len(entries) < pageSize {
+			return raw, false, nil
+		}
+		scanEnd = entries[len(entries)-1].Timestamp
+	}
 }

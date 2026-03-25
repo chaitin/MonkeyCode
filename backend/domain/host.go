@@ -166,6 +166,8 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 				switch cond.Type {
 				case etypes.ConditionTypeFailed:
 					v.Status = taskflow.VirtualMachineStatusOffline
+				case etypes.ConditionTypeHibernated:
+					v.Status = taskflow.VirtualMachineStatusHibernated
 				case etypes.ConditionTypeReady:
 					if time.Since(time.UnixMilli(cond.LastTransitionTime)) > 3*time.Minute {
 						v.Status = taskflow.VirtualMachineStatusOffline
@@ -173,6 +175,10 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 				}
 			}
 		}
+	}
+
+	if vm.IsRecycled {
+		v.Status = taskflow.VirtualMachineStatusOffline
 	}
 
 	switch vm.TTLKind {

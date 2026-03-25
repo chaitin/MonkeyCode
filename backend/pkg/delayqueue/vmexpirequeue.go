@@ -15,7 +15,7 @@ type VMExpireQueue struct {
 }
 
 func NewVMExpireQueue(rdb *redis.Client, logger *slog.Logger) *VMExpireQueue {
-	return &VMExpireQueue{NewRedisDelayQueue[*domain.VmExpireInfo](rdb, logger,
+	return &VMExpireQueue{NewRedisDelayQueue(rdb, logger,
 		WithPrefix[*domain.VmExpireInfo]("mcai:vmexpire"),
 		WithPollInterval[*domain.VmExpireInfo](5*time.Second),
 		WithRequeueDelay[*domain.VmExpireInfo](1*time.Minute),

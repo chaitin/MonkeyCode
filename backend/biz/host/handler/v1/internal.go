@@ -435,6 +435,8 @@ type VMActivityReq struct {
 
 // VMActivity VM 活动回调，用于刷新空闲计时器
 func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) error {
+	h.logger.With("req", req).DebugContext(c.Request().Context(), "vm activity req")
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()

@@ -265,7 +265,7 @@ func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID strin
 	messages = append(messages, llm.Message{Role: "user", Content: t.Content})
 
 	agentMsg := []string{}
-	err = s.loki.History(ctx, taskID, createdAt, func(entries []loki.LogEntry) {
+	_, err = s.loki.History(ctx, taskID, createdAt, func(entries []loki.LogEntry) {
 		for _, entry := range entries {
 			if entry.Line == "" {
 				continue
