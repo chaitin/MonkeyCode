@@ -18,14 +18,14 @@ import (
 // treeCommitInfoPath 为 GitHub 专属的「树+最近提交信息」接口
 const treeCommitInfoPath = "repos/%s/%s/tree-commit-info/%s"
 
-// GetRepoTree 获取仓库文件树（PAT 模式）
+// GetRepoTree 获取仓库文件树（Installation App 模式优先）
 func (g *Github) GetRepoTree(ctx context.Context, installID int64, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
 	if ref == "" {
 		ref = "HEAD"
 	}
 
 	// 优先使用 GitHub 专属 tree-commit-info 接口
-	if resp, err := g.getRepoTreeCommitInfo(ctx, token, owner, repo, ref, path, recursive); err == nil {
+	if resp, err := g.getRepoTreeCommitInfo(ctx, installID, token, owner, repo, ref, path, recursive); err == nil {
 		return resp, nil
 	}
 
@@ -138,7 +138,13 @@ type treeCommitInfoEntryRaw struct {
 }
 
 // getRepoTreeCommitInfo 调用 GitHub tree-commit-info 接口
-func (g *Github) getRepoTreeCommitInfo(ctx context.Context, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
+func (g *Github) getRepoTreeCommitInfo(ctx context.Context, installID int64, token, owner, repo, ref, path string, recursive bool) (*GetRepoTreeResp, error) {
+	// 获取正确的认证客户端
+	client, err := g.GetClient(ctx, token, installID)
+	if err != nil {
+		return nil, err
+	}
+
 	refEscaped := url.PathEscape(ref)
 	apiPath := fmt.Sprintf(treeCommitInfoPath, owner, repo, refEscaped)
 	baseURL := "https://api.github.com/"
@@ -159,11 +165,9 @@ func (g *Github) getRepoTreeCommitInfo(ctx context.Context, token, owner, repo, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := http.DefaultClient.Do(req)
+	// 使用 client 的 transport 来发送请求，这样会自动带上正确的认证
+	resp, err := client.Client().Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -318,7 +318,6 @@ func (h *TaskHandler) Stream(c *web.Context, req domain.TaskStreamReq) error {
 func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Task, writable bool, mode string) error {
 	logger := h.logger.With("task_id", task.ID, "fn", "task.stream")
 
-	// 使用 coder/websocket Accept 升级连接
 	wsConn, err := ws.Accept(c.Response().Writer, c.Request())
 	if err != nil {
 		h.logger.ErrorContext(c.Request().Context(), "failed to upgrade to websocket", "error", err)
@@ -335,93 +334,89 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 	defer h.taskConns.Remove(task.ID.String())
 
 	if task.VirtualMachine == nil || task.VirtualMachine.Host == nil {
-		logger.DebugContext(ctx, "no virtual machine or host for task", "task_id", task.ID)
+		logger.DebugContext(ctx, "no virtual machine or host for task")
 		h.writeError(wsConn, fmt.Errorf("no virtual machine or host for task"))
 		return nil
 	}
 
-	// 找到最后一个完整 round 的起始位置：先找 task-ended，再从那个时间点往前找 task-started
-	taskCreatedAt := time.Unix(task.CreatedAt, 0)
-	var tailStart time.Time
+	if mode != "new" {
+		// attach 模式：回放最后一个论次的历史消息，然后持续 tail
+		taskCreatedAt := time.Unix(task.CreatedAt, 0)
+		tailStart := h.findTailStart(ctx, task.ID.String(), taskCreatedAt)
 
-	lastTaskEndedTS, err := h.loki.FindLastEvent(ctx, task.ID.String(), "task-ended", taskCreatedAt, time.Time{})
+		cursorTS := strconv.FormatInt(tailStart.UnixNano(), 10)
+		hasMore := tailStart.After(taskCreatedAt)
+		h.writeCursor(wsConn, cursorTS, hasMore)
+
+		go h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), tailStart)
+	}
+
+	return h.readClientMessages(ctx, wsConn, logger, user, task, writable, mode == "new", cancel)
+}
+
+func (h *TaskHandler) findTailStart(ctx context.Context, taskID string, taskCreatedAt time.Time) time.Time {
+	lastEndedTS, err := h.loki.FindLastEvent(ctx, taskID, "task-ended", taskCreatedAt, time.Time{})
 	if err != nil {
-		logger.With("error", err).WarnContext(ctx, "failed to find last task-ended")
+		h.logger.With("error", err).WarnContext(ctx, "failed to find last task-ended")
 	}
 
-	if !lastTaskEndedTS.IsZero() {
-		// 有完整 round，从 task-ended 往前找对应的 user-input
-		startTS, err := h.loki.FindLastEvent(ctx, task.ID.String(), "user-input", taskCreatedAt, lastTaskEndedTS)
-		if err != nil {
-			logger.With("error", err).WarnContext(ctx, "failed to find task-started before task-ended")
-		}
-		if !startTS.IsZero() {
-			tailStart = startTS
+	if !lastEndedTS.IsZero() {
+		startTS, err := h.loki.FindLastEvent(ctx, taskID, "user-input", taskCreatedAt, lastEndedTS)
+		if err == nil && !startTS.IsZero() {
+			return startTS
 		}
 	}
 
-	if tailStart.IsZero() {
-		// 没有完整 round（任务还在运行），找最后一个 user-input
-		startTS, err := h.loki.FindLastEvent(ctx, task.ID.String(), "user-input", taskCreatedAt, time.Time{})
-		if err != nil {
-			logger.With("error", err).WarnContext(ctx, "failed to find last task-started")
-		}
-		if !startTS.IsZero() {
-			tailStart = startTS
-		} else {
-			tailStart = taskCreatedAt
-		}
+	startTS, err := h.loki.FindLastEvent(ctx, taskID, "user-input", taskCreatedAt, time.Time{})
+	if err == nil && !startTS.IsZero() {
+		return startTS
 	}
 
-	cursorTS := strconv.FormatInt(tailStart.UnixNano(), 10)
-	hasMore := tailStart.After(taskCreatedAt)
+	return taskCreatedAt
+}
 
-	// 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的论次
-	h.writeCursor(wsConn, cursorTS, hasMore)
+func (h *TaskHandler) tailLogs(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, tailStart time.Time) {
+	logLimit := h.cfg.Task.LogLimit
+	if logLimit <= 0 {
+		logLimit = 200
+	}
 
-	go func() {
-		logLimit := h.cfg.Task.LogLimit
-		if logLimit <= 0 {
-			logLimit = 200
-		}
-
-		err := h.loki.Tail(ctx, task.ID.String(), tailStart, logLimit, time.Time{}, func(le []loki.LogEntry) error {
-			for _, l := range le {
-				if l.Line == "" {
-					continue
-				}
-				var chunk taskflow.TaskChunk
-				if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
-					logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
-					continue
-				}
-				if err := wsConn.WriteJSON(domain.TaskStream{
-					Type:      consts.TaskStreamType(chunk.Event),
-					Data:      chunk.Data,
-					Kind:      chunk.Kind,
-					Timestamp: l.Timestamp.UnixMilli(),
-				}); err != nil {
-					return fmt.Errorf("failed to write to websocket: %w", err)
-				}
-
-				// 收到 task-ended 后关闭连接
-				if chunk.Event == "task-ended" {
-					cancel(fmt.Errorf("round ended"))
-					return fmt.Errorf("round ended")
-				}
+	err := h.loki.Tail(ctx, taskID, tailStart, logLimit, time.Time{}, func(le []loki.LogEntry) error {
+		for _, l := range le {
+			if l.Line == "" {
+				continue
 			}
-			return nil
-		})
+			var chunk taskflow.TaskChunk
+			if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
+				logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
+				continue
+			}
+			if err := wsConn.WriteJSON(domain.TaskStream{
+				Type:      consts.TaskStreamType(chunk.Event),
+				Data:      chunk.Data,
+				Kind:      chunk.Kind,
+				Timestamp: l.Timestamp.UnixMilli(),
+			}); err != nil {
+				return fmt.Errorf("failed to write to websocket: %w", err)
+			}
 
-		if err != nil {
-			logger.ErrorContext(ctx, "tailer failed", "error", err)
-			h.writeError(wsConn, fmt.Errorf("failed to tail logs %w", err))
-			cancel(fmt.Errorf("failed to tail logs %w", err))
-			return
+			if chunk.Event == "task-ended" {
+				cancel(fmt.Errorf("round ended"))
+				return fmt.Errorf("round ended")
+			}
 		}
-	}()
+		return nil
+	})
 
-	// 读取客户端消息循环
+	if err != nil {
+		logger.ErrorContext(ctx, "tailer failed", "error", err)
+		h.writeError(wsConn, fmt.Errorf("failed to tail logs %w", err))
+		cancel(fmt.Errorf("failed to tail logs %w", err))
+	}
+}
+
+func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, writable bool, isNewMode bool, cancel context.CancelCauseFunc) error {
+	tailStarted := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -439,13 +434,13 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 			continue
 		}
 
-		if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
+		if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
 			HostID:        task.VirtualMachine.Host.InternalID,
 			UserID:        task.UserID.String(),
 			ID:            task.VirtualMachine.ID,
 			EnvironmentID: task.VirtualMachine.EnvironmentID,
 		}); err != nil {
-			logger.With("error", err).WarnContext(c.Request().Context(), "failed to resume virtual")
+			logger.With("error", err).WarnContext(ctx, "failed to resume virtual")
 		}
 
 		var m domain.TaskStream
@@ -454,179 +449,163 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 			continue
 		}
 
-		switch m.Type {
-		case consts.TaskStreamTypeUserInput:
-			if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to push task content")
-			}
-			if err := h.taskSummary.EnqueueSummary(ctx, task.ID.String(), time.Unix(task.CreatedAt, 0)); err != nil {
-				logger.With("error", err).WarnContext(ctx, "failed to enqueue task summary")
-			}
-
-		case consts.TaskStreamTypeUserStop:
-			if err := h.usecase.Stop(ctx, user, task.ID); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to stop task")
-			}
-
-		case consts.TaskStreamTypeUserCancel:
-			if err := h.usecase.Cancel(ctx, user, task.ID); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to cancel task")
-			}
-
-		case consts.TaskStreamTypeAutoApprove:
-			if err := h.usecase.AutoApprove(ctx, user, task.ID, true); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to auto approve task")
-			}
-
-		case consts.TaskStreamTypeDisableAutoApprove:
-			if err := h.usecase.AutoApprove(ctx, user, task.ID, false); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to disable auto approve task")
-			}
-
-		case consts.TaskStreamTypeReplyQuestion:
-			var req taskflow.AskUserQuestionResponse
-			if err := json.Unmarshal(m.Data, &req); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal ask user question")
-				continue
-			}
-			req.TaskId = task.ID.String()
-			if err := h.taskflow.TaskManager().AskUserQuestion(ctx, req); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to send ask user question")
-			}
-			if err := h.taskSummary.EnqueueSummary(ctx, task.ID.String(), time.Unix(task.CreatedAt, 0)); err != nil {
-				logger.With("error", err).WarnContext(ctx, "failed to enqueue task summary")
-			}
-
-		case consts.TaskStreamTypeSyncWebClientIP:
-			var req taskflow.ApplyWebClientIPReq
-			if err := json.Unmarshal(m.Data, &req); err != nil {
-				logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal apply web client ip")
-				continue
-			}
-			if req.ClientIP != "" {
-				wsConn.SetRealIP(req.ClientIP)
-				logger.With("client_ip", req.ClientIP).DebugContext(ctx, "updated websocket client ip")
-			}
-
-		case consts.TaskStreamTypeCall:
-			switch m.Kind {
-			case "repo_file_diff":
-				var req taskflow.RepoFileDiffReq
-				if err := json.Unmarshal(m.Data, &req); err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal repo file diff")
-					continue
-				}
-				req.TaskId = task.ID.String()
-				diff, err := h.taskflow.TaskManager().FileDiff(ctx, req)
-				if err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to get repo file diff")
-					continue
-				}
-				b, err := json.Marshal(diff)
-				if err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to marshal repo file diff")
-					continue
-				}
-				if err := wsConn.WriteJSON(domain.TaskStream{
-					Type:      consts.TaskStreamTypeCallResponse,
-					Data:      b,
-					Timestamp: time.Now().UnixMilli(),
-					Kind:      m.Kind,
-				}); err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to write repo file diff to websocket")
-				}
-
-			case "repo_file_list":
-				var req taskflow.RepoListFilesReq
-				if err := json.Unmarshal(m.Data, &req); err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal repo list file")
-					continue
-				}
-				req.TaskId = task.ID.String()
-				res, err := h.taskflow.TaskManager().ListFiles(ctx, req)
-				if err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to get repo list file")
-					continue
-				}
-				b, err := json.Marshal(res)
-				if err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to marshal repo list file")
-					continue
-				}
-				if err := wsConn.WriteJSON(domain.TaskStream{
-					Type:      consts.TaskStreamTypeCallResponse,
-					Data:      b,
-					Timestamp: time.Now().UnixMilli(),
-					Kind:      m.Kind,
-				}); err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to write repo list file to websocket")
-				}
-
-			case "repo_read_file":
-				var req taskflow.RepoReadFileReq
-				if err := json.Unmarshal(m.Data, &req); err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal repo read file")
-					continue
-				}
-				req.TaskId = task.ID.String()
-				res, err := h.taskflow.TaskManager().ReadFile(ctx, req)
-				if err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to get repo read file")
-					continue
-				}
-				b, err := json.Marshal(res)
-				if err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to marshal repo read file")
-					continue
-				}
-				if err := wsConn.WriteJSON(domain.TaskStream{
-					Type:      consts.TaskStreamTypeCallResponse,
-					Data:      b,
-					Timestamp: time.Now().UnixMilli(),
-					Kind:      m.Kind,
-				}); err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to write repo read file to websocket")
-				}
-
-			case "repo_file_changes":
-				var req taskflow.RepoFileChangesReq
-				if err := json.Unmarshal(m.Data, &req); err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal repo file changes")
-					continue
-				}
-				req.TaskId = task.ID.String()
-				res, err := h.taskflow.TaskManager().FileChanges(ctx, req)
-				if err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to get repo file changes")
-					continue
-				}
-				b, err := json.Marshal(res)
-				if err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to marshal repo file changes")
-					continue
-				}
-				if err := wsConn.WriteJSON(domain.TaskStream{
-					Type:      consts.TaskStreamTypeCallResponse,
-					Data:      b,
-					Timestamp: time.Now().UnixMilli(),
-					Kind:      m.Kind,
-				}); err != nil {
-					logger.With("error", err).WarnContext(ctx, "failed to write repo file changes to websocket")
-				}
-
-			case "restart":
-				var req taskflow.RestartTaskReq
-				if err := json.Unmarshal(m.Data, &req); err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal restart task")
-					continue
-				}
-				req.ID = task.ID
-				if err := h.taskflow.TaskManager().Restart(ctx, req); err != nil {
-					logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to restart task")
-					continue
-				}
-			}
+		if isNewMode && !tailStarted && m.Type == consts.TaskStreamTypeUserInput {
+			tailStarted = true
+			go h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), time.Now())
 		}
+
+		h.handleClientMessage(ctx, wsConn, logger, user, task, m)
+	}
+}
+
+func (h *TaskHandler) handleClientMessage(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, m domain.TaskStream) {
+	switch m.Type {
+	case consts.TaskStreamTypeUserInput:
+		if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to push task content")
+		}
+		h.enqueueSummary(ctx, logger, task.ID.String(), task.CreatedAt)
+
+	case consts.TaskStreamTypeUserStop:
+		if err := h.usecase.Stop(ctx, user, task.ID); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to stop task")
+		}
+
+	case consts.TaskStreamTypeUserCancel:
+		if err := h.usecase.Cancel(ctx, user, task.ID); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to cancel task")
+		}
+
+	case consts.TaskStreamTypeAutoApprove:
+		if err := h.usecase.AutoApprove(ctx, user, task.ID, true); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to auto approve task")
+		}
+
+	case consts.TaskStreamTypeDisableAutoApprove:
+		if err := h.usecase.AutoApprove(ctx, user, task.ID, false); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to disable auto approve task")
+		}
+
+	case consts.TaskStreamTypeReplyQuestion:
+		h.handleReplyQuestion(ctx, logger, task, m.Data)
+
+	case consts.TaskStreamTypeSyncWebClientIP:
+		h.handleSyncClientIP(ctx, wsConn, logger, m.Data)
+
+	case consts.TaskStreamTypeCall:
+		h.handleSyncCall(ctx, wsConn, logger, task, m)
+	}
+}
+
+func (h *TaskHandler) enqueueSummary(ctx context.Context, logger *slog.Logger, taskID string, createdAt int64) {
+	if err := h.taskSummary.EnqueueSummary(ctx, taskID, time.Unix(createdAt, 0)); err != nil {
+		logger.With("error", err).WarnContext(ctx, "failed to enqueue task summary")
+	}
+}
+
+func (h *TaskHandler) handleReplyQuestion(ctx context.Context, logger *slog.Logger, task *domain.Task, data json.RawMessage) {
+	var req taskflow.AskUserQuestionResponse
+	if err := json.Unmarshal(data, &req); err != nil {
+		logger.With("error", err).WarnContext(ctx, "failed to unmarshal ask user question")
+		return
+	}
+	req.TaskId = task.ID.String()
+	if err := h.taskflow.TaskManager().AskUserQuestion(ctx, req); err != nil {
+		logger.With("error", err).WarnContext(ctx, "failed to send ask user question")
+	}
+	h.enqueueSummary(ctx, logger, task.ID.String(), task.CreatedAt)
+}
+
+func (h *TaskHandler) handleSyncClientIP(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, data json.RawMessage) {
+	var req taskflow.ApplyWebClientIPReq
+	if err := json.Unmarshal(data, &req); err != nil {
+		logger.With("error", err).WarnContext(ctx, "failed to unmarshal apply web client ip")
+		return
+	}
+	if req.ClientIP != "" {
+		wsConn.SetRealIP(req.ClientIP)
+		logger.With("client_ip", req.ClientIP).DebugContext(ctx, "updated websocket client ip")
+	}
+}
+
+func (h *TaskHandler) handleSyncCall(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task, m domain.TaskStream) {
+	taskID := task.ID.String()
+
+	if m.Kind == "restart" {
+		var req taskflow.RestartTaskReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to unmarshal restart task")
+			return
+		}
+		req.ID = task.ID
+		if err := h.taskflow.TaskManager().Restart(ctx, req); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to restart task")
+		}
+		return
+	}
+
+	var result any
+	var err error
+
+	switch m.Kind {
+	case "repo_file_diff":
+		var req taskflow.RepoFileDiffReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to unmarshal request")
+			return
+		}
+		req.TaskId = taskID
+		result, err = h.taskflow.TaskManager().FileDiff(ctx, req)
+
+	case "repo_file_list":
+		var req taskflow.RepoListFilesReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to unmarshal request")
+			return
+		}
+		req.TaskId = taskID
+		result, err = h.taskflow.TaskManager().ListFiles(ctx, req)
+
+	case "repo_read_file":
+		var req taskflow.RepoReadFileReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to unmarshal request")
+			return
+		}
+		req.TaskId = taskID
+		result, err = h.taskflow.TaskManager().ReadFile(ctx, req)
+
+	case "repo_file_changes":
+		var req taskflow.RepoFileChangesReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to unmarshal request")
+			return
+		}
+		req.TaskId = taskID
+		result, err = h.taskflow.TaskManager().FileChanges(ctx, req)
+
+	default:
+		return
+	}
+
+	if err != nil {
+		logger.With("error", err, "kind", m.Kind).WarnContext(ctx, "sync call failed")
+		return
+	}
+
+	b, err := json.Marshal(result)
+	if err != nil {
+		logger.With("error", err, "kind", m.Kind).WarnContext(ctx, "failed to marshal response")
+		return
+	}
+
+	if err := wsConn.WriteJSON(domain.TaskStream{
+		Type:      consts.TaskStreamTypeCallResponse,
+		Data:      b,
+		Timestamp: time.Now().UnixMilli(),
+		Kind:      m.Kind,
+	}); err != nil {
+		logger.With("error", err, "kind", m.Kind).WarnContext(ctx, "failed to write response to websocket")
 	}
 }
 
