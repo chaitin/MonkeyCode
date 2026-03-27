@@ -156,6 +156,7 @@ type TreeOptions struct {
     Path      string
     Recursive bool
     InstallID int64 // GitHub App 模式，其他平台忽略
+    IsOAuth   bool  // GitLab/Gitea OAuth 模式，其他平台忽略
 }
 
 // BlobOptions 获取文件内容参数
@@ -166,6 +167,7 @@ type BlobOptions struct {
     Ref       string
     Path      string
     InstallID int64
+    IsOAuth   bool
 }
 
 // LogsOptions 获取提交历史参数
@@ -178,6 +180,7 @@ type LogsOptions struct {
     Limit     int
     Offset    int
     InstallID int64
+    IsOAuth   bool
 }
 
 // ArchiveOptions 获取归档参数
@@ -187,6 +190,7 @@ type ArchiveOptions struct {
     Repo      string
     Ref       string
     InstallID int64
+    IsOAuth   bool
 }
 
 // BranchesOptions 列出分支参数
@@ -197,6 +201,7 @@ type BranchesOptions struct {
     Page      int
     PerPage   int
     InstallID int64
+    IsOAuth   bool
 }
 
 // WebhookOptions Webhook 操作参数
@@ -204,6 +209,7 @@ type WebhookOptions struct {
     Token      string
     RepoURL    string
     WebhookURL string
+    IsOAuth    bool
 }
 
 // CreateWebhookOptions 创建 Webhook 参数
@@ -213,6 +219,7 @@ type CreateWebhookOptions struct {
     WebhookURL  string
     SecretToken string
     Events      []string
+    IsOAuth     bool
 }
 ```
 
@@ -428,6 +435,7 @@ func (h *WebhookHandler) handlePR(ctx context.Context, s WebhookStrategy, bot *d
 - `webhook_strategy_github.go` — HMAC-SHA256 验证，`X-Github-Event` 头，解析 GitHub PR payload
 - `webhook_strategy_gitlab.go` — Token 直接比对，`X-Gitlab-Event` 头，解析 GitLab MR payload
 - `webhook_strategy_gitea.go` — HMAC-SHA256 验证，`X-Gitea-Event` 头，解析 Gitea PR payload
+- `webhook_strategy_gitee.go` — HMAC-SHA256 验证，`X-Gitee-Event` 头，解析 Gitee PR payload
 
 **路由注册**（保持 API 兼容）：
 
@@ -435,6 +443,7 @@ func (h *WebhookHandler) handlePR(ctx context.Context, s WebhookStrategy, bot *d
 w.Group("/api/v1").POST("/github/webhook/:id", web.BaseHandler(h.Handle(githubStrategy)))
 w.Group("/api/v1").POST("/gitlab/webhook/:id", web.BaseHandler(h.Handle(gitlabStrategy)))
 w.Group("/api/v1").POST("/gitea/webhook/:id", web.BaseHandler(h.Handle(giteaStrategy)))
+w.Group("/api/v1").POST("/gitee/webhook/:id", web.BaseHandler(h.Handle(giteeStrategy)))
 ```
 
 ## 文件变更清单
@@ -446,15 +455,18 @@ w.Group("/api/v1").POST("/gitea/webhook/:id", web.BaseHandler(h.Handle(giteaStra
 - `biz/git/handler/v1/webhook_strategy_github.go`
 - `biz/git/handler/v1/webhook_strategy_gitlab.go`
 - `biz/git/handler/v1/webhook_strategy_gitea.go`
+- `biz/git/handler/v1/webhook_strategy_gitee.go`
 
 ### 修改
-- `pkg/git/github/github.go` — 实现 `GitPlatformClient`，返回 domain 类型
+- `pkg/git/github/github.go` — 实现 `GitPlatformClient`，返回 domain 类型；删除包内 `PlatformUserInfo`、`BindRepository` 定义
 - `pkg/git/github/operation.go` — 方法签名改为接口方法，返回 domain 类型
 - `pkg/git/gitlab/gitlab.go` — 同上
 - `pkg/git/gitlab/operation.go` — 同上
 - `pkg/git/gitea/gitea.go` — 同上
 - `pkg/git/gitea/operation.go` — 同上
-- `biz/project/usecase/project.go` — 用 `getClient()` 工厂替代 switch，删除 4 个 xxxLogsToProjectLogs
+- `pkg/git/gitee/gitee.go` — 同上
+- `pkg/git/gitee/operation.go` — 同上
+- `biz/project/usecase/project.go` — 用 `getClient()` 工厂替代 switch，删除 `githubLogsToProjectLogs`/`gitlabLogsToProjectLogs`/`giteaLogsToProjectLogs`/`giteeLogsToProjectLogs` 四个重复转换函数（由统一的 domain 类型直接替代）
 - `biz/git/usecase/identity.go` — 使用新接口
 - `domain/gitidentity.go` — 删除旧的 `GitPlatformClient[T]` 和 `AuthRepositoryInterface`
 
@@ -462,13 +474,36 @@ w.Group("/api/v1").POST("/gitea/webhook/:id", web.BaseHandler(h.Handle(giteaStra
 - `pkg/git/github/types.go`
 - `pkg/git/gitlab/types.go`
 - `pkg/git/gitea/types.go`
+- `pkg/git/gitee/operation_types.go`
 - `biz/git/handler/v1/webhook_github.go`
 - `biz/git/handler/v1/webhook_gitlab.go`
 - `biz/git/handler/v1/webhook_gitea.go`
+- `biz/git/handler/v1/webhook_gitee.go`
+
+## isOAuth 处理
+
+GitLab 和 Gitea 的部分方法需要 `isOAuth` 参数来区分 PAT 和 OAuth token。处理方式：在构造客户端时通过选项注入：
+
+```go
+// GitLab
+gl := gitlab.NewGitlab(baseURL, token, logger, gitlab.WithOAuth(true))
+
+// 或在 ClientContext 中携带
+type ClientContext struct {
+    Owner         string
+    Repo          string
+    DefaultBranch string
+    InstallID     int64
+    Token         string
+    IsOAuth       bool  // GitLab/Gitea 使用
+}
+```
+
+推荐使用 `ClientContext` 方式，因为 `isOAuth` 取决于具体的 GitIdentity 而非平台客户端实例。各平台实现在 Options 中统一加 `IsOAuth bool` 字段，GitHub 忽略即可。
 
 ## 兼容性
 
 - API 路由路径不变
 - Webhook 签名验证逻辑不变
 - 外部行为无变化
-- Gitee 平台同样适用此抽象，可在后续统一接入
+- 四个平台（GitHub、GitLab、Gitea、Gitee）全部纳入抽象范围
