@@ -356,21 +356,13 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 }
 
 func (h *TaskHandler) findTailStart(ctx context.Context, taskID string, taskCreatedAt time.Time) time.Time {
-	lastEndedTS, err := h.loki.FindLastEvent(ctx, taskID, "task-ended", taskCreatedAt, time.Time{})
+	lastInputTS, err := h.loki.FindLastEvent(ctx, taskID, "user-input", taskCreatedAt, time.Time{})
 	if err != nil {
 		h.logger.With("error", err).WarnContext(ctx, "failed to find last task-ended")
 	}
 
-	if !lastEndedTS.IsZero() {
-		startTS, err := h.loki.FindLastEvent(ctx, taskID, "user-input", taskCreatedAt, lastEndedTS)
-		if err == nil && !startTS.IsZero() {
-			return startTS
-		}
-	}
-
-	startTS, err := h.loki.FindLastEvent(ctx, taskID, "user-input", taskCreatedAt, time.Time{})
-	if err == nil && !startTS.IsZero() {
-		return startTS
+	if !lastInputTS.IsZero() {
+		return lastInputTS
 	}
 
 	return taskCreatedAt
