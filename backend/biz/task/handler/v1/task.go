@@ -425,15 +425,6 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 			continue
 		}
 
-		if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
-			HostID:        task.VirtualMachine.Host.InternalID,
-			UserID:        task.UserID.String(),
-			ID:            task.VirtualMachine.ID,
-			EnvironmentID: task.VirtualMachine.EnvironmentID,
-		}); err != nil {
-			logger.With("error", err).WarnContext(ctx, "failed to resume virtual")
-		}
-
 		var m domain.TaskStream
 		if err := json.Unmarshal(d, &m); err != nil {
 			logger.With("error", err, "data", string(d)).WarnContext(ctx, "failed to unmarshal message")
