@@ -615,7 +615,7 @@ func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, indexTime time.Ti
 		return
 	}
 
-	cursor := strconv.FormatInt(indexTime.UnixNano()+1, 10)
+	cursor := strconv.FormatInt(indexTime.UnixNano()-1, 10)
 	data, _ := json.Marshal(map[string]any{
 		"cursor":   cursor,
 		"has_more": hasMore,
