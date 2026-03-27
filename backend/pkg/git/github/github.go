@@ -146,9 +146,9 @@ func (g *Github) CheckPAT(ctx context.Context, token string, repoURL string) (bo
 	return false, nil, fmt.Errorf("token has no access to this repository")
 }
 
-// ListBranches 获取仓库分支列表（PAT 模式）
+// ListBranches 获取仓库分支列表（Installation App 模式优先）
 func (g *Github) ListBranches(ctx context.Context, installID int64, token, owner, repo string, page, perPage int) ([]*BranchInfo, error) {
-	client, err := g.GetClient(ctx, token, 0)
+	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}

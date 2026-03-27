@@ -29,7 +29,7 @@ func (g *Github) GetRepoTree(ctx context.Context, installID int64, token, owner,
 		return resp, nil
 	}
 
-	client, err := g.GetClient(ctx, token, 0)
+	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func parseTreeCommitInfoDate(e *treeCommitInfoEntryRaw) int64 {
 
 // GetBlob 获取单文件内容（PAT 模式）
 func (g *Github) GetBlob(ctx context.Context, installID int64, token, owner, repo, ref, path string) (*GetBlobResp, error) {
-	client, err := g.GetClient(ctx, token, 0)
+	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +276,7 @@ func (g *Github) GetBlob(ctx context.Context, installID int64, token, owner, rep
 
 // GetGitLogs 获取提交历史（PAT 模式）
 func (g *Github) GetGitLogs(ctx context.Context, installID int64, token, owner, repo, ref, path string, limit, offset int) (*GetGitLogsResp, error) {
-	client, err := g.GetClient(ctx, token, 0)
+	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (g *Github) GetGitLogs(ctx context.Context, installID int64, token, owner, 
 
 // GetRepoArchive 获取仓库压缩包（PAT 模式）
 func (g *Github) GetRepoArchive(ctx context.Context, installID int64, token, owner, repo, ref string) (*GetRepoArchiveResp, error) {
-	client, err := g.GetClient(ctx, token, 0)
+	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}
