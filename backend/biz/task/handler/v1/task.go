@@ -259,7 +259,7 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 		return err
 	}
 
-	return h.stream(c, user, task, false)
+	return h.stream(c, user, task, false, "new")
 }
 
 // Stream 任务数据流 WebSocket
@@ -276,7 +276,6 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	- task-error: 本轮任务发生错误
 //	@Description	- task-running: 任务正在运行
 //	@Description	- task-event: 任务临时事件, 不持久化
-//	@Description	- round-segment: 聚合后的消息段（写入时已聚合）
 //	@Description	- file-change: 文件变动事件
 //	@Description	- permission-resp: 用户的权限响应
 //	@Description	- auto-approve: 开启自动批准
@@ -298,21 +297,25 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Param			id	query		string		true	"任务 ID"
-//	@Success		200	{object}	web.Resp{}	"成功"
-//	@Failure		500	{object}	web.Resp	"服务器内部错误"
+//	@Param			id		query		string		true	"任务 ID"
+//	@Param			mode	query		string		false	"模式：new(等待用户输入)|attach(仅拉取当前论次)，默认 new"
+//	@Success		200		{object}	web.Resp{}	"成功"
+//	@Failure		500		{object}	web.Resp	"服务器内部错误"
 //	@Router			/api/v1/users/tasks/stream [get]
-func (h *TaskHandler) Stream(c *web.Context, req domain.IDReq[uuid.UUID]) error {
+func (h *TaskHandler) Stream(c *web.Context, req domain.TaskStreamReq) error {
 	user := middleware.GetUser(c)
 	task, owner, err := h.usecase.Info(c.Request().Context(), user, req.ID)
 	if err != nil {
 		return err
 	}
 
-	return h.stream(c, user, task, owner)
+	if req.Mode == "" {
+		req.Mode = "new"
+	}
+	return h.stream(c, user, task, owner, req.Mode)
 }
 
-func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Task, writable bool) error {
+func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Task, writable bool, mode string) error {
 	logger := h.logger.With("task_id", task.ID, "fn", "task.stream")
 
 	// 使用 coder/websocket Accept 升级连接
@@ -376,6 +379,32 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 	// 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的论次
 	h.writeCursor(wsConn, cursorTS, hasMore)
 
+	// new 模式：等待用户输入（最多 1 分钟）
+	if mode == "new" && writable {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			d, err := wsConn.ReadMessage()
+			if err == nil {
+				var m domain.TaskStream
+				if err := json.Unmarshal(d, &m); err == nil && m.Type == consts.TaskStreamTypeUserInput {
+					if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
+						logger.With("error", err).WarnContext(ctx, "failed to push task content")
+					}
+					if err := h.taskSummary.EnqueueSummary(ctx, task.ID.String(), time.Unix(task.CreatedAt, 0)); err != nil {
+						logger.With("error", err).WarnContext(ctx, "failed to enqueue task summary")
+					}
+				}
+			}
+		}()
+		select {
+		case <-done:
+		case <-time.After(time.Minute):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
 	go func() {
 		logLimit := h.cfg.Task.LogLimit
 		if logLimit <= 0 {
@@ -399,6 +428,12 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 					Timestamp: l.Timestamp.UnixMilli(),
 				}); err != nil {
 					return fmt.Errorf("failed to write to websocket: %w", err)
+				}
+
+				// 收到 task-ended 后关闭连接
+				if chunk.Event == "task-ended" {
+					cancel(fmt.Errorf("round ended"))
+					return fmt.Errorf("round ended")
 				}
 			}
 			return nil

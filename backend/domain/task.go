@@ -243,6 +243,12 @@ type TaskStream struct {
 	Timestamp int64                 `json:"timestamp"`
 }
 
+// TaskStreamReq 任务数据流请求
+type TaskStreamReq struct {
+	ID   uuid.UUID `json:"id" query:"id" validate:"required"`
+	Mode string    `json:"mode" query:"mode"` // new|attach，默认 new
+}
+
 // TaskRoundsReq 查询任务历史论次请求（向前翻页）
 type TaskRoundsReq struct {
 	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
