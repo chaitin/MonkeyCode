@@ -343,10 +343,8 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 		// attach 模式：回放最近一论的历史，有 task-ended 则推完关闭，没有则持续 tail 直到收到 task-ended
 		taskCreatedAt := time.Unix(task.CreatedAt, 0)
 		tailStart := h.findTailStart(ctx, task.ID.String(), taskCreatedAt)
-
-		cursorTS := strconv.FormatInt(tailStart.UnixNano(), 10)
 		hasMore := tailStart.After(taskCreatedAt)
-		h.writeCursor(wsConn, cursorTS, hasMore)
+		h.writeCursor(wsConn, tailStart, hasMore)
 
 		h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), tailStart)
 		return nil
@@ -612,10 +610,12 @@ func (h *TaskHandler) writeError(wsConn *ws.WebsocketManager, err error) {
 }
 
 // writeCursor 向 WebSocket 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的历史
-func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, hasMore bool) {
-	if cursor == "" {
+func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, indexTime time.Time, hasMore bool) {
+	if indexTime.IsZero() {
 		return
 	}
+
+	cursor := strconv.FormatInt(indexTime.UnixNano()+1, 10)
 	data, _ := json.Marshal(map[string]any{
 		"cursor":   cursor,
 		"has_more": hasMore,
@@ -653,15 +653,13 @@ func (h *TaskHandler) TaskRounds(c *web.Context, req domain.TaskRoundsReq) error
 	}
 
 	// 确定查询时间范围：从 cursor 往前查
-	var end time.Time
+	end := time.Now()
 	if req.Cursor != "" {
 		ns, err := strconv.ParseInt(req.Cursor, 10, 64)
 		if err != nil {
 			return errcode.ErrBadRequest.Wrap(fmt.Errorf("invalid cursor: %w", err))
 		}
 		end = time.Unix(0, ns)
-	} else {
-		end = time.Now()
 	}
 	start := time.Unix(task.CreatedAt, 0)
 
