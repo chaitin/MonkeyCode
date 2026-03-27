@@ -340,7 +340,7 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 	}
 
 	if mode != "new" {
-		// attach 模式：回放最后一个论次的历史消息，然后持续 tail
+		// attach 模式：回放最近一论的历史，有 task-ended 则推完关闭，没有则持续 tail 直到收到 task-ended
 		taskCreatedAt := time.Unix(task.CreatedAt, 0)
 		tailStart := h.findTailStart(ctx, task.ID.String(), taskCreatedAt)
 
@@ -348,10 +348,11 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 		hasMore := tailStart.After(taskCreatedAt)
 		h.writeCursor(wsConn, cursorTS, hasMore)
 
-		go h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), tailStart)
+		h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), tailStart)
+		return nil
 	}
 
-	return h.readClientMessages(ctx, wsConn, logger, user, task, writable, mode == "new", cancel)
+	return h.readClientMessages(ctx, wsConn, logger, user, task, writable, cancel)
 }
 
 func (h *TaskHandler) findTailStart(ctx context.Context, taskID string, taskCreatedAt time.Time) time.Time {
@@ -415,7 +416,7 @@ func (h *TaskHandler) tailLogs(ctx context.Context, cancel context.CancelCauseFu
 	}
 }
 
-func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, writable bool, isNewMode bool, cancel context.CancelCauseFunc) error {
+func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, writable bool, cancel context.CancelCauseFunc) error {
 	tailStarted := false
 	for {
 		select {
@@ -449,7 +450,8 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 			continue
 		}
 
-		if isNewMode && !tailStarted && m.Type == consts.TaskStreamTypeUserInput {
+		// new 模式：收到第一条 user-input 后启动 tail
+		if !tailStarted && m.Type == consts.TaskStreamTypeUserInput {
 			tailStarted = true
 			go h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), time.Now())
 		}
