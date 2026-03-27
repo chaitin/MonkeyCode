@@ -11,6 +11,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
 import { toast } from "sonner"
 
 interface IssueDevelopDialogProps {
@@ -32,6 +33,7 @@ export default function IssueDevelopDialog({
 }: IssueDevelopDialogProps) {
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
@@ -148,6 +150,8 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
         onConfirm?.()
         handleOpenChange(false)
         navigate(`/console/task/${resp.data?.id}`)
+      } else if (resp.code === 10811) {
+        setLimitDialogOpen(true)
       } else {
         toast.error(resp.message || '任务启动失败')
       }
@@ -157,6 +161,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
@@ -209,5 +214,10 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <TaskConcurrentLimitDialog
+      open={limitDialogOpen}
+      onOpenChange={setLimitDialogOpen}
+    />
+    </>
   )
 }

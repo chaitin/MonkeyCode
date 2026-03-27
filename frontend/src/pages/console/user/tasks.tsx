@@ -18,7 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common";
+import { formatTokens, getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconAlertTriangle, IconCircleCheck, IconDotsVertical, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
@@ -28,13 +28,6 @@ import { useCommonData } from "@/components/console/data-provider";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 24;
-
-const formatTokens = (tokens?: number) => {
-  if (!tokens) return ''
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
-  return tokens.toString()
-}
 
 export default function TasksPage() {
   const location = useLocation()

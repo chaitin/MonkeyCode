@@ -29,17 +29,10 @@ import {
 import { IconListDetails, IconCircleCheck, IconAlertTriangle, IconDotsVertical, IconTrash } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { useCommonData } from "@/components/console/data-provider"
-import { getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common"
+import { formatTokens, getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common"
 import dayjs from "dayjs"
 
 const TASKS_PAGE_SIZE = 24
-
-const formatTokens = (tokens?: number) => {
-  if (!tokens) return ""
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
-  return tokens.toString()
-}
 
 interface ProjectOverviewTasksTabProps {
   projectId: string

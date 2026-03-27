@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { IconCheck, IconLoader, IconX } from "@tabler/icons-react"
-import { GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TypesVirtualMachineStatus, type DomainProjectTask } from "@/api/Api"
+import { GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainProjectTask } from "@/api/Api"
 import { getConditionTypeText, getLastCondition } from "@/utils/common"
 
 interface TaskPreparingProps {
@@ -14,13 +14,13 @@ export function useShouldShowPreparing(task: DomainProjectTask | null) {
     if (lastCondition?.type === GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeFailed) {
       return true
     }
-    return task?.virtualmachine?.status === TypesVirtualMachineStatus.VirtualMachineStatusPending
+    return task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending
   }, [task?.virtualmachine])
 }
 
 function TaskPreparingIcon({ task }: TaskPreparingProps) {
-  if (task?.virtualmachine?.status === TypesVirtualMachineStatus.VirtualMachineStatusOffline) return <IconX className="size-8" />
-  if (task?.virtualmachine?.status === TypesVirtualMachineStatus.VirtualMachineStatusPending) return <IconLoader className="size-8 animate-spin" />
+  if (task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOffline) return <IconX className="size-8" />
+  if (task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending) return <IconLoader className="size-8 animate-spin" />
   return <IconCheck className="size-8" />
 }
 

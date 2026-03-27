@@ -147,17 +147,16 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
   const location = useLocation()
   const [frontMatter, setFrontMatter] = useState<Record<string, any>>({})
   const [content, setContent] = useState<string>(children)
-  const [isLoading, setIsLoading] = useState(true)
   
   // 初始化并解析 front matter
   useEffect(() => {
     let mounted = true
+    setFrontMatter({})
+    setContent(children)
     
     async function parseFrontMatter() {
       await initGrayMatter()
       if (!mounted || !matter) {
-        setContent(children)
-        setIsLoading(false)
         return
       }
       
@@ -172,10 +171,6 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
         if (mounted) {
           setContent(children)
         }
-      } finally {
-        if (mounted) {
-          setIsLoading(false)
-        }
       }
     }
     
@@ -187,11 +182,7 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
   }, [children])
   
   const hasFrontMatter = Object.keys(frontMatter).length > 0
-  
-  if (isLoading) {
-    return <div className={cn("markdown-body pb-2", className)}>Loading...</div>
-  }
-  
+
   return (
     <div className={cn("markdown-body pb-2", className)}>
       {/* 渲染 front matter */}
@@ -275,4 +266,3 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
     </div>
   )
 }
-

@@ -24,7 +24,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconChevronDown, IconChevronRight, IconCircleMinus, IconDotsVertical, IconLoader, IconPlus, IconReload, IconTrash } from "@tabler/icons-react"
+import { IconChevronDown, IconChevronRight, IconCircleMinus, IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconReload, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
@@ -62,6 +62,8 @@ export default function NavProject() {
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>(loadExpandedFromStorage)
   const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
+  const [stopping, setStopping] = useState(false)
 
   const { projects, loadingProjects, reloadProjects, unlinkedTasks, loadingUnlinkedTasks, reloadUnlinkedTasks } = useCommonData()
 
@@ -94,6 +96,34 @@ export default function NavProject() {
       () => {
         setDeleting(false)
         setTaskToDelete(null)
+      }
+    )
+  }
+
+  const handleConfirmStopTask = () => {
+    if (!taskToStop?.id) {
+      setTaskToStop(null)
+      return
+    }
+    setStopping(true)
+    apiRequest(
+      "v1UsersTasksStopUpdate",
+      { id: taskToStop.id },
+      [],
+      (resp) => {
+        setStopping(false)
+        setTaskToStop(null)
+        if (resp.code === 0) {
+          toast.success("任务已终止")
+          reloadProjects()
+          reloadUnlinkedTasks()
+        } else {
+          toast.error(resp.message || "终止失败")
+        }
+      },
+      () => {
+        setStopping(false)
+        setTaskToStop(null)
       }
     )
   }
@@ -305,7 +335,7 @@ onOpenChange={(open) => {
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className={cn(
-                              (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground",
+                              (task.status === "finished" || task.status === "error") && "",
                               "group/task-row"
                             )}
                           >
@@ -317,7 +347,7 @@ onOpenChange={(open) => {
                                 <TaskIcon
                                   className={cn(
                                     "size-3.5 shrink-0",
-                                    (task.status === "pending" || task.status === "processing") && "animate-spin"
+                                    (task.status === "pending" || task.status === "processing") && "animate-spin text-primary"
                                   )}
                                 />
                                 <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
@@ -334,12 +364,21 @@ onOpenChange={(open) => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="py-1">
+                                  {(task.status === "pending" || task.status === "processing") && (
+                                    <DropdownMenuItem
+                                      onClick={() => setTaskToStop(task)}
+                                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                    >
+                                      <IconPlayerStopFilled className="mr-1" />
+                                      终止任务
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem
                                     onClick={() => setTaskToDelete(task)}
                                     className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
                                   >
                                     <IconTrash className="mr-1" />
-                                    删除
+                                    删除任务
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -421,7 +460,7 @@ onOpenChange={(open) => {
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className={cn(
-                              (task.status === "finished" || task.status === "error") && "!text-muted-foreground [&>svg]:!text-muted-foreground",
+                              (task.status === "finished" || task.status === "error") && "",
                               "group/task-row"
                             )}
                           >
@@ -433,7 +472,7 @@ onOpenChange={(open) => {
                                 <TaskIcon
                                   className={cn(
                                     "size-3.5 shrink-0",
-                                    (task.status === "pending" || task.status === "processing") && "animate-spin"
+                                    (task.status === "pending" || task.status === "processing") && "animate-spin text-primary"
                                   )}
                                 />
                                 <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
@@ -450,12 +489,21 @@ onOpenChange={(open) => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="py-1">
+                                  {(task.status === "pending" || task.status === "processing") && (
+                                    <DropdownMenuItem
+                                      onClick={() => setTaskToStop(task)}
+                                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                    >
+                                      <IconPlayerStopFilled className="mr-1" />
+                                      终止任务
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem
                                     onClick={() => setTaskToDelete(task)}
                                     className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
                                   >
                                     <IconTrash className="mr-1" />
-                                    删除
+                                    删除任务
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -495,7 +543,30 @@ onOpenChange={(open) => {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "删除中..." : "删除"}
+              {deleting ? "删除中..." : "删除任务"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认终止任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要终止任务「{taskToStop ? (taskToStop.summary || stripMarkdown(taskToStop.content || "")) : ""}」吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={stopping}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmStopTask()
+              }}
+              disabled={stopping}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {stopping ? "终止中..." : "终止任务"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { formatTokens } from "@/utils/common"
 import { IconDeviceDesktop, IconFile, IconGitBranch, IconSend, IconTerminal2 } from "@tabler/icons-react"
 
 const MOCK_MESSAGES: MessageType[] = [
@@ -80,13 +81,6 @@ const MOCK_MESSAGES: MessageType[] = [
 ]
 
 export type PanelType = "files" | "terminal" | "changes" | "preview"
-
-const formatTokens = (tokens?: number) => {
-  if (tokens === undefined || tokens === null) return ""
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
-  return tokens.toString()
-}
 
 export interface TaskChatSectionProps {
   inputValue: string

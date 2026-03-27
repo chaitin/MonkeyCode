@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils"
 import { ErrorMessageItem } from "./message-error"
 import { TextMessageItem } from "./message-text"
+import { ThoughtMessageItem } from "./message-thought"
 import { ToolCallMessageItem } from "./message-toolcall"
 import dayjs from "dayjs"
 import { AskUserQuestionMessageItem } from "./message-ask-user-question"
@@ -8,6 +9,14 @@ import { UserInputMessageItem } from "./message-userinput"
 import { SystemMessageItem } from "./message-system"
 import type { ConstsCliName } from "@/api/Api"
 import { RestartSessionMessageItem } from "./message-restart-session"
+
+const normalizeTimestampToSeconds = (timestamp: number) => {
+  if (!Number.isFinite(timestamp)) return timestamp
+  if (timestamp >= 1e17) return Math.floor(timestamp / 1e9)
+  if (timestamp >= 1e14) return Math.floor(timestamp / 1e6)
+  if (timestamp >= 1e11) return Math.floor(timestamp / 1e3)
+  return Math.floor(timestamp)
+}
 
 interface MessageType {
   id: string
@@ -49,11 +58,13 @@ interface MessageType {
   onUserInput?: (content: string) => void
 }
 
-const MessageItem = ({ message, cli }: { message: MessageType, cli?: ConstsCliName }) => {
+const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType, cli?: ConstsCliName, isLatest?: boolean }) => {
   const renderMessage = (message: MessageType) => {
     switch (message.type) {
       case 'agent_message_chunk':
         return <TextMessageItem message={message} />
+      case 'agent_thought_chunk':
+        return <ThoughtMessageItem message={message} isLatest={isLatest} />
       case 'user_input':
         return <UserInputMessageItem message={message} />
       case 'tool_call':
@@ -83,7 +94,7 @@ const MessageItem = ({ message, cli }: { message: MessageType, cli?: ConstsCliNa
   return (
     <div className="flex flex-col w-full group">
       {message.role !== 'system' && <div className={cn("text-[10px] text-transparent group-hover:text-muted-foreground transition-colors px-1", message.role === 'user' ? 'text-right' : 'text-left')}>
-        {dayjs(message.time).format('MM-DD HH:mm:ss')}
+        {dayjs.unix(normalizeTimestampToSeconds(message.time)).format('MM-DD HH:mm:ss')}
       </div>}
       <div className={cn("flex text-sm w-full", message.role === 'user' ? 'ml-auto justify-end' : 'mr-auto justify-start')}> 
         {renderMessage(message)}

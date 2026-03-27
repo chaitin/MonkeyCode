@@ -27,12 +27,18 @@ import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
 import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
+import TaskDetailLegacyPage from "./pages/console/user/task/task-detail-legacy"
 import PrivacyPolicyPage from "./pages/privacy-policy"
 import UserAgreementPage from "./pages/user-agreement"
 
 function TaskDetailRoute() {
   const { taskId } = useParams()
   return <TaskDetailPage key={taskId} />
+}
+
+function TaskDetailLegacyRoute() {
+  const { taskId } = useParams()
+  return <TaskDetailLegacyPage key={taskId} />
 }
 
 function App() {
@@ -55,6 +61,7 @@ function App() {
             <Route index element={<Navigate to="/console/tasks" replace />} />
             <Route path="tasks" element={<TasksPage />} />
             <Route path="task/:taskId" element={<TaskDetailRoute />} />
+            <Route path="task-legacy/:taskId" element={<TaskDetailLegacyRoute />} />
             <Route path="project/:projectId" element={<ProjectOverviewPage />} />
             <Route path="gitbot" element={<GitBotsPage />} />
             <Route path="ide" element={<IDEIDE />} />

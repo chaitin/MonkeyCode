@@ -4,7 +4,7 @@ import Icon from "@/components/common/Icon"
 import { IconAssembly, IconBrandChrome, IconBrandPython, IconBug, IconCircleCheckFilled, IconCircleXFilled, IconDeviceGamepad2, IconFileText, IconHelpHexagon, IconPalette, IconPuzzle, IconShieldChevron, IconTerminal2, IconTestPipe } from "@tabler/icons-react"
 import Cap from "@cap.js/widget"
 import { HoverCardContent } from "@/components/ui/hover-card"
-import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TypesVirtualMachineStatus, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProviderModelListItem, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
+import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProviderModelListItem, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
@@ -126,6 +126,13 @@ export function formatMemory(bytes?: number): string {
   return `${Math.ceil(gb)} GB`
 }
 
+export function formatTokens(tokens?: number): string {
+  if (tokens === undefined || tokens === null) return ""
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  return tokens.toString()
+}
+
 
 export function humanTime(seconds: number): string {
   seconds = seconds > 0 ? seconds : 0;
@@ -141,26 +148,26 @@ export function humanTime(seconds: number): string {
   } 
 };
 
-export function translateStatus(status?: TypesVirtualMachineStatus): string {
+export function translateStatus(status?: TaskflowVirtualMachineStatus): string {
   switch (status) {
-    case TypesVirtualMachineStatus.VirtualMachineStatusOnline:
+    case TaskflowVirtualMachineStatus.VirtualMachineStatusOnline:
       return '正在运行'
-    case TypesVirtualMachineStatus.VirtualMachineStatusPending:
+    case TaskflowVirtualMachineStatus.VirtualMachineStatusPending:
       return '正在准备'
-    case TypesVirtualMachineStatus.VirtualMachineStatusOffline:
+    case TaskflowVirtualMachineStatus.VirtualMachineStatusOffline:
       return '已离线'
     default:
       return status || '未知'
   }
 }
 
-export function getStatusBadgeProps(status?: TypesVirtualMachineStatus) {
+export function getStatusBadgeProps(status?: TaskflowVirtualMachineStatus) {
   switch (status) {
-    case TypesVirtualMachineStatus.VirtualMachineStatusOnline:
+    case TaskflowVirtualMachineStatus.VirtualMachineStatusOnline:
       return { variant: 'default' as const, className: 'cursor-default' }
-    case TypesVirtualMachineStatus.VirtualMachineStatusPending:
+    case TaskflowVirtualMachineStatus.VirtualMachineStatusPending:
       return { variant: 'default' as const, className: 'cursor-default' }
-    case TypesVirtualMachineStatus.VirtualMachineStatusOffline:
+    case TaskflowVirtualMachineStatus.VirtualMachineStatusOffline:
       return { variant: 'outline' as const, className: 'cursor-default' }
     default:
       return { variant: 'outline' as const, className: 'cursor-default' }

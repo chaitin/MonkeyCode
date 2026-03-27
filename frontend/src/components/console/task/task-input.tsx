@@ -25,6 +25,7 @@ import { useSettingsDialog } from "@/pages/console/user/page";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { VoiceInputButton } from "./voice-input-button";
+import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
@@ -112,6 +113,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   // 对话框状态
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [creatingTask, setCreatingTask] = useState<boolean>(false);
+  const [limitDialogOpen, setLimitDialogOpen] = useState(false);
 
   // 上传相关状态
   const [uploadDialogOpen, setUploadDialogOpen] = useState<boolean>(false);
@@ -296,6 +298,8 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
         toast.success('任务启动成功');
         onTaskCreated();
         navigate(`/console/task/${resp.data?.id}`);
+      } else if (resp.code === 10811) {
+        setLimitDialogOpen(true);
       } else {
         toast.error(resp.message || "任务启动失败");
       }
@@ -932,6 +936,10 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <TaskConcurrentLimitDialog
+        open={limitDialogOpen}
+        onOpenChange={setLimitDialogOpen}
+      />
     </>
   );
 }

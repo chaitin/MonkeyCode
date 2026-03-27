@@ -5,7 +5,7 @@ import type { MessageType } from "./message"
 
 export const UserInputMessageItem = ({ message }: { message: MessageType }) => {
   return (
-    <div className="flex flex-col w-fit rounded-md bg-accent/50 px-4 py-3 max-w-[80%]">
+    <div className="flex flex-col w-fit rounded-md bg-accent/50 px-4 py-3 max-w-[80%] break-all">
       <div className="user-message-markdown break-all">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}

@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { RepoFileEntryMode, TaskWebSocketManager, type RepoFileChange, type RepoFileStatus, type TaskStreamStatus } from "./ws-manager"
+import type { TaskMessageHandlerStatus } from "./task-message-handler"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { FileActionsDropdown } from "./file-actions-dropdown"
 import AceEditor from "react-ace"
@@ -39,7 +40,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 interface TaskFileExplorerProps {
   className?: string
   disabled?: boolean
-  streamStatus?: TaskStreamStatus
+  streamStatus?: TaskStreamStatus | TaskMessageHandlerStatus
   fileChangesMap: Map<string, RepoFileChange>
   changedPaths?: string[]
   taskManager: TaskWebSocketManager | null
@@ -178,7 +179,7 @@ const DirNode = forwardRef<DirNodeRef, {
   onFileSelect?: (path: string, file: RepoFileStatus) => void
   defaultExpanded?: boolean
   taskManager: TaskWebSocketManager | null
-  streamStatus?: TaskStreamStatus
+  streamStatus?: TaskStreamStatus | TaskMessageHandlerStatus
   fileChangesMap: Map<string, RepoFileChange>
   envid?: string
   onRefresh?: () => void
@@ -236,7 +237,7 @@ const DirNode = forwardRef<DirNodeRef, {
   }, [loaded, fetchChildren])
 
   useEffect(() => {
-    if (defaultExpanded && !loaded && (streamStatus === 'waiting' || streamStatus === 'executing')) {
+    if (defaultExpanded && !loaded && (streamStatus === 'waiting' || streamStatus === 'executing' || streamStatus === 'connected')) {
       fetchChildren(true)
     }
   }, [defaultExpanded, loaded, fetchChildren, streamStatus])
@@ -369,13 +370,17 @@ export const TaskFileExplorer = ({
   const refreshPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!changedPaths || changedPaths.length === 0) return
-    refreshPathsTimeoutRef.current && clearTimeout(refreshPathsTimeoutRef.current)
+    if (refreshPathsTimeoutRef.current) {
+      clearTimeout(refreshPathsTimeoutRef.current)
+    }
     refreshPathsTimeoutRef.current = setTimeout(() => {
       rootRef.current?.refreshPaths(changedPaths)
       refreshPathsTimeoutRef.current = null
     }, 300)
     return () => {
-      refreshPathsTimeoutRef.current && clearTimeout(refreshPathsTimeoutRef.current)
+      if (refreshPathsTimeoutRef.current) {
+        clearTimeout(refreshPathsTimeoutRef.current)
+      }
     }
   }, [changedPaths])
 
