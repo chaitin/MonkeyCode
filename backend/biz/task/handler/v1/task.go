@@ -379,32 +379,6 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 	// 发送 cursor 消息，通知前端可以通过 /rounds 接口加载更早的论次
 	h.writeCursor(wsConn, cursorTS, hasMore)
 
-	// new 模式：等待用户输入（最多 1 分钟）
-	if mode == "new" && writable {
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			d, err := wsConn.ReadMessage()
-			if err == nil {
-				var m domain.TaskStream
-				if err := json.Unmarshal(d, &m); err == nil && m.Type == consts.TaskStreamTypeUserInput {
-					if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
-						logger.With("error", err).WarnContext(ctx, "failed to push task content")
-					}
-					if err := h.taskSummary.EnqueueSummary(ctx, task.ID.String(), time.Unix(task.CreatedAt, 0)); err != nil {
-						logger.With("error", err).WarnContext(ctx, "failed to enqueue task summary")
-					}
-				}
-			}
-		}()
-		select {
-		case <-done:
-		case <-time.After(time.Minute):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-
 	go func() {
 		logLimit := h.cfg.Task.LogLimit
 		if logLimit <= 0 {
