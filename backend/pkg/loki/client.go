@@ -651,14 +651,14 @@ type RoundChunk struct {
 
 // QueryRoundsResp 查询论次响应
 type QueryRoundsResp struct {
-	Chunks  []*RoundChunk // 正序排列（user-input 在前，task-ended 在后），论次间也是最新在前
+	Chunks  []*RoundChunk // 正序排列（user-input → task-started → ... → task-ended），论次间最新在前
 	HasMore bool
 	NextTS  int64 // 下一页起始时间戳（Unix Nano），仅当 HasMore 时有效
 }
 
-// QueryRounds 按 user-input 切分论次，倒序分页查询。
-// 每个论次从 user-input 到 task-ended。从 end 往前扫描到 start，
-// 凑满 limit 论后停止，返回正序排列的 chunks。
+// QueryRounds 按 task-started 切分论次，倒序分页查询。
+// 每个论次从 user-input 到 task-ended（user-input → ... → task-started → ... → task-ended）。
+// 从 end 往前扫描到 start，凑满 limit 论后停止，返回正序排列的 chunks。
 func (c *Client) QueryRounds(ctx context.Context, taskID string, start, end time.Time, limit int) (*QueryRoundsResp, error) {
 	if limit <= 0 {
 		limit = 2
@@ -685,17 +685,19 @@ func (c *Client) QueryRounds(ctx context.Context, taskID string, start, end time
 	return resp, nil
 }
 
-// scanRounds 倒序扫描 Loki 日志，按 user-input 切分论次。
-// 倒序中先遇到论次内容（task-ended..task-started），再遇到 user-input 边界。
-// 用 buf 缓存当前论次内容，遇到 user-input 时连同 buf 一起 flush 到 raw。
-// 未被 flush 的 buf（如 auto-start 数据）自动丢弃。
+// scanRounds 倒序扫描 Loki 日志，按 task-started 切分论次。
+// 倒序中先遇到论次内容（task-ended...），再遇到 task-started 边界。
+// 遇到 task-started 后继续往前扫描，收集到 user-input（含）为止的所有事件。
+// 一个完整论次：user-input → (中间事件) → task-started → ... → task-ended。
 func (c *Client) scanRounds(ctx context.Context, taskID string, start, end time.Time, limit int) ([]*RoundChunk, bool, error) {
 	const pageSize = 200
 
 	var raw []*RoundChunk
-	var buf []*RoundChunk // 当前论次内容缓冲，遇到 user-input 时 flush
+	var buf []*RoundChunk // 当前论次内容缓冲
 	roundCount := 0
 	scanEnd := end
+	// seekingInput: 遇到 task-started 后，进入"往前找 user-input"阶段
+	seekingInput := false
 
 	for {
 		entries, err := c.QueryByTaskID(ctx, taskID, start, scanEnd, pageSize, "backward")
@@ -703,6 +705,13 @@ func (c *Client) scanRounds(ctx context.Context, taskID string, start, end time.
 			return nil, false, fmt.Errorf("QueryRounds query failed: %w", err)
 		}
 		if len(entries) == 0 {
+			// 日志已耗尽；如果正在找 user-input，把已收集的内容 flush
+			if seekingInput && len(buf) > 0 {
+				raw = append(raw, buf...)
+				buf = buf[:0]
+				roundCount++
+				seekingInput = false
+			}
 			return raw, false, nil
 		}
 
@@ -724,22 +733,51 @@ func (c *Client) scanRounds(ctx context.Context, taskID string, start, end time.
 				Labels:    entry.Labels,
 			}
 
-			if chunk.Event == "user-input" {
+			if seekingInput {
+				if chunk.Event == "task-started" {
+					// 遇到前一个论次的 task-started，说明当前论次没有 user-input
+					// 先 flush 当前论次（无 user-input）
+					raw = append(raw, buf...)
+					buf = buf[:0]
+					roundCount++
+					if roundCount >= limit {
+						return raw, true, nil
+					}
+					// 开始新论次
+					buf = append(buf, rc)
+					// seekingInput 保持 true
+				} else if chunk.Event == "user-input" {
+					// 找到了，flush 当前论次
+					buf = append(buf, rc)
+					raw = append(raw, buf...)
+					buf = buf[:0]
+					roundCount++
+					seekingInput = false
+					if roundCount >= limit {
+						return raw, true, nil
+					}
+				} else {
+					buf = append(buf, rc)
+				}
+			} else if chunk.Event == "task-started" {
 				if roundCount >= limit {
-					// 已凑满，再遇到 user-input 说明还有更早的论次
 					return raw, true, nil
 				}
-				// flush: 论次内容 + user-input 本身
-				raw = append(raw, buf...)
-				raw = append(raw, rc)
-				buf = buf[:0]
-				roundCount++
+				// 遇到论次边界，把 task-started 加入 buf，开始往前找 user-input
+				buf = append(buf, rc)
+				seekingInput = true
 			} else if roundCount < limit {
 				buf = append(buf, rc)
 			}
 		}
 
 		if len(entries) < pageSize {
+			// 日志已耗尽；如果正在找 user-input，把已收集的内容 flush（没找到 user-input）
+			if seekingInput && len(buf) > 0 {
+				raw = append(raw, buf...)
+				buf = buf[:0]
+				roundCount++
+			}
 			return raw, false, nil
 		}
 		scanEnd = entries[len(entries)-1].Timestamp
