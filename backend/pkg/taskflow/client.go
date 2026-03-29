@@ -22,6 +22,7 @@ type Clienter interface {
 	TaskManager() TaskManager
 	PortForwarder() PortForwarder
 	Stats(ctx context.Context) (*Stats, error)
+	TaskLive(ctx context.Context, taskID string, flush bool, fn func(*TaskChunk) error) error
 }
 
 // Sheller 终端 shell 接口
