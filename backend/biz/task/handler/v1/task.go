@@ -340,17 +340,101 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 	}
 
 	if mode != "new" {
-		// attach 模式：回放最近一论的历史，有 task-ended 则推完关闭，没有则持续 tail 直到收到 task-ended
-		taskCreatedAt := time.Unix(task.CreatedAt, 0)
-		tailStart := h.findTailStart(ctx, task.ID.String(), taskCreatedAt)
-		hasMore := tailStart.After(taskCreatedAt)
-		h.writeCursor(wsConn, tailStart, hasMore)
-
-		h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), tailStart)
-		return nil
+		return h.attachStream(ctx, cancel, wsConn, logger, task)
 	}
 
 	return h.readClientMessages(ctx, wsConn, logger, user, task, writable, cancel)
+}
+
+func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task) error {
+	taskID := task.ID.String()
+	taskCreatedAt := time.Unix(task.CreatedAt, 0)
+	tailStart := h.findTailStart(ctx, taskID, taskCreatedAt)
+	hasMore := tailStart.After(taskCreatedAt)
+	h.writeCursor(wsConn, tailStart, hasMore)
+
+	// 先订阅实时流（触发 flush）
+	streamCh := make(chan *taskflow.TaskChunk, 100)
+	go func() {
+		_ = h.taskflow.TaskLive(ctx, taskID, true, func(chunk *taskflow.TaskChunk) error {
+			select {
+			case streamCh <- chunk:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			return nil
+		})
+		close(streamCh)
+	}()
+
+	// 读 loki 历史
+	if ended := h.replayLokiHistory(ctx, wsConn, logger, taskID, tailStart); ended {
+		return nil
+	}
+
+	// 消费实时流
+	h.consumeLiveStream(ctx, cancel, wsConn, streamCh)
+	return nil
+}
+
+func (h *TaskHandler) replayLokiHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, start time.Time) bool {
+	logLimit := h.cfg.Task.LogLimit
+	if logLimit <= 0 {
+		logLimit = 200
+	}
+
+	ended := false
+	_ = h.loki.Tail(ctx, taskID, start, logLimit, time.Time{}, func(le []loki.LogEntry) error {
+		for _, l := range le {
+			if l.Line == "" {
+				continue
+			}
+			var chunk taskflow.TaskChunk
+			if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
+				logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
+				continue
+			}
+			if err := wsConn.WriteJSON(domain.TaskStream{
+				Type:      consts.TaskStreamType(chunk.Event),
+				Data:      chunk.Data,
+				Kind:      chunk.Kind,
+				Timestamp: l.Timestamp.UnixMilli(),
+			}); err != nil {
+				return err
+			}
+			if chunk.Event == "task-ended" {
+				ended = true
+				return fmt.Errorf("round ended")
+			}
+		}
+		return nil
+	})
+	return ended
+}
+
+func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, streamCh <-chan *taskflow.TaskChunk) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case chunk, ok := <-streamCh:
+			if !ok {
+				return
+			}
+			if err := wsConn.WriteJSON(domain.TaskStream{
+				Type:      consts.TaskStreamType(chunk.Event),
+				Data:      chunk.Data,
+				Kind:      chunk.Kind,
+				Timestamp: chunk.Timestamp / 1e6,
+			}); err != nil {
+				return
+			}
+			if chunk.Event == "task-ended" {
+				cancel(fmt.Errorf("round ended"))
+				return
+			}
+		}
+	}
 }
 
 func (h *TaskHandler) findTailStart(ctx context.Context, taskID string, taskCreatedAt time.Time) time.Time {
@@ -406,8 +490,33 @@ func (h *TaskHandler) tailLogs(ctx context.Context, cancel context.CancelCauseFu
 	}
 }
 
+func (h *TaskHandler) subscribeRealtimeStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string) {
+	err := h.taskflow.TaskLive(ctx, taskID, false, func(chunk *taskflow.TaskChunk) error {
+		if err := wsConn.WriteJSON(domain.TaskStream{
+			Type:      consts.TaskStreamType(chunk.Event),
+			Data:      chunk.Data,
+			Kind:      chunk.Kind,
+			Timestamp: chunk.Timestamp / 1e6,
+		}); err != nil {
+			return fmt.Errorf("failed to write to websocket: %w", err)
+		}
+
+		if chunk.Event == "task-ended" {
+			cancel(fmt.Errorf("round ended"))
+			return fmt.Errorf("round ended")
+		}
+		return nil
+	})
+
+	if err != nil {
+		logger.ErrorContext(ctx, "realtime stream failed", "error", err)
+		h.writeError(wsConn, fmt.Errorf("failed to subscribe realtime stream: %w", err))
+		cancel(fmt.Errorf("failed to subscribe realtime stream: %w", err))
+	}
+}
+
 func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, writable bool, cancel context.CancelCauseFunc) error {
-	tailStarted := false
+	streamStarted := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -431,10 +540,10 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 			continue
 		}
 
-		// new 模式：收到第一条 user-input 后启动 tail
-		if !tailStarted && m.Type == consts.TaskStreamTypeUserInput {
-			tailStarted = true
-			go h.tailLogs(ctx, cancel, wsConn, logger, task.ID.String(), time.Now())
+		// new 模式：收到第一条 user-input 后启动实时流订阅
+		if !streamStarted && m.Type == consts.TaskStreamTypeUserInput {
+			streamStarted = true
+			go h.subscribeRealtimeStream(ctx, cancel, wsConn, logger, task.ID.String())
 		}
 
 		h.handleClientMessage(ctx, wsConn, logger, user, task, m)
