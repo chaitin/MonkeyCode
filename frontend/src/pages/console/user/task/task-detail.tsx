@@ -56,7 +56,7 @@ export default function TaskDetailPage() {
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const messages = React.useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
   const [timeCost, setTimeCost] = React.useState(0)
-  const previewPortCount = (previewPorts ?? task?.virtualmachine?.ports ?? []).length
+  const previewPortCount = (previewPorts ?? []).length
 
   const hasPanel = activePanel !== null
   const togglePanel = (panel: PanelType) => {
@@ -563,7 +563,7 @@ export default function TaskDetailPage() {
                   {activePanel === "preview" && (
                     <div className="flex-1 min-h-0 overflow-hidden">
                       <TaskPreviewPanel
-                        ports={previewPorts ?? task?.virtualmachine?.ports}
+                        ports={previewPorts}
                         hostId={task?.virtualmachine?.host?.id}
                         vmId={task?.virtualmachine?.id}
                         onSuccess={fetchPortForwards}
