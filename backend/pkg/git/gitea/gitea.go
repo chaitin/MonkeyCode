@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // Gitea 客户端
@@ -57,22 +59,6 @@ type giteaUserResponse struct {
 	HTMLURL   string `json:"html_url"`
 }
 
-// PlatformUserInfo 平台用户信息
-type PlatformUserInfo struct {
-	Name string `json:"name"`
-}
-
-// BindRepository 绑定仓库信息
-type BindRepository struct {
-	RepoID          string `json:"repo_id"`
-	RepoName        string `json:"repo_name"`
-	FullName        string `json:"full_name"`
-	RepoURL         string `json:"repo_url"`
-	RepoDescription string `json:"repo_description"`
-	IsPrivate       bool   `json:"is_private"`
-	Platform        string `json:"platform"`
-}
-
 // GetRepoInfoByPAT 根据 PAT 获取仓库信息
 func (g *Gitea) GetRepoInfoByPAT(ctx context.Context, baseURL, token string, repoURL string) (*GiteaRepository, error) {
 	owner, repo, err := parseGiteaRepoPath(repoURL)
@@ -91,8 +77,8 @@ func (g *Gitea) GetRepoInfoByPAT(ctx context.Context, baseURL, token string, rep
 	return &repository, nil
 }
 
-// CheckPAT 校验 PAT 是否能访问对应仓库
-func (g *Gitea) CheckPAT(ctx context.Context, baseURL, token string, repoURL string) (bool, *BindRepository, error) {
+// CheckPATWithBaseURL 校验 PAT 是否能访问对应仓库（带 baseURL 参数）
+func (g *Gitea) CheckPATWithBaseURL(ctx context.Context, baseURL, token string, repoURL string) (bool, *domain.BindRepository, error) {
 	repo, err := g.GetRepoInfoByPAT(ctx, baseURL, token, repoURL)
 	if err != nil {
 		return false, nil, err
@@ -104,7 +90,7 @@ func (g *Gitea) CheckPAT(ctx context.Context, baseURL, token string, repoURL str
 		return false, nil, fmt.Errorf("no permission info returned")
 	}
 	if repo.Permissions.Admin || repo.Permissions.Push || repo.Permissions.Pull {
-		bindRepo := &BindRepository{
+		bindRepo := &domain.BindRepository{
 			RepoID:          fmt.Sprintf("%d", repo.ID),
 			RepoName:        repo.Name,
 			FullName:        repo.FullName,
@@ -119,7 +105,7 @@ func (g *Gitea) CheckPAT(ctx context.Context, baseURL, token string, repoURL str
 }
 
 // GetUserInfoByPAT 根据 PAT 获取用户信息
-func (g *Gitea) GetUserInfoByPAT(ctx context.Context, baseURL, token string) (*PlatformUserInfo, error) {
+func (g *Gitea) GetUserInfoByPAT(ctx context.Context, baseURL, token string) (*domain.PlatformUserInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/v1/user", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -137,21 +123,21 @@ func (g *Gitea) GetUserInfoByPAT(ctx context.Context, baseURL, token string) (*P
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("decode Gitea user response: %w", err)
 	}
-	return &PlatformUserInfo{
+	return &domain.PlatformUserInfo{
 		Name: user.Login,
 	}, nil
 }
 
 // GiteaRepository Gitea 仓库信息
 type GiteaRepository struct {
-	ID          int64              `json:"id"`
-	Name        string             `json:"name"`
-	FullName    string             `json:"full_name"`
-	Description string             `json:"description"`
-	Private     bool               `json:"private"`
-	HTMLURL     string             `json:"html_url"`
-	CloneURL    string             `json:"clone_url"`
-	Permissions *GiteaPermissions  `json:"permissions"`
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	FullName    string            `json:"full_name"`
+	Description string            `json:"description"`
+	Private     bool              `json:"private"`
+	HTMLURL     string            `json:"html_url"`
+	CloneURL    string            `json:"clone_url"`
+	Permissions *GiteaPermissions `json:"permissions"`
 }
 
 // GiteaPermissions Gitea 仓库权限

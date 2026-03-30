@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/go-github/v74/github"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // treeCommitInfoPath 为 GitHub 专属的「树+最近提交信息」接口
@@ -395,4 +397,114 @@ func dirContentToTreeResp(contents []*github.RepositoryContent) *GetRepoTreeResp
 		})
 	}
 	return &GetRepoTreeResp{Entries: entries}
+}
+
+// UserInfo 实现 GitPlatformClient 接口
+func (g *Github) UserInfo(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
+	return g.GetUserInfoByPAT(ctx, token)
+}
+
+// Repositories 实现 GitPlatformClient 接口
+func (g *Github) Repositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
+	return g.GetAuthorizedRepositories(ctx, token)
+}
+
+// Tree 实现 GitPlatformClient 接口
+func (g *Github) Tree(ctx context.Context, opts *domain.TreeOptions) (*domain.GetRepoTreeResp, error) {
+	resp, err := g.GetRepoTree(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.Recursive)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.TreeEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.TreeEntry{
+			Mode:           e.Mode,
+			Name:           e.Name,
+			Path:           e.Path,
+			Sha:            e.Sha,
+			Size:           e.Size,
+			LastModifiedAt: e.LastModifiedAt,
+		}
+	}
+	return &domain.GetRepoTreeResp{Entries: entries, SHA: resp.SHA}, nil
+}
+
+// Blob 实现 GitPlatformClient 接口
+func (g *Github) Blob(ctx context.Context, opts *domain.BlobOptions) (*domain.GetBlobResp, error) {
+	resp, err := g.GetBlob(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetBlobResp{
+		Content:  resp.Content,
+		IsBinary: resp.IsBinary,
+		Sha:      resp.Sha,
+		Size:     resp.Size,
+	}, nil
+}
+
+// Logs 实现 GitPlatformClient 接口
+func (g *Github) Logs(ctx context.Context, opts *domain.LogsOptions) (*domain.GetGitLogsResp, error) {
+	resp, err := g.GetGitLogs(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.GitCommitEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.GitCommitEntry{
+			Commit: &domain.GitCommit{
+				Author:     &domain.GitUser{Email: e.Commit.Author.Email, Name: e.Commit.Author.Name, When: e.Commit.Author.When},
+				Committer:  &domain.GitUser{Email: e.Commit.Committer.Email, Name: e.Commit.Committer.Name, When: e.Commit.Committer.When},
+				Message:    e.Commit.Message,
+				ParentShas: e.Commit.ParentShas,
+				Sha:        e.Commit.Sha,
+				TreeSha:    e.Commit.TreeSha,
+			},
+		}
+	}
+	return &domain.GetGitLogsResp{Count: resp.Count, Entries: entries}, nil
+}
+
+// Archive 实现 GitPlatformClient 接口
+func (g *Github) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*domain.GetRepoArchiveResp, error) {
+	resp, err := g.GetRepoArchive(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Ref)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetRepoArchiveResp{
+		ContentLength: resp.ContentLength,
+		ContentType:   resp.ContentType,
+		Reader:        resp.Reader,
+	}, nil
+}
+
+// Branches 实现 GitPlatformClient 接口
+func (g *Github) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
+	resp, err := g.ListBranches(ctx, opts.InstallID, opts.Token, opts.Owner, opts.Repo, opts.Page, opts.PerPage)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.BranchInfo, len(resp))
+	for i, b := range resp {
+		result[i] = &domain.BranchInfo{Name: b.Name}
+	}
+	return result, nil
+}
+
+// DeleteWebhook 实现 GitPlatformClient 接口
+func (g *Github) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) error {
+	owner, repo, err := parseRepoURL(opts.RepoURL)
+	if err != nil {
+		return err
+	}
+	return g.DeleteWebhookByURL(ctx, opts.Token, owner, repo, opts.WebhookURL)
+}
+
+// CreateWebhook 实现 GitPlatformClient 接口
+func (g *Github) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOptions) error {
+	owner, repo, err := parseRepoURL(opts.RepoURL)
+	if err != nil {
+		return err
+	}
+	return g.CreateRepoWebhook(ctx, opts.Token, owner, repo, opts.WebhookURL, opts.SecretToken, opts.Events)
 }

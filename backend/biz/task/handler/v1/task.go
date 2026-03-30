@@ -546,6 +546,16 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 			go h.subscribeRealtimeStream(ctx, cancel, wsConn, logger, task.ID.String())
 		}
 
+		// new 模式：将 user-input 回写给客户端，使其与 attach 模式行为一致
+		if m.Type == consts.TaskStreamTypeUserInput {
+			_ = wsConn.WriteJSON(domain.TaskStream{
+				Type:      consts.TaskStreamTypeUserInput,
+				Data:      m.Data,
+				Kind:      m.Kind,
+				Timestamp: time.Now().UnixMilli(),
+			})
+		}
+
 		h.handleClientMessage(ctx, wsConn, logger, user, task, m)
 	}
 }

@@ -12,7 +12,7 @@ import (
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	domainpkg "github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // ParseProjectPath 从仓库 URL 解析出项目路径（path_with_namespace）
@@ -50,7 +50,7 @@ func (g *Gitlab) GetRepoDescription(ctx context.Context, token, repoURL string, 
 }
 
 // GetAuthorizedRepositories 获取 token 可访问的仓库列表
-func (g *Gitlab) GetAuthorizedRepositories(ctx context.Context, token string) ([]domainpkg.AuthRepository, error) {
+func (g *Gitlab) GetAuthorizedRepositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
 	client, err := g.newClientWithToken(token, false)
 	if err != nil {
 		return nil, fmt.Errorf("new client: %w", err)
@@ -58,7 +58,7 @@ func (g *Gitlab) GetAuthorizedRepositories(ctx context.Context, token string) ([
 	return g.listProjects(ctx, client)
 }
 
-func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]domainpkg.AuthRepository, error) {
+func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]domain.AuthRepository, error) {
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{PerPage: 100},
 		Membership:  ptr(true),
@@ -75,13 +75,13 @@ func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]dom
 		}
 		opt.Page = resp.NextPage
 	}
-	out := make([]domainpkg.AuthRepository, 0, len(all))
+	out := make([]domain.AuthRepository, 0, len(all))
 	for _, p := range all {
 		cloneURL := p.HTTPURLToRepo
 		if cloneURL == "" {
 			cloneURL = p.SSHURLToRepo
 		}
-		out = append(out, domainpkg.AuthRepository{
+		out = append(out, domain.AuthRepository{
 			FullName:    p.PathWithNamespace,
 			URL:         cloneURL,
 			Description: p.Description,
@@ -360,4 +360,96 @@ func isBinaryContent(content []byte) bool {
 		check = check[:8000]
 	}
 	return bytes.Contains(check, []byte{0})
+}
+
+// UserInfo 实现 GitPlatformClient 接口
+func (g *Gitlab) UserInfo(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
+	return g.GetUserInfoByPAT(ctx, token)
+}
+
+// Repositories 实现 GitPlatformClient 接口
+func (g *Gitlab) Repositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
+	return g.GetAuthorizedRepositories(ctx, token)
+}
+
+// Tree 实现 GitPlatformClient 接口
+func (g *Gitlab) Tree(ctx context.Context, opts *domain.TreeOptions) (*domain.GetRepoTreeResp, error) {
+	resp, err := g.GetRepoTree(ctx, opts.Token, opts.Owner, opts.Ref, opts.Path, opts.Recursive, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.TreeEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.TreeEntry{
+			Mode: e.Mode,
+			Name: e.Name,
+			Path: e.Path,
+			Sha:  e.Sha,
+			Size: e.Size,
+		}
+	}
+	return &domain.GetRepoTreeResp{Entries: entries, SHA: resp.SHA}, nil
+}
+
+// Blob 实现 GitPlatformClient 接口
+func (g *Gitlab) Blob(ctx context.Context, opts *domain.BlobOptions) (*domain.GetBlobResp, error) {
+	resp, err := g.GetBlob(ctx, opts.Token, opts.Owner, opts.Ref, opts.Path, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetBlobResp{Content: resp.Content, IsBinary: resp.IsBinary, Sha: resp.Sha, Size: resp.Size}, nil
+}
+
+// Logs 实现 GitPlatformClient 接口
+func (g *Gitlab) Logs(ctx context.Context, opts *domain.LogsOptions) (*domain.GetGitLogsResp, error) {
+	resp, err := g.GetGitLogs(ctx, opts.Token, opts.Owner, opts.Ref, opts.Path, opts.Limit, opts.Offset, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.GitCommitEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.GitCommitEntry{
+			Commit: &domain.GitCommit{
+				Author:     &domain.GitUser{Email: e.Commit.Author.Email, Name: e.Commit.Author.Name, When: e.Commit.Author.When},
+				Committer:  &domain.GitUser{Email: e.Commit.Committer.Email, Name: e.Commit.Committer.Name, When: e.Commit.Committer.When},
+				Message:    e.Commit.Message,
+				ParentShas: e.Commit.ParentShas,
+				Sha:        e.Commit.Sha,
+				TreeSha:    e.Commit.TreeSha,
+			},
+		}
+	}
+	return &domain.GetGitLogsResp{Count: resp.Count, Entries: entries}, nil
+}
+
+// Archive 实现 GitPlatformClient 接口
+func (g *Gitlab) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*domain.GetRepoArchiveResp, error) {
+	resp, err := g.GetRepoArchive(ctx, opts.Token, opts.Owner, opts.Ref, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetRepoArchiveResp{ContentLength: resp.ContentLength, ContentType: resp.ContentType, Reader: resp.Reader}, nil
+}
+
+// Branches 实现 GitPlatformClient 接口
+func (g *Gitlab) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
+	resp, err := g.ListBranches(ctx, opts.Token, opts.Owner, opts.IsOAuth, opts.Page, opts.PerPage)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.BranchInfo, len(resp))
+	for i, b := range resp {
+		result[i] = &domain.BranchInfo{Name: b.Name}
+	}
+	return result, nil
+}
+
+// DeleteWebhook 实现 GitPlatformClient 接口
+func (g *Gitlab) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) error {
+	return g.DeleteWebhookByURL(ctx, opts.Token, opts.RepoURL, opts.WebhookURL, opts.IsOAuth)
+}
+
+// CreateWebhook 实现 GitPlatformClient 接口
+func (g *Gitlab) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOptions) error {
+	return g.CreateProjectWebhook(ctx, opts.Token, opts.RepoURL, opts.WebhookURL, opts.SecretToken, opts.IsOAuth)
 }

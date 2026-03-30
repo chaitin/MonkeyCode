@@ -87,7 +87,7 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	if identity.AccessToken == "" {
 		return gi, nil
 	}
-	var client domain.GitPlatformClient[domain.AuthRepository]
+	var client domain.GitPlatformClient
 	switch identity.Platform {
 	case consts.GitPlatformGithub:
 		client = u.gh
@@ -96,21 +96,13 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	case consts.GitPlatformGitea:
 		client = gitea.NewGitea(u.logger, identity.BaseURL)
 	default:
-		// 该平台不支持获取授权仓库列表
 		return gi, nil
 	}
-	repos, err := client.GetAuthorizedRepositories(ctx, identity.AccessToken)
+	repos, err := client.Repositories(ctx, identity.AccessToken)
 	if err != nil {
 		u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", id)
 	} else {
-		gi.AuthorizedRepositories = make([]domain.AuthRepository, 0, len(repos))
-		for _, r := range repos {
-			gi.AuthorizedRepositories = append(gi.AuthorizedRepositories, domain.AuthRepository{
-				FullName:    r.FullName,
-				URL:         r.URL,
-				Description: r.Description,
-			})
-		}
+		gi.AuthorizedRepositories = repos
 	}
 
 	return gi, nil
@@ -192,72 +184,29 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, errcode.ErrInvalidParameter.Wrap(fmt.Errorf("invalid repo full name: %s", repoFullName))
 	}
-	owner, repo := parts[0], parts[1]
+	owner := parts[0]
 
+	var client domain.GitPlatformClient
 	switch identity.Platform {
 	case consts.GitPlatformGithub:
-		return u.listGithubBranches(ctx, identity, owner, repo, page, perPage)
+		client = u.gh
 	case consts.GitPlatformGitLab:
-		return u.listGitlabBranches(ctx, identity, repoFullName, page, perPage)
+		client = gitlab.NewGitlabForBaseURL(identity.BaseURL, u.logger)
 	case consts.GitPlatformGitea:
-		return u.listGiteaBranches(ctx, identity, owner, repo, page, perPage)
+		client = gitea.NewGitea(u.logger, identity.BaseURL)
 	case consts.GitPlatformGitee:
-		return u.listGiteeBranches(ctx, identity, owner, repo, page, perPage)
+		client = gitee.NewGitee(identity.BaseURL, u.logger)
 	default:
 		return nil, errcode.ErrInvalidPlatform
 	}
-}
 
-func (u *GitIdentityUsecase) listGithubBranches(ctx context.Context, identity *db.GitIdentity, owner, repo string, page, perPage int) ([]*domain.Branch, error) {
-	if u.gh == nil {
-		return nil, fmt.Errorf("github client not configured")
-	}
-	if identity.InstallationID == 0 {
-		return nil, errcode.ErrInvalidParameter.Wrap(fmt.Errorf("github identity has no installation_id"))
-	}
-	branches, err := u.gh.ListBranches(ctx, identity.InstallationID, identity.AccessToken, owner, repo, page, perPage)
+	branches, err := client.Branches(ctx, &domain.BranchesOptions{
+		Token: identity.AccessToken, Owner: owner, Repo: repoFullName,
+		Page: page, PerPage: perPage,
+		InstallID: identity.InstallationID, IsOAuth: identity.OauthRefreshToken != "",
+	})
 	if err != nil {
-		return nil, fmt.Errorf("list github branches: %w", err)
-	}
-	result := make([]*domain.Branch, 0, len(branches))
-	for _, b := range branches {
-		result = append(result, &domain.Branch{Name: b.Name})
-	}
-	return result, nil
-}
-
-func (u *GitIdentityUsecase) listGitlabBranches(ctx context.Context, identity *db.GitIdentity, projectPath string, page, perPage int) ([]*domain.Branch, error) {
-	glClient := gitlab.NewGitlabForBaseURL(identity.BaseURL, u.logger)
-	if glClient == nil {
-		return nil, fmt.Errorf("failed to create gitlab client for base_url: %s", identity.BaseURL)
-	}
-	branches, err := glClient.ListBranches(ctx, identity.AccessToken, projectPath, false, page, perPage)
-	if err != nil {
-		return nil, fmt.Errorf("list gitlab branches: %w", err)
-	}
-	result := make([]*domain.Branch, 0, len(branches))
-	for _, b := range branches {
-		result = append(result, &domain.Branch{Name: b.Name})
-	}
-	return result, nil
-}
-
-func (u *GitIdentityUsecase) listGiteaBranches(ctx context.Context, identity *db.GitIdentity, owner, repo string, page, perPage int) ([]*domain.Branch, error) {
-	branches, err := gitea.ListBranches(ctx, identity.BaseURL, identity.AccessToken, owner, repo, page, perPage, false)
-	if err != nil {
-		return nil, fmt.Errorf("list gitea branches: %w", err)
-	}
-	result := make([]*domain.Branch, 0, len(branches))
-	for _, b := range branches {
-		result = append(result, &domain.Branch{Name: b.Name})
-	}
-	return result, nil
-}
-
-func (u *GitIdentityUsecase) listGiteeBranches(ctx context.Context, identity *db.GitIdentity, owner, repo string, page, perPage int) ([]*domain.Branch, error) {
-	branches, err := gitee.ListBranches(ctx, identity.AccessToken, owner, repo, page, perPage, false)
-	if err != nil {
-		return nil, fmt.Errorf("list gitee branches: %w", err)
+		return nil, fmt.Errorf("list branches: %w", err)
 	}
 	result := make([]*domain.Branch, 0, len(branches))
 	for _, b := range branches {
