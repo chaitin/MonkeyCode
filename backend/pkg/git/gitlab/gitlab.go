@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // Gitlab 客户端
@@ -79,22 +81,6 @@ func (g *Gitlab) newClientWithToken(token string, isOAuth bool) (*gitlab.Client,
 	return gitlab.NewClient(token, gitlab.WithBaseURL(g.baseURL), gitlab.WithHTTPClient(c))
 }
 
-// PlatformUserInfo 平台用户信息
-type PlatformUserInfo struct {
-	Name string `json:"name"`
-}
-
-// BindRepository 绑定仓库信息
-type BindRepository struct {
-	RepoID          string `json:"repo_id"`
-	RepoName        string `json:"repo_name"`
-	FullName        string `json:"full_name"`
-	RepoURL         string `json:"repo_url"`
-	RepoDescription string `json:"repo_description"`
-	IsPrivate       bool   `json:"is_private"`
-	Platform        string `json:"platform"`
-}
-
 // GetRepoInfoByPAT 根据 PAT 获取仓库信息
 func (g *Gitlab) GetRepoInfoByPAT(ctx context.Context, token string, repoURL string) (*gitlab.Project, error) {
 	projectPath, err := ParseProjectPath(repoURL)
@@ -113,7 +99,7 @@ func (g *Gitlab) GetRepoInfoByPAT(ctx context.Context, token string, repoURL str
 }
 
 // CheckPAT 校验 PAT
-func (g *Gitlab) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *BindRepository, error) {
+func (g *Gitlab) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *domain.BindRepository, error) {
 	repository, err := g.GetRepoInfoByPAT(ctx, token, repoURL)
 	if err != nil {
 		return false, nil, err
@@ -132,7 +118,7 @@ func (g *Gitlab) CheckPAT(ctx context.Context, token string, repoURL string) (bo
 	}
 
 	if level >= 0 {
-		bindRepo := &BindRepository{
+		bindRepo := &domain.BindRepository{
 			RepoID:          fmt.Sprintf("%d", repository.ID),
 			RepoName:        repository.Name,
 			FullName:        repository.PathWithNamespace,
@@ -147,7 +133,7 @@ func (g *Gitlab) CheckPAT(ctx context.Context, token string, repoURL string) (bo
 }
 
 // GetUserInfoByPAT 根据 PAT 获取用户信息
-func (g *Gitlab) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformUserInfo, error) {
+func (g *Gitlab) GetUserInfoByPAT(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
 	client, err := gitlab.NewClient(token, gitlab.WithBaseURL(g.baseURL))
 	if err != nil {
 		return nil, fmt.Errorf("create gitlab client: %w", err)
@@ -156,7 +142,7 @@ func (g *Gitlab) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformU
 	if err != nil {
 		return nil, fmt.Errorf("get gitlab user: %w", err)
 	}
-	return &PlatformUserInfo{
+	return &domain.PlatformUserInfo{
 		Name: user.Username,
 	}, nil
 }

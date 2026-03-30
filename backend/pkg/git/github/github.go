@@ -15,7 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
-	domainpkg "github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // Github GitHub 客户端（PAT 模式）
@@ -73,22 +73,6 @@ func parseRepoURL(repoURL string) (owner, repo string, err error) {
 	return parts[0], parts[1], nil
 }
 
-// PlatformUserInfo 平台用户信息
-type PlatformUserInfo struct {
-	Name string `json:"name"`
-}
-
-// BindRepository 绑定仓库信息
-type BindRepository struct {
-	RepoID          string `json:"repo_id"`
-	RepoName        string `json:"repo_name"`
-	FullName        string `json:"full_name"`
-	RepoURL         string `json:"repo_url"`
-	RepoDescription string `json:"repo_description"`
-	IsPrivate       bool   `json:"is_private"`
-	Platform        string `json:"platform"`
-}
-
 // GetRepoInfoByPAT 根据 PAT 获取仓库信息
 func (g *Github) GetRepoInfoByPAT(ctx context.Context, token string, repoURL string) (*github.Repository, error) {
 	owner, repo, err := parseRepoURL(repoURL)
@@ -107,7 +91,7 @@ func (g *Github) GetRepoInfoByPAT(ctx context.Context, token string, repoURL str
 }
 
 // GetUserInfoByPAT 根据 PAT 获取用户信息
-func (g *Github) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformUserInfo, error) {
+func (g *Github) GetUserInfoByPAT(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
 	client, err := g.GetClient(ctx, token, 0)
 	if err != nil {
 		return nil, err
@@ -116,13 +100,13 @@ func (g *Github) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformU
 	if err != nil {
 		return nil, err
 	}
-	return &PlatformUserInfo{
+	return &domain.PlatformUserInfo{
 		Name: user.GetLogin(),
 	}, nil
 }
 
 // CheckPAT 校验 PAT
-func (g *Github) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *BindRepository, error) {
+func (g *Github) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *domain.BindRepository, error) {
 	repository, err := g.GetRepoInfoByPAT(ctx, token, repoURL)
 	if err != nil {
 		return false, nil, err
@@ -133,7 +117,7 @@ func (g *Github) CheckPAT(ctx context.Context, token string, repoURL string) (bo
 
 	permissions := repository.GetPermissions()
 	if permissions["pull"] || permissions["push"] || permissions["admin"] {
-		return true, &BindRepository{
+		return true, &domain.BindRepository{
 			RepoID:          fmt.Sprintf("%d", repository.GetID()),
 			RepoName:        repository.GetName(),
 			FullName:        repository.GetFullName(),
@@ -203,7 +187,7 @@ func (g *Github) ListInstallationRepos(ctx context.Context, installID int64) ([]
 }
 
 // GetAuthorizedRepositories 获取 PAT 可访问的仓库列表
-func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([]domainpkg.AuthRepository, error) {
+func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
 	client, err := g.GetClient(ctx, token, 0)
 	if err != nil {
 		return nil, err
@@ -213,14 +197,14 @@ func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([
 		ListOptions: github.ListOptions{PerPage: 100},
 		Sort:        "updated",
 	}
-	var all []domainpkg.AuthRepository
+	var all []domain.AuthRepository
 	for {
 		repos, resp, err := client.Repositories.ListByAuthenticatedUser(ctx, opts)
 		if err != nil {
 			return nil, fmt.Errorf("list repos: %w", err)
 		}
 		for _, r := range repos {
-			all = append(all, domainpkg.AuthRepository{
+			all = append(all, domain.AuthRepository{
 				FullName:    r.GetFullName(),
 				URL:         r.GetCloneURL(),
 				Description: r.GetDescription(),
