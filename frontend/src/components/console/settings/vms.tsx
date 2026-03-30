@@ -43,7 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { IconTrash } from "@tabler/icons-react";
-import { type DomainVirtualMachine, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TypesVirtualMachineStatus } from "@/api/Api";
+import { type DomainVirtualMachine, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus } from "@/api/Api";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,7 +73,7 @@ export default function VmsPage() {
     if (showOfflineVms) {
       return vms
     } else {
-      return vms.filter(vm => vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOffline)
+      return vms.filter(vm => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline)
     }
   }, [vms, showOfflineVms])
 
@@ -241,13 +241,13 @@ export default function VmsPage() {
                 ])}
               </HoverCard>
               <ItemDescription className="line-clamp-1 truncate">
-                {vm.status === TypesVirtualMachineStatus.VirtualMachineStatusOnline && <>
+                {vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline && <>
                   {Boolean(vm.cores) && `${vm.cores} 核 CPU，`}
                   {Boolean(vm.memory) && `${formatMemory(vm.memory)} 内存，`}
                   {`${dayjs.unix(vm.created_at as number).fromNow()}创建，`}
                   {vm.life_time_seconds === 0 ? "永不回收" : `${humanTime(vm.life_time_seconds as number)}后回收`}
                 </>}
-                {vm.status === TypesVirtualMachineStatus.VirtualMachineStatusOffline && <>
+                {vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOffline && <>
                   {getLastCondition(vm)?.type === GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeFailed ? (
                       getVmMessage(vm)
                     ) : (
@@ -255,15 +255,15 @@ export default function VmsPage() {
                     )
                   }
                 </>}
-                {vm.status === TypesVirtualMachineStatus.VirtualMachineStatusPending && getVmMessage(vm)}
+                {vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending && getVmMessage(vm)}
               </ItemDescription>
             </ItemContent>
             <ItemActions className="w-full md:w-auto flex">
-              <Button variant="ghost" size="sm" className="flex-1 bg-secondary md:bg-transparent" disabled={vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline} onClick={() => window.open(`/console/terminal?envid=${vm.id}`, '_blank')}>
+              <Button variant="ghost" size="sm" className="flex-1 bg-secondary md:bg-transparent" disabled={vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOnline} onClick={() => window.open(`/console/terminal?envid=${vm.id}`, '_blank')}>
                 <IconTerminal2 />
                 终端
               </Button>
-              <Button variant="ghost" size="sm" className="flex-1 bg-secondary md:bg-transparent" disabled={vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline} onClick={() => window.open(`/console/files?envid=${vm.id}&path=/workspace`, '_blank')}>
+              <Button variant="ghost" size="sm" className="flex-1 bg-secondary md:bg-transparent" disabled={vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOnline} onClick={() => window.open(`/console/files?envid=${vm.id}&path=/workspace`, '_blank')}>
                 <IconFolderOpen />
                 文件
               </Button>
@@ -275,7 +275,7 @@ export default function VmsPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
-                    disabled={vm.life_time_seconds === 0 || vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOnline}
+                    disabled={vm.life_time_seconds === 0 || vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOnline}
                     onClick={() => handleRenewVM(vm)}
                   >
                     <IconClockHour4 className="size-4" />

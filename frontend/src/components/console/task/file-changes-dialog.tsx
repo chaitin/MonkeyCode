@@ -10,18 +10,18 @@ import { IconReport, IconLoader } from "@tabler/icons-react"
 import { useState, useEffect } from "react"
 import { parseDiff, Diff, Hunk } from "react-diff-view"
 import "react-diff-view/style/index.css"
-import type { RepoFileChange, TaskWebSocketManager } from "./ws-manager"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import type { RepoFileChange, TaskRepositoryClient } from "./task-shared"
 
 interface FileChangesDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   fileChanges: string[]
   fileChangesMap: Map<string, RepoFileChange>
-  taskManager: TaskWebSocketManager | null
+  taskManager: TaskRepositoryClient | null
   onSubmit: (selectedFiles: string[]) => void
   onCancel: () => void
 }

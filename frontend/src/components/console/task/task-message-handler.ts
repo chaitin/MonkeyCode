@@ -3,7 +3,7 @@ import type { MessageType } from "./message"
 import type {
   AvailableCommands,
   TaskPlan,
-} from "./ws-manager"
+} from "./task-shared"
 
 export type TaskMessageHandlerStatus = "inited" | "connected" | "finished" | "error"
 
@@ -83,7 +83,13 @@ export class TaskMessageHandler {
   }
 
   setError() {
+    this.failPendingToolCalls()
     this.state.status = "error"
+    return this.getState()
+  }
+
+  finalizeCycle() {
+    this.failPendingToolCalls()
     return this.getState()
   }
 
@@ -342,7 +348,7 @@ export class TaskMessageHandler {
     }
   }
 
-  private applyTaskEnded() {
+  private failPendingToolCalls() {
     for (let i = 0; i < this.state.messages.length; i += 1) {
       const message = this.state.messages[i]
       if (message.type === "tool_call" && (message.data.status === "in_progress" || message.data.status === "pending")) {
@@ -355,6 +361,10 @@ export class TaskMessageHandler {
         }
       }
     }
+  }
+
+  private applyTaskEnded() {
+    this.failPendingToolCalls()
     this.state.status = "finished"
   }
 

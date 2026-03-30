@@ -29,7 +29,7 @@ import {
 import { apiRequest } from "@/utils/requestUtils"
 import { getHostBadges } from "@/utils/common"
 import { toast } from "sonner"
-import { type DomainHost, ConstsOwnerType, TypesVirtualMachineStatus } from "@/api/Api"
+import { type DomainHost, ConstsOwnerType, TaskflowVirtualMachineStatus } from "@/api/Api"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -193,7 +193,7 @@ export default function Hosts() {
                 {getHostBadges(host)}
               </ItemTitle>
               <ItemDescription className="hidden md:block">
-                共 {host.virtualmachines?.length || 0} 个开发环境，{host.virtualmachines?.filter((vm) => vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOffline).length || 0} 个正在使用
+                共 {host.virtualmachines?.length || 0} 个开发环境，{host.virtualmachines?.filter((vm) => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).length || 0} 个正在使用
               </ItemDescription>
             </ItemContent>
             <ItemActions>

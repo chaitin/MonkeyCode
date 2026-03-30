@@ -6,7 +6,7 @@ import { Box, MoreVertical } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { toast } from "sonner";
-import { TypesVirtualMachineStatus, type DomainHost, type DomainTeamGroup, type DomainVirtualMachine } from "@/api/Api";
+import { TaskflowVirtualMachineStatus, type DomainHost, type DomainTeamGroup, type DomainVirtualMachine } from "@/api/Api";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemTitle } from "@/components/ui/item";
@@ -138,7 +138,7 @@ export default function TeamManagerHosts() {
                     <Badge variant="secondary" className="hidden sm:inline">{host.external_ip}</Badge>
                   </ItemTitle>
                   <ItemDescription className="hidden md:block">
-                    共 {host.virtualmachines?.length || 0} 个开发环境，{host.virtualmachines?.filter((vm: DomainVirtualMachine) => vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOffline).length || 0} 个正在使用
+                    共 {host.virtualmachines?.length || 0} 个开发环境，{host.virtualmachines?.filter((vm: DomainVirtualMachine) => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).length || 0} 个正在使用
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
@@ -192,7 +192,7 @@ export default function TeamManagerHosts() {
                   </div>
                   <Separator />
                   <div className="flex flex-wrap gap-2">
-                    {host.virtualmachines?.filter(vm => vm.status !== TypesVirtualMachineStatus.VirtualMachineStatusOffline).map(vm => (
+                    {host.virtualmachines?.filter(vm => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).map(vm => (
                       <Badge variant="outline" key={vm.id}>{`${vm.owner?.email} - ${vm.cores} 核, ${formatMemory(vm.memory)}`}</Badge>
                     ))}
                   </div>

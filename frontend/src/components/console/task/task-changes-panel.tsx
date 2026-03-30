@@ -1,23 +1,24 @@
 import { useState } from "react"
-import type { RepoFileChange, TaskWebSocketManager } from "./ws-manager"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
-import { IconCloudOff, IconFileDiff, IconLoader, IconReport, IconX } from "@tabler/icons-react"
+import { IconCloudOff, IconFileDiff, IconLoader, IconReload, IconReport, IconX } from "@tabler/icons-react"
 import { parseDiff, Diff, Hunk } from "react-diff-view"
 import "react-diff-view/style/index.css"
 import { cn } from "@/lib/utils"
+import type { RepoFileChange, TaskRepositoryClient } from "./task-shared"
 
 interface TaskChangesPanelProps {
   fileChanges: string[]
   fileChangesMap: Map<string, RepoFileChange>
-  taskManager: TaskWebSocketManager | null
+  taskManager: TaskRepositoryClient | null
   disabled?: boolean
+  onRefresh?: () => void
   onClosePanel?: () => void
 }
 
-export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, disabled, onClosePanel }: TaskChangesPanelProps) {
+export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, disabled, onRefresh, onClosePanel }: TaskChangesPanelProps) {
   const sortedPaths = [...fileChanges].sort((a, b) => a.localeCompare(b))
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [diffContent, setDiffContent] = useState<string>("")
@@ -44,11 +45,16 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
       <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
         <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/50 shrink-0">
           <span className="text-sm font-medium">文件变更</span>
-          {onClosePanel && (
-            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-              <IconX className="size-4" />
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh || !!disabled}>
+              <IconReload className="size-4" />
             </Button>
-          )}
+            {onClosePanel && (
+              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                <IconX className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           <Empty className="border border-dashed w-full flex-1 min-h-0">
@@ -114,11 +120,16 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
       <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <span className="text-sm font-medium">变更文件</span>
-        {onClosePanel && (
-          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-            <IconX className="size-4" />
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh}>
+            <IconReload className="size-4" />
           </Button>
-        )}
+          {onClosePanel && (
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+              <IconX className="size-4" />
+            </Button>
+          )}
+        </div>
       </div>
       <div className={cn("flex-1 min-h-0 py-2 overflow-x-hidden", sortedPaths.length === 0 ? "flex flex-col" : "overflow-y-auto")}>
         {sortedPaths.length === 0 ? (

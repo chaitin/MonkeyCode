@@ -24,7 +24,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
     apiRequest("v1UsersTasksList", { page: 1, size: 10 }, [], (resp) => {
       if (resp.code === 0) {
         const running = (resp.data?.tasks || []).filter(
-          (t) => t.status === ConstsTaskStatus.TaskStatusPending || t.status === ConstsTaskStatus.TaskStatusProcessing
+          (t: DomainProjectTask) => t.status === ConstsTaskStatus.TaskStatusPending || t.status === ConstsTaskStatus.TaskStatusProcessing
         )
         setTasks(running)
       }

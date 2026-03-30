@@ -3,8 +3,8 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 import { IconCommand, IconLoader, IconMenu4, IconPlayerStopFilled, IconRecycle, IconReload, IconSend, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
-import type { AvailableCommand, AvailableCommands, TaskStreamStatus } from "@/components/console/task/ws-manager"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
+import type { AvailableCommand, AvailableCommands, TaskStreamStatus } from "./task-shared"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {

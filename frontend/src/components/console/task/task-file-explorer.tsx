@@ -4,8 +4,14 @@ import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
-import { RepoFileEntryMode, TaskWebSocketManager, type RepoFileChange, type RepoFileStatus, type TaskStreamStatus } from "./ws-manager"
 import type { TaskMessageHandlerStatus } from "./task-message-handler"
+import {
+  RepoFileEntryMode,
+  type RepoFileChange,
+  type RepoFileStatus,
+  type TaskRepositoryClient,
+  type TaskStreamStatus,
+} from "./task-shared"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { FileActionsDropdown } from "./file-actions-dropdown"
 import AceEditor from "react-ace"
@@ -43,7 +49,7 @@ interface TaskFileExplorerProps {
   streamStatus?: TaskStreamStatus | TaskMessageHandlerStatus
   fileChangesMap: Map<string, RepoFileChange>
   changedPaths?: string[]
-  taskManager: TaskWebSocketManager | null
+  taskManager: TaskRepositoryClient | null
   onRefresh?: () => void
   onClosePanel?: () => void
   envid?: string
@@ -178,7 +184,7 @@ const DirNode = forwardRef<DirNodeRef, {
   depth: number
   onFileSelect?: (path: string, file: RepoFileStatus) => void
   defaultExpanded?: boolean
-  taskManager: TaskWebSocketManager | null
+  taskManager: TaskRepositoryClient | null
   streamStatus?: TaskStreamStatus | TaskMessageHandlerStatus
   fileChangesMap: Map<string, RepoFileChange>
   envid?: string
@@ -366,6 +372,13 @@ export const TaskFileExplorer = ({
     setRefreshKey((prev) => prev + 1)
     onRefresh?.()
   }, [onRefresh])
+
+  useEffect(() => {
+    if (disabled) {
+      return
+    }
+    handleRefresh()
+  }, [disabled, handleRefresh])
 
   const refreshPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {

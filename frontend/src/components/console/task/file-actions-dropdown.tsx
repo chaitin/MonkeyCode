@@ -18,10 +18,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { IconCopy, IconDotsVertical, IconDownload, IconFile, IconFolder, IconReload, IconTrash, IconTransfer, IconUpload } from "@tabler/icons-react"
-import { RepoFileEntryMode, type RepoFileStatus } from "./ws-manager"
 import { normalizePath, downloadFile } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
+import { RepoFileEntryMode, type RepoFileStatus } from "./task-shared"
 import CreateFolderDialog from "@/components/console/files/create-folder"
 import CreateFileDialog from "@/components/console/files/create-file"
 import UploadFileDialog from "@/components/console/files/upload-file"

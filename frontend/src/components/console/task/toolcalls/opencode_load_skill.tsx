@@ -1,7 +1,7 @@
 import type { MessageType } from "../message";
 
 export const renderTitle = (message: MessageType) => {
-  return `加载技巧 ${message.data.rawInput?.name ? ` "${message.data.rawInput?.name}"` : ''}`
+  return `加载技能 ${message.data.rawInput?.name ? ` "${message.data.rawInput?.name}"` : ''}`
 }
 
 export const renderDetail = (message: MessageType) => {

@@ -1,13 +1,16 @@
-import { ConstsTaskStatus, type DomainProjectTask, TaskflowVirtualMachineStatus } from "@/api/Api"
+import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort, TaskflowVirtualMachineStatus } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
+import { TaskControlClient } from "@/components/console/task/task-control-client"
+import { TaskChangesPanel } from "@/components/console/task/task-changes-panel"
 import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import { MessageItem, type MessageType } from "@/components/console/task/message"
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
+import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
+import type { AvailableCommands, RepoFileChange } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
-import type { AvailableCommands, RepoFileChange, TaskWebSocketManager } from "@/components/console/task/ws-manager"
 import { Button } from "@/components/ui/button"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Spinner } from "@/components/ui/spinner"
@@ -40,7 +43,8 @@ export default function TaskDetailPage() {
   const [historyCursorReady, setHistoryCursorReady] = React.useState(false)
   const [clientIp, setClientIp] = React.useState<string | null>(null)
   const [clientIpReady, setClientIpReady] = React.useState(false)
-  const taskManager = React.useRef<TaskWebSocketManager | null>(null)
+  const [previewPorts, setPreviewPorts] = React.useState<DomainVMPort[] | undefined>(undefined)
+  const taskControlClientRef = React.useRef<TaskControlClient | null>(null)
   const streamClientRef = React.useRef<TaskStreamClient | null>(null)
   const historyLoadingRef = React.useRef(false)
   const historyLoadedRef = React.useRef(false)
@@ -52,6 +56,7 @@ export default function TaskDetailPage() {
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const messages = React.useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
   const [timeCost, setTimeCost] = React.useState(0)
+  const previewPortCount = (previewPorts ?? task?.virtualmachine?.ports ?? []).length
 
   const hasPanel = activePanel !== null
   const togglePanel = (panel: PanelType) => {
@@ -59,16 +64,23 @@ export default function TaskDetailPage() {
   }
 
   const disconnectStreamClient = React.useCallback(() => {
-    streamClientRef.current?.disconnect()
+    const state = streamClientRef.current?.disconnect() ?? null
     streamClientRef.current = null
+    return state
+  }, [])
+
+  const disposeTaskControlClient = React.useCallback(() => {
+    taskControlClientRef.current?.dispose()
+    taskControlClientRef.current = null
   }, [])
 
   const connectStreamClient = React.useCallback((mode: "attach" | "new", userInput?: string) => {
     if (!taskId) return
 
-    disconnectStreamClient()
-    if (mode === "new" && liveMessages.length > 0) {
-      setHistoryMessages((prev) => [...prev, ...liveMessages])
+    const previousState = disconnectStreamClient()
+    const previousMessages = previousState?.messages ?? liveMessages
+    if (mode === "new" && previousMessages.length > 0) {
+      setHistoryMessages((prev) => [...prev, ...previousMessages])
       setLiveMessages([])
     }
 
@@ -80,7 +92,6 @@ export default function TaskDetailPage() {
     const client = mode === "attach"
       ? TaskStreamClient.attach({
         taskId,
-        clientIp,
         onStateChange: (state: TaskStreamClientState) => {
           if (streamClientRef.current !== client || cancelledRef.current) return
           setStreamStatus(state.status)
@@ -112,7 +123,6 @@ export default function TaskDetailPage() {
       })
       : TaskStreamClient.new({
       taskId,
-      clientIp,
       onStateChange: (state: TaskStreamClientState) => {
         if (streamClientRef.current !== client || cancelledRef.current) return
         setStreamStatus(state.status)
@@ -141,12 +151,13 @@ export default function TaskDetailPage() {
 
     streamClientRef.current = client
     client.connect()
-  }, [clientIp, disconnectStreamClient, liveMessages, taskId])
+  }, [disconnectStreamClient, liveMessages, taskId])
 
   // taskId 变化时重置状态
   React.useEffect(() => {
     if (!taskId) return
     disconnectStreamClient()
+    disposeTaskControlClient()
     setTask(null)
     setActivePanel(null)
     setStreamStatus("inited")
@@ -164,9 +175,10 @@ export default function TaskDetailPage() {
     setHistoryLoading(false)
     setClientIp(null)
     setClientIpReady(false)
+    setPreviewPorts(undefined)
     setTimeCost(0)
     historyLoadingRef.current = false
-  }, [disconnectStreamClient, taskId])
+  }, [disconnectStreamClient, disposeTaskControlClient, taskId])
 
   const fetchTaskDetail = React.useCallback(async (): Promise<DomainProjectTask | null> => {
     if (!taskId) return null
@@ -181,6 +193,36 @@ export default function TaskDetailPage() {
     })
     return result
   }, [taskId])
+
+  const fetchFileChanges = React.useCallback(async () => {
+    const changes = await taskControlClientRef.current?.getFileChanges()
+    if (cancelledRef.current || changes === null || changes === undefined) return
+
+    const nextMap = new Map<string, RepoFileChange>()
+    const nextPaths: string[] = []
+    changes.forEach((change) => {
+      nextMap.set(change.path, change)
+      nextPaths.push(change.path)
+    })
+
+    setFileChangesMap(nextMap)
+    setChangedPaths(nextPaths)
+  }, [])
+
+  const fetchPortForwards = React.useCallback(async () => {
+    const ports = await taskControlClientRef.current?.getPortForwardList()
+    if (cancelledRef.current || ports === null || ports === undefined) return
+
+    setPreviewPorts(ports.map((port) => ({
+      port: port.port,
+      status: port.status as DomainVMPort["status"],
+      forward_id: port.forward_id ?? undefined,
+      preview_url: port.access_url ?? undefined,
+      error_message: port.error_message ?? undefined,
+      white_list: port.whitelist_ips,
+      success: true,
+    })))
+  }, [])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -215,6 +257,24 @@ export default function TaskDetailPage() {
     }
   }, [taskId])
 
+  React.useEffect(() => {
+    if (!taskId || !clientIpReady) return
+
+    const client = new TaskControlClient({
+      taskId,
+      clientIp,
+    })
+    taskControlClientRef.current = client
+    client.connect()
+
+    return () => {
+      if (taskControlClientRef.current === client) {
+        taskControlClientRef.current = null
+      }
+      client.dispose()
+    }
+  }, [clientIp, clientIpReady, taskId])
+
   const scheduleFetchTaskDetail = React.useCallback(async () => {
     const currentTask = await fetchTaskDetail()
     if (cancelledRef.current) return
@@ -244,7 +304,8 @@ export default function TaskDetailPage() {
         if (cancelledRef.current) return
         if (resp.code === 0) {
           const messageHandler = new TaskMessageHandler()
-          const messageState = messageHandler.pushChunks(resp.data?.chunks ?? [])
+          messageHandler.pushChunks(resp.data?.chunks ?? [])
+          const messageState = messageHandler.finalizeCycle()
           setHistoryMessages((prev) => [...messageState.messages, ...prev])
           setHistoryCursorReady(true)
           setHistoryCursor(resp.data?.next_cursor ?? null)
@@ -270,12 +331,13 @@ export default function TaskDetailPage() {
     return () => {
       cancelledRef.current = true
       disconnectStreamClient()
+      disposeTaskControlClient()
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
         timeoutRef.current = null
       }
     }
-  }, [disconnectStreamClient, taskId, scheduleFetchTaskDetail])
+  }, [disconnectStreamClient, disposeTaskControlClient, taskId, scheduleFetchTaskDetail])
 
   React.useEffect(() => {
     if (!setTaskName) return
@@ -288,13 +350,12 @@ export default function TaskDetailPage() {
 
   React.useEffect(() => {
     if (!taskId || !task) return
-    if (!clientIpReady) return
     if (streamStatus !== "inited") return
     if (streamClientRef.current) return
     if (task.status !== ConstsTaskStatus.TaskStatusProcessing) return
     if (task.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending) return
     connectStreamClient("attach")
-  }, [clientIpReady, connectStreamClient, streamStatus, task, taskId])
+  }, [connectStreamClient, streamStatus, task, taskId])
 
   React.useEffect(() => {
     if (!task) return
@@ -309,17 +370,31 @@ export default function TaskDetailPage() {
     fetchTaskRounds()
   }, [fetchTaskRounds, historyLoaded, historyLoading, liveMessages.length, task])
 
+  React.useEffect(() => {
+    if (!vmOnline || activePanel !== "changes") return
+    fetchFileChanges()
+  }, [activePanel, fetchFileChanges, vmOnline])
+
+  React.useEffect(() => {
+    if (!vmOnline || activePanel !== "preview") return
+    fetchPortForwards()
+  }, [activePanel, fetchPortForwards, vmOnline])
+
   const handleSend = React.useCallback((content: string) => {
     if (!taskId) return
-    if (!clientIpReady) {
-      toast.error("正在初始化网络信息，请稍后")
-      return
-    }
     connectStreamClient("new", content)
-  }, [clientIpReady, connectStreamClient, taskId])
+  }, [connectStreamClient, taskId])
 
   const handleCancel = React.useCallback(() => {
     streamClientRef.current?.sendCancel()
+  }, [])
+
+  const handleResetSession = React.useCallback(() => {
+    taskControlClientRef.current?.restart(false)
+  }, [])
+
+  const handleReloadSession = React.useCallback(() => {
+    taskControlClientRef.current?.restart(true)
   }, [])
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
@@ -377,8 +452,8 @@ export default function TaskDetailPage() {
                     sending={sending}
                     queueSize={0}
                     executionTimeMs={timeCost}
-                    sendResetSession={() => {}}
-                    sendReloadSession={() => {}}
+                    sendResetSession={handleResetSession}
+                    sendReloadSession={handleReloadSession}
                   />
                 ) : (
                   <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
@@ -419,7 +494,7 @@ export default function TaskDetailPage() {
                         disabled={!vmOnline}
                       >
                         <IconGitBranch className="size-3.5" />
-                        修改
+                        修改{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
                       </Button>
                       <Button
                         variant="ghost"
@@ -429,7 +504,7 @@ export default function TaskDetailPage() {
                         disabled={!vmOnline}
                       >
                         <IconDeviceDesktop className="size-3.5" />
-                        预览
+                        预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
                       </Button>
                     </div>
                     {(task?.stats?.input_tokens != null || task?.stats?.output_tokens != null || task?.stats?.total_tokens != null) && (
@@ -459,8 +534,8 @@ export default function TaskDetailPage() {
                         streamStatus={streamStatus}
                         fileChangesMap={fileChangesMap}
                         changedPaths={changedPaths}
-                        taskManager={taskManager.current}
-                        onRefresh={() => {}}
+                        taskManager={taskControlClientRef.current}
+                        onRefresh={fetchFileChanges}
                         onClosePanel={() => setActivePanel(null)}
                         envid={envid}
                       />
@@ -474,10 +549,29 @@ export default function TaskDetailPage() {
                     </div>
                   )}
                   {activePanel === "changes" && (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">修改面板</div>
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <TaskChangesPanel
+                        fileChanges={changedPaths}
+                        fileChangesMap={fileChangesMap}
+                        taskManager={taskControlClientRef.current}
+                        disabled={!vmOnline}
+                        onRefresh={fetchFileChanges}
+                        onClosePanel={() => setActivePanel(null)}
+                      />
+                    </div>
                   )}
                   {activePanel === "preview" && (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">预览面板</div>
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <TaskPreviewPanel
+                        ports={previewPorts ?? task?.virtualmachine?.ports}
+                        hostId={task?.virtualmachine?.host?.id}
+                        vmId={task?.virtualmachine?.id}
+                        onSuccess={fetchPortForwards}
+                        onRefresh={fetchPortForwards}
+                        disabled={!vmOnline}
+                        onClosePanel={() => setActivePanel(null)}
+                      />
+                    </div>
                   )}
                 </div>
               </ResizablePanel>

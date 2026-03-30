@@ -10,14 +10,14 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { apiRequest } from "@/utils/requestUtils"
 import { normalizePath } from "@/utils/common"
-import { ConstsFileKind, type TypesFile } from "@/api/Api"
+import { TaskflowFileKind, type TaskflowFile } from "@/api/Api"
 import { toast } from "sonner"
 import { IconChevronDown, IconChevronRight, IconFile, IconFolder, IconFolderOpen } from "@tabler/icons-react"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 interface TreeNode {
-  file: TypesFile
+  file: TaskflowFile
   path: string
   depth: number
   children?: TreeNode[]
@@ -46,9 +46,9 @@ export default function FilePickerDialog({
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
 
-  const sortFiles = (files: TypesFile[]) => {
+  const sortFiles = (files: TaskflowFile[]) => {
     return [...files].sort((a, b) => {
-      const getTypePriority = (file: TypesFile) => {
+      const getTypePriority = (file: TaskflowFile) => {
         if (file.kind === 'symlink') {
           return file.symlink_kind === 'dir' ? 0 : 2
         }
@@ -77,7 +77,7 @@ export default function FilePickerDialog({
       if (resp.code === 0) {
         // Filter out . and .. entries
         const filteredFiles = (resp.data || []).filter(
-          (file: TypesFile) => file.name !== '.' && file.name !== '..'
+          (file: TaskflowFile) => file.name !== '.' && file.name !== '..'
         )
         const sortedFiles = sortFiles(filteredFiles)
         result = sortedFiles.map(file => ({
@@ -100,7 +100,7 @@ export default function FilePickerDialog({
       fetchFiles(ROOT_PATH, 1).then(children => {
         // Create root workspace node with children
         const rootNode: TreeNode = {
-          file: { name: 'workspace', kind: ConstsFileKind.FileKindDir },
+          file: { name: 'workspace', kind: TaskflowFileKind.FileKindDir },
           path: ROOT_PATH,
           depth: 0,
           children,
@@ -111,7 +111,7 @@ export default function FilePickerDialog({
     }
   }, [open, defaultSelectedFiles, fetchFiles])
 
-  const isDirectory = (file: TypesFile) => {
+  const isDirectory = (file: TaskflowFile) => {
     return file.kind === 'dir' || (file.kind === 'symlink' && file.symlink_kind === 'dir')
   }
 
@@ -276,7 +276,7 @@ export default function FilePickerDialog({
     onOpenChange(false)
   }
 
-  const getFileIcon = (file: TypesFile, isExpanded: boolean) => {
+  const getFileIcon = (file: TaskflowFile, isExpanded: boolean) => {
     const kind = file.kind === 'symlink' ? file.symlink_kind : file.kind
     switch (kind) {
       case 'dir':

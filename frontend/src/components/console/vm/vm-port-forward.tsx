@@ -1,4 +1,4 @@
-import { ConstsPortStatus, type DomainVMPort, type WebResp } from "@/api/Api"
+import { ConstsPortStatus, type DomainVMPort, type GithubComGoYokoWebResp } from "@/api/Api"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -110,7 +110,7 @@ export function VmPortForwardDialog({
       forward_id: forwardId,
       port: port,
       white_list: [ip]
-    }, [hostId, vmId], (resp: WebResp) => {
+    }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0 && resp.data?.success) {
         toast.success("端口开放成功")
         onSuccess?.()
@@ -148,7 +148,7 @@ export function VmPortForwardDialog({
       forward_id: portToEditWhitelist.forward_id,
       port: portToEditWhitelist.port,
       white_list: whitelistArray
-    }, [hostId, vmId], (resp: WebResp) => {
+    }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0) {
         toast.success("白名单更新成功")
         setWhitelistDialogOpen(false)

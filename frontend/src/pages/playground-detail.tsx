@@ -40,9 +40,10 @@ import { Label } from "@/components/ui/label";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { AuthProvider } from "@/components/auth-provider";
 import { TaskChatPanel } from "@/components/console/task/chat-panel";
-import { TaskWebSocketManager, type TaskStreamStatus, type TaskWebSocketState } from "@/components/console/task/ws-manager";
+import type { TaskStreamStatus } from "@/components/console/task/task-shared";
 import React from "react";
 import type { MessageType } from "@/components/console/task/message";
+import { loadAllTaskRoundMessages } from "@/components/console/task/task-rounds";
 
 interface ZipFileItem {
   name: string;
@@ -70,38 +71,26 @@ const PlaygroundDetailPage = () => {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-
-  const taskManager = React.useRef<TaskWebSocketManager | null>(null)
   const [streamStatus, setStreamStatus] = React.useState<TaskStreamStatus>('inited')
   const [messages, setMessages] = React.useState<MessageType[]>([])
-  const [sending, setSending] = React.useState(false)
+  const [sending] = React.useState(false)
   
   const [showPlayOverlay, setShowPlayOverlay] = useState(true);
 
-
-  // 初始化 manager
-  useEffect(() => {
-    if (!post?.task_post?.task_id) {
+  const handlePlayClick = async () => {
+    setShowPlayOverlay(false)
+    if (!post?.task_post?.task_id || messages.length > 0) {
       return
     }
 
-    const manager = new TaskWebSocketManager(post?.task_post?.task_id, (state: TaskWebSocketState) => {
-      // 直接更新状态，创建新的数组引用让 React 正确检测变化
-      setStreamStatus(state.status)
-      setMessages([...state.messages])
-      setSending(state.sending)
-    }, true, true)
-    taskManager.current = manager
-
-    return () => {
-      manager.disconnect()
-      taskManager.current = null
+    setStreamStatus('inited')
+    try {
+      const nextMessages = await loadAllTaskRoundMessages(post.task_post.task_id)
+      setMessages(nextMessages)
+      setStreamStatus('waiting')
+    } catch {
+      setStreamStatus('error')
     }
-  }, [post?.task_post?.task_id])
-
-  const handlePlayClick = () => {
-    taskManager.current?.connect()
-    setShowPlayOverlay(false)
   }
 
   // Build tree structure from flat file list
@@ -498,5 +487,3 @@ const PlaygroundDetailPage = () => {
 }
 
 export default PlaygroundDetailPage
-
-

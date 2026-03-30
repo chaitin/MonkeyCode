@@ -1,5 +1,5 @@
 import { Api } from '@/api/Api';
-import type { HttpResponse, RequestParams, WebResp } from '@/api/Api';
+import type { HttpResponse, RequestParams, GithubComGoYokoWebResp } from '@/api/Api';
 import { toast } from 'sonner';
 
 export const apiRequest = async (
@@ -31,7 +31,7 @@ export const apiRequest = async (
       throw new Error('API 返回的数据格式不正确');
     }
 
-    const resp = response.data as WebResp;
+    const resp = response.data as GithubComGoYokoWebResp;
 
     if (onSuccess) {
       onSuccess(resp);

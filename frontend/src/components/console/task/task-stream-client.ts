@@ -25,7 +25,6 @@ interface TaskStreamClientBaseOptions {
   onError?: (event: Event) => void
   captureCursor?: boolean
   mode?: TaskStreamClientMode
-  clientIp?: string | null
 }
 
 export type TaskStreamClientAttachOptions = TaskStreamClientBaseOptions
@@ -51,7 +50,6 @@ export class TaskStreamClient {
   private readonly onClose?: (event: CloseEvent) => void
   private readonly onError?: (event: Event) => void
   private readonly messageHandler: TaskMessageHandler
-  private readonly clientIp: string | null
 
   private socket: WebSocket | null = null
   private initialUserInput: string | null = null
@@ -67,7 +65,6 @@ export class TaskStreamClient {
     onError,
     captureCursor = false,
     mode,
-    clientIp = null,
   }: TaskStreamClientBaseOptions) {
     this.taskId = taskId
     this.mode = mode ?? "attach"
@@ -76,7 +73,6 @@ export class TaskStreamClient {
     this.onClose = onClose
     this.onError = onError
     this.messageHandler = new TaskMessageHandler({ captureCursor })
-    this.clientIp = clientIp
   }
 
   static attach(options: TaskStreamClientAttachOptions) {
@@ -97,7 +93,6 @@ export class TaskStreamClient {
     this.socket = new WebSocket(this.buildStreamUrl())
     this.socket.onopen = () => {
       this.emitState(this.messageHandler.setConnected())
-      this.sendSyncMyIp()
 
       if (this.initialUserInput) {
         this.sendInitialUserInput(this.initialUserInput)
@@ -132,11 +127,17 @@ export class TaskStreamClient {
 
   disconnect() {
     this.stopExecutionTimer()
-    if (!this.socket) return
+    if (!this.socket) return this.getState()
+
+    const currentState = this.messageHandler.getState()
+    if (currentState.status !== "finished") {
+      this.emitState(this.messageHandler.finalizeCycle())
+    }
 
     this.manuallyDisconnected = true
     this.socket.close()
     this.socket = null
+    return this.getState()
   }
 
   getState() {
@@ -169,14 +170,6 @@ export class TaskStreamClient {
     this.sendMessage({
       type: "user-input",
       data: b64encode(content),
-    })
-  }
-
-  private sendSyncMyIp() {
-    if (!this.clientIp) return
-    this.sendMessage({
-      type: "sync-my-ip",
-      data: b64encode(JSON.stringify({ client_ip: this.clientIp })),
     })
   }
 

@@ -15,13 +15,6 @@ export enum ConstsCliName {
   CliNameOpencode = "opencode",
 }
 
-export enum ConstsFileKind {
-  FileKindUnknown = "unknown",
-  FileKindFile = "file",
-  FileKindDir = "dir",
-  FileKindSymlink = "symlink",
-}
-
 export enum ConstsGitPlatform {
   GitPlatformGithub = "github",
   GitPlatformGitLab = "gitlab",
@@ -670,6 +663,10 @@ export interface DomainListTaskResp {
   tasks?: DomainProjectTask[];
 }
 
+export interface DomainListTeamGroupUsersResp {
+  users?: DomainUser[];
+}
+
 export interface DomainListTeamGroupsResp {
   groups?: DomainTeamGroup[];
 }
@@ -1201,6 +1198,14 @@ export interface DomainTask {
   virtualmachine?: DomainVirtualMachine;
 }
 
+export interface DomainTaskChunkEntry {
+  data?: number[];
+  event?: string;
+  kind?: string;
+  labels?: Record<string, string>;
+  timestamp?: number;
+}
+
 export interface DomainTaskExtraConfig {
   issue_id?: string;
   project_id?: string;
@@ -1214,6 +1219,13 @@ export interface DomainTaskRepoReq {
   repo_filename?: string;
   repo_url?: string;
   zip_url?: string;
+}
+
+export interface DomainTaskRoundsResp {
+  chunks?: DomainTaskChunkEntry[];
+  has_more?: boolean;
+  /** 下一页游标（最早条目的时间戳 ns） */
+  next_cursor?: string;
 }
 
 export interface DomainTaskStats {
@@ -1542,7 +1554,7 @@ export interface DomainVirtualMachine {
   owner?: DomainUser;
   ports?: DomainVMPort[];
   repo?: DomainRepositoryItem;
-  status?: TypesVirtualMachineStatus;
+  status?: TaskflowVirtualMachineStatus;
   version?: string;
 }
 
@@ -1552,10 +1564,6 @@ export interface DomainWallet {
   /** 赠送余额 */
   bonus?: number;
   id?: string;
-}
-
-export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiDomainIDReqGithubComGoogleUuidUUID {
-  id: string;
 }
 
 export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
@@ -1573,7 +1581,6 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
-/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -1590,6 +1597,22 @@ export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType {
   ConditionTypeContainerStarted = "ContainerStarted",
   ConditionTypeReady = "Ready",
   ConditionTypeFailed = "Failed",
+}
+
+export interface GitInChaitinNetGoDevWebResp {
+  code?: number;
+  data?: any;
+  message?: string;
+}
+
+export interface GithubComGoYokoWebResp {
+  code?: number;
+  data?: any;
+  message?: string;
+}
+
+export interface GithubComChaitinMonkeyCodeBackendDomainIDReqGithubComGoogleUuidUUID {
+  id: string;
 }
 
 export interface GocapChallengeData {
@@ -1618,36 +1641,32 @@ export interface GocapVerificationResult {
   token?: string;
 }
 
-export interface TypesFile {
+export interface TaskflowFile {
   accessed_at?: number;
   created_at?: number;
-  /** 文件类型 */
-  kind?: ConstsFileKind;
-  /** 文件名 */
+  kind?: TaskflowFileKind;
   name?: string;
-  /** 文件大小 */
   size?: number;
-  /** 链接类型 */
-  symlink_kind?: ConstsFileKind;
-  /** 链接目标 */
+  symlink_kind?: TaskflowFileKind;
   symlink_target?: string;
   unix_mode?: number;
   updated_at?: number;
-  /** 用户名 */
   user?: string;
 }
 
-export enum TypesVirtualMachineStatus {
+export enum TaskflowFileKind {
+  FileKindUnknown = "unknown",
+  FileKindFile = "file",
+  FileKindDir = "dir",
+  FileKindSymlink = "symlink",
+}
+
+export enum TaskflowVirtualMachineStatus {
   VirtualMachineStatusUnknown = "unknown",
   VirtualMachineStatusPending = "pending",
   VirtualMachineStatusOnline = "online",
   VirtualMachineStatusOffline = "offline",
-}
-
-export interface WebResp {
-  code?: number;
-  data?: any;
-  message?: string;
+  VirtualMachineStatusHibernated = "hibernated",
 }
 
 export type QueryParamsType = Record<string | number, any>;
@@ -1880,10 +1899,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1GiteaAuthorizeUrlList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainOAuthURLResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/gitea/authorize_url`,
         method: "GET",
@@ -1904,10 +1923,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1GiteaSitesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainSitesResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/gitea/sites`,
         method: "GET",
@@ -1928,10 +1947,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1GiteeAuthorizeUrlList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainOAuthURLResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/gitee/authorize_url`,
         method: "GET",
@@ -1958,10 +1977,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainOAuthURLResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/gitlab/authorize_url`,
         method: "GET",
@@ -1983,10 +2002,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1GitlabSitesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainSitesResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/gitlab/sites`,
         method: "GET",
@@ -2007,10 +2026,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     oauthBindUsers: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainOAuthURLResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/oauth/bind`,
         method: "GET",
@@ -2030,10 +2049,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     oauthGetBoundUsers: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainUser;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/oauth/bind-users`,
         method: "GET",
@@ -2133,7 +2152,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, WebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/oauth/unbind`,
         method: "DELETE",
         query: query,
@@ -2164,10 +2183,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainListPlaygroundPostResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/playground-posts`,
         method: "GET",
@@ -2187,10 +2206,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1PlaygroundPostsDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainPlaygroundPost;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/playground-posts/${id}`,
         method: "GET",
@@ -2244,7 +2263,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1PublicStatsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainStats;
         },
         any
@@ -2267,10 +2286,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1SkillsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainSkill[];
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/skills`,
         method: "GET",
@@ -2291,10 +2310,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsAdminCreate: (req: DomainAddTeamAdminReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainAddTeamAdminResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/admin`,
         method: "POST",
@@ -2331,7 +2350,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<DomainListAuditsResponse, WebResp>({
+      this.request<DomainListAuditsResponse, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/teams/audits`,
         method: "GET",
         query: query,
@@ -2352,10 +2371,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsGroupsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListTeamGroupsResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/groups`,
         method: "GET",
@@ -2376,10 +2395,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsGroupsCreate: (req: DomainAddTeamGroupReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamGroup;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/groups`,
         method: "POST",
@@ -2401,10 +2420,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsGroupsUpdate: (groupId: string, req: DomainUpdateTeamGroupReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamGroup;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/groups/${groupId}`,
         method: "PUT",
@@ -2425,9 +2444,33 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsGroupsDelete: (groupId: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/groups/${groupId}`,
         method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取团队组成员列表
+     *
+     * @tags 【Team 管理员】分组成员管理
+     * @name V1TeamsGroupsUsersDetail
+     * @summary 获取团队组成员列表
+     * @request GET:/api/v1/teams/groups/{group_id}/users
+     * @secure
+     */
+    v1TeamsGroupsUsersDetail: (groupId: string, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainListTeamGroupUsersResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/groups/${groupId}/users`,
+        method: "GET",
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -2445,10 +2488,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsGroupsUsersUpdate: (groupId: string, req: DomainAddTeamGroupUsersReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainAddTeamGroupUsersResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/groups/${groupId}/users`,
         method: "PUT",
@@ -2480,10 +2523,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListTeamHostsResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/hosts`,
         method: "GET",
@@ -2505,10 +2548,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsHostsInstallCommandList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainInstallCommand;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/hosts/install-command`,
         method: "GET",
@@ -2528,7 +2571,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsHostsUpdate: (hostId: string, param: DomainUpdateTeamHostReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/hosts/${hostId}`,
         method: "PUT",
         body: param,
@@ -2548,7 +2591,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsHostsDelete: (hostId: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/hosts/${hostId}`,
         method: "DELETE",
         secure: true,
@@ -2568,10 +2611,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsImagesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListTeamImagesResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/images`,
         method: "GET",
@@ -2592,10 +2635,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsImagesCreate: (req: DomainAddTeamImageReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamImage;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/images`,
         method: "POST",
@@ -2617,10 +2660,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsImagesUpdate: (imageId: string, req: DomainUpdateTeamImageReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamImage;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/images/${imageId}`,
         method: "PUT",
@@ -2641,7 +2684,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsImagesDelete: (imageId: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/images/${imageId}`,
         method: "DELETE",
         secure: true,
@@ -2659,24 +2702,15 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request GET:/api/v1/teams/models
      * @secure
      */
-    v1TeamsModelsList: (
-      query?: {
-        /** 游标，首页传空。下一页回传回包中的 cursor */
-        cursor?: string;
-        /** 页数 */
-        limit?: number;
-      },
-      params: RequestParams = {},
-    ) =>
+    v1TeamsModelsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListTeamModelsResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/models`,
         method: "GET",
-        query: query,
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -2694,10 +2728,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsModelsCreate: (req: DomainAddTeamModelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamModel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/models`,
         method: "POST",
@@ -2719,10 +2753,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsModelsHealthCheckCreate: (req: DomainCheckByConfigReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainCheckModelResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/models/health-check`,
         method: "POST",
@@ -2744,10 +2778,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsModelsHealthCheckDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainCheckModelResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/models/${id}/health-check`,
         method: "GET",
@@ -2768,10 +2802,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsModelsUpdate: (modelId: string, req: DomainUpdateTeamModelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamModel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/models/${modelId}`,
         method: "PUT",
@@ -2792,7 +2826,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsModelsDelete: (modelId: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/models/${modelId}`,
         method: "DELETE",
         secure: true,
@@ -2812,10 +2846,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsNotifyChannelsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainNotifyChannel[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/notify/channels`,
         method: "GET",
@@ -2836,10 +2870,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsNotifyChannelsCreate: (param: DomainCreateNotifyChannelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainNotifyChannel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/notify/channels`,
         method: "POST",
@@ -2861,10 +2895,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsNotifyChannelsUpdate: (id: string, param: DomainUpdateNotifyChannelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainNotifyChannel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/notify/channels/${id}`,
         method: "PUT",
@@ -2885,7 +2919,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsNotifyChannelsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/notify/channels/${id}`,
         method: "DELETE",
         secure: true,
@@ -2904,7 +2938,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsNotifyChannelsTestCreate: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/notify/channels/${id}/test`,
         method: "POST",
         secure: true,
@@ -2924,10 +2958,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsNotifyEventTypesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: ConstsNotifyEventTypeInfo[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/notify/event-types`,
         method: "GET",
@@ -2948,10 +2982,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsOauthSitesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainListTeamOAuthSitesResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/teams/oauth-sites`,
         method: "GET",
@@ -2972,10 +3006,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsOauthSitesCreate: (req: DomainAddTeamOAuthSiteReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainTeamOAuthSite;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/teams/oauth-sites`,
         method: "POST",
@@ -2997,10 +3031,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsOauthSitesUpdate: (siteId: string, req: DomainUpdateTeamOAuthSiteReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainTeamOAuthSite;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/teams/oauth-sites/${siteId}`,
         method: "PUT",
@@ -3021,7 +3055,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsOauthSitesDelete: (siteId: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/teams/oauth-sites/${siteId}`,
         method: "DELETE",
         secure: true,
@@ -3047,10 +3081,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainMemberListResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/users`,
         method: "GET",
@@ -3072,10 +3106,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsUsersCreate: (req: DomainAddTeamUserReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainAddTeamUserResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/users`,
         method: "POST",
@@ -3096,10 +3130,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1TeamsUsersLoginCreate: (req: DomainTeamLoginReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamUser;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/users/login`,
         method: "POST",
@@ -3116,11 +3150,13 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @name V1TeamsUsersLogoutCreate
      * @summary 团队用户登出
      * @request POST:/api/v1/teams/users/logout
+     * @secure
      */
     v1TeamsUsersLogoutCreate: (params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/users/logout`,
         method: "POST",
+        secure: true,
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -3136,7 +3172,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1TeamsUsersPasswordsChangeUpdate: (req: DomainChangePasswordReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/teams/users/passwords/change`,
         method: "PUT",
         body: req,
@@ -3153,36 +3189,38 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @name V1TeamsUsersStatusList
      * @summary 获取团队用户登录状态
      * @request GET:/api/v1/teams/users/status
+     * @secure
      */
     v1TeamsUsersStatusList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamUser;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/users/status`,
         method: "GET",
+        secure: true,
         type: ContentType.Json,
         format: "json",
         ...params,
       }),
 
     /**
-     * @description 更新团队用户的 is_blocked 字段状态
+     * @description 更新团队成员信息
      *
      * @tags 【Team 管理员】分组成员管理
      * @name V1TeamsUsersUpdate
-     * @summary 更新团队用户信息
+     * @summary 更新团队成员
      * @request PUT:/api/v1/teams/users/{user_id}
      * @secure
      */
     v1TeamsUsersUpdate: (userId: string, req: DomainUpdateTeamUserReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainUpdateTeamUserResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/users/${userId}`,
         method: "PUT",
@@ -3215,10 +3253,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: string;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/uploader`,
         method: "POST",
@@ -3240,10 +3278,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UploaderPresignCreate: (request: DomainPresignReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainPresignResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/uploader/presign`,
         method: "POST",
@@ -3272,7 +3310,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<DomainUpdateUserResp, WebResp>({
+      this.request<DomainUpdateUserResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users`,
         method: "PUT",
         body: data,
@@ -3317,7 +3355,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersEmailBindRequestUpdate: (req: DomainSendBindEmailVerificationReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/email/bind-request`,
         method: "PUT",
         body: req,
@@ -3345,7 +3383,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/files`,
         method: "DELETE",
         query: query,
@@ -3365,7 +3403,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersFilesCopyCreate: (param: DomainFileChangeReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/files/copy`,
         method: "POST",
         body: param,
@@ -3393,7 +3431,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/files/download`,
         method: "GET",
         query: query,
@@ -3413,7 +3451,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersFilesMoveUpdate: (param: DomainFileChangeReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/files/move`,
         method: "PUT",
         body: param,
@@ -3433,7 +3471,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersFilesSaveUpdate: (param: DomainFileSaveReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/files/save`,
         method: "PUT",
         body: param,
@@ -3465,7 +3503,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/files/upload`,
         method: "POST",
         query: query,
@@ -3495,8 +3533,8 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
-          data?: TypesFile[];
+        GithubComGoYokoWebResp & {
+          data?: TaskflowFile[];
         },
         any
       >({
@@ -3519,7 +3557,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersFoldersCreate: (param: DomainFilePathReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/folders`,
         method: "POST",
         body: param,
@@ -3540,10 +3578,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListGitBotResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-bots`,
         method: "GET",
@@ -3563,7 +3601,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsUpdate: (req: DomainUpdateGitBotReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-bots`,
         method: "PUT",
         body: req,
@@ -3584,10 +3622,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsCreate: (req: DomainCreateGitBotReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainGitBot;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-bots`,
         method: "POST",
@@ -3608,7 +3646,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsShareCreate: (req: DomainShareGitBotReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-bots/share`,
         method: "POST",
         body: req,
@@ -3641,10 +3679,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListGitBotTaskResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-bots/tasks`,
         method: "GET",
@@ -3665,7 +3703,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-bots/${id}`,
         method: "DELETE",
         secure: true,
@@ -3685,10 +3723,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitIdentitiesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainGitIdentity[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-identities`,
         method: "GET",
@@ -3709,10 +3747,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitIdentitiesCreate: (req: DomainAddGitIdentityReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainGitIdentity;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-identities`,
         method: "POST",
@@ -3744,10 +3782,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainBranch[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-identities/${identityId}/${escapedRepoFullName}/branches`,
         method: "GET",
@@ -3769,10 +3807,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitIdentitiesDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainGitIdentity;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-identities/${id}`,
         method: "GET",
@@ -3792,7 +3830,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitIdentitiesUpdate: (id: string, req: DomainUpdateGitIdentityReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-identities/${id}`,
         method: "PUT",
         body: req,
@@ -3812,7 +3850,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitIdentitiesDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-identities/${id}`,
         method: "DELETE",
         secure: true,
@@ -3832,10 +3870,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainHostListResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts`,
         method: "GET",
@@ -3856,7 +3894,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsInstallCommandList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainInstallCommand;
         },
         any
@@ -3880,10 +3918,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsUpdate: (req: DomainUpdateVMReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainVirtualMachine;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms`,
         method: "PUT",
@@ -3905,10 +3943,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsCreate: (request: DomainCreateVMReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainVirtualMachine;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms`,
         method: "POST",
@@ -3940,10 +3978,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainShareTerminalResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms/terminals/join`,
         method: "GET",
@@ -3965,10 +4003,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainVirtualMachine;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms/${id}`,
         method: "GET",
@@ -3989,10 +4027,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsTerminalsDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTerminal[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms/${id}/terminals`,
         method: "GET",
@@ -4003,7 +4041,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 通过 WebSocket 连接到指定虚拟机的终端，支持双向通信 终端输入输出用 Binary: 2 消息格式传递。 用于控制窗口大小用 Text: 1 消息格式传递。控制消息的 JSON 格式如下 ```json {"action": "resize", "data": {"col": 80, "row": 24}} ```
+     * @description 通过 WebSocket 连接到指定虚拟机的终端，支持双向通信
      *
      * @tags 【用户】终端连接管理
      * @name V1UsersHostsVmsTerminalsConnectDetail
@@ -4029,7 +4067,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<any, string | WebResp>({
+      this.request<any, string | GithubComGoYokoWebResp>({
         path: `/api/v1/users/hosts/vms/${id}/terminals/connect`,
         method: "GET",
         query: query,
@@ -4049,10 +4087,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsTerminalsShareCreate: (id: string, request: DomainShareTerminalReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainShareTerminalResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms/${id}/terminals/share`,
         method: "POST",
@@ -4074,10 +4112,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsTerminalsDelete: (id: string, terminalId: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTerminal[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/vms/${id}/terminals/${terminalId}`,
         method: "DELETE",
@@ -4097,7 +4135,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersHostsVmsDelete: (hostId: string, id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/hosts/${hostId}/vms/${id}`,
         method: "DELETE",
         secure: true,
@@ -4117,10 +4155,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersHostsVmsPortsCreate: (hostId: string, id: string, request: DomainApplyPortReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainVMPort;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/hosts/${hostId}/vms/${id}/ports`,
         method: "POST",
@@ -4147,7 +4185,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       request: DomainRecyclePortReq,
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/hosts/${hostId}/vms/${id}/ports/${port}`,
         method: "DELETE",
         body: request,
@@ -4167,7 +4205,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersHostsUpdate: (id: string, request: DomainUpdateHostReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/hosts/${id}`,
         method: "PUT",
         body: request,
@@ -4187,7 +4225,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersHostsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/hosts/${id}`,
         method: "DELETE",
         secure: true,
@@ -4215,10 +4253,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListImageResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/images`,
         method: "GET",
@@ -4240,10 +4278,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersImagesCreate: (req: DomainCreateImageReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainImage;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/images`,
         method: "POST",
@@ -4265,10 +4303,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersImagesUpdate: (id: string, request: DomainUpdateImageReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainImage;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/images/${id}`,
         method: "PUT",
@@ -4290,10 +4328,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersImagesDelete: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainDeleteImageReq;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/images/${id}`,
         method: "DELETE",
@@ -4356,10 +4394,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersMembersList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainUser[];
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/members`,
         method: "GET",
@@ -4388,10 +4426,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListModelResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/models`,
         method: "GET",
@@ -4413,10 +4451,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersModelsCreate: (req: DomainCreateModelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainModel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/models`,
         method: "POST",
@@ -4438,10 +4476,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersModelsHealthCheckCreate: (req: DomainCheckByConfigReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainCheckModelResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/models/health-check`,
         method: "POST",
@@ -4481,7 +4519,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainGetProviderModelListResp;
         },
         any
@@ -4504,7 +4542,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersModelsUpdate: (id: string, request: DomainUpdateModelReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/models/${id}`,
         method: "PUT",
         body: request,
@@ -4524,7 +4562,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersModelsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/models/${id}`,
         method: "DELETE",
         secure: true,
@@ -4544,10 +4582,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersModelsHealthCheckDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainCheckModelResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/models/${id}/health-check`,
         method: "GET",
@@ -4568,10 +4606,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersNotifyChannelsList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainNotifyChannel[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/notify/channels`,
         method: "GET",
@@ -4592,10 +4630,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersNotifyChannelsCreate: (param: DomainCreateNotifyChannelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainNotifyChannel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/notify/channels`,
         method: "POST",
@@ -4617,10 +4655,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersNotifyChannelsUpdate: (id: string, param: DomainUpdateNotifyChannelReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainNotifyChannel;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/notify/channels/${id}`,
         method: "PUT",
@@ -4641,7 +4679,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersNotifyChannelsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/notify/channels/${id}`,
         method: "DELETE",
         secure: true,
@@ -4660,7 +4698,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersNotifyChannelsTestCreate: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/notify/channels/${id}/test`,
         method: "POST",
         secure: true,
@@ -4680,10 +4718,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersNotifyEventTypesList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: ConstsNotifyEventTypeInfo[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/notify/event-types`,
         method: "GET",
@@ -4721,10 +4759,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersPasswordsAccountsDetail: (token: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamUserInfo;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/passwords/accounts/${token}`,
         method: "GET",
@@ -4743,7 +4781,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersPasswordsChangeUpdate: (req: DomainChangePasswordReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/passwords/change`,
         method: "PUT",
         body: req,
@@ -4762,7 +4800,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request PUT:/api/v1/users/passwords/reset
      */
     v1UsersPasswordsResetUpdate: (req: DomainResetUserPasswordReq, params: RequestParams = {}) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/passwords/reset`,
         method: "PUT",
         body: req,
@@ -4780,7 +4818,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request PUT:/api/v1/users/passwords/reset-request
      */
     v1UsersPasswordsResetRequestUpdate: (req: DomainResetUserPasswordEmailReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/passwords/reset-request`,
         method: "PUT",
         body: req,
@@ -4800,10 +4838,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersPlaygroundNormalPostsCreate: (request: DomainSharePostReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainSharePostResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/playground-normal-posts`,
         method: "POST",
@@ -4833,10 +4871,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainListUserPlaygroundPostResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/playground-posts`,
         method: "GET",
@@ -4858,10 +4896,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersPlaygroundTaskPostsCreate: (taskId: string, request: DomainShareTaskReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainShareTaskResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/playground-task-posts/${taskId}`,
         method: "POST",
@@ -4891,10 +4929,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListProjectResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects`,
         method: "GET",
@@ -4916,10 +4954,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsCreate: (req: DomainCreateProjectReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProject;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects`,
         method: "POST",
@@ -4941,10 +4979,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProject;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}`,
         method: "GET",
@@ -4965,10 +5003,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsUpdate: (id: string, req: DomainUpdateProjectReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProject;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}`,
         method: "PUT",
@@ -4989,7 +5027,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersProjectsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/projects/${id}`,
         method: "DELETE",
         secure: true,
@@ -5009,10 +5047,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsAutoReviewCreate: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainProject;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/projects/${id}/auto-review`,
         method: "POST",
@@ -5032,7 +5070,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersProjectsAutoReviewDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/projects/${id}/auto-review`,
         method: "DELETE",
         secure: true,
@@ -5052,10 +5090,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsCollaboratorsDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListCollaboratorsResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/collaborators`,
         method: "GET",
@@ -5085,10 +5123,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListIssuesResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/issues`,
         method: "GET",
@@ -5110,10 +5148,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsIssuesCreate: (id: string, req: DomainCreateIssueReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectIssue;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/issues`,
         method: "POST",
@@ -5135,10 +5173,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersProjectsIssuesUpdate: (id: string, issueId: string, req: DomainUpdateIssueReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectIssue;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/issues/${issueId}`,
         method: "PUT",
@@ -5170,10 +5208,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListIssueCommentsResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/issues/${issueId}/comments`,
         method: "GET",
@@ -5200,10 +5238,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectIssueComment;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/issues/${issueId}/comments`,
         method: "POST",
@@ -5236,10 +5274,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectTreeEntry[];
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/tree`,
         method: "GET",
@@ -5267,7 +5305,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<File, WebResp>({
+      this.request<File, GithubComGoYokoWebResp>({
         path: `/api/v1/users/projects/${id}/tree/archive`,
         method: "GET",
         query: query,
@@ -5296,10 +5334,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectBlob;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/tree/blob`,
         method: "GET",
@@ -5338,10 +5376,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectLogs;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/projects/${id}/tree/logs`,
         method: "GET",
@@ -5362,7 +5400,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersStatusList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTeamUserInfo;
         },
         any
@@ -5399,10 +5437,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListTaskResp;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/tasks`,
         method: "GET",
@@ -5424,10 +5462,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersTasksCreate: (param: DomainCreateTaskReq, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainProjectTask;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/tasks`,
         method: "POST",
@@ -5439,7 +5477,33 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 数据格式约定参考 [任务数据流 WebSocket](https://mcai.baizhiyun.vip/swagger#/paths/api-v1-users-tasks-stream/get)
+     * @description 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` 独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。 task 结束后连接不断开，仍可用于文件操作。 支持同一 taskID 多 tab 并发连接。 ## 上行消息 ### Type=call, Kind=repo_file_diff — 获取文件 diff 请求 Data: ```json {"request_id":"string","path":"string","unified":true,"context_lines":3} ``` 响应 Data: ```json {"request_id":"string","path":"string","diff":"string","success":true,"error":"string?"} ``` ### Type=call, Kind=repo_file_list — 列出目录文件 请求 Data: ```json {"request_id":"string","path":"string","glob_pattern":"string?","include_hidden":false} ``` 响应 Data: ```json {"request_id":"string","path":"string","files":[{"name":"string","path":"string","entry_mode":0,"size":0,"modified_at":0}],"success":true,"error":"string?"} ``` ### Type=call, Kind=repo_read_file — 读取文件内容 请求 Data: ```json {"request_id":"string","path":"string","offset":0,"length":0} ``` 响应 Data: ```json {"request_id":"string","path":"string","content":"bytes","total_size":0,"offset":0,"length":0,"is_truncated":false,"success":true,"error":"string?"} ``` ### Type=call, Kind=repo_file_changes — 查询变更文件列表 请求 Data: ```json {"request_id":"string"} ``` 响应 Data: ```json {"request_id":"string","changes":[{"path":"string","status":"string","additions":0,"deletions":0,"old_path":"string?"}],"branch":"string?","commit_hash":"string?","success":true,"error":"string?"} ``` ### Type=call, Kind=port_forward_list — 获取端口转发列表 请求 Data: 无需额外字段 响应 Data: ```json [{"port":0,"status":"string","process":"string","forward_id":"string?","access_url":"string?","label":"string?","error_message":"string?","whitelist_ips":["string"]}] ``` ### Type=call, Kind=restart — 重启任务（无 call-response 返回） 请求 Data: ```json {"request_id":"string?","load_session":true} ``` ### Type=sync-my-ip — 同步 Web 客户端真实 IP 请求 Data: ```json {"client_ip":"string"} ``` ## 下行消息 - Type=call-response: 同步请求响应（Kind 与请求一致，restart 除外）。失败时 Data 为: ```json {"error":"string"} ``` - Type=task-event: 任务事件（从 TaskLive 订阅转发） - Type=ping: 心跳（无 Data）
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksControlList
+     * @summary 任务控制流 WebSocket
+     * @request GET:/api/v1/users/tasks/control
+     * @secure
+     */
+    v1UsersTasksControlList: (
+      query: {
+        /** 任务 ID */
+        id: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/tasks/control`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 数据格式约定参考任务数据流 WebSocket 接口
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksPublicStreamList
@@ -5454,8 +5518,43 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/tasks/public-stream`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 根据 cursor 向前翻页查询任务的历史论次。limit 为论次数（非条目数）， limit=2 表示返回 2 论的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksRoundsList
+     * @summary 查询任务历史论次
+     * @request GET:/api/v1/users/tasks/rounds
+     * @secure
+     */
+    v1UsersTasksRoundsList: (
+      query: {
+        /** 任务 ID */
+        id: string;
+        /** 游标（时间戳 Unix ns） */
+        cursor?: string;
+        /** 论次数（默认 2，上限 10） */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTaskRoundsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/tasks/rounds`,
         method: "GET",
         query: query,
         secure: true,
@@ -5474,7 +5573,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersTasksSpeechToTextCreate: (params: RequestParams = {}) =>
-      this.request<DomainSpeechRecognitionEvent, WebResp>({
+      this.request<DomainSpeechRecognitionEvent, GithubComGoYokoWebResp>({
         path: `/api/v1/users/tasks/speech-to-text`,
         method: "POST",
         secure: true,
@@ -5491,10 +5590,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersTasksStopUpdate: (
-      id: GitInChaitinNetAiMonkeycodeMonkeycodeAiDomainIDReqGithubComGoogleUuidUUID,
+      id: GithubComChaitinMonkeyCodeBackendDomainIDReqGithubComGoogleUuidUUID,
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, any>({
+      this.request<GithubComGoYokoWebResp, any>({
         path: `/api/v1/users/tasks/stop`,
         method: "PUT",
         body: id,
@@ -5505,7 +5604,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。<br> 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 [domain.TaskStream](domain/task.go:141)）：<br> ```json { "type": "string", "data": "string", "timestamp": 0 } ``` 字段说明：<br> ### type：事件类型 - task-started: 本轮任务启动 - task-ended: 本轮任务结束 - task-error: 本轮任务发生错误 - task-running: 任务正在运行 - task-event: 任务临时事件, 不持久化 - file-change: 文件变动事件 - permission-resp: 用户的权限响应 - auto-approve: 开启自动批准 - disable-auto-approve: 关闭自动批准 - user-input: 用户输入 - user-cancel: 取消当前操作，不会终止任务 - reply-question: 回复 AI 的提问 ```json { "request_id": "xx", "answers_json": "xxx", "cancelled": false } ``` - call: 同步请求 ```repo_file_diff {"task_id":"task_123456","request_id":"req_20260120_0001","path":"internal/task/handler/http/v1/task.go","unified":true,"context_lines":3} ``` ```repo_file_list {"task_id":"task_123456","request_id":"req_20260120_0002","path":"src","glob_pattern":"","include_hidden":false} ``` ```repo_read_file {"task_id":"task_123456","request_id":"req_20260120_0003","path":"pkg/ws/task.go","offset":0,"length":4096} ``` ```repo_file_changes {"request_id":"req_20260120_0003"} ``` ```restart {"request_id":"req_20260120_0003","load_session": true} ``` - call-response: 同步请求响应 ```restart {"request_id":"req_20260120_0003","message": "错误信息","success": true,"session_id":""} ``` ### kind：agent 透传的类型。由前端与 agent 约定 <br> ### data：原始 JSON 字符串（透明透传，不做解析或改写）<br> ### timestamp：事件产生的时间，单位毫秒<br> 行为与生命周期：<br> - 建立连接后，服务端校验会话并与对应任务的 Agent 建立数据通道<br> - Agent 产生的实时数据帧将被原样转发为 {"type": "...", "data": "...", "timestamp": ...} 推送给前端<br>
+     * @description 功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` type 字段说明： - task-started: 本轮任务启动 - task-ended: 本轮任务结束 - task-error: 本轮任务发生错误 - task-running: 任务正在运行 - task-event: 任务临时事件, 不持久化 - file-change: 文件变动事件 - permission-resp: 用户的权限响应 - auto-approve: 开启自动批准 - disable-auto-approve: 关闭自动批准 - user-input: 用户输入 - user-cancel: 取消当前操作，不会终止任务 - reply-question: 回复 AI 的提问 - cursor: 历史游标，用于通过 /rounds 接口加载更早的论次 cursor 消息结构： ```json { "type": "cursor", "data": { "cursor": "<lastTaskStartedTS_ns>", "has_more": true }, "timestamp": 0 } ``` - cursor: 当前论次 task-started 的时间戳（Unix 纳秒），作为 GET /rounds 接口的 cursor 参数向前翻页 - has_more: 是否存在更早的论次。为 false 时表示当前论次即为第一论次，无需再翻页
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksStreamList
@@ -5517,10 +5616,12 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       query: {
         /** 任务 ID */
         id: string;
+        /** 模式：new(等待用户输入)|attach(仅拉取当前论次)，默认 new */
+        mode?: string;
       },
       params: RequestParams = {},
     ) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/tasks/stream`,
         method: "GET",
         query: query,
@@ -5541,10 +5642,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersTasksDetail: (id: string, params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainTask;
         },
-        WebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/tasks/${id}`,
         method: "GET",
@@ -5564,7 +5665,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersTasksDelete: (id: string, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/tasks/${id}`,
         method: "DELETE",
         secure: true,
@@ -5584,10 +5685,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersWalletList: (params: RequestParams = {}) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainWallet;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/wallet`,
         method: "GET",
@@ -5607,7 +5708,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersWalletExchangeCreate: (req: DomainExchangeReq, params: RequestParams = {}) =>
-      this.request<WebResp, WebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/wallet/exchange`,
         method: "POST",
         body: req,
@@ -5644,10 +5745,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        WebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainListTransactionResp;
         },
-        WebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/wallet/transaction`,
         method: "GET",

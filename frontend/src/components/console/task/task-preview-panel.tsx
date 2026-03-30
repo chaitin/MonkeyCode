@@ -1,4 +1,4 @@
-import { ConstsPortStatus, type DomainVMPort, type WebResp } from "@/api/Api"
+import { ConstsPortStatus, type DomainVMPort, type GithubComGoYokoWebResp } from "@/api/Api"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +23,7 @@ import { Item, ItemContent, ItemTitle, ItemGroup, ItemActions, ItemDescription }
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconAccessPoint, IconAlertCircle, IconCloudOff, IconCopy, IconDotsVertical, IconHandStop, IconTrash, IconX } from "@tabler/icons-react"
+import { IconAccessPoint, IconAlertCircle, IconCloudOff, IconCopy, IconDotsVertical, IconHandStop, IconReload, IconTrash, IconX } from "@tabler/icons-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -32,6 +32,7 @@ interface TaskPreviewPanelProps {
   hostId: string | undefined
   vmId: string | undefined
   onSuccess?: () => void
+  onRefresh?: () => void
   disabled?: boolean
   onClosePanel?: () => void
 }
@@ -41,6 +42,7 @@ export function TaskPreviewPanel({
   hostId,
   vmId,
   onSuccess,
+  onRefresh,
   disabled,
   onClosePanel,
 }: TaskPreviewPanelProps) {
@@ -104,7 +106,7 @@ export function TaskPreviewPanel({
       forward_id: forwardId,
       port: port,
       white_list: [ip]
-    }, [hostId, vmId], (resp: WebResp) => {
+    }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0 && resp.data?.success) {
         toast.success("端口开放成功")
         onSuccess?.()
@@ -139,7 +141,7 @@ export function TaskPreviewPanel({
       forward_id: portToEditWhitelist.forward_id,
       port: portToEditWhitelist.port,
       white_list: whitelistArray
-    }, [hostId, vmId], (resp: WebResp) => {
+    }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0) {
         toast.success("白名单更新成功")
         setWhitelistDialogOpen(false)
@@ -156,11 +158,16 @@ export function TaskPreviewPanel({
       <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
         <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-2 min-h-12 border-b bg-muted/50 shrink-0">
           <span className="text-sm font-medium">在线预览</span>
-          {onClosePanel && (
-            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-              <IconX className="size-4" />
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh || !!disabled}>
+              <IconReload className="size-4" />
             </Button>
-          )}
+            {onClosePanel && (
+              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                <IconX className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
         <div className="flex-1 min-h-0 flex flex-col p-2">
           <Empty className="w-full flex-1 min-h-0">
@@ -183,11 +190,16 @@ export function TaskPreviewPanel({
       <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
         <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
           <span className="text-sm font-medium">在线预览</span>
-          {onClosePanel && (
-            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-              <IconX className="size-4" />
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh}>
+              <IconReload className="size-4" />
             </Button>
-          )}
+            {onClosePanel && (
+              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                <IconX className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
         <div className="flex-1 min-h-0 overflow-auto flex flex-col p-2">
         {(ports && ports.length > 0) ? (

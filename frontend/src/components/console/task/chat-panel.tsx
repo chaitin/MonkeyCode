@@ -6,7 +6,18 @@ import { Button } from "@/components/ui/button"
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { IconCircle, IconCircleCheck, IconLoader, IconPlayerStopFilled, IconSubtask } from "@tabler/icons-react"
-import type { AvailableCommands, PlanEntry, RepoFileChange, TaskPlan, TaskStreamStatus, TaskWebSocketManager } from "./ws-manager"
+import { cn } from "@/lib/utils"
+import type { ConstsCliName } from "@/api/Api"
+import { TaskChatInputBox } from "./chat-inputbox"
+import { FileChangesDialog } from "./file-changes-dialog"
+import type {
+  AvailableCommands,
+  PlanEntry,
+  RepoFileChange,
+  TaskPlan,
+  TaskRepositoryClient,
+  TaskStreamStatus,
+} from "./task-shared"
 
 export interface PlanStepsBlockProps {
   plan: TaskPlan
@@ -78,15 +89,11 @@ export function PlanStepsBlock({ plan, streamStatus }: PlanStepsBlockProps) {
     </div>
   )
 }
-import { TaskChatInputBox } from "./chat-inputbox"
-import { cn } from "@/lib/utils"
-import { FileChangesDialog } from "./file-changes-dialog"
-import type { ConstsCliName } from "@/api/Api"
 
 export interface FileChangesPromptBlockProps {
   fileChanges: string[]
   fileChangesMap: Map<string, RepoFileChange>
-  taskManager: TaskWebSocketManager | null
+  taskManager: TaskRepositoryClient | null
   sendUserInput: (content: string) => void
   disabled: boolean
   streamStatus: TaskStreamStatus
@@ -319,4 +326,3 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
     </div>
   )
 }
-

@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import { ConstsFileKind, type DomainVirtualMachine, type TypesFile } from "@/api/Api"
+import { TaskflowFileKind, type DomainVirtualMachine, type TaskflowFile } from "@/api/Api"
 import { Link as LinkIcon, MoreVertical } from "lucide-react"
 import {
   DropdownMenu,
@@ -88,15 +88,15 @@ const formatTimestamp = (timestamp?: number) => {
   }).replace(/\//g, '-')
 }
 
-const sortFiles = (files: TypesFile[]) => {
+const sortFiles = (files: TaskflowFile[]) => {
   return [...files].sort((a, b) => {
     // 首先按类型排序：目录在前，文件在后，符号链接根据 symlink_kind 判断
-    const getTypePriority = (file: TypesFile) => {
-      if (file.kind === ConstsFileKind.FileKindSymlink) {
+    const getTypePriority = (file: TaskflowFile) => {
+      if (file.kind === TaskflowFileKind.FileKindSymlink) {
         // 符号链接根据 symlink_kind 判断类型
-        return file.symlink_kind === ConstsFileKind.FileKindDir ? 0 : 2
+        return file.symlink_kind === TaskflowFileKind.FileKindDir ? 0 : 2
       }
-      return file.kind === ConstsFileKind.FileKindDir ? 0 : 2
+      return file.kind === TaskflowFileKind.FileKindDir ? 0 : 2
     }
     
     const priorityA = getTypePriority(a)
@@ -111,14 +111,14 @@ const sortFiles = (files: TypesFile[]) => {
   })
 }
 
-const getFileIcon = (file: TypesFile) => {
-  const kind = file.kind === ConstsFileKind.FileKindSymlink ? file.symlink_kind : file.kind
+const getFileIcon = (file: TaskflowFile) => {
+  const kind = file.kind === TaskflowFileKind.FileKindSymlink ? file.symlink_kind : file.kind
   switch (kind) {
-    case ConstsFileKind.FileKindDir:
+    case TaskflowFileKind.FileKindDir:
       return <IconFolderFilled className="h-4 w-4 text-amber-500" />
-    case ConstsFileKind.FileKindSymlink:
+    case TaskflowFileKind.FileKindSymlink:
       return <LinkIcon className="h-4 w-4" />
-    case ConstsFileKind.FileKindFile:
+    case TaskflowFileKind.FileKindFile:
     default:
       return <IconFileText className="h-4 w-4" />
   }
@@ -126,7 +126,7 @@ const getFileIcon = (file: TypesFile) => {
 
 export default function FileManagerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [files, setFiles] = useState<TypesFile[]>([])
+  const [files, setFiles] = useState<TaskflowFile[]>([])
   const [loading, setLoading] = useState(true)
   const [vm, setVm] = useState<DomainVirtualMachine | null>(null)
   const [envid] = useState<string>(searchParams.get('envid') || '')
@@ -201,10 +201,10 @@ export default function FileManagerPage() {
     setSearchParams({ envid: envid, path: path })
   }
 
-  const handleFileClick = (file: TypesFile) => {
-    if ((file.kind === ConstsFileKind.FileKindDir || (file.kind === ConstsFileKind.FileKindSymlink && file.symlink_kind === ConstsFileKind.FileKindDir)) && file.name) {
+  const handleFileClick = (file: TaskflowFile) => {
+    if ((file.kind === TaskflowFileKind.FileKindDir || (file.kind === TaskflowFileKind.FileKindSymlink && file.symlink_kind === TaskflowFileKind.FileKindDir)) && file.name) {
       ChangeDirectory(file.name)
-    } else if (file.kind === ConstsFileKind.FileKindFile) {
+    } else if (file.kind === TaskflowFileKind.FileKindFile) {
       if (file.size && file.size > 1024 * 1024) {
         toast.error('文件太大，禁止在线编辑（超过 1MB）')
         return
@@ -215,13 +215,13 @@ export default function FileManagerPage() {
     }
   }
 
-  const handleDeleteFile = async (file: TypesFile) => {
+  const handleDeleteFile = async (file: TaskflowFile) => {
     if (!file.name || !envid) {
       return
     }
 
     const filePath = normalizePath(currentPath + '/' + file.name)
-    const fileType = file.kind === ConstsFileKind.FileKindDir || (file.kind === ConstsFileKind.FileKindSymlink && file.symlink_kind === ConstsFileKind.FileKindDir) ? '目录' : '文件'
+    const fileType = file.kind === TaskflowFileKind.FileKindDir || (file.kind === TaskflowFileKind.FileKindSymlink && file.symlink_kind === TaskflowFileKind.FileKindDir) ? '目录' : '文件'
 
     await apiRequest('v1UsersFilesDelete',{
       id: envid,
@@ -237,7 +237,7 @@ export default function FileManagerPage() {
   }
 
 
-  const handleCopyFileClick = (file: TypesFile) => {
+  const handleCopyFileClick = (file: TaskflowFile) => {
     if (!file.name) {
       return
     }
@@ -247,7 +247,7 @@ export default function FileManagerPage() {
     setCopyFileDialogOpen(true)
   }
 
-  const handleMoveFileClick = (file: TypesFile) => {
+  const handleMoveFileClick = (file: TaskflowFile) => {
     if (!file.name) {
       return
     }
@@ -369,7 +369,7 @@ export default function FileManagerPage() {
                     <div className="flex items-center gap-2">
                       {getFileIcon(file)}
                       <span className="hover:underline">{file.name}</span>
-                      {file.kind === ConstsFileKind.FileKindSymlink && file.symlink_target && (
+                      {file.kind === TaskflowFileKind.FileKindSymlink && file.symlink_target && (
                         <span className="text-muted-foreground text-xs">
                           → {file.symlink_target}
                         </span>
@@ -397,7 +397,7 @@ export default function FileManagerPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {file.kind === ConstsFileKind.FileKindFile && (
+                          {file.kind === TaskflowFileKind.FileKindFile && (
                             <DropdownMenuItem onClick={() => handleCopyFileClick(file)}>
                               <IconCopy />复制
                             </DropdownMenuItem>
@@ -407,7 +407,7 @@ export default function FileManagerPage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={async () => {
                             const filePath = normalizePath(currentPath + '/' + file.name)
-                            const filename = file.kind === ConstsFileKind.FileKindDir ? `${file.name}.zip` : file.name
+                            const filename = file.kind === TaskflowFileKind.FileKindDir ? `${file.name}.zip` : file.name
                             try {
                               await downloadFile(envid, filePath, filename)
                             } catch (error) {
@@ -416,7 +416,7 @@ export default function FileManagerPage() {
                           }}>
                             <IconDownload />下载
                           </DropdownMenuItem>
-                          {file.kind === ConstsFileKind.FileKindFile && <AlertDialog>
+                          {file.kind === TaskflowFileKind.FileKindFile && <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem className="text-destructive" onSelect={(e) => { e.preventDefault() }}>
                                 <IconTrash />删除
