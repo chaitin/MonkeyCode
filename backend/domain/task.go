@@ -34,7 +34,7 @@ type TaskRepo interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error)
 	Stat(ctx context.Context, id uuid.UUID) (*TaskStats, error)
 	StatByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*TaskStats, error)
-	Info(ctx context.Context, user *User, id uuid.UUID) (*db.Task, error)
+	Info(ctx context.Context, user *User, id uuid.UUID, isPrivileged bool) (*db.Task, error)
 	List(ctx context.Context, user *User, req TaskListReq) ([]*db.ProjectTask, *db.PageInfo, error)
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
@@ -247,6 +247,11 @@ type TaskStream struct {
 type TaskStreamReq struct {
 	ID   uuid.UUID `json:"id" query:"id" validate:"required"`
 	Mode string    `json:"mode" query:"mode"` // new|attach，默认 new
+}
+
+// TaskControlReq 控制 WebSocket 请求
+type TaskControlReq struct {
+	ID uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 id
 }
 
 // TaskRoundsReq 查询任务历史论次请求（向前翻页）

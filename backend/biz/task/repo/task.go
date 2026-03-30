@@ -81,8 +81,8 @@ func (t *TaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error) 
 }
 
 // Info implements domain.TaskRepo.
-func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID) (*db.Task, error) {
-	return t.db.Task.Query().
+func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID, isPrivileged bool) (*db.Task, error) {
+	q := t.db.Task.Query().
 		WithProjectTasks(func(ptq *db.ProjectTaskQuery) {
 			ptq.
 				WithModel().
@@ -98,8 +98,13 @@ func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID) (*db.
 				hq.WithUser()
 			})
 		}).
-		Where(task.UserID(u.ID), task.ID(id)).
-		First(ctx)
+		Where(task.ID(id))
+
+	if !isPrivileged {
+		q = q.Where(task.UserID(u.ID))
+	}
+
+	return q.First(ctx)
 }
 
 // List implements domain.TaskRepo.

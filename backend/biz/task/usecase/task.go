@@ -44,6 +44,7 @@ type TaskUsecase struct {
 	redis            *redis.Client
 	notifyDispatcher *dispatcher.Dispatcher
 	taskHook         domain.TaskHook
+	privilegeChecker domain.PrivilegeChecker
 	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 }
@@ -68,7 +69,25 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		u.taskHook = hook
 	}
 
+	// 可选注入 PrivilegeChecker
+	if pc, err := do.Invoke[domain.PrivilegeChecker](i); err == nil {
+		u.privilegeChecker = pc
+	}
+
 	return u, nil
+}
+
+// isPrivileged 检查用户是否为特权用户（仅在注入 PrivilegeChecker 时生效）
+func (a *TaskUsecase) isPrivileged(ctx context.Context, uid uuid.UUID) bool {
+	if a.privilegeChecker == nil {
+		return false
+	}
+	ok, err := a.privilegeChecker.IsPrivileged(ctx, uid)
+	if err != nil {
+		a.logger.ErrorContext(ctx, "failed to check privilege", "error", err, "uid", uid)
+		return false
+	}
+	return ok
 }
 
 // AutoApprove implements domain.TaskUsecase.
@@ -83,7 +102,7 @@ func (a *TaskUsecase) AutoApprove(ctx context.Context, _ *domain.User, id uuid.U
 func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID) (*domain.Task, bool, error) {
 	ctx = entx.SkipSoftDelete(ctx)
 
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, a.isPrivileged(ctx, user.ID))
 	if err != nil {
 		return nil, false, err
 	}
@@ -146,7 +165,6 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 
 // List implements domain.TaskUsecase.
 func (a *TaskUsecase) List(ctx context.Context, user *domain.User, req domain.TaskListReq) (*domain.ListTaskResp, error) {
-	ctx = entx.SkipSoftDelete(ctx)
 	projectTasks, pageInfo, err := a.repo.List(ctx, user, req)
 	if err != nil {
 		return nil, err
@@ -176,29 +194,27 @@ func (a *TaskUsecase) List(ctx context.Context, user *domain.User, req domain.Ta
 
 // Stop implements domain.TaskUsecase.
 func (a *TaskUsecase) Stop(ctx context.Context, user *domain.User, id uuid.UUID) error {
-	t, err := a.repo.Info(ctx, user, id)
-	if err != nil {
-		return err
-	}
-	tk := cvt.From(t, &domain.Task{})
+	return a.repo.Stop(ctx, user, id, func(t *db.Task) error {
+		tk := cvt.From(t, &domain.Task{})
 
-	// 通过 lifecycle 回收 VM
-	if vm := tk.VirtualMachine; vm != nil {
-		if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
-			VMID:   vm.ID,
-			TaskID: &id,
-			UserID: user.ID,
-		}); err != nil {
-			a.logger.WarnContext(ctx, "vm recycle transition failed", "error", err, "vm_id", vm.ID)
+		// 通过 lifecycle 回收 VM
+		if vm := tk.VirtualMachine; vm != nil {
+			if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
+				VMID:   vm.ID,
+				TaskID: &id,
+				UserID: user.ID,
+			}); err != nil {
+				a.logger.WarnContext(ctx, "vm recycle transition failed", "error", err, "vm_id", vm.ID)
+			}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }
 
 // Cancel implements domain.TaskUsecase.
 func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUID) error {
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, false)
 	if err != nil {
 		return err
 	}
@@ -207,7 +223,7 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 	if err := a.taskflow.TaskManager().Cancel(ctx, taskflow.TaskReq{
 		VirtualMachine: &taskflow.VirtualMachine{
 			ID:            tk.VirtualMachine.ID,
-			HostID:        tk.VirtualMachine.Host.ID,
+			HostID:        tk.VirtualMachine.Host.InternalID,
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
@@ -222,7 +238,7 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 
 // Continue implements domain.TaskUsecase.
 func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.UUID, content string) error {
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, false)
 	if err != nil {
 		return err
 	}
@@ -230,7 +246,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	if err := a.taskflow.TaskManager().Continue(ctx, taskflow.TaskReq{
 		VirtualMachine: &taskflow.VirtualMachine{
 			ID:            tk.VirtualMachine.ID,
-			HostID:        tk.VirtualMachine.Host.ID,
+			HostID:        tk.VirtualMachine.Host.InternalID,
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
@@ -494,7 +510,7 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 
 // Delete implements domain.TaskUsecase.
 func (a *TaskUsecase) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, false)
 	if err != nil {
 		if db.IsNotFound(err) {
 			return errcode.ErrNotFound

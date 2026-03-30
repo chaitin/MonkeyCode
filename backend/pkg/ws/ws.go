@@ -114,3 +114,47 @@ func (tc *TaskConn) Get(id string) (*WebsocketManager, bool) {
 	conn, ok := tc.conns[id]
 	return conn, ok
 }
+
+// ControlConn 控制 WebSocket 连接池，支持同一 taskID 多个并发连接
+type ControlConn struct {
+	conns map[string][]*WebsocketManager
+	mu    sync.RWMutex
+}
+
+// NewControlConn 创建控制连接池
+func NewControlConn() *ControlConn {
+	return &ControlConn{
+		conns: make(map[string][]*WebsocketManager),
+	}
+}
+
+// Add 添加连接
+func (cc *ControlConn) Add(id string, conn *WebsocketManager) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	cc.conns[id] = append(cc.conns[id], conn)
+}
+
+// Remove 移除特定连接
+func (cc *ControlConn) Remove(id string, conn *WebsocketManager) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	conns := cc.conns[id]
+	for i, c := range conns {
+		if c == conn {
+			cc.conns[id] = append(conns[:i], conns[i+1:]...)
+			break
+		}
+	}
+	if len(cc.conns[id]) == 0 {
+		delete(cc.conns, id)
+	}
+}
+
+// Get 获取指定 taskID 的所有连接
+func (cc *ControlConn) Get(id string) ([]*WebsocketManager, bool) {
+	cc.mu.RLock()
+	defer cc.mu.RUnlock()
+	conns, ok := cc.conns[id]
+	return conns, ok
+}

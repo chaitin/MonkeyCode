@@ -178,6 +178,11 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return ws.NewTaskConn(), nil
 	})
 
+	// WebSocket ControlConn
+	do.Provide(i, func(i *do.Injector) (*ws.ControlConn, error) {
+		return ws.NewControlConn(), nil
+	})
+
 	// 任务生命周期管理
 	do.Provide(i, func(i *do.Injector) (*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata], error) {
 		r := do.MustInvoke[*redis.Client](i)

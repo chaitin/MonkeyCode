@@ -31,6 +31,7 @@ func (c *Client) TaskLive(ctx context.Context, taskID string, flush bool, fn fun
 		return err
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
+	conn.SetReadLimit(-1)
 
 	for {
 		select {
