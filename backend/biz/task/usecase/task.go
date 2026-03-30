@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -134,26 +133,6 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 				}
 			}
 		}
-
-		// 端口信息
-		ports, _ := a.taskflow.PortForwarder().List(ctx, vm.ID)
-		if ports == nil {
-			ports = []*taskflow.PortForwardInfo{}
-		}
-		vmPorts := cvt.Iter(ports, func(_ int, port *taskflow.PortForwardInfo) *domain.VMPort {
-			return &domain.VMPort{
-				ForwardID:    port.ForwardID,
-				Port:         uint16(port.Port),
-				Status:       consts.PortStatus(port.Status),
-				WhiteList:    port.WhitelistIPs,
-				ErrorMessage: port.ErrorMessage,
-				PreviewURL:   port.AccessURL,
-			}
-		})
-		sort.Slice(vmPorts, func(i, j int) bool {
-			return vmPorts[i].Port < vmPorts[j].Port
-		})
-		vm.Ports = vmPorts
 	}
 
 	if stat, err := a.repo.Stat(ctx, id); err == nil {

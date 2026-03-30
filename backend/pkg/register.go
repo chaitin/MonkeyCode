@@ -20,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
+	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/channel"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/template"
@@ -181,6 +182,17 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	// WebSocket ControlConn
 	do.Provide(i, func(i *do.Injector) (*ws.ControlConn, error) {
 		return ws.NewControlConn(), nil
+	})
+
+	// NLS 语音识别（可选，配置为空时不注册）
+	do.Provide(i, func(i *do.Injector) (*nls.NLS, error) {
+		cfg := do.MustInvoke[*config.Config](i)
+		if cfg.NLS.AppKey == "" || cfg.NLS.AkID == "" || cfg.NLS.AkKey == "" {
+			return nil, nil
+		}
+		l := do.MustInvoke[*slog.Logger](i)
+		r := do.MustInvoke[*redis.Client](i)
+		return nls.NewNLS(cfg, l, r), nil
 	})
 
 	// 任务生命周期管理

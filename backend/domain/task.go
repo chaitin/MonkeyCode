@@ -293,3 +293,19 @@ type GitTaskRepo struct {
 	URL      string             `json:"url"`
 	Platform consts.GitPlatform `json:"platform"`
 }
+
+// SpeechRecognitionEvent 语音识别事件响应
+type SpeechRecognitionEvent struct {
+	Event string                `json:"event"` // 事件类型: recognition, end, error
+	Data  SpeechRecognitionData `json:"data"`  // 事件数据
+}
+
+// SpeechRecognitionData 语音识别事件数据
+type SpeechRecognitionData struct {
+	Type      string `json:"type" example:"result"`                       // 数据类型: result, end, error
+	Text      string `json:"text,omitempty" example:"你好"`                 // 识别文本 (仅result类型)
+	IsFinal   bool   `json:"is_final,omitempty" example:"false"`          // 是否为最终结果 (仅result类型)
+	UserID    string `json:"user_id,omitempty" example:"uuid"`            // 用户ID (仅result类型)
+	Timestamp int64  `json:"timestamp,omitempty" example:"1640995200000"` // 时间戳 (仅result类型)
+	Error     string `json:"error,omitempty" example:"识别失败"`              // 错误信息 (仅error类型)
+}

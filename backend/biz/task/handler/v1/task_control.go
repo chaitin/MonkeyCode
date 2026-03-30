@@ -103,8 +103,8 @@ import (
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
 //	@Param			id	query		string		true	"任务 ID"
-//	@Success		200		{object}	web.Resp{}	"成功"
-//	@Failure		500		{object}	web.Resp	"服务器内部错误"
+//	@Success		200	{object}	web.Resp{}	"成功"
+//	@Failure		500	{object}	web.Resp	"服务器内部错误"
 //	@Router			/api/v1/users/tasks/control [get]
 func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	user := middleware.GetUser(c)

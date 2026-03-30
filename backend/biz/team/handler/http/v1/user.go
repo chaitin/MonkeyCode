@@ -119,6 +119,7 @@ func (h *TeamGroupUserHandler) Login(c *web.Context, req domain.TeamLoginReq) er
 //	@Tags			【Team 管理员】认证
 //	@Accept			json
 //	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
 //	@Success		200	{object}	web.Resp{}	"成功"
 //	@Failure		401	{object}	web.Resp	"未授权"
 //	@Failure		500	{object}	web.Resp	"服务器内部错误"
@@ -146,6 +147,7 @@ func (h *TeamGroupUserHandler) Logout(c *web.Context) error {
 //	@Tags			【Team 管理员】认证
 //	@Accept			json
 //	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
 //	@Success		200	{object}	web.Resp{data=domain.TeamUser}	"成功"
 //	@Failure		401	{object}	web.Resp						"未授权"
 //	@Failure		500	{object}	web.Resp						"服务器内部错误"
@@ -247,19 +249,20 @@ func (h *TeamGroupUserHandler) MemberList(c *web.Context, req domain.MemberListR
 	return c.Success(resp)
 }
 
-// MemberList 获取团队成员列表
+// UpdateUser 更新团队成员
 //
-//	@Summary		获取团队成员列表
-//	@Description	获取团队成员列表，支持按角色筛选
+//	@Summary		更新团队成员
+//	@Description	更新团队成员信息
 //	@Tags			【Team 管理员】分组成员管理
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAITeamAuth
-//	@Param			role	query		string									false	"团队成员角色筛选（可选值：admin, user）"
-//	@Success		200		{object}	web.Resp{data=domain.MemberListResp}	"成功"
-//	@Failure		401		{object}	web.Resp								"未授权"
-//	@Failure		500		{object}	web.Resp								"服务器内部错误"
-//	@Router			/api/v1/teams/users [get]
+//	@Param			user_id	path		string										true	"用户ID"
+//	@Param			req		body		domain.UpdateTeamUserReq					true	"请求参数"
+//	@Success		200		{object}	web.Resp{data=domain.UpdateTeamUserResp}	"成功"
+//	@Failure		401		{object}	web.Resp									"未授权"
+//	@Failure		500		{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/teams/users/{user_id} [put]
 func (h *TeamGroupUserHandler) UpdateUser(c *web.Context, req domain.UpdateTeamUserReq) error {
 	resp, err := h.usecase.UpdateUser(c.Request().Context(), &req)
 	if err != nil {
@@ -362,6 +365,18 @@ func (h *TeamGroupUserHandler) Delete(c *web.Context, req domain.DeleteTeamGroup
 }
 
 // ListGroupUsers 组成员列表
+//
+//	@Summary		获取团队组成员列表
+//	@Description	获取团队组成员列表
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			group_id	path		string											true	"团队组ID"
+//	@Success		200			{object}	web.Resp{data=domain.ListTeamGroupUsersResp}	"成功"
+//	@Failure		401			{object}	web.Resp										"未授权"
+//	@Failure		500			{object}	web.Resp										"服务器内部错误"
+//	@Router			/api/v1/teams/groups/{group_id}/users [get]
 func (h *TeamGroupUserHandler) ListGroupUsers(c *web.Context, req domain.ListTeamGroupUsersReq) error {
 	resp, err := h.usecase.ListGroups(c.Request().Context(), &req)
 	if err != nil {
