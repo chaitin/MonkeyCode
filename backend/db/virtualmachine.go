@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
@@ -64,6 +65,8 @@ type VirtualMachine struct {
 	RepoFilename string `json:"repo_filename,omitempty"`
 	// Branch holds the value of the "branch" field.
 	Branch string `json:"branch,omitempty"`
+	// GitIdentityID holds the value of the "git_identity_id" field.
+	GitIdentityID uuid.UUID `json:"git_identity_id,omitempty"`
 	// IsRecycled holds the value of the "is_recycled" field.
 	IsRecycled bool `json:"is_recycled,omitempty"`
 	// Conditions holds the value of the "conditions" field.
@@ -86,13 +89,15 @@ type VirtualMachineEdges struct {
 	Model *Model `json:"model,omitempty"`
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
+	// GitIdentity holds the value of the git_identity edge.
+	GitIdentity *GitIdentity `json:"git_identity,omitempty"`
 	// Tasks holds the value of the tasks edge.
 	Tasks []*Task `json:"tasks,omitempty"`
 	// TaskVms holds the value of the task_vms edge.
 	TaskVms []*TaskVirtualMachine `json:"task_vms,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // HostOrErr returns the Host value or an error if the edge
@@ -128,10 +133,21 @@ func (e VirtualMachineEdges) UserOrErr() (*User, error) {
 	return nil, &NotLoadedError{edge: "user"}
 }
 
+// GitIdentityOrErr returns the GitIdentity value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e VirtualMachineEdges) GitIdentityOrErr() (*GitIdentity, error) {
+	if e.GitIdentity != nil {
+		return e.GitIdentity, nil
+	} else if e.loadedTypes[3] {
+		return nil, &NotFoundError{label: gitidentity.Label}
+	}
+	return nil, &NotLoadedError{edge: "git_identity"}
+}
+
 // TasksOrErr returns the Tasks value or an error if the edge
 // was not loaded in eager-loading.
 func (e VirtualMachineEdges) TasksOrErr() ([]*Task, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.Tasks, nil
 	}
 	return nil, &NotLoadedError{edge: "tasks"}
@@ -140,7 +156,7 @@ func (e VirtualMachineEdges) TasksOrErr() ([]*Task, error) {
 // TaskVmsOrErr returns the TaskVms value or an error if the edge
 // was not loaded in eager-loading.
 func (e VirtualMachineEdges) TaskVmsOrErr() ([]*TaskVirtualMachine, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.TaskVms, nil
 	}
 	return nil, &NotLoadedError{edge: "task_vms"}
@@ -161,7 +177,7 @@ func (*VirtualMachine) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case virtualmachine.FieldDeletedAt, virtualmachine.FieldCreatedAt, virtualmachine.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case virtualmachine.FieldUserID, virtualmachine.FieldModelID:
+		case virtualmachine.FieldUserID, virtualmachine.FieldModelID, virtualmachine.FieldGitIdentityID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -304,6 +320,12 @@ func (_m *VirtualMachine) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Branch = value.String
 			}
+		case virtualmachine.FieldGitIdentityID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field git_identity_id", values[i])
+			} else if value != nil {
+				_m.GitIdentityID = *value
+			}
 		case virtualmachine.FieldIsRecycled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field is_recycled", values[i])
@@ -356,6 +378,11 @@ func (_m *VirtualMachine) QueryModel() *ModelQuery {
 // QueryUser queries the "user" edge of the VirtualMachine entity.
 func (_m *VirtualMachine) QueryUser() *UserQuery {
 	return NewVirtualMachineClient(_m.config).QueryUser(_m)
+}
+
+// QueryGitIdentity queries the "git_identity" edge of the VirtualMachine entity.
+func (_m *VirtualMachine) QueryGitIdentity() *GitIdentityQuery {
+	return NewVirtualMachineClient(_m.config).QueryGitIdentity(_m)
 }
 
 // QueryTasks queries the "tasks" edge of the VirtualMachine entity.
@@ -450,6 +477,9 @@ func (_m *VirtualMachine) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("branch=")
 	builder.WriteString(_m.Branch)
+	builder.WriteString(", ")
+	builder.WriteString("git_identity_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.GitIdentityID))
 	builder.WriteString(", ")
 	builder.WriteString("is_recycled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsRecycled))

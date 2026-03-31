@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -28,29 +29,33 @@ import (
 
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
 type InternalHostHandler struct {
-	logger        *slog.Logger
-	repo          domain.HostRepo
-	teamRepo      domain.TeamHostRepo
-	redis         *redis.Client
-	cache         *cache.Cache
-	hook          domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
-	taskLifecycle *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
-	hostUsecase   domain.HostUsecase
-	taskConns     *ws.TaskConn
+	logger          *slog.Logger
+	repo            domain.HostRepo
+	teamRepo        domain.TeamHostRepo
+	redis           *redis.Client
+	cache           *cache.Cache
+	hook            domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
+	taskLifecycle   *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
+	hostUsecase     domain.HostUsecase
+	taskConns       *ws.TaskConn
+	projectUsecase  domain.ProjectUsecase
+	tokenProvider   *gituc.TokenProvider
 }
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 
 	h := &InternalHostHandler{
-		logger:        do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
-		repo:          do.MustInvoke[domain.HostRepo](i),
-		teamRepo:      do.MustInvoke[domain.TeamHostRepo](i),
-		redis:         do.MustInvoke[*redis.Client](i),
-		cache:         cache.New(15*time.Minute, 10*time.Minute),
-		taskLifecycle: do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
-		hostUsecase:   do.MustInvoke[domain.HostUsecase](i),
-		taskConns:     do.MustInvoke[*ws.TaskConn](i),
+		logger:         do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
+		repo:           do.MustInvoke[domain.HostRepo](i),
+		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
+		redis:          do.MustInvoke[*redis.Client](i),
+		cache:          cache.New(15*time.Minute, 10*time.Minute),
+		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
+		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
+		taskConns:      do.MustInvoke[*ws.TaskConn](i),
+		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
+		tokenProvider:  do.MustInvoke[*gituc.TokenProvider](i),
 	}
 
 	// 可选注入 InternalHook
@@ -414,17 +419,59 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 
 // GitCredential 获取 git 凭证
 func (h *InternalHostHandler) GitCredential(c *web.Context, req taskflow.GitCredentialRequest) error {
-	if h.hook == nil {
-		errMsg := "git credential not supported"
+	ctx := c.Request().Context()
+	logger := h.logger.With("fn", "GitCredential", "task_id", req.TaskID, "vm_id", req.VMID)
+
+	// 1. 有 task_id 时按任务链路取 token
+	if req.TaskID != "" && req.TaskID != uuid.Nil.String() {
+		info, err := h.repo.GetGitCredentialByTask(ctx, req.TaskID)
+		if err != nil {
+			logger.With("error", err).ErrorContext(ctx, "failed to get task git credential info")
+			errMsg := fmt.Sprintf("failed to get credential info: %v", err)
+			return c.Success(taskflow.GitCredentialResponse{Error: &errMsg})
+		}
+		token, err := h.projectUsecase.GetRepoToken(ctx, info.UserID, info.ProjectID, info.GitIdentityID, info.Platform)
+		if err != nil {
+			logger.With("error", err).ErrorContext(ctx, "failed to get repo token")
+			errMsg := fmt.Sprintf("failed to get repo token: %v", err)
+			return c.Success(taskflow.GitCredentialResponse{Error: &errMsg})
+		}
+		return c.Success(taskflow.GitCredentialResponse{
+			Username: &info.GitUsername,
+			Password: &token,
+		})
+	}
+
+	// 2. 无 task_id 时按 vm_id 取 VM 关联的 git_identity
+	if req.VMID == "" || req.VMID == uuid.Nil.String() {
+		errMsg := "task_id or vm_id is required"
 		return c.Success(taskflow.GitCredentialResponse{Error: &errMsg})
 	}
 
-	resp, err := h.hook.GitCredential(c.Request().Context(), &req)
+	vm, err := h.repo.GetVirtualMachine(ctx, req.VMID)
 	if err != nil {
-		errMsg := fmt.Sprintf("failed to get git credential: %v", err)
+		logger.With("error", err).ErrorContext(ctx, "failed to get virtual machine")
+		errMsg := fmt.Sprintf("failed to get vm: %v", err)
 		return c.Success(taskflow.GitCredentialResponse{Error: &errMsg})
 	}
-	return c.Success(resp)
+	if vm.Edges.GitIdentity == nil {
+		errMsg := "vm has no git identity"
+		return c.Success(taskflow.GitCredentialResponse{Error: &errMsg})
+	}
+	gi := vm.Edges.GitIdentity
+
+	token, err := h.projectUsecase.GetRepoToken(ctx, uuid.Nil, uuid.Nil, gi.ID, gi.Platform)
+	if err != nil {
+		logger.With("error", err).ErrorContext(ctx, "failed to get repo token for vm")
+		errMsg := fmt.Sprintf("failed to get repo token: %v", err)
+		return c.Success(taskflow.GitCredentialResponse{Error: &errMsg})
+	}
+
+	username := gi.Username
+	return c.Success(taskflow.GitCredentialResponse{
+		Username: &username,
+		Password: &token,
+	})
 }
 
 // VMActivityReq VM 活动上报请求

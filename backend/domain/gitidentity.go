@@ -81,13 +81,15 @@ type AddGitIdentityReq struct {
 
 // UpdateGitIdentityReq 更新 Git 身份认证请求
 type UpdateGitIdentityReq struct {
-	ID          uuid.UUID           `param:"id" validate:"required" json:"-" swaggerignore:"true"`
-	Platform    *consts.GitPlatform `json:"platform,omitempty"`
-	BaseURL     *string             `json:"base_url,omitempty"`
-	AccessToken *string             `json:"access_token,omitempty"`
-	Username    *string             `json:"username,omitempty"`
-	Email       *string             `json:"email,omitempty"`
-	Remark      *string             `json:"remark,omitempty"`
+	ID                uuid.UUID           `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	Platform          *consts.GitPlatform `json:"platform,omitempty"`
+	BaseURL           *string             `json:"base_url,omitempty"`
+	AccessToken       *string             `json:"access_token,omitempty"`
+	Username          *string             `json:"username,omitempty"`
+	Email             *string             `json:"email,omitempty"`
+	Remark            *string             `json:"remark,omitempty"`
+	OAuthRefreshToken *string             `json:"-"` // 内部使用，OAuth 刷新 token
+	OAuthExpiresAt    *time.Time          `json:"-"` // 内部使用，OAuth 过期时间
 }
 
 // GetGitIdentityReq 获取 Git 身份认证详情请求

@@ -60,9 +60,11 @@ type GitIdentityEdges struct {
 	Projects []*Project `json:"projects,omitempty"`
 	// ProjectTasks holds the value of the project_tasks edge.
 	ProjectTasks []*ProjectTask `json:"project_tasks,omitempty"`
+	// Vms holds the value of the vms edge.
+	Vms []*VirtualMachine `json:"vms,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -92,6 +94,15 @@ func (e GitIdentityEdges) ProjectTasksOrErr() ([]*ProjectTask, error) {
 		return e.ProjectTasks, nil
 	}
 	return nil, &NotLoadedError{edge: "project_tasks"}
+}
+
+// VmsOrErr returns the Vms value or an error if the edge
+// was not loaded in eager-loading.
+func (e GitIdentityEdges) VmsOrErr() ([]*VirtualMachine, error) {
+	if e.loadedTypes[3] {
+		return e.Vms, nil
+	}
+	return nil, &NotLoadedError{edge: "vms"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -233,6 +244,11 @@ func (_m *GitIdentity) QueryProjects() *ProjectQuery {
 // QueryProjectTasks queries the "project_tasks" edge of the GitIdentity entity.
 func (_m *GitIdentity) QueryProjectTasks() *ProjectTaskQuery {
 	return NewGitIdentityClient(_m.config).QueryProjectTasks(_m)
+}
+
+// QueryVms queries the "vms" edge of the GitIdentity entity.
+func (_m *GitIdentity) QueryVms() *VirtualMachineQuery {
+	return NewGitIdentityClient(_m.config).QueryVms(_m)
 }
 
 // Update returns a builder for updating this GitIdentity.

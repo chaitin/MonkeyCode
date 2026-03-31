@@ -253,7 +253,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 		result, err = h.taskflow.TaskManager().FileChanges(ctx, req)
 
 	case "port_forward_list":
-		result, err = h.taskflow.PortForwarder().List(ctx, taskID)
+		result, err = h.taskflow.PortForwarder().List(ctx, task.VirtualMachine.ID)
 
 	default:
 		return

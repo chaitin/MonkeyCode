@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"strings"
 
-	gh "github.com/google/go-github/v74/github"
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
@@ -24,18 +23,17 @@ import (
 
 // GitIdentityUsecase Git 身份认证用例
 type GitIdentityUsecase struct {
+	cfg    *config.Config
 	repo   domain.GitIdentityRepo
-	gh     *github.Github
 	logger *slog.Logger
 }
 
 // NewGitIdentityUsecase 创建 Git 身份认证用例
 func NewGitIdentityUsecase(i *do.Injector) (domain.GitIdentityUsecase, error) {
-	logger := do.MustInvoke[*slog.Logger](i)
 	return &GitIdentityUsecase{
+		cfg:    do.MustInvoke[*config.Config](i),
 		repo:   do.MustInvoke[domain.GitIdentityRepo](i),
-		gh:     github.NewGithub(logger, do.MustInvoke[*config.Config](i)),
-		logger: logger.With("module", "GitIdentityUsecase"),
+		logger: do.MustInvoke[*slog.Logger](i).With("module", "GitIdentityUsecase"),
 	}, nil
 }
 
@@ -46,14 +44,39 @@ func (u *GitIdentityUsecase) List(ctx context.Context, uid uuid.UUID) ([]*domain
 		u.logger.ErrorContext(ctx, "failed to list git identities", "error", err, "user_id", uid)
 		return nil, err
 	}
-	return cvt.Iter(identities, func(_ int, g *db.GitIdentity) *domain.GitIdentity {
-		return cvt.From(g, &domain.GitIdentity{})
+	return cvt.Iter(identities, func(_ int, identity *db.GitIdentity) *domain.GitIdentity {
+		tmp := cvt.From(identity, &domain.GitIdentity{})
+		if client := u.gitClienter(identity); client != nil {
+			repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
+				Token:     identity.AccessToken,
+				InstallID: identity.InstallationID,
+			})
+			if err != nil {
+				u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
+			} else {
+				tmp.AuthorizedRepositories = repos
+			}
+		}
+		return tmp
 	}), nil
+}
+
+func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitClienter {
+	switch identity.Platform {
+	case consts.GitPlatformGithub:
+		return github.NewGithub(u.logger, u.cfg)
+	case consts.GitPlatformGitLab:
+		return gitlab.NewGitlab(identity.BaseURL, identity.AccessToken, u.logger)
+	case consts.GitPlatformGitea:
+		return gitea.NewGitea(u.logger, identity.BaseURL)
+	default:
+		return nil
+	}
 }
 
 // Get 获取单个 Git 身份认证（仅限当前用户）
 func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUID) (*domain.GitIdentity, error) {
-	identity, err := u.repo.Get(ctx, id)
+	identity, err := u.repo.GetByUserID(ctx, uid, id)
 	if err != nil {
 		if db.IsNotFound(err) {
 			return nil, errcode.ErrNotFound
@@ -61,48 +84,18 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 		u.logger.ErrorContext(ctx, "failed to get git identity", "error", err, "user_id", uid, "id", id)
 		return nil, err
 	}
-	if identity.UserID != uid {
-		return nil, errcode.ErrNotFound
-	}
 	gi := cvt.From(identity, &domain.GitIdentity{})
 
-	// 返回 GitHub App 授权仓库的 fullname 和 repo-url
-	if identity.InstallationID != 0 {
-		repos, err := u.gh.ListInstallationRepos(ctx, identity.InstallationID)
+	if client := u.gitClienter(identity); client != nil {
+		repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
+			Token:     identity.AccessToken,
+			InstallID: identity.InstallationID,
+		})
 		if err != nil {
-			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "installation_id", identity.InstallationID)
+			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", id)
 		} else {
-			gi.AuthorizedRepositories = cvt.Iter(repos, func(_ int, r *gh.Repository) domain.AuthRepository {
-				return domain.AuthRepository{
-					FullName:    *cvt.NilWithDefault(r.FullName, cvt.Zero[string]()),
-					URL:         *cvt.NilWithDefault(r.HTMLURL, cvt.Zero[string]()),
-					Description: *cvt.NilWithDefault(r.Description, cvt.Zero[string]()),
-				}
-			})
+			gi.AuthorizedRepositories = repos
 		}
-		return gi, nil
-	}
-
-	// PAT 模式：获取授权仓库列表
-	if identity.AccessToken == "" {
-		return gi, nil
-	}
-	var client domain.GitPlatformClient
-	switch identity.Platform {
-	case consts.GitPlatformGithub:
-		client = u.gh
-	case consts.GitPlatformGitLab:
-		client = gitlab.NewGitlab(identity.BaseURL, identity.AccessToken, u.logger)
-	case consts.GitPlatformGitea:
-		client = gitea.NewGitea(u.logger, identity.BaseURL)
-	default:
-		return gi, nil
-	}
-	repos, err := client.Repositories(ctx, identity.AccessToken)
-	if err != nil {
-		u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", id)
-	} else {
-		gi.AuthorizedRepositories = repos
 	}
 
 	return gi, nil
@@ -184,12 +177,12 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, errcode.ErrInvalidParameter.Wrap(fmt.Errorf("invalid repo full name: %s", repoFullName))
 	}
-	owner := parts[0]
+	owner, repo := parts[0], parts[1]
 
-	var client domain.GitPlatformClient
+	var client domain.GitClienter
 	switch identity.Platform {
 	case consts.GitPlatformGithub:
-		client = u.gh
+		client = github.NewGithub(u.logger, u.cfg)
 	case consts.GitPlatformGitLab:
 		client = gitlab.NewGitlabForBaseURL(identity.BaseURL, u.logger)
 	case consts.GitPlatformGitea:
@@ -201,7 +194,7 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 	}
 
 	branches, err := client.Branches(ctx, &domain.BranchesOptions{
-		Token: identity.AccessToken, Owner: owner, Repo: repoFullName,
+		Token: identity.AccessToken, Owner: owner, Repo: repo,
 		Page: page, PerPage: perPage,
 		InstallID: identity.InstallationID, IsOAuth: identity.OauthRefreshToken != "",
 	})

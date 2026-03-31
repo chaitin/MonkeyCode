@@ -33,6 +33,9 @@ func (r *GitBotRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.GitBot, err
 	return r.db.GitBot.Query().
 		WithHost().
 		WithUsers().
+		WithProjects(func(pq *db.ProjectQuery) {
+			pq.WithGitIdentity()
+		}).
 		Where(gitbot.ID(id)).
 		First(ctx)
 }

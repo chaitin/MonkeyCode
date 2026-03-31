@@ -51,7 +51,20 @@ func NewGithub(logger *slog.Logger, cfg *config.Config) *Github {
 	}
 }
 
-// newClient 使用 PAT 创建 GitHub 客户端
+// GetInstallationToken 通过 GitHub App 获取 installation access token
+func (g *Github) GetInstallationToken(ctx context.Context, installID int64) (string, error) {
+	client, err := g.githubapp.NewAppClient()
+	if err != nil {
+		return "", fmt.Errorf("create app client: %w", err)
+	}
+	token, _, err := client.Apps.CreateInstallationToken(ctx, installID, nil)
+	if err != nil {
+		return "", fmt.Errorf("create installation token: %w", err)
+	}
+	return token.GetToken(), nil
+}
+
+// GetClient 使用 PAT 或 Installation 创建 GitHub 客户端
 func (g *Github) GetClient(ctx context.Context, token string, installID int64) (*github.Client, error) {
 	if installID > 0 {
 		return g.githubapp.NewInstallationClient(installID)
@@ -186,13 +199,44 @@ func (g *Github) ListInstallationRepos(ctx context.Context, installID int64) ([]
 	return all, nil
 }
 
-// GetAuthorizedRepositories 获取 PAT 可访问的仓库列表
-func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
-	client, err := g.GetClient(ctx, token, 0)
+// GetAuthorizedRepositories 获取可访问的仓库列表
+// installID > 0 时使用 GitHub App Installation API，否则使用 PAT 的 /user/repos
+func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string, installID int64) ([]domain.AuthRepository, error) {
+	client, err := g.GetClient(ctx, token, installID)
 	if err != nil {
 		return nil, err
 	}
 
+	if installID > 0 {
+		return g.listInstallationRepos(ctx, client)
+	}
+	return g.listUserRepos(ctx, client)
+}
+
+func (g *Github) listInstallationRepos(ctx context.Context, client *github.Client) ([]domain.AuthRepository, error) {
+	opts := &github.ListOptions{PerPage: 100}
+	var all []domain.AuthRepository
+	for {
+		result, resp, err := client.Apps.ListRepos(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("list repos: %w", err)
+		}
+		for _, r := range result.Repositories {
+			all = append(all, domain.AuthRepository{
+				FullName:    r.GetFullName(),
+				URL:         r.GetHTMLURL(),
+				Description: r.GetDescription(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+func (g *Github) listUserRepos(ctx context.Context, client *github.Client) ([]domain.AuthRepository, error) {
 	opts := &github.RepositoryListByAuthenticatedUserOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 		Sort:        "updated",
@@ -206,7 +250,7 @@ func (g *Github) GetAuthorizedRepositories(ctx context.Context, token string) ([
 		for _, r := range repos {
 			all = append(all, domain.AuthRepository{
 				FullName:    r.GetFullName(),
-				URL:         r.GetCloneURL(),
+				URL:         r.GetHTMLURL(),
 				Description: r.GetDescription(),
 			})
 		}

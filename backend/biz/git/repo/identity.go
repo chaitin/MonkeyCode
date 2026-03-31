@@ -34,7 +34,7 @@ func (r *GitIdentityRepo) Get(ctx context.Context, id uuid.UUID) (*db.GitIdentit
 
 // GetByUserID 获取用户的指定 Git 身份认证（同时验证 uid 和 id）
 func (r *GitIdentityRepo) GetByUserID(ctx context.Context, uid uuid.UUID, id uuid.UUID) (*db.GitIdentity, error) {
-	return r.db.GitIdentity.Query().Where(gitidentity.ID(id), gitidentity.UserID(uid)).Only(ctx)
+	return r.db.GitIdentity.Query().Where(gitidentity.ID(id), gitidentity.UserID(uid)).First(ctx)
 }
 
 // List 获取用户的 Git 身份认证列表
@@ -75,6 +75,12 @@ func (r *GitIdentityRepo) Update(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	}
 	if req.Remark != nil {
 		upt.SetRemark(*req.Remark)
+	}
+	if req.OAuthRefreshToken != nil {
+		upt.SetOauthRefreshToken(*req.OAuthRefreshToken)
+	}
+	if req.OAuthExpiresAt != nil {
+		upt.SetOauthExpiresAt(*req.OAuthExpiresAt)
 	}
 	return upt.Exec(ctx)
 }

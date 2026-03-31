@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
@@ -446,6 +447,26 @@ func (_u *VirtualMachineUpdate) ClearBranch() *VirtualMachineUpdate {
 	return _u
 }
 
+// SetGitIdentityID sets the "git_identity_id" field.
+func (_u *VirtualMachineUpdate) SetGitIdentityID(v uuid.UUID) *VirtualMachineUpdate {
+	_u.mutation.SetGitIdentityID(v)
+	return _u
+}
+
+// SetNillableGitIdentityID sets the "git_identity_id" field if the given value is not nil.
+func (_u *VirtualMachineUpdate) SetNillableGitIdentityID(v *uuid.UUID) *VirtualMachineUpdate {
+	if v != nil {
+		_u.SetGitIdentityID(*v)
+	}
+	return _u
+}
+
+// ClearGitIdentityID clears the value of the "git_identity_id" field.
+func (_u *VirtualMachineUpdate) ClearGitIdentityID() *VirtualMachineUpdate {
+	_u.mutation.ClearGitIdentityID()
+	return _u
+}
+
 // SetIsRecycled sets the "is_recycled" field.
 func (_u *VirtualMachineUpdate) SetIsRecycled(v bool) *VirtualMachineUpdate {
 	_u.mutation.SetIsRecycled(v)
@@ -521,6 +542,11 @@ func (_u *VirtualMachineUpdate) SetUser(v *User) *VirtualMachineUpdate {
 	return _u.SetUserID(v.ID)
 }
 
+// SetGitIdentity sets the "git_identity" edge to the GitIdentity entity.
+func (_u *VirtualMachineUpdate) SetGitIdentity(v *GitIdentity) *VirtualMachineUpdate {
+	return _u.SetGitIdentityID(v.ID)
+}
+
 // AddTaskIDs adds the "tasks" edge to the Task entity by IDs.
 func (_u *VirtualMachineUpdate) AddTaskIDs(ids ...uuid.UUID) *VirtualMachineUpdate {
 	_u.mutation.AddTaskIDs(ids...)
@@ -571,6 +597,12 @@ func (_u *VirtualMachineUpdate) ClearModel() *VirtualMachineUpdate {
 // ClearUser clears the "user" edge to the User entity.
 func (_u *VirtualMachineUpdate) ClearUser() *VirtualMachineUpdate {
 	_u.mutation.ClearUser()
+	return _u
+}
+
+// ClearGitIdentity clears the "git_identity" edge to the GitIdentity entity.
+func (_u *VirtualMachineUpdate) ClearGitIdentity() *VirtualMachineUpdate {
+	_u.mutation.ClearGitIdentity()
 	return _u
 }
 
@@ -875,6 +907,35 @@ func (_u *VirtualMachineUpdate) sqlSave(ctx context.Context) (_node int, err err
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitIdentityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   virtualmachine.GitIdentityTable,
+			Columns: []string{virtualmachine.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitIdentityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   virtualmachine.GitIdentityTable,
+			Columns: []string{virtualmachine.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1415,6 +1476,26 @@ func (_u *VirtualMachineUpdateOne) ClearBranch() *VirtualMachineUpdateOne {
 	return _u
 }
 
+// SetGitIdentityID sets the "git_identity_id" field.
+func (_u *VirtualMachineUpdateOne) SetGitIdentityID(v uuid.UUID) *VirtualMachineUpdateOne {
+	_u.mutation.SetGitIdentityID(v)
+	return _u
+}
+
+// SetNillableGitIdentityID sets the "git_identity_id" field if the given value is not nil.
+func (_u *VirtualMachineUpdateOne) SetNillableGitIdentityID(v *uuid.UUID) *VirtualMachineUpdateOne {
+	if v != nil {
+		_u.SetGitIdentityID(*v)
+	}
+	return _u
+}
+
+// ClearGitIdentityID clears the value of the "git_identity_id" field.
+func (_u *VirtualMachineUpdateOne) ClearGitIdentityID() *VirtualMachineUpdateOne {
+	_u.mutation.ClearGitIdentityID()
+	return _u
+}
+
 // SetIsRecycled sets the "is_recycled" field.
 func (_u *VirtualMachineUpdateOne) SetIsRecycled(v bool) *VirtualMachineUpdateOne {
 	_u.mutation.SetIsRecycled(v)
@@ -1490,6 +1571,11 @@ func (_u *VirtualMachineUpdateOne) SetUser(v *User) *VirtualMachineUpdateOne {
 	return _u.SetUserID(v.ID)
 }
 
+// SetGitIdentity sets the "git_identity" edge to the GitIdentity entity.
+func (_u *VirtualMachineUpdateOne) SetGitIdentity(v *GitIdentity) *VirtualMachineUpdateOne {
+	return _u.SetGitIdentityID(v.ID)
+}
+
 // AddTaskIDs adds the "tasks" edge to the Task entity by IDs.
 func (_u *VirtualMachineUpdateOne) AddTaskIDs(ids ...uuid.UUID) *VirtualMachineUpdateOne {
 	_u.mutation.AddTaskIDs(ids...)
@@ -1540,6 +1626,12 @@ func (_u *VirtualMachineUpdateOne) ClearModel() *VirtualMachineUpdateOne {
 // ClearUser clears the "user" edge to the User entity.
 func (_u *VirtualMachineUpdateOne) ClearUser() *VirtualMachineUpdateOne {
 	_u.mutation.ClearUser()
+	return _u
+}
+
+// ClearGitIdentity clears the "git_identity" edge to the GitIdentity entity.
+func (_u *VirtualMachineUpdateOne) ClearGitIdentity() *VirtualMachineUpdateOne {
+	_u.mutation.ClearGitIdentity()
 	return _u
 }
 
@@ -1874,6 +1966,35 @@ func (_u *VirtualMachineUpdateOne) sqlSave(ctx context.Context) (_node *VirtualM
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitIdentityCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   virtualmachine.GitIdentityTable,
+			Columns: []string{virtualmachine.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitIdentityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   virtualmachine.GitIdentityTable,
+			Columns: []string{virtualmachine.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

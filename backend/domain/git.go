@@ -5,6 +5,25 @@ import (
 	"io"
 )
 
+// GitClienter Git 平台统一客户端接口
+type GitClienter interface {
+	// 认证
+	CheckPAT(ctx context.Context, token, repoURL string) (bool, *BindRepository, error)
+	UserInfo(ctx context.Context, token string) (*PlatformUserInfo, error)
+	Repositories(ctx context.Context, opts *RepositoryOptions) ([]AuthRepository, error)
+
+	// 仓库操作
+	Tree(ctx context.Context, opts *TreeOptions) (*GetRepoTreeResp, error)
+	Blob(ctx context.Context, opts *BlobOptions) (*GetBlobResp, error)
+	Logs(ctx context.Context, opts *LogsOptions) (*GetGitLogsResp, error)
+	Archive(ctx context.Context, opts *ArchiveOptions) (*GetRepoArchiveResp, error)
+	Branches(ctx context.Context, opts *BranchesOptions) ([]*BranchInfo, error)
+
+	// Webhook
+	DeleteWebhook(ctx context.Context, opts *WebhookOptions) error
+	CreateWebhook(ctx context.Context, opts *CreateWebhookOptions) error
+}
+
 // TreeEntry 文件树节点
 type TreeEntry struct {
 	Mode           int
@@ -85,6 +104,12 @@ type BindRepository struct {
 	Platform        string
 }
 
+type RepositoryOptions struct {
+	Token     string
+	InstallID int64 // GitHub App 模式，其他平台忽略
+	IsOAuth   bool  // GitLab/Gitea OAuth 模式，其他平台忽略
+}
+
 // TreeOptions 获取文件树参数
 type TreeOptions struct {
 	Token     string
@@ -158,23 +183,4 @@ type CreateWebhookOptions struct {
 	SecretToken string
 	Events      []string
 	IsOAuth     bool
-}
-
-// GitPlatformClient Git 平台统一客户端接口
-type GitPlatformClient interface {
-	// 认证
-	CheckPAT(ctx context.Context, token, repoURL string) (bool, *BindRepository, error)
-	UserInfo(ctx context.Context, token string) (*PlatformUserInfo, error)
-	Repositories(ctx context.Context, token string) ([]AuthRepository, error)
-
-	// 仓库操作
-	Tree(ctx context.Context, opts *TreeOptions) (*GetRepoTreeResp, error)
-	Blob(ctx context.Context, opts *BlobOptions) (*GetBlobResp, error)
-	Logs(ctx context.Context, opts *LogsOptions) (*GetGitLogsResp, error)
-	Archive(ctx context.Context, opts *ArchiveOptions) (*GetRepoArchiveResp, error)
-	Branches(ctx context.Context, opts *BranchesOptions) ([]*BranchInfo, error)
-
-	// Webhook
-	DeleteWebhook(ctx context.Context, opts *WebhookOptions) error
-	CreateWebhook(ctx context.Context, opts *CreateWebhookOptions) error
 }

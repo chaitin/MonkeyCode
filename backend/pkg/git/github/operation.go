@@ -405,8 +405,8 @@ func (g *Github) UserInfo(ctx context.Context, token string) (*domain.PlatformUs
 }
 
 // Repositories 实现 GitPlatformClient 接口
-func (g *Github) Repositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
-	return g.GetAuthorizedRepositories(ctx, token)
+func (g *Github) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+	return g.GetAuthorizedRepositories(ctx, opts.Token, opts.InstallID)
 }
 
 // Tree 实现 GitPlatformClient 接口

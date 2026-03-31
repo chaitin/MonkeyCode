@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -46,6 +47,8 @@ type TaskUsecase struct {
 	privilegeChecker domain.PrivilegeChecker
 	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
+	girepo           domain.GitIdentityRepo
+	tokenProvider    *gituc.TokenProvider
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -61,6 +64,8 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
 		taskLifecycle:    do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		vmLifecycle:      do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
+		girepo:           do.MustInvoke[domain.GitIdentityRepo](i),
+		tokenProvider:    do.MustInvoke[*gituc.TokenProvider](i),
 	}
 
 	// 可选注入 TaskHook
@@ -243,7 +248,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 }
 
 // Create implements domain.TaskUsecase.
-func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq, token string) (*domain.ProjectTask, error) {
+func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
 	r, err := a.taskflow.Host().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
 		IDs: []string{req.HostID},
 	})
@@ -255,6 +260,24 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	req.Now = time.Now()
+	var token string
+
+	// 根据 GitIdentityID 解析 git token / username / email
+	var gitUsername, gitEmail string
+	if req.GitIdentityID != uuid.Nil {
+		identity, err := a.girepo.Get(ctx, req.GitIdentityID)
+		if err != nil {
+			return nil, fmt.Errorf("get git identity: %w", err)
+		}
+		t, err := a.tokenProvider.GetToken(ctx, req.GitIdentityID)
+		if err != nil {
+			return nil, fmt.Errorf("get git token: %w", err)
+		}
+
+		token = t
+		gitUsername = identity.Username
+		gitEmail = identity.Email
+	}
 
 	// 如果有 TaskHook，获取系统提示词
 	if a.taskHook != nil && req.SystemPrompt == "" {
@@ -275,11 +298,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		}
 
 		git := taskflow.Git{
-			URL:    pt.RepoURL,
-			Branch: pt.Branch,
-		}
-		if token != "" {
-			git.Token = token
+			URL:      pt.RepoURL,
+			Token:    token,
+			Branch:   pt.Branch,
+			Username: gitUsername,
+			Email:    gitEmail,
 		}
 
 		vm, err := a.taskflow.VirtualMachiner().Create(ctx, &taskflow.CreateVirtualMachineReq{

@@ -544,11 +544,11 @@ func init() {
 	virtualmachineFields := schema.VirtualMachine{}.Fields()
 	_ = virtualmachineFields
 	// virtualmachineDescCreatedAt is the schema descriptor for created_at field.
-	virtualmachineDescCreatedAt := virtualmachineFields[22].Descriptor()
+	virtualmachineDescCreatedAt := virtualmachineFields[23].Descriptor()
 	// virtualmachine.DefaultCreatedAt holds the default value on creation for the created_at field.
 	virtualmachine.DefaultCreatedAt = virtualmachineDescCreatedAt.Default.(func() time.Time)
 	// virtualmachineDescUpdatedAt is the schema descriptor for updated_at field.
-	virtualmachineDescUpdatedAt := virtualmachineFields[23].Descriptor()
+	virtualmachineDescUpdatedAt := virtualmachineFields[24].Descriptor()
 	// virtualmachine.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	virtualmachine.DefaultUpdatedAt = virtualmachineDescUpdatedAt.Default.(func() time.Time)
 }
