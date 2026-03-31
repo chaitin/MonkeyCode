@@ -253,7 +253,13 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 		result, err = h.taskflow.TaskManager().FileChanges(ctx, req)
 
 	case "port_forward_list":
-		result, err = h.taskflow.PortForwarder().List(ctx, taskID)
+		var req taskflow.ListPortforwadReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.WarnContext(ctx, "failed to unmarshal request", "error", err)
+			return
+		}
+		req.ID = task.VirtualMachine.ID
+		result, err = h.taskflow.PortForwarder().List(ctx, req)
 
 	default:
 		return

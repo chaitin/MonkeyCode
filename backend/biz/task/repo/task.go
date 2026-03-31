@@ -172,12 +172,13 @@ func (t *TaskRepo) List(ctx context.Context, u *domain.User, req domain.TaskList
 }
 
 // Stop implements domain.TaskRepo.
-func (t *TaskRepo) Stop(ctx context.Context, _ *domain.User, id uuid.UUID, fn func(*db.Task) error) error {
+func (t *TaskRepo) Stop(ctx context.Context, u *domain.User, id uuid.UUID, fn func(*db.Task) error) error {
 	return entx.WithTx2(ctx, t.db, func(tx *db.Tx) error {
 		tk, err := tx.Task.Query().
 			WithProjectTasks().
 			WithVms().
 			Where(task.ID(id)).
+			Where(task.UserID(u.ID)).
 			First(ctx)
 		if err != nil {
 			return err

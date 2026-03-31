@@ -83,7 +83,7 @@ type TaskManager interface {
 
 // PortForwarder 端口转发管理接口
 type PortForwarder interface {
-	List(ctx context.Context, id string) ([]*PortForwardInfo, error)
+	List(ctx context.Context, req ListPortforwadReq) (*ListPortforwadResp, error)
 	Create(ctx context.Context, req CreatePortForward) (*PortForwardInfo, error)
 	Close(ctx context.Context, req ClosePortForward) error
 	Update(ctx context.Context, req UpdatePortForward) (*PortForwardInfo, error)

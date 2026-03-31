@@ -70,11 +70,11 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	}
 
 	h := &TaskHandler{
-		cfg:         cfg,
-		usecase:     uc,
-		userusecase: uuc,
-		pubhost:     pubhost,
-		logger:      logger.With("handler", "task.handler"),
+		cfg:          cfg,
+		usecase:      uc,
+		userusecase:  uuc,
+		pubhost:      pubhost,
+		logger:       logger.With("handler", "task.handler"),
 		taskflow:     tf,
 		loki:         lok,
 		nls:          nlsSvc,
@@ -239,8 +239,8 @@ func (h *TaskHandler) Create(c *web.Context, req domain.CreateTaskReq) error {
 		return errcode.ErrBadRequest.Wrap(err)
 	}
 
-	// 注意：系统提示词和 git token 由 usecase 通过 TaskHook 处理
-	task, err := h.usecase.Create(c.Request().Context(), user, req, "")
+	// token 由 usecase 根据 req.GitIdentityID 解析，此处传空
+	task, err := h.usecase.Create(c.Request().Context(), user, req)
 	if err != nil {
 		return err
 	}
@@ -275,7 +275,7 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 		return err
 	}
 
-	return h.stream(c, user, task, false, "new")
+	return h.stream(c, user, task, false, "attach")
 }
 
 // Stream 任务数据流 WebSocket
@@ -589,11 +589,11 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 			}
 		}
 
-		h.handleClientMessage(ctx, wsConn, logger, user, task, m)
+		h.handleClientMessage(ctx, logger, user, task, m)
 	}
 }
 
-func (h *TaskHandler) handleClientMessage(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, m domain.TaskStream) {
+func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logger, user *domain.User, task *domain.Task, m domain.TaskStream) {
 	switch m.Type {
 	case consts.TaskStreamTypeUserInput:
 		if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {

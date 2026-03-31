@@ -16,9 +16,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -236,6 +238,7 @@ func (h *HostRepo) GetVirtualMachine(ctx context.Context, id string) (*db.Virtua
 		WithModel().
 		WithTasks().
 		WithUser().
+		WithGitIdentity().
 		Where(virtualmachine.ID(id)).
 		First(ctx)
 	if err != nil {
@@ -553,4 +556,54 @@ func (h *HostRepo) GetVirtualMachineByEnvID(ctx context.Context, envID string) (
 		WithTasks().
 		Where(virtualmachine.EnvironmentID(envID)).
 		First(ctx)
+}
+
+// GetGitCredentialByTask 通过 task_id 查询 git 凭证信息
+func (h *HostRepo) GetGitCredentialByTask(ctx context.Context, taskID string) (*domain.GitCredentialInfo, error) {
+	tid, err := uuid.Parse(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid task_id %s: %w", taskID, err)
+	}
+
+	pt, err := h.db.ProjectTask.Query().
+		Where(projecttask.TaskIDEQ(tid)).
+		WithProject(func(pq *db.ProjectQuery) {
+			pq.WithUser()
+		}).
+		WithTask(func(tq *db.TaskQuery) {
+			tq.WithUser()
+		}).
+		WithGitIdentity().
+		First(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query project_task for task %s: %w", taskID, err)
+	}
+
+	gi, err := h.db.GitIdentity.Query().
+		Where(gitidentity.IDEQ(pt.GitIdentityID)).
+		First(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query git_identity for task %s: %w", taskID, err)
+	}
+
+	info := &domain.GitCredentialInfo{
+		GitIdentityID: pt.GitIdentityID,
+	}
+	if pt.Edges.Project != nil {
+		info.ProjectID = pt.Edges.Project.ID
+		info.Platform = pt.Edges.Project.Platform
+		if pt.Edges.Project.Edges.User != nil {
+			info.UserID = pt.Edges.Project.Edges.User.ID
+		}
+	}
+	if pt.Edges.Task != nil && pt.Edges.Task.Edges.User != nil {
+		info.GitUsername = pt.Edges.Task.Edges.User.Name
+		if gi.Platform == consts.GitPlatformGitee {
+			info.GitUsername = gi.Username
+		}
+	}
+	if info.Platform == "" {
+		info.Platform = gi.Platform
+	}
+	return info, nil
 }

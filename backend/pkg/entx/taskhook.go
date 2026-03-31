@@ -45,7 +45,7 @@ func TaskConcurrencyHook(next ent.Mutator) ent.Mutator {
 		if err != nil {
 			return nil, fmt.Errorf("check task concurrency: %w", err)
 		}
-		if count > 1 {
+		if count > 0 {
 			return nil, errcode.ErrTaskConcurrencyLimit
 		}
 		return next.Mutate(ctx, m)

@@ -17,17 +17,19 @@ import (
 
 // GitBotUsecase GitBot 业务逻辑
 type GitBotUsecase struct {
-	cfg    *config.Config
-	repo   domain.GitBotRepo
-	logger *slog.Logger
+	cfg           *config.Config
+	repo          domain.GitBotRepo
+	logger        *slog.Logger
+	tokenProvider *TokenProvider
 }
 
 // NewGitBotUsecase 创建 GitBot 业务逻辑
 func NewGitBotUsecase(i *do.Injector) (domain.GitBotUsecase, error) {
 	return &GitBotUsecase{
-		cfg:    do.MustInvoke[*config.Config](i),
-		repo:   do.MustInvoke[domain.GitBotRepo](i),
-		logger: do.MustInvoke[*slog.Logger](i).With("module", "usecase.GitBotUsecase"),
+		cfg:           do.MustInvoke[*config.Config](i),
+		repo:          do.MustInvoke[domain.GitBotRepo](i),
+		logger:        do.MustInvoke[*slog.Logger](i).With("module", "usecase.GitBotUsecase"),
+		tokenProvider: do.MustInvoke[*TokenProvider](i),
 	}, nil
 }
 
@@ -40,9 +42,24 @@ func (u *GitBotUsecase) GetByID(ctx context.Context, id uuid.UUID) (*domain.GitB
 		}
 		return nil, err
 	}
-	return cvt.From(bot, &domain.GitBot{
+	dbot := cvt.From(bot, &domain.GitBot{
 		WebhookURL: u.webhookURL(bot),
-	}), nil
+	})
+
+	if len(bot.Edges.Projects) == 0 {
+		return dbot, nil
+	}
+	p := bot.Edges.Projects[0]
+	if p.Edges.GitIdentity == nil {
+		return dbot, nil
+	}
+
+	token, err := u.tokenProvider.GetToken(ctx, p.Edges.GitIdentity.ID)
+	if err != nil {
+		return nil, err
+	}
+	dbot.Token = token
+	return dbot, nil
 }
 
 // GetInstallationID 获取 installation_id

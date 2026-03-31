@@ -55,6 +55,8 @@ const (
 	FieldRepoFilename = "repo_filename"
 	// FieldBranch holds the string denoting the branch field in the database.
 	FieldBranch = "branch"
+	// FieldGitIdentityID holds the string denoting the git_identity_id field in the database.
+	FieldGitIdentityID = "git_identity_id"
 	// FieldIsRecycled holds the string denoting the is_recycled field in the database.
 	FieldIsRecycled = "is_recycled"
 	// FieldConditions holds the string denoting the conditions field in the database.
@@ -69,6 +71,8 @@ const (
 	EdgeModel = "model"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeGitIdentity holds the string denoting the git_identity edge name in mutations.
+	EdgeGitIdentity = "git_identity"
 	// EdgeTasks holds the string denoting the tasks edge name in mutations.
 	EdgeTasks = "tasks"
 	// EdgeTaskVms holds the string denoting the task_vms edge name in mutations.
@@ -96,6 +100,13 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
+	// GitIdentityTable is the table that holds the git_identity relation/edge.
+	GitIdentityTable = "virtualmachines"
+	// GitIdentityInverseTable is the table name for the GitIdentity entity.
+	// It exists in this package in order to avoid circular dependency with the "gitidentity" package.
+	GitIdentityInverseTable = "git_identities"
+	// GitIdentityColumn is the table column denoting the git_identity relation/edge.
+	GitIdentityColumn = "git_identity_id"
 	// TasksTable is the table that holds the tasks relation/edge. The primary key declared below.
 	TasksTable = "task_virtualmachines"
 	// TasksInverseTable is the table name for the Task entity.
@@ -133,6 +144,7 @@ var Columns = []string{
 	FieldRepoURL,
 	FieldRepoFilename,
 	FieldBranch,
+	FieldGitIdentityID,
 	FieldIsRecycled,
 	FieldConditions,
 	FieldCreatedAt,
@@ -277,6 +289,11 @@ func ByBranch(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBranch, opts...).ToFunc()
 }
 
+// ByGitIdentityID orders the results by the git_identity_id field.
+func ByGitIdentityID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGitIdentityID, opts...).ToFunc()
+}
+
 // ByIsRecycled orders the results by the is_recycled field.
 func ByIsRecycled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsRecycled, opts...).ToFunc()
@@ -310,6 +327,13 @@ func ByModelField(field string, opts ...sql.OrderTermOption) OrderOption {
 func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByGitIdentityField orders the results by git_identity field.
+func ByGitIdentityField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitIdentityStep(), sql.OrderByField(field, opts...))
 	}
 }
 
@@ -359,6 +383,13 @@ func newUserStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newGitIdentityStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitIdentityInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, GitIdentityTable, GitIdentityColumn),
 	)
 }
 func newTasksStep() *sqlgraph.Step {

@@ -128,11 +128,6 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		return
 	}
 
-	token := resolveToken(ctx, h.gitbotUsecase, bot, h.logger)
-	if token == "" {
-		return
-	}
-
 	if !dedup(ctx, h.redis, pr.HTMLURL, h.logger) {
 		return
 	}
@@ -143,7 +138,7 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		HostID:  bot.Host.ID,
 		ImageID: uuid.MustParse(h.cfg.Task.ImageID),
 		Prompt:  pr.HTMLURL,
-		Git:     taskflow.Git{Token: token},
+		Git:     taskflow.Git{Token: bot.Token},
 		Subject: domain.Subject{
 			ID: fmt.Sprintf("%d", pr.ID), Type: "PullRequest",
 			Title: pr.Title, URL: pr.HTMLURL, Number: pr.Number,
@@ -157,7 +152,7 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		User:     domain.User{Name: pr.User.Login, AvatarURL: pr.User.AvatarURL, Email: pr.User.Email},
 		Body:     pr.Body,
 		Time:     time.Now(),
-		Env:      map[string]string{"GITHUB_TOKEN": token},
+		Env:      map[string]string{"GITHUB_TOKEN": bot.Token},
 		Bot:      bot,
 	})
 }
@@ -175,23 +170,6 @@ func validateHMACSHA256(secret, signature string, body []byte) error {
 		return fmt.Errorf("signature mismatch")
 	}
 	return nil
-}
-
-func resolveToken(ctx context.Context, uc domain.GitBotUsecase, bot *domain.GitBot, logger *slog.Logger) string {
-	if bot.Host == nil {
-		logger.With("bot_id", bot.ID).WarnContext(ctx, "skip webhook task, bot host is nil")
-		return ""
-	}
-	token := bot.Token
-	if token == "" {
-		t, err := uc.GetAccessToken(ctx, bot.ID)
-		if err != nil {
-			logger.With("error", err, "bot_id", bot.ID).ErrorContext(ctx, "failed to get access token")
-			return ""
-		}
-		token = t
-	}
-	return token
 }
 
 func dedup(ctx context.Context, rdb *redis.Client, key string, logger *slog.Logger) bool {

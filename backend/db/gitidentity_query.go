@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -31,6 +32,7 @@ type GitIdentityQuery struct {
 	withUser         *UserQuery
 	withProjects     *ProjectQuery
 	withProjectTasks *ProjectTaskQuery
+	withVms          *VirtualMachineQuery
 	modifiers        []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -127,6 +129,28 @@ func (_q *GitIdentityQuery) QueryProjectTasks() *ProjectTaskQuery {
 			sqlgraph.From(gitidentity.Table, gitidentity.FieldID, selector),
 			sqlgraph.To(projecttask.Table, projecttask.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, gitidentity.ProjectTasksTable, gitidentity.ProjectTasksColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryVms chains the current query on the "vms" edge.
+func (_q *GitIdentityQuery) QueryVms() *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitidentity.Table, gitidentity.FieldID, selector),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, gitidentity.VmsTable, gitidentity.VmsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -329,6 +353,7 @@ func (_q *GitIdentityQuery) Clone() *GitIdentityQuery {
 		withUser:         _q.withUser.Clone(),
 		withProjects:     _q.withProjects.Clone(),
 		withProjectTasks: _q.withProjectTasks.Clone(),
+		withVms:          _q.withVms.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -366,6 +391,17 @@ func (_q *GitIdentityQuery) WithProjectTasks(opts ...func(*ProjectTaskQuery)) *G
 		opt(query)
 	}
 	_q.withProjectTasks = query
+	return _q
+}
+
+// WithVms tells the query-builder to eager-load the nodes that are connected to
+// the "vms" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *GitIdentityQuery) WithVms(opts ...func(*VirtualMachineQuery)) *GitIdentityQuery {
+	query := (&VirtualMachineClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withVms = query
 	return _q
 }
 
@@ -447,10 +483,11 @@ func (_q *GitIdentityQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*GitIdentity{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withUser != nil,
 			_q.withProjects != nil,
 			_q.withProjectTasks != nil,
+			_q.withVms != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -491,6 +528,13 @@ func (_q *GitIdentityQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 		if err := _q.loadProjectTasks(ctx, query, nodes,
 			func(n *GitIdentity) { n.Edges.ProjectTasks = []*ProjectTask{} },
 			func(n *GitIdentity, e *ProjectTask) { n.Edges.ProjectTasks = append(n.Edges.ProjectTasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withVms; query != nil {
+		if err := _q.loadVms(ctx, query, nodes,
+			func(n *GitIdentity) { n.Edges.Vms = []*VirtualMachine{} },
+			func(n *GitIdentity, e *VirtualMachine) { n.Edges.Vms = append(n.Edges.Vms, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -571,6 +615,36 @@ func (_q *GitIdentityQuery) loadProjectTasks(ctx context.Context, query *Project
 	}
 	query.Where(predicate.ProjectTask(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(gitidentity.ProjectTasksColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.GitIdentityID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "git_identity_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *GitIdentityQuery) loadVms(ctx context.Context, query *VirtualMachineQuery, nodes []*GitIdentity, init func(*GitIdentity), assign func(*GitIdentity, *VirtualMachine)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*GitIdentity)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(virtualmachine.FieldGitIdentityID)
+	}
+	query.Where(predicate.VirtualMachine(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(gitidentity.VmsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

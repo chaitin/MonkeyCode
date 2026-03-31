@@ -14,9 +14,10 @@ func newPortForwardClient(client *request.Client) PortForwarder {
 	return &portForwardClient{client: client}
 }
 
-func (p *portForwardClient) List(ctx context.Context, id string) ([]*PortForwardInfo, error) {
-	resp, err := request.Get[Resp[[]*PortForwardInfo]](p.client, ctx, "/internal/port-forward", request.WithQuery(request.Query{
-		"id": id,
+func (p *portForwardClient) List(ctx context.Context, req ListPortforwadReq) (*ListPortforwadResp, error) {
+	resp, err := request.Get[Resp[*ListPortforwadResp]](p.client, ctx, "/internal/port-forward", request.WithQuery(request.Query{
+		"id":         req.ID,
+		"request_id": req.RequestId,
 	}))
 	if err != nil {
 		return nil, err

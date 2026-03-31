@@ -679,11 +679,6 @@ func (h *HostUsecase) VMInfo(ctx context.Context, uid uuid.UUID, id string) (*do
 		}
 	}
 
-	ports, err := h.GetPorts(ctx, vm.ID)
-	if err != nil {
-		return nil, err
-	}
-	dvm.Ports = ports
 	return dvm, nil
 }
 
@@ -983,15 +978,22 @@ func (h *HostUsecase) buildVMRecycleNotifyEvent(ctx context.Context, vm *db.Virt
 }
 
 // GetPorts 获取虚拟机端口列表
-func (h *HostUsecase) GetPorts(ctx context.Context, vid string) ([]*domain.VMPort, error) {
-	forwardInfos, err := h.taskflow.PortForwarder().List(ctx, vid)
+func (h *HostUsecase) ListPorts(ctx context.Context, uid uuid.UUID, vid string) ([]*domain.VMPort, error) {
+	if _, err := h.repo.GetVirtualMachineWithUser(ctx, uid, vid); err != nil {
+		return nil, err
+	}
+
+	resp, err := h.taskflow.PortForwarder().List(ctx, taskflow.ListPortforwadReq{
+		ID:        vid,
+		RequestId: uuid.NewString(),
+	})
 	if err != nil {
 		return nil, err
 	}
-	if forwardInfos == nil {
+	if resp == nil {
 		return []*domain.VMPort{}, nil
 	}
-	ports := cvt.Iter(forwardInfos, func(_ int, forwardInfo *taskflow.PortForwardInfo) *domain.VMPort {
+	ports := cvt.Iter(resp.Ports, func(_ int, forwardInfo *taskflow.PortForwardInfo) *domain.VMPort {
 		vm := &domain.VMPort{
 			Port:         uint16(forwardInfo.Port),
 			Status:       consts.PortStatus(forwardInfo.Status),

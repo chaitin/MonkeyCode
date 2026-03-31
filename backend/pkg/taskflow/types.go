@@ -329,11 +329,11 @@ type CodingConfig struct{}
 
 // GitCredentialRequest git 凭证请求
 type GitCredentialRequest struct {
-	TaskID   string `json:"task_id"`
-	VMID     string `json:"vm_id"`
-	Protocol string `json:"protocol"`
-	Host     string `json:"host"`
-	Path     string `json:"path"`
+	TaskID   string `json:"task_id"`  // 任务 id
+	VMID     string `json:"vm_id"`    // 虚拟机 id
+	Protocol string `json:"protocol"` // git 协议 (e.g., "https")
+	Host     string `json:"host"`     // git server host (e.g., "gitlab.example.com")
+	Path     string `json:"path"`     // 仓库路径 (e.g., "owner/repo.git")
 }
 
 // GitCredentialResponse git 凭证响应
@@ -659,4 +659,14 @@ type ResumeVirtualMachineReq struct {
 	UserID        string `json:"user_id" query:"user_id" validate:"required"` // 用户id
 	ID            string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
 	EnvironmentID string `json:"environment_id" query:"environment_id"`       // environment id
+}
+
+type ListPortforwadReq struct {
+	ID        string `json:"id" query:"id" validate:"required"` // 虚拟机 id
+	RequestId string `json:"request_id,omitempty"`
+}
+
+type ListPortforwadResp struct {
+	RequestId string             `json:"request_id,omitempty"`
+	Ports     []*PortForwardInfo `json:"ports"`
 }

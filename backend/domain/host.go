@@ -35,6 +35,7 @@ type HostUsecase interface {
 	UpdateVM(ctx context.Context, req UpdateVMReq) (*VirtualMachine, error)
 	ApplyPort(ctx context.Context, uid uuid.UUID, req *ApplyPortReq) (*VMPort, error)
 	RecyclePort(ctx context.Context, uid uuid.UUID, req *RecyclePortReq) error
+	ListPorts(ctx context.Context, uid uuid.UUID, vid string) ([]*VMPort, error)
 }
 
 // HostRepo 主机数据访问接口
@@ -55,6 +56,16 @@ type HostRepo interface {
 	DeleteHost(ctx context.Context, uid uuid.UUID, id string) error
 	UpdateHost(ctx context.Context, uid uuid.UUID, req *UpdateHostReq) error
 	UpdateVM(ctx context.Context, req UpdateVMReq, fn func(*db.VirtualMachine) error) (*db.VirtualMachine, int64, error)
+	GetGitCredentialByTask(ctx context.Context, taskID string) (*GitCredentialInfo, error)
+}
+
+// GitCredentialInfo git 凭证关联信息
+type GitCredentialInfo struct {
+	UserID        uuid.UUID
+	ProjectID     uuid.UUID
+	GitIdentityID uuid.UUID
+	Platform      consts.GitPlatform
+	GitUsername   string
 }
 
 // VmIdleInfo 空闲队列 payload（任务创建的 VM）
@@ -377,4 +388,9 @@ type VMPort struct {
 type FireExpiredVMItem struct {
 	ID      string `json:"id"`
 	Message string `json:"message"`
+}
+
+type ListPortsReq struct {
+	ID     string `json:"id" param:"id" validate:"required" swaggerignore:"true"`
+	HostID string `json:"host_id" param:"host_id" validate:"required" swaggerignore:"true"`
 }

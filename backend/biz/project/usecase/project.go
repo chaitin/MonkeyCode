@@ -11,6 +11,7 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/samber/do"
 
+	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -40,6 +41,7 @@ type ProjectUsecase struct {
 	glDomestic      *gitlab.Gitlab
 	glInternational *gitlab.Gitlab
 	tokenCache      *cache.Cache
+	tokenProvider   *gituc.TokenProvider
 }
 
 // NewProjectUsecase 创建项目业务逻辑层实例
@@ -68,6 +70,7 @@ func NewProjectUsecase(i *do.Injector) (domain.ProjectUsecase, error) {
 		glDomestic:      glDomestic,
 		glInternational: glInternational,
 		tokenCache:      cache.New(repoTokenCacheTTL, 10*time.Minute),
+		tokenProvider:   do.MustInvoke[*gituc.TokenProvider](i),
 	}, nil
 }
 
@@ -262,7 +265,7 @@ type ClientContext struct {
 }
 
 // getClient 获取平台客户端和上下文
-func (u *ProjectUsecase) getClient(p *db.Project) (domain.GitPlatformClient, *ClientContext, error) {
+func (u *ProjectUsecase) getClient(p *db.Project) (domain.GitClienter, *ClientContext, error) {
 	gi := p.Edges.GitIdentity
 	if gi == nil {
 		return nil, nil, errcode.ErrGitOperation.Wrap(fmt.Errorf("project has no git identity"))
@@ -461,6 +464,10 @@ func (u *ProjectUsecase) GetProjectArchive(ctx context.Context, uid uuid.UUID, r
 
 // GetRepoToken 根据 platform 统一获取仓库 token
 func (u *ProjectUsecase) GetRepoToken(ctx context.Context, userID, projectID, gitIdentityID uuid.UUID, platform consts.GitPlatform) (string, error) {
+	if u.tokenProvider != nil {
+		return u.tokenProvider.GetToken(ctx, gitIdentityID)
+	}
+	// fallback: 直接读 DB
 	gi, err := u.gitidentityRepo.Get(ctx, gitIdentityID)
 	if err != nil {
 		if db.IsNotFound(err) {
