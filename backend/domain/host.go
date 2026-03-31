@@ -55,6 +55,16 @@ type HostRepo interface {
 	DeleteHost(ctx context.Context, uid uuid.UUID, id string) error
 	UpdateHost(ctx context.Context, uid uuid.UUID, req *UpdateHostReq) error
 	UpdateVM(ctx context.Context, req UpdateVMReq, fn func(*db.VirtualMachine) error) (*db.VirtualMachine, int64, error)
+	GetGitCredentialByTask(ctx context.Context, taskID string) (*GitCredentialInfo, error)
+}
+
+// GitCredentialInfo git 凭证关联信息
+type GitCredentialInfo struct {
+	UserID        uuid.UUID
+	ProjectID     uuid.UUID
+	GitIdentityID uuid.UUID
+	Platform      consts.GitPlatform
+	GitUsername   string
 }
 
 // VmIdleInfo 空闲队列 payload（任务创建的 VM）

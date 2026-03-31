@@ -47,6 +47,8 @@ const (
 	EdgeProjects = "projects"
 	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
 	EdgeProjectTasks = "project_tasks"
+	// EdgeVms holds the string denoting the vms edge name in mutations.
+	EdgeVms = "vms"
 	// Table holds the table name of the gitidentity in the database.
 	Table = "git_identities"
 	// UserTable is the table that holds the user relation/edge.
@@ -70,6 +72,13 @@ const (
 	ProjectTasksInverseTable = "project_tasks"
 	// ProjectTasksColumn is the table column denoting the project_tasks relation/edge.
 	ProjectTasksColumn = "git_identity_id"
+	// VmsTable is the table that holds the vms relation/edge.
+	VmsTable = "virtualmachines"
+	// VmsInverseTable is the table name for the VirtualMachine entity.
+	// It exists in this package in order to avoid circular dependency with the "virtualmachine" package.
+	VmsInverseTable = "virtualmachines"
+	// VmsColumn is the table column denoting the vms relation/edge.
+	VmsColumn = "git_identity_id"
 )
 
 // Columns holds all SQL columns for gitidentity fields.
@@ -223,6 +232,20 @@ func ByProjectTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newProjectTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByVmsCount orders the results by vms count.
+func ByVmsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newVmsStep(), opts...)
+	}
+}
+
+// ByVms orders the results by vms terms.
+func ByVms(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newVmsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -242,5 +265,12 @@ func newProjectTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProjectTasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
+	)
+}
+func newVmsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(VmsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, VmsTable, VmsColumn),
 	)
 }

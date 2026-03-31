@@ -56,5 +56,6 @@ func (GitIdentity) Edges() []ent.Edge {
 		edge.From("user", User.Type).Ref("git_identities").Field("user_id").Unique().Required(),
 		edge.To("projects", Project.Type),
 		edge.To("project_tasks", ProjectTask.Type),
+		edge.To("vms", VirtualMachine.Type),
 	}
 }

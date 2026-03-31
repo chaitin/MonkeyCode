@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
@@ -295,6 +296,20 @@ func (_c *VirtualMachineCreate) SetNillableBranch(v *string) *VirtualMachineCrea
 	return _c
 }
 
+// SetGitIdentityID sets the "git_identity_id" field.
+func (_c *VirtualMachineCreate) SetGitIdentityID(v uuid.UUID) *VirtualMachineCreate {
+	_c.mutation.SetGitIdentityID(v)
+	return _c
+}
+
+// SetNillableGitIdentityID sets the "git_identity_id" field if the given value is not nil.
+func (_c *VirtualMachineCreate) SetNillableGitIdentityID(v *uuid.UUID) *VirtualMachineCreate {
+	if v != nil {
+		_c.SetGitIdentityID(*v)
+	}
+	return _c
+}
+
 // SetIsRecycled sets the "is_recycled" field.
 func (_c *VirtualMachineCreate) SetIsRecycled(v bool) *VirtualMachineCreate {
 	_c.mutation.SetIsRecycled(v)
@@ -362,6 +377,11 @@ func (_c *VirtualMachineCreate) SetModel(v *Model) *VirtualMachineCreate {
 // SetUser sets the "user" edge to the User entity.
 func (_c *VirtualMachineCreate) SetUser(v *User) *VirtualMachineCreate {
 	return _c.SetUserID(v.ID)
+}
+
+// SetGitIdentity sets the "git_identity" edge to the GitIdentity entity.
+func (_c *VirtualMachineCreate) SetGitIdentity(v *GitIdentity) *VirtualMachineCreate {
+	return _c.SetGitIdentityID(v.ID)
 }
 
 // AddTaskIDs adds the "tasks" edge to the Task entity by IDs.
@@ -634,6 +654,23 @@ func (_c *VirtualMachineCreate) createSpec() (*VirtualMachine, *sqlgraph.CreateS
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.UserID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitIdentityIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   virtualmachine.GitIdentityTable,
+			Columns: []string{virtualmachine.GitIdentityColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gitidentity.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.GitIdentityID = nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.TasksIDs(); len(nodes) > 0 {
@@ -1087,6 +1124,24 @@ func (u *VirtualMachineUpsert) UpdateBranch() *VirtualMachineUpsert {
 // ClearBranch clears the value of the "branch" field.
 func (u *VirtualMachineUpsert) ClearBranch() *VirtualMachineUpsert {
 	u.SetNull(virtualmachine.FieldBranch)
+	return u
+}
+
+// SetGitIdentityID sets the "git_identity_id" field.
+func (u *VirtualMachineUpsert) SetGitIdentityID(v uuid.UUID) *VirtualMachineUpsert {
+	u.Set(virtualmachine.FieldGitIdentityID, v)
+	return u
+}
+
+// UpdateGitIdentityID sets the "git_identity_id" field to the value that was provided on create.
+func (u *VirtualMachineUpsert) UpdateGitIdentityID() *VirtualMachineUpsert {
+	u.SetExcluded(virtualmachine.FieldGitIdentityID)
+	return u
+}
+
+// ClearGitIdentityID clears the value of the "git_identity_id" field.
+func (u *VirtualMachineUpsert) ClearGitIdentityID() *VirtualMachineUpsert {
+	u.SetNull(virtualmachine.FieldGitIdentityID)
 	return u
 }
 
@@ -1622,6 +1677,27 @@ func (u *VirtualMachineUpsertOne) UpdateBranch() *VirtualMachineUpsertOne {
 func (u *VirtualMachineUpsertOne) ClearBranch() *VirtualMachineUpsertOne {
 	return u.Update(func(s *VirtualMachineUpsert) {
 		s.ClearBranch()
+	})
+}
+
+// SetGitIdentityID sets the "git_identity_id" field.
+func (u *VirtualMachineUpsertOne) SetGitIdentityID(v uuid.UUID) *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.SetGitIdentityID(v)
+	})
+}
+
+// UpdateGitIdentityID sets the "git_identity_id" field to the value that was provided on create.
+func (u *VirtualMachineUpsertOne) UpdateGitIdentityID() *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.UpdateGitIdentityID()
+	})
+}
+
+// ClearGitIdentityID clears the value of the "git_identity_id" field.
+func (u *VirtualMachineUpsertOne) ClearGitIdentityID() *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.ClearGitIdentityID()
 	})
 }
 
@@ -2334,6 +2410,27 @@ func (u *VirtualMachineUpsertBulk) UpdateBranch() *VirtualMachineUpsertBulk {
 func (u *VirtualMachineUpsertBulk) ClearBranch() *VirtualMachineUpsertBulk {
 	return u.Update(func(s *VirtualMachineUpsert) {
 		s.ClearBranch()
+	})
+}
+
+// SetGitIdentityID sets the "git_identity_id" field.
+func (u *VirtualMachineUpsertBulk) SetGitIdentityID(v uuid.UUID) *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.SetGitIdentityID(v)
+	})
+}
+
+// UpdateGitIdentityID sets the "git_identity_id" field to the value that was provided on create.
+func (u *VirtualMachineUpsertBulk) UpdateGitIdentityID() *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.UpdateGitIdentityID()
+	})
+}
+
+// ClearGitIdentityID clears the value of the "git_identity_id" field.
+func (u *VirtualMachineUpsertBulk) ClearGitIdentityID() *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.ClearGitIdentityID()
 	})
 }
 

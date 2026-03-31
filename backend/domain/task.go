@@ -21,7 +21,7 @@ type TaskUsecase interface {
 	Info(ctx context.Context, user *User, id uuid.UUID) (*Task, bool, error)
 	List(ctx context.Context, user *User, req TaskListReq) (*ListTaskResp, error)
 	Continue(ctx context.Context, user *User, id uuid.UUID, content string) error
-	Create(ctx context.Context, user *User, req CreateTaskReq, token string) (*ProjectTask, error)
+	Create(ctx context.Context, user *User, req CreateTaskReq) (*ProjectTask, error)
 	Stop(ctx context.Context, user *User, id uuid.UUID) error
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error

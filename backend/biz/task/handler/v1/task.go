@@ -70,11 +70,11 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	}
 
 	h := &TaskHandler{
-		cfg:         cfg,
-		usecase:     uc,
-		userusecase: uuc,
-		pubhost:     pubhost,
-		logger:      logger.With("handler", "task.handler"),
+		cfg:          cfg,
+		usecase:      uc,
+		userusecase:  uuc,
+		pubhost:      pubhost,
+		logger:       logger.With("handler", "task.handler"),
 		taskflow:     tf,
 		loki:         lok,
 		nls:          nlsSvc,
@@ -239,8 +239,8 @@ func (h *TaskHandler) Create(c *web.Context, req domain.CreateTaskReq) error {
 		return errcode.ErrBadRequest.Wrap(err)
 	}
 
-	// 注意：系统提示词和 git token 由 usecase 通过 TaskHook 处理
-	task, err := h.usecase.Create(c.Request().Context(), user, req, "")
+	// token 由 usecase 根据 req.GitIdentityID 解析，此处传空
+	task, err := h.usecase.Create(c.Request().Context(), user, req)
 	if err != nil {
 		return err
 	}

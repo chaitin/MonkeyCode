@@ -124,11 +124,6 @@ func (h *GiteaWebhookHandler) handlePullRequest(ctx context.Context, bot *domain
 		return
 	}
 
-	accessToken := resolveToken(ctx, h.gitbotUsecase, bot, h.logger)
-	if accessToken == "" {
-		return
-	}
-
 	key := pr.URL
 	if key == "" {
 		key = fmt.Sprintf("%d", pr.ID)
@@ -142,7 +137,7 @@ func (h *GiteaWebhookHandler) handlePullRequest(ctx context.Context, bot *domain
 		HostID:  bot.Host.ID,
 		ImageID: uuid.MustParse(h.cfg.Task.ImageID),
 		Prompt:  key,
-		Git:     taskflow.Git{Token: accessToken},
+		Git:     taskflow.Git{Token: bot.Token},
 		Subject: domain.Subject{
 			ID: fmt.Sprintf("%d", pr.ID), Type: "PullRequest",
 			Title: pr.Title, URL: key, Number: pr.Number,
@@ -156,7 +151,7 @@ func (h *GiteaWebhookHandler) handlePullRequest(ctx context.Context, bot *domain
 		User:     domain.User{Name: firstNonEmpty(pr.User.FullName, pr.User.Login), AvatarURL: pr.User.AvatarURL, Email: pr.User.Email},
 		Body:     pr.Body,
 		Time:     time.Now(),
-		Env:      map[string]string{"GITEA_TOKEN": accessToken},
+		Env:      map[string]string{"GITEA_TOKEN": bot.Token},
 		Bot:      bot,
 	})
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -304,6 +305,21 @@ func (_u *GitIdentityUpdate) AddProjectTasks(v ...*ProjectTask) *GitIdentityUpda
 	return _u.AddProjectTaskIDs(ids...)
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_u *GitIdentityUpdate) AddVMIDs(ids ...string) *GitIdentityUpdate {
+	_u.mutation.AddVMIDs(ids...)
+	return _u
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_u *GitIdentityUpdate) AddVms(v ...*VirtualMachine) *GitIdentityUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVMIDs(ids...)
+}
+
 // Mutation returns the GitIdentityMutation object of the builder.
 func (_u *GitIdentityUpdate) Mutation() *GitIdentityMutation {
 	return _u.mutation
@@ -355,6 +371,27 @@ func (_u *GitIdentityUpdate) RemoveProjectTasks(v ...*ProjectTask) *GitIdentityU
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearVms clears all "vms" edges to the VirtualMachine entity.
+func (_u *GitIdentityUpdate) ClearVms() *GitIdentityUpdate {
+	_u.mutation.ClearVms()
+	return _u
+}
+
+// RemoveVMIDs removes the "vms" edge to VirtualMachine entities by IDs.
+func (_u *GitIdentityUpdate) RemoveVMIDs(ids ...string) *GitIdentityUpdate {
+	_u.mutation.RemoveVMIDs(ids...)
+	return _u
+}
+
+// RemoveVms removes "vms" edges to VirtualMachine entities.
+func (_u *GitIdentityUpdate) RemoveVms(v ...*VirtualMachine) *GitIdentityUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVMIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -603,6 +640,51 @@ func (_u *GitIdentityUpdate) sqlSave(ctx context.Context) (_node int, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVmsIDs(); len(nodes) > 0 && !_u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
@@ -902,6 +984,21 @@ func (_u *GitIdentityUpdateOne) AddProjectTasks(v ...*ProjectTask) *GitIdentityU
 	return _u.AddProjectTaskIDs(ids...)
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_u *GitIdentityUpdateOne) AddVMIDs(ids ...string) *GitIdentityUpdateOne {
+	_u.mutation.AddVMIDs(ids...)
+	return _u
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_u *GitIdentityUpdateOne) AddVms(v ...*VirtualMachine) *GitIdentityUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVMIDs(ids...)
+}
+
 // Mutation returns the GitIdentityMutation object of the builder.
 func (_u *GitIdentityUpdateOne) Mutation() *GitIdentityMutation {
 	return _u.mutation
@@ -953,6 +1050,27 @@ func (_u *GitIdentityUpdateOne) RemoveProjectTasks(v ...*ProjectTask) *GitIdenti
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearVms clears all "vms" edges to the VirtualMachine entity.
+func (_u *GitIdentityUpdateOne) ClearVms() *GitIdentityUpdateOne {
+	_u.mutation.ClearVms()
+	return _u
+}
+
+// RemoveVMIDs removes the "vms" edge to VirtualMachine entities by IDs.
+func (_u *GitIdentityUpdateOne) RemoveVMIDs(ids ...string) *GitIdentityUpdateOne {
+	_u.mutation.RemoveVMIDs(ids...)
+	return _u
+}
+
+// RemoveVms removes "vms" edges to VirtualMachine entities.
+func (_u *GitIdentityUpdateOne) RemoveVms(v ...*VirtualMachine) *GitIdentityUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVMIDs(ids...)
 }
 
 // Where appends a list predicates to the GitIdentityUpdate builder.
@@ -1231,6 +1349,51 @@ func (_u *GitIdentityUpdateOne) sqlSave(ctx context.Context) (_node *GitIdentity
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVmsIDs(); len(nodes) > 0 && !_u.mutation.VmsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

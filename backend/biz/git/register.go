@@ -13,6 +13,7 @@ func ProvideGit(i *do.Injector) {
 	do.Provide(i, repo.NewGitIdentityRepo)
 	do.Provide(i, usecase.NewGitIdentityUsecase)
 	do.Provide(i, usecase.NewGithubAccessTokenUsecase)
+	do.Provide(i, usecase.NewTokenProvider)
 	do.Provide(i, v1.NewGitIdentityHandler)
 	do.Provide(i, repo.NewGitBotRepo)
 	do.Provide(i, usecase.NewGitBotUsecase)

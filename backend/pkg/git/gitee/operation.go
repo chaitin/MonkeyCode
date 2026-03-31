@@ -378,8 +378,8 @@ func (g *Gitee) UserInfo(ctx context.Context, token string) (*domain.PlatformUse
 }
 
 // Repositories 实现 GitPlatformClient 接口
-func (g *Gitee) Repositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
-	repos, err := g.ListUserReposByToken(g.baseURL, token, 1, 100)
+func (g *Gitee) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+	repos, err := g.ListUserReposByToken(g.baseURL, opts.Token, 1, 100)
 	if err != nil {
 		return nil, err
 	}
