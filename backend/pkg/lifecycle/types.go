@@ -43,6 +43,7 @@ const (
 	VMStateRunning   VMState = "running"
 	VMStateFailed    VMState = "failed"
 	VMStateSucceeded VMState = "succeeded"
+	VMStateRecycled  VMState = "recycled"
 )
 
 // VMMetadata 虚拟机元数据

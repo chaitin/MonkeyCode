@@ -87,6 +87,13 @@ func (h *TaskHook) handleProcessing(ctx context.Context, id uuid.UUID, metadata 
 
 		defer h.redis.Del(ctx, reqKey)
 
+		if err := h.repo.Update(ctx, &domain.User{}, id, func(up *db.TaskUpdateOne) error {
+			up.SetStatus(consts.TaskStatusProcessing)
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed to update task status: %w", err)
+		}
+
 		var createReq taskflow.CreateTaskReq
 		if err := json.Unmarshal([]byte(val), &createReq); err != nil {
 			h.logger.With("task_id", id, "error", err).ErrorContext(ctx, "failed to unmarshal CreateTaskReq")

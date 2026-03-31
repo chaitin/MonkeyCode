@@ -43,10 +43,9 @@ func NewTeamModelHandler(i *do.Injector) (*TeamModelHandler, error) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAITeamAuth
-//	@Param			cursor	query		domain.CursorReq							false	"游标信息"
-//	@Success		200		{object}	web.Resp{data=domain.ListTeamModelsResp}	"成功"
-//	@Failure		401		{object}	web.Resp									"未授权"
-//	@Failure		500		{object}	web.Resp									"服务器内部错误"
+//	@Success		200	{object}	web.Resp{data=domain.ListTeamModelsResp}	"成功"
+//	@Failure		401	{object}	web.Resp									"未授权"
+//	@Failure		500	{object}	web.Resp									"服务器内部错误"
 //	@Router			/api/v1/teams/models [get]
 func (h *TeamModelHandler) List(c *web.Context) error {
 	teamUser := middleware.GetTeamUser(c)

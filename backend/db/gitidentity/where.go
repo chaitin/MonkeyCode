@@ -976,6 +976,29 @@ func HasProjectTasksWith(preds ...predicate.ProjectTask) predicate.GitIdentity {
 	})
 }
 
+// HasVms applies the HasEdge predicate on the "vms" edge.
+func HasVms() predicate.GitIdentity {
+	return predicate.GitIdentity(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, VmsTable, VmsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasVmsWith applies the HasEdge predicate on the "vms" edge with a given conditions (other predicates).
+func HasVmsWith(preds ...predicate.VirtualMachine) predicate.GitIdentity {
+	return predicate.GitIdentity(func(s *sql.Selector) {
+		step := newVmsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.GitIdentity) predicate.GitIdentity {
 	return predicate.GitIdentity(sql.AndPredicates(predicates...))

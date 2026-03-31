@@ -166,21 +166,22 @@ func (c *Collaborator) From(src *db.ProjectCollaborator) *Collaborator {
 
 // Project 项目
 type Project struct {
-	ID            uuid.UUID          `json:"id"`
-	Name          string             `json:"name"`
-	RepoURL       string             `json:"repo_url"`
-	FullName      string             `json:"full_name"`
-	Description   string             `json:"description"`
-	Platform      consts.GitPlatform `json:"platform"`
-	CreatedAt     int64              `json:"created_at"`
-	UpdatedAt     int64              `json:"updated_at"`
-	User          *User              `json:"user"`
-	Issues        []*ProjectIssue    `json:"issues"`
-	Collaborators []*Collaborator    `json:"collaborators"`
-	ImageID       uuid.UUID          `json:"image_id"`
-	GitIdentityID uuid.UUID          `json:"git_identity_id"`
-	EnvVariables  map[string]any     `json:"env_variables"`
-	Tasks         []*ProjectTask     `json:"tasks"`
+	ID                uuid.UUID          `json:"id"`
+	Name              string             `json:"name"`
+	RepoURL           string             `json:"repo_url"`
+	FullName          string             `json:"full_name"`
+	Description       string             `json:"description"`
+	Platform          consts.GitPlatform `json:"platform"`
+	CreatedAt         int64              `json:"created_at"`
+	UpdatedAt         int64              `json:"updated_at"`
+	User              *User              `json:"user"`
+	Issues            []*ProjectIssue    `json:"issues"`
+	Collaborators     []*Collaborator    `json:"collaborators"`
+	ImageID           uuid.UUID          `json:"image_id"`
+	GitIdentityID     uuid.UUID          `json:"git_identity_id"`
+	EnvVariables      map[string]any     `json:"env_variables"`
+	Tasks             []*ProjectTask     `json:"tasks"`
+	AutoReviewEnabled bool               `json:"auto_review_enabled"` // 是否开启自动审查
 }
 
 func (p *Project) From(src *db.Project) *Project {
@@ -208,6 +209,7 @@ func (p *Project) From(src *db.Project) *Project {
 	p.Tasks = cvt.Iter(src.Edges.ProjectTasks, func(_ int, pt *db.ProjectTask) *ProjectTask {
 		return cvt.From(pt, &ProjectTask{})
 	})
+	p.AutoReviewEnabled = len(src.Edges.GitBots) > 0
 	return p
 }
 

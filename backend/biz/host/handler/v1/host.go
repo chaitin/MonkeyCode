@@ -702,6 +702,32 @@ func (h *HostHandler) UpdateHost(c *web.Context, req domain.UpdateHostReq) error
 	return c.Success(nil)
 }
 
+// ListPort 列出开发环境的监听端口
+//
+//	@Summary		列出开发环境的监听端口
+//	@Description	列出开发环境的监听端口
+//	@Tags			【用户】主机管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			host_id	path		string							true	"宿主机ID"
+//	@Param			id		path		string							true	"虚拟机ID"
+//	@Param			request	body		domain.ApplyPortReq				true	"申请端口请求"
+//	@Success		200		{object}	web.Resp{data=[]domain.VMPort}	"成功"
+//	@Failure		400		{object}	web.Resp						"请求参数错误"
+//	@Failure		401		{object}	web.Resp						"未授权"
+//	@Failure		500		{object}	web.Resp						"服务器错误"
+//	@Router			/api/v1/users/hosts/{host_id}/vms/{id}/ports [get]
+func (h *HostHandler) ListPort(c *web.Context, req domain.ListPortsReq) error {
+	user := middleware.GetUser(c)
+	port, err := h.usecase.ListPorts(c.Request().Context(), user.ID, req.ID)
+	if err != nil {
+		h.logger.With("error", err).ErrorContext(c.Request().Context(), "failed to apply port")
+		return errcode.ErrApplyPortFailed.Wrap(err)
+	}
+	return c.Success(port)
+}
+
 // ApplyPort 为开发环境申请一个端口
 //
 //	@Summary		申请端口

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -44,8 +44,11 @@ type TaskUsecase struct {
 	redis            *redis.Client
 	notifyDispatcher *dispatcher.Dispatcher
 	taskHook         domain.TaskHook
+	privilegeChecker domain.PrivilegeChecker
 	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
+	girepo           domain.GitIdentityRepo
+	tokenProvider    *gituc.TokenProvider
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -61,6 +64,8 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
 		taskLifecycle:    do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		vmLifecycle:      do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
+		girepo:           do.MustInvoke[domain.GitIdentityRepo](i),
+		tokenProvider:    do.MustInvoke[*gituc.TokenProvider](i),
 	}
 
 	// 可选注入 TaskHook
@@ -68,7 +73,25 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		u.taskHook = hook
 	}
 
+	// 可选注入 PrivilegeChecker
+	if pc, err := do.Invoke[domain.PrivilegeChecker](i); err == nil {
+		u.privilegeChecker = pc
+	}
+
 	return u, nil
+}
+
+// isPrivileged 检查用户是否为特权用户（仅在注入 PrivilegeChecker 时生效）
+func (a *TaskUsecase) isPrivileged(ctx context.Context, uid uuid.UUID) bool {
+	if a.privilegeChecker == nil {
+		return false
+	}
+	ok, err := a.privilegeChecker.IsPrivileged(ctx, uid)
+	if err != nil {
+		a.logger.ErrorContext(ctx, "failed to check privilege", "error", err, "uid", uid)
+		return false
+	}
+	return ok
 }
 
 // AutoApprove implements domain.TaskUsecase.
@@ -83,7 +106,7 @@ func (a *TaskUsecase) AutoApprove(ctx context.Context, _ *domain.User, id uuid.U
 func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID) (*domain.Task, bool, error) {
 	ctx = entx.SkipSoftDelete(ctx)
 
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, a.isPrivileged(ctx, user.ID))
 	if err != nil {
 		return nil, false, err
 	}
@@ -95,6 +118,7 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 		resp, _ := a.taskflow.VirtualMachiner().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
 			IDs: []string{vm.ID},
 		})
+		a.logger.With("resp", resp, "id", vm.ID).DebugContext(ctx, "is online check")
 
 		if resp != nil && resp.OnlineMap[vm.ID] {
 			vm.Status = taskflow.VirtualMachineStatusOnline
@@ -105,6 +129,8 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 				switch cond.Type {
 				case types.ConditionTypeFailed:
 					vm.Status = taskflow.VirtualMachineStatusOffline
+				case types.ConditionTypeHibernated:
+					vm.Status = taskflow.VirtualMachineStatusHibernated
 				case types.ConditionTypeReady:
 					if time.Since(time.Unix(vm.CreatedAt, 0)) > 2*time.Minute {
 						vm.Status = taskflow.VirtualMachineStatusOffline
@@ -112,26 +138,6 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 				}
 			}
 		}
-
-		// 端口信息
-		ports, _ := a.taskflow.PortForwarder().List(ctx, vm.ID)
-		if ports == nil {
-			ports = []*taskflow.PortForwardInfo{}
-		}
-		vmPorts := cvt.Iter(ports, func(_ int, port *taskflow.PortForwardInfo) *domain.VMPort {
-			return &domain.VMPort{
-				ForwardID:    port.ForwardID,
-				Port:         uint16(port.Port),
-				Status:       consts.PortStatus(port.Status),
-				WhiteList:    port.WhitelistIPs,
-				ErrorMessage: port.ErrorMessage,
-				PreviewURL:   port.AccessURL,
-			}
-		})
-		sort.Slice(vmPorts, func(i, j int) bool {
-			return vmPorts[i].Port < vmPorts[j].Port
-		})
-		vm.Ports = vmPorts
 	}
 
 	if stat, err := a.repo.Stat(ctx, id); err == nil {
@@ -143,7 +149,6 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 
 // List implements domain.TaskUsecase.
 func (a *TaskUsecase) List(ctx context.Context, user *domain.User, req domain.TaskListReq) (*domain.ListTaskResp, error) {
-	ctx = entx.SkipSoftDelete(ctx)
 	projectTasks, pageInfo, err := a.repo.List(ctx, user, req)
 	if err != nil {
 		return nil, err
@@ -173,28 +178,27 @@ func (a *TaskUsecase) List(ctx context.Context, user *domain.User, req domain.Ta
 
 // Stop implements domain.TaskUsecase.
 func (a *TaskUsecase) Stop(ctx context.Context, user *domain.User, id uuid.UUID) error {
-	t, err := a.repo.Info(ctx, user, id)
-	if err != nil {
-		return err
-	}
-	tk := cvt.From(t, &domain.Task{})
 	return a.repo.Stop(ctx, user, id, func(t *db.Task) error {
-		return a.taskflow.TaskManager().Stop(ctx, taskflow.TaskReq{
-			VirtualMachine: &taskflow.VirtualMachine{
-				ID:            tk.VirtualMachine.ID,
-				HostID:        tk.VirtualMachine.Host.ID,
-				EnvironmentID: tk.VirtualMachine.EnvironmentID,
-			},
-			Task: &taskflow.Task{
-				ID: id,
-			},
-		})
+		tk := cvt.From(t, &domain.Task{})
+
+		// 通过 lifecycle 回收 VM
+		if vm := tk.VirtualMachine; vm != nil {
+			if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
+				VMID:   vm.ID,
+				TaskID: &id,
+				UserID: user.ID,
+			}); err != nil {
+				a.logger.WarnContext(ctx, "vm recycle transition failed", "error", err, "vm_id", vm.ID)
+			}
+		}
+
+		return nil
 	})
 }
 
 // Cancel implements domain.TaskUsecase.
 func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUID) error {
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, false)
 	if err != nil {
 		return err
 	}
@@ -203,7 +207,7 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 	if err := a.taskflow.TaskManager().Cancel(ctx, taskflow.TaskReq{
 		VirtualMachine: &taskflow.VirtualMachine{
 			ID:            tk.VirtualMachine.ID,
-			HostID:        tk.VirtualMachine.Host.ID,
+			HostID:        tk.VirtualMachine.Host.InternalID,
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
@@ -218,7 +222,7 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 
 // Continue implements domain.TaskUsecase.
 func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.UUID, content string) error {
-	t, err := a.repo.Info(ctx, user, id)
+	t, err := a.repo.Info(ctx, user, id, false)
 	if err != nil {
 		return err
 	}
@@ -226,7 +230,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	if err := a.taskflow.TaskManager().Continue(ctx, taskflow.TaskReq{
 		VirtualMachine: &taskflow.VirtualMachine{
 			ID:            tk.VirtualMachine.ID,
-			HostID:        tk.VirtualMachine.Host.ID,
+			HostID:        tk.VirtualMachine.Host.InternalID,
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
@@ -244,7 +248,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 }
 
 // Create implements domain.TaskUsecase.
-func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq, token string) (*domain.ProjectTask, error) {
+func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
 	r, err := a.taskflow.Host().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
 		IDs: []string{req.HostID},
 	})
@@ -255,12 +259,25 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		return nil, errcode.ErrHostOffline
 	}
 
-	TTLType := taskflow.TTLCountDown
-	if req.Resource.Life <= 0 {
-		TTLType = taskflow.TTLForever
-	}
-
 	req.Now = time.Now()
+	var token string
+
+	// 根据 GitIdentityID 解析 git token / username / email
+	var gitUsername, gitEmail string
+	if req.GitIdentityID != uuid.Nil {
+		identity, err := a.girepo.Get(ctx, req.GitIdentityID)
+		if err != nil {
+			return nil, fmt.Errorf("get git identity: %w", err)
+		}
+		t, err := a.tokenProvider.GetToken(ctx, req.GitIdentityID)
+		if err != nil {
+			return nil, fmt.Errorf("get git token: %w", err)
+		}
+
+		token = t
+		gitUsername = identity.Username
+		gitEmail = identity.Email
+	}
 
 	// 如果有 TaskHook，获取系统提示词
 	if a.taskHook != nil && req.SystemPrompt == "" {
@@ -281,11 +298,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		}
 
 		git := taskflow.Git{
-			URL:    pt.RepoURL,
-			Branch: pt.Branch,
-		}
-		if token != "" {
-			git.Token = token
+			URL:      pt.RepoURL,
+			Token:    token,
+			Branch:   pt.Branch,
+			Username: gitUsername,
+			Email:    gitEmail,
 		}
 
 		vm, err := a.taskflow.VirtualMachiner().Create(ctx, &taskflow.CreateVirtualMachineReq{
@@ -296,11 +313,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			ZipUrl:   req.RepoReq.ZipURL,
 			ImageURL: i.Name,
 			ProxyURL: "",
-			TTL: taskflow.TTL{
-				Kind:    TTLType,
-				Seconds: req.Resource.Life,
-			},
-			TaskID: t.ID,
+			TaskID:   t.ID,
 			LLM: taskflow.LLMProviderReq{
 				Provider: taskflow.LlmProviderOpenAI,
 				ApiKey:   m.APIKey,
@@ -365,6 +378,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				ApiKey:  m.APIKey,
 				BaseURL: m.BaseURL,
 				Model:   m.Model,
+				ApiType: m.InterfaceType,
 			},
 			Configs:    configs,
 			McpConfigs: mcps,
@@ -494,6 +508,33 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		})
 	}
 	return coding, cfs, nil
+}
+
+// Delete implements domain.TaskUsecase.
+func (a *TaskUsecase) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
+	t, err := a.repo.Info(ctx, user, id, false)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return errcode.ErrNotFound
+		}
+		return err
+	}
+
+	// 回收 VM（如果有且未回收）
+	if vms := t.Edges.Vms; len(vms) > 0 {
+		vm := vms[0]
+		if !vm.IsRecycled {
+			if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStateRecycled, lifecycle.VMMetadata{
+				VMID:   vm.ID,
+				TaskID: &id,
+				UserID: user.ID,
+			}); err != nil {
+				a.logger.WarnContext(ctx, "vm recycle transition failed on delete", "error", err, "vm_id", vm.ID)
+			}
+		}
+	}
+
+	return a.repo.Delete(ctx, user, id)
 }
 
 // GetPublic implements domain.TaskUsecase.

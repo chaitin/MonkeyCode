@@ -73,11 +73,7 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 				Token:    req.Git.Token,
 			},
 			ImageURL: img.Name,
-			TTL: taskflow.TTL{
-				Kind:    taskflow.TTLCountDown,
-				Seconds: 60 * 60,
-			},
-			TaskID: t.ID,
+			TaskID:   t.ID,
 			LLM: taskflow.LLMProviderReq{
 				Provider: taskflow.LlmProviderOpenAI,
 				ApiKey:   m.APIKey,

@@ -81,8 +81,8 @@ func (t *TaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error) 
 }
 
 // Info implements domain.TaskRepo.
-func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID) (*db.Task, error) {
-	return t.db.Task.Query().
+func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID, isPrivileged bool) (*db.Task, error) {
+	q := t.db.Task.Query().
 		WithProjectTasks(func(ptq *db.ProjectTaskQuery) {
 			ptq.
 				WithModel().
@@ -98,8 +98,13 @@ func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID) (*db.
 				hq.WithUser()
 			})
 		}).
-		Where(task.UserID(u.ID), task.ID(id)).
-		First(ctx)
+		Where(task.ID(id))
+
+	if !isPrivileged {
+		q = q.Where(task.UserID(u.ID))
+	}
+
+	return q.First(ctx)
 }
 
 // List implements domain.TaskRepo.
@@ -167,12 +172,13 @@ func (t *TaskRepo) List(ctx context.Context, u *domain.User, req domain.TaskList
 }
 
 // Stop implements domain.TaskRepo.
-func (t *TaskRepo) Stop(ctx context.Context, _ *domain.User, id uuid.UUID, fn func(*db.Task) error) error {
+func (t *TaskRepo) Stop(ctx context.Context, u *domain.User, id uuid.UUID, fn func(*db.Task) error) error {
 	return entx.WithTx2(ctx, t.db, func(tx *db.Tx) error {
 		tk, err := tx.Task.Query().
 			WithProjectTasks().
 			WithVms().
 			Where(task.ID(id)).
+			Where(task.UserID(u.ID)).
 			First(ctx)
 		if err != nil {
 			return err
@@ -198,6 +204,15 @@ func (t *TaskRepo) Update(ctx context.Context, _ *domain.User, id uuid.UUID, fn 
 		}
 		return up.Exec(ctx)
 	})
+}
+
+// Delete implements domain.TaskRepo.
+func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
+	_, err := t.db.Task.Delete().
+		Where(task.UserID(user.ID)).
+		Where(task.ID(id)).
+		Exec(ctx)
+	return err
 }
 
 func (t *TaskRepo) pickModelWeighted(cliname consts.CliName, ms []*db.Model) *db.Model {
@@ -240,10 +255,6 @@ func (t *TaskRepo) pickModelWeighted(cliname consts.CliName, ms []*db.Model) *db
 // Create implements domain.TaskRepo.
 func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error) {
 	resource := req.Resource
-	TTLKind := consts.CountDown
-	if resource.Life <= 0 {
-		TTLKind = consts.Forever
-	}
 
 	var res *db.ProjectTask
 	err := entx.WithTx2(ctx, t.db, func(tx *db.Tx) error {
@@ -365,8 +376,8 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetName(fmt.Sprintf("task-%s", id.String())).
 			SetHostID(h.ID).
 			SetEnvironmentID(vm.EnvironmentID).
-			SetTTLKind(TTLKind).
-			SetTTL(resource.Life).
+			SetTTLKind(consts.Forever).
+			SetTTL(0).
 			SetCores(resource.Core).
 			SetMemory(int64(resource.Memory)).
 			SetModelID(m.ID).

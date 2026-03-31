@@ -8,15 +8,14 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/project/usecase"
 )
 
-// RegisterProject 注册 project 模块
-func RegisterProject(i *do.Injector) {
-	// Repo
+// ProvideProject 注册 project 模块的服务工厂
+func ProvideProject(i *do.Injector) {
 	do.Provide(i, repo.NewProjectRepo)
-
-	// Usecase
 	do.Provide(i, usecase.NewProjectUsecase)
-
-	// Handler
 	do.Provide(i, v1.NewProjectHandler)
+}
+
+// InvokeProject 触发 project 模块的 handler 初始化
+func InvokeProject(i *do.Injector) {
 	do.MustInvoke[*v1.ProjectHandler](i)
 }

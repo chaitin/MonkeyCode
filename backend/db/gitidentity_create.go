@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/google/uuid"
 )
 
@@ -235,6 +236,21 @@ func (_c *GitIdentityCreate) AddProjectTasks(v ...*ProjectTask) *GitIdentityCrea
 	return _c.AddProjectTaskIDs(ids...)
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by IDs.
+func (_c *GitIdentityCreate) AddVMIDs(ids ...string) *GitIdentityCreate {
+	_c.mutation.AddVMIDs(ids...)
+	return _c
+}
+
+// AddVms adds the "vms" edges to the VirtualMachine entity.
+func (_c *GitIdentityCreate) AddVms(v ...*VirtualMachine) *GitIdentityCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddVMIDs(ids...)
+}
+
 // Mutation returns the GitIdentityMutation object of the builder.
 func (_c *GitIdentityCreate) Mutation() *GitIdentityMutation {
 	return _c.mutation
@@ -432,6 +448,22 @@ func (_c *GitIdentityCreate) createSpec() (*GitIdentity, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.VmsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   gitidentity.VmsTable,
+			Columns: []string{gitidentity.VmsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(virtualmachine.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

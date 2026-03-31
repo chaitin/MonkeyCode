@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	_ "github.com/chaitin/MonkeyCode/backend/db/runtime"
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 func NewEntDBV2(cfg *config.Config, logger *slog.Logger) (*db.Client, error) {
@@ -39,6 +40,7 @@ func NewEntDBV2(cfg *config.Config, logger *slog.Logger) (*db.Client, error) {
 	r.DB().SetMaxIdleConns(cfg.Database.MaxIdleConns)
 	r.DB().SetConnMaxLifetime(time.Duration(cfg.Database.ConnMaxLifetime) * time.Minute)
 	c := db.NewClient(db.Driver(NewMultiDriver(r, w, logger)))
+	c.Task.Use(entx.TaskConcurrencyHook)
 	if cfg.Debug {
 		c = c.Debug()
 	}

@@ -1014,6 +1014,7 @@ var (
 		{Name: "conditions", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "git_identity_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "host_id", Type: field.TypeString},
 		{Name: "model_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
@@ -1025,20 +1026,26 @@ var (
 		PrimaryKey: []*schema.Column{VirtualmachinesColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
-				Symbol:     "virtualmachines_hosts_vms",
+				Symbol:     "virtualmachines_git_identities_vms",
 				Columns:    []*schema.Column{VirtualmachinesColumns[22]},
+				RefColumns: []*schema.Column{GitIdentitiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "virtualmachines_hosts_vms",
+				Columns:    []*schema.Column{VirtualmachinesColumns[23]},
 				RefColumns: []*schema.Column{HostsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "virtualmachines_models_vms",
-				Columns:    []*schema.Column{VirtualmachinesColumns[23]},
+				Columns:    []*schema.Column{VirtualmachinesColumns[24]},
 				RefColumns: []*schema.Column{ModelsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "virtualmachines_users_vms",
-				Columns:    []*schema.Column{VirtualmachinesColumns[24]},
+				Columns:    []*schema.Column{VirtualmachinesColumns[25]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1226,9 +1233,10 @@ func init() {
 	UserIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "user_identities",
 	}
-	VirtualmachinesTable.ForeignKeys[0].RefTable = HostsTable
-	VirtualmachinesTable.ForeignKeys[1].RefTable = ModelsTable
-	VirtualmachinesTable.ForeignKeys[2].RefTable = UsersTable
+	VirtualmachinesTable.ForeignKeys[0].RefTable = GitIdentitiesTable
+	VirtualmachinesTable.ForeignKeys[1].RefTable = HostsTable
+	VirtualmachinesTable.ForeignKeys[2].RefTable = ModelsTable
+	VirtualmachinesTable.ForeignKeys[3].RefTable = UsersTable
 	VirtualmachinesTable.Annotation = &entsql.Annotation{
 		Table: "virtualmachines",
 	}

@@ -52,6 +52,16 @@ type Config struct {
 	Gitee  GiteeConfig  `mapstructure:"gitee"`
 
 	InitTeam InitTeam `mapstructure:"init_team"`
+
+	// 语音识别配置（阿里云 NLS）
+	NLS NLS `mapstructure:"nls"`
+}
+
+// NLS 阿里云语音识别配置
+type NLS struct {
+	AppKey string `mapstructure:"app_key"`
+	AkID   string `mapstructure:"ak_id"`
+	AkKey  string `mapstructure:"ak_key"`
 }
 
 type InitTeam struct {
@@ -188,7 +198,15 @@ func Init(dir string) (*Config, error) {
 type GithubConfig struct {
 	Token   string            `mapstructure:"token"`
 	Enabled bool              `mapstructure:"enabled"`
+	App     GithubAppConfig   `mapstructure:"app"`
 	OAuth   GithubOAuthConfig `mapstructure:"oauth"`
+}
+
+type GithubAppConfig struct {
+	ID            int64  `mapstructure:"id"`
+	WebhookSecret string `mapstructure:"webhook_secret"`
+	PrivateKey    string `mapstructure:"private_key"`
+	RedirectURL   string `mapstructure:"redirect_url"` // 安装完 GitHub App 后的跳转地址
 }
 
 // GithubOAuthConfig GitHub OAuth 配置

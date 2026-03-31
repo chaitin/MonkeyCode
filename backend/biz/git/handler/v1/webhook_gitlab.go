@@ -125,11 +125,6 @@ func (h *GitlabWebhookHandler) handleMergeRequest(ctx context.Context, bot *doma
 		return
 	}
 
-	accessToken := resolveToken(ctx, h.gitbotUsecase, bot, h.logger)
-	if accessToken == "" {
-		return
-	}
-
 	if !dedup(ctx, h.redis, mr.URL, h.logger) {
 		return
 	}
@@ -140,7 +135,7 @@ func (h *GitlabWebhookHandler) handleMergeRequest(ctx context.Context, bot *doma
 		HostID:  bot.Host.ID,
 		ImageID: uuid.MustParse(h.cfg.Task.ImageID),
 		Prompt:  mr.URL,
-		Git:     taskflow.Git{Token: accessToken},
+		Git:     taskflow.Git{Token: bot.Token},
 		Subject: domain.Subject{
 			ID: fmt.Sprintf("%d", mr.IID), Type: "MergeRequest",
 			Title: mr.Title, URL: mr.URL, Number: mr.IID,
@@ -154,7 +149,7 @@ func (h *GitlabWebhookHandler) handleMergeRequest(ctx context.Context, bot *doma
 		User:     domain.User{Name: firstNonEmpty(user.Name, user.Username), AvatarURL: user.AvatarURL, Email: user.Email},
 		Body:     mr.Description,
 		Time:     time.Now(),
-		Env:      map[string]string{"GITLAB_TOKEN": accessToken},
+		Env:      map[string]string{"GITLAB_TOKEN": bot.Token},
 		Bot:      bot,
 	})
 }

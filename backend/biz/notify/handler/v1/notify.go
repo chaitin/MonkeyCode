@@ -291,5 +291,20 @@ func (h *NotifyHandler) TestTeamChannel(c *web.Context, req domain.IDReq[uuid.UU
 //	@Failure		500	{object}	web.Resp									"服务器内部错误"
 //	@Router			/api/v1/users/notify/event-types [get]
 func (h *NotifyHandler) ListEventTypes(c *web.Context, _ struct{}) error {
+	_placeholder()
 	return c.Success(consts.AllNotifyEventTypes)
 }
+
+// ListEventTypes 列出所有支持的事件类型
+//
+//	@Summary		列出事件类型
+//	@Description	列出所有支持订阅的事件类型
+//	@Tags			通知推送
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Success		200	{object}	web.Resp{data=[]consts.NotifyEventTypeInfo}	"成功"
+//	@Failure		401	{object}	web.Resp									"未授权"
+//	@Failure		500	{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/teams/notify/event-types [get]
+func _placeholder() {}

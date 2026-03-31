@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
 )
 
@@ -369,4 +370,93 @@ func isBinaryContent(content []byte) bool {
 		check = check[:8000]
 	}
 	return bytes.Contains(check, []byte{0})
+}
+
+// UserInfo 实现 GitPlatformClient 接口
+func (g *Gitee) UserInfo(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
+	return g.GetUserInfoByPAT(ctx, token)
+}
+
+// Repositories 实现 GitPlatformClient 接口
+func (g *Gitee) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+	repos, err := g.ListUserReposByToken(g.baseURL, opts.Token, 1, 100)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.AuthRepository, len(repos))
+	for i, r := range repos {
+		result[i] = domain.AuthRepository{FullName: r.FullName, URL: r.HTMLURL, Description: r.Description}
+	}
+	return result, nil
+}
+
+// Tree 实现 GitPlatformClient 接口
+func (g *Gitee) Tree(ctx context.Context, opts *domain.TreeOptions) (*domain.GetRepoTreeResp, error) {
+	resp, err := g.GetRepoTree(ctx, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.Recursive, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.TreeEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.TreeEntry{Mode: e.Mode, Name: e.Name, Path: e.Path, Sha: e.Sha, Size: e.Size}
+	}
+	return &domain.GetRepoTreeResp{Entries: entries, SHA: resp.SHA}, nil
+}
+
+// Blob 实现 GitPlatformClient 接口
+func (g *Gitee) Blob(ctx context.Context, opts *domain.BlobOptions) (*domain.GetBlobResp, error) {
+	resp, err := g.GetBlob(ctx, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetBlobResp{Content: resp.Content, IsBinary: resp.IsBinary, Sha: resp.Sha, Size: resp.Size}, nil
+}
+
+// Logs 实现 GitPlatformClient 接口
+func (g *Gitee) Logs(ctx context.Context, opts *domain.LogsOptions) (*domain.GetGitLogsResp, error) {
+	resp, err := g.GetGitLogs(ctx, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.Limit, opts.Offset, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.GitCommitEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.GitCommitEntry{
+			Commit: &domain.GitCommit{
+				Author:     &domain.GitUser{Email: e.Commit.Author.Email, Name: e.Commit.Author.Name, When: e.Commit.Author.When},
+				Committer:  &domain.GitUser{Email: e.Commit.Committer.Email, Name: e.Commit.Committer.Name, When: e.Commit.Committer.When},
+				Message:    e.Commit.Message,
+				ParentShas: e.Commit.ParentShas,
+				Sha:        e.Commit.Sha,
+				TreeSha:    e.Commit.TreeSha,
+			},
+		}
+	}
+	return &domain.GetGitLogsResp{Count: resp.Count, Entries: entries}, nil
+}
+
+// Archive 实现 GitPlatformClient 接口
+func (g *Gitee) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*domain.GetRepoArchiveResp, error) {
+	resp, err := g.GetRepoArchive(ctx, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetRepoArchiveResp{ContentLength: resp.ContentLength, ContentType: resp.ContentType, Reader: resp.Reader}, nil
+}
+
+// Branches 实现 GitPlatformClient 接口
+func (g *Gitee) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
+	// TODO: 实现 Gitee branches 列表
+	return nil, fmt.Errorf("not implemented")
+}
+
+// DeleteWebhook 实现 GitPlatformClient 接口
+func (g *Gitee) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) error {
+	// TODO: 实现 Gitee webhook 删除
+	return fmt.Errorf("not implemented")
+}
+
+// CreateWebhook 实现 GitPlatformClient 接口
+func (g *Gitee) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOptions) error {
+	// TODO: 实现 Gitee webhook 创建
+	return fmt.Errorf("not implemented")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
+	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 )
 
@@ -138,4 +140,114 @@ func (u *UserUsecase) GetUserByEmail(ctx context.Context, emails []string) ([]*d
 		return nil
 	})
 	return result, nil
+}
+
+// SendBindEmailVerification 发送邮箱绑定验证邮件
+func (u *UserUsecase) SendBindEmailVerification(ctx context.Context, userID uuid.UUID, req *domain.SendBindEmailVerificationReq) error {
+	// 检查邮箱是否已被其他用户使用
+	existingUsers, err := u.repo.GetUserByEmail(ctx, []string{req.Email})
+	if err != nil && !db.IsNotFound(err) {
+		return errcode.ErrDatabaseQuery.Wrap(err)
+	}
+	for _, eu := range existingUsers {
+		if eu.ID == userID {
+			return errcode.ErrEmailAlreadyBound
+		}
+		return errcode.ErrEmailTaken
+	}
+
+	// 生成验证 token
+	token, err := crypto.Simple(userID.String(), time.Now().Add(time.Hour*24))
+	if err != nil {
+		u.logger.ErrorContext(ctx, "generate bind email token failed", "error", err)
+		return errcode.ErrInternalServer.Wrap(err)
+	}
+
+	// 存储 token 到 Redis，格式：{token}:{email}，有效期 24 小时
+	key := fmt.Sprintf("bind_email_token:%s", userID.String())
+	value := fmt.Sprintf("%s:%s", token, req.Email)
+	if err := u.redis.Set(ctx, key, value, time.Hour*24).Err(); err != nil {
+		u.logger.ErrorContext(ctx, "set redis key failed", "error", err)
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+
+	// 获取用户信息用于邮件发送
+	user, err := u.repo.Get(ctx, userID)
+	if err != nil {
+		u.logger.ErrorContext(ctx, "get user failed", "error", err)
+		return errcode.ErrDatabaseQuery.Wrap(err)
+	}
+
+	// 异步发送邮件
+	verifyURL := fmt.Sprintf("%s/api/v1/users/email/verify?token=%s", u.config.Server.BaseURL, token)
+	go func() {
+		if err := u.email.SendBindEmailVerification(context.Background(), req.Email, user.Name, verifyURL); err != nil {
+			u.logger.ErrorContext(ctx, "send bind email verification mail failed", "error", err)
+		}
+	}()
+
+	return nil
+}
+
+// VerifyBindEmail 验证邮箱绑定
+func (u *UserUsecase) VerifyBindEmail(ctx context.Context, token string) error {
+	// 验证 token 的有效性（检查签名和过期时间）
+	userIDStr, err := crypto.ValidateSimple(token)
+	if err != nil {
+		u.logger.WarnContext(ctx, "validate token failed", "error", err)
+		return errcode.ErrEmailVerifyFailed.Wrap(err)
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		u.logger.WarnContext(ctx, "parse user id from token failed", "error", err)
+		return errcode.ErrEmailVerifyFailed.Wrap(err)
+	}
+
+	// 从 Redis 中取出存储的 token 和邮箱（一次性消费）
+	key := fmt.Sprintf("bind_email_token:%s", userID.String())
+	redisValue, err := u.redis.GetDel(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return errcode.ErrEmailVerifyFailed
+		}
+		u.logger.ErrorContext(ctx, "get redis key failed", "error", err)
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+
+	// 解析 Redis 中的值：{token}:{email}
+	parts := strings.SplitN(redisValue, ":", 2)
+	if len(parts) != 2 {
+		u.logger.WarnContext(ctx, "invalid redis value format", "value", redisValue)
+		return errcode.ErrEmailVerifyFailed
+	}
+
+	storedToken := parts[0]
+	email := parts[1]
+
+	// 验证 token 是否匹配（防止 token 替换）
+	if storedToken != token {
+		u.logger.WarnContext(ctx, "token mismatch")
+		return errcode.ErrEmailVerifyFailed
+	}
+
+	// 再次检查邮箱是否被其他用户占用（防止竞态条件）
+	existingUsers, err := u.repo.GetUserByEmail(ctx, []string{email})
+	if err != nil && !db.IsNotFound(err) {
+		return errcode.ErrDatabaseQuery.Wrap(err)
+	}
+	for _, eu := range existingUsers {
+		if eu.ID != userID {
+			return errcode.ErrEmailTaken
+		}
+	}
+
+	// 更新用户邮箱
+	if err := u.repo.SetEmail(ctx, userID, email); err != nil {
+		u.logger.ErrorContext(ctx, "set email failed", "error", err)
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+
+	u.logger.InfoContext(ctx, "bind email success", "user_id", userID, "email", email)
+	return nil
 }

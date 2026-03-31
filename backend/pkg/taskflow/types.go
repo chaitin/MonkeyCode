@@ -48,11 +48,11 @@ type IsOnlineResp struct {
 type VirtualMachineStatus string
 
 const (
-	VirtualMachineStatusUnknown  VirtualMachineStatus = "unknown"
-	VirtualMachineStatusPending  VirtualMachineStatus = "pending"
-	VirtualMachineStatusOnline   VirtualMachineStatus = "online"
-	VirtualMachineStatusOffline  VirtualMachineStatus = "offline"
-	VirtualMachineStatusSleeping VirtualMachineStatus = "sleeping"
+	VirtualMachineStatusUnknown    VirtualMachineStatus = "unknown"
+	VirtualMachineStatusPending    VirtualMachineStatus = "pending"
+	VirtualMachineStatusOnline     VirtualMachineStatus = "online"
+	VirtualMachineStatusOffline    VirtualMachineStatus = "offline"
+	VirtualMachineStatusHibernated VirtualMachineStatus = "hibernated"
 )
 
 // TTLKind TTL 类型
@@ -127,7 +127,6 @@ type CreateVirtualMachineReq struct {
 	ZipUrl              string         `json:"zip_url"`
 	ImageURL            string         `json:"image_url"`
 	ProxyURL            string         `json:"proxy_url"`
-	TTL                 TTL            `json:"ttl" validate:"required"`
 	TaskID              uuid.UUID      `json:"task_id"`
 	LLM                 LLMProviderReq `json:"llm"`
 	Cores               string         `json:"cores"`
@@ -330,11 +329,11 @@ type CodingConfig struct{}
 
 // GitCredentialRequest git 凭证请求
 type GitCredentialRequest struct {
-	TaskID   string `json:"task_id"`
-	VMID     string `json:"vm_id"`
-	Protocol string `json:"protocol"`
-	Host     string `json:"host"`
-	Path     string `json:"path"`
+	TaskID   string `json:"task_id"`  // 任务 id
+	VMID     string `json:"vm_id"`    // 虚拟机 id
+	Protocol string `json:"protocol"` // git 协议 (e.g., "https")
+	Host     string `json:"host"`     // git server host (e.g., "gitlab.example.com")
+	Path     string `json:"path"`     // 仓库路径 (e.g., "owner/repo.git")
 }
 
 // GitCredentialResponse git 凭证响应
@@ -365,6 +364,16 @@ type AskUserQuestionResponse struct {
 // ApplyWebClientIPReq 同步 Web 客户端 IP 请求
 type ApplyWebClientIPReq struct {
 	ClientIP string `json:"client_ip"`
+}
+
+// GetTaskStreamIPsReq 获取任务 WebSocket 连接 IP 请求
+type GetTaskStreamIPsReq struct {
+	TaskID string `json:"task_id"`
+}
+
+// GetTaskStreamIPsResp 获取任务 WebSocket 连接 IP 响应
+type GetTaskStreamIPsResp struct {
+	IPs []string `json:"ips"`
 }
 
 // ==================== Repo 操作类型 ====================
@@ -531,6 +540,7 @@ type LLM struct {
 	ApiKey      string   `json:"api_key"`
 	BaseURL     string   `json:"base_url"`
 	Model       string   `json:"model"`
+	ApiType     string   `json:"api_type,omitempty"` // 接口类型 anthropic | openai
 	Temperature *float32 `json:"temperature,omitempty"`
 }
 
@@ -638,13 +648,25 @@ type File struct {
 }
 
 type HibernateVirtualMachineReq struct {
-	HostID string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
-	UserID string `json:"user_id" query:"user_id" validate:"required"` // 用户id
-	ID     string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	HostID        string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
+	UserID        string `json:"user_id" query:"user_id" validate:"required"` // 用户id
+	ID            string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	EnvironmentID string `json:"environment_id" query:"environment_id"`       // environment id
 }
 
 type ResumeVirtualMachineReq struct {
-	HostID string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
-	UserID string `json:"user_id" query:"user_id" validate:"required"` // 用户id
-	ID     string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	HostID        string `json:"host_id" query:"host_id" validate:"required"` // 宿主机 id
+	UserID        string `json:"user_id" query:"user_id" validate:"required"` // 用户id
+	ID            string `json:"id" query:"id" validate:"required"`           // 虚拟机 id
+	EnvironmentID string `json:"environment_id" query:"environment_id"`       // environment id
+}
+
+type ListPortforwadReq struct {
+	ID        string `json:"id" query:"id" validate:"required"` // 虚拟机 id
+	RequestId string `json:"request_id,omitempty"`
+}
+
+type ListPortforwadResp struct {
+	RequestId string             `json:"request_id,omitempty"`
+	Ports     []*PortForwardInfo `json:"ports"`
 }
