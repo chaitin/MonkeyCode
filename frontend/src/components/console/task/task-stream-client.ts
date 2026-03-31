@@ -42,36 +42,45 @@ interface TaskStreamServerChunk {
 
 type TaskStreamClientMode = "attach" | "new"
 
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000]
+const MAX_TRACKED_CHUNKS = 2000
+
 export class TaskStreamClient {
   private readonly taskId: string
-  private readonly mode: TaskStreamClientMode
+  private readonly initialMode: TaskStreamClientMode
   private readonly onStateChange?: (state: TaskStreamClientState) => void
   private readonly onOpen?: () => void
   private readonly onClose?: (event: CloseEvent) => void
-  private readonly onError?: (event: Event) => void
-  private readonly messageHandler: TaskMessageHandler
+  private readonly captureCursor: boolean
 
+  private mode: TaskStreamClientMode
+  private messageHandler: TaskMessageHandler
   private socket: WebSocket | null = null
   private initialUserInput: string | null = null
   private manuallyDisconnected = false
   private executionStartedAt: number | null = null
   private executionTimer: ReturnType<typeof setInterval> | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
+  private hasReceivedTaskEnded = false
+  private processedChunkKeys = new Set<string>()
+  private processedChunkOrder: string[] = []
 
   private constructor({
     taskId,
     onStateChange,
     onOpen,
     onClose,
-    onError,
     captureCursor = false,
     mode,
   }: TaskStreamClientBaseOptions) {
     this.taskId = taskId
-    this.mode = mode ?? "attach"
+    this.initialMode = mode ?? "attach"
+    this.mode = this.initialMode
     this.onStateChange = onStateChange
     this.onOpen = onOpen
     this.onClose = onClose
-    this.onError = onError
+    this.captureCursor = captureCursor
     this.messageHandler = new TaskMessageHandler({ captureCursor })
   }
 
@@ -88,10 +97,22 @@ export class TaskStreamClient {
   connect() {
     this.disconnect()
     this.manuallyDisconnected = false
+    this.mode = this.initialMode
     this.executionStartedAt = null
+    this.hasReceivedTaskEnded = false
+    this.reconnectAttempts = 0
+    this.clearReconnectTimer()
+    this.resetProcessedChunks()
+    this.messageHandler = new TaskMessageHandler({ captureCursor: this.captureCursor })
 
+    this.openSocket()
+  }
+
+  private openSocket() {
     this.socket = new WebSocket(this.buildStreamUrl())
     this.socket.onopen = () => {
+      this.reconnectAttempts = 0
+      this.clearReconnectTimer()
       this.emitState(this.messageHandler.setConnected())
 
       if (this.initialUserInput) {
@@ -111,15 +132,17 @@ export class TaskStreamClient {
       }
     }
 
-    this.socket.onerror = (event) => {
-      this.emitErrorState()
-      this.onError?.(event)
+    this.socket.onerror = (_event) => {
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        return
+      }
     }
 
     this.socket.onclose = (event) => {
       this.socket = null
-      if (!this.manuallyDisconnected && this.messageHandler.getState().status !== "finished") {
-        this.emitErrorState()
+      if (!this.manuallyDisconnected && !this.hasReceivedTaskEnded) {
+        this.scheduleReconnect()
+        return
       }
       this.onClose?.(event)
     }
@@ -127,10 +150,11 @@ export class TaskStreamClient {
 
   disconnect() {
     this.stopExecutionTimer()
+    this.clearReconnectTimer()
     if (!this.socket) return this.getState()
 
     const currentState = this.messageHandler.getState()
-    if (currentState.status !== "finished") {
+    if (currentState.status !== "finished" && !this.hasReceivedTaskEnded) {
       this.emitState(this.messageHandler.finalizeCycle())
     }
 
@@ -174,6 +198,14 @@ export class TaskStreamClient {
   }
 
   private handleServerChunk(chunk: TaskStreamServerChunk) {
+    if (chunk.type === "task-ended") {
+      this.hasReceivedTaskEnded = true
+    }
+
+    if (!this.shouldProcessChunk(chunk)) {
+      return
+    }
+
     const nextState = this.messageHandler.pushChunk(this.toRawChunk(chunk))
     this.syncExecutionStartedAt(nextState)
     this.syncExecutionTimer(nextState)
@@ -184,9 +216,59 @@ export class TaskStreamClient {
     }
   }
 
-  private emitErrorState() {
-    this.stopExecutionTimer()
-    this.emitState(this.messageHandler.setError())
+  private scheduleReconnect() {
+    if (this.reconnectTimer) {
+      return false
+    }
+
+    const delay = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)]
+    this.reconnectAttempts += 1
+    this.mode = this.initialUserInput ? this.initialMode : "attach"
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      if (this.manuallyDisconnected || this.hasReceivedTaskEnded || this.socket) {
+        return
+      }
+      this.openSocket()
+    }, delay)
+
+    return true
+  }
+
+  private clearReconnectTimer() {
+    if (!this.reconnectTimer) return
+    clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+  }
+
+  private shouldProcessChunk(chunk: TaskStreamServerChunk) {
+    const key = JSON.stringify([
+      chunk.type ?? "",
+      chunk.kind ?? "",
+      chunk.timestamp ?? 0,
+      typeof chunk.data === "string" ? chunk.data : chunk.data == null ? "" : JSON.stringify(chunk.data),
+    ])
+
+    if (this.processedChunkKeys.has(key)) {
+      return false
+    }
+
+    this.processedChunkKeys.add(key)
+    this.processedChunkOrder.push(key)
+
+    if (this.processedChunkOrder.length > MAX_TRACKED_CHUNKS) {
+      const oldestKey = this.processedChunkOrder.shift()
+      if (oldestKey) {
+        this.processedChunkKeys.delete(oldestKey)
+      }
+    }
+
+    return true
+  }
+
+  private resetProcessedChunks() {
+    this.processedChunkKeys.clear()
+    this.processedChunkOrder = []
   }
 
   private emitState(state: TaskMessageHandlerState) {

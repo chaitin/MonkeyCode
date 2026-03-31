@@ -17,7 +17,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { formatTokens } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconDeviceDesktop, IconFile, IconGitBranch, IconHistory, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconGitBranch, IconHistory, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -44,10 +44,16 @@ export default function TaskDetailPage() {
   const [clientIp, setClientIp] = React.useState<string | null>(null)
   const [clientIpReady, setClientIpReady] = React.useState(false)
   const [previewPorts, setPreviewPorts] = React.useState<DomainVMPort[] | undefined>(undefined)
+  const [chatHasOverflow, setChatHasOverflow] = React.useState(false)
+  const [chatAtTop, setChatAtTop] = React.useState(true)
+  const [chatAtBottom, setChatAtBottom] = React.useState(true)
   const taskControlClientRef = React.useRef<TaskControlClient | null>(null)
   const streamClientRef = React.useRef<TaskStreamClient | null>(null)
   const historyLoadingRef = React.useRef(false)
   const historyLoadedRef = React.useRef(false)
+  const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
+  const chatContentRef = React.useRef<HTMLDivElement | null>(null)
+  const autoScrollFrameRef = React.useRef<number | null>(null)
   const showPreparing = useShouldShowPreparing(task)
   const vmOnline = task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline
     || task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusHibernated
@@ -399,6 +405,81 @@ export default function TaskDetailPage() {
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
+  const updateChatScrollState = React.useCallback(() => {
+    const container = chatScrollRef.current
+    if (!container) return
+
+    const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
+    const hasOverflow = maxScrollTop > 4
+
+    setChatHasOverflow(hasOverflow)
+    setChatAtTop(!hasOverflow || container.scrollTop <= 8)
+    setChatAtBottom(!hasOverflow || maxScrollTop - container.scrollTop <= 8)
+  }, [])
+
+  React.useEffect(() => {
+    const container = chatScrollRef.current
+    const content = chatContentRef.current
+    if (!container) return
+
+    const handleScroll = () => updateChatScrollState()
+    container.addEventListener("scroll", handleScroll, { passive: true })
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateChatScrollState()
+    })
+    resizeObserver.observe(container)
+    if (content) {
+      resizeObserver.observe(content)
+    }
+
+    updateChatScrollState()
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll)
+      resizeObserver.disconnect()
+    }
+  }, [updateChatScrollState])
+
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      updateChatScrollState()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [messages, hasPanel, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
+
+  const scrollChatToTop = React.useCallback(() => {
+    chatScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+  }, [])
+
+  const scrollChatToBottom = React.useCallback(() => {
+    const container = chatScrollRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+  }, [])
+
+  React.useEffect(() => {
+    if (historyLoading) return
+
+    if (autoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollFrameRef.current)
+    }
+
+    autoScrollFrameRef.current = window.requestAnimationFrame(() => {
+      autoScrollFrameRef.current = null
+      const container = chatScrollRef.current
+      if (!container) return
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+    })
+
+    return () => {
+      if (autoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current)
+        autoScrollFrameRef.current = null
+      }
+    }
+  }, [historyLoading, liveMessages, streamStatus])
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {showPreparing ? (
@@ -408,38 +489,69 @@ export default function TaskDetailPage() {
           <ResizablePanel id="chat" order={1} defaultSize={hasPanel ? 50 : 100} minSize={hasPanel ? 30 : 100} className="min-w-0">
             <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
               {/* 消息列表 */}
-              <div className="flex-1 min-h-0 overflow-y-auto min-w-0">
-                <div className={cn("min-h-full flex flex-col gap-3", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
-                  {showHistoryLoadButton && (
-                    <div className="flex justify-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                        onClick={() => fetchTaskRounds(historyCursor ?? undefined)}
-                        disabled={historyLoading}
-                      >
-                        {!historyLoading && <IconHistory className="size-4" />}
-                        {historyLoading && <Spinner className="size-4" />}
-                        {historyLoading ? "正在加载" : historyLoaded ? "加载更多" : "加载历史消息"}
-                      </Button>
-                    </div>
-                  )}
-                  {messages.length > 0 ? (
-                    <div className="flex flex-col gap-1 pb-4">
-                      {messages.map((message, index) => (
-                        <MessageItem
-                          key={message.id}
-                          message={message}
-                          cli={task?.cli_name}
-                          isLatest={index === messages.length - 1}
-                        />
-                      ))}
-                    </div>
-                  ) : historyLoaded ? (
-                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">暂无消息</div>
-                  ) : null}
+              <div className="flex-1 min-h-0 min-w-0 relative">
+                <div ref={chatScrollRef} className="h-full overflow-y-auto">
+                  <div
+                    ref={chatContentRef}
+                    className={cn("min-h-full flex flex-col gap-3", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}
+                  >
+                    {showHistoryLoadButton && (
+                      <div className="flex justify-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                          onClick={() => fetchTaskRounds(historyCursor ?? undefined)}
+                          disabled={historyLoading}
+                        >
+                          {!historyLoading && <IconHistory className="size-4" />}
+                          {historyLoading && <Spinner className="size-4" />}
+                          {historyLoading ? "正在加载" : historyLoaded ? "加载更多" : "加载历史消息"}
+                        </Button>
+                      </div>
+                    )}
+                    {messages.length > 0 ? (
+                      <div className="flex flex-col gap-1 pb-4">
+                        {messages.map((message, index) => (
+                          <MessageItem
+                            key={message.id}
+                            message={message}
+                            cli={task?.cli_name}
+                            isLatest={index === messages.length - 1}
+                          />
+                        ))}
+                      </div>
+                    ) : historyLoaded ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">暂无消息</div>
+                    ) : null}
+                  </div>
                 </div>
+                {chatHasOverflow && (
+                  <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="secondary"
+                      className="size-9 rounded-full shadow-md"
+                      onClick={scrollChatToTop}
+                      disabled={chatAtTop}
+                      aria-label="滚动到顶部"
+                    >
+                      <IconArrowUp className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="secondary"
+                      className="size-9 rounded-full shadow-md"
+                      onClick={scrollChatToBottom}
+                      disabled={chatAtBottom}
+                      aria-label="滚动到底部"
+                    >
+                      <IconArrowDown className="size-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
               {/* 输入框 */}
               <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
