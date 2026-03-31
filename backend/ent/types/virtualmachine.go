@@ -27,6 +27,7 @@ const (
 	ConditionTypeContainerStarted ConditionType = "ContainerStarted"
 	ConditionTypeReady            ConditionType = "Ready"
 	ConditionTypeFailed           ConditionType = "Failed"
+	ConditionTypeHibernated       ConditionType = "Hibernated"
 )
 
 // Condition 细粒度状态条件

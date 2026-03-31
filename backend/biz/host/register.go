@@ -8,19 +8,16 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/host/usecase"
 )
 
-// RegisterHost 注册 host 模块
-func RegisterHost(i *do.Injector) {
-	// Repo
+// ProvideHost 注册 host 模块的服务工厂
+func ProvideHost(i *do.Injector) {
 	do.Provide(i, repo.NewHostRepo)
-
-	// Usecase
 	do.Provide(i, usecase.NewHostUsecase)
-
-	// Handler
 	do.Provide(i, v1.NewHostHandler)
-	do.MustInvoke[*v1.HostHandler](i)
-
-	// Internal handler（taskflow 回调）
 	do.Provide(i, v1.NewInternalHostHandler)
+}
+
+// InvokeHost 触发 host 模块的 handler 初始化
+func InvokeHost(i *do.Injector) {
+	do.MustInvoke[*v1.HostHandler](i)
 	do.MustInvoke[*v1.InternalHostHandler](i)
 }

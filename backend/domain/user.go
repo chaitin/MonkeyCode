@@ -19,6 +19,8 @@ type UserUsecase interface {
 	ChangePassword(ctx context.Context, userID uuid.UUID, req *ChangePasswordReq, isReset bool) error
 	SendResetPasswordEmail(ctx context.Context, req *ResetUserPasswordEmailReq) error
 	GetUserByEmail(ctx context.Context, emails []string) ([]*User, error)
+	SendBindEmailVerification(ctx context.Context, userID uuid.UUID, req *SendBindEmailVerificationReq) error
+	VerifyBindEmail(ctx context.Context, token string) error
 }
 
 type UserRepo interface {
@@ -28,6 +30,7 @@ type UserRepo interface {
 	PasswordLogin(ctx context.Context, req *TeamLoginReq) (*db.User, error)
 	ChangePassword(ctx context.Context, uid uuid.UUID, currentPassword, newPassword string, isReset bool) error
 	GetUserByEmail(ctx context.Context, emails []string) ([]*db.User, error)
+	SetEmail(ctx context.Context, userID uuid.UUID, email string) error
 }
 
 type User struct {
@@ -38,9 +41,10 @@ type User struct {
 	Role       consts.UserRole   `json:"role"`
 	Status     consts.UserStatus `json:"status"`
 	IsBlocked  bool              `json:"is_blocked"`
-	Token      string            `json:"token,omitempty"`
-	Identities []*UserIdentity   `json:"identities"`
-	Team       *Team             `json:"team,omitempty"`
+	Token       string            `json:"token,omitempty"`
+	Identities  []*UserIdentity   `json:"identities"`
+	Team        *Team             `json:"team,omitempty"`
+	HasPassword bool              `json:"has_password"`
 }
 
 func (u *User) From(src *db.User) *User {
@@ -55,6 +59,7 @@ func (u *User) From(src *db.User) *User {
 	u.Role = src.Role
 	u.Status = consts.UserStatusActive
 	u.IsBlocked = src.IsBlocked
+	u.HasPassword = src.Password != ""
 	u.Identities = cvt.Iter(src.Edges.Identities, func(_ int, i *db.UserIdentity) *UserIdentity {
 		return cvt.From(i, &UserIdentity{})
 	})
@@ -154,4 +159,14 @@ type ActivateReq struct {
 type CursorReq struct {
 	Cursor string `query:"cursor"`
 	Limit  int    `query:"limit"`
+}
+
+// SendBindEmailVerificationReq 发送邮箱绑定验证邮件请求
+type SendBindEmailVerificationReq struct {
+	Email string `json:"email" validate:"required,email"` // 要绑定的邮箱地址
+}
+
+// VerifyBindEmailReq 验证邮箱请求
+type VerifyBindEmailReq struct {
+	Token string `query:"token" validate:"required"` // 验证 token
 }

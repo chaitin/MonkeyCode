@@ -9,13 +9,17 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/task/usecase"
 )
 
-// RegisterTask 注册 task 模块的 usecase 和 handler
-func RegisterTask(i *do.Injector) {
+// ProvideTask 注册 task 模块的服务工厂
+func ProvideTask(i *do.Injector) {
 	do.Provide(i, usecase.NewTaskUsecase)
 	do.Provide(i, usecase.NewGitTaskUsecase)
 	do.Provide(i, service.NewTaskSummaryService)
 	do.Provide(i, v1.NewTaskHandler)
 	do.Provide(i, repo.NewTaskRepo)
 	do.Provide(i, repo.NewGitTaskRepo)
+}
+
+// InvokeTask 触发 task 模块的 handler 初始化
+func InvokeTask(i *do.Injector) {
 	do.MustInvoke[*v1.TaskHandler](i)
 }

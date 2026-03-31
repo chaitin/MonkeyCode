@@ -8,17 +8,16 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/notify/usecase"
 )
 
-// RegisterNotify 注册 notify 模块
-func RegisterNotify(i *do.Injector) {
-	// Repo
+// ProvideNotify 注册 notify 模块的服务工厂
+func ProvideNotify(i *do.Injector) {
 	do.Provide(i, repo.NewNotifyChannelRepo)
 	do.Provide(i, repo.NewNotifySubscriptionRepo)
 	do.Provide(i, repo.NewNotifySendLogRepo)
-
-	// Usecase
 	do.Provide(i, usecase.NewNotifyChannelUsecase)
-
-	// Handler
 	do.Provide(i, v1.NewNotifyHandler)
+}
+
+// InvokeNotify 触发 notify 模块的 handler 初始化
+func InvokeNotify(i *do.Injector) {
 	do.MustInvoke[*v1.NotifyHandler](i)
 }

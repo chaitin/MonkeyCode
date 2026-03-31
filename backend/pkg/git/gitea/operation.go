@@ -13,7 +13,8 @@ import (
 	"strings"
 	"time"
 
-	domainpkg "github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
 // giteaAPIGet 通用 Gitea API GET 请求
@@ -288,9 +289,9 @@ func ListBranches(ctx context.Context, baseURL, token, owner, repo string, page,
 }
 
 // GetAuthorizedRepositories 获取 token 可访问的仓库列表
-func (g *Gitea) GetAuthorizedRepositories(ctx context.Context, token string) ([]domainpkg.AuthRepository, error) {
+func (g *Gitea) GetAuthorizedRepositories(ctx context.Context, token string) ([]domain.AuthRepository, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/user/repos?limit=100", g.baseURL)
-	var all []domainpkg.AuthRepository
+	var all []domain.AuthRepository
 	page := 1
 	for {
 		pagedURL := fmt.Sprintf("%s&page=%d", apiURL, page)
@@ -311,7 +312,7 @@ func (g *Gitea) GetAuthorizedRepositories(ctx context.Context, token string) ([]
 			break
 		}
 		for _, r := range repos {
-			all = append(all, domainpkg.AuthRepository{
+			all = append(all, domain.AuthRepository{
 				FullName:    r.FullName,
 				URL:         r.CloneURL,
 				Description: r.Description,
@@ -368,4 +369,126 @@ func isBinaryContent(content []byte) bool {
 		check = check[:8000]
 	}
 	return bytes.Contains(check, []byte{0})
+}
+
+// CheckPAT 实现 GitPlatformClient 接口
+func (g *Gitea) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *domain.BindRepository, error) {
+	repo, err := g.GetRepoInfoByPAT(ctx, g.baseURL, token, repoURL)
+	if err != nil {
+		return false, nil, err
+	}
+	if repo == nil {
+		return false, nil, fmt.Errorf("repository not found or invalid token")
+	}
+	if repo.Permissions == nil {
+		return false, nil, fmt.Errorf("no permission info returned")
+	}
+	if repo.Permissions.Admin || repo.Permissions.Push || repo.Permissions.Pull {
+		bindRepo := &domain.BindRepository{
+			RepoID:          fmt.Sprintf("%d", repo.ID),
+			RepoName:        repo.Name,
+			FullName:        repo.FullName,
+			RepoURL:         repo.HTMLURL,
+			RepoDescription: repo.Description,
+			IsPrivate:       repo.Private,
+			Platform:        string(consts.GitPlatformGitea),
+		}
+		return true, bindRepo, nil
+	}
+	return false, nil, fmt.Errorf("insufficient permissions")
+}
+
+// UserInfo 实现 GitPlatformClient 接口
+func (g *Gitea) UserInfo(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
+	return g.GetUserInfoByPAT(ctx, g.baseURL, token)
+}
+
+// Repositories 实现 GitPlatformClient 接口
+func (g *Gitea) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
+	return g.GetAuthorizedRepositories(ctx, opts.Token)
+}
+
+// Tree 实现 GitPlatformClient 接口
+func (g *Gitea) Tree(ctx context.Context, opts *domain.TreeOptions) (*domain.GetRepoTreeResp, error) {
+	resp, err := g.GetRepoTree(ctx, g.baseURL, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.Recursive, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.TreeEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.TreeEntry{Mode: e.Mode, Name: e.Name, Path: e.Path, Sha: e.Sha, Size: e.Size}
+	}
+	return &domain.GetRepoTreeResp{Entries: entries, SHA: resp.SHA}, nil
+}
+
+// Blob 实现 GitPlatformClient 接口
+func (g *Gitea) Blob(ctx context.Context, opts *domain.BlobOptions) (*domain.GetBlobResp, error) {
+	resp, err := g.GetBlob(ctx, g.baseURL, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetBlobResp{Content: resp.Content, IsBinary: resp.IsBinary, Sha: resp.Sha, Size: resp.Size}, nil
+}
+
+// Logs 实现 GitPlatformClient 接口
+func (g *Gitea) Logs(ctx context.Context, opts *domain.LogsOptions) (*domain.GetGitLogsResp, error) {
+	resp, err := g.GetGitLogs(ctx, g.baseURL, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.Path, opts.Limit, opts.Offset, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]*domain.GitCommitEntry, len(resp.Entries))
+	for i, e := range resp.Entries {
+		entries[i] = &domain.GitCommitEntry{
+			Commit: &domain.GitCommit{
+				Author:     &domain.GitUser{Email: e.Commit.Author.Email, Name: e.Commit.Author.Name, When: e.Commit.Author.When},
+				Committer:  &domain.GitUser{Email: e.Commit.Committer.Email, Name: e.Commit.Committer.Name, When: e.Commit.Committer.When},
+				Message:    e.Commit.Message,
+				ParentShas: e.Commit.ParentShas,
+				Sha:        e.Commit.Sha,
+				TreeSha:    e.Commit.TreeSha,
+			},
+		}
+	}
+	return &domain.GetGitLogsResp{Count: resp.Count, Entries: entries}, nil
+}
+
+// Archive 实现 GitPlatformClient 接口
+func (g *Gitea) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*domain.GetRepoArchiveResp, error) {
+	resp, err := g.GetRepoArchive(ctx, g.baseURL, opts.Token, opts.Owner, opts.Repo, opts.Ref, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.GetRepoArchiveResp{ContentLength: resp.ContentLength, ContentType: resp.ContentType, Reader: resp.Reader}, nil
+}
+
+// Branches 实现 GitPlatformClient 接口
+func (g *Gitea) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/branches?page=%d&limit=%d", g.baseURL, opts.Owner, opts.Repo, opts.Page, opts.PerPage)
+	body, err := giteaAPIGet(ctx, apiURL, opts.Token)
+	if err != nil {
+		return nil, err
+	}
+	var branches []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &branches); err != nil {
+		return nil, err
+	}
+	result := make([]*domain.BranchInfo, len(branches))
+	for i, b := range branches {
+		result[i] = &domain.BranchInfo{Name: b.Name}
+	}
+	return result, nil
+}
+
+// DeleteWebhook 实现 GitPlatformClient 接口
+func (g *Gitea) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) error {
+	// TODO: 实现 Gitea webhook 删除
+	return fmt.Errorf("not implemented")
+}
+
+// CreateWebhook 实现 GitPlatformClient 接口
+func (g *Gitea) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOptions) error {
+	// TODO: 实现 Gitea webhook 创建
+	return fmt.Errorf("not implemented")
 }

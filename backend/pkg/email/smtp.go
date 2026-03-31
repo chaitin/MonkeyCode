@@ -43,6 +43,21 @@ func (c *EmailClient) SendResetPasswordEmail(ctx context.Context, to, username, 
 	return c.Send("Reset Your Password", to, buf.String())
 }
 
+func (c *EmailClient) SendBindEmailVerification(ctx context.Context, to, username, verifyURL string) error {
+	tmpl, err := template.New("bind_email").Parse(string(templates.BindEmail))
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, map[string]string{
+		"user":       username,
+		"verify_url": verifyURL,
+	}); err != nil {
+		return err
+	}
+	return c.Send("Verify Your Email", to, buf.String())
+}
+
 type Smtp struct {
 	cfg *config.Config
 }

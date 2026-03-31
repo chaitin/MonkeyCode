@@ -1334,6 +1334,22 @@ func (c *GitIdentityClient) QueryProjectTasks(_m *GitIdentity) *ProjectTaskQuery
 	return query
 }
 
+// QueryVms queries the vms edge of a GitIdentity.
+func (c *GitIdentityClient) QueryVms(_m *GitIdentity) *VirtualMachineQuery {
+	query := (&VirtualMachineClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gitidentity.Table, gitidentity.FieldID, id),
+			sqlgraph.To(virtualmachine.Table, virtualmachine.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, gitidentity.VmsTable, gitidentity.VmsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *GitIdentityClient) Hooks() []Hook {
 	hooks := c.hooks.GitIdentity
@@ -6708,6 +6724,22 @@ func (c *VirtualMachineClient) QueryUser(_m *VirtualMachine) *UserQuery {
 			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, id),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, virtualmachine.UserTable, virtualmachine.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGitIdentity queries the git_identity edge of a VirtualMachine.
+func (c *VirtualMachineClient) QueryGitIdentity(_m *VirtualMachine) *GitIdentityQuery {
+	query := (&GitIdentityClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(virtualmachine.Table, virtualmachine.FieldID, id),
+			sqlgraph.To(gitidentity.Table, gitidentity.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, virtualmachine.GitIdentityTable, virtualmachine.GitIdentityColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil

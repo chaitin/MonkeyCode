@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
 )
 
@@ -39,22 +40,6 @@ func NewGitee(baseURL string, logger *slog.Logger) *Gitee {
 // BaseURL 返回 Gitee base URL
 func (g *Gitee) BaseURL() string {
 	return g.baseURL
-}
-
-// PlatformUserInfo 平台用户信息
-type PlatformUserInfo struct {
-	Name string `json:"name"`
-}
-
-// BindRepository 绑定仓库信息
-type BindRepository struct {
-	RepoID          string `json:"repo_id"`
-	RepoName        string `json:"repo_name"`
-	FullName        string `json:"full_name"`
-	RepoURL         string `json:"repo_url"`
-	RepoDescription string `json:"repo_description"`
-	IsPrivate       bool   `json:"is_private"`
-	Platform        string `json:"platform"`
 }
 
 // ParseRepoPath 从仓库 URL 解析出 owner/repo
@@ -99,7 +84,7 @@ func (g *Gitee) GetRepoInfoByPAT(ctx context.Context, token string, repoURL stri
 }
 
 // CheckPAT 校验 PAT
-func (g *Gitee) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *BindRepository, error) {
+func (g *Gitee) CheckPAT(ctx context.Context, token string, repoURL string) (bool, *domain.BindRepository, error) {
 	repo, err := g.GetRepoInfoByPAT(ctx, token, repoURL)
 	if err != nil {
 		return false, nil, fmt.Errorf("get repo info: %w", err)
@@ -111,7 +96,7 @@ func (g *Gitee) CheckPAT(ctx context.Context, token string, repoURL string) (boo
 		return false, nil, fmt.Errorf("no permission info returned")
 	}
 	if repo.Permission.Admin || repo.Permission.Push || repo.Permission.Pull {
-		bindRepo := &BindRepository{
+		bindRepo := &domain.BindRepository{
 			RepoID:          fmt.Sprintf("%d", repo.ID),
 			RepoName:        repo.Name,
 			FullName:        repo.FullName,
@@ -126,7 +111,7 @@ func (g *Gitee) CheckPAT(ctx context.Context, token string, repoURL string) (boo
 }
 
 // GetUserInfoByPAT 根据 PAT 获取用户信息
-func (g *Gitee) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformUserInfo, error) {
+func (g *Gitee) GetUserInfoByPAT(ctx context.Context, token string) (*domain.PlatformUserInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://gitee.com/api/v5/user", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -144,7 +129,7 @@ func (g *Gitee) GetUserInfoByPAT(ctx context.Context, token string) (*PlatformUs
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, fmt.Errorf("decode Gitee user response: %w", err)
 	}
-	return &PlatformUserInfo{
+	return &domain.PlatformUserInfo{
 		Name: user.Login,
 	}, nil
 }

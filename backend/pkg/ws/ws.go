@@ -11,9 +11,10 @@ import (
 
 // WebsocketManager 管理 coder/websocket 连接，提供并发安全的写入
 type WebsocketManager struct {
-	conn *websocket.Conn
-	ip   string
-	mu   sync.Mutex
+	conn   *websocket.Conn
+	ip     string
+	realIP string
+	mu     sync.Mutex
 }
 
 // Accept 从 HTTP 请求升级到 WebSocket 连接
@@ -64,7 +65,19 @@ func (w *WebsocketManager) IP() string {
 
 // RemoteAddr 返回底层连接的远程地址
 func (w *WebsocketManager) RemoteAddr() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.realIP != "" {
+		return w.realIP
+	}
 	return w.ip
+}
+
+// SetRealIP 设置客户端真实 IP（由浏览器上报）
+func (w *WebsocketManager) SetRealIP(ip string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.realIP = ip
 }
 
 // TaskConn 任务 WebSocket 连接池
@@ -100,4 +113,48 @@ func (tc *TaskConn) Get(id string) (*WebsocketManager, bool) {
 	defer tc.mu.RUnlock()
 	conn, ok := tc.conns[id]
 	return conn, ok
+}
+
+// ControlConn 控制 WebSocket 连接池，支持同一 taskID 多个并发连接
+type ControlConn struct {
+	conns map[string][]*WebsocketManager
+	mu    sync.RWMutex
+}
+
+// NewControlConn 创建控制连接池
+func NewControlConn() *ControlConn {
+	return &ControlConn{
+		conns: make(map[string][]*WebsocketManager),
+	}
+}
+
+// Add 添加连接
+func (cc *ControlConn) Add(id string, conn *WebsocketManager) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	cc.conns[id] = append(cc.conns[id], conn)
+}
+
+// Remove 移除特定连接
+func (cc *ControlConn) Remove(id string, conn *WebsocketManager) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	conns := cc.conns[id]
+	for i, c := range conns {
+		if c == conn {
+			cc.conns[id] = append(conns[:i], conns[i+1:]...)
+			break
+		}
+	}
+	if len(cc.conns[id]) == 0 {
+		delete(cc.conns, id)
+	}
+}
+
+// Get 获取指定 taskID 的所有连接
+func (cc *ControlConn) Get(id string) ([]*WebsocketManager, bool) {
+	cc.mu.RLock()
+	defer cc.mu.RUnlock()
+	conns, ok := cc.conns[id]
+	return conns, ok
 }

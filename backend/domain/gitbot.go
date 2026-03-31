@@ -59,9 +59,9 @@ func (g *GitBot) From(src *db.GitBot) *GitBot {
 	g.Name = src.Name
 	g.Token = src.Token
 	g.SecretToken = src.SecretToken
-	g.Host = g.Host.From(src.Edges.Host)
+	g.Host = cvt.From(src.Edges.Host, &Host{})
 	g.Users = cvt.Iter(src.Edges.Users, func(_ int, u *db.User) *User {
-		return (&User{}).From(u)
+		return cvt.From(u, &User{})
 	})
 	g.CreatedAt = src.CreatedAt.Unix()
 	return g
@@ -97,9 +97,9 @@ type ListGitBotResp struct {
 
 // ListGitBotTaskReq Git Bot 任务列表请求
 type ListGitBotTaskReq struct {
-	ID uuid.UUID `json:"id" query:"id" validate:"omitempty"`
-	Page         int `json:"page" query:"page"`
-	Size         int `json:"size" query:"size"`
+	ID   uuid.UUID `json:"id" query:"id" validate:"omitempty"`
+	Page int       `json:"page" query:"page"`
+	Size int       `json:"size" query:"size"`
 }
 
 // ListGitBotTaskResp Git Bot 任务列表响应
@@ -112,12 +112,12 @@ type ListGitBotTaskResp struct {
 
 // GitBotTask Git Bot 任务实体
 type GitBotTask struct {
-	ID          uuid.UUID     `json:"id"`
-	PullRequest PullRequest   `json:"pull_request"`
-	Repo        GitRepository `json:"repo"`
+	ID          uuid.UUID         `json:"id"`
+	PullRequest PullRequest       `json:"pull_request"`
+	Repo        GitRepository     `json:"repo"`
 	Status      consts.TaskStatus `json:"status"`
-	Bot         *GitBot       `json:"bot"`
-	CreatedAt   int64         `json:"created_at"`
+	Bot         *GitBot           `json:"bot"`
+	CreatedAt   int64             `json:"created_at"`
 }
 
 // From 从 ent 实体转换
@@ -128,7 +128,7 @@ func (g *GitBotTask) From(src *db.GitBotTask) *GitBotTask {
 	g.ID = src.ID
 	g.CreatedAt = src.CreatedAt.Unix()
 	if bot := src.Edges.GitBot; bot != nil {
-		g.Bot = (&GitBot{}).From(bot)
+		g.Bot = cvt.From(bot, &GitBot{})
 	}
 	if task := src.Edges.Task; task != nil {
 		g.Status = task.Status

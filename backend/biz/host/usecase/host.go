@@ -240,9 +240,10 @@ func (h *HostUsecase) vmSleepConsumer() {
 				}
 
 				if err := h.taskflow.VirtualMachiner().Hibernate(ctx, &taskflow.HibernateVirtualMachineReq{
-					HostID: vm.HostID,
-					UserID: vm.UserID.String(),
-					ID:     vm.ID,
+					HostID:        vm.HostID,
+					UserID:        vm.UserID.String(),
+					ID:            vm.ID,
+					EnvironmentID: vm.EnvironmentID,
 				}); err != nil {
 					return fmt.Errorf("hibernate vm %s: %w", vm.ID, err)
 				}
@@ -459,9 +460,6 @@ func (h *HostUsecase) CloseTerminal(ctx context.Context, id string, terminalID s
 
 // ConnectVMTerminal 连接到虚拟机终端
 func (h *HostUsecase) ConnectVMTerminal(ctx context.Context, uid uuid.UUID, req domain.TerminalReq) (taskflow.Sheller, error) {
-	if err := h.resumeVMIfSleeping(ctx, uid, req.ID); err != nil {
-		return nil, err
-	}
 	return h.taskflow.VirtualMachiner().Terminal(ctx, &taskflow.TerminalReq{
 		ID:         req.ID,
 		TerminalID: req.TerminalID,
@@ -555,16 +553,12 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 		tfvm, err := h.taskflow.VirtualMachiner().Create(
 			ctx,
 			&taskflow.CreateVirtualMachineReq{
-				UserID:   user.ID.String(),
-				HostID:   req.HostID,
-				Git:      git,
-				ZipUrl:   zipURL,
-				ProxyURL: "",
-				ImageURL: image.Name,
-				TTL: taskflow.TTL{
-					Kind:    kind,
-					Seconds: req.Life,
-				},
+				UserID:              user.ID.String(),
+				HostID:              req.HostID,
+				Git:                 git,
+				ZipUrl:              zipURL,
+				ProxyURL:            "",
+				ImageURL:            image.Name,
 				LLM:                 LLMConfig,
 				Cores:               strconv.Itoa(req.Resource.CPU),
 				Memory:              uint64(req.Resource.Memory),
@@ -867,9 +861,6 @@ func (h *HostUsecase) UpdateVM(ctx context.Context, req domain.UpdateVMReq) (*do
 
 // ApplyPort implements domain.HostUsecase.
 func (h *HostUsecase) ApplyPort(ctx context.Context, uid uuid.UUID, req *domain.ApplyPortReq) (*domain.VMPort, error) {
-	if err := h.resumeVMIfSleeping(ctx, uid, req.ID); err != nil {
-		return nil, err
-	}
 	if req.ForwardID == "" {
 		forwardInfo, err := h.taskflow.PortForwarder().Create(
 			ctx,
@@ -918,34 +909,12 @@ func (h *HostUsecase) ApplyPort(ctx context.Context, uid uuid.UUID, req *domain.
 
 // RecyclePort implements domain.HostUsecase.
 func (h *HostUsecase) RecyclePort(ctx context.Context, uid uuid.UUID, req *domain.RecyclePortReq) error {
-	if err := h.resumeVMIfSleeping(ctx, uid, req.ID); err != nil {
-		return err
-	}
 	return h.taskflow.PortForwarder().Close(ctx, taskflow.ClosePortForward{
 		ID:        req.ID,
 		ForwardID: req.ForwardID,
 	})
 }
 
-func (h *HostUsecase) resumeVMIfSleeping(ctx context.Context, uid uuid.UUID, vmID string) error {
-	info, err := h.taskflow.VirtualMachiner().Info(ctx, taskflow.VirtualMachineInfoReq{
-		ID:     vmID,
-		UserID: uid.String(),
-	})
-	if err != nil || info == nil || info.Status != taskflow.VirtualMachineStatusSleeping {
-		return nil
-	}
-
-	if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
-		HostID: info.HostID,
-		UserID: uid.String(),
-		ID:     vmID,
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
 func (h *HostUsecase) markRecycledTasksFinished(ctx context.Context, vm *db.VirtualMachine) error {
 	var errs []error
 	for _, tk := range vm.Edges.Tasks {

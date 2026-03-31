@@ -55,6 +55,7 @@ func (VirtualMachine) Fields() []ent.Field {
 		field.String("repo_url").Optional(),
 		field.String("repo_filename").Optional(),
 		field.String("branch").Optional(),
+		field.UUID("git_identity_id", uuid.UUID{}).Optional(),
 		field.Bool("is_recycled").Optional(),
 		field.JSON("conditions", &types.VirtualMachineCondition{}).Optional(),
 		field.Time("created_at").Default(time.Now),
@@ -68,6 +69,7 @@ func (VirtualMachine) Edges() []ent.Edge {
 		edge.From("host", Host.Type).Ref("vms").Field("host_id").Unique().Required(),
 		edge.From("model", Model.Type).Ref("vms").Field("model_id").Unique(),
 		edge.From("user", User.Type).Ref("vms").Field("user_id").Unique(),
+		edge.From("git_identity", GitIdentity.Type).Ref("vms").Field("git_identity_id").Unique(),
 		edge.To("tasks", Task.Type).Through("task_vms", TaskVirtualMachine.Type),
 	}
 }

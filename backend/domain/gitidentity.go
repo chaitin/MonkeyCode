@@ -38,21 +38,6 @@ type AuthRepository struct {
 	Description string `json:"description"`
 }
 
-// GitPlatformClient 各 Git 平台的统一客户端接口
-type GitPlatformClient[T any] interface {
-	// GetAuthorizedRepositories 获取 PAT 可访问的仓库列表
-	GetAuthorizedRepositories(ctx context.Context, token string) ([]T, error)
-}
-
-// AuthRepositoryInterface 用于约束平台客户端返回的仓库类型
-type AuthRepositoryInterface interface {
-	~struct {
-		FullName    string
-		URL         string
-		Description string
-	}
-}
-
 // GitIdentity Git 身份认证
 type GitIdentity struct {
 	ID                     uuid.UUID          `json:"id"`
@@ -96,13 +81,15 @@ type AddGitIdentityReq struct {
 
 // UpdateGitIdentityReq 更新 Git 身份认证请求
 type UpdateGitIdentityReq struct {
-	ID          uuid.UUID           `param:"id" validate:"required" json:"-" swaggerignore:"true"`
-	Platform    *consts.GitPlatform `json:"platform,omitempty"`
-	BaseURL     *string             `json:"base_url,omitempty"`
-	AccessToken *string             `json:"access_token,omitempty"`
-	Username    *string             `json:"username,omitempty"`
-	Email       *string             `json:"email,omitempty"`
-	Remark      *string             `json:"remark,omitempty"`
+	ID                uuid.UUID           `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	Platform          *consts.GitPlatform `json:"platform,omitempty"`
+	BaseURL           *string             `json:"base_url,omitempty"`
+	AccessToken       *string             `json:"access_token,omitempty"`
+	Username          *string             `json:"username,omitempty"`
+	Email             *string             `json:"email,omitempty"`
+	Remark            *string             `json:"remark,omitempty"`
+	OAuthRefreshToken *string             `json:"-"` // 内部使用，OAuth 刷新 token
+	OAuthExpiresAt    *time.Time          `json:"-"` // 内部使用，OAuth 过期时间
 }
 
 // GetGitIdentityReq 获取 Git 身份认证详情请求

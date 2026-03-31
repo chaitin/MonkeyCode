@@ -168,6 +168,11 @@ func Branch(v string) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldEQ(FieldBranch, v))
 }
 
+// GitIdentityID applies equality check predicate on the "git_identity_id" field. It's identical to GitIdentityIDEQ.
+func GitIdentityID(v uuid.UUID) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldEQ(FieldGitIdentityID, v))
+}
+
 // IsRecycled applies equality check predicate on the "is_recycled" field. It's identical to IsRecycledEQ.
 func IsRecycled(v bool) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldEQ(FieldIsRecycled, v))
@@ -1492,6 +1497,36 @@ func BranchContainsFold(v string) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldContainsFold(FieldBranch, v))
 }
 
+// GitIdentityIDEQ applies the EQ predicate on the "git_identity_id" field.
+func GitIdentityIDEQ(v uuid.UUID) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldEQ(FieldGitIdentityID, v))
+}
+
+// GitIdentityIDNEQ applies the NEQ predicate on the "git_identity_id" field.
+func GitIdentityIDNEQ(v uuid.UUID) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldNEQ(FieldGitIdentityID, v))
+}
+
+// GitIdentityIDIn applies the In predicate on the "git_identity_id" field.
+func GitIdentityIDIn(vs ...uuid.UUID) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldIn(FieldGitIdentityID, vs...))
+}
+
+// GitIdentityIDNotIn applies the NotIn predicate on the "git_identity_id" field.
+func GitIdentityIDNotIn(vs ...uuid.UUID) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldNotIn(FieldGitIdentityID, vs...))
+}
+
+// GitIdentityIDIsNil applies the IsNil predicate on the "git_identity_id" field.
+func GitIdentityIDIsNil() predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldIsNull(FieldGitIdentityID))
+}
+
+// GitIdentityIDNotNil applies the NotNil predicate on the "git_identity_id" field.
+func GitIdentityIDNotNil() predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldNotNull(FieldGitIdentityID))
+}
+
 // IsRecycledEQ applies the EQ predicate on the "is_recycled" field.
 func IsRecycledEQ(v bool) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldEQ(FieldIsRecycled, v))
@@ -1663,6 +1698,29 @@ func HasUser() predicate.VirtualMachine {
 func HasUserWith(preds ...predicate.User) predicate.VirtualMachine {
 	return predicate.VirtualMachine(func(s *sql.Selector) {
 		step := newUserStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGitIdentity applies the HasEdge predicate on the "git_identity" edge.
+func HasGitIdentity() predicate.VirtualMachine {
+	return predicate.VirtualMachine(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, GitIdentityTable, GitIdentityColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitIdentityWith applies the HasEdge predicate on the "git_identity" edge with a given conditions (other predicates).
+func HasGitIdentityWith(preds ...predicate.GitIdentity) predicate.VirtualMachine {
+	return predicate.VirtualMachine(func(s *sql.Selector) {
+		step := newGitIdentityStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

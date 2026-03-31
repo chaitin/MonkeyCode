@@ -55,6 +55,16 @@ type HostRepo interface {
 	DeleteHost(ctx context.Context, uid uuid.UUID, id string) error
 	UpdateHost(ctx context.Context, uid uuid.UUID, req *UpdateHostReq) error
 	UpdateVM(ctx context.Context, req UpdateVMReq, fn func(*db.VirtualMachine) error) (*db.VirtualMachine, int64, error)
+	GetGitCredentialByTask(ctx context.Context, taskID string) (*GitCredentialInfo, error)
+}
+
+// GitCredentialInfo git 凭证关联信息
+type GitCredentialInfo struct {
+	UserID        uuid.UUID
+	ProjectID     uuid.UUID
+	GitIdentityID uuid.UUID
+	Platform      consts.GitPlatform
+	GitUsername   string
 }
 
 // VmIdleInfo 空闲队列 payload（任务创建的 VM）
@@ -155,6 +165,7 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 	v.Memory = uint64(vm.Memory)
 	v.Name = vm.Name
 	v.Version = vm.Version
+	v.EnvironmentID = vm.EnvironmentID
 	v.CreatedAt = vm.CreatedAt.Unix()
 
 	if vm.Conditions != nil {
@@ -165,6 +176,8 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 				switch cond.Type {
 				case etypes.ConditionTypeFailed:
 					v.Status = taskflow.VirtualMachineStatusOffline
+				case etypes.ConditionTypeHibernated:
+					v.Status = taskflow.VirtualMachineStatusHibernated
 				case etypes.ConditionTypeReady:
 					if time.Since(time.UnixMilli(cond.LastTransitionTime)) > 3*time.Minute {
 						v.Status = taskflow.VirtualMachineStatusOffline
@@ -172,6 +185,10 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 				}
 			}
 		}
+	}
+
+	if vm.IsRecycled {
+		v.Status = taskflow.VirtualMachineStatusOffline
 	}
 
 	switch vm.TTLKind {
@@ -207,6 +224,7 @@ type Host struct {
 	Groups          []*TeamGroup      `json:"groups,omitempty"`
 	Remark          string            `json:"remark,omitempty"`
 	Weight          int               `json:"weight"`
+	InternalID      string            `json:"-"`
 }
 
 // From 从数据库模型转换
@@ -223,6 +241,7 @@ func (h *Host) From(e *db.Host) *Host {
 	h.Name = e.Hostname
 	h.ExternalIP = e.ExternalIP
 	h.Version = e.Version
+	h.InternalID = e.ID
 	h.VirtualMachines = cvt.Iter(e.Edges.Vms, func(_ int, v *db.VirtualMachine) *VirtualMachine {
 		return cvt.From(v, &VirtualMachine{})
 	})

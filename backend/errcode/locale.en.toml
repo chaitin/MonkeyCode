@@ -129,6 +129,15 @@ other = "Insufficient wallet balance"
 [err-account-overdraft]
 other = "Account overdraft"
 
+[err-email-verify-failed]
+other = "Email verification failed"
+
+[err-email-already-bound]
+other = "Email already bound"
+
+[err-email-taken]
+other = "Email already taken by another user"
+
 [err-deposit-failed]
 other = "Deposit failed"
 
@@ -161,6 +170,12 @@ other = "Directory is not empty"
 
 [err-kb-already-exists]
 other = "Path already exists with different type"
+
+[err-task-cannot-delete]
+other = "Task is running or VM is online, cannot delete"
+
+[err-task-concurrency-limit]
+other = "You already have a running task, please wait for it to finish before creating a new one"
 
 [err-model-not-found]
 other = "Model not found"

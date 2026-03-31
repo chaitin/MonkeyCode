@@ -136,6 +136,15 @@ other = "余额不足"
 [err-account-overdraft]
 other = "账户超支"
 
+[err-email-verify-failed]
+other = "邮箱验证失败"
+
+[err-email-already-bound]
+other = "该邮箱已绑定"
+
+[err-email-taken]
+other = "该邮箱已被使用"
+
 [err-deposit-failed]
 other = "充值失败"
 
@@ -168,6 +177,12 @@ other = "目录非空"
 
 [err-kb-already-exists]
 other = "路径已存在但类型不同"
+
+[err-task-cannot-delete]
+other = "任务运行中或虚拟机在线，无法删除"
+
+[err-task-concurrency-limit]
+other = "你已有一个正在运行的任务，请等待完成后再创建新任务"
 
 [err-model-not-found]
 other = "模型配置未找到"

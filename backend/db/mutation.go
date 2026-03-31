@@ -3192,6 +3192,9 @@ type GitIdentityMutation struct {
 	project_tasks        map[uuid.UUID]struct{}
 	removedproject_tasks map[uuid.UUID]struct{}
 	clearedproject_tasks bool
+	vms                  map[string]struct{}
+	removedvms           map[string]struct{}
+	clearedvms           bool
 	done                 bool
 	oldValue             func(context.Context) (*GitIdentity, error)
 	predicates           []predicate.GitIdentity
@@ -4042,6 +4045,60 @@ func (m *GitIdentityMutation) ResetProjectTasks() {
 	m.removedproject_tasks = nil
 }
 
+// AddVMIDs adds the "vms" edge to the VirtualMachine entity by ids.
+func (m *GitIdentityMutation) AddVMIDs(ids ...string) {
+	if m.vms == nil {
+		m.vms = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.vms[ids[i]] = struct{}{}
+	}
+}
+
+// ClearVms clears the "vms" edge to the VirtualMachine entity.
+func (m *GitIdentityMutation) ClearVms() {
+	m.clearedvms = true
+}
+
+// VmsCleared reports if the "vms" edge to the VirtualMachine entity was cleared.
+func (m *GitIdentityMutation) VmsCleared() bool {
+	return m.clearedvms
+}
+
+// RemoveVMIDs removes the "vms" edge to the VirtualMachine entity by IDs.
+func (m *GitIdentityMutation) RemoveVMIDs(ids ...string) {
+	if m.removedvms == nil {
+		m.removedvms = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.vms, ids[i])
+		m.removedvms[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedVms returns the removed IDs of the "vms" edge to the VirtualMachine entity.
+func (m *GitIdentityMutation) RemovedVmsIDs() (ids []string) {
+	for id := range m.removedvms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// VmsIDs returns the "vms" edge IDs in the mutation.
+func (m *GitIdentityMutation) VmsIDs() (ids []string) {
+	for id := range m.vms {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetVms resets all changes to the "vms" edge.
+func (m *GitIdentityMutation) ResetVms() {
+	m.vms = nil
+	m.clearedvms = false
+	m.removedvms = nil
+}
+
 // Where appends a list predicates to the GitIdentityMutation builder.
 func (m *GitIdentityMutation) Where(ps ...predicate.GitIdentity) {
 	m.predicates = append(m.predicates, ps...)
@@ -4451,7 +4508,7 @@ func (m *GitIdentityMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *GitIdentityMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.user != nil {
 		edges = append(edges, gitidentity.EdgeUser)
 	}
@@ -4460,6 +4517,9 @@ func (m *GitIdentityMutation) AddedEdges() []string {
 	}
 	if m.project_tasks != nil {
 		edges = append(edges, gitidentity.EdgeProjectTasks)
+	}
+	if m.vms != nil {
+		edges = append(edges, gitidentity.EdgeVms)
 	}
 	return edges
 }
@@ -4484,18 +4544,27 @@ func (m *GitIdentityMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case gitidentity.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.vms))
+		for id := range m.vms {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *GitIdentityMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removedprojects != nil {
 		edges = append(edges, gitidentity.EdgeProjects)
 	}
 	if m.removedproject_tasks != nil {
 		edges = append(edges, gitidentity.EdgeProjectTasks)
+	}
+	if m.removedvms != nil {
+		edges = append(edges, gitidentity.EdgeVms)
 	}
 	return edges
 }
@@ -4516,13 +4585,19 @@ func (m *GitIdentityMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case gitidentity.EdgeVms:
+		ids := make([]ent.Value, 0, len(m.removedvms))
+		for id := range m.removedvms {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *GitIdentityMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.cleareduser {
 		edges = append(edges, gitidentity.EdgeUser)
 	}
@@ -4531,6 +4606,9 @@ func (m *GitIdentityMutation) ClearedEdges() []string {
 	}
 	if m.clearedproject_tasks {
 		edges = append(edges, gitidentity.EdgeProjectTasks)
+	}
+	if m.clearedvms {
+		edges = append(edges, gitidentity.EdgeVms)
 	}
 	return edges
 }
@@ -4545,6 +4623,8 @@ func (m *GitIdentityMutation) EdgeCleared(name string) bool {
 		return m.clearedprojects
 	case gitidentity.EdgeProjectTasks:
 		return m.clearedproject_tasks
+	case gitidentity.EdgeVms:
+		return m.clearedvms
 	}
 	return false
 }
@@ -4572,6 +4652,9 @@ func (m *GitIdentityMutation) ResetEdge(name string) error {
 		return nil
 	case gitidentity.EdgeProjectTasks:
 		m.ResetProjectTasks()
+		return nil
+	case gitidentity.EdgeVms:
+		m.ResetVms()
 		return nil
 	}
 	return fmt.Errorf("unknown GitIdentity edge %s", name)
@@ -30598,49 +30681,51 @@ func (m *UserIdentityMutation) ResetEdge(name string) error {
 // VirtualMachineMutation represents an operation that mutates the VirtualMachine nodes in the graph.
 type VirtualMachineMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *string
-	deleted_at      *time.Time
-	environment_id  *string
-	name            *string
-	hostname        *string
-	arch            *string
-	cores           *int
-	addcores        *int
-	memory          *int64
-	addmemory       *int64
-	os              *string
-	external_ip     *string
-	internal_ip     *string
-	ttl_kind        *consts.VirtualmachineTTLKind
-	ttl             *int64
-	addttl          *int64
-	version         *string
-	machine_id      *string
-	repo_url        *string
-	repo_filename   *string
-	branch          *string
-	is_recycled     *bool
-	conditions      **types.VirtualMachineCondition
-	created_at      *time.Time
-	updated_at      *time.Time
-	clearedFields   map[string]struct{}
-	host            *string
-	clearedhost     bool
-	model           *uuid.UUID
-	clearedmodel    bool
-	user            *uuid.UUID
-	cleareduser     bool
-	tasks           map[uuid.UUID]struct{}
-	removedtasks    map[uuid.UUID]struct{}
-	clearedtasks    bool
-	task_vms        map[uuid.UUID]struct{}
-	removedtask_vms map[uuid.UUID]struct{}
-	clearedtask_vms bool
-	done            bool
-	oldValue        func(context.Context) (*VirtualMachine, error)
-	predicates      []predicate.VirtualMachine
+	op                  Op
+	typ                 string
+	id                  *string
+	deleted_at          *time.Time
+	environment_id      *string
+	name                *string
+	hostname            *string
+	arch                *string
+	cores               *int
+	addcores            *int
+	memory              *int64
+	addmemory           *int64
+	os                  *string
+	external_ip         *string
+	internal_ip         *string
+	ttl_kind            *consts.VirtualmachineTTLKind
+	ttl                 *int64
+	addttl              *int64
+	version             *string
+	machine_id          *string
+	repo_url            *string
+	repo_filename       *string
+	branch              *string
+	is_recycled         *bool
+	conditions          **types.VirtualMachineCondition
+	created_at          *time.Time
+	updated_at          *time.Time
+	clearedFields       map[string]struct{}
+	host                *string
+	clearedhost         bool
+	model               *uuid.UUID
+	clearedmodel        bool
+	user                *uuid.UUID
+	cleareduser         bool
+	git_identity        *uuid.UUID
+	clearedgit_identity bool
+	tasks               map[uuid.UUID]struct{}
+	removedtasks        map[uuid.UUID]struct{}
+	clearedtasks        bool
+	task_vms            map[uuid.UUID]struct{}
+	removedtask_vms     map[uuid.UUID]struct{}
+	clearedtask_vms     bool
+	done                bool
+	oldValue            func(context.Context) (*VirtualMachine, error)
+	predicates          []predicate.VirtualMachine
 }
 
 var _ ent.Mutation = (*VirtualMachineMutation)(nil)
@@ -31764,6 +31849,55 @@ func (m *VirtualMachineMutation) ResetBranch() {
 	delete(m.clearedFields, virtualmachine.FieldBranch)
 }
 
+// SetGitIdentityID sets the "git_identity_id" field.
+func (m *VirtualMachineMutation) SetGitIdentityID(u uuid.UUID) {
+	m.git_identity = &u
+}
+
+// GitIdentityID returns the value of the "git_identity_id" field in the mutation.
+func (m *VirtualMachineMutation) GitIdentityID() (r uuid.UUID, exists bool) {
+	v := m.git_identity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGitIdentityID returns the old "git_identity_id" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldGitIdentityID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGitIdentityID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGitIdentityID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGitIdentityID: %w", err)
+	}
+	return oldValue.GitIdentityID, nil
+}
+
+// ClearGitIdentityID clears the value of the "git_identity_id" field.
+func (m *VirtualMachineMutation) ClearGitIdentityID() {
+	m.git_identity = nil
+	m.clearedFields[virtualmachine.FieldGitIdentityID] = struct{}{}
+}
+
+// GitIdentityIDCleared returns if the "git_identity_id" field was cleared in this mutation.
+func (m *VirtualMachineMutation) GitIdentityIDCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldGitIdentityID]
+	return ok
+}
+
+// ResetGitIdentityID resets all changes to the "git_identity_id" field.
+func (m *VirtualMachineMutation) ResetGitIdentityID() {
+	m.git_identity = nil
+	delete(m.clearedFields, virtualmachine.FieldGitIdentityID)
+}
+
 // SetIsRecycled sets the "is_recycled" field.
 func (m *VirtualMachineMutation) SetIsRecycled(b bool) {
 	m.is_recycled = &b
@@ -32015,6 +32149,33 @@ func (m *VirtualMachineMutation) ResetUser() {
 	m.cleareduser = false
 }
 
+// ClearGitIdentity clears the "git_identity" edge to the GitIdentity entity.
+func (m *VirtualMachineMutation) ClearGitIdentity() {
+	m.clearedgit_identity = true
+	m.clearedFields[virtualmachine.FieldGitIdentityID] = struct{}{}
+}
+
+// GitIdentityCleared reports if the "git_identity" edge to the GitIdentity entity was cleared.
+func (m *VirtualMachineMutation) GitIdentityCleared() bool {
+	return m.GitIdentityIDCleared() || m.clearedgit_identity
+}
+
+// GitIdentityIDs returns the "git_identity" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GitIdentityID instead. It exists only for internal usage by the builders.
+func (m *VirtualMachineMutation) GitIdentityIDs() (ids []uuid.UUID) {
+	if id := m.git_identity; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGitIdentity resets all changes to the "git_identity" edge.
+func (m *VirtualMachineMutation) ResetGitIdentity() {
+	m.git_identity = nil
+	m.clearedgit_identity = false
+}
+
 // AddTaskIDs adds the "tasks" edge to the Task entity by ids.
 func (m *VirtualMachineMutation) AddTaskIDs(ids ...uuid.UUID) {
 	if m.tasks == nil {
@@ -32157,7 +32318,7 @@ func (m *VirtualMachineMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *VirtualMachineMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.deleted_at != nil {
 		fields = append(fields, virtualmachine.FieldDeletedAt)
 	}
@@ -32217,6 +32378,9 @@ func (m *VirtualMachineMutation) Fields() []string {
 	}
 	if m.branch != nil {
 		fields = append(fields, virtualmachine.FieldBranch)
+	}
+	if m.git_identity != nil {
+		fields = append(fields, virtualmachine.FieldGitIdentityID)
 	}
 	if m.is_recycled != nil {
 		fields = append(fields, virtualmachine.FieldIsRecycled)
@@ -32278,6 +32442,8 @@ func (m *VirtualMachineMutation) Field(name string) (ent.Value, bool) {
 		return m.RepoFilename()
 	case virtualmachine.FieldBranch:
 		return m.Branch()
+	case virtualmachine.FieldGitIdentityID:
+		return m.GitIdentityID()
 	case virtualmachine.FieldIsRecycled:
 		return m.IsRecycled()
 	case virtualmachine.FieldConditions:
@@ -32335,6 +32501,8 @@ func (m *VirtualMachineMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldRepoFilename(ctx)
 	case virtualmachine.FieldBranch:
 		return m.OldBranch(ctx)
+	case virtualmachine.FieldGitIdentityID:
+		return m.OldGitIdentityID(ctx)
 	case virtualmachine.FieldIsRecycled:
 		return m.OldIsRecycled(ctx)
 	case virtualmachine.FieldConditions:
@@ -32492,6 +32660,13 @@ func (m *VirtualMachineMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBranch(v)
 		return nil
+	case virtualmachine.FieldGitIdentityID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGitIdentityID(v)
+		return nil
 	case virtualmachine.FieldIsRecycled:
 		v, ok := value.(bool)
 		if !ok {
@@ -32643,6 +32818,9 @@ func (m *VirtualMachineMutation) ClearedFields() []string {
 	if m.FieldCleared(virtualmachine.FieldBranch) {
 		fields = append(fields, virtualmachine.FieldBranch)
 	}
+	if m.FieldCleared(virtualmachine.FieldGitIdentityID) {
+		fields = append(fields, virtualmachine.FieldGitIdentityID)
+	}
 	if m.FieldCleared(virtualmachine.FieldIsRecycled) {
 		fields = append(fields, virtualmachine.FieldIsRecycled)
 	}
@@ -32716,6 +32894,9 @@ func (m *VirtualMachineMutation) ClearField(name string) error {
 		return nil
 	case virtualmachine.FieldBranch:
 		m.ClearBranch()
+		return nil
+	case virtualmachine.FieldGitIdentityID:
+		m.ClearGitIdentityID()
 		return nil
 	case virtualmachine.FieldIsRecycled:
 		m.ClearIsRecycled()
@@ -32791,6 +32972,9 @@ func (m *VirtualMachineMutation) ResetField(name string) error {
 	case virtualmachine.FieldBranch:
 		m.ResetBranch()
 		return nil
+	case virtualmachine.FieldGitIdentityID:
+		m.ResetGitIdentityID()
+		return nil
 	case virtualmachine.FieldIsRecycled:
 		m.ResetIsRecycled()
 		return nil
@@ -32809,7 +32993,7 @@ func (m *VirtualMachineMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *VirtualMachineMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.host != nil {
 		edges = append(edges, virtualmachine.EdgeHost)
 	}
@@ -32818,6 +33002,9 @@ func (m *VirtualMachineMutation) AddedEdges() []string {
 	}
 	if m.user != nil {
 		edges = append(edges, virtualmachine.EdgeUser)
+	}
+	if m.git_identity != nil {
+		edges = append(edges, virtualmachine.EdgeGitIdentity)
 	}
 	if m.tasks != nil {
 		edges = append(edges, virtualmachine.EdgeTasks)
@@ -32844,6 +33031,10 @@ func (m *VirtualMachineMutation) AddedIDs(name string) []ent.Value {
 		if id := m.user; id != nil {
 			return []ent.Value{*id}
 		}
+	case virtualmachine.EdgeGitIdentity:
+		if id := m.git_identity; id != nil {
+			return []ent.Value{*id}
+		}
 	case virtualmachine.EdgeTasks:
 		ids := make([]ent.Value, 0, len(m.tasks))
 		for id := range m.tasks {
@@ -32862,7 +33053,7 @@ func (m *VirtualMachineMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *VirtualMachineMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedtasks != nil {
 		edges = append(edges, virtualmachine.EdgeTasks)
 	}
@@ -32894,7 +33085,7 @@ func (m *VirtualMachineMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *VirtualMachineMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedhost {
 		edges = append(edges, virtualmachine.EdgeHost)
 	}
@@ -32903,6 +33094,9 @@ func (m *VirtualMachineMutation) ClearedEdges() []string {
 	}
 	if m.cleareduser {
 		edges = append(edges, virtualmachine.EdgeUser)
+	}
+	if m.clearedgit_identity {
+		edges = append(edges, virtualmachine.EdgeGitIdentity)
 	}
 	if m.clearedtasks {
 		edges = append(edges, virtualmachine.EdgeTasks)
@@ -32923,6 +33117,8 @@ func (m *VirtualMachineMutation) EdgeCleared(name string) bool {
 		return m.clearedmodel
 	case virtualmachine.EdgeUser:
 		return m.cleareduser
+	case virtualmachine.EdgeGitIdentity:
+		return m.clearedgit_identity
 	case virtualmachine.EdgeTasks:
 		return m.clearedtasks
 	case virtualmachine.EdgeTaskVms:
@@ -32944,6 +33140,9 @@ func (m *VirtualMachineMutation) ClearEdge(name string) error {
 	case virtualmachine.EdgeUser:
 		m.ClearUser()
 		return nil
+	case virtualmachine.EdgeGitIdentity:
+		m.ClearGitIdentity()
+		return nil
 	}
 	return fmt.Errorf("unknown VirtualMachine unique edge %s", name)
 }
@@ -32960,6 +33159,9 @@ func (m *VirtualMachineMutation) ResetEdge(name string) error {
 		return nil
 	case virtualmachine.EdgeUser:
 		m.ResetUser()
+		return nil
+	case virtualmachine.EdgeGitIdentity:
+		m.ResetGitIdentity()
 		return nil
 	case virtualmachine.EdgeTasks:
 		m.ResetTasks()

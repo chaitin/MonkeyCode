@@ -21,11 +21,12 @@ type TaskUsecase interface {
 	Info(ctx context.Context, user *User, id uuid.UUID) (*Task, bool, error)
 	List(ctx context.Context, user *User, req TaskListReq) (*ListTaskResp, error)
 	Continue(ctx context.Context, user *User, id uuid.UUID, content string) error
-	Create(ctx context.Context, user *User, req CreateTaskReq, token string) (*ProjectTask, error)
+	Create(ctx context.Context, user *User, req CreateTaskReq) (*ProjectTask, error)
 	Stop(ctx context.Context, user *User, id uuid.UUID) error
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
+	Delete(ctx context.Context, user *User, id uuid.UUID) error
 }
 
 // TaskRepo 任务数据访问接口
@@ -33,11 +34,12 @@ type TaskRepo interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error)
 	Stat(ctx context.Context, id uuid.UUID) (*TaskStats, error)
 	StatByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*TaskStats, error)
-	Info(ctx context.Context, user *User, id uuid.UUID) (*db.Task, error)
+	Info(ctx context.Context, user *User, id uuid.UUID, isPrivileged bool) (*db.Task, error)
 	List(ctx context.Context, user *User, req TaskListReq) ([]*db.ProjectTask, *db.PageInfo, error)
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
+	Delete(ctx context.Context, user *User, id uuid.UUID) error
 }
 
 // repoFullName 从 repo_url 中提取 full_name
@@ -159,6 +161,7 @@ func (pt *ProjectTask) From(src *db.ProjectTask) *ProjectTask {
 // Task 任务
 type Task struct {
 	ID             uuid.UUID          `json:"id"`
+	UserID         uuid.UUID          `json:"user_id"`
 	Type           consts.TaskType    `json:"type"`
 	SubType        consts.TaskSubType `json:"sub_type"`
 	Content        string             `json:"content"`
@@ -193,6 +196,7 @@ func (t *Task) From(src *db.Task) *Task {
 	}
 
 	t.ID = src.ID
+	t.UserID = src.UserID
 	t.Type = src.Kind
 	t.SubType = src.SubType
 	t.Content = src.Content
@@ -239,6 +243,40 @@ type TaskStream struct {
 	Timestamp int64                 `json:"timestamp"`
 }
 
+// TaskStreamReq 任务数据流请求
+type TaskStreamReq struct {
+	ID   uuid.UUID `json:"id" query:"id" validate:"required"`
+	Mode string    `json:"mode" query:"mode"` // new|attach，默认 new
+}
+
+// TaskControlReq 控制 WebSocket 请求
+type TaskControlReq struct {
+	ID uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 id
+}
+
+// TaskRoundsReq 查询任务历史论次请求（向前翻页）
+type TaskRoundsReq struct {
+	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
+	Cursor string    `json:"cursor" query:"cursor"`             // 游标（时间戳 Unix ns，从此时间点往前查询）
+	Limit  int       `json:"limit" query:"limit"`               // 返回的论次数（默认 2，上限 10）
+}
+
+// TaskRoundsResp 查询任务历史论次响应
+type TaskRoundsResp struct {
+	Chunks     []*TaskChunkEntry `json:"chunks"`
+	NextCursor string            `json:"next_cursor,omitempty"` // 下一页游标（最早条目的时间戳 ns）
+	HasMore    bool              `json:"has_more"`
+}
+
+// TaskChunkEntry 原始日志条目（不聚合）
+type TaskChunkEntry struct {
+	Data      []byte            `json:"data,omitempty"`
+	Event     string            `json:"event"`
+	Kind      string            `json:"kind"`
+	Timestamp int64             `json:"timestamp"`
+	Labels    map[string]string `json:"labels,omitempty"`
+}
+
 // GitTask git 任务（由内部项目通过 TaskHook 提供）
 type GitTask struct {
 	ID                   uuid.UUID          `json:"id"`
@@ -254,4 +292,20 @@ type GitTask struct {
 type GitTaskRepo struct {
 	URL      string             `json:"url"`
 	Platform consts.GitPlatform `json:"platform"`
+}
+
+// SpeechRecognitionEvent 语音识别事件响应
+type SpeechRecognitionEvent struct {
+	Event string                `json:"event"` // 事件类型: recognition, end, error
+	Data  SpeechRecognitionData `json:"data"`  // 事件数据
+}
+
+// SpeechRecognitionData 语音识别事件数据
+type SpeechRecognitionData struct {
+	Type      string `json:"type" example:"result"`                       // 数据类型: result, end, error
+	Text      string `json:"text,omitempty" example:"你好"`                 // 识别文本 (仅result类型)
+	IsFinal   bool   `json:"is_final,omitempty" example:"false"`          // 是否为最终结果 (仅result类型)
+	UserID    string `json:"user_id,omitempty" example:"uuid"`            // 用户ID (仅result类型)
+	Timestamp int64  `json:"timestamp,omitempty" example:"1640995200000"` // 时间戳 (仅result类型)
+	Error     string `json:"error,omitempty" example:"识别失败"`              // 错误信息 (仅error类型)
 }
