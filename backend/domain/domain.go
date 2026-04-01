@@ -18,6 +18,11 @@ type PrivilegeChecker interface {
 	IsPrivileged(ctx context.Context, uid uuid.UUID) (bool, error)
 }
 
+// TaskPolicy 任务并发策略接口（可选，内部项目通过 WithTaskPolicy 注入）
+type TaskPolicy interface {
+	GetMaxConcurrent(ctx context.Context, uid uuid.UUID) (int, error)
+}
+
 // InternalHook 内部 handler 回调接口（可选，内部项目通过 WithInternalHook 注入）
 // 用于扩展 taskflow 回调端点中与 task 系统耦合的逻辑
 type InternalHook interface {

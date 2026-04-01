@@ -42,6 +42,13 @@ func WithPrivilegeChecker(checker domain.PrivilegeChecker) BridgeOption {
 	}
 }
 
+// WithTaskPolicy 注入任务并发策略
+func WithTaskPolicy(policy domain.TaskPolicy) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, policy)
+	}
+}
+
 // WithTasker 注入外部 Tasker 实例
 func WithTasker(t *tasker.Tasker[*domain.TaskSession]) BridgeOption {
 	return func(i *do.Injector) {
