@@ -108,9 +108,9 @@ type ListTaskResp struct {
 
 // TaskListReq 任务列表请求
 type TaskListReq struct {
-	ProjectID  uuid.UUID          `json:"project_id" query:"project_id" validate:"omitempty"`
-	QuickStart bool               `json:"quick_start" query:"quick_start" validate:"omitempty"`
-	Status     *consts.TaskStatus `json:"status" query:"status"`
+	ProjectID  uuid.UUID `json:"project_id" query:"project_id" validate:"omitempty"`
+	QuickStart bool      `json:"quick_start" query:"quick_start" validate:"omitempty"`
+	Status     *string   `json:"status" query:"status"` // 状态筛选，多值用逗号分开 pending,processing,error,finished
 	*web.Pagination
 }
 

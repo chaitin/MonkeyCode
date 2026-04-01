@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -45,7 +46,6 @@ type TaskUsecase struct {
 	notifyDispatcher *dispatcher.Dispatcher
 	taskHook         domain.TaskHook
 	privilegeChecker domain.PrivilegeChecker
-	taskPolicy       domain.TaskPolicy
 	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 	girepo           domain.GitIdentityRepo
@@ -77,11 +77,6 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 	// 可选注入 PrivilegeChecker
 	if pc, err := do.Invoke[domain.PrivilegeChecker](i); err == nil {
 		u.privilegeChecker = pc
-	}
-
-	// 可选注入 TaskPolicy
-	if tp, err := do.Invoke[domain.TaskPolicy](i); err == nil {
-		u.taskPolicy = tp
 	}
 
 	return u, nil
@@ -285,23 +280,22 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		gitEmail = identity.Email
 	}
 
-	// 如果有 TaskHook，获取系统提示词
-	if a.taskHook != nil && req.SystemPrompt == "" {
-		if prompt, err := a.taskHook.GetSystemPrompt(ctx, req.Type, req.SubType); err == nil && prompt != "" {
-			req.SystemPrompt = prompt
-		}
-	}
-
 	limit := 1
-	if a.taskPolicy != nil {
-		v, err := a.taskPolicy.GetMaxConcurrent(ctx, user.ID)
+	if a.taskHook != nil {
+		if req.SystemPrompt == "" {
+			// 如果有 TaskHook，获取系统提示词
+			if prompt, err := a.taskHook.GetSystemPrompt(ctx, req.Type, req.SubType); err == nil && prompt != "" {
+				req.SystemPrompt = prompt
+			}
+		}
+
+		n, err := a.taskHook.GetMaxConcurrent(ctx, user.ID)
 		if err != nil {
 			return nil, err
 		}
-		if v > 0 {
-			limit = v
-		}
+		limit = cmp.Or(n, limit)
 	}
+
 	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
 
 	pt, err := a.repo.Create(ctx, user, req, token, func(pt *db.ProjectTask, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error) {

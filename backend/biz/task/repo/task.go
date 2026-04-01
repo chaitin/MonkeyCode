@@ -119,7 +119,11 @@ func (t *TaskRepo) List(ctx context.Context, u *domain.User, req domain.TaskList
 	}
 
 	if req.Status != nil {
-		query = query.Where(task.Status(*req.Status))
+		if ss := strings.Split(*req.Status, ","); len(ss) > 0 {
+			query = query.Where(task.StatusIn(cvt.Iter(ss, func(_ int, s string) consts.TaskStatus {
+				return consts.TaskStatus(s)
+			})...))
+		}
 	}
 
 	page, size := req.Page, req.Size

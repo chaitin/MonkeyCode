@@ -18,9 +18,9 @@ type PrivilegeChecker interface {
 	IsPrivileged(ctx context.Context, uid uuid.UUID) (bool, error)
 }
 
-// TaskPolicy 任务并发策略接口（可选，内部项目通过 WithTaskPolicy 注入）
-type TaskPolicy interface {
-	GetMaxConcurrent(ctx context.Context, uid uuid.UUID) (int, error)
+// ModelHook 模型列表扩展接口（可选，内部项目通过 WithModelListHook 注入）
+type ModelHook interface {
+	ListPublic(ctx context.Context, uid uuid.UUID) ([]*Model, error)
 }
 
 // InternalHook 内部 handler 回调接口（可选，内部项目通过 WithInternalHook 注入）
@@ -43,6 +43,8 @@ type TaskHook interface {
 	OnTaskCreated(ctx context.Context, task *ProjectTask) error
 	// GitTask 获取 git 任务详情
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
+	// GetMaxConcurrent 获取最大运行任务
+	GetMaxConcurrent(ctx context.Context, uid uuid.UUID) (int, error)
 }
 
 // ProjectHook 项目模块回调接口（可选，内部项目通过 WithProjectHook 注入）

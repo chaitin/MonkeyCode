@@ -42,10 +42,10 @@ func WithPrivilegeChecker(checker domain.PrivilegeChecker) BridgeOption {
 	}
 }
 
-// WithTaskPolicy 注入任务并发策略
-func WithTaskPolicy(policy domain.TaskPolicy) BridgeOption {
+// WithModelHook 注入模型列表扩展回调
+func WithModelHook(hook domain.ModelHook) BridgeOption {
 	return func(i *do.Injector) {
-		do.ProvideValue(i, policy)
+		do.ProvideValue(i, hook)
 	}
 }
 
