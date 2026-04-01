@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImper
 import { getFileExtension } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconReport, IconX } from "@tabler/icons-react"
+import { IconCloudOff, IconFileCode, IconFileDiff, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconReport, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import type { TaskMessageHandlerStatus } from "./task-message-handler"
 import {
@@ -42,6 +42,7 @@ import React from "react"
 import { toast } from "sonner"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { parseDiff, Diff, Hunk } from "react-diff-view"
 import "react-diff-view/style/index.css"
 
@@ -77,20 +78,20 @@ const isDirectory = (file: RepoFileStatus) => {
 const getFileIcon = (file: RepoFileStatus, isOpen?: boolean) => {
   switch (file.entry_mode) {
     case RepoFileEntryMode.RepoEntryModeTree:
-      return isOpen ? <IconFolderOpen className="h-3.5 w-3.5 text-primary shrink-0" /> : <IconFolder className="h-3.5 w-3.5 text-primary shrink-0" />
+      return isOpen ? <IconFolderOpen className="size-4 text-primary shrink-0" /> : <IconFolder className="size-4 text-primary shrink-0" />
     case RepoFileEntryMode.RepoEntryModeSymlink:
-      return <IconFileSymlink className="size-3.5 text-muted-foreground shrink-0" />
+      return <IconFileSymlink className="size-4 text-muted-foreground shrink-0" />
     case RepoFileEntryMode.RepoEntryModeExecutable:
-      return <IconFileCode className="size-3.5 text-muted-foreground shrink-0" />
+      return <IconFileCode className="size-4 text-muted-foreground shrink-0" />
     case RepoFileEntryMode.RepoEntryModeSubmodule:
-      return isOpen ? <IconFolderOpen className="h-3.5 w-3.5 text-primary shrink-0" /> : <IconFolderRoot className="h-3.5 w-3.5 text-primary shrink-0" />
+      return isOpen ? <IconFolderOpen className="size-4 text-primary shrink-0" /> : <IconFolderRoot className="size-4 text-primary shrink-0" />
     case RepoFileEntryMode.RepoEntryModeFile:
     case RepoFileEntryMode.RepoEntryModeUnspecified:
     default:
       if (['jpg', 'png', 'gif', 'jpeg', 'webp', 'svg', 'ico'].includes(getFileExtension(file.name))) {
-        return <IconPhoto className="size-3.5 text-muted-foreground shrink-0" />
+        return <IconPhoto className="size-4 text-muted-foreground shrink-0" />
       }
-      return <IconFileText className="size-3.5 text-muted-foreground shrink-0" />
+      return <IconFileText className="size-4 text-muted-foreground shrink-0" />
   }
 }
 
@@ -159,8 +160,6 @@ const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh,
   const paddingLeft = depth * 14
   const fileChange = fileChangesMap.get(file.path)
   const hasChanges = !!fileChange?.status
-  const additions = fileChange?.additions ?? 0
-  const deletions = fileChange?.deletions ?? 0
   const isSelected = selectedPath === file.path
 
   return (
@@ -172,21 +171,11 @@ const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh,
         {getFileIcon(file)}
         <span className={cn("text-sm truncate flex-1", isSelected && "text-primary")}>{file.name}</span>
       </div>
-      <div className="relative min-w-0 shrink-0 flex items-center justify-end">
+      <div className="relative size-5 shrink-0 flex items-center justify-center">
         {hasChanges && (
-          <div className="mr-1 flex items-center gap-1 tabular-nums text-[10px] font-medium">
-            {additions > 0 && (
-              <span className="text-green-700 dark:text-green-400">+{additions}</span>
-            )}
-            {deletions > 0 && (
-              <span className="text-red-700 dark:text-red-400">-{deletions}</span>
-            )}
-            {additions === 0 && deletions === 0 && (
-              <span className="text-amber-600 dark:text-amber-500">{fileChange?.status}</span>
-            )}
-          </div>
+          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity">●</span>
         )}
-        <div className="flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center">
           <FileActionsDropdown file={file} envid={envid} onRefresh={onRefresh} onSuccess={onRefresh} />
         </div>
       </div>
@@ -380,6 +369,7 @@ export const TaskFileExplorer = ({
   envid,
 }: TaskFileExplorerProps): React.JSX.Element => {
   const rootRef = useRef<DirNodeRef>(null)
+  const pendingTreeRefreshRef = useRef(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [currentFile, setCurrentFile] = useState<FileItem | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
@@ -394,6 +384,7 @@ export const TaskFileExplorer = ({
   }, [onRefresh])
 
   const refreshFileTree = useCallback(() => {
+    pendingTreeRefreshRef.current = true
     setRefreshKey((prev) => prev + 1)
   }, [])
 
@@ -424,6 +415,21 @@ export const TaskFileExplorer = ({
       }
     }
   }, [changedPaths])
+
+  useEffect(() => {
+    if (panelMode !== "tree" || !pendingTreeRefreshRef.current) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      pendingTreeRefreshRef.current = false
+      void rootRef.current?.refresh()
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [panelMode, refreshKey])
 
   const fetchFileContent = useCallback(async (path: string) => {
     let bytes: Uint8Array | null = null
@@ -696,7 +702,7 @@ export const TaskFileExplorer = ({
     }
 
     return (
-      <div className="py-2 px-2">
+      <div className="py-1">
         {sortedChangedPaths.map((path) => {
           const change = fileChangesMap.get(path)
           const additions = change?.additions ?? 0
@@ -707,13 +713,13 @@ export const TaskFileExplorer = ({
             <div
               key={path}
               className={cn(
-                "flex items-center gap-2 mx-0 my-1 px-3 py-2 rounded-md border hover:border-primary/50 cursor-pointer transition-colors",
-                isSelected && "border-primary bg-primary/5",
+                "flex items-center gap-1 mx-1.5 my-0.5 pl-1 pr-1.5 py-0.5 hover:bg-muted/60 rounded-md cursor-pointer select-none group transition-colors",
               )}
               onClick={() => handleChangedFileSelect(path)}
             >
-              <div className="min-w-0 flex-1">
-                <div className={cn("truncate text-xs font-mono", isSelected && "text-primary")} title={path}>
+              <div className="flex items-center gap-1.5 py-0.5 flex-1 min-w-0">
+                <IconFileText className="size-4 text-muted-foreground shrink-0" />
+                <div className={cn("text-sm truncate flex-1", isSelected && "text-primary")} title={path}>
                   {path}
                 </div>
               </div>
@@ -737,26 +743,29 @@ export const TaskFileExplorer = ({
 
   const fileBrowserPanel = (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
-      <div className="flex items-center justify-between pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
+      <div className="flex items-center justify-between px-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-md border bg-background p-0.5 shrink-0">
-            <Button
-              variant={panelMode === "tree" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => switchPanelMode("tree")}
-            >
-              目录树
-            </Button>
-            <Button
-              variant={panelMode === "changes" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => switchPanelMode("changes")}
-            >
-              修改列表
-            </Button>
-          </div>
+          <ToggleGroup
+            type="single"
+            value={panelMode}
+            variant="outline"
+            size="sm"
+            className="shrink-0 bg-background"
+            onValueChange={(value) => {
+              if (value === "tree" || value === "changes") {
+                switchPanelMode(value)
+              }
+            }}
+          >
+            <ToggleGroupItem value="tree" className="h-7 px-2 text-xs gap-1.5">
+              <IconFolder className="size-3.5" />
+              目录
+            </ToggleGroupItem>
+            <ToggleGroupItem value="changes" className="h-7 px-2 text-xs gap-1.5">
+              <IconFileDiff className="size-3.5" />
+              变更
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
         <div className="flex items-center gap-0.5">
           <Tooltip>

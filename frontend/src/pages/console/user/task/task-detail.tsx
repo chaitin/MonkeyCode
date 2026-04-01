@@ -11,23 +11,26 @@ import type { AvailableCommands, RepoFileChange } from "@/components/console/tas
 import { TaskStreamClient, type TaskStreamClientState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { formatTokens } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
 
-type PanelType = "files" | "terminal" | "preview"
+type SidePanelType = "files"
 
 export default function TaskDetailPage() {
   const { taskId } = useParams()
   const { setTaskName } = useBreadcrumbTask() ?? {}
   const [task, setTask] = React.useState<DomainProjectTask | null>(null)
-  const [activePanel, setActivePanel] = React.useState<PanelType | null>(null)
+  const [activeSidePanel, setActiveSidePanel] = React.useState<SidePanelType | null>(null)
+  const [terminalPanelOpen, setTerminalPanelOpen] = React.useState(false)
+  const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
   const [streamStatus, setStreamStatus] = React.useState<TaskMessageHandlerStatus>("inited")
   const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
   const [sending, setSending] = React.useState(false)
@@ -54,7 +57,8 @@ export default function TaskDetailPage() {
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const autoScrollFrameRef = React.useRef<number | null>(null)
   const previousRunningMessagesSignatureRef = React.useRef<string | null>(null)
-  const activePanelRef = React.useRef<PanelType | null>(null)
+  const activeSidePanelRef = React.useRef<SidePanelType | null>(null)
+  const previewDialogOpenRef = React.useRef(false)
   const showPreparing = useShouldShowPreparing(task)
   const vmOnline = task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline
     || task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusHibernated
@@ -84,14 +88,28 @@ export default function TaskDetailPage() {
   const [timeCost, setTimeCost] = React.useState(0)
   const previewPortCount = (previewPorts ?? []).length
 
-  const hasPanel = activePanel !== null
-  const togglePanel = (panel: PanelType) => {
-    setActivePanel((prev) => (prev === panel ? null : panel))
+  const hasSidePanel = activeSidePanel !== null
+  const hasBottomTerminal = terminalPanelOpen
+
+  const toggleSidePanel = (panel: SidePanelType) => {
+    setActiveSidePanel((prev) => (prev === panel ? null : panel))
+  }
+
+  const toggleTerminalPanel = () => {
+    setTerminalPanelOpen((prev) => !prev)
+  }
+
+  const togglePreviewDialog = () => {
+    setPreviewDialogOpen((prev) => !prev)
   }
 
   React.useEffect(() => {
-    activePanelRef.current = activePanel
-  }, [activePanel])
+    activeSidePanelRef.current = activeSidePanel
+  }, [activeSidePanel])
+
+  React.useEffect(() => {
+    previewDialogOpenRef.current = previewDialogOpen
+  }, [previewDialogOpen])
 
   const attachMessageHandlers = React.useCallback((messages: MessageType[]) => {
     return messages.map((message) => {
@@ -214,7 +232,9 @@ export default function TaskDetailPage() {
     disconnectStreamClient()
     disposeTaskControlClient()
     setTask(null)
-    setActivePanel(null)
+    setActiveSidePanel(null)
+    setTerminalPanelOpen(false)
+    setPreviewDialogOpen(false)
     setStreamStatus("inited")
     setAvailableCommands(null)
     setSending(false)
@@ -290,13 +310,13 @@ export default function TaskDetailPage() {
       return
     }
 
-    const currentPanel = activePanelRef.current
-    const shouldOpenPreview = currentPanel === null || currentPanel === "preview"
+    const currentPanel = activeSidePanelRef.current
+    const shouldOpenPreview = currentPanel === null || previewDialogOpenRef.current
     if (!shouldOpenPreview) {
       return
     }
 
-    setActivePanel("preview")
+    setPreviewDialogOpen(true)
     await fetchPortForwards()
   }, [fetchPortForwards])
 
@@ -449,14 +469,14 @@ export default function TaskDetailPage() {
   }, [fetchTaskRounds, historyLoaded, historyLoading, liveMessages.length, task])
 
   React.useEffect(() => {
-    if (!vmOnline || activePanel !== "files") return
+    if (!vmOnline || activeSidePanel !== "files") return
     fetchFileChanges()
-  }, [activePanel, fetchFileChanges, vmOnline])
+  }, [activeSidePanel, fetchFileChanges, vmOnline])
 
   React.useEffect(() => {
-    if (!vmOnline || activePanel !== "preview") return
+    if (!vmOnline || !previewDialogOpen) return
     fetchPortForwards()
-  }, [activePanel, fetchPortForwards, vmOnline])
+  }, [fetchPortForwards, previewDialogOpen, vmOnline])
 
   const handleSend = React.useCallback((content: string) => {
     if (!taskId) return
@@ -518,7 +538,7 @@ export default function TaskDetailPage() {
       updateChatScrollState()
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [messages, hasPanel, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
+  }, [messages, hasSidePanel, hasBottomTerminal, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
 
   const scrollChatToTop = React.useCallback(() => {
     chatScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
@@ -560,196 +580,215 @@ export default function TaskDetailPage() {
       {showPreparing ? (
         <TaskPreparingView task={task} />
       ) : (
-        <ResizablePanelGroup direction="horizontal" className="gap-2">
-          <ResizablePanel id="chat" order={1} defaultSize={hasPanel ? 50 : 100} minSize={hasPanel ? 30 : 100} className="min-w-0">
-            <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
-              {/* 消息列表 */}
-              <div className="flex-1 min-h-0 min-w-0 relative">
-                <div ref={chatScrollRef} className="h-full overflow-y-auto">
-                  <div
-                    ref={chatContentRef}
-                    className={cn("min-h-full flex flex-col gap-3", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}
-                  >
-                    {showHistoryLoadButton && (
-                      <div className="flex justify-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                          onClick={() => fetchTaskRounds(historyCursor ?? undefined)}
-                          disabled={historyLoading}
-                        >
-                          {!historyLoading && <IconHistory className="size-4" />}
-                          {historyLoading && <Spinner className="size-4" />}
-                          {historyLoading ? "正在加载" : historyLoaded ? "加载更多" : "加载历史消息"}
-                        </Button>
+        <ResizablePanelGroup direction="vertical" className="gap-2">
+          <ResizablePanel id="top" order={1} defaultSize={hasBottomTerminal ? 62 : 100} minSize={30} className="min-h-0">
+            <ResizablePanelGroup direction="horizontal" className="gap-2">
+              <ResizablePanel id="chat" order={1} defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
+                <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
+                  {/* 消息列表 */}
+                  <div className="flex-1 min-h-0 min-w-0 relative">
+                    <div ref={chatScrollRef} className="h-full overflow-y-auto">
+                      <div
+                        ref={chatContentRef}
+                        className={cn("min-h-full flex flex-col gap-3", hasSidePanel ? "w-full" : "mx-auto max-w-[800px]")}
+                      >
+                        {showHistoryLoadButton && (
+                          <div className="flex justify-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                              onClick={() => fetchTaskRounds(historyCursor ?? undefined)}
+                              disabled={historyLoading}
+                            >
+                              {!historyLoading && <IconHistory className="size-4" />}
+                              {historyLoading && <Spinner className="size-4" />}
+                              {historyLoading ? "正在加载" : historyLoaded ? "加载更多" : "加载历史消息"}
+                            </Button>
+                          </div>
+                        )}
+                        {messages.length > 0 ? (
+                          <div className="flex flex-col gap-1 pb-4">
+                            {messages.map((message, index) => (
+                              <MessageItem
+                                key={message.id}
+                                message={message}
+                                cli={task?.cli_name}
+                                isLatest={index === messages.length - 1}
+                              />
+                            ))}
+                          </div>
+                        ) : historyLoaded ? (
+                          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">暂无消息</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    {chatHasOverflow && (
+                      <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
+                        <div className={cn("relative h-full", hasSidePanel ? "w-full" : "mx-auto max-w-[800px]")}>
+                          <div className="pointer-events-auto absolute top-1/2 right-1 flex -translate-y-1/2 flex-col gap-2">
+                            {!chatAtTop && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
+                                onClick={scrollChatToTop}
+                                aria-label="滚动到顶部"
+                              >
+                                <IconArrowUp className="size-4" />
+                              </Button>
+                            )}
+                            {!chatAtBottom && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
+                                onClick={scrollChatToBottom}
+                                aria-label="滚动到底部"
+                              >
+                                <IconArrowDown className="size-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
-                    {messages.length > 0 ? (
-                      <div className="flex flex-col gap-1 pb-4">
-                        {messages.map((message, index) => (
-                          <MessageItem
-                            key={message.id}
-                            message={message}
-                            cli={task?.cli_name}
-                            isLatest={index === messages.length - 1}
+                  </div>
+                  {/* 输入框 */}
+                  <div className={cn("shrink-0", hasSidePanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
+                    {vmOnline ? (
+                      <TaskChatInputBox
+                        streamStatus={streamStatus}
+                        availableCommands={availableCommands}
+                        onSend={handleSend}
+                        onCancel={handleCancel}
+                        sending={sending}
+                        queueSize={0}
+                        executionTimeMs={timeCost}
+                        sendResetSession={handleResetSession}
+                        sendReloadSession={handleReloadSession}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
+                        任务已结束
+                      </div>
+                    )}
+                  </div>
+                  {/* 底部工具栏 */}
+                  <div className="shrink-0">
+                    <div className={cn(hasSidePanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", terminalPanelOpen && "text-primary bg-accent")}
+                            onClick={toggleTerminalPanel}
+                            disabled={!vmOnline}
+                          >
+                            <IconTerminal2 className="size-3.5" />
+                            终端
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
+                            onClick={() => toggleSidePanel("files")}
+                            disabled={!vmOnline}
+                          >
+                            <IconFile className="size-3.5" />
+                            文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", previewDialogOpen && "text-primary bg-accent")}
+                            onClick={togglePreviewDialog}
+                            disabled={!vmOnline}
+                          >
+                            <IconDeviceDesktop className="size-3.5" />
+                            预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
+                          </Button>
+                        </div>
+                        {(task?.stats?.input_tokens != null || task?.stats?.output_tokens != null || task?.stats?.total_tokens != null) && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            <span className="sm:hidden">
+                              {formatTokens(task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0)))} tokens
+                            </span>
+                            <span className="hidden sm:inline">
+                              输入 {formatTokens(task?.stats?.input_tokens) || "-"} / 输出 {formatTokens(task?.stats?.output_tokens) || "-"} tokens
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </ResizablePanel>
+              {hasSidePanel && (
+                <>
+                  <ResizableHandle withHandle className="shrink-0" />
+                  <ResizablePanel id="right-panel" order={2} defaultSize={50} minSize={25} className="min-w-0">
+                    <div className="h-full overflow-hidden flex flex-col">
+                      {activeSidePanel === "files" && (
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                          <TaskFileExplorer
+                            disabled={!vmOnline}
+                            streamStatus={streamStatus}
+                            fileChangesMap={fileChangesMap}
+                            changedPaths={changedPaths}
+                            taskManager={taskControlClientRef.current}
+                            onRefresh={fetchFileChanges}
+                            onClosePanel={() => setActiveSidePanel(null)}
+                            envid={envid}
                           />
-                        ))}
-                      </div>
-                    ) : historyLoaded ? (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">暂无消息</div>
-                    ) : null}
-                  </div>
-                </div>
-                {chatHasOverflow && (
-                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
-                    <div className={cn("relative h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
-                      <div className="pointer-events-auto absolute top-1/2 right-1 flex -translate-y-1/2 flex-col gap-2">
-                        {!chatAtTop && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="secondary"
-                            className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
-                            onClick={scrollChatToTop}
-                            aria-label="滚动到顶部"
-                          >
-                            <IconArrowUp className="size-4" />
-                          </Button>
-                        )}
-                        {!chatAtBottom && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="secondary"
-                            className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
-                            onClick={scrollChatToBottom}
-                            aria-label="滚动到底部"
-                          >
-                            <IconArrowDown className="size-4" />
-                          </Button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-              {/* 输入框 */}
-              <div className={cn("shrink-0", hasPanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
-                {vmOnline ? (
-                  <TaskChatInputBox
-                    streamStatus={streamStatus}
-                    availableCommands={availableCommands}
-                    onSend={handleSend}
-                    onCancel={handleCancel}
-                    sending={sending}
-                    queueSize={0}
-                    executionTimeMs={timeCost}
-                    sendResetSession={handleResetSession}
-                    sendReloadSession={handleReloadSession}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
-                    任务已结束
-                  </div>
-                )}
-              </div>
-              {/* 底部工具栏 */}
-              <div className="shrink-0">
-                <div className={cn(hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-0.5">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "terminal" && "text-primary bg-accent")}
-                        onClick={() => togglePanel("terminal")}
-                        disabled={!vmOnline}
-                      >
-                        <IconTerminal2 className="size-3.5" />
-                        终端
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "files" && "text-primary bg-accent")}
-                        onClick={() => togglePanel("files")}
-                        disabled={!vmOnline}
-                      >
-                        <IconFile className="size-3.5" />
-                        文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "preview" && "text-primary bg-accent")}
-                        onClick={() => togglePanel("preview")}
-                        disabled={!vmOnline}
-                      >
-                        <IconDeviceDesktop className="size-3.5" />
-                        预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
-                      </Button>
-                    </div>
-                    {(task?.stats?.input_tokens != null || task?.stats?.output_tokens != null || task?.stats?.total_tokens != null) && (
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        <span className="sm:hidden">
-                          {formatTokens(task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0)))} tokens
-                        </span>
-                        <span className="hidden sm:inline">
-                          输入 {formatTokens(task?.stats?.input_tokens) || "-"} / 输出 {formatTokens(task?.stats?.output_tokens) || "-"} tokens
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
           </ResizablePanel>
-          {hasPanel && (
+          {hasBottomTerminal && (
             <>
               <ResizableHandle withHandle className="shrink-0" />
-              <ResizablePanel id="right-panel" order={2} defaultSize={50} minSize={30} className="min-w-0">
-                <div className="h-full overflow-hidden flex flex-col">
-                  {activePanel === "files" && (
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <TaskFileExplorer
-                        disabled={!vmOnline}
-                        streamStatus={streamStatus}
-                        fileChangesMap={fileChangesMap}
-                        changedPaths={changedPaths}
-                        taskManager={taskControlClientRef.current}
-                        onRefresh={fetchFileChanges}
-                        onClosePanel={() => setActivePanel(null)}
-                        envid={envid}
-                      />
-                    </div>
-                  )}
-                  {activePanel === "terminal" && (
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <div className="h-full w-full border rounded-md overflow-hidden">
-                        <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setActivePanel(null)} />
-                      </div>
-                    </div>
-                  )}
-                  {activePanel === "preview" && (
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <TaskPreviewPanel
-                        ports={previewPorts}
-                        hostId={task?.virtualmachine?.host?.id}
-                        vmId={task?.virtualmachine?.id}
-                        onSuccess={fetchPortForwards}
-                        onRefresh={fetchPortForwards}
-                        disabled={!vmOnline}
-                        onClosePanel={() => setActivePanel(null)}
-                      />
-                    </div>
-                  )}
+              <ResizablePanel id="bottom-terminal" order={2} defaultSize={38} minSize={20} className="min-h-0">
+                <div className="h-full w-full border rounded-md overflow-hidden">
+                  <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setTerminalPanelOpen(false)} />
                 </div>
               </ResizablePanel>
             </>
           )}
         </ResizablePanelGroup>
       )}
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent>
+          <DialogHeader className="flex-row items-center justify-start gap-2 pr-8">
+            <DialogTitle>在线预览</DialogTitle>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0"
+              onClick={() => void fetchPortForwards()}
+              disabled={!vmOnline}
+            >
+              <IconReload className="size-4" />
+            </Button>
+          </DialogHeader>
+          <TaskPreviewPanel
+            ports={previewPorts}
+            hostId={task?.virtualmachine?.host?.id}
+            vmId={task?.virtualmachine?.id}
+            onSuccess={fetchPortForwards}
+            onRefresh={fetchPortForwards}
+            disabled={!vmOnline}
+            embedded
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

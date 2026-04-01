@@ -9,7 +9,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,6 +21,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { Item, ItemContent, ItemTitle, ItemGroup, ItemActions, ItemDescription } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconAccessPoint, IconAlertCircle, IconCloudOff, IconCopy, IconDotsVertical, IconHandStop, IconReload, IconTrash, IconX } from "@tabler/icons-react"
 import { useState } from "react"
@@ -35,6 +35,7 @@ interface TaskPreviewPanelProps {
   onRefresh?: () => void
   disabled?: boolean
   onClosePanel?: () => void
+  embedded?: boolean
 }
 
 export function TaskPreviewPanel({
@@ -45,6 +46,7 @@ export function TaskPreviewPanel({
   onRefresh,
   disabled,
   onClosePanel,
+  embedded = false,
 }: TaskPreviewPanelProps) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [portToDelete, setPortToDelete] = useState<DomainVMPort | null>(null)
@@ -155,21 +157,23 @@ export function TaskPreviewPanel({
 
   if (disabled) {
     return (
-      <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
-        <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-2 min-h-12 border-b bg-muted/50 shrink-0">
-          <span className="text-sm font-medium">在线预览</span>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh || !!disabled}>
-              <IconReload className="size-4" />
-            </Button>
-            {onClosePanel && (
-              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-                <IconX className="size-4" />
+      <div className={embedded ? "flex flex-col h-full min-h-0" : "flex flex-col h-full min-h-0 rounded-lg border overflow-hidden"}>
+        {!embedded && (
+          <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-2 min-h-12 border-b bg-muted/50 shrink-0">
+            <span className="text-sm font-medium">在线预览</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh || !!disabled}>
+                <IconReload className="size-4" />
               </Button>
-            )}
+              {onClosePanel && (
+                <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                  <IconX className="size-4" />
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex-1 min-h-0 flex flex-col p-2">
+        )}
+        <div className={embedded ? "flex-1 min-h-0 flex flex-col" : "flex-1 min-h-0 flex flex-col p-2"}>
           <Empty className="w-full flex-1 min-h-0">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -187,31 +191,43 @@ export function TaskPreviewPanel({
 
   return (
     <>
-      <div className="flex flex-col h-full min-h-0 rounded-lg border overflow-hidden">
-        <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
-          <span className="text-sm font-medium">在线预览</span>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh}>
-              <IconReload className="size-4" />
-            </Button>
-            {onClosePanel && (
-              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-                <IconX className="size-4" />
+      <div className={embedded ? "flex flex-col h-full min-h-0" : "flex flex-col h-full min-h-0 rounded-lg border overflow-hidden"}>
+        {!embedded && (
+          <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
+            <span className="text-sm font-medium">在线预览</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh}>
+                <IconReload className="size-4" />
               </Button>
-            )}
+              {onClosePanel && (
+                <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                  <IconX className="size-4" />
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto flex flex-col p-2">
+        )}
+        <div className={embedded ? "flex-1 min-h-0 overflow-auto flex flex-col" : "flex-1 min-h-0 overflow-auto flex flex-col p-2"}>
         {(ports && ports.length > 0) ? (
         <ItemGroup className="gap-2">
-          {ports.map((port: DomainVMPort) => (
-            <Item variant="outline" size="sm" key={port.port?.toString()} className="group hover:border-primary/50">
+          {ports.map((port: DomainVMPort) => {
+            const isConnected = port.status === ConstsPortStatus.PortStatusConnected
+            return (
+            <Item
+              variant="outline"
+              size="sm"
+              key={port.port?.toString()}
+              className="group hover:border-primary/50"
+            >
               <ItemContent>
                 <ItemTitle>
                   <span
-                    className="group-hover:text-primary hover:underline cursor-pointer"
+                    className={cn(
+                      "group-hover:text-primary hover:underline cursor-pointer",
+                      isConnected && "text-primary font-semibold",
+                    )}
                     onClick={() => {
-                      if (port.status === ConstsPortStatus.PortStatusConnected) {
+                      if (isConnected) {
                         window.open(port.preview_url, '_blank')
                       } else {
                         toast.error('端口未开放')
@@ -228,7 +244,6 @@ export function TaskPreviewPanel({
                       <TooltipContent>{port.error_message}</TooltipContent>
                     </Tooltip>
                   )}
-                  {port.status === ConstsPortStatus.PortStatusConnected && <Badge variant="secondary">http</Badge>}
                 </ItemTitle>
                 <ItemDescription>
                   {port.status === ConstsPortStatus.PortStatusConnected && port.white_list && port.white_list.length > 0
@@ -249,7 +264,7 @@ export function TaskPreviewPanel({
                   </Button>
                 )}
                 {port.status === ConstsPortStatus.PortStatusConnected && (
-                  <Button size="sm" variant="secondary" onClick={() => window.open(port.preview_url, '_blank')}>
+                  <Button size="sm" variant="default" onClick={() => window.open(port.preview_url, '_blank')}>
                     {portToClose === port.port && <Spinner />}
                     访问
                   </Button>
@@ -298,7 +313,7 @@ export function TaskPreviewPanel({
                 </DropdownMenu>
               </ItemActions>
             </Item>
-          ))}
+          )})}
         </ItemGroup>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
