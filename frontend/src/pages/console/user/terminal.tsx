@@ -354,10 +354,8 @@ export default function TerminalPage() {
       <VmPortForwardDialog
         open={portForwardDialogOpen}
         onOpenChange={setPortForwardDialogOpen}
-        ports={vm?.ports}
         hostId={vm?.host?.id}
         vmId={vm?.id}
-        onSuccess={fetchVMInfo}
       />
     </div>
   )

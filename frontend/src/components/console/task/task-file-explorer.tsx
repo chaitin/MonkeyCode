@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImper
 import { getFileExtension } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconX } from "@tabler/icons-react"
+import { IconCloudOff, IconFileCode, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconReport, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import type { TaskMessageHandlerStatus } from "./task-message-handler"
 import {
@@ -42,6 +42,8 @@ import React from "react"
 import { toast } from "sonner"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { parseDiff, Diff, Hunk } from "react-diff-view"
+import "react-diff-view/style/index.css"
 
 interface TaskFileExplorerProps {
   className?: string
@@ -136,6 +138,8 @@ interface FileItem {
   isTooLarge: boolean
 }
 
+type FilePanelMode = "tree" | "changes"
+
 // --- DirNode ref ---
 interface DirNodeRef {
   refresh: () => Promise<void>
@@ -155,6 +159,8 @@ const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh,
   const paddingLeft = depth * 14
   const fileChange = fileChangesMap.get(file.path)
   const hasChanges = !!fileChange?.status
+  const additions = fileChange?.additions ?? 0
+  const deletions = fileChange?.deletions ?? 0
   const isSelected = selectedPath === file.path
 
   return (
@@ -166,11 +172,21 @@ const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh,
         {getFileIcon(file)}
         <span className={cn("text-sm truncate flex-1", isSelected && "text-primary")}>{file.name}</span>
       </div>
-      <div className="relative size-5 shrink-0 flex items-center justify-center">
+      <div className="relative min-w-0 shrink-0 flex items-center justify-end">
         {hasChanges && (
-          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity">●</span>
+          <div className="mr-1 flex items-center gap-1 tabular-nums text-[10px] font-medium">
+            {additions > 0 && (
+              <span className="text-green-700 dark:text-green-400">+{additions}</span>
+            )}
+            {deletions > 0 && (
+              <span className="text-red-700 dark:text-red-400">-{deletions}</span>
+            )}
+            {additions === 0 && deletions === 0 && (
+              <span className="text-amber-600 dark:text-amber-500">{fileChange?.status}</span>
+            )}
+          </div>
         )}
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="flex items-center justify-center">
           <FileActionsDropdown file={file} envid={envid} onRefresh={onRefresh} onSuccess={onRefresh} />
         </div>
       </div>
@@ -367,9 +383,21 @@ export const TaskFileExplorer = ({
   const [refreshKey, setRefreshKey] = useState(0)
   const [currentFile, setCurrentFile] = useState<FileItem | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
+  const [panelMode, setPanelMode] = useState<FilePanelMode>("tree")
+  const [diffContent, setDiffContent] = useState("")
+  const [diffLoading, setDiffLoading] = useState(false)
+  const sortedChangedPaths = useMemo(() => [...fileChangesMap.keys()].sort((a, b) => a.localeCompare(b)), [fileChangesMap])
 
   const handleRefresh = useCallback(() => {
     setRefreshKey((prev) => prev + 1)
+    onRefresh?.()
+  }, [onRefresh])
+
+  const refreshFileTree = useCallback(() => {
+    setRefreshKey((prev) => prev + 1)
+  }, [])
+
+  const refreshChanges = useCallback(() => {
     onRefresh?.()
   }, [onRefresh])
 
@@ -425,6 +453,8 @@ export const TaskFileExplorer = ({
       isBinary,
       isTooLarge,
     }
+    setDiffContent("")
+    setDiffLoading(false)
     setCurrentFile(file)
     return file
   }, [envid, currentFile, fetchFileContent])
@@ -433,6 +463,20 @@ export const TaskFileExplorer = ({
     if (file.entry_mode === RepoFileEntryMode.RepoEntryModeTree || file.entry_mode === RepoFileEntryMode.RepoEntryModeSubmodule) return
     openFile(path)
   }, [openFile])
+
+  const handleChangedFileSelect = useCallback((path: string) => {
+    setFileLoading(false)
+    setDiffContent("")
+    setDiffLoading(false)
+    setCurrentFile({
+      name: path.split('/').pop() || path,
+      path,
+      bytes: null,
+      content: null,
+      isBinary: false,
+      isTooLarge: false,
+    })
+  }, [])
 
   const reloadFile = useCallback(async () => {
     if (!currentFile) return
@@ -448,12 +492,96 @@ export const TaskFileExplorer = ({
       isBinary: isBinaryByExt || !isText,
       isTooLarge,
     })
+    setDiffContent("")
+    setDiffLoading(false)
     toast.success(`文件 ${currentFile.path} 已重新加载`)
   }, [currentFile, fetchFileContent])
 
   const closeFile = useCallback(() => {
+    setDiffContent("")
+    setDiffLoading(false)
+    setFileLoading(false)
     setCurrentFile(null)
   }, [])
+
+  const switchPanelMode = useCallback((mode: FilePanelMode) => {
+    if (mode === panelMode) {
+      return
+    }
+    setPanelMode(mode)
+    if (mode === "tree") {
+      refreshFileTree()
+    } else {
+      refreshChanges()
+    }
+    setDiffContent("")
+    setDiffLoading(false)
+    setFileLoading(false)
+    setCurrentFile(null)
+  }, [panelMode, refreshChanges, refreshFileTree])
+
+  const loadCurrentFileDiff = useCallback(async () => {
+    if (!currentFile) return
+    setDiffLoading(true)
+    setDiffContent("")
+    const diff = await taskManager?.getFileDiff(currentFile.path)
+    setDiffContent(diff || "")
+    setDiffLoading(false)
+  }, [currentFile, taskManager])
+
+  useEffect(() => {
+    if (panelMode !== "changes" || !currentFile) {
+      return
+    }
+    loadCurrentFileDiff()
+  }, [currentFile, loadCurrentFileDiff, panelMode])
+
+  const renderFileDiff = () => {
+    if (!currentFile) return null
+    if (diffLoading) {
+      return (
+        <Empty className="w-full h-full min-h-0">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconLoader className="size-6 animate-spin" />
+            </EmptyMedia>
+            <EmptyDescription>加载中...</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )
+    }
+
+    const diffFiles = diffContent ? parseDiff(diffContent) : []
+    if (diffFiles.length > 0 && diffFiles.some((file) => file.hunks?.length)) {
+      return (
+        <div className="h-full overflow-auto" style={{ "--diff-font-family": "var(--font-google-sans-code)" } as React.CSSProperties}>
+          <style>{`
+            .task-file-preview-diff .diff-line td:nth-child(2) {
+              border-left: 1px var(--border) solid;
+            }
+          `}</style>
+          <div className="text-xs rounded-md overflow-x-auto bg-muted/30">
+            {diffFiles.map((file, index) => (
+              <Diff key={index} viewType="split" diffType={file.type} hunks={file.hunks} gutterType="none" hunkClassName="task-file-preview-diff">
+                {(hunks) => hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)}
+              </Diff>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <Empty className="w-full h-full min-h-0">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <IconReport className="size-6" />
+          </EmptyMedia>
+          <EmptyDescription>当前文件暂无变更</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
 
   const renderFileContent = () => {
     if (!currentFile) {
@@ -519,6 +647,13 @@ export const TaskFileExplorer = ({
     )
   }
 
+  const renderPreviewContent = () => {
+    if (panelMode === "changes") {
+      return renderFileDiff()
+    }
+    return renderFileContent()
+  }
+
   if (disabled) {
     return (
       <div className={cn("flex flex-col h-full min-h-0", className)}>
@@ -546,11 +681,82 @@ export const TaskFileExplorer = ({
     )
   }
 
-  const fileTreePanel = (
+  const renderChangedFiles = () => {
+    if (sortedChangedPaths.length === 0) {
+      return (
+        <Empty className="w-full flex-1 min-h-0 py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconReport className="size-6 opacity-50" />
+            </EmptyMedia>
+            <EmptyDescription>暂无文件变更</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )
+    }
+
+    return (
+      <div className="py-2 px-2">
+        {sortedChangedPaths.map((path) => {
+          const change = fileChangesMap.get(path)
+          const additions = change?.additions ?? 0
+          const deletions = change?.deletions ?? 0
+          const isSelected = currentFile?.path === path
+
+          return (
+            <div
+              key={path}
+              className={cn(
+                "flex items-center gap-2 mx-0 my-1 px-3 py-2 rounded-md border hover:border-primary/50 cursor-pointer transition-colors",
+                isSelected && "border-primary bg-primary/5",
+              )}
+              onClick={() => handleChangedFileSelect(path)}
+            >
+              <div className="min-w-0 flex-1">
+                <div className={cn("truncate text-xs font-mono", isSelected && "text-primary")} title={path}>
+                  {path}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 tabular-nums text-xs font-medium">
+                {additions > 0 && (
+                  <span className="text-green-700 dark:text-green-400">+{additions}</span>
+                )}
+                {deletions > 0 && (
+                  <span className="text-red-700 dark:text-red-400">-{deletions}</span>
+                )}
+                {additions === 0 && deletions === 0 && change?.status && (
+                  <span className="text-amber-600 dark:text-amber-500">{change.status}</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const fileBrowserPanel = (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
       <div className="flex items-center justify-between pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">项目文件</span>
+          <div className="flex items-center rounded-md border bg-background p-0.5 shrink-0">
+            <Button
+              variant={panelMode === "tree" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => switchPanelMode("tree")}
+            >
+              目录树
+            </Button>
+            <Button
+              variant={panelMode === "changes" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => switchPanelMode("changes")}
+            >
+              修改列表
+            </Button>
+          </div>
         </div>
         <div className="flex items-center gap-0.5">
           <Tooltip>
@@ -582,19 +788,23 @@ export const TaskFileExplorer = ({
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto py-1 flex flex-col">
-        <DirNode
-          key={refreshKey}
-          ref={rootRef}
-          streamStatus={streamStatus}
-          depth={0}
-          onFileSelect={handleFileSelect}
-          defaultExpanded
-          taskManager={taskManager}
-          fileChangesMap={fileChangesMap}
-          envid={envid}
-          onRefresh={handleRefresh}
-          selectedPath={currentFile?.path}
-        />
+        {panelMode === "tree" ? (
+          <DirNode
+            key={refreshKey}
+            ref={rootRef}
+            streamStatus={streamStatus}
+            depth={0}
+            onFileSelect={handleFileSelect}
+            defaultExpanded
+            taskManager={taskManager}
+            fileChangesMap={fileChangesMap}
+            envid={envid}
+            onRefresh={handleRefresh}
+            selectedPath={currentFile?.path}
+          />
+        ) : (
+          renderChangedFiles()
+        )}
       </div>
     </div>
   )
@@ -602,17 +812,25 @@ export const TaskFileExplorer = ({
   const previewPanel = currentFile && (
     <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden bg-background">
       <div className="flex items-center justify-between px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
-        <span className="text-sm font-medium truncate flex-1 min-w-0">{currentFile.name}</span>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="text-sm font-medium truncate min-w-0 flex-1">{currentFile.name}</span>
+        </div>
         <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={reloadFile} disabled={fileLoading}>
-            <IconReload className={cn("size-4", fileLoading && "animate-spin")} />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 hover:text-primary"
+            onClick={panelMode === "changes" ? loadCurrentFileDiff : reloadFile}
+            disabled={fileLoading || diffLoading}
+          >
+            <IconReload className={cn("size-4", (fileLoading || diffLoading) && "animate-spin")} />
           </Button>
           <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={closeFile}>
             <IconX className="size-4" />
           </Button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">{renderFileContent()}</div>
+      <div className="flex-1 min-h-0 overflow-hidden">{renderPreviewContent()}</div>
     </div>
   )
 
@@ -620,7 +838,7 @@ export const TaskFileExplorer = ({
     <div className={cn("flex flex-col h-full min-h-0", className)}>
       <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
         <ResizablePanel defaultSize={currentFile ? 50 : 100} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
-          {fileTreePanel}
+          {fileBrowserPanel}
         </ResizablePanel>
         {currentFile && (
           <>

@@ -15,7 +15,7 @@ export interface PortForwardInfo {
   access_url?: string | null
   label?: string | null
   error_message?: string | null
-  whitelist_ips: string[]
+  whitelist_ips?: string[] | null
 }
 
 interface TaskControlCallMessage {
@@ -34,6 +34,8 @@ export interface TaskControlClientOptions {
   taskId: string
   clientIp?: string | null
   onStateChange?: (state: TaskControlClientState) => void
+  onRepoFileChange?: () => void
+  onPortChange?: (opened: boolean) => void
 }
 
 interface TaskControlStreamMessage {
@@ -55,6 +57,8 @@ export class TaskControlClient implements TaskRepositoryClient {
 
   private readonly taskId: string
   private readonly onStateChange?: (state: TaskControlClientState) => void
+  private readonly onRepoFileChange?: () => void
+  private readonly onPortChange?: (opened: boolean) => void
 
   private socket: WebSocket | null = null
   private readonly initialClientIp: string | null
@@ -72,11 +76,15 @@ export class TaskControlClient implements TaskRepositoryClient {
     taskId,
     clientIp = null,
     onStateChange,
+    onRepoFileChange,
+    onPortChange,
   }: TaskControlClientOptions) {
     this.taskId = taskId
     this.initialClientIp = clientIp
     this.clientIp = clientIp
     this.onStateChange = onStateChange
+    this.onRepoFileChange = onRepoFileChange
+    this.onPortChange = onPortChange
   }
 
   connect() {
@@ -221,7 +229,17 @@ export class TaskControlClient implements TaskRepositoryClient {
   }
 
   getPortForwardList() {
-    return this.call<PortForwardInfo[]>("port_forward_list", {})
+    return this.call<{ ports?: PortForwardInfo[] }>("port_forward_list", {})
+      .then((response) => {
+        if (!response) {
+          return null
+        }
+
+        return (response.ports ?? []).map((port) => ({
+          ...port,
+          whitelist_ips: port.whitelist_ips ?? [],
+        }))
+      })
   }
 
   restart(loadSession: boolean) {
@@ -273,9 +291,18 @@ export class TaskControlClient implements TaskRepositoryClient {
   }
 
   private handleCallResponse(message: TaskControlStreamMessage) {
-    const response = this.decodePayload<TaskControlCallResponse & Record<string, unknown>>(message.data)
-    const requestId = response?.request_id
+    const response = this.decodePayload<unknown>(message.data)
+    const responseObject = response && typeof response === "object" && !Array.isArray(response)
+      ? response as TaskControlCallResponse & Record<string, unknown>
+      : null
+
+    const requestId = responseObject?.request_id
     if (!requestId) {
+      console.warn("TaskControlClient: call-response missing request_id", {
+        kind: message.kind,
+        data: response,
+        timestamp: message.timestamp,
+      })
       return
     }
 
@@ -285,9 +312,9 @@ export class TaskControlClient implements TaskRepositoryClient {
     }
 
     clearTimeout(pendingCall.timeoutId)
-    this.pendingCalls.delete(requestId)
+    this.pendingCalls.delete(pendingCall.requestId)
 
-    if (response.success === false) {
+    if (responseObject?.success === false) {
       pendingCall.resolve(null)
       return
     }
@@ -296,12 +323,25 @@ export class TaskControlClient implements TaskRepositoryClient {
   }
 
   private handleTaskEvent(message: TaskControlStreamMessage) {
-    console.log("TaskControlClient: task-event", {
-      type: message.type,
-      kind: message.kind,
-      data: this.decodePayload(message.data),
-      timestamp: message.timestamp,
-    })
+    if (message.kind === "repo_file_change") {
+      this.onRepoFileChange?.()
+      return
+    }
+
+    if (message.kind === "port_change") {
+      const payload = this.decodePayload<Record<string, unknown>>(message.data)
+      this.onPortChange?.(payload?.change_type === "PORT_CHANGE_TYPE_OPENED")
+      return
+    }
+
+    if (message.kind !== "repo_file_change") {
+      console.log("TaskControlClient: task-event", {
+        type: message.type,
+        kind: message.kind,
+        data: this.decodePayload(message.data),
+        timestamp: message.timestamp,
+      })
+    }
   }
 
   private decodePayload<T = unknown>(data: unknown): T | null {

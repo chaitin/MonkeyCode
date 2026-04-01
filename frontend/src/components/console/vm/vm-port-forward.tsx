@@ -1,4 +1,4 @@
-import { ConstsPortStatus, type DomainVMPort, type GithubComGoYokoWebResp } from "@/api/Api"
+import { Api, ConstsPortStatus, type DomainVMPort, type GithubComGoYokoWebResp } from "@/api/Api"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,14 +23,13 @@ import { Item, ItemContent, ItemTitle, ItemGroup, ItemActions, ItemDescription }
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconAccessPoint, IconAlertCircle, IconCopy, IconDotsVertical, IconHandStop, IconTrash } from "@tabler/icons-react"
-import { useState } from "react"
+import { IconAccessPoint, IconAlertCircle, IconCopy, IconDotsVertical, IconHandStop, IconReload, IconTrash } from "@tabler/icons-react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 interface VmPortForwardDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  ports: DomainVMPort[] | undefined
   hostId: string | undefined
   vmId: string | undefined
   onSuccess?: () => void
@@ -39,11 +38,12 @@ interface VmPortForwardDialogProps {
 export function VmPortForwardDialog({
   open,
   onOpenChange,
-  ports,
   hostId,
   vmId,
   onSuccess,
 }: VmPortForwardDialogProps) {
+  const [ports, setPorts] = useState<DomainVMPort[] | undefined>(undefined)
+  const [portsLoading, setPortsLoading] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [portToDelete, setPortToDelete] = useState<DomainVMPort | null>(null)
   const [portToOpen, setPortToOpen] = useState<number>(0)
@@ -52,6 +52,41 @@ export function VmPortForwardDialog({
   const [portToEditWhitelist, setPortToEditWhitelist] = useState<DomainVMPort | null>(null)
   const [whitelistInput, setWhitelistInput] = useState("")
   const [whitelistSaving, setWhitelistSaving] = useState(false)
+
+  const fetchPorts = async () => {
+    if (!hostId || !vmId) {
+      setPorts(undefined)
+      return
+    }
+
+    setPortsLoading(true)
+    try {
+      const api = new Api()
+      const response = await api.api.v1UsersHostsVmsPortsDetail(
+        hostId,
+        vmId,
+        undefined as unknown as never,
+      )
+      const resp = response.data as GithubComGoYokoWebResp & { data?: DomainVMPort[] }
+
+      if (resp.code === 0) {
+        setPorts(resp.data || [])
+      } else {
+        toast.error(resp.message || "获取端口列表失败")
+      }
+    } catch (error) {
+      toast.error((error as Error)?.message || "获取端口列表失败")
+    } finally {
+      setPortsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    void fetchPorts()
+  }, [open, hostId, vmId])
 
   const confirmDeletePort = () => {
     if (!hostId || !vmId || !portToDelete) {
@@ -67,6 +102,7 @@ export function VmPortForwardDialog({
     }, [hostId, vmId, String(portToDelete.port)], (resp) => {
       if (resp.code === 0) {
         toast.success("端口已关闭访问")
+        void fetchPorts()
         onSuccess?.()
       } else {
         toast.error(resp.message || "关闭访问失败")
@@ -113,6 +149,7 @@ export function VmPortForwardDialog({
     }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0 && resp.data?.success) {
         toast.success("端口开放成功")
+        void fetchPorts()
         onSuccess?.()
       } else {
         toast.error(resp.message || "端口开放失败")
@@ -152,6 +189,7 @@ export function VmPortForwardDialog({
       if (resp.code === 0) {
         toast.success("白名单更新成功")
         setWhitelistDialogOpen(false)
+        void fetchPorts()
         onSuccess?.()
       } else {
         toast.error(resp.message || "白名单更新失败")
@@ -163,11 +201,31 @@ export function VmPortForwardDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        <DialogHeader>
+        <DialogHeader className="flex-row items-center gap-3 pr-10">
           <DialogTitle>端口管理</DialogTitle>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label="刷新端口列表"
+                onClick={() => void fetchPorts()}
+                disabled={portsLoading || !hostId || !vmId}
+              >
+                {portsLoading ? <Spinner className="size-3.5" /> : <IconReload className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>刷新端口列表</TooltipContent>
+          </Tooltip>
         </DialogHeader>
         <ItemGroup className="gap-3">
-          {(ports && ports.length > 0) ? ports?.map((port: DomainVMPort) => (
+          {portsLoading ? (
+            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+              <Spinner className="mr-2" />
+              正在加载端口列表
+            </div>
+          ) : null}
+          {(!portsLoading && ports && ports.length > 0) ? ports.map((port: DomainVMPort) => (
             <Item variant="outline" size="sm" key={port.port?.toString()} className="group hover:border-primary/50">
               <ItemContent>
                 <ItemTitle>
@@ -248,8 +306,9 @@ export function VmPortForwardDialog({
                 </DropdownMenu>
               </ItemActions>
             </Item>
-          )) : (
+          )) : null}
 
+          {!portsLoading && (!ports || ports.length === 0) ? (
           <Empty className="border border-dashed">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -260,7 +319,7 @@ export function VmPortForwardDialog({
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
-          )}
+          ) : null}
         </ItemGroup>
       </DialogContent>
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -313,4 +372,3 @@ export function VmPortForwardDialog({
     </Dialog>
   )
 }
-

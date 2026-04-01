@@ -388,6 +388,7 @@ export class TaskMessageHandler {
         this.applyUserCancel(timestamp)
         break
       case "task-started":
+      case "ping":
         break
       case "task-running":
         if (chunk.kind === "acp_event") {

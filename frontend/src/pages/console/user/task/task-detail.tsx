@@ -2,7 +2,6 @@ import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort, TaskflowVi
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
-import { TaskChangesPanel } from "@/components/console/task/task-changes-panel"
 import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import { MessageItem, type MessageType } from "@/components/console/task/message"
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
@@ -17,12 +16,12 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { formatTokens } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconGitBranch, IconHistory, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
 
-type PanelType = "files" | "terminal" | "changes" | "preview"
+type PanelType = "files" | "terminal" | "preview"
 
 export default function TaskDetailPage() {
   const { taskId } = useParams()
@@ -54,6 +53,8 @@ export default function TaskDetailPage() {
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const autoScrollFrameRef = React.useRef<number | null>(null)
+  const previousRunningMessagesSignatureRef = React.useRef<string | null>(null)
+  const activePanelRef = React.useRef<PanelType | null>(null)
   const showPreparing = useShouldShowPreparing(task)
   const vmOnline = task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline
     || task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusHibernated
@@ -61,6 +62,25 @@ export default function TaskDetailPage() {
   const cancelledRef = React.useRef(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const messages = React.useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
+  const runningMessagesSignature = React.useMemo(() => JSON.stringify(
+    liveMessages
+      .filter((message) => (
+        message.type === "agent_message_chunk"
+        || message.type === "agent_thought_chunk"
+        || message.type === "tool_call"
+        || message.type === "ask_user_question"
+      ))
+      .map((message) => ({
+        id: message.id,
+        type: message.type,
+        content: message.data.content ?? null,
+        status: message.data.status ?? null,
+        title: message.data.title ?? null,
+        askId: message.data.askId ?? null,
+        toolCallId: message.data.toolCallId ?? null,
+        questions: message.data.questions ?? null,
+      })),
+  ), [liveMessages])
   const [timeCost, setTimeCost] = React.useState(0)
   const previewPortCount = (previewPorts ?? []).length
 
@@ -68,6 +88,35 @@ export default function TaskDetailPage() {
   const togglePanel = (panel: PanelType) => {
     setActivePanel((prev) => (prev === panel ? null : panel))
   }
+
+  React.useEffect(() => {
+    activePanelRef.current = activePanel
+  }, [activePanel])
+
+  const attachMessageHandlers = React.useCallback((messages: MessageType[]) => {
+    return messages.map((message) => {
+      if (message.type !== "ask_user_question") {
+        return message
+      }
+
+      return {
+        ...message,
+        onResponseAskUserQuestion: (askId: string, answers: unknown) => {
+          if (!askId) {
+            return
+          }
+
+          const streamClient = streamClientRef.current
+          if (!streamClient) {
+            toast.error("当前连接不可用，无法提交回答")
+            return
+          }
+
+          streamClient.sendReplyQuestion(askId, answers)
+        },
+      }
+    })
+  }, [])
 
   const disconnectStreamClient = React.useCallback(() => {
     const state = streamClientRef.current?.disconnect() ?? null
@@ -86,7 +135,7 @@ export default function TaskDetailPage() {
     const previousState = disconnectStreamClient()
     const previousMessages = previousState?.messages ?? liveMessages
     if (mode === "new" && previousMessages.length > 0) {
-      setHistoryMessages((prev) => [...prev, ...previousMessages])
+      setHistoryMessages((prev) => [...prev, ...attachMessageHandlers(previousMessages)])
       setLiveMessages([])
     }
 
@@ -101,7 +150,7 @@ export default function TaskDetailPage() {
         onStateChange: (state: TaskStreamClientState) => {
           if (streamClientRef.current !== client || cancelledRef.current) return
           setStreamStatus(state.status)
-          setLiveMessages(state.messages)
+          setLiveMessages(attachMessageHandlers(state.messages))
           setAvailableCommands(state.availableCommands)
           setTimeCost(state.executionTimeMs)
           if (!historyLoadedRef.current && state.historyCursor.ready) {
@@ -132,7 +181,7 @@ export default function TaskDetailPage() {
       onStateChange: (state: TaskStreamClientState) => {
         if (streamClientRef.current !== client || cancelledRef.current) return
         setStreamStatus(state.status)
-        setLiveMessages(state.messages)
+        setLiveMessages(attachMessageHandlers(state.messages))
         setAvailableCommands(state.availableCommands)
         setTimeCost(state.executionTimeMs)
       },
@@ -157,7 +206,7 @@ export default function TaskDetailPage() {
 
     streamClientRef.current = client
     client.connect()
-  }, [disconnectStreamClient, liveMessages, taskId])
+  }, [attachMessageHandlers, disconnectStreamClient, liveMessages, taskId])
 
   // taskId 变化时重置状态
   React.useEffect(() => {
@@ -215,6 +264,11 @@ export default function TaskDetailPage() {
     setChangedPaths(nextPaths)
   }, [])
 
+  const applyRepoFileChange = React.useCallback(() => {
+    if (cancelledRef.current) return
+    fetchFileChanges()
+  }, [fetchFileChanges])
+
   const fetchPortForwards = React.useCallback(async () => {
     const ports = await taskControlClientRef.current?.getPortForwardList()
     if (cancelledRef.current || ports === null || ports === undefined) return
@@ -229,6 +283,22 @@ export default function TaskDetailPage() {
       success: true,
     })))
   }, [])
+
+  const handlePortChange = React.useCallback(async (opened: boolean) => {
+    await fetchPortForwards()
+    if (!opened || cancelledRef.current) {
+      return
+    }
+
+    const currentPanel = activePanelRef.current
+    const shouldOpenPreview = currentPanel === null || currentPanel === "preview"
+    if (!shouldOpenPreview) {
+      return
+    }
+
+    setActivePanel("preview")
+    await fetchPortForwards()
+  }, [fetchPortForwards])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -269,6 +339,8 @@ export default function TaskDetailPage() {
     const client = new TaskControlClient({
       taskId,
       clientIp,
+      onRepoFileChange: applyRepoFileChange,
+      onPortChange: handlePortChange,
     })
     taskControlClientRef.current = client
     client.connect()
@@ -279,7 +351,7 @@ export default function TaskDetailPage() {
       }
       client.dispose()
     }
-  }, [clientIp, clientIpReady, taskId])
+  }, [applyRepoFileChange, clientIp, clientIpReady, handlePortChange, taskId])
 
   const scheduleFetchTaskDetail = React.useCallback(async () => {
     const currentTask = await fetchTaskDetail()
@@ -312,7 +384,7 @@ export default function TaskDetailPage() {
           const messageHandler = new TaskMessageHandler()
           messageHandler.pushChunks(resp.data?.chunks ?? [])
           const messageState = messageHandler.finalizeCycle()
-          setHistoryMessages((prev) => [...messageState.messages, ...prev])
+          setHistoryMessages((prev) => [...attachMessageHandlers(messageState.messages), ...prev])
           setHistoryCursorReady(true)
           setHistoryCursor(resp.data?.next_cursor ?? null)
           setHistoryHasMore(resp.data?.has_more ?? false)
@@ -328,7 +400,7 @@ export default function TaskDetailPage() {
     if (!cancelledRef.current) {
       setHistoryLoading(false)
     }
-  }, [taskId])
+  }, [attachMessageHandlers, taskId])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -377,7 +449,7 @@ export default function TaskDetailPage() {
   }, [fetchTaskRounds, historyLoaded, historyLoading, liveMessages.length, task])
 
   React.useEffect(() => {
-    if (!vmOnline || activePanel !== "changes") return
+    if (!vmOnline || activePanel !== "files") return
     fetchFileChanges()
   }, [activePanel, fetchFileChanges, vmOnline])
 
@@ -460,6 +532,9 @@ export default function TaskDetailPage() {
 
   React.useEffect(() => {
     if (historyLoading) return
+    if (previousRunningMessagesSignatureRef.current === runningMessagesSignature) return
+
+    previousRunningMessagesSignatureRef.current = runningMessagesSignature
 
     if (autoScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(autoScrollFrameRef.current)
@@ -478,7 +553,7 @@ export default function TaskDetailPage() {
         autoScrollFrameRef.current = null
       }
     }
-  }, [historyLoading, liveMessages, streamStatus])
+  }, [historyLoading, runningMessagesSignature])
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -527,29 +602,35 @@ export default function TaskDetailPage() {
                   </div>
                 </div>
                 {chatHasOverflow && (
-                  <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="secondary"
-                      className="size-9 rounded-full shadow-md"
-                      onClick={scrollChatToTop}
-                      disabled={chatAtTop}
-                      aria-label="滚动到顶部"
-                    >
-                      <IconArrowUp className="size-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="secondary"
-                      className="size-9 rounded-full shadow-md"
-                      onClick={scrollChatToBottom}
-                      disabled={chatAtBottom}
-                      aria-label="滚动到底部"
-                    >
-                      <IconArrowDown className="size-4" />
-                    </Button>
+                  <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
+                    <div className={cn("relative h-full", hasPanel ? "w-full" : "mx-auto max-w-[800px]")}>
+                      <div className="pointer-events-auto absolute top-1/2 right-1 flex -translate-y-1/2 flex-col gap-2">
+                        {!chatAtTop && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="secondary"
+                            className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
+                            onClick={scrollChatToTop}
+                            aria-label="滚动到顶部"
+                          >
+                            <IconArrowUp className="size-4" />
+                          </Button>
+                        )}
+                        {!chatAtBottom && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="secondary"
+                            className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
+                            onClick={scrollChatToBottom}
+                            aria-label="滚动到底部"
+                          >
+                            <IconArrowDown className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -586,7 +667,7 @@ export default function TaskDetailPage() {
                         disabled={!vmOnline}
                       >
                         <IconFile className="size-3.5" />
-                        文件
+                        文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
                       </Button>
                       <Button
                         variant="ghost"
@@ -597,16 +678,6 @@ export default function TaskDetailPage() {
                       >
                         <IconTerminal2 className="size-3.5" />
                         终端
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "changes" && "text-primary bg-accent")}
-                        onClick={() => togglePanel("changes")}
-                        disabled={!vmOnline}
-                      >
-                        <IconGitBranch className="size-3.5" />
-                        修改{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
                       </Button>
                       <Button
                         variant="ghost"
@@ -658,18 +729,6 @@ export default function TaskDetailPage() {
                       <div className="h-full w-full border rounded-md overflow-hidden">
                         <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setActivePanel(null)} />
                       </div>
-                    </div>
-                  )}
-                  {activePanel === "changes" && (
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <TaskChangesPanel
-                        fileChanges={changedPaths}
-                        fileChangesMap={fileChangesMap}
-                        taskManager={taskControlClientRef.current}
-                        disabled={!vmOnline}
-                        onRefresh={fetchFileChanges}
-                        onClosePanel={() => setActivePanel(null)}
-                      />
                     </div>
                   )}
                   {activePanel === "preview" && (

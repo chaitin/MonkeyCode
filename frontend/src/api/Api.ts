@@ -4145,6 +4145,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 列出开发环境的监听端口
+     *
+     * @tags 【用户】主机管理
+     * @name V1UsersHostsVmsPortsDetail
+     * @summary 列出开发环境的监听端口
+     * @request GET:/api/v1/users/hosts/{host_id}/vms/{id}/ports
+     * @secure
+     */
+    v1UsersHostsVmsPortsDetail: (hostId: string, id: string, request: DomainApplyPortReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainVMPort[];
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/hosts/${hostId}/vms/${id}/ports`,
+        method: "GET",
+        body: request,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 为开发环境申请一个端口
      *
      * @tags 【用户】主机管理
