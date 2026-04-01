@@ -371,9 +371,6 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task) error {
 	taskID := task.ID.String()
 	taskCreatedAt := time.Unix(task.CreatedAt, 0)
-	tailStart := h.findTailStart(ctx, taskID, taskCreatedAt)
-	hasMore := tailStart.After(taskCreatedAt)
-	h.writeCursor(wsConn, tailStart, hasMore)
 
 	go func() {
 		if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
@@ -399,54 +396,77 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 		})
 		close(streamCh)
 	}()
+	attachNow := time.Now().UTC()
 
-	// 读 loki 历史
-	if ended := h.replayLokiHistory(ctx, wsConn, logger, taskID, tailStart); ended {
+	roundStart, err := h.loki.FindLatestRoundStart(ctx, taskID, taskCreatedAt, attachNow)
+	if err != nil {
+		return fmt.Errorf("find latest round start: %w", err)
+	}
+	hasMore := roundStart.After(taskCreatedAt)
+	h.writeCursor(wsConn, roundStart, hasMore)
+
+	// 读最新论次的 loki 历史窗口
+	ended, err := h.replayLatestRoundHistory(ctx, wsConn, logger, taskID, roundStart, attachNow)
+	if err != nil {
+		return err
+	}
+	if ended {
 		cancel(fmt.Errorf("attach ended task"))
 		return nil
 	}
 
 	// 消费实时流
-	h.consumeLiveStream(ctx, cancel, wsConn, streamCh)
+	h.consumeLiveStream(ctx, cancel, wsConn, streamCh, attachNow.UnixNano())
 	return nil
 }
 
-func (h *TaskHandler) replayLokiHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, start time.Time) bool {
-	logLimit := h.cfg.Task.LogLimit
-	if logLimit <= 0 {
-		logLimit = 200
+func buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, logger *slog.Logger) ([]domain.TaskStream, bool) {
+	streams := make([]domain.TaskStream, 0, len(entries))
+	ended := false
+
+	for _, l := range entries {
+		if l.Line == "" {
+			continue
+		}
+		var chunk taskflow.TaskChunk
+		if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
+			logger.Error("failed to unmarshal log entry", "line", l.Line, "error", err)
+			continue
+		}
+		streams = append(streams, domain.TaskStream{
+			Type:      consts.TaskStreamType(chunk.Event),
+			Data:      chunk.Data,
+			Kind:      chunk.Kind,
+			Timestamp: l.Timestamp.UnixMilli(),
+		})
+		if chunk.Event == "task-ended" {
+			ended = true
+		}
 	}
 
-	ended := false
-	_ = h.loki.Tail(ctx, taskID, start, logLimit, time.Time{}, func(le []loki.LogEntry) error {
-		for _, l := range le {
-			if l.Line == "" {
-				continue
-			}
-			var chunk taskflow.TaskChunk
-			if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
-				logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
-				continue
-			}
-			if err := wsConn.WriteJSON(domain.TaskStream{
-				Type:      consts.TaskStreamType(chunk.Event),
-				Data:      chunk.Data,
-				Kind:      chunk.Kind,
-				Timestamp: l.Timestamp.UnixMilli(),
-			}); err != nil {
-				return err
-			}
-			if chunk.Event == "task-ended" {
-				ended = true
-				return fmt.Errorf("round ended")
-			}
-		}
-		return nil
-	})
-	return ended
+	return streams, ended
 }
 
-func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, streamCh <-chan *taskflow.TaskChunk) {
+func (h *TaskHandler) replayLatestRoundHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, start, end time.Time) (bool, error) {
+	entries, err := h.loki.QueryWindowByTaskID(ctx, taskID, start, end)
+	if err != nil {
+		return false, fmt.Errorf("query latest round history: %w", err)
+	}
+
+	streams, ended := buildTaskStreamsFromHistoryEntries(entries, logger)
+	for _, stream := range streams {
+		if err := wsConn.WriteJSON(stream); err != nil {
+			return false, err
+		}
+		if stream.Type == consts.TaskStreamType("task-ended") {
+			return true, nil
+		}
+	}
+
+	return ended, nil
+}
+
+func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, streamCh <-chan *taskflow.TaskChunk, historyEndNS int64) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -454,6 +474,9 @@ func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.Canc
 		case chunk, ok := <-streamCh:
 			if !ok {
 				return
+			}
+			if historyEndNS > 0 && chunk.Timestamp <= historyEndNS {
+				continue
 			}
 			if err := wsConn.WriteJSON(domain.TaskStream{
 				Type:      consts.TaskStreamType(chunk.Event),
