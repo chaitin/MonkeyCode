@@ -60,6 +60,7 @@ func NewHostHandler(i *do.Injector) (*HostHandler, error) {
 	g.GET("/vms/:id/terminals", web.BindHandler(h.TerminalList))
 	g.POST("/vms/:id/terminals/share", web.BindHandler(h.ShareTerminal))
 	g.DELETE("/vms/:id/terminals/:terminal_id", web.BindHandler(h.CloseTerminal))
+	g.GET("/:host_id/vms/:id/ports", web.BindHandler(h.ListPort))
 	g.POST("/:host_id/vms/:id/ports", web.BindHandler(h.ApplyPort))
 	g.DELETE("/:host_id/vms/:id/ports/:port", web.BindHandler(h.RecyclePort))
 	return h, nil
