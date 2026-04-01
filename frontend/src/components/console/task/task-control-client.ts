@@ -1,4 +1,4 @@
-import { b64decode, b64encode, base64ToUint8Array } from "@/utils/common"
+import { b64decode, b64encode } from "@/utils/common"
 import type { RepoFileChange, RepoFileStatus, TaskRepositoryClient } from "./task-shared"
 
 export type TaskControlClientStatus = "inited" | "connected" | "error"
@@ -16,6 +16,23 @@ export interface PortForwardInfo {
   label?: string | null
   error_message?: string | null
   whitelist_ips?: string[] | null
+}
+
+function decodeRepoFileContent(content: string): Uint8Array {
+  if (content === "") {
+    return new Uint8Array(0)
+  }
+
+  try {
+    const binary = atob(content)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+  } catch {
+    return new TextEncoder().encode(content)
+  }
 }
 
 interface TaskControlCallMessage {
@@ -221,10 +238,10 @@ export class TaskControlClient implements TaskRepositoryClient {
       offset: 0,
       length: 1024 * 1024,
     }).then((response) => {
-      if (!response?.content) {
+      if (!response || typeof response.content !== "string") {
         return null
       }
-      return base64ToUint8Array(response.content)
+      return decodeRepoFileContent(response.content)
     })
   }
 

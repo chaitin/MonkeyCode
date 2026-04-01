@@ -41,7 +41,6 @@ import "@/utils/ace-theme"
 import React from "react"
 import { toast } from "sonner"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { parseDiff, Diff, Hunk } from "react-diff-view"
 import "react-diff-view/style/index.css"
@@ -444,7 +443,6 @@ export const TaskFileExplorer = ({
 
   const openFile = useCallback(async (path: string) => {
     if (!envid || !path) return null
-    if (currentFile?.path === path) return currentFile
     const bytes = await fetchFileContent(path)
     if (!bytes) return null
     const isBinaryByExt = isBinaryExtension(path)
@@ -463,14 +461,29 @@ export const TaskFileExplorer = ({
     setDiffLoading(false)
     setCurrentFile(file)
     return file
-  }, [envid, currentFile, fetchFileContent])
+  }, [envid, fetchFileContent])
+
+  const clearCurrentFile = useCallback(() => {
+    setFileLoading(false)
+    setDiffContent("")
+    setDiffLoading(false)
+    setCurrentFile(null)
+  }, [])
 
   const handleFileSelect = useCallback((path: string, file: RepoFileStatus) => {
     if (file.entry_mode === RepoFileEntryMode.RepoEntryModeTree || file.entry_mode === RepoFileEntryMode.RepoEntryModeSubmodule) return
+    if (currentFile?.path === path) {
+      clearCurrentFile()
+      return
+    }
     openFile(path)
-  }, [openFile])
+  }, [clearCurrentFile, currentFile?.path, openFile])
 
   const handleChangedFileSelect = useCallback((path: string) => {
+    if (currentFile?.path === path) {
+      clearCurrentFile()
+      return
+    }
     setFileLoading(false)
     setDiffContent("")
     setDiffLoading(false)
@@ -482,33 +495,7 @@ export const TaskFileExplorer = ({
       isBinary: false,
       isTooLarge: false,
     })
-  }, [])
-
-  const reloadFile = useCallback(async () => {
-    if (!currentFile) return
-    const bytes = await fetchFileContent(currentFile.path)
-    if (!bytes) return
-    const isBinaryByExt = isBinaryExtension(currentFile.path)
-    const isTooLarge = bytes.length > MAX_FILE_SIZE
-    const { text, isText } = isBinaryByExt ? { text: '', isText: false } : tryDecodeAsText(bytes)
-    setCurrentFile({
-      ...currentFile,
-      bytes,
-      content: isText ? text : null,
-      isBinary: isBinaryByExt || !isText,
-      isTooLarge,
-    })
-    setDiffContent("")
-    setDiffLoading(false)
-    toast.success(`文件 ${currentFile.path} 已重新加载`)
-  }, [currentFile, fetchFileContent])
-
-  const closeFile = useCallback(() => {
-    setDiffContent("")
-    setDiffLoading(false)
-    setFileLoading(false)
-    setCurrentFile(null)
-  }, [])
+  }, [clearCurrentFile, currentFile?.path])
 
   const switchPanelMode = useCallback((mode: FilePanelMode) => {
     if (mode === panelMode) {
@@ -591,16 +578,7 @@ export const TaskFileExplorer = ({
 
   const renderFileContent = () => {
     if (!currentFile) {
-      return (
-        <Empty className="border border-dashed w-full h-full min-h-0">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <IconFileText className="size-6 opacity-40" />
-            </EmptyMedia>
-            <EmptyDescription>点击左侧文件查看内容</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )
+      return null
     }
     if (fileLoading) {
       return (
@@ -741,61 +719,8 @@ export const TaskFileExplorer = ({
     )
   }
 
-  const fileBrowserPanel = (
-    <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden">
-      <div className="flex items-center justify-between px-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2">
-          <ToggleGroup
-            type="single"
-            value={panelMode}
-            variant="outline"
-            size="sm"
-            className="shrink-0 bg-background"
-            onValueChange={(value) => {
-              if (value === "tree" || value === "changes") {
-                switchPanelMode(value)
-              }
-            }}
-          >
-            <ToggleGroupItem value="tree" className="h-7 px-2 text-xs gap-1.5">
-              <IconFolder className="size-3.5" />
-              目录
-            </ToggleGroupItem>
-            <ToggleGroupItem value="changes" className="h-7 px-2 text-xs gap-1.5">
-              <IconFileDiff className="size-3.5" />
-              变更
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={handleRefresh} disabled={disabled}>
-                <IconReload className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>刷新</TooltipContent>
-          </Tooltip>
-          <FileActionsDropdown
-            file={{ entry_mode: RepoFileEntryMode.RepoEntryModeTree, mode: 0, modified_at: 0, name: 'workspace', path: '', size: 0 }}
-            envid={envid}
-            onRefresh={handleRefresh}
-            onSuccess={handleRefresh}
-            alwaysVisible
-            hideDestructive
-          />
-          {onClosePanel && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
-                  <IconX className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>关闭面板</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </div>
+  const fileListPanel = (
+    <div className="flex flex-col min-h-0 flex-1">
       <div className="flex-1 min-h-0 overflow-y-auto py-1 flex flex-col">
         {panelMode === "tree" ? (
           <DirNode
@@ -818,46 +743,84 @@ export const TaskFileExplorer = ({
     </div>
   )
 
-  const previewPanel = currentFile && (
-    <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden bg-background">
-      <div className="flex items-center justify-between px-4 py-1 min-h-11 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <span className="text-sm font-medium truncate min-w-0 flex-1">{currentFile.name}</span>
-        </div>
-        <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0 hover:text-primary"
-            onClick={panelMode === "changes" ? loadCurrentFileDiff : reloadFile}
-            disabled={fileLoading || diffLoading}
-          >
-            <IconReload className={cn("size-4", (fileLoading || diffLoading) && "animate-spin")} />
-          </Button>
-          <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={closeFile}>
-            <IconX className="size-4" />
-          </Button>
-        </div>
-      </div>
+  const previewPanel = (
+    <div className="flex flex-col min-h-0 flex-1 bg-background">
       <div className="flex-1 min-h-0 overflow-hidden">{renderPreviewContent()}</div>
     </div>
   )
 
   return (
     <div className={cn("flex flex-col h-full min-h-0", className)}>
-      <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
-        <ResizablePanel defaultSize={currentFile ? 50 : 100} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
-          {fileBrowserPanel}
-        </ResizablePanel>
-        {currentFile && (
-          <>
-            <ResizableHandle withHandle className="shrink-0" />
-            <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
+      <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden bg-background">
+        <div className="flex items-center justify-between px-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2">
+            <ToggleGroup
+              type="single"
+              value={panelMode}
+              variant="outline"
+              size="sm"
+              className="shrink-0 bg-background"
+              onValueChange={(value) => {
+                if (value === "tree" || value === "changes") {
+                  switchPanelMode(value)
+                }
+              }}
+            >
+              <ToggleGroupItem value="tree" className="h-7 px-2 text-xs gap-1.5">
+                <IconFolder className="size-3.5" />
+                目录
+              </ToggleGroupItem>
+              <ToggleGroupItem value="changes" className="h-7 px-2 text-xs gap-1.5">
+                <IconFileDiff className="size-3.5" />
+                变更
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={handleRefresh} disabled={disabled}>
+                  <IconReload className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>刷新</TooltipContent>
+            </Tooltip>
+            <FileActionsDropdown
+              file={{ entry_mode: RepoFileEntryMode.RepoEntryModeTree, mode: 0, modified_at: 0, name: 'workspace', path: '', size: 0 }}
+              envid={envid}
+              onRefresh={handleRefresh}
+              onSuccess={handleRefresh}
+              alwaysVisible
+              hideDestructive
+            />
+            {onClosePanel && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+                    <IconX className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>关闭面板</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-1 min-h-0">
+          <div
+            className={cn(
+              "min-h-0 flex flex-col overflow-hidden",
+              currentFile ? "w-[240px] shrink-0" : "flex-1",
+            )}
+          >
+            {fileListPanel}
+          </div>
+          {currentFile && (
+            <div className="min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden border-l bg-background">
               {previewPanel}
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

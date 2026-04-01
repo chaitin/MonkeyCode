@@ -581,7 +581,7 @@ export default function TaskDetailPage() {
         <TaskPreparingView task={task} />
       ) : (
         <ResizablePanelGroup direction="vertical" className="gap-2">
-          <ResizablePanel id="top" order={1} defaultSize={hasBottomTerminal ? 62 : 100} minSize={30} className="min-h-0">
+          <ResizablePanel id="top" order={1} defaultSize={hasBottomTerminal ? 75 : 100} minSize={30} className="min-h-0">
             <ResizablePanelGroup direction="horizontal" className="gap-2">
               <ResizablePanel id="chat" order={1} defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
                 <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
@@ -755,7 +755,7 @@ export default function TaskDetailPage() {
           {hasBottomTerminal && (
             <>
               <ResizableHandle withHandle className="shrink-0" />
-              <ResizablePanel id="bottom-terminal" order={2} defaultSize={38} minSize={20} className="min-h-0">
+              <ResizablePanel id="bottom-terminal" order={2} defaultSize={25} minSize={20} className="min-h-0">
                 <div className="h-full w-full border rounded-md overflow-hidden">
                   <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setTerminalPanelOpen(false)} />
                 </div>
