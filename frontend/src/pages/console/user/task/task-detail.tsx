@@ -594,9 +594,9 @@ export default function TaskDetailPage() {
       {showPreparing ? (
         <TaskPreparingView task={task} />
       ) : (
-        <ResizablePanelGroup direction="vertical" className="gap-2">
+        <ResizablePanelGroup direction="vertical">
           <ResizablePanel id="top" order={1} defaultSize={hasBottomTerminal ? 75 : 100} minSize={30} className="min-h-0">
-            <ResizablePanelGroup direction="horizontal" className="gap-2">
+            <ResizablePanelGroup direction="horizontal">
               <ResizablePanel id="chat" order={1} defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
                 <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
                   {/* 消息列表 */}
@@ -694,7 +694,7 @@ export default function TaskDetailPage() {
               </ResizablePanel>
               {hasSidePanel && (
                 <>
-                  <ResizableHandle withHandle className="shrink-0" />
+                  <ResizableHandle withHandle className="ml-2 shrink-0 bg-transparent after:hidden" />
                   <ResizablePanel id="right-panel" order={2} defaultSize={50} minSize={25} className="min-w-0">
                     <div className="h-full overflow-hidden flex flex-col">
                       {activeSidePanel === "files" && (
@@ -719,7 +719,7 @@ export default function TaskDetailPage() {
           </ResizablePanel>
           {hasBottomTerminal && (
             <>
-              <ResizableHandle withHandle className="shrink-0" />
+              <ResizableHandle withHandle className="mt-2 shrink-0 bg-transparent after:hidden" />
               <ResizablePanel id="bottom-terminal" order={2} defaultSize={25} minSize={20} className="min-h-0">
                 <div className="h-full w-full border rounded-md overflow-hidden">
                   <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setTerminalPanelOpen(false)} />

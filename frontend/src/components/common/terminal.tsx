@@ -146,7 +146,7 @@ export default function Terminal({
       allowProposedApi: true,
       theme: themes[validTheme as keyof typeof themes],
       fontFamily: '"Google Sans Code"',
-      fontSize: 13,
+      fontSize: 12,
     });
     
     xtermInstance.current.open(terminalDiv.current as unknown as HTMLElement);

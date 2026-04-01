@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconAlertCircle, IconCloudOff, IconPlus, IconReload, IconTerminal2, IconX } from "@tabler/icons-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { v4 as uuidv4 } from "uuid"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
@@ -35,17 +35,20 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
   const [sessionToClose, setSessionToClose] = useState<string | null>(null)
 
-  const fetchSessions = async () => {
-    if (!envid) return
+  const fetchSessions = useCallback(async (): Promise<DomainTerminal[]> => {
+    if (!envid) return []
+
+    let nextConnections: DomainTerminal[] = []
 
     await apiRequest("v1UsersHostsVmsTerminalsDetail", {}, [envid], (resp) => {
       if (resp.code === 0) {
-        const connections = (resp.data || []) as DomainTerminal[]
-        connections.sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
-        setSessions(connections)
+        nextConnections = ((resp.data || []) as DomainTerminal[]).sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+        setSessions(nextConnections)
       }
     })
-  }
+
+    return nextConnections
+  }, [envid])
 
   const handleDeleteSession = async (terminalId: string) => {
     if (!envid) return
@@ -53,16 +56,17 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
     await apiRequest("v1UsersHostsVmsTerminalsDelete", {}, [envid, terminalId], (resp) => {
       if (resp.code === 0) {
         toast.success("终端会话已关闭")
-        if (currentSessionId === terminalId) {
-          const remaining = sessions.filter((s) => s.id !== terminalId)
-          setCurrentSessionId(remaining[0]?.id || null)
-          setSignal((prev) => prev + 1)
-        }
-        fetchSessions()
       } else {
         toast.error("关闭终端会话失败: " + resp.message)
       }
     })
+
+    const nextSessions = await fetchSessions()
+    if (currentSessionId === terminalId) {
+      setCurrentSessionId(nextSessions[0]?.id || null)
+      setSignal((prev) => prev + 1)
+    }
+
     setCloseDialogOpen(false)
     setSessionToClose(null)
   }
@@ -93,20 +97,20 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
   useEffect(() => {
     if (!envid || disabled) return
     fetchSessions()
-  }, [envid, disabled])
+  }, [disabled, envid, fetchSessions])
 
   useEffect(() => {
     if (connectionStatus === "connected") {
       fetchSessions()
     }
-  }, [connectionStatus])
+  }, [connectionStatus, fetchSessions])
 
   useEffect(() => {
     if (sessions.length > 0 && currentSessionId === null) {
       setCurrentSessionId(sessions[0].id || null)
       setSignal((prev) => prev + 1)
     }
-  }, [sessions])
+  }, [currentSessionId, sessions])
 
   const displaySessions = [...sessions]
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
@@ -137,20 +141,74 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
     return <IconAlertCircle className="size-3.5 text-red-500 shrink-0" />
   }
 
-  if (disabled) {
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center justify-between gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
-          <div className="flex items-center gap-2">
-            <IconTerminal2 className="size-4 text-primary" />
-            <span className="text-sm font-medium">终端</span>
-          </div>
+  const sidebar = (
+    <div className="flex w-48 shrink-0 flex-col border-r bg-muted/10">
+      <div className="flex items-center justify-between gap-2 border-b p-2">
+        <Button variant="ghost" size="icon-sm" className="size-5" onClick={handleNewSession} disabled={disabled}>
+          <IconPlus className="size-4" />
+        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon-sm" className="size-5" onClick={() => fetchSessions()} disabled={disabled}>
+            <IconReload className="size-4" />
+          </Button>
           {onClosePanel && (
-            <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
+            <Button variant="ghost" size="icon-sm" className="size-5" onClick={onClosePanel}>
               <IconX className="size-4" />
             </Button>
           )}
         </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2">
+        {displaySessions.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {displaySessions.map((session) => {
+              const sid = session.id || ""
+              const isActive = currentSessionId === sid
+
+              return (
+                <div
+                  key={sid}
+                  className={cn(
+                    "group flex items-center gap-2 rounded-md border px-2 py-1 transition-colors",
+                    isActive
+                      ? "border-transparent bg-muted text-foreground"
+                      : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onClick={() => handleSelectSession(sid)}
+                  >
+                    {getTabIcon(sid)}
+                    <span className="truncate text-xs">{getTabTitle(session)}</span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-primary"
+                    onClick={(e) => handleCloseTab(e, sid)}
+                  >
+                    <IconX className="size-3.5" />
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="px-2 py-4 text-sm text-muted-foreground">
+            {disabled ? "开发环境未就绪" : "点击“新建”创建终端"}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  if (disabled) {
+    return (
+      <div className="flex h-full min-h-0">
+        {sidebar}
         <div className="flex-1 min-h-0 flex flex-col">
           <Empty className="border border-dashed w-full flex-1 min-h-0">
             <EmptyHeader>
@@ -168,71 +226,8 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div
-        className={cn(
-          "flex items-center min-h-11 border-b bg-muted/30 shrink-0 overflow-x-auto px-2 py-1 gap-1",
-        )}
-      >
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0 hover:text-primary"
-          onClick={handleNewSession}
-          disabled={disabled}
-        >
-          <IconPlus className="size-4" />
-        </Button>
-        <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto divide-x divide-border/50">
-          {displaySessions.map((session) => {
-              const sid = session.id || ""
-              const isActive = currentSessionId === sid
-              return (
-                <div
-                  key={sid}
-                  className={cn(
-                    "group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 rounded-md cursor-pointer shrink-0 min-w-0 max-w-[140px] transition-all duration-150",
-                    isActive
-                      ? "bg-background text-primary border border-border/50"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60 border border-transparent"
-                  )}
-                  onClick={() => handleSelectSession(sid)}
-                >
-                  {getTabIcon(sid)}
-                  <span className="truncate text-xs font-medium">{getTabTitle(session)}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-primary rounded"
-                    onClick={(e) => handleCloseTab(e, sid)}
-                  >
-                    <IconX className="size-3" />
-                  </Button>
-                </div>
-              )
-            })}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0 hover:text-primary"
-          onClick={() => fetchSessions()}
-          disabled={disabled}
-        >
-          <IconReload className="size-4" />
-        </Button>
-        {onClosePanel && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0 hover:text-primary"
-            onClick={onClosePanel}
-          >
-            <IconX className="size-4" />
-          </Button>
-        )}
-      </div>
-
+    <div className="flex h-full min-h-0">
+      {sidebar}
       <div className="flex-1 min-h-0 flex flex-col">
         {currentSessionId ? (
           <Terminal
