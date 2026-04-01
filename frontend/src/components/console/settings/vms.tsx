@@ -20,7 +20,7 @@ import {
 import { CirclePlusIcon, MonitorCloud, MoreVertical, Server } from "lucide-react";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ItemGroup,
   Item,
@@ -68,6 +68,11 @@ export default function VmsPage() {
   const [vmToRenew, setVmToRenew] = useState<DomainVirtualMachine | null>(null)
 
   const { reloadHosts, loadingHosts, hostsInited, vms } = useCommonData();
+  const reloadHostsRef = useRef(reloadHosts)
+
+  useEffect(() => {
+    reloadHostsRef.current = reloadHosts
+  }, [reloadHosts])
 
   const showVms = useMemo(() => {
     if (showOfflineVms) {
@@ -78,21 +83,26 @@ export default function VmsPage() {
   }, [vms, showOfflineVms])
 
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    
-    const poll = () => {
-      reloadHosts();
-      // 检查 vms 里是否有 pending 状态的机器
-      const hasPending = vms.some(vm => vm.status === 'pending');
-      timeoutId = setTimeout(poll, hasPending ? 3000 : 30000);
-    };
+    if (!hostsInited) {
+      reloadHostsRef.current()
+    }
+  }, [hostsInited])
 
-    poll();
+  useEffect(() => {
+    if (!hostsInited) {
+      return
+    }
+
+    // 有正在创建中的开发环境时加快轮询，避免列表长时间停留在旧状态。
+    const hasPending = vms.some((vm) => vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending)
+    const timeoutId = setTimeout(() => {
+      reloadHostsRef.current()
+    }, hasPending ? 3000 : 30000)
 
     return () => {
-      clearTimeout(timeoutId);
-    };
-  }, []);
+      clearTimeout(timeoutId)
+    }
+  }, [hostsInited, vms])
 
   const handleDeleteVM = (vm: DomainVirtualMachine) => {
     setVmToDelete(vm)

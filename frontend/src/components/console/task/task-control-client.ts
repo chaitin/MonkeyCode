@@ -49,7 +49,6 @@ interface TaskControlPendingCall<T> {
 
 export interface TaskControlClientOptions {
   taskId: string
-  clientIp?: string | null
   onStateChange?: (state: TaskControlClientState) => void
   onRepoFileChange?: () => void
   onPortChange?: (opened: boolean) => void
@@ -78,8 +77,6 @@ export class TaskControlClient implements TaskRepositoryClient {
   private readonly onPortChange?: (opened: boolean) => void
 
   private socket: WebSocket | null = null
-  private readonly initialClientIp: string | null
-  private clientIp: string | null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
   private disposed = false
@@ -91,14 +88,11 @@ export class TaskControlClient implements TaskRepositoryClient {
 
   constructor({
     taskId,
-    clientIp = null,
     onStateChange,
     onRepoFileChange,
     onPortChange,
   }: TaskControlClientOptions) {
     this.taskId = taskId
-    this.initialClientIp = clientIp
-    this.clientIp = clientIp
     this.onStateChange = onStateChange
     this.onRepoFileChange = onRepoFileChange
     this.onPortChange = onPortChange
@@ -121,7 +115,6 @@ export class TaskControlClient implements TaskRepositoryClient {
       }
       this.reconnectAttempts = 0
       this.setStatus("connected")
-      this.syncMyIp()
     }
 
     socket.onmessage = (event) => {
@@ -163,16 +156,11 @@ export class TaskControlClient implements TaskRepositoryClient {
     this.failPendingCalls()
     this.closeSocket()
     this.reconnectAttempts = 0
-    this.clientIp = this.initialClientIp
     this.setStatus("inited")
   }
 
   getState() {
     return { ...this.state }
-  }
-
-  setClientIp(clientIp: string | null) {
-    this.clientIp = clientIp
   }
 
   async call<T>(kind: string, payload: Record<string, unknown>, timeout = 5000): Promise<T | null> {
@@ -274,19 +262,6 @@ export class TaskControlClient implements TaskRepositoryClient {
       return
     }
     this.socket.send(JSON.stringify(message))
-  }
-
-  private syncMyIp() {
-    if (!this.clientIp) {
-      return
-    }
-
-    this.send({
-      type: "sync-my-ip",
-      data: b64encode(JSON.stringify({
-        client_ip: this.clientIp,
-      })),
-    })
   }
 
   private handleSocketMessage(rawData: string) {

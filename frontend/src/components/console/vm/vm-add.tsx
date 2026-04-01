@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import Icon from "@/components/common/Icon"
-import { ConstsHostStatus } from "@/api/Api"
+import { ConstsHostStatus, type DomainCreateVMReq } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectModel, selectImage, selectHost, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
@@ -35,6 +35,17 @@ interface VmAddDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
 }
+
+const BASE_LIFE_OPTIONS = [
+  { label: "1 小时后回收", value: "1h", seconds: 60 * 60 },
+  { label: "2 小时后回收", value: "2h", seconds: 2 * 60 * 60 },
+  { label: "3 小时后回收", value: "3h", seconds: 3 * 60 * 60 },
+  { label: "6 小时后回收", value: "6h", seconds: 6 * 60 * 60 },
+  { label: "12 小时后回收", value: "12h", seconds: 12 * 60 * 60 },
+  { label: "1 天后回收", value: "1d", seconds: 24 * 60 * 60 },
+  { label: "3 天后回收", value: "3d", seconds: 3 * 24 * 60 * 60 },
+  { label: "7 天后回收", value: "7d", seconds: 7 * 24 * 60 * 60 },
+]
 
 export default function VmAddDialog({
   open,
@@ -55,24 +66,12 @@ export default function VmAddDialog({
   // 数据列表
   const [loading, setLoading] = useState(false)
 
-  // 过期时间选项
-  const baseLifeOptions = [
-    { label: "1 小时后回收", value: "1h", seconds: 60 * 60 },
-    { label: "2 小时后回收", value: "2h", seconds: 2 * 60 * 60 },
-    { label: "3 小时后回收", value: "3h", seconds: 3 * 60 * 60 },
-    { label: "6 小时后回收", value: "6h", seconds: 6 * 60 * 60 },
-    { label: "12 小时后回收", value: "12h", seconds: 12 * 60 * 60 },
-    { label: "1 天后回收", value: "1d", seconds: 24 * 60 * 60 },
-    { label: "3 天后回收", value: "3d", seconds: 3 * 24 * 60 * 60 },
-    { label: "7 天后回收", value: "7d", seconds: 7 * 24 * 60 * 60 },
-  ];
-
   // 公共宿主机不让选择超过 3 小时的时间
   const lifeOptions = useMemo(() => {
     if (selectedHostId === "public_host") {
-      return baseLifeOptions.filter(option => option.seconds <= 3 * 60 * 60);
+      return BASE_LIFE_OPTIONS.filter(option => option.seconds <= 3 * 60 * 60);
     }
-    return baseLifeOptions;
+    return BASE_LIFE_OPTIONS;
   }, [selectedHostId]);
   const { models, images, identities, hosts } = useCommonData();
 
@@ -91,7 +90,7 @@ export default function VmAddDialog({
       value: `${i + 1}`,
       cores: i + 1,
     }))
-  }, [selectedHostId])
+  }, [hosts, selectedHostId])
   
   const memoryOptions = useMemo(() => {
     let maxMemory = 0
@@ -108,7 +107,7 @@ export default function VmAddDialog({
       value: `${i + 1}`,
       memoryMB: (i + 1) * 1024 * 1024 * 1024, // 转换为 MB
     }))
-  }, [selectedHostId])
+  }, [hosts, selectedHostId])
 
   useEffect(() => {
     if (open) {      
@@ -120,7 +119,7 @@ export default function VmAddDialog({
       setMemory("2")
       setLife("1h")
     }
-  }, [open])
+  }, [open, hosts, images, models])
 
   const handleCreate = async () => {
     // 验证必填项
@@ -146,7 +145,7 @@ export default function VmAddDialog({
     }
 
     // 构建请求参数
-    const requestData: any = {
+    const requestData: DomainCreateVMReq = {
       git_identity_id: selectedIdentityId || undefined,
       host_id: selectedHostId,
       image_id: selectedImageId,
@@ -156,7 +155,8 @@ export default function VmAddDialog({
       repo: {
         repo_url: repoUrl,
         branch: repoBranch || undefined,
-      }
+      },
+      resource: {},
     }
     if (life) {
       const selectedOption = lifeOptions.find(opt => opt.value === life)
@@ -283,7 +283,7 @@ export default function VmAddDialog({
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="right">
-                            13
+                            {identity.username || identity.remark || "未命名身份凭证"}
                           </TooltipContent>
                         </Tooltip>
                       </SelectItem>
@@ -411,4 +411,3 @@ export default function VmAddDialog({
     </Dialog>
   )
 }
-

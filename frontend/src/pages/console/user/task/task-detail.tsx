@@ -43,8 +43,6 @@ export default function TaskDetailPage() {
   const [historyLoaded, setHistoryLoaded] = React.useState(false)
   const [historyLoading, setHistoryLoading] = React.useState(false)
   const [historyCursorReady, setHistoryCursorReady] = React.useState(false)
-  const [clientIp, setClientIp] = React.useState<string | null>(null)
-  const [clientIpReady, setClientIpReady] = React.useState(false)
   const [previewPorts, setPreviewPorts] = React.useState<DomainVMPort[] | undefined>(undefined)
   const [chatHasOverflow, setChatHasOverflow] = React.useState(false)
   const [chatAtTop, setChatAtTop] = React.useState(true)
@@ -250,8 +248,6 @@ export default function TaskDetailPage() {
     setHistoryCursorReady(false)
     historyLoadedRef.current = false
     setHistoryLoading(false)
-    setClientIp(null)
-    setClientIpReady(false)
     setPreviewPorts(undefined)
     setTimeCost(0)
     historyLoadingRef.current = false
@@ -301,7 +297,6 @@ export default function TaskDetailPage() {
       forward_id: port.forward_id ?? undefined,
       preview_url: port.access_url ?? undefined,
       error_message: port.error_message ?? undefined,
-      white_list: port.whitelist_ips,
       success: true,
     })))
   }, [])
@@ -325,42 +320,8 @@ export default function TaskDetailPage() {
   React.useEffect(() => {
     if (!taskId) return
 
-    let active = true
-    setClientIp(null)
-    setClientIpReady(false)
-
-    fetch("https://monkeycode-ai.online/get-my-ip", {
-      method: "GET",
-      mode: "cors",
-    })
-      .then(async (resp) => {
-        if (!resp.ok) return null
-        const data = await resp.json()
-        return typeof data?.ip === "string" ? data.ip : null
-      })
-      .then((ip) => {
-        if (!active) return
-        setClientIp(ip)
-        setClientIpReady(true)
-      })
-      .catch((error) => {
-        console.error("获取客户端 IP 失败", error)
-        if (!active) return
-        setClientIp(null)
-        setClientIpReady(true)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [taskId])
-
-  React.useEffect(() => {
-    if (!taskId || !clientIpReady) return
-
     const client = new TaskControlClient({
       taskId,
-      clientIp,
       onRepoFileChange: applyRepoFileChange,
       onPortChange: handlePortChange,
     })
@@ -373,7 +334,7 @@ export default function TaskDetailPage() {
       }
       client.dispose()
     }
-  }, [applyRepoFileChange, clientIp, clientIpReady, handlePortChange, taskId])
+  }, [applyRepoFileChange, handlePortChange, taskId])
 
   const scheduleFetchTaskDetail = React.useCallback(async () => {
     const currentTask = await fetchTaskDetail()
@@ -784,9 +745,6 @@ export default function TaskDetailPage() {
           </DialogHeader>
           <TaskPreviewPanel
             ports={previewPorts}
-            hostId={task?.virtualmachine?.host?.id}
-            vmId={task?.virtualmachine?.id}
-            onSuccess={fetchPortForwards}
             onRefresh={fetchPortForwards}
             disabled={!vmOnline}
             embedded
