@@ -662,22 +662,22 @@ export default function TaskDetailPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "files" && "text-primary bg-accent")}
-                        onClick={() => togglePanel("files")}
-                        disabled={!vmOnline}
-                      >
-                        <IconFile className="size-3.5" />
-                        文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
                         className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "terminal" && "text-primary bg-accent")}
                         onClick={() => togglePanel("terminal")}
                         disabled={!vmOnline}
                       >
                         <IconTerminal2 className="size-3.5" />
                         终端
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activePanel === "files" && "text-primary bg-accent")}
+                        onClick={() => togglePanel("files")}
+                        disabled={!vmOnline}
+                      >
+                        <IconFile className="size-3.5" />
+                        文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
                       </Button>
                       <Button
                         variant="ghost"
