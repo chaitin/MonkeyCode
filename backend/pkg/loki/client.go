@@ -31,6 +31,36 @@ type Client struct {
 	logger      *slog.Logger
 }
 
+func filterEntriesByTimeWindow(entries []LogEntry, start, end time.Time) []LogEntry {
+	out := make([]LogEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !start.IsZero() && entry.Timestamp.Before(start) {
+			continue
+		}
+		if !end.IsZero() && entry.Timestamp.After(end) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func findLatestRoundStartFromEntries(entries []LogEntry, taskCreatedAt time.Time) time.Time {
+	lastInputTS := taskCreatedAt
+	for _, entry := range entries {
+		var chunk struct {
+			Event string `json:"event"`
+		}
+		if err := json.Unmarshal([]byte(entry.Line), &chunk); err != nil {
+			continue
+		}
+		if chunk.Event == "user-input" {
+			lastInputTS = entry.Timestamp
+		}
+	}
+	return lastInputTS
+}
+
 // Option 配置选项
 type Option func(*Client)
 
@@ -189,6 +219,40 @@ func (c *Client) History(ctx context.Context, taskID string, start time.Time, fn
 		start = logs[len(logs)-1].Timestamp.Add(time.Nanosecond)
 	}
 	return lastTS, nil
+}
+
+// QueryWindowByTaskID 按时间窗口正序查询 task 日志，只返回历史数据，不进入实时阶段。
+func (c *Client) QueryWindowByTaskID(ctx context.Context, taskID string, start, end time.Time) ([]LogEntry, error) {
+	const pageSize = 200
+
+	if end.IsZero() {
+		end = time.Now()
+	}
+	if start.IsZero() {
+		start = time.Unix(0, 0)
+	}
+	if !start.Before(end) && !start.Equal(end) {
+		return nil, nil
+	}
+
+	out := make([]LogEntry, 0, pageSize)
+	queryStart := start
+	for {
+		entries, err := c.QueryByTaskID(ctx, taskID, queryStart, end, pageSize, "forward")
+		if err != nil {
+			return nil, err
+		}
+		if len(entries) == 0 {
+			return out, nil
+		}
+
+		out = append(out, filterEntriesByTimeWindow(entries, queryStart, end)...)
+		if len(entries) < pageSize {
+			return out, nil
+		}
+
+		queryStart = entries[len(entries)-1].Timestamp.Add(time.Nanosecond)
+	}
 }
 
 // Tail 使用 WebSocket 替代 HTTP 轮询，提供完整的实时日志流
@@ -575,6 +639,16 @@ func (c *Client) FindLastEvent(ctx context.Context, taskID string, event string,
 		// 继续往前扫描
 		end = entries[len(entries)-1].Timestamp
 	}
+}
+
+// FindLatestRoundStart 定位 attach 模式下最新论次的起点。
+// 语义固定为：最近一个 user-input；若不存在，则退回任务创建时间。
+func (c *Client) FindLatestRoundStart(ctx context.Context, taskID string, taskCreatedAt, end time.Time) (time.Time, error) {
+	entries, err := c.QueryWindowByTaskID(ctx, taskID, taskCreatedAt, end)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return findLatestRoundStartFromEntries(entries, taskCreatedAt), nil
 }
 
 func (c *Client) toWebSocketURL(path string, q url.Values) (string, error) {

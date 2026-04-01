@@ -118,6 +118,10 @@ func (t *TaskRepo) List(ctx context.Context, u *domain.User, req domain.TaskList
 		query = query.Where(task.HasProjectTasksWith(projecttask.ProjectIDEQ(req.ProjectID)))
 	}
 
+	if req.Status != nil {
+		query = query.Where(task.Status(*req.Status))
+	}
+
 	page, size := req.Page, req.Size
 	if page <= 0 {
 		page = 1
