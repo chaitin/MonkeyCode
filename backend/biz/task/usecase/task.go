@@ -45,6 +45,7 @@ type TaskUsecase struct {
 	notifyDispatcher *dispatcher.Dispatcher
 	taskHook         domain.TaskHook
 	privilegeChecker domain.PrivilegeChecker
+	taskPolicy       domain.TaskPolicy
 	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 	girepo           domain.GitIdentityRepo
@@ -76,6 +77,11 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 	// 可选注入 PrivilegeChecker
 	if pc, err := do.Invoke[domain.PrivilegeChecker](i); err == nil {
 		u.privilegeChecker = pc
+	}
+
+	// 可选注入 TaskPolicy
+	if tp, err := do.Invoke[domain.TaskPolicy](i); err == nil {
+		u.taskPolicy = tp
 	}
 
 	return u, nil
@@ -285,6 +291,18 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			req.SystemPrompt = prompt
 		}
 	}
+
+	limit := 1
+	if a.taskPolicy != nil {
+		v, err := a.taskPolicy.GetMaxConcurrent(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		if v > 0 {
+			limit = v
+		}
+	}
+	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
 
 	pt, err := a.repo.Create(ctx, user, req, token, func(pt *db.ProjectTask, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error) {
 		t := pt.Edges.Task
