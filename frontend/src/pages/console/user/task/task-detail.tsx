@@ -87,6 +87,8 @@ export default function TaskDetailPage() {
   ), [liveMessages])
   const [timeCost, setTimeCost] = React.useState(0)
   const previewPortCount = (previewPorts ?? []).length
+  const taskTitle = task?.summary?.trim() || task?.content?.trim() || "未知任务名称"
+  const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
 
   const hasSidePanel = activeSidePanel !== null
   const hasBottomTerminal = terminalPanelOpen
@@ -576,7 +578,58 @@ export default function TaskDetailPage() {
   }, [historyLoading, runningMessagesSignature])
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 gap-2">
+      <div className="shrink-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium" title={taskTitle}>{taskTitle}</div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {totalTokens > 0 && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                <span className="sm:hidden">
+                  {formatTokens(totalTokens)} tokens
+                </span>
+                <span className="hidden sm:inline">
+                  输入 {formatTokens(task?.stats?.input_tokens) || "-"} / 输出 {formatTokens(task?.stats?.output_tokens) || "-"} tokens
+                </span>
+              </span>
+            )}
+            <div className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-7 min-w-0 px-2 gap-1 text-xs font-normal", terminalPanelOpen && "text-primary bg-accent")}
+                onClick={toggleTerminalPanel}
+                disabled={!vmOnline}
+              >
+                <IconTerminal2 className="size-3.5" />
+                终端
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-7 min-w-0 px-2 gap-1 text-xs font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
+                onClick={() => toggleSidePanel("files")}
+                disabled={!vmOnline}
+              >
+                <IconFile className="size-3.5" />
+                文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-7 min-w-0 px-2 gap-1 text-xs font-normal", previewDialogOpen && "text-primary bg-accent")}
+                onClick={togglePreviewDialog}
+                disabled={!vmOnline}
+              >
+                <IconDeviceDesktop className="size-3.5" />
+                预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
       {showPreparing ? (
         <TaskPreparingView task={task} />
       ) : (
@@ -675,55 +728,6 @@ export default function TaskDetailPage() {
                         任务已结束
                       </div>
                     )}
-                  </div>
-                  {/* 底部工具栏 */}
-                  <div className="shrink-0">
-                    <div className={cn(hasSidePanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-0.5">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", terminalPanelOpen && "text-primary bg-accent")}
-                            onClick={toggleTerminalPanel}
-                            disabled={!vmOnline}
-                          >
-                            <IconTerminal2 className="size-3.5" />
-                            终端
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
-                            onClick={() => toggleSidePanel("files")}
-                            disabled={!vmOnline}
-                          >
-                            <IconFile className="size-3.5" />
-                            文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn("h-6 min-w-0 px-2 gap-1 text-xs font-normal", previewDialogOpen && "text-primary bg-accent")}
-                            onClick={togglePreviewDialog}
-                            disabled={!vmOnline}
-                          >
-                            <IconDeviceDesktop className="size-3.5" />
-                            预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
-                          </Button>
-                        </div>
-                        {(task?.stats?.input_tokens != null || task?.stats?.output_tokens != null || task?.stats?.total_tokens != null) && (
-                          <span className="text-xs text-muted-foreground shrink-0">
-                            <span className="sm:hidden">
-                              {formatTokens(task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0)))} tokens
-                            </span>
-                            <span className="hidden sm:inline">
-                              输入 {formatTokens(task?.stats?.input_tokens) || "-"} / 输出 {formatTokens(task?.stats?.output_tokens) || "-"} tokens
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </div>
               </ResizablePanel>
