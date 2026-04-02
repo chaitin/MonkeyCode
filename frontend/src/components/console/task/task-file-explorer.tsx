@@ -809,7 +809,7 @@ export const TaskFileExplorer = ({
           <div
             className={cn(
               "min-h-0 flex flex-col overflow-hidden",
-              currentFile ? "w-[240px] shrink-0" : "flex-1",
+              currentFile ? "w-[180px] shrink-0" : "flex-1",
             )}
           >
             {fileListPanel}

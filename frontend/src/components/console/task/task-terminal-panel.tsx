@@ -197,8 +197,8 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
             })}
           </div>
         ) : (
-          <div className="px-2 py-4 text-sm text-muted-foreground">
-            {disabled ? "开发环境未就绪" : "点击“新建”创建终端"}
+          <div className="px-1 text-sm text-muted-foreground">
+            {disabled ? "开发环境未就绪" : "暂无终端连接"}
           </div>
         )}
       </div>

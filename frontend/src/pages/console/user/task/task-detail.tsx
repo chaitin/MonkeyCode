@@ -13,6 +13,7 @@ import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { formatTokens } from "@/utils/common"
@@ -605,7 +606,7 @@ export default function TaskDetailPage() {
                 <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
                   {/* 消息列表 */}
                   <div className="flex-1 min-h-0 min-w-0 relative">
-                    <div ref={chatScrollRef} className="h-full overflow-y-auto">
+                    <ScrollArea className="h-full" viewportRef={chatScrollRef}>
                       <div
                         ref={chatContentRef}
                         className={cn("min-h-full flex flex-col gap-3", hasSidePanel ? "w-full" : "mx-auto max-w-[800px]")}
@@ -640,7 +641,7 @@ export default function TaskDetailPage() {
                           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">暂无消息</div>
                         ) : null}
                       </div>
-                    </div>
+                    </ScrollArea>
                     {chatHasOverflow && (
                       <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
                         <div className={cn("relative h-full", hasSidePanel ? "w-full" : "mx-auto max-w-[800px]")}>
