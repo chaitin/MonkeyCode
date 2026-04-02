@@ -606,7 +606,7 @@ export default function TaskDetailPage() {
                 <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
                   {/* 消息列表 */}
                   <div className="flex-1 min-h-0 min-w-0 relative">
-                    <ScrollArea className="h-full" viewportRef={chatScrollRef}>
+                    <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:!block" viewportRef={chatScrollRef}>
                       <div
                         ref={chatContentRef}
                         className={cn("min-h-full flex flex-col gap-3", hasSidePanel ? "w-full" : "mx-auto max-w-[800px]")}
