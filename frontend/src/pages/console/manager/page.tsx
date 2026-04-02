@@ -14,7 +14,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { HelpCircle, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import ManagerSidebar from "@/components/manager/manager-sidebar"
 import { Fragment } from "react/jsx-runtime"
 
@@ -97,12 +97,6 @@ export default function ManagerConsolePage() {
             </Breadcrumb>
           </div>
           <div className="ml-auto flex items-center gap-2 px-4">
-            <Button variant="ghost" size="sm" asChild>
-              <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank">
-                <HelpCircle className="h-[1.2rem] w-[1.2rem]" />
-                帮助
-              </a>
-            </Button>
             <Button
               variant="ghost"
               size="sm"

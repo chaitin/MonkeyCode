@@ -1,4 +1,5 @@
 import * as React from "react"
+import NavBalance from "./nav-balance"
 import NavProject from "./nav-project"
 import NavUser from "./nav-user"
 import {
@@ -50,6 +51,7 @@ export default function UserSidebar({
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
+        <NavBalance />
         <NavUser />
       </SidebarFooter>
     </Sidebar>

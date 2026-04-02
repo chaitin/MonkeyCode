@@ -18,8 +18,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { HelpCircle, RefreshCw, Users } from "lucide-react"
-import NavBalance from "@/components/console/nav/nav-balance"
+import { RefreshCw, Users } from "lucide-react"
 import { DataProvider } from "@/components/console/data-provider"
 import {
   HoverCard,
@@ -171,13 +170,6 @@ function UserConsoleContent() {
                   </div>
                 </HoverCardContent>
               </HoverCard>
-              <NavBalance variant="header" />
-              <Button className="hidden lg:flex" variant="ghost" size="sm" asChild>
-                <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank">
-                  <HelpCircle className="h-[1.2rem] w-[1.2rem]" />
-                  帮助
-                </a>
-              </Button>
               <Button
                 variant="ghost"
                 size="sm"

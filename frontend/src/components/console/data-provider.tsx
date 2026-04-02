@@ -1,4 +1,4 @@
-import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
+import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
 import { getImageShortName } from '@/utils/common';
 import { apiRequest } from '@/utils/requestUtils';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
@@ -30,6 +30,9 @@ type CommonData = {
   dailyBalance: number;
   dailyRefreshedAt?: string;
   reloadWallet: () => void;
+  subscription: DomainSubscriptionResp | null;
+  loadingSubscription: boolean;
+  reloadSubscription: () => void;
 
   members: DomainUser[];
   loadingMembers: boolean;
@@ -66,6 +69,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [balance, setBalance] = useState(0);
   const [dailyBalance, setDailyBalance] = useState(0);
   const [dailyRefreshedAt, setDailyRefreshedAt] = useState<string | undefined>(undefined);
+  const [subscription, setSubscription] = useState<DomainSubscriptionResp | null>(null);
+  const [loadingSubscription, setLoadingSubscription] = useState(true);
   
   const [members, setMembers] = useState<DomainUser[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -239,6 +244,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
   }
 
+  const fetchSubscription = async (showLoading = true) => {
+    if (showLoading) {
+      setLoadingSubscription(true)
+    }
+    await apiRequest('v1UsersSubscriptionList', {}, [], (resp) => {
+      if (resp.code === 0) {
+        setSubscription(resp.data || null)
+      } else {
+        toast.error("获取会员信息失败: " + resp.message)
+      }
+    }, () => {
+      if (showLoading) {
+        setLoadingSubscription(false)
+      }
+    })
+    if (showLoading) {
+      setLoadingSubscription(false)
+    }
+  }
+
   const fetchMembers = async () => {
     setLoadingMembers(true)
     await apiRequest('v1UsersMembersList', {}, [], (resp) => {
@@ -289,9 +314,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchImages();
     fetchIdentities();
     fetchWallet();
+    fetchSubscription();
     fetchMembers();
     fetchProjects();
     fetchUnlinkedTasks();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      fetchWallet();
+      fetchSubscription(false);
+    }, 60 * 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
   }, []);
 
   return (
@@ -321,6 +358,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         dailyBalance: dailyBalance,
         dailyRefreshedAt: dailyRefreshedAt,
         reloadWallet: fetchWallet,
+        subscription: subscription,
+        loadingSubscription: loadingSubscription,
+        reloadSubscription: () => fetchSubscription(),
 
         members: members,
         loadingMembers: loadingMembers,

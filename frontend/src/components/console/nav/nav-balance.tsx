@@ -2,7 +2,7 @@ import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui
 import { Dialog } from "@radix-ui/react-dialog";
 import { DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DialogContent } from "@/components/ui/dialog";
-import { IconInfoCircle, IconWallet } from "@tabler/icons-react";
+import { IconCoin, IconInfoCircle, IconWallet } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const { balance, dailyBalance, reloadWallet, user } = useCommonData();
+  const { balance, dailyBalance, loadingSubscription, reloadSubscription, reloadWallet, subscription, user } = useCommonData();
 
   const positiveKinds = new Set([
     ConstsTransactionKind.TransactionKindSignupBonus,
@@ -40,6 +40,53 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   ])
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
+
+  const getPlanLabel = (plan?: string) => {
+    switch (plan) {
+      case "pro":
+        return "专业会员"
+      case "basic":
+        return "普通会员"
+      default:
+        return "普通会员"
+    }
+  }
+
+  const getTriggerPlanLabel = (plan?: string) => {
+    switch (plan) {
+      case "pro":
+        return "专业版"
+      case "basic":
+        return "基础版"
+      default:
+        return "基础版"
+    }
+  }
+
+  const getSubscriptionSourceLabel = (source?: string) => {
+    switch (source) {
+      case "points_exchange":
+        return "积分兑换"
+      case "team_member":
+        return "团队成员"
+      case "admin_grant":
+        return "管理员发放"
+      default:
+        return "未知"
+    }
+  }
+
+  const formatSubscriptionExpiry = (expiresAt?: string) => {
+    if (!expiresAt) {
+      return "长期有效"
+    }
+
+    const parsed = dayjs(expiresAt)
+      return parsed.isValid() ? parsed.format("YYYY-MM-DD HH:mm") : expiresAt
+  }
+
+  const remainingPoints = balance + dailyBalance
+  const triggerPlanLabel = getTriggerPlanLabel(subscription?.plan)
 
   const getTransactionLabel = (kind?: ConstsTransactionKind) => {
     switch (kind) {
@@ -158,6 +205,8 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
+      reloadWallet();
+      reloadSubscription();
       setPage(1);
       setTranscations([]);
       setHasNextPage(false);
@@ -175,17 +224,23 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   }
 
   const triggerContent = (
-    <>
-      <IconWallet className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-5"} />
-      钱包
-    </>
+    <div className="flex w-full min-w-0 items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <IconWallet className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-5"} />
+        <span className="truncate">{triggerPlanLabel}</span>
+      </div>
+      <div className="text-primary flex shrink-0 items-center gap-1.5 tabular-nums">
+        <IconCoin className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-4"} />
+        <span>{formatPoints(remainingPoints)}</span>
+      </div>
+    </div>
   );
 
   return (
     <Dialog onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {variant === "header" ? (
-          <Button className="hidden lg:flex" variant="ghost" size="sm">
+          <Button className="hidden max-w-[260px] lg:flex" variant="ghost" size="sm">
             {triggerContent}
           </Button>
         ) : (
@@ -209,22 +264,42 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
             <TabsTrigger value="usage">使用记录</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="balance" className="mt-2">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-md border p-4">
-                <div className="text-sm text-muted-foreground">总积分</div>
-                <div className="mt-2 flex items-end gap-2">
-                  <div className="text-3xl text-primary">{formatPoints(balance)}</div>
-                  <div className="text-muted-foreground">点</div>
+          <TabsContent value="balance" className="mt-2 space-y-2">
+            <div className="rounded-md border p-4">
+              {loadingSubscription ? (
+                <div className="text-sm text-muted-foreground">加载中...</div>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-muted-foreground">总积分</div>
+                    <div>{formatPoints(balance)} 点</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-muted-foreground">今日积分</div>
+                    <div>{formatPoints(dailyBalance)} 点</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-muted-foreground">当前身份</div>
+                    <div>{getPlanLabel(subscription?.plan)}</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-muted-foreground">有效期至</div>
+                    <div>{formatSubscriptionExpiry(subscription?.expires_at)}</div>
+                  </div>
+                  {subscription?.source && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-muted-foreground">开通方式</div>
+                      <div>{getSubscriptionSourceLabel(subscription.source)}</div>
+                    </div>
+                  )}
+                  {subscription?.plan === "pro" && (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="text-muted-foreground">自动续费</div>
+                      <div>{subscription.auto_renew ? "已开启" : "已关闭"}</div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="rounded-md border p-4">
-                <div className="text-sm text-muted-foreground">今日积分</div>
-                <div className="mt-2 flex items-end gap-2">
-                  <div className="text-3xl text-primary">{formatPoints(dailyBalance)}</div>
-                  <div className="text-muted-foreground">点</div>
-                </div>
-              </div>
+              )}
             </div>
           </TabsContent>
 
