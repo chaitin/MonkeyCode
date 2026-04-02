@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Item, ItemContent, ItemTitle, ItemGroup, ItemActions, ItemDescription } from "@/components/ui/item"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
 import { IconAccessPoint, IconAlertCircle, IconCloudOff, IconReload, IconX } from "@tabler/icons-react"
 
 interface TaskPreviewPanelProps {
