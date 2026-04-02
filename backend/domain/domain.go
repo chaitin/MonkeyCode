@@ -21,6 +21,7 @@ type PrivilegeChecker interface {
 // ModelHook 模型列表扩展接口（可选，内部项目通过 WithModelListHook 注入）
 type ModelHook interface {
 	ListPublic(ctx context.Context, uid uuid.UUID) ([]*Model, error)
+	ValidateAccess(ctx context.Context, uid uuid.UUID, modelID string) error
 }
 
 // InternalHook 内部 handler 回调接口（可选，内部项目通过 WithInternalHook 注入）

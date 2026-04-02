@@ -82,6 +82,15 @@ func wraperr(err error, path string) error {
 func (f *FileHandler) ListFolder(c *web.Context, req domain.FilePathReq) error {
 	user := middleware.GetUser(c)
 	return wraperr(f.usecase.WithVMPermission(c.Request().Context(), user.ID, req.ID, func(v *domain.VirtualMachine) error {
+		if err := f.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
+			HostID:        v.Host.ID,
+			UserID:        user.ID.String(),
+			ID:            v.ID,
+			EnvironmentID: v.EnvironmentID,
+		}); err != nil {
+			return err
+		}
+
 		fs, err := f.taskflow.FileManager().Operate(c.Request().Context(), taskflow.FileReq{
 			ID:      req.ID,
 			Operate: taskflow.FileOpList,

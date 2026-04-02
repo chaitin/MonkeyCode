@@ -182,3 +182,6 @@ other = "Model not found"
 
 [err-image-not-found]
 other = "Image not found"
+
+[err-model-access-denied]
+other = "Model access denied"

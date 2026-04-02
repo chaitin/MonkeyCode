@@ -103,6 +103,7 @@ var (
 	// 任务管理
 	ErrTaskCannotDelete     = web.NewErr(http.StatusOK, 10810, "err-task-cannot-delete")
 	ErrTaskConcurrencyLimit = web.NewErr(http.StatusOK, 10811, "err-task-concurrency-limit")
+	ErrModelAccessDenied    = web.NewErr(http.StatusOK, 10812, "err-model-access-denied")
 
 	// 知识库索引管理
 	ErrKBNilTree       = web.NewErr(http.StatusOK, 10900, "err-kb-nil-tree")

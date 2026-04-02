@@ -372,7 +372,9 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	defer cancel()
 
+	var vm *domain.VirtualMachine
 	if err := h.usecase.WithVMPermission(ctx, user.ID, req.ID, func(v *domain.VirtualMachine) error {
+		vm = v
 		return nil
 	}); err != nil {
 		logger.With("error", err).ErrorContext(ctx, "failed to check permission")
@@ -391,6 +393,9 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 	go h.terminalPing(ctx, cancel, wsConn, req.TerminalID)
 
 	logger.InfoContext(ctx, "websocket connection established")
+	req.EnvironmentID = vm.EnvironmentID
+	req.VmID = vm.ID
+	req.HostID = vm.Host.ID
 
 	shell, err := h.usecase.ConnectVMTerminal(ctx, user.ID, req)
 	if err != nil {
