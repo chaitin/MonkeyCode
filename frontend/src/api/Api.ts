@@ -615,6 +615,20 @@ export interface DomainInstallCommand {
   command?: string;
 }
 
+export interface DomainInvitationItem {
+  avatar_url?: string;
+  credits?: number;
+  id?: string;
+  invited_at?: number;
+  name?: string;
+}
+
+export interface DomainInvitationListResp {
+  count?: number;
+  items?: DomainInvitationItem[];
+  page?: Dbv2PageInfo;
+}
+
 export interface DomainListAuditsResponse {
   audits?: DomainAudit[];
   page?: Dbv2Cursor;
@@ -725,12 +739,15 @@ export interface DomainMemberListResp {
 }
 
 export interface DomainModel {
+  /** 访问级别 basic | pro */
+  access_level?: string;
   api_key?: string;
   base_url?: string;
   created_at?: number;
   id?: string;
   interface_type?: ConstsInterfaceType;
   is_default?: boolean;
+  is_free?: boolean;
   last_check_at?: number;
   last_check_error?: string;
   last_check_success?: boolean;
@@ -1028,7 +1045,7 @@ export interface DomainRechargeReq {
 }
 
 export interface DomainRechargeResp {
-  /** 支付链接 */
+  /** 支持链接 */
   url?: string;
 }
 
@@ -4407,6 +4424,42 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 查询当前用户邀请的用户列表
+     *
+     * @tags 【用户】用户
+     * @name V1UsersInvitationsList
+     * @summary 邀请用户列表
+     * @request GET:/api/v1/users/invitations
+     */
+    v1UsersInvitationsList: (
+      query?: {
+        /**
+         * 页码
+         * @default 1
+         */
+        page?: number;
+        /**
+         * 每页条数
+         * @default 20
+         */
+        size?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainInvitationListResp;
+        },
+        any
+      >({
+        path: `/api/v1/users/invitations`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 重定向到百智云OAuth授权页面进行登录认证
      *
      * @tags 【用户】认证
@@ -4911,6 +4964,23 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/passwords/reset-request`,
         method: "PUT",
         body: req,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 百智云支付回调，验证签名后充值点数
+     *
+     * @tags 【用户】钱包
+     * @name V1UsersPayNotifyList
+     * @summary 支付回调通知
+     * @request GET:/api/v1/users/pay/notify
+     */
+    v1UsersPayNotifyList: (params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, any>({
+        path: `/api/v1/users/pay/notify`,
+        method: "GET",
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -5872,6 +5942,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 充值点数
+     *
+     * @tags 【用户】钱包
+     * @name V1UsersWalletRechargeCreate
+     * @summary 充值点数
+     * @request POST:/api/v1/users/wallet/recharge
+     * @secure
+     */
+    v1UsersWalletRechargeCreate: (req: DomainRechargeReq, params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainRechargeResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/wallet/recharge`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 交易记录
      *
      * @tags 【用户】钱包
@@ -5906,31 +6001,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/wallet/transaction`,
         method: "GET",
         query: query,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 充值点数
-     *
-     * @tags 【用户】钱包
-     * @name V1UsersWalletRechargeCreate
-     * @summary 充值点数
-     * @request POST:/api/v1/users/wallet/recharge
-     * @secure
-     */
-    v1UsersWalletRechargeCreate: (req: DomainRechargeReq, params: RequestParams = {}) =>
-      this.request<
-        GitInChaitinNetGoDevWebResp & {
-          data?: DomainRechargeResp;
-        },
-        GitInChaitinNetGoDevWebResp
-      >({
-        path: `/api/v1/users/wallet/recharge`,
-        method: "POST",
-        body: req,
         secure: true,
         type: ContentType.Json,
         format: "json",
