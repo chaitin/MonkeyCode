@@ -20,7 +20,7 @@ import Icon from "@/components/common/Icon"
 import { ConstsHostStatus, type DomainCreateVMReq } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import { getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectModel, selectImage, selectHost, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
+import { canUseModelBySubscription, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
 import { Spinner } from "@/components/ui/spinner"
 import {
   Tooltip,
@@ -73,7 +73,7 @@ export default function VmAddDialog({
     }
     return BASE_LIFE_OPTIONS;
   }, [selectedHostId]);
-  const { models, images, identities, hosts } = useCommonData();
+  const { models, images, identities, hosts, subscription } = useCommonData();
 
   const cpuOptions = useMemo(() => {
     let maxCpu = 0
@@ -113,13 +113,21 @@ export default function VmAddDialog({
     if (open) {      
       setSelectedHostId(selectHost(hosts, true));
       setSelectedImageId(selectImage(images, true));
-      setSelectedModelId(selectModel(models, true));
+      setSelectedModelId(selectPreferredTaskModel(models, subscription));
 
       setCpu("1")
       setMemory("2")
       setLife("1h")
     }
-  }, [open, hosts, images, models])
+  }, [open, hosts, images, models, subscription])
+
+  useEffect(() => {
+    const selectedModel = models.find((model) => model.id === selectedModelId)
+    if (!selectedModel || canUseModelBySubscription(selectedModel, subscription)) {
+      return
+    }
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+  }, [models, selectedModelId, subscription])
 
   const handleCreate = async () => {
     // 验证必填项
@@ -327,7 +335,7 @@ export default function VmAddDialog({
                   </SelectTrigger>
                   <SelectContent>
                     {models.filter(model => model.id).map((model) => (
-                      <SelectItem key={model.id} value={model.id!}>
+                      <SelectItem key={model.id} value={model.id!} disabled={!canUseModelBySubscription(model, subscription)}>
                         <div className="flex items-center gap-2">
                           <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                           {getModelHealthBadge(model)}

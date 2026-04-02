@@ -1,4 +1,4 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsInterfaceType, ConstsOwnerType, type DomainModel, type DomainProject, type DomainBranch } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge, getOwnerTypeBadge, selectHost, selectImage, selectModel } from "@/utils/common"
+import { canUseModelBySubscription, getBrandFromModelName, getModelHealthBadge, getOwnerTypeBadge, getPublicModelMetaBadges, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useMemo, useRef } from "react"
@@ -36,19 +36,7 @@ export default function StartDevelopTaskDialog({
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
-  const { images, models, hosts } = useCommonData()
-
-  const modelsWithEconomy = useMemo(() => {
-    const economyModel = {
-      id: "economy",
-      model: "免费模型",
-      owner: { type: "public" as const },
-      is_default: false,
-      interface_type: ConstsInterfaceType.InterfaceTypeOpenAIChat,
-      last_check_success: true
-    } as DomainModel
-    return [economyModel, ...models]
-  }, [models])
+  const { images, models, hosts, subscription } = useCommonData()
 
   const fetchBranches = async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
@@ -109,13 +97,26 @@ export default function StartDevelopTaskDialog({
       prevOpenRef.current = true
       if (justOpened) {
         setUserMessage('')
-        setSelectedModelId(selectModel(modelsWithEconomy, true))
+        setSelectedModelId(selectPreferredTaskModel(models, subscription))
       }
       fetchBranches()
     } else {
       prevOpenRef.current = false
     }
-  }, [open, project, modelsWithEconomy])
+  }, [open, project, models, subscription])
+
+  const selectedModel = useMemo(
+    () => models.find((model) => model.id === selectedModelId),
+    [models, selectedModelId]
+  )
+  const selectedProModelDisabled = selectedModel?.access_level === "pro" && subscription?.plan !== "pro"
+
+  useEffect(() => {
+    if (!selectedProModelDisabled) {
+      return
+    }
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+  }, [models, selectedProModelDisabled, subscription])
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {
@@ -128,13 +129,18 @@ export default function StartDevelopTaskDialog({
       return
     }
 
+    if (!selectedModelId) {
+      toast.error('请选择大模型')
+      return
+    }
+
     setSubmitting(true)
 
     // 创建任务
     await apiRequest('v1UsersTasksCreate', {
       content: userMessage.trim(),
       cli_name: ConstsCliName.CliNameOpencode,
-      model_id: selectedModelId || selectModel(modelsWithEconomy, true),
+      model_id: selectedModelId,
       image_id: selectImage(images, false),
       host_id: selectHost(hosts, false),
       repo: {
@@ -212,22 +218,14 @@ export default function StartDevelopTaskDialog({
                 <SelectValue placeholder="选择大模型" />
               </SelectTrigger>
               <SelectContent>
-                {modelsWithEconomy.map((model) => (
-                  <SelectItem key={model.id} value={model.id || ""}>
-                    {model.id === "economy" ? (
-                      <img src="/logo-colored.png" className="size-4" alt="" />
-                    ) : (
-                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                    )}
+                {models.map((model) => (
+                  <SelectItem key={model.id} value={model.id || ""} disabled={!canUseModelBySubscription(model, subscription)}>
+                    <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                     {getModelHealthBadge(model)}
                     {model.model}
                     {model.is_default && <Badge>默认</Badge>}
-                    {model.owner?.type === ConstsOwnerType.OwnerTypePublic ? (
-                      <Badge>推荐</Badge>
-                    ) : (
-                      getOwnerTypeBadge(model.owner)
-                    )}
-                    {model.id !== "economy" && getInterfaceTypeBadge(model.interface_type)}
+                    {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                    {getPublicModelMetaBadges(model)}
                   </SelectItem>
                 ))}
               </SelectContent>

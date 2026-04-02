@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { selectHost, selectImage, selectModel } from "@/utils/common"
+import { selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useEffect, useMemo, useState } from "react"
@@ -37,7 +37,7 @@ export default function IssueDesignDialog({
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState<string>('')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
-  const { images, models, hosts, reloadProjects, reloadUnlinkedTasks } = useCommonData()
+  const { images, models, hosts, reloadProjects, reloadUnlinkedTasks, subscription } = useCommonData()
 
   const fetchBranches = async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
@@ -114,13 +114,19 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
       return
     }
 
+    const preferredModelId = selectPreferredTaskModel(models, subscription)
+    if (!preferredModelId) {
+      toast.error('未找到可用的大模型')
+      return
+    }
+
     setSubmitting(true)
   
     // 创建任务
     await apiRequest('v1UsersTasksCreate', {
       content: renderPrompt,
       cli_name: ConstsCliName.CliNameOpencode,
-      model_id: selectModel(models, false),
+      model_id: preferredModelId,
       image_id: selectImage(images, false),
       host_id: selectHost(hosts, false),
       repo: {

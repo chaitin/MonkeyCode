@@ -1,4 +1,4 @@
-import { Api, ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsTaskSubType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainModel, type DomainSkill } from "@/api/Api";
+import { Api, ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskSubType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkill } from "@/api/Api";
 import Icon from "@/components/common/Icon";
 import { useCommonData } from "@/components/console/data-provider";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getInterfaceTypeBadge, getModelHealthBadge, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectModel } from "@/utils/common";
+import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelHealthBadge, getOSFromImageName, getOwnerTypeBadge, getPublicModelMetaBadges, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -121,20 +121,8 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const { models, images, hosts, identities, user } = useCommonData();
+  const { models, images, hosts, identities, user, subscription } = useCommonData();
   const { setOpen: setSettingsOpen } = useSettingsDialog();
-
-  const modelsWithEconomy = useMemo(() => {
-    const economyModel = { 
-      id: "economy", 
-      model: "免费模型", 
-      owner: { type: "public" as const }, 
-      is_default: false,
-      interface_type: ConstsInterfaceType.InterfaceTypeOpenAIChat,
-      last_check_success: true
-    } as DomainModel;
-    return [economyModel, ...models];
-  }, [models]);
 
   const selectableIdentities = useMemo(
     () => identities.filter(isIdentityWithRepos),
@@ -222,7 +210,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   };
 
   const setDefaultConfig = () => {
-    setSelectedModelId(selectModel(modelsWithEconomy, true))
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
     setSelectedHostId(selectHost(hosts, true))
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
@@ -240,11 +228,19 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   };
 
   const selectedModel = useMemo(
-    () => modelsWithEconomy.find((model) => model.id === selectedModelId),
-    [modelsWithEconomy, selectedModelId]
+    () => models.find((model) => model.id === selectedModelId),
+    [models, selectedModelId]
   );
+  const selectedProModelDisabled = selectedModel?.access_level === "pro" && subscription?.plan !== "pro"
 
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic;
+
+  useEffect(() => {
+    if (!selectedProModelDisabled) {
+      return
+    }
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+  }, [models, selectedProModelDisabled, subscription])
 
   useEffect(() => {
     if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
@@ -255,6 +251,11 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const readyToExecuteTask = () => {
     if (!taskContent.trim()) {
       toast.error('请输入任务内容');
+      return;
+    }
+
+    if (!selectedModelId) {
+      toast.error('请选择大模型');
       return;
     }
 
@@ -758,25 +759,17 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   <SelectValue placeholder="选择大模型" />
                 </SelectTrigger>
                 <SelectContent>
-                  {modelsWithEconomy.map((model) => (
+                  {models.map((model) => (
                     <SelectItem 
                       key={model.id} 
                       value={model.id || ""} 
-                      disabled={!adaptedModelForTool()}>
-                      {model.id === "economy" ? (
-                        <img src="/logo-colored.png" className="size-4" alt="" />
-                      ) : (
-                        <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                      )}
+                      disabled={!adaptedModelForTool() || !canUseModelBySubscription(model, subscription)}>
+                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                       {getModelHealthBadge(model)}
                       {model.model}
                       {model.is_default && <Badge>默认</Badge>}
-                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic ? (
-                        <Badge>推荐</Badge>
-                      ) : (
-                        getOwnerTypeBadge(model.owner)
-                      )}
-                      {model.id !== "economy" && getInterfaceTypeBadge(model.interface_type)}
+                      {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                      {getPublicModelMetaBadges(model)}
                     </SelectItem>
                   ))}
                 </SelectContent>
