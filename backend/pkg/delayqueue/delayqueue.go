@@ -89,33 +89,27 @@ func WithJobTTL[T any](d time.Duration) Option[T] {
 	return func(q *RedisDelayQueue[T]) { q.jobTTL = d }
 }
 
-// Enqueue 入队（若任务不存在则写入 payload；若已存在则仅更新到期时间）
+// Enqueue 入队：始终写入/覆盖 payload 并更新到期时间。
+// 这样即使 pollOnce 在 handleJob 完成后删除了旧 job key，
+// 新的 Enqueue 调用也能重建 job 数据，避免 ZSet 中存在孤立条目。
 func (q *RedisDelayQueue[T]) Enqueue(ctx context.Context, queue string, payload T, runAt time.Time, id string) (string, error) {
 	if id == "" {
 		id = uuid.NewString()
 	}
 
 	jobKey := q.jobKey(queue, id)
-	exists, err := q.rdb.Exists(ctx, jobKey).Result()
+	b, err := json.Marshal(&jobData[T]{Payload: payload, Attempts: 0})
 	if err != nil {
 		return "", err
 	}
-	if exists == 0 {
-		b, err := json.Marshal(&jobData[T]{Payload: payload, Attempts: 0})
-		if err != nil {
-			return "", err
-		}
-		if err := q.rdb.Set(ctx, jobKey, b, q.jobTTL).Err(); err != nil {
-			return "", err
-		}
+	if err := q.rdb.Set(ctx, jobKey, b, q.jobTTL).Err(); err != nil {
+		return "", err
 	}
 
 	zkey := q.zsetKey(queue)
 	score := float64(runAt.UnixMilli())
 	if err := q.rdb.ZAdd(ctx, zkey, redis.Z{Score: score, Member: id}).Err(); err != nil {
-		if exists == 0 {
-			_ = q.rdb.Del(ctx, jobKey).Err()
-		}
+		_ = q.rdb.Del(ctx, jobKey).Err()
 		return "", err
 	}
 	return id, nil
@@ -218,7 +212,14 @@ func (q *RedisDelayQueue[T]) pollOnce(ctx context.Context, queue string, handler
 				q.logger.Error("save job failed when requeue", "queue", queue, "id", id, "err", err)
 				continue
 			}
-			_, _ = q.Enqueue(ctx, queue, job.Payload, time.Now().Add(q.requeueDelay), id)
+			// 直接操作 ZSet 重新入队，不调用 Enqueue 以避免覆盖 saveJob 保存的 attempts
+			requeueAt := time.Now().Add(q.requeueDelay)
+			if err := q.rdb.ZAdd(ctx, q.zsetKey(queue), redis.Z{
+				Score:  float64(requeueAt.UnixMilli()),
+				Member: id,
+			}).Err(); err != nil {
+				q.logger.Error("requeue zadd failed", "queue", queue, "id", id, "err", err)
+			}
 			continue
 		}
 		if err := q.deleteJob(ctx, queue, id); err != nil {
