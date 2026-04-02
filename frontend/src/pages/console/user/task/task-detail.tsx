@@ -21,6 +21,7 @@ import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, I
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 
 type SidePanelType = "files"
 
@@ -540,10 +541,11 @@ export default function TaskDetailPage() {
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-2">
-      <div className="shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
+        <div className="shrink-0">
+          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <div className="truncate text-sm font-medium" title={taskTitle}>{taskTitle}</div>
+            <Badge variant="outline" className="shrink-0">{task?.model?.model}</Badge>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             {totalTokens > 0 && (
