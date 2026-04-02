@@ -314,6 +314,9 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetBranch(req.RepoReq.Branch).
 			SetCliName(req.CliName)
 
+		if req.GitIdentityID != uuid.Nil {
+			crt.SetGitIdentityID(req.GitIdentityID)
+		}
 		if req.Extra.ProjectID != uuid.Nil {
 			crt.SetProjectID(req.Extra.ProjectID)
 		}

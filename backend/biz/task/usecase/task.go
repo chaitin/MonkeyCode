@@ -51,6 +51,7 @@ type TaskUsecase struct {
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 	girepo           domain.GitIdentityRepo
 	tokenProvider    *gituc.TokenProvider
+	projectRepo      domain.ProjectRepo
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -68,6 +69,7 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		vmLifecycle:      do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
 		girepo:           do.MustInvoke[domain.GitIdentityRepo](i),
 		tokenProvider:    do.MustInvoke[*gituc.TokenProvider](i),
+		projectRepo:      do.MustInvoke[domain.ProjectRepo](i),
 	}
 
 	// 可选注入 TaskHook
@@ -276,8 +278,35 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	req.Now = time.Now()
 	var token string
 
+	git := taskflow.Git{
+		Token:  token,
+		Branch: req.RepoReq.Branch,
+	}
+
+	imageName := ""
+	env := make([]string, 0)
+	if req.Extra.ProjectID != uuid.Nil {
+		project, err := a.projectRepo.Get(ctx, user.ID, req.Extra.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get project: %w", err)
+		}
+
+		git.URL = project.RepoURL
+		if project.EnvVariables != nil {
+			for k, v := range project.EnvVariables {
+				env = append(env, fmt.Sprintf("%s=%v", k, v))
+			}
+		}
+		if project.Edges.Image != nil {
+			imageName = project.Edges.Image.Name
+		}
+
+		if gi := project.Edges.GitIdentity; gi != nil {
+			req.GitIdentityID = gi.ID
+		}
+	}
+
 	// 根据 GitIdentityID 解析 git token / username / email
-	var gitUsername, gitEmail string
 	if req.GitIdentityID != uuid.Nil {
 		identity, err := a.girepo.Get(ctx, req.GitIdentityID)
 		if err != nil {
@@ -288,9 +317,9 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			return nil, fmt.Errorf("get git token: %w", err)
 		}
 
-		token = t
-		gitUsername = identity.Username
-		gitEmail = identity.Email
+		git.Token = t
+		git.Username = identity.Username
+		git.Email = identity.Email
 	}
 
 	limit := 1
@@ -316,6 +345,9 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		if t == nil {
 			return nil, fmt.Errorf("task edge is nil")
 		}
+		if git.URL == "" {
+			git.URL = pt.RepoURL
+		}
 
 		if keys := m.Edges.Apikeys; len(keys) > 0 {
 			m.APIKey = keys[0].APIKey
@@ -327,21 +359,13 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			return nil, err
 		}
 
-		git := taskflow.Git{
-			URL:      pt.RepoURL,
-			Token:    token,
-			Branch:   pt.Branch,
-			Username: gitUsername,
-			Email:    gitEmail,
-		}
-
 		vm, err := a.taskflow.VirtualMachiner().Create(ctx, &taskflow.CreateVirtualMachineReq{
 			UserID:   user.ID.String(),
 			HostID:   req.HostID,
 			HostName: t.ID.String(),
 			Git:      git,
 			ZipUrl:   req.RepoReq.ZipURL,
-			ImageURL: i.Name,
+			ImageURL: cmp.Or(imageName, i.Name),
 			ProxyURL: "",
 			TaskID:   t.ID,
 			LLM: taskflow.LLMProviderReq{
@@ -352,6 +376,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			},
 			Cores:  fmt.Sprintf("%d", req.Resource.Core),
 			Memory: req.Resource.Memory,
+			Envs:   env,
 		})
 		if err != nil {
 			return nil, err
