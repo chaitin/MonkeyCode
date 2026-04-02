@@ -18,6 +18,11 @@ type PrivilegeChecker interface {
 	IsPrivileged(ctx context.Context, uid uuid.UUID) (bool, error)
 }
 
+// ModelHook 模型列表扩展接口（可选，内部项目通过 WithModelListHook 注入）
+type ModelHook interface {
+	ListPublic(ctx context.Context, uid uuid.UUID) ([]*Model, error)
+}
+
 // InternalHook 内部 handler 回调接口（可选，内部项目通过 WithInternalHook 注入）
 // 用于扩展 taskflow 回调端点中与 task 系统耦合的逻辑
 type InternalHook interface {
@@ -38,6 +43,8 @@ type TaskHook interface {
 	OnTaskCreated(ctx context.Context, task *ProjectTask) error
 	// GitTask 获取 git 任务详情
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
+	// GetMaxConcurrent 获取最大运行任务
+	GetMaxConcurrent(ctx context.Context, uid uuid.UUID) (int, error)
 }
 
 // ProjectHook 项目模块回调接口（可选，内部项目通过 WithProjectHook 注入）

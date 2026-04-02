@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -279,12 +280,23 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		gitEmail = identity.Email
 	}
 
-	// 如果有 TaskHook，获取系统提示词
-	if a.taskHook != nil && req.SystemPrompt == "" {
-		if prompt, err := a.taskHook.GetSystemPrompt(ctx, req.Type, req.SubType); err == nil && prompt != "" {
-			req.SystemPrompt = prompt
+	limit := 1
+	if a.taskHook != nil {
+		if req.SystemPrompt == "" {
+			// 如果有 TaskHook，获取系统提示词
+			if prompt, err := a.taskHook.GetSystemPrompt(ctx, req.Type, req.SubType); err == nil && prompt != "" {
+				req.SystemPrompt = prompt
+			}
 		}
+
+		n, err := a.taskHook.GetMaxConcurrent(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+		limit = cmp.Or(n, limit)
 	}
+
+	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
 
 	pt, err := a.repo.Create(ctx, user, req, token, func(pt *db.ProjectTask, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error) {
 		t := pt.Edges.Task

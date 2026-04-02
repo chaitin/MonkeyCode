@@ -43,6 +43,7 @@ type Model struct {
 	UpdatedAt        int64                `json:"updated_at"`
 	Owner            *Owner               `json:"owner,omitempty"`
 	InterfaceType    consts.InterfaceType `json:"interface_type"`
+	IsFree           bool                 `json:"is_free"`
 	LastCheckAt      int64                `json:"last_check_at"`
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
@@ -87,15 +88,6 @@ func (m *Model) From(src *db.Model) *Model {
 			ID:   team.ID.String(),
 			Type: consts.OwnerTypeTeam,
 			Name: team.Name,
-		}
-		m.APIKey = ""
-		return m
-	}
-	if src.Edges.User.Role == consts.UserRoleAdmin {
-		m.Owner = &Owner{
-			ID:   src.Edges.User.ID.String(),
-			Type: consts.OwnerTypePublic,
-			Name: consts.MonkeyCodeAITeamName,
 		}
 		m.APIKey = ""
 		return m
@@ -146,7 +138,7 @@ type CheckModelReq struct {
 
 // CheckByConfigReq 检查模型健康状态请求（通过配置）
 type CheckByConfigReq struct {
-	Provider      consts.ModelProvider  `json:"provider" validate:"required"`
+	Provider      consts.ModelProvider `json:"provider" validate:"required"`
 	APIKey        string               `json:"api_key" validate:"required"`
 	BaseURL       string               `json:"base_url" validate:"required"`
 	Model         string               `json:"model" validate:"required"`
@@ -173,9 +165,9 @@ type UpdateModelReq struct {
 
 type GetProviderModelListReq struct {
 	Provider  consts.ModelProvider `json:"provider" query:"provider" validate:"required,oneof=SiliconFlow OpenAI Ollama DeepSeek Moonshot AzureOpenAI BaiZhiCloud Hunyuan BaiLian Volcengine Gemini Other"`
-	BaseURL   string              `json:"base_url" query:"base_url" validate:"required"`
-	APIKey    string              `json:"api_key" query:"api_key" validate:"required"`
-	APIHeader string              `json:"api_header" query:"api_header"`
+	BaseURL   string               `json:"base_url" query:"base_url" validate:"required"`
+	APIKey    string               `json:"api_key" query:"api_key" validate:"required"`
+	APIHeader string               `json:"api_header" query:"api_header"`
 }
 
 type GetProviderModelListResp struct {

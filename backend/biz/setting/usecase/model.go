@@ -25,11 +25,12 @@ import (
 )
 
 type modelUsecase struct {
-	repo     domain.ModelRepo
-	userRepo domain.UserRepo
-	logger   *slog.Logger
-	client   *http.Client
-	cfg      *config.Config
+	repo      domain.ModelRepo
+	userRepo  domain.UserRepo
+	logger    *slog.Logger
+	client    *http.Client
+	cfg       *config.Config
+	modelHook domain.ModelHook
 }
 
 func NewModelUsecase(i *do.Injector) (domain.ModelUsecase, error) {
@@ -43,13 +44,19 @@ func NewModelUsecase(i *do.Injector) (domain.ModelUsecase, error) {
 			IdleConnTimeout:     time.Second * 30,
 		},
 	}
-	return &modelUsecase{
+	u := &modelUsecase{
 		repo:     do.MustInvoke[domain.ModelRepo](i),
 		userRepo: do.MustInvoke[domain.UserRepo](i),
 		logger:   do.MustInvoke[*slog.Logger](i),
 		client:   client,
 		cfg:      do.MustInvoke[*config.Config](i),
-	}, nil
+	}
+
+	if hook, err := do.Invoke[domain.ModelHook](i); err == nil {
+		u.modelHook = hook
+	}
+
+	return u, nil
 }
 
 func (u *modelUsecase) List(ctx context.Context, uid uuid.UUID, cursor domain.CursorReq) (*domain.ListModelResp, error) {
@@ -70,6 +77,15 @@ func (u *modelUsecase) List(ctx context.Context, uid uuid.UUID, cursor domain.Cu
 		j.IsDefault = j.GetIsDefault(user)
 		return j
 	})
+
+	if u.modelHook != nil {
+		additionalModels, err := u.modelHook.ListPublic(ctx, uid)
+		if err != nil {
+			u.logger.ErrorContext(ctx, "failed to list additional models from hook", "error", err, "user_id", uid)
+			return nil, fmt.Errorf("failed to list additional models: %w", err)
+		}
+		models = append(models, additionalModels...)
+	}
 
 	sort.SliceStable(models, func(i, j int) bool {
 		iPublic := models[i].Owner != nil && models[i].Owner.Type == consts.OwnerTypePublic

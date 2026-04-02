@@ -13,6 +13,13 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 )
 
+func taskConcurrencyExceeded(count, limit int) bool {
+	if limit <= 0 {
+		limit = 1
+	}
+	return count >= limit
+}
+
 // TaskConcurrencyHook prevents a user from creating more than one active task
 // (pending or processing). Uses pg_advisory_xact_lock to serialize concurrent
 // create requests for the same user within a transaction.
@@ -36,6 +43,10 @@ func TaskConcurrencyHook(next ent.Mutator) ent.Mutator {
 		if err != nil {
 			return nil, fmt.Errorf("acquire task concurrency lock: %w", err)
 		}
+		limit := 1
+		if v, ok := TaskConcurrencyLimitFromContext(ctx); ok && v > 0 {
+			limit = v
+		}
 		count, err := m.Client().Task.Query().
 			Where(
 				task.UserIDEQ(userID),
@@ -45,7 +56,7 @@ func TaskConcurrencyHook(next ent.Mutator) ent.Mutator {
 		if err != nil {
 			return nil, fmt.Errorf("check task concurrency: %w", err)
 		}
-		if count > 0 {
+		if taskConcurrencyExceeded(count, limit) {
 			return nil, errcode.ErrTaskConcurrencyLimit
 		}
 		return next.Mutate(ctx, m)

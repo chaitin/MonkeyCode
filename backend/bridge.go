@@ -42,6 +42,13 @@ func WithPrivilegeChecker(checker domain.PrivilegeChecker) BridgeOption {
 	}
 }
 
+// WithModelHook 注入模型列表扩展回调
+func WithModelHook(hook domain.ModelHook) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, hook)
+	}
+}
+
 // WithTasker 注入外部 Tasker 实例
 func WithTasker(t *tasker.Tasker[*domain.TaskSession]) BridgeOption {
 	return func(i *do.Injector) {
