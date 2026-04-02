@@ -1,6 +1,6 @@
 import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
 import { Dialog } from "@radix-ui/react-dialog";
-import { DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DialogTrigger } from "@/components/ui/dialog";
 import { DialogContent } from "@/components/ui/dialog";
 import { IconCoin, IconInfoCircle, IconWallet } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -27,6 +27,8 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [exchangeCode, setExchangeCode] = useState("");
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
   const [isProLoading, setIsProLoading] = useState(false);
+  const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null);
+  const [rechargingCredits, setRechargingCredits] = useState<number | null>(null);
   const [page, setPage] = useState<number>(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -90,6 +92,12 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const triggerPlanLabel = getTriggerPlanLabel(subscription?.plan)
   const proSubscriptionPrice = 10000
   const canUpgradeToPro = remainingPoints >= proSubscriptionPrice
+  const invitationLink = `https://monkeycode-ai.com/?ic=${user.id}`
+  const rechargeOptions = [
+    { credits: 10000, price: 50 },
+    { credits: 50000, price: 200 },
+    { credits: 300000, price: 1000 },
+  ]
 
   const getTransactionLabel = (kind?: ConstsTransactionKind) => {
     switch (kind) {
@@ -109,6 +117,8 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
         return "专业版自动续费"
       case ConstsTransactionKind.TransactionKindDailyGrant:
         return "当日钱包发放"
+      case ConstsTransactionKind.TransactionKindTopUp:
+        return "充值积分"
       default:
         return "交易记录"
     }
@@ -204,6 +214,32 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
     setIsProLoading(false);
   }
 
+  const handleRecharge = async () => {
+    if (!selectedRechargeCredits) {
+      toast.error("请选择充值套餐");
+      return;
+    }
+
+    const pendingWindow = window.open("", "_blank", "noopener,noreferrer")
+    setRechargingCredits(selectedRechargeCredits)
+    await apiRequest('v1UsersWalletRechargeCreate', { credits: selectedRechargeCredits }, [], (resp) => {
+      const paymentUrl = resp.data?.url
+      if (resp.code === 0 && paymentUrl) {
+        if (pendingWindow) {
+          pendingWindow.location.href = paymentUrl
+        } else {
+          window.open(paymentUrl, "_blank", "noopener,noreferrer")
+        }
+      } else {
+        pendingWindow?.close()
+        toast.error(resp.message || "获取支付链接失败")
+      }
+    }, () => {
+      pendingWindow?.close()
+    })
+    setRechargingCredits(null)
+  }
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -241,7 +277,6 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
 
 
   const handleCopyInvitationLink = () => {
-    const invitationLink = `https://monkeycode-ai.com/?ic=${user.id}`;
     navigator.clipboard.writeText(invitationLink);
     toast.success("邀请链接已复制到剪贴板");
   }
@@ -277,17 +312,13 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
         )}
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>钱包</DialogTitle>
-        </DialogHeader>
         <Tabs defaultValue="balance" className="w-full">
           <TabsList>
             <TabsTrigger value="balance">积分余额</TabsTrigger>
-            <TabsTrigger value="earn">赚积分</TabsTrigger>
             <TabsTrigger value="usage">使用记录</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="balance" className="mt-2 space-y-2">
+          <TabsContent value="balance" className="mt-2 space-y-4">
             <div className="rounded-md border p-4">
               {loadingSubscription ? (
                 <div className="text-sm text-muted-foreground">加载中...</div>
@@ -335,9 +366,33 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                 </div>
               )}
             </div>
-          </TabsContent>
-
-          <TabsContent value="earn" className="mt-2 space-y-4">
+            <div className="space-y-2">
+              <Label>充值积分</Label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {rechargeOptions.map((option) => (
+                  <button
+                    key={option.credits}
+                    type="button"
+                    className={cn(
+                      "rounded-md border p-4 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60",
+                      selectedRechargeCredits === option.credits && "border-primary bg-accent",
+                    )}
+                    onClick={() => setSelectedRechargeCredits(option.credits)}
+                    disabled={rechargingCredits !== null}
+                  >
+                    <div className="text-sm text-muted-foreground">充值 {formatPoints(option.credits)} 积分</div>
+                    <div className="mt-2 text-lg font-medium">¥ {option.price}</div>
+                  </button>
+                ))}
+              </div>
+              <Button
+                onClick={() => void handleRecharge()}
+                disabled={!selectedRechargeCredits || rechargingCredits !== null}
+              >
+                {rechargingCredits !== null && <Spinner />}
+                确认充值
+              </Button>
+            </div>
             <div className="space-y-2">
               <Label>兑换积分</Label>
               <div className="flex gap-2">
@@ -358,16 +413,12 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
               </div>
             </div>
             <div className="space-y-2">
-              <div className="flex flex-row items-center -mb-1">
-                <Label>邀请注册</Label>
-                <Button variant="link" size="sm" className="cursor-pointer" onClick={() => { 
-                  window.open(`https://monkeycode.docs.baizhi.cloud/node/019b2134-e832-7425-a916-137fe8bb4c8c`, '_blank')
-                }}>
-                  活动说明
-                </Button>
+              <Label>邀请注册</Label>
+              <div className="flex flex-row justify-between gap-2">
+                <Input value="邀请一个新用户注册并激活，可获得 5000 积分" readOnly />
               </div>
               <div className="flex flex-row justify-between gap-2">
-                <Input value="邀请好友注册并激活，可获得 2000 积分" readOnly />
+                <Input value={invitationLink} readOnly />
                 <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
               </div>
             </div>

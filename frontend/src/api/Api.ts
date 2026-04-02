@@ -159,6 +159,7 @@ export enum ConstsTransactionKind {
   TransactionKindProSubscription = "pro_subscription",
   TransactionKindProAutoRenew = "pro_auto_renew",
   TransactionKindDailyGrant = "daily_grant",
+  TransactionKindTopUp = "top_up",
 }
 
 export enum ConstsUploadUsage {
@@ -1018,6 +1019,16 @@ export interface DomainProviderModelListItem {
 
 export interface DomainPullRequest {
   title?: string;
+  url?: string;
+}
+
+export interface DomainRechargeReq {
+  /** 充值点数: 10000 / 50000 / 300000 */
+  credits?: number;
+}
+
+export interface DomainRechargeResp {
+  /** 支持链接 */
   url?: string;
 }
 
@@ -4908,6 +4919,23 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 百智云支付回调，验证签名后充值点数
+     *
+     * @tags 【用户】钱包
+     * @name V1UsersPayNotifyList
+     * @summary 支付回调通知
+     * @request GET:/api/v1/users/pay/notify
+     */
+    v1UsersPayNotifyList: (params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, any>({
+        path: `/api/v1/users/pay/notify`,
+        method: "GET",
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 用户可以将普通帖子分享到广场，需要填写 title/content/image/code 内容
      *
      * @tags 【用户】广场
@@ -5576,7 +5604,8 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         quick_start?: boolean;
         /** 每页多少条记录 */
         size?: number;
-        status?: "pending" | "processing" | "error" | "finished";
+        /** 状态筛选，多值用逗号分开 pending,processing,error,finished */
+        status?: string;
       },
       params: RequestParams = {},
     ) =>
@@ -5854,6 +5883,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     v1UsersWalletExchangeCreate: (req: DomainExchangeReq, params: RequestParams = {}) =>
       this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/wallet/exchange`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 充值点数
+     *
+     * @tags 【用户】钱包
+     * @name V1UsersWalletRechargeCreate
+     * @summary 充值点数
+     * @request POST:/api/v1/users/wallet/recharge
+     * @secure
+     */
+    v1UsersWalletRechargeCreate: (req: DomainRechargeReq, params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainRechargeResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/wallet/recharge`,
         method: "POST",
         body: req,
         secure: true,
