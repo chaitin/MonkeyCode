@@ -28,12 +28,11 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
   useEffect(() => {
     if (!open) return
     setLoading(true)
-    apiRequest("v1UsersTasksList", { page: 1, size: 10 }, [], (resp) => {
+    apiRequest("v1UsersTasksList", { page: 1, size: 10, status: "pending,processing" }, [], (resp) => {
       if (resp.code === 0) {
-        const running = (resp.data?.tasks || []).filter(
+        setTasks((resp.data?.tasks || []).filter(
           (t: DomainProjectTask) => t.status === ConstsTaskStatus.TaskStatusPending || t.status === ConstsTaskStatus.TaskStatusProcessing
-        )
-        setTasks(running)
+        ))
       }
       setLoading(false)
     }, () => setLoading(false))
