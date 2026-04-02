@@ -1041,6 +1041,52 @@ func HasProjectTasksWith(preds ...predicate.ProjectTask) predicate.Model {
 	})
 }
 
+// HasPricing applies the HasEdge predicate on the "pricing" edge.
+func HasPricing() predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, PricingTable, PricingColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasPricingWith applies the HasEdge predicate on the "pricing" edge with a given conditions (other predicates).
+func HasPricingWith(preds ...predicate.ModelPricing) predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := newPricingStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasApikeys applies the HasEdge predicate on the "apikeys" edge.
+func HasApikeys() predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ApikeysTable, ApikeysColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasApikeysWith applies the HasEdge predicate on the "apikeys" edge with a given conditions (other predicates).
+func HasApikeysWith(preds ...predicate.ModelApiKey) predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := newApikeysStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamModels applies the HasEdge predicate on the "team_models" edge.
 func HasTeamModels() predicate.Model {
 	return predicate.Model(func(s *sql.Selector) {

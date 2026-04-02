@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -67,13 +68,17 @@ type ModelEdges struct {
 	Vms []*VirtualMachine `json:"vms,omitempty"`
 	// ProjectTasks holds the value of the project_tasks edge.
 	ProjectTasks []*ProjectTask `json:"project_tasks,omitempty"`
+	// Pricing holds the value of the pricing edge.
+	Pricing *ModelPricing `json:"pricing,omitempty"`
+	// Apikeys holds the value of the apikeys edge.
+	Apikeys []*ModelApiKey `json:"apikeys,omitempty"`
 	// TeamModels holds the value of the team_models edge.
 	TeamModels []*TeamModel `json:"team_models,omitempty"`
 	// TeamGroupModels holds the value of the team_group_models edge.
 	TeamGroupModels []*TeamGroupModel `json:"team_group_models,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [7]bool
+	loadedTypes [9]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -123,10 +128,30 @@ func (e ModelEdges) ProjectTasksOrErr() ([]*ProjectTask, error) {
 	return nil, &NotLoadedError{edge: "project_tasks"}
 }
 
+// PricingOrErr returns the Pricing value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ModelEdges) PricingOrErr() (*ModelPricing, error) {
+	if e.Pricing != nil {
+		return e.Pricing, nil
+	} else if e.loadedTypes[5] {
+		return nil, &NotFoundError{label: modelpricing.Label}
+	}
+	return nil, &NotLoadedError{edge: "pricing"}
+}
+
+// ApikeysOrErr returns the Apikeys value or an error if the edge
+// was not loaded in eager-loading.
+func (e ModelEdges) ApikeysOrErr() ([]*ModelApiKey, error) {
+	if e.loadedTypes[6] {
+		return e.Apikeys, nil
+	}
+	return nil, &NotLoadedError{edge: "apikeys"}
+}
+
 // TeamModelsOrErr returns the TeamModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e ModelEdges) TeamModelsOrErr() ([]*TeamModel, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[7] {
 		return e.TeamModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_models"}
@@ -135,7 +160,7 @@ func (e ModelEdges) TeamModelsOrErr() ([]*TeamModel, error) {
 // TeamGroupModelsOrErr returns the TeamGroupModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e ModelEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[8] {
 		return e.TeamGroupModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_models"}
@@ -305,6 +330,16 @@ func (_m *Model) QueryVms() *VirtualMachineQuery {
 // QueryProjectTasks queries the "project_tasks" edge of the Model entity.
 func (_m *Model) QueryProjectTasks() *ProjectTaskQuery {
 	return NewModelClient(_m.config).QueryProjectTasks(_m)
+}
+
+// QueryPricing queries the "pricing" edge of the Model entity.
+func (_m *Model) QueryPricing() *ModelPricingQuery {
+	return NewModelClient(_m.config).QueryPricing(_m)
+}
+
+// QueryApikeys queries the "apikeys" edge of the Model entity.
+func (_m *Model) QueryApikeys() *ModelApiKeyQuery {
+	return NewModelClient(_m.config).QueryApikeys(_m)
 }
 
 // QueryTeamModels queries the "team_models" edge of the Model entity.

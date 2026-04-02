@@ -16,6 +16,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
@@ -313,6 +315,60 @@ func (f TraverseModel) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.ModelQuery", q)
+}
+
+// The ModelApiKeyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ModelApiKeyFunc func(context.Context, *db.ModelApiKeyQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ModelApiKeyFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ModelApiKeyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ModelApiKeyQuery", q)
+}
+
+// The TraverseModelApiKey type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseModelApiKey func(context.Context, *db.ModelApiKeyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseModelApiKey) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseModelApiKey) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ModelApiKeyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ModelApiKeyQuery", q)
+}
+
+// The ModelPricingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ModelPricingFunc func(context.Context, *db.ModelPricingQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f ModelPricingFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.ModelPricingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.ModelPricingQuery", q)
+}
+
+// The TraverseModelPricing type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseModelPricing func(context.Context, *db.ModelPricingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseModelPricing) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseModelPricing) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.ModelPricingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.ModelPricingQuery", q)
 }
 
 // The NotifyChannelFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -982,6 +1038,10 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.ImageQuery, predicate.Image, image.OrderOption]{typ: db.TypeImage, tq: q}, nil
 	case *db.ModelQuery:
 		return &query[*db.ModelQuery, predicate.Model, model.OrderOption]{typ: db.TypeModel, tq: q}, nil
+	case *db.ModelApiKeyQuery:
+		return &query[*db.ModelApiKeyQuery, predicate.ModelApiKey, modelapikey.OrderOption]{typ: db.TypeModelApiKey, tq: q}, nil
+	case *db.ModelPricingQuery:
+		return &query[*db.ModelPricingQuery, predicate.ModelPricing, modelpricing.OrderOption]{typ: db.TypeModelPricing, tq: q}, nil
 	case *db.NotifyChannelQuery:
 		return &query[*db.NotifyChannelQuery, predicate.NotifyChannel, notifychannel.OrderOption]{typ: db.TypeNotifyChannel, tq: q}, nil
 	case *db.NotifySendLogQuery:

@@ -12,6 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -360,6 +362,40 @@ func (_u *ModelUpdate) AddProjectTasks(v ...*ProjectTask) *ModelUpdate {
 	return _u.AddProjectTaskIDs(ids...)
 }
 
+// SetPricingID sets the "pricing" edge to the ModelPricing entity by ID.
+func (_u *ModelUpdate) SetPricingID(id uuid.UUID) *ModelUpdate {
+	_u.mutation.SetPricingID(id)
+	return _u
+}
+
+// SetNillablePricingID sets the "pricing" edge to the ModelPricing entity by ID if the given value is not nil.
+func (_u *ModelUpdate) SetNillablePricingID(id *uuid.UUID) *ModelUpdate {
+	if id != nil {
+		_u = _u.SetPricingID(*id)
+	}
+	return _u
+}
+
+// SetPricing sets the "pricing" edge to the ModelPricing entity.
+func (_u *ModelUpdate) SetPricing(v *ModelPricing) *ModelUpdate {
+	return _u.SetPricingID(v.ID)
+}
+
+// AddApikeyIDs adds the "apikeys" edge to the ModelApiKey entity by IDs.
+func (_u *ModelUpdate) AddApikeyIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.AddApikeyIDs(ids...)
+	return _u
+}
+
+// AddApikeys adds the "apikeys" edges to the ModelApiKey entity.
+func (_u *ModelUpdate) AddApikeys(v ...*ModelApiKey) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddApikeyIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdate) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdate {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -483,6 +519,33 @@ func (_u *ModelUpdate) RemoveProjectTasks(v ...*ProjectTask) *ModelUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearPricing clears the "pricing" edge to the ModelPricing entity.
+func (_u *ModelUpdate) ClearPricing() *ModelUpdate {
+	_u.mutation.ClearPricing()
+	return _u
+}
+
+// ClearApikeys clears all "apikeys" edges to the ModelApiKey entity.
+func (_u *ModelUpdate) ClearApikeys() *ModelUpdate {
+	_u.mutation.ClearApikeys()
+	return _u
+}
+
+// RemoveApikeyIDs removes the "apikeys" edge to ModelApiKey entities by IDs.
+func (_u *ModelUpdate) RemoveApikeyIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.RemoveApikeyIDs(ids...)
+	return _u
+}
+
+// RemoveApikeys removes "apikeys" edges to ModelApiKey entities.
+func (_u *ModelUpdate) RemoveApikeys(v ...*ModelApiKey) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveApikeyIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -910,6 +973,80 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PricingCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   model.PricingTable,
+			Columns: []string{model.PricingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelpricing.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PricingIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   model.PricingTable,
+			Columns: []string{model.PricingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelpricing.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ApikeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedApikeysIDs(); len(nodes) > 0 && !_u.mutation.ApikeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApikeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1352,6 +1489,40 @@ func (_u *ModelUpdateOne) AddProjectTasks(v ...*ProjectTask) *ModelUpdateOne {
 	return _u.AddProjectTaskIDs(ids...)
 }
 
+// SetPricingID sets the "pricing" edge to the ModelPricing entity by ID.
+func (_u *ModelUpdateOne) SetPricingID(id uuid.UUID) *ModelUpdateOne {
+	_u.mutation.SetPricingID(id)
+	return _u
+}
+
+// SetNillablePricingID sets the "pricing" edge to the ModelPricing entity by ID if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillablePricingID(id *uuid.UUID) *ModelUpdateOne {
+	if id != nil {
+		_u = _u.SetPricingID(*id)
+	}
+	return _u
+}
+
+// SetPricing sets the "pricing" edge to the ModelPricing entity.
+func (_u *ModelUpdateOne) SetPricing(v *ModelPricing) *ModelUpdateOne {
+	return _u.SetPricingID(v.ID)
+}
+
+// AddApikeyIDs adds the "apikeys" edge to the ModelApiKey entity by IDs.
+func (_u *ModelUpdateOne) AddApikeyIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.AddApikeyIDs(ids...)
+	return _u
+}
+
+// AddApikeys adds the "apikeys" edges to the ModelApiKey entity.
+func (_u *ModelUpdateOne) AddApikeys(v ...*ModelApiKey) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddApikeyIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdateOne) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdateOne {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -1475,6 +1646,33 @@ func (_u *ModelUpdateOne) RemoveProjectTasks(v ...*ProjectTask) *ModelUpdateOne 
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearPricing clears the "pricing" edge to the ModelPricing entity.
+func (_u *ModelUpdateOne) ClearPricing() *ModelUpdateOne {
+	_u.mutation.ClearPricing()
+	return _u
+}
+
+// ClearApikeys clears all "apikeys" edges to the ModelApiKey entity.
+func (_u *ModelUpdateOne) ClearApikeys() *ModelUpdateOne {
+	_u.mutation.ClearApikeys()
+	return _u
+}
+
+// RemoveApikeyIDs removes the "apikeys" edge to ModelApiKey entities by IDs.
+func (_u *ModelUpdateOne) RemoveApikeyIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.RemoveApikeyIDs(ids...)
+	return _u
+}
+
+// RemoveApikeys removes "apikeys" edges to ModelApiKey entities.
+func (_u *ModelUpdateOne) RemoveApikeys(v ...*ModelApiKey) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveApikeyIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -1932,6 +2130,80 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PricingCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   model.PricingTable,
+			Columns: []string{model.PricingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelpricing.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PricingIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   model.PricingTable,
+			Columns: []string{model.PricingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelpricing.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ApikeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedApikeysIDs(); len(nodes) > 0 && !_u.mutation.ApikeysCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApikeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

@@ -24,6 +24,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
@@ -73,6 +75,10 @@ type Client struct {
 	Image *ImageClient
 	// Model is the client for interacting with the Model builders.
 	Model *ModelClient
+	// ModelApiKey is the client for interacting with the ModelApiKey builders.
+	ModelApiKey *ModelApiKeyClient
+	// ModelPricing is the client for interacting with the ModelPricing builders.
+	ModelPricing *ModelPricingClient
 	// NotifyChannel is the client for interacting with the NotifyChannel builders.
 	NotifyChannel *NotifyChannelClient
 	// NotifySendLog is the client for interacting with the NotifySendLog builders.
@@ -140,6 +146,8 @@ func (c *Client) init() {
 	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
 	c.Model = NewModelClient(c.config)
+	c.ModelApiKey = NewModelApiKeyClient(c.config)
+	c.ModelPricing = NewModelPricingClient(c.config)
 	c.NotifyChannel = NewNotifyChannelClient(c.config)
 	c.NotifySendLog = NewNotifySendLogClient(c.config)
 	c.NotifySubscription = NewNotifySubscriptionClient(c.config)
@@ -264,6 +272,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
 		Model:               NewModelClient(cfg),
+		ModelApiKey:         NewModelApiKeyClient(cfg),
+		ModelPricing:        NewModelPricingClient(cfg),
 		NotifyChannel:       NewNotifyChannelClient(cfg),
 		NotifySendLog:       NewNotifySendLogClient(cfg),
 		NotifySubscription:  NewNotifySubscriptionClient(cfg),
@@ -315,6 +325,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
 		Model:               NewModelClient(cfg),
+		ModelApiKey:         NewModelApiKeyClient(cfg),
+		ModelPricing:        NewModelPricingClient(cfg),
 		NotifyChannel:       NewNotifyChannelClient(cfg),
 		NotifySendLog:       NewNotifySendLogClient(cfg),
 		NotifySubscription:  NewNotifySubscriptionClient(cfg),
@@ -369,12 +381,12 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
-		c.Model, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
-		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
-		c.ProjectTask, c.Task, c.TaskVirtualMachine, c.Team, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
-		c.VirtualMachine,
+		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
+		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -385,12 +397,12 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
-		c.Model, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
-		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
-		c.ProjectTask, c.Task, c.TaskVirtualMachine, c.Team, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
-		c.VirtualMachine,
+		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
+		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -415,6 +427,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Image.mutate(ctx, m)
 	case *ModelMutation:
 		return c.Model.mutate(ctx, m)
+	case *ModelApiKeyMutation:
+		return c.ModelApiKey.mutate(ctx, m)
+	case *ModelPricingMutation:
+		return c.ModelPricing.mutate(ctx, m)
 	case *NotifyChannelMutation:
 		return c.NotifyChannel.mutate(ctx, m)
 	case *NotifySendLogMutation:
@@ -2027,6 +2043,38 @@ func (c *ModelClient) QueryProjectTasks(_m *Model) *ProjectTaskQuery {
 	return query
 }
 
+// QueryPricing queries the pricing edge of a Model.
+func (c *ModelClient) QueryPricing(_m *Model) *ModelPricingQuery {
+	query := (&ModelPricingClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, id),
+			sqlgraph.To(modelpricing.Table, modelpricing.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, model.PricingTable, model.PricingColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApikeys queries the apikeys edge of a Model.
+func (c *ModelClient) QueryApikeys(_m *Model) *ModelApiKeyQuery {
+	query := (&ModelApiKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, id),
+			sqlgraph.To(modelapikey.Table, modelapikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.ApikeysTable, model.ApikeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamModels queries the team_models edge of a Model.
 func (c *ModelClient) QueryTeamModels(_m *Model) *TeamModelQuery {
 	query := (&TeamModelClient{config: c.config}).Query()
@@ -2083,6 +2131,306 @@ func (c *ModelClient) mutate(ctx context.Context, m *ModelMutation) (Value, erro
 		return (&ModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Model mutation op: %q", m.Op())
+	}
+}
+
+// ModelApiKeyClient is a client for the ModelApiKey schema.
+type ModelApiKeyClient struct {
+	config
+}
+
+// NewModelApiKeyClient returns a client for the ModelApiKey from the given config.
+func NewModelApiKeyClient(c config) *ModelApiKeyClient {
+	return &ModelApiKeyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `modelapikey.Hooks(f(g(h())))`.
+func (c *ModelApiKeyClient) Use(hooks ...Hook) {
+	c.hooks.ModelApiKey = append(c.hooks.ModelApiKey, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `modelapikey.Intercept(f(g(h())))`.
+func (c *ModelApiKeyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ModelApiKey = append(c.inters.ModelApiKey, interceptors...)
+}
+
+// Create returns a builder for creating a ModelApiKey entity.
+func (c *ModelApiKeyClient) Create() *ModelApiKeyCreate {
+	mutation := newModelApiKeyMutation(c.config, OpCreate)
+	return &ModelApiKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ModelApiKey entities.
+func (c *ModelApiKeyClient) CreateBulk(builders ...*ModelApiKeyCreate) *ModelApiKeyCreateBulk {
+	return &ModelApiKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ModelApiKeyClient) MapCreateBulk(slice any, setFunc func(*ModelApiKeyCreate, int)) *ModelApiKeyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ModelApiKeyCreateBulk{err: fmt.Errorf("calling to ModelApiKeyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ModelApiKeyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ModelApiKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ModelApiKey.
+func (c *ModelApiKeyClient) Update() *ModelApiKeyUpdate {
+	mutation := newModelApiKeyMutation(c.config, OpUpdate)
+	return &ModelApiKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ModelApiKeyClient) UpdateOne(_m *ModelApiKey) *ModelApiKeyUpdateOne {
+	mutation := newModelApiKeyMutation(c.config, OpUpdateOne, withModelApiKey(_m))
+	return &ModelApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ModelApiKeyClient) UpdateOneID(id uuid.UUID) *ModelApiKeyUpdateOne {
+	mutation := newModelApiKeyMutation(c.config, OpUpdateOne, withModelApiKeyID(id))
+	return &ModelApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ModelApiKey.
+func (c *ModelApiKeyClient) Delete() *ModelApiKeyDelete {
+	mutation := newModelApiKeyMutation(c.config, OpDelete)
+	return &ModelApiKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ModelApiKeyClient) DeleteOne(_m *ModelApiKey) *ModelApiKeyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ModelApiKeyClient) DeleteOneID(id uuid.UUID) *ModelApiKeyDeleteOne {
+	builder := c.Delete().Where(modelapikey.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ModelApiKeyDeleteOne{builder}
+}
+
+// Query returns a query builder for ModelApiKey.
+func (c *ModelApiKeyClient) Query() *ModelApiKeyQuery {
+	return &ModelApiKeyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeModelApiKey},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ModelApiKey entity by its id.
+func (c *ModelApiKeyClient) Get(ctx context.Context, id uuid.UUID) (*ModelApiKey, error) {
+	return c.Query().Where(modelapikey.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ModelApiKeyClient) GetX(ctx context.Context, id uuid.UUID) *ModelApiKey {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryModel queries the model edge of a ModelApiKey.
+func (c *ModelApiKeyClient) QueryModel(_m *ModelApiKey) *ModelQuery {
+	query := (&ModelClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(modelapikey.Table, modelapikey.FieldID, id),
+			sqlgraph.To(model.Table, model.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, modelapikey.ModelTable, modelapikey.ModelColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ModelApiKeyClient) Hooks() []Hook {
+	hooks := c.hooks.ModelApiKey
+	return append(hooks[:len(hooks):len(hooks)], modelapikey.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *ModelApiKeyClient) Interceptors() []Interceptor {
+	inters := c.inters.ModelApiKey
+	return append(inters[:len(inters):len(inters)], modelapikey.Interceptors[:]...)
+}
+
+func (c *ModelApiKeyClient) mutate(ctx context.Context, m *ModelApiKeyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ModelApiKeyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ModelApiKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ModelApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ModelApiKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown ModelApiKey mutation op: %q", m.Op())
+	}
+}
+
+// ModelPricingClient is a client for the ModelPricing schema.
+type ModelPricingClient struct {
+	config
+}
+
+// NewModelPricingClient returns a client for the ModelPricing from the given config.
+func NewModelPricingClient(c config) *ModelPricingClient {
+	return &ModelPricingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `modelpricing.Hooks(f(g(h())))`.
+func (c *ModelPricingClient) Use(hooks ...Hook) {
+	c.hooks.ModelPricing = append(c.hooks.ModelPricing, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `modelpricing.Intercept(f(g(h())))`.
+func (c *ModelPricingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ModelPricing = append(c.inters.ModelPricing, interceptors...)
+}
+
+// Create returns a builder for creating a ModelPricing entity.
+func (c *ModelPricingClient) Create() *ModelPricingCreate {
+	mutation := newModelPricingMutation(c.config, OpCreate)
+	return &ModelPricingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ModelPricing entities.
+func (c *ModelPricingClient) CreateBulk(builders ...*ModelPricingCreate) *ModelPricingCreateBulk {
+	return &ModelPricingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ModelPricingClient) MapCreateBulk(slice any, setFunc func(*ModelPricingCreate, int)) *ModelPricingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ModelPricingCreateBulk{err: fmt.Errorf("calling to ModelPricingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ModelPricingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ModelPricingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ModelPricing.
+func (c *ModelPricingClient) Update() *ModelPricingUpdate {
+	mutation := newModelPricingMutation(c.config, OpUpdate)
+	return &ModelPricingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ModelPricingClient) UpdateOne(_m *ModelPricing) *ModelPricingUpdateOne {
+	mutation := newModelPricingMutation(c.config, OpUpdateOne, withModelPricing(_m))
+	return &ModelPricingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ModelPricingClient) UpdateOneID(id uuid.UUID) *ModelPricingUpdateOne {
+	mutation := newModelPricingMutation(c.config, OpUpdateOne, withModelPricingID(id))
+	return &ModelPricingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ModelPricing.
+func (c *ModelPricingClient) Delete() *ModelPricingDelete {
+	mutation := newModelPricingMutation(c.config, OpDelete)
+	return &ModelPricingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ModelPricingClient) DeleteOne(_m *ModelPricing) *ModelPricingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ModelPricingClient) DeleteOneID(id uuid.UUID) *ModelPricingDeleteOne {
+	builder := c.Delete().Where(modelpricing.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ModelPricingDeleteOne{builder}
+}
+
+// Query returns a query builder for ModelPricing.
+func (c *ModelPricingClient) Query() *ModelPricingQuery {
+	return &ModelPricingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeModelPricing},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ModelPricing entity by its id.
+func (c *ModelPricingClient) Get(ctx context.Context, id uuid.UUID) (*ModelPricing, error) {
+	return c.Query().Where(modelpricing.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ModelPricingClient) GetX(ctx context.Context, id uuid.UUID) *ModelPricing {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryModel queries the model edge of a ModelPricing.
+func (c *ModelPricingClient) QueryModel(_m *ModelPricing) *ModelQuery {
+	query := (&ModelClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(modelpricing.Table, modelpricing.FieldID, id),
+			sqlgraph.To(model.Table, model.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, true, modelpricing.ModelTable, modelpricing.ModelColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ModelPricingClient) Hooks() []Hook {
+	return c.hooks.ModelPricing
+}
+
+// Interceptors returns the client interceptors.
+func (c *ModelPricingClient) Interceptors() []Interceptor {
+	return c.inters.ModelPricing
+}
+
+func (c *ModelPricingClient) mutate(ctx context.Context, m *ModelPricingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ModelPricingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ModelPricingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ModelPricingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ModelPricingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown ModelPricing mutation op: %q", m.Op())
 	}
 }
 
@@ -6810,19 +7158,19 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 type (
 	hooks struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
-		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
-		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
-		TaskVirtualMachine, Team, TeamGroup, TeamGroupHost, TeamGroupImage,
-		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
-		User, UserIdentity, VirtualMachine []ent.Hook
+		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
+		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
+		ProjectTask, Task, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
-		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
-		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
-		TaskVirtualMachine, Team, TeamGroup, TeamGroupHost, TeamGroupImage,
-		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
-		User, UserIdentity, VirtualMachine []ent.Interceptor
+		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
+		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
+		ProjectTask, Task, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Interceptor
 	}
 )
 

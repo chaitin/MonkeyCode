@@ -317,6 +317,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			return nil, fmt.Errorf("task edge is nil")
 		}
 
+		if keys := m.Edges.Apikeys; len(keys) > 0 {
+			m.APIKey = keys[0].APIKey
+			m.BaseURL = a.cfg.LLMProxy.BaseURL + "/v1"
+		}
+
 		coding, configs, err := a.getCodingConfigs(req.CliName, m, req.Extra.SkillIDs)
 		if err != nil {
 			return nil, err

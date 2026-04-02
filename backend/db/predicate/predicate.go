@@ -30,6 +30,12 @@ type Image func(*sql.Selector)
 // Model is the predicate function for model builders.
 type Model func(*sql.Selector)
 
+// ModelApiKey is the predicate function for modelapikey builders.
+type ModelApiKey func(*sql.Selector)
+
+// ModelPricing is the predicate function for modelpricing builders.
+type ModelPricing func(*sql.Selector)
+
 // NotifyChannel is the predicate function for notifychannel builders.
 type NotifyChannel func(*sql.Selector)
 

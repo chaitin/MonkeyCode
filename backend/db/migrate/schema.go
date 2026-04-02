@@ -243,6 +243,55 @@ var (
 			},
 		},
 	}
+	// ModelAPIKeysColumns holds the columns for the "model_api_keys" table.
+	ModelAPIKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "virtualmachine_id", Type: field.TypeString, Nullable: true},
+		{Name: "api_key", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "model_id", Type: field.TypeUUID},
+	}
+	// ModelAPIKeysTable holds the schema information for the "model_api_keys" table.
+	ModelAPIKeysTable = &schema.Table{
+		Name:       "model_api_keys",
+		Columns:    ModelAPIKeysColumns,
+		PrimaryKey: []*schema.Column{ModelAPIKeysColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "model_api_keys_models_apikeys",
+				Columns:    []*schema.Column{ModelAPIKeysColumns[6]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// ModelPricingsColumns holds the columns for the "model_pricings" table.
+	ModelPricingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "access_level", Type: field.TypeString},
+		{Name: "is_free", Type: field.TypeBool, Default: true},
+		{Name: "input_price", Type: field.TypeInt64, Default: 0},
+		{Name: "output_price", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "model_id", Type: field.TypeUUID, Unique: true},
+	}
+	// ModelPricingsTable holds the schema information for the "model_pricings" table.
+	ModelPricingsTable = &schema.Table{
+		Name:       "model_pricings",
+		Columns:    ModelPricingsColumns,
+		PrimaryKey: []*schema.Column{ModelPricingsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "model_pricings_models_pricing",
+				Columns:    []*schema.Column{ModelPricingsColumns[7]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// NotifyChannelsColumns holds the columns for the "notify_channels" table.
 	NotifyChannelsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1061,6 +1110,8 @@ var (
 		HostsTable,
 		ImagesTable,
 		ModelsTable,
+		ModelAPIKeysTable,
+		ModelPricingsTable,
 		NotifyChannelsTable,
 		NotifySendLogsTable,
 		NotifySubscriptionsTable,
@@ -1122,6 +1173,14 @@ func init() {
 	ModelsTable.ForeignKeys[0].RefTable = UsersTable
 	ModelsTable.Annotation = &entsql.Annotation{
 		Table: "models",
+	}
+	ModelAPIKeysTable.ForeignKeys[0].RefTable = ModelsTable
+	ModelAPIKeysTable.Annotation = &entsql.Annotation{
+		Table: "model_api_keys",
+	}
+	ModelPricingsTable.ForeignKeys[0].RefTable = ModelsTable
+	ModelPricingsTable.Annotation = &entsql.Annotation{
+		Table: "model_pricings",
 	}
 	NotifyChannelsTable.Annotation = &entsql.Annotation{
 		Table: "notify_channels",

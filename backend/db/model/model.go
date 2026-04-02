@@ -55,6 +55,10 @@ const (
 	EdgeVms = "vms"
 	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
 	EdgeProjectTasks = "project_tasks"
+	// EdgePricing holds the string denoting the pricing edge name in mutations.
+	EdgePricing = "pricing"
+	// EdgeApikeys holds the string denoting the apikeys edge name in mutations.
+	EdgeApikeys = "apikeys"
 	// EdgeTeamModels holds the string denoting the team_models edge name in mutations.
 	EdgeTeamModels = "team_models"
 	// EdgeTeamGroupModels holds the string denoting the team_group_models edge name in mutations.
@@ -92,6 +96,20 @@ const (
 	ProjectTasksInverseTable = "project_tasks"
 	// ProjectTasksColumn is the table column denoting the project_tasks relation/edge.
 	ProjectTasksColumn = "model_id"
+	// PricingTable is the table that holds the pricing relation/edge.
+	PricingTable = "model_pricings"
+	// PricingInverseTable is the table name for the ModelPricing entity.
+	// It exists in this package in order to avoid circular dependency with the "modelpricing" package.
+	PricingInverseTable = "model_pricings"
+	// PricingColumn is the table column denoting the pricing relation/edge.
+	PricingColumn = "model_id"
+	// ApikeysTable is the table that holds the apikeys relation/edge.
+	ApikeysTable = "model_api_keys"
+	// ApikeysInverseTable is the table name for the ModelApiKey entity.
+	// It exists in this package in order to avoid circular dependency with the "modelapikey" package.
+	ApikeysInverseTable = "model_api_keys"
+	// ApikeysColumn is the table column denoting the apikeys relation/edge.
+	ApikeysColumn = "model_id"
 	// TeamModelsTable is the table that holds the team_models relation/edge.
 	TeamModelsTable = "team_models"
 	// TeamModelsInverseTable is the table name for the TeamModel entity.
@@ -319,6 +337,27 @@ func ByProjectTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByPricingField orders the results by pricing field.
+func ByPricingField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPricingStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByApikeysCount orders the results by apikeys count.
+func ByApikeysCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newApikeysStep(), opts...)
+	}
+}
+
+// ByApikeys orders the results by apikeys terms.
+func ByApikeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newApikeysStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamModelsCount orders the results by team_models count.
 func ByTeamModelsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -379,6 +418,20 @@ func newProjectTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProjectTasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
+	)
+}
+func newPricingStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PricingInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, PricingTable, PricingColumn),
+	)
+}
+func newApikeysStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ApikeysInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ApikeysTable, ApikeysColumn),
 	)
 }
 func newTeamModelsStep() *sqlgraph.Step {

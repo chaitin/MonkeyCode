@@ -69,6 +69,8 @@ func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitCli
 		return gitlab.NewGitlab(identity.BaseURL, identity.AccessToken, u.logger)
 	case consts.GitPlatformGitea:
 		return gitea.NewGitea(u.logger, identity.BaseURL)
+	case consts.GitPlatformGitee:
+		return gitee.NewGitee(identity.BaseURL, u.logger)
 	default:
 		return nil
 	}

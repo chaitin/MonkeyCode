@@ -14,6 +14,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
@@ -179,6 +181,49 @@ func init() {
 	model.DefaultUpdatedAt = modelDescUpdatedAt.Default.(func() time.Time)
 	// model.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	model.UpdateDefaultUpdatedAt = modelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	modelapikeyMixin := schema.ModelApiKey{}.Mixin()
+	modelapikeyMixinHooks0 := modelapikeyMixin[0].Hooks()
+	modelapikey.Hooks[0] = modelapikeyMixinHooks0[0]
+	modelapikeyMixinInters0 := modelapikeyMixin[0].Interceptors()
+	modelapikey.Interceptors[0] = modelapikeyMixinInters0[0]
+	modelapikeyFields := schema.ModelApiKey{}.Fields()
+	_ = modelapikeyFields
+	// modelapikeyDescAPIKey is the schema descriptor for api_key field.
+	modelapikeyDescAPIKey := modelapikeyFields[4].Descriptor()
+	// modelapikey.APIKeyValidator is a validator for the "api_key" field. It is called by the builders before save.
+	modelapikey.APIKeyValidator = modelapikeyDescAPIKey.Validators[0].(func(string) error)
+	// modelapikeyDescCreatedAt is the schema descriptor for created_at field.
+	modelapikeyDescCreatedAt := modelapikeyFields[5].Descriptor()
+	// modelapikey.DefaultCreatedAt holds the default value on creation for the created_at field.
+	modelapikey.DefaultCreatedAt = modelapikeyDescCreatedAt.Default.(func() time.Time)
+	modelpricingFields := schema.ModelPricing{}.Fields()
+	_ = modelpricingFields
+	// modelpricingDescAccessLevel is the schema descriptor for access_level field.
+	modelpricingDescAccessLevel := modelpricingFields[2].Descriptor()
+	// modelpricing.AccessLevelValidator is a validator for the "access_level" field. It is called by the builders before save.
+	modelpricing.AccessLevelValidator = modelpricingDescAccessLevel.Validators[0].(func(string) error)
+	// modelpricingDescIsFree is the schema descriptor for is_free field.
+	modelpricingDescIsFree := modelpricingFields[3].Descriptor()
+	// modelpricing.DefaultIsFree holds the default value on creation for the is_free field.
+	modelpricing.DefaultIsFree = modelpricingDescIsFree.Default.(bool)
+	// modelpricingDescInputPrice is the schema descriptor for input_price field.
+	modelpricingDescInputPrice := modelpricingFields[4].Descriptor()
+	// modelpricing.DefaultInputPrice holds the default value on creation for the input_price field.
+	modelpricing.DefaultInputPrice = modelpricingDescInputPrice.Default.(int64)
+	// modelpricingDescOutputPrice is the schema descriptor for output_price field.
+	modelpricingDescOutputPrice := modelpricingFields[5].Descriptor()
+	// modelpricing.DefaultOutputPrice holds the default value on creation for the output_price field.
+	modelpricing.DefaultOutputPrice = modelpricingDescOutputPrice.Default.(int64)
+	// modelpricingDescCreatedAt is the schema descriptor for created_at field.
+	modelpricingDescCreatedAt := modelpricingFields[6].Descriptor()
+	// modelpricing.DefaultCreatedAt holds the default value on creation for the created_at field.
+	modelpricing.DefaultCreatedAt = modelpricingDescCreatedAt.Default.(func() time.Time)
+	// modelpricingDescUpdatedAt is the schema descriptor for updated_at field.
+	modelpricingDescUpdatedAt := modelpricingFields[7].Descriptor()
+	// modelpricing.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	modelpricing.DefaultUpdatedAt = modelpricingDescUpdatedAt.Default.(func() time.Time)
+	// modelpricing.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	modelpricing.UpdateDefaultUpdatedAt = modelpricingDescUpdatedAt.UpdateDefault.(func() time.Time)
 	notifychannelMixin := schema.NotifyChannel{}.Mixin()
 	notifychannelMixinHooks0 := notifychannelMixin[0].Hooks()
 	notifychannel.Hooks[0] = notifychannelMixinHooks0[0]
