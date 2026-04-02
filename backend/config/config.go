@@ -93,13 +93,14 @@ type Task struct {
 
 // TaskSummary 任务摘要生成配置
 type TaskSummary struct {
-	Enabled    bool   `mapstructure:"enabled"`     // 是否启用
-	Model      string `mapstructure:"model"`       // 摘要生成模型 ID
-	BaseURL    string `mapstructure:"base_url"`    // API Base URL
-	ApiKey     string `mapstructure:"api_key"`     // API Key // nolint:revive
-	Delay      int    `mapstructure:"delay"`       // 延迟时间（秒），默认 3600
-	MaxChars   int    `mapstructure:"max_chars"`   // 摘要最大字符数，默认 300
-	MaxWorkers int    `mapstructure:"max_workers"` // 最大消费者数量，默认 5
+	Enabled       bool   `mapstructure:"enabled"`        // 是否启用
+	Model         string `mapstructure:"model"`          // 摘要生成模型 ID
+	BaseURL       string `mapstructure:"base_url"`       // API Base URL
+	ApiKey        string `mapstructure:"api_key"`        // API Key // nolint:revive
+	InterfaceType string `mapstructure:"interface_type"` // API 接口类型（openai_chat/openai_responses/anthropic）
+	Delay         int    `mapstructure:"delay"`          // 延迟时间（秒），默认 3600
+	MaxChars      int    `mapstructure:"max_chars"`      // 摘要最大字符数，默认 300
+	MaxWorkers    int    `mapstructure:"max_workers"`    // 最大消费者数量，默认 5
 }
 
 // Loki Loki 日志配置

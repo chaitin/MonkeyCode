@@ -48,12 +48,19 @@ func NewTaskSummaryService(i *do.Injector) (*TaskSummaryService, error) {
 	cfg := do.MustInvoke[*config.Config](i)
 	d := do.MustInvoke[*db.Client](i)
 	lok := do.MustInvoke[*loki.Client](i)
-	llmClient := do.MustInvoke[*llm.Client](i)
 	sq := do.MustInvoke[*delayqueue.TaskSummaryQueue](i)
 	l := do.MustInvoke[*slog.Logger](i)
 	tr := do.MustInvoke[domain.TaskRepo](i)
 
-	return &TaskSummaryService{
+	// 使用 task_summary 自己的 LLM 配置，不依赖全局 LLM Client
+	llmClient := llm.NewClient(llm.Config{
+		BaseURL:       cfg.TaskSummary.BaseURL,
+		APIKey:        cfg.TaskSummary.ApiKey,
+		Model:         cfg.TaskSummary.Model,
+		InterfaceType: llm.InterfaceType(cfg.TaskSummary.InterfaceType),
+	})
+
+	s := &TaskSummaryService{
 		cfg:          cfg,
 		db:           d,
 		loki:         lok,
@@ -61,7 +68,12 @@ func NewTaskSummaryService(i *do.Injector) (*TaskSummaryService, error) {
 		summaryQueue: sq,
 		logger:       l.With("module", "TaskSummaryService"),
 		taskRepo:     tr,
-	}, nil
+	}
+
+	// 启动消费者
+	s.Start(context.Background())
+
+	return s, nil
 }
 
 // Start 启动消费者（由 server 启动流程调用）
