@@ -86,7 +86,6 @@ export default function TaskDetailPage() {
   ), [liveMessages])
   const [timeCost, setTimeCost] = React.useState(0)
   const previewPortCount = (previewPorts ?? []).length
-  const taskTitle = task?.summary?.trim() || task?.content?.trim() || "未知任务名称"
   const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
 
   const hasSidePanel = activeSidePanel !== null

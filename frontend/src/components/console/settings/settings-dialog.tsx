@@ -86,7 +86,7 @@ function SettingsNavContent({
   onSectionChange: (id: SettingsSectionId) => void
 }) {
   return (
-    <Sidebar collapsible="none" className="w-12 shrink-0 border-r sm:w-44 md:w-56">
+    <Sidebar collapsible="none" className="w-12 shrink-0 border-r md:w-44">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 pt-2 pb-4 font-semibold text-md">
           <Settings className="size-4 shrink-0" />
