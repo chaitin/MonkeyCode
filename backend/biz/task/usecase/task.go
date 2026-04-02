@@ -46,6 +46,7 @@ type TaskUsecase struct {
 	notifyDispatcher *dispatcher.Dispatcher
 	taskHook         domain.TaskHook
 	privilegeChecker domain.PrivilegeChecker
+	modelHook        domain.ModelHook
 	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 	girepo           domain.GitIdentityRepo
@@ -77,6 +78,11 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 	// 可选注入 PrivilegeChecker
 	if pc, err := do.Invoke[domain.PrivilegeChecker](i); err == nil {
 		u.privilegeChecker = pc
+	}
+
+	// 可选注入 ModelHook
+	if hook, err := do.Invoke[domain.ModelHook](i); err == nil {
+		u.modelHook = hook
 	}
 
 	return u, nil
@@ -258,6 +264,13 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 	if !r.OnlineMap[req.HostID] {
 		return nil, errcode.ErrHostOffline
+	}
+
+	// 模型访问校验（仅在注入 ModelHook 时生效）
+	if a.modelHook != nil {
+		if err := a.modelHook.ValidateAccess(ctx, user.ID, req.ModelID); err != nil {
+			return nil, err
+		}
 	}
 
 	req.Now = time.Now()

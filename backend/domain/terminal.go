@@ -13,11 +13,14 @@ type CloseTerminalReq struct {
 
 // TerminalReq 终端连接请求
 type TerminalReq struct {
-	ID         string `json:"id" query:"id" param:"id" validate:"required"`
-	TerminalID string `json:"terminal_id" query:"terminal_id"`
-	Exec       string `json:"exec" query:"exec"`
-	Col        int    `json:"col" query:"col"`
-	Row        int    `json:"row" query:"row"`
+	ID            string `json:"id" query:"id" param:"id" validate:"required"`
+	TerminalID    string `json:"terminal_id" query:"terminal_id"`
+	Exec          string `json:"exec" query:"exec"`
+	Col           int    `json:"col" query:"col"`
+	Row           int    `json:"row" query:"row"`
+	EnvironmentID string `json:"-"`
+	HostID        string `json:"-"`
+	VmID          string `json:"-"`
 }
 
 // JoinTerminalReq 加入终端请求

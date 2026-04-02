@@ -460,6 +460,14 @@ func (h *HostUsecase) CloseTerminal(ctx context.Context, id string, terminalID s
 
 // ConnectVMTerminal 连接到虚拟机终端
 func (h *HostUsecase) ConnectVMTerminal(ctx context.Context, uid uuid.UUID, req domain.TerminalReq) (taskflow.Sheller, error) {
+	if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
+		HostID:        req.HostID,
+		UserID:        uid.String(),
+		ID:            req.VmID,
+		EnvironmentID: req.EnvironmentID,
+	}); err != nil {
+		return nil, err
+	}
 	return h.taskflow.VirtualMachiner().Terminal(ctx, &taskflow.TerminalReq{
 		ID:         req.ID,
 		TerminalID: req.TerminalID,

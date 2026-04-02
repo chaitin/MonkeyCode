@@ -189,3 +189,6 @@ other = "模型配置未找到"
 
 [err-image-not-found]
 other = "镜像配置未找到"
+
+[err-model-access-denied]
+other = "无权使用该模型"

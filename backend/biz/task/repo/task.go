@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -34,7 +33,6 @@ type TaskRepo struct {
 	cfg    *config.Config
 	db     *db.Client
 	logger *slog.Logger
-	rr     uint64
 }
 
 // NewTaskRepo 创建新的任务数据访问层实例
@@ -223,43 +221,6 @@ func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) 
 	return err
 }
 
-func (t *TaskRepo) pickModelWeighted(cliname consts.CliName, ms []*db.Model) *db.Model {
-	// 按 CLI 类型过滤候选模型
-	filtered := cvt.Filter(ms, func(_ int, m *db.Model) (*db.Model, bool) {
-		switch cliname {
-		case consts.CliNameClaude:
-			return m, !strings.HasPrefix(m.Model, "gpt")
-		default:
-			return m, true
-		}
-	})
-	if len(filtered) == 0 {
-		return nil
-	}
-	weights := cvt.Iter(filtered, func(_ int, m *db.Model) uint64 {
-		if m.Weight <= 0 {
-			return 1
-		}
-		return uint64(m.Weight)
-	})
-	var totalWeight uint64
-	for _, w := range weights {
-		totalWeight += w
-	}
-	if totalWeight == 0 {
-		return nil
-	}
-	idx := atomic.AddUint64(&t.rr, 1) - 1
-	offset := idx % totalWeight
-	for i, w := range weights {
-		if offset < w {
-			return filtered[i]
-		}
-		offset -= w
-	}
-	return filtered[0]
-}
-
 // Create implements domain.TaskRepo.
 func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error) {
 	resource := req.Resource
@@ -295,33 +256,13 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			}
 		}
 
-		var m *db.Model
-
-		switch req.ModelID {
-		case "economy":
-			q := tx.Model.Query().
-				WithUser().
-				Where(model.HasUserWith(user.Role(consts.UserRoleAdmin))).
-				Where(model.Remark(req.ModelID))
-
-			ms, err := q.All(ctx)
-			if err != nil {
-				return err
-			}
-
-			m = t.pickModelWeighted(req.CliName, ms)
-			if m == nil {
-				return fmt.Errorf("%s model not found", req.ModelID)
-			}
-		default:
-			mid, err := uuid.Parse(req.ModelID)
-			if err != nil {
-				return err
-			}
-			m, err = tx.Model.Query().WithUser().Where(model.ID(mid)).First(ctx)
-			if err != nil {
-				return err
-			}
+		mid, err := uuid.Parse(req.ModelID)
+		if err != nil {
+			return errcode.ErrModelAccessDenied.Wrap(err)
+		}
+		m, err := tx.Model.Query().WithUser().Where(model.ID(mid)).First(ctx)
+		if err != nil {
+			return err
 		}
 
 		img, err := tx.Image.Query().Where(image.ID(req.ImageID)).First(ctx)
