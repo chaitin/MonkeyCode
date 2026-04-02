@@ -18,6 +18,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -46,6 +47,7 @@ type HostUsecase struct {
 	vmRecycleQueue   *delayqueue.VMRecycleQueue
 	vmexpireQueue    *delayqueue.VMExpireQueue
 	privilegeChecker domain.PrivilegeChecker // 可选，由内部项目通过 WithPrivilegeChecker 注入
+	tokenProvider    *gituc.TokenProvider
 }
 
 func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
@@ -62,6 +64,7 @@ func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 		vmNotifyQueue:    do.MustInvoke[*delayqueue.VMNotifyQueue](i),
 		vmRecycleQueue:   do.MustInvoke[*delayqueue.VMRecycleQueue](i),
 		vmexpireQueue:    do.MustInvoke[*delayqueue.VMExpireQueue](i),
+		tokenProvider:    do.MustInvoke[*gituc.TokenProvider](i),
 	}
 
 	// 可选注入 PrivilegeChecker
@@ -548,6 +551,13 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 		git := taskflow.Git{
 			URL:    repoURL,
 			Branch: branch,
+		}
+		if req.GitIdentityID != uuid.Nil {
+			t, err := h.tokenProvider.GetToken(ctx, req.GitIdentityID)
+			if err != nil {
+				return nil, fmt.Errorf("get git token: %w", err)
+			}
+			git.Token = t
 		}
 
 		tfvm, err := h.taskflow.VirtualMachiner().Create(
