@@ -156,6 +156,9 @@ export enum ConstsTransactionKind {
   TransactionKindVMConsumption = "vm_consumption",
   TransactionKindModelConsumption = "model_consumption",
   TransactionKindInvitationReward = "invitation_reward",
+  TransactionKindProSubscription = "pro_subscription",
+  TransactionKindProAutoRenew = "pro_auto_renew",
+  TransactionKindDailyGrant = "daily_grant",
 }
 
 export enum ConstsUploadUsage {
@@ -295,6 +298,21 @@ export interface DomainAuthRepository {
   description?: string;
   full_name?: string;
   url?: string;
+}
+
+export interface DomainAutoRenewReq {
+  auto_renew?: boolean;
+}
+
+export interface DomainAvailableModelResp {
+  access_level?: string;
+  id?: string;
+  /** 点数/1K input tokens（账面值） */
+  input_price?: number;
+  is_free?: boolean;
+  name?: string;
+  /** 点数/1K output tokens（账面值） */
+  output_price?: number;
 }
 
 export interface DomainBranch {
@@ -1166,6 +1184,15 @@ export interface DomainStats {
   repo_stars?: number;
 }
 
+export interface DomainSubscriptionResp {
+  auto_renew?: boolean;
+  expires_at?: string;
+  /** "basic" | "pro" */
+  plan?: string;
+  /** "points_exchange" | "team_member" | "admin_grant" */
+  source?: string;
+}
+
 export interface DomainTask {
   branch?: string;
   cli_name?: ConstsCliName;
@@ -1335,6 +1362,8 @@ export interface DomainTransactionLog {
   amount?: number;
   /** 赠送金额变动 */
   amount_bonus?: number;
+  /** 当日钱包变动 */
+  amount_daily?: number;
   /** 余额变动 */
   amount_principal?: number;
   /** 交易时间 */
@@ -1561,8 +1590,10 @@ export interface DomainVirtualMachine {
 export interface DomainWallet {
   /** 充值的余额 */
   balance?: number;
-  /** 赠送余额 */
-  bonus?: number;
+  /** 当日钱包余额 */
+  daily_balance?: number;
+  /** 当日钱包刷新时间 */
+  daily_refreshed_at?: string;
   id?: string;
 }
 
@@ -4491,6 +4522,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 根据用户会员等级返回可用模型列表，Basic 用户返回基础可用模型，Pro 用户返回基础和专业模型及定价
+     *
+     * @tags 【用户】会员
+     * @name V1UsersModelsAvailableList
+     * @summary 获取可用模型列表
+     * @request GET:/api/v1/users/models/available
+     * @secure
+     */
+    v1UsersModelsAvailableList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainAvailableModelResp[];
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/models/available`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 使用提供的配置进行健康检查，不更新数据库
      *
      * @tags 【用户】模型管理
@@ -5438,6 +5493,69 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 查询当前会员状态和到期时间
+     *
+     * @tags 【用户】会员
+     * @name V1UsersSubscriptionList
+     * @summary 查询当前会员状态
+     * @request GET:/api/v1/users/subscription
+     * @secure
+     */
+    v1UsersSubscriptionList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainSubscriptionResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/subscription`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 设置专业版自动续费开关
+     *
+     * @tags 【用户】会员
+     * @name V1UsersSubscriptionAutoRenewUpdate
+     * @summary 开关自动续费
+     * @request PUT:/api/v1/users/subscription/auto-renew
+     * @secure
+     */
+    v1UsersSubscriptionAutoRenewUpdate: (req: DomainAutoRenewReq, params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+        path: `/api/v1/users/subscription/auto-renew`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 消耗 10000 点兑换 1 个月专业版会员
+     *
+     * @tags 【用户】会员
+     * @name V1UsersSubscriptionProCreate
+     * @summary 兑换专业版
+     * @request POST:/api/v1/users/subscription/pro
+     * @secure
+     */
+    v1UsersSubscriptionProCreate: (params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+        path: `/api/v1/users/subscription/pro`,
+        method: "POST",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 获取属于该用户的所有任务，仅支持普通分页
      *
      * @tags 【用户】任务管理
@@ -5458,6 +5576,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         quick_start?: boolean;
         /** 每页多少条记录 */
         size?: number;
+        status?: "pending" | "processing" | "error" | "finished";
       },
       params: RequestParams = {},
     ) =>
