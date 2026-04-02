@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { ConstsTransactionKind, type DomainTransactionLog } from "@/api/Api";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,9 @@ type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
 
 export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
+  const [invitations, setInvitations] = useState<DomainInvitationItem[]>([]);
+  const [invitationCount, setInvitationCount] = useState(0);
+  const [isInvitationsLoading, setIsInvitationsLoading] = useState(false);
   const [exchangeCode, setExchangeCode] = useState("");
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
   const [isProLoading, setIsProLoading] = useState(false);
@@ -71,6 +75,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   ])
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
+  const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
 
   const getPlanLabel = (plan?: string) => {
     switch (plan) {
@@ -155,6 +160,15 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
     return `${sign}${formatPoints(Math.abs(normalized))}`
   }
 
+  const formatInvitationTime = (timestamp?: number) => {
+    if (!timestamp) {
+      return "注册时间未知"
+    }
+
+    const parsed = dayjs.unix(timestamp)
+    return parsed.isValid() ? `${parsed.fromNow()}注册` : "注册时间未知"
+  }
+
   const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
     setIsLoadingMore(true);
     await apiRequest('v1UsersWalletTransactionList', { 
@@ -172,6 +186,23 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
     });
     setIsLoadingMore(false);
   }, []);
+
+  const fetchInvitations = useCallback(async () => {
+    setIsInvitationsLoading(true)
+    await apiRequest("v1UsersInvitationsList", {
+      page: 1,
+      size: 20,
+    }, [], (resp) => {
+      if (resp.code === 0) {
+        const items = resp.data?.items || []
+        setInvitations(items)
+        setInvitationCount(resp.data?.count || items.length)
+      } else {
+        toast.error(resp.message || "获取邀请用户列表失败")
+      }
+    })
+    setIsInvitationsLoading(false)
+  }, [])
 
   const loadMore = useCallback(() => {
     if (hasNextPage && !isLoadingMore) {
@@ -284,7 +315,8 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
     setTranscations([]);
     setHasNextPage(false);
     fetchTranscations(1, true);
-  }, [fetchTranscations, reloadSubscription, reloadWallet])
+    fetchInvitations();
+  }, [fetchInvitations, fetchTranscations, reloadSubscription, reloadWallet])
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
@@ -571,6 +603,48 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
         <div className="mt-4 flex flex-row justify-between gap-2">
           <Input value={invitationLink} readOnly />
           <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
+        </div>
+        <div className="mt-4">
+          <div className="text-sm font-medium">
+            已邀请 {formatPoints(invitationCount)} 人
+          </div>
+          <div className="mt-3 space-y-2">
+            {isInvitationsLoading ? (
+              <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                <Spinner />
+                <span className="ml-2">加载邀请用户中...</span>
+              </div>
+            ) : invitations.length > 0 ? (
+              invitations.map((invitation) => (
+                <div
+                  key={invitation.id || `${invitation.name || "unknown"}-${invitation.invited_at || 0}`}
+                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar className="size-8">
+                      <AvatarImage src={invitation.avatar_url} alt={invitation.name || "邀请用户头像"} />
+                      <AvatarFallback>{getInvitationInitial(invitation.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {invitation.name || "未命名用户"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatInvitationTime(invitation.invited_at)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sm font-medium text-primary">
+                    +{formatPoints(invitation.credits || 0)} 积分
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                暂无邀请记录
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
