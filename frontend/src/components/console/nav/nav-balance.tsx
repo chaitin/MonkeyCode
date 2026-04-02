@@ -349,7 +349,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const balanceContent = (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-        <div className={cn("rounded-md border p-5", subscription?.plan !== "pro" && "border-2 border-primary")}>
+        <div className="rounded-md border p-5">
           <div className="text-md font-medium">积分概览</div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-md bg-muted/40 px-4 py-3">
@@ -467,7 +467,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-md border p-5">
+        <div className={cn("rounded-md border p-5", subscription?.plan !== "pro" && "border-2 border-primary")}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-md font-medium">基础版</div>
