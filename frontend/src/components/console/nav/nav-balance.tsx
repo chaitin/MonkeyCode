@@ -2,7 +2,7 @@ import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui
 import { Dialog } from "@radix-ui/react-dialog";
 import { DialogTrigger } from "@/components/ui/dialog";
 import { DialogContent } from "@/components/ui/dialog";
-import { IconCoin, IconInfoCircle, IconWallet } from "@tabler/icons-react";
+import { IconCoin, IconWallet } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,6 @@ import { ConstsTransactionKind, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCommonData } from "../data-provider";
 
@@ -135,20 +134,6 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
       : Math.sign(normalized)
     const sign = direction >= 0 ? "+" : "-"
     return `${sign}${formatPoints(Math.abs(normalized))}`
-  }
-
-  const getTransactionChanges = (transaction: DomainTransactionLog) => {
-    const changes = [
-      transaction.amount_principal ? `总钱包 ${formatSignedAmount(transaction.amount_principal, transaction.kind)}` : null,
-      transaction.amount_daily ? `当日钱包 ${formatSignedAmount(transaction.amount_daily, transaction.kind)}` : null,
-    ].filter(Boolean)
-
-    if (changes.length > 0) {
-      return changes
-    }
-
-    const total = formatSignedAmount(transaction.amount, transaction.kind)
-    return total ? [`积分 ${total}`] : []
   }
 
   const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
@@ -345,6 +330,15 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                       <div className="mb-2 text-xs text-muted-foreground">
                         消耗 {formatPoints(proSubscriptionPrice)} 积分兑换 1 个月专业版
                       </div>
+                      <div className="mb-2 text-xs text-muted-foreground">
+                        开通专业会员后，每日赠送 1000 积分
+                      </div>
+                      <div className="mb-2 text-xs text-muted-foreground">
+                        专业会员可选择更多 AI 模型，普通会员仅可使用官方指定的免费模型
+                      </div>
+                      <div className="mb-2 text-xs text-muted-foreground">
+                        普通会员最多可同时运行 1 个任务，专业会员最多可同时运行 3 个任务
+                      </div>
                       <Button onClick={handleOpenPro} disabled={!canUpgradeToPro || isProLoading}>
                         {isProLoading && <Spinner />}
                         开通专业版
@@ -433,24 +427,18 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                       <div className={cn("flex flex-1 flex-row items-center", positiveKinds.has(transaction.kind || ConstsTransactionKind.TransactionKindVMConsumption) ? "text-primary" : "")}>
                         {formatSignedAmount(transaction.amount || ((transaction.amount_principal || 0) + (transaction.amount_daily || 0)), transaction.kind)}
                       </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex flex-row items-center gap-1 text-muted-foreground text-xs font-normal cursor-pointer">
-                            {getTransactionLabel(transaction.kind)}
-                            <IconInfoCircle className="size-3" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {transaction.remark}
-                        </TooltipContent>
-                      </Tooltip>
+                      <div className="flex flex-row items-center gap-1 text-muted-foreground text-xs font-normal">
+                        {getTransactionLabel(transaction.kind)}
+                      </div>
                       <div className="text-muted-foreground text-xs ml-4">
                         {dayjs((transaction.created_at || 0) * 1000).format("YYYY-MM-DD HH:mm:ss")}
                       </div>
                     </ItemTitle>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {getTransactionChanges(transaction).join(" / ")}
-                    </div>
+                    {transaction.remark && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {transaction.remark}
+                      </div>
+                    )}
                   </ItemContent>
                 </Item>
               ))}
