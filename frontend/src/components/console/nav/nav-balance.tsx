@@ -28,6 +28,8 @@ interface NavBalanceProps {
   variant?: "sidebar" | "header";
 }
 
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
+
 const BALANCE_NAV = [
   { id: "balance", name: "积分余额", icon: IconWallet },
   { id: "plan", name: "我的套餐", icon: IconCrown },
@@ -43,6 +45,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
   const [isProLoading, setIsProLoading] = useState(false);
   const [isAutoRenewLoading, setIsAutoRenewLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<BalanceSectionId>("balance");
   const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null);
   const [rechargingCredits, setRechargingCredits] = useState<number | null>(null);
@@ -272,19 +275,37 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
     };
   }, [loadMore]);
 
+  const openDialog = useCallback((section: BalanceSectionId = "balance") => {
+    setActiveSection(section)
+    setDialogOpen(true)
+    reloadWallet();
+    reloadSubscription();
+    setPage(1);
+    setTranscations([]);
+    setHasNextPage(false);
+    fetchTranscations(1, true);
+  }, [fetchTranscations, reloadSubscription, reloadWallet])
+
   const handleOpenChange = (open: boolean) => {
     if (open) {
-      setActiveSection("balance")
-      reloadWallet();
-      reloadSubscription();
-      setPage(1);
-      setTranscations([]);
-      setHasNextPage(false);
-      fetchTranscations(1, true);
+      openDialog("balance")
     } else {
+      setDialogOpen(false)
       setPage(1)
     }
   };
+
+  useEffect(() => {
+    const handleOpenWallet = (event: Event) => {
+      const customEvent = event as CustomEvent<{ section?: BalanceSectionId }>
+      openDialog(customEvent.detail?.section || "balance")
+    }
+
+    window.addEventListener(OPEN_WALLET_DIALOG_EVENT, handleOpenWallet as EventListener)
+    return () => {
+      window.removeEventListener(OPEN_WALLET_DIALOG_EVENT, handleOpenWallet as EventListener)
+    }
+  }, [openDialog])
 
 
   const handleCopyInvitationLink = () => {
@@ -583,7 +604,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   )
 
   return (
-    <Dialog onOpenChange={handleOpenChange}>
+    <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {variant === "header" ? (
           <Button className="hidden max-w-[260px] lg:flex" variant="ghost" size="sm">

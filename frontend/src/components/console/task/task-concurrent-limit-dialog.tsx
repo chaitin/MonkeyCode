@@ -2,6 +2,7 @@ import { ConstsTaskStatus, type DomainProjectTask } from "@/api/Api"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import { useCommonData } from "@/components/console/data-provider"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconPlayerStopFilled } from "@tabler/icons-react"
 import { useState, useEffect } from "react"
@@ -13,10 +14,16 @@ interface TaskConcurrentLimitDialogProps {
   onStopped?: () => void
 }
 
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
+
 export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: TaskConcurrentLimitDialogProps) {
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [loading, setLoading] = useState(false)
   const [stoppingId, setStoppingId] = useState<string | null>(null)
+  const { subscription } = useCommonData()
+  const isProPlan = subscription?.plan === "pro"
+  const planLabel = isProPlan ? "专业版" : "基础版"
+  const concurrentLimit = isProPlan ? 3 : 1
 
   useEffect(() => {
     if (!open) return
@@ -46,6 +53,15 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
     setStoppingId(null)
   }
 
+  const handleUpgradePlan = () => {
+    onOpenChange(false)
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+        detail: { section: "plan" },
+      }))
+    }, 0)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -53,7 +69,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
           <DialogTitle>并发任务数已达上限</DialogTitle>
         </DialogHeader>
         <div className="text-sm text-muted-foreground">
-          当前账号最多同时运行 1 个任务，请终止以下任务后再试。
+          当前账号为{planLabel}，最多同时运行 {concurrentLimit} 个任务，请终止以下任务后再试。
         </div>
         <div className="flex flex-col gap-2 mt-2">
           {loading ? (
@@ -82,6 +98,17 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
             ))
           )}
         </div>
+        {!isProPlan && (
+          <div className="text-sm">
+            <button
+              type="button"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={handleUpgradePlan}
+            >
+              升级专业版，可支持同时运行 3 个任务
+            </button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
