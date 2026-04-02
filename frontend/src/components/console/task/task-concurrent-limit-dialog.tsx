@@ -63,14 +63,14 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="min-w-0">
         <DialogHeader>
           <DialogTitle>并发任务数已达上限</DialogTitle>
         </DialogHeader>
         <div className="text-sm text-muted-foreground">
           当前账号为{planLabel}，最多同时运行 {concurrentLimit} 个任务，请终止以下任务后再试。
         </div>
-        <div className="flex flex-col gap-2 mt-2">
+        <div className="mt-2 flex min-w-0 flex-col gap-2">
           {loading ? (
             <div className="flex justify-center py-4">
               <Spinner />
@@ -79,14 +79,16 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
             <div className="text-sm text-muted-foreground text-center py-4">暂无运行中的任务</div>
           ) : (
             tasks.map((task) => (
-              <div key={task.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-                <span className="text-sm truncate flex-1">
-                  {task.summary || task.content || "未命名任务"}
-                </span>
+              <div key={task.id} className="flex min-w-0 items-center gap-3 overflow-hidden rounded-md border px-3 py-2">
+                <div className="w-0 min-w-0 flex-1 overflow-hidden">
+                  <span className="block truncate text-sm">
+                    {task.summary || task.content || "未命名任务"}
+                  </span>
+                </div>
                 <Button
                   size="sm"
                   variant="destructive"
-                  className="h-6 px-2 text-xs"
+                  className="h-6 shrink-0 px-2 text-xs"
                   disabled={stoppingId === task.id}
                   onClick={() => handleStop(task.id!)}
                 >
