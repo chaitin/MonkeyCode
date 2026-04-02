@@ -27,7 +27,8 @@ type CommonData = {
   reloadIdentities: () => void;
 
   balance: number;
-  bonus: number;
+  dailyBalance: number;
+  dailyRefreshedAt?: string;
   reloadWallet: () => void;
 
   members: DomainUser[];
@@ -63,7 +64,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loadingIdentities, setLoadingIdentities] = useState(true);
 
   const [balance, setBalance] = useState(0);
-  const [bonus, setBonus] = useState(0);
+  const [dailyBalance, setDailyBalance] = useState(0);
+  const [dailyRefreshedAt, setDailyRefreshedAt] = useState<string | undefined>(undefined);
   
   const [members, setMembers] = useState<DomainUser[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -228,8 +230,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchWallet = () => {
     apiRequest('v1UsersWalletList', {}, [], (resp) => {
       if (resp.code === 0) {
-        setBalance(resp.data?.balance / 1000);
-        setBonus(resp.data?.bonus / 1000);
+        setBalance((resp.data?.balance || 0) / 1000);
+        setDailyBalance((resp.data?.daily_balance || 0) / 1000);
+        setDailyRefreshedAt(resp.data?.daily_refreshed_at || undefined);
       } else {
         toast.error("获取余额失败: " + resp.message);
       }
@@ -315,7 +318,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reloadIdentities: fetchIdentities,
 
         balance: balance,
-        bonus: bonus,
+        dailyBalance: dailyBalance,
+        dailyRefreshedAt: dailyRefreshedAt,
         reloadWallet: fetchWallet,
 
         members: members,

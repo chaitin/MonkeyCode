@@ -1,21 +1,21 @@
 import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
 import { Dialog } from "@radix-ui/react-dialog";
-import { DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DialogContent } from "@/components/ui/dialog";
 import { IconInfoCircle, IconWallet } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
-import type { DomainTransactionLog } from "@/api/Api";
+import { ConstsTransactionKind, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCommonData } from "../data-provider";
 
 interface NavBalanceProps {
@@ -30,31 +30,90 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const { balance, bonus, reloadWallet, user } = useCommonData();
+  const { balance, dailyBalance, reloadWallet, user } = useCommonData();
 
-  const fetchTranscations = async () => {
+  const positiveKinds = new Set([
+    ConstsTransactionKind.TransactionKindSignupBonus,
+    ConstsTransactionKind.TransactionKindVoucherExchange,
+    ConstsTransactionKind.TransactionKindInvitationReward,
+    ConstsTransactionKind.TransactionKindDailyGrant,
+  ])
+
+  const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
+
+  const getTransactionLabel = (kind?: ConstsTransactionKind) => {
+    switch (kind) {
+      case ConstsTransactionKind.TransactionKindSignupBonus:
+        return "新用户注册奖励"
+      case ConstsTransactionKind.TransactionKindVoucherExchange:
+        return "通过兑换码领取"
+      case ConstsTransactionKind.TransactionKindInvitationReward:
+        return "邀请注册奖励"
+      case ConstsTransactionKind.TransactionKindVMConsumption:
+        return "开发环境消耗"
+      case ConstsTransactionKind.TransactionKindModelConsumption:
+        return "大模型消耗"
+      case ConstsTransactionKind.TransactionKindProSubscription:
+        return "兑换专业版"
+      case ConstsTransactionKind.TransactionKindProAutoRenew:
+        return "专业版自动续费"
+      case ConstsTransactionKind.TransactionKindDailyGrant:
+        return "当日钱包发放"
+      default:
+        return "交易记录"
+    }
+  }
+
+  const formatSignedAmount = (rawValue?: number, kind?: ConstsTransactionKind) => {
+    if (!rawValue) {
+      return null
+    }
+
+    const normalized = rawValue / 1000
+    const direction = normalized === 0
+      ? (positiveKinds.has(kind || ConstsTransactionKind.TransactionKindVMConsumption) ? 1 : -1)
+      : Math.sign(normalized)
+    const sign = direction >= 0 ? "+" : "-"
+    return `${sign}${formatPoints(Math.abs(normalized))}`
+  }
+
+  const getTransactionChanges = (transaction: DomainTransactionLog) => {
+    const changes = [
+      transaction.amount_principal ? `总钱包 ${formatSignedAmount(transaction.amount_principal, transaction.kind)}` : null,
+      transaction.amount_daily ? `当日钱包 ${formatSignedAmount(transaction.amount_daily, transaction.kind)}` : null,
+    ].filter(Boolean)
+
+    if (changes.length > 0) {
+      return changes
+    }
+
+    const total = formatSignedAmount(transaction.amount, transaction.kind)
+    return total ? [`积分 ${total}`] : []
+  }
+
+  const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
     setIsLoadingMore(true);
     await apiRequest('v1UsersWalletTransactionList', { 
       size: 10, 
-      page: page 
+      page: pageToLoad,
     }, [], (resp) => {
       if (resp.code === 0) {
         const newTransactions = resp.data?.transactions || [];
-        setTranscations(prev => [...prev, ...newTransactions]);
+        setTranscations(prev => replace ? newTransactions : [...prev, ...newTransactions]);
         setHasNextPage(resp.data?.page?.has_next_page || false);
-        setPage(page + 1);
+        setPage(pageToLoad + 1);
       } else {
         toast.error(resp.message || "获取交易记录失败");
       }
     });
     setIsLoadingMore(false);
-  }
+  }, []);
 
   const loadMore = useCallback(() => {
     if (hasNextPage && !isLoadingMore) {
-      fetchTranscations();
+      fetchTranscations(page);
     }
-  }, [hasNextPage, isLoadingMore]);
+  }, [fetchTranscations, hasNextPage, isLoadingMore, page]);
 
   const handleExchange = async () => {
     if (!exchangeCode.trim()) {
@@ -99,9 +158,10 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
+      setPage(1);
       setTranscations([]);
       setHasNextPage(false);
-      fetchTranscations();
+      fetchTranscations(1, true);
     } else {
       setPage(1)
     }
@@ -140,97 +200,108 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>点数余额</DialogTitle>
-          <DialogDescription>
-            点数用来兑换计算资源，详情见
-            <a className="text-primary hover:underline mx-1"
-              href="https://monkeycode.docs.baizhi.cloud/node/019b2134-e832-7425-a916-137fe8bb4c8c"
-              target="_blank">
-              说明
-            </a>
-          </DialogDescription>
+          <DialogTitle>钱包</DialogTitle>
         </DialogHeader>
-        <div className="flex gap-2 border rounded-md p-4">
-          <div className="flex flex-1 flex-row gap-2">
-            <div className="text-3xl content-end text-primary">
-              {Math.ceil(balance + bonus).toLocaleString()}
-            </div>
-            <div className="content-end text-muted-foreground">点</div>
-          </div>
-          <Separator orientation="vertical" className="mx-4" />
-          <div className="flex flex-1 flex-col gap-2">
-            <Label className="text-muted-foreground">充值余额: {Math.ceil(balance).toLocaleString()} 点</Label>
-            <Label className="text-muted-foreground">赠送余额: {Math.ceil(bonus).toLocaleString()} 点</Label>
-          </div>
-        </div>
-        <Label>兑换点数</Label>
-        <div className="flex gap-2">
-          <Input 
-            placeholder="请输入兑换码" 
-            value={exchangeCode}
-            onChange={(e) => setExchangeCode(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleExchange()}
-          />
-          <Button 
-            variant="outline" 
-            onClick={handleExchange}
-            disabled={isLoading}
-          >
-            {isLoading && <Spinner />}
-            兑换
-          </Button>
-        </div>
-        <div className="flex flex-row items-center -mb-3">
-          <Label className="">邀请注册</Label>
-          <Button variant="link" size="sm" className="cursor-pointer" onClick={() => { 
-            window.open(`https://monkeycode.docs.baizhi.cloud/node/019b2134-e832-7425-a916-137fe8bb4c8c`, '_blank')
-          }}>
-            活动说明
-          </Button>
-        </div>
-        <div className="flex flex-row justify-between gap-2 mb-2">
-          <Input value="邀请好友注册并激活，可获得 2000 点数" readOnly />
-          <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
-        </div>
-        <Label className="">交易记录</Label>
-        <ItemGroup className="flex flex-col gap-2 overflow-y-auto max-h-[300px] -mx-2 px-2">
-          {transcations.map((transaction) => (
-            <Item key={Math.random().toString()} variant="outline" size="sm">
-              <ItemContent>
-                <ItemTitle className="flex flex-row w-full">
-                  <div className={cn("flex flex-1 flex-row items-center", (transaction.kind === "signup_bonus" || transaction.kind === "voucher_exchange" || transaction.kind === "invitation_reward") ? "text-primary" : "")}>
-                    {(transaction.kind === "signup_bonus" || transaction.kind === "voucher_exchange" || transaction.kind === "invitation_reward") ? "+" : "-"}
-                    {Math.ceil((transaction.amount || 0) / 1000).toLocaleString()}
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex flex-row items-center gap-1 text-muted-foreground text-xs font-normal cursor-pointer">
-                        {transaction.kind === "signup_bonus" && "新用户注册赠送"}
-                        {transaction.kind === "voucher_exchange" && "通过兑换码领取"}
-                        {transaction.kind === "invitation_reward" && "邀请注册奖励"}
-                        {transaction.kind === "vm_consumption" && "开发环境消耗"}
-                        {transaction.kind === "model_consumption" && "大模型消耗"}
-                        <IconInfoCircle className="size-3" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {transaction.remark}
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="text-muted-foreground text-xs ml-4">
-                    {dayjs((transaction.created_at || 0) * 1000).format("YYYY-MM-DD HH:mm:ss")}
-                  </div>
-                </ItemTitle>
-              </ItemContent>
-            </Item>
-          ))}
-          {hasNextPage && (
-            <div ref={loadMoreRef} className="flex justify-center py-2">
-              {isLoadingMore && <Spinner className="size-4" />}
-            </div>
-          )}
-        </ItemGroup>
+        <Tabs defaultValue="balance" className="w-full">
+          <TabsList>
+            <TabsTrigger value="balance">积分余额</TabsTrigger>
+            <TabsTrigger value="earn">赚积分</TabsTrigger>
+            <TabsTrigger value="usage">使用记录</TabsTrigger>
+          </TabsList>
 
+          <TabsContent value="balance" className="mt-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border p-4">
+                <div className="text-sm text-muted-foreground">总积分</div>
+                <div className="mt-2 flex items-end gap-2">
+                  <div className="text-3xl text-primary">{formatPoints(balance)}</div>
+                  <div className="text-muted-foreground">点</div>
+                </div>
+              </div>
+              <div className="rounded-md border p-4">
+                <div className="text-sm text-muted-foreground">今日积分</div>
+                <div className="mt-2 flex items-end gap-2">
+                  <div className="text-3xl text-primary">{formatPoints(dailyBalance)}</div>
+                  <div className="text-muted-foreground">点</div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="earn" className="mt-2 space-y-4">
+            <div className="space-y-2">
+              <Label>兑换积分</Label>
+              <div className="flex gap-2">
+                <Input 
+                  placeholder="请输入兑换码" 
+                  value={exchangeCode}
+                  onChange={(e) => setExchangeCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleExchange()}
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={handleExchange}
+                  disabled={isLoading}
+                >
+                  {isLoading && <Spinner />}
+                  兑换
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-row items-center -mb-1">
+                <Label>邀请注册</Label>
+                <Button variant="link" size="sm" className="cursor-pointer" onClick={() => { 
+                  window.open(`https://monkeycode.docs.baizhi.cloud/node/019b2134-e832-7425-a916-137fe8bb4c8c`, '_blank')
+                }}>
+                  活动说明
+                </Button>
+              </div>
+              <div className="flex flex-row justify-between gap-2">
+                <Input value="邀请好友注册并激活，可获得 2000 积分" readOnly />
+                <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="usage" className="mt-2">
+            <ItemGroup className="flex flex-col gap-2 overflow-y-auto max-h-[320px] -mx-2 px-2">
+              {transcations.map((transaction, index) => (
+                <Item key={`${transaction.created_at || 0}-${transaction.kind || "unknown"}-${index}`} variant="outline" size="sm">
+                  <ItemContent>
+                    <ItemTitle className="flex flex-row w-full">
+                      <div className={cn("flex flex-1 flex-row items-center", positiveKinds.has(transaction.kind || ConstsTransactionKind.TransactionKindVMConsumption) ? "text-primary" : "")}>
+                        {formatSignedAmount(transaction.amount || ((transaction.amount_principal || 0) + (transaction.amount_daily || 0)), transaction.kind)}
+                      </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex flex-row items-center gap-1 text-muted-foreground text-xs font-normal cursor-pointer">
+                            {getTransactionLabel(transaction.kind)}
+                            <IconInfoCircle className="size-3" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {transaction.remark}
+                        </TooltipContent>
+                      </Tooltip>
+                      <div className="text-muted-foreground text-xs ml-4">
+                        {dayjs((transaction.created_at || 0) * 1000).format("YYYY-MM-DD HH:mm:ss")}
+                      </div>
+                    </ItemTitle>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {getTransactionChanges(transaction).join(" / ")}
+                    </div>
+                  </ItemContent>
+                </Item>
+              ))}
+              {hasNextPage && (
+                <div ref={loadMoreRef} className="flex justify-center py-2">
+                  {isLoadingMore && <Spinner className="size-4" />}
+                </div>
+              )}
+            </ItemGroup>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   )
