@@ -1,4 +1,4 @@
-import { type DomainProjectTask } from "@/api/Api";
+import { ConstsTaskStatus, type DomainProjectTask } from "@/api/Api";
 import { TaskInput } from "@/components/console/task/task-input";
 import {
   AlertDialog,
@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatTokens, getRepoNameFromUrl, renderHoverCardContent, stripMarkdown } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconAlertTriangle, IconCircleCheck, IconDotsVertical, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconDotsVertical, IconPlayerStopFilled, IconTrash } from "@tabler/icons-react";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -39,6 +39,8 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(false)
   const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
+  const [stopping, setStopping] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const loadingRef = useRef(false)
 
@@ -72,6 +74,40 @@ export default function TasksPage() {
       () => {
         setDeleting(false)
         setTaskToDelete(null)
+      }
+    )
+  }
+
+  const handleConfirmStopTask = () => {
+    if (!taskToStop?.id) {
+      setTaskToStop(null)
+      return
+    }
+    const taskId = taskToStop.id
+    setStopping(true)
+    apiRequest(
+      "v1UsersTasksStopUpdate",
+      { id: taskId },
+      [],
+      (resp) => {
+        setStopping(false)
+        setTaskToStop(null)
+        if (resp.code === 0) {
+          toast.success("任务已终止")
+          setTasks((prev) => prev.map((task) => (
+            task.id === taskId
+              ? { ...task, status: ConstsTaskStatus.TaskStatusError }
+              : task
+          )))
+          reloadProjects()
+          reloadUnlinkedTasks()
+        } else {
+          toast.error(resp.message || "终止失败")
+        }
+      },
+      () => {
+        setStopping(false)
+        setTaskToStop(null)
       }
     )
   }
@@ -178,6 +214,15 @@ export default function TasksPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="py-1">
+                  {(task.status === ConstsTaskStatus.TaskStatusPending || task.status === ConstsTaskStatus.TaskStatusProcessing) && (
+                    <DropdownMenuItem
+                      onClick={() => setTaskToStop(task)}
+                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                    >
+                      <IconPlayerStopFilled className="mr-1" />
+                      终止
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onClick={() => setTaskToDelete(task)}
                     className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
@@ -235,6 +280,29 @@ export default function TasksPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? "删除中..." : "删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认终止任务</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要终止任务「{taskToStop ? (taskToStop.summary || stripMarkdown(taskToStop.content || "")) : ""}」吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={stopping}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmStopTask()
+              }}
+              disabled={stopping}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {stopping ? "终止中..." : "终止"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
