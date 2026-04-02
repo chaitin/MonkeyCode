@@ -23,17 +23,19 @@ import (
 
 // GitIdentityUsecase Git 身份认证用例
 type GitIdentityUsecase struct {
-	cfg    *config.Config
-	repo   domain.GitIdentityRepo
-	logger *slog.Logger
+	cfg           *config.Config
+	repo          domain.GitIdentityRepo
+	tokenProvider *TokenProvider
+	logger        *slog.Logger
 }
 
 // NewGitIdentityUsecase 创建 Git 身份认证用例
 func NewGitIdentityUsecase(i *do.Injector) (domain.GitIdentityUsecase, error) {
 	return &GitIdentityUsecase{
-		cfg:    do.MustInvoke[*config.Config](i),
-		repo:   do.MustInvoke[domain.GitIdentityRepo](i),
-		logger: do.MustInvoke[*slog.Logger](i).With("module", "GitIdentityUsecase"),
+		cfg:           do.MustInvoke[*config.Config](i),
+		repo:          do.MustInvoke[domain.GitIdentityRepo](i),
+		tokenProvider: do.MustInvoke[*TokenProvider](i),
+		logger:        do.MustInvoke[*slog.Logger](i).With("module", "GitIdentityUsecase"),
 	}, nil
 }
 
@@ -119,6 +121,7 @@ func (u *GitIdentityUsecase) Update(ctx context.Context, uid uuid.UUID, req *dom
 		u.logger.ErrorContext(ctx, "failed to update git identity", "error", err, "user_id", uid, "id", req.ID)
 		return err
 	}
+	u.tokenProvider.ClearCache(req.ID)
 	return nil
 }
 
@@ -148,6 +151,7 @@ func (u *GitIdentityUsecase) Delete(ctx context.Context, uid uuid.UUID, id uuid.
 		u.logger.ErrorContext(ctx, "failed to delete git identity", "error", err, "user_id", uid, "id", id)
 		return err
 	}
+	u.tokenProvider.ClearCache(id)
 	return nil
 }
 

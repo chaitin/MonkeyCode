@@ -215,6 +215,11 @@ func (p *TokenProvider) refreshGitee(_ context.Context, gi *db.GitIdentity) (str
 	return resp.AccessToken, resp.RefreshToken, time.Unix(resp.ExpiresAt(), 0), nil
 }
 
+// ClearCache 清除指定 GitIdentity 的 token 缓存
+func (p *TokenProvider) ClearCache(identityID uuid.UUID) {
+	p.tokenCache.Delete(identityID.String())
+}
+
 // resolveSiteConfig 通过 baseURL 的 host 获取 OAuth 配置
 func (p *TokenProvider) resolveSiteConfig(ctx context.Context, baseURL string) (*domain.OAuthSiteConfig, error) {
 	if p.siteResolver == nil {
