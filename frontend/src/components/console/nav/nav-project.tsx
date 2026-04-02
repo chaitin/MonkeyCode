@@ -24,7 +24,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconChevronDown, IconChevronRight, IconCircleMinus, IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconReload, IconTrash } from "@tabler/icons-react"
+import { IconChevronDown, IconChevronRight, IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconReload, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
@@ -321,23 +321,25 @@ onOpenChange={(open) => {
               </div>
               <CollapsibleContent>
                 {unlinkedTasks.length > 0 && (
-                  <SidebarMenuSub className="ml-1 mr-0 border-none">
-                    <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                    <SidebarMenuSub className="ml-1 mr-0 border-none">
+                      <SidebarMenuSubItem className="flex flex-col gap-0.5">
                       {unlinkedTasks.map((task: DomainProjectTask, index) => {
+                        const isPending = task.status === "pending"
+                        const isProcessing = task.status === "processing"
+                        const isFinished = task.status === "finished" || task.status === "error"
                         const TaskIcon =
-                          task.status === "finished" || task.status === "error"
-                            ? IconCircleMinus
-                            : IconLoader
+                          isFinished
+                            ? IconPointFilled
+                            : isProcessing
+                              ? IconPointFilled
+                              : IconLoader
                         return (
                           <SidebarMenuSubButton
                             key={`unlinked-${task.id ?? index}-${index}`}
                             size="sm"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
-                            className={cn(
-                              (task.status === "finished" || task.status === "error") && "",
-                              "group/task-row"
-                            )}
+                            className="group/task-row"
                           >
                             <div className="flex w-full min-w-0 items-center gap-1">
                               <Link
@@ -347,7 +349,9 @@ onOpenChange={(open) => {
                                 <TaskIcon
                                   className={cn(
                                     "size-3.5 shrink-0",
-                                    (task.status === "pending" || task.status === "processing") && "animate-spin text-primary"
+                                    isPending && "animate-spin text-primary",
+                                    isProcessing && "text-green-500",
+                                    isFinished && "text-muted-foreground/40"
                                   )}
                                 />
                                 <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
@@ -449,20 +453,22 @@ onOpenChange={(open) => {
                   <SidebarMenuSub className="ml-1 mr-0 border-none">
                     <SidebarMenuSubItem className="flex flex-col gap-0.5">
                       {(project.tasks || []).map((task: DomainProjectTask, index) => {
+                        const isPending = task.status === "pending"
+                        const isProcessing = task.status === "processing"
+                        const isFinished = task.status === "finished" || task.status === "error"
                         const TaskIcon =
-                          task.status === "finished" || task.status === "error"
-                            ? IconCircleMinus
-                            : IconLoader
+                          isFinished
+                            ? IconPointFilled
+                            : isProcessing
+                              ? IconPointFilled
+                              : IconLoader
                         return (
                           <SidebarMenuSubButton
                             key={`${projectId}-${task.id ?? index}-${index}`}
                             size="sm"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
-                            className={cn(
-                              (task.status === "finished" || task.status === "error") && "",
-                              "group/task-row"
-                            )}
+                            className="group/task-row"
                           >
                             <div className="flex w-full min-w-0 items-center gap-1">
                               <Link
@@ -472,7 +478,9 @@ onOpenChange={(open) => {
                                 <TaskIcon
                                   className={cn(
                                     "size-3.5 shrink-0",
-                                    (task.status === "pending" || task.status === "processing") && "animate-spin text-primary"
+                                    isPending && "animate-spin text-primary",
+                                    isProcessing && "text-green-500",
+                                    isFinished && "text-muted-foreground/40"
                                   )}
                                 />
                                 <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
