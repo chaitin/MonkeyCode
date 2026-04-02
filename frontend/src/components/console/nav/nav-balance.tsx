@@ -434,7 +434,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
               key={option.credits}
               type="button"
               className={cn(
-                "rounded-md border p-4 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60",
+                "rounded-md border p-4 text-left transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-60",
                 selectedRechargeCredits === option.credits && "border-2 border-primary",
               )}
               onClick={() => setSelectedRechargeCredits(option.credits)}
