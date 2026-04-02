@@ -20,6 +20,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysendlog"
 	"github.com/chaitin/MonkeyCode/backend/db/notifysubscription"
@@ -112,6 +114,8 @@ func checkColumn(t, c string) error {
 			host.Table:                host.ValidColumn,
 			image.Table:               image.ValidColumn,
 			model.Table:               model.ValidColumn,
+			modelapikey.Table:         modelapikey.ValidColumn,
+			modelpricing.Table:        modelpricing.ValidColumn,
 			notifychannel.Table:       notifychannel.ValidColumn,
 			notifysendlog.Table:       notifysendlog.ValidColumn,
 			notifysubscription.Table:  notifysubscription.ValidColumn,

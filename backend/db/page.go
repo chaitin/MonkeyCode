@@ -123,6 +123,34 @@ func (_m *ModelQuery) Page(ctx context.Context, page, size int) ([]*Model, *Page
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *ModelApiKeyQuery) Page(ctx context.Context, page, size int) ([]*ModelApiKey, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *ModelPricingQuery) Page(ctx context.Context, page, size int) ([]*ModelPricing, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *NotifyChannelQuery) Page(ctx context.Context, page, size int) ([]*NotifyChannel, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {

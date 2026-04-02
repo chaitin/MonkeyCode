@@ -13,6 +13,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -270,6 +272,40 @@ func (_c *ModelCreate) AddProjectTasks(v ...*ProjectTask) *ModelCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddProjectTaskIDs(ids...)
+}
+
+// SetPricingID sets the "pricing" edge to the ModelPricing entity by ID.
+func (_c *ModelCreate) SetPricingID(id uuid.UUID) *ModelCreate {
+	_c.mutation.SetPricingID(id)
+	return _c
+}
+
+// SetNillablePricingID sets the "pricing" edge to the ModelPricing entity by ID if the given value is not nil.
+func (_c *ModelCreate) SetNillablePricingID(id *uuid.UUID) *ModelCreate {
+	if id != nil {
+		_c = _c.SetPricingID(*id)
+	}
+	return _c
+}
+
+// SetPricing sets the "pricing" edge to the ModelPricing entity.
+func (_c *ModelCreate) SetPricing(v *ModelPricing) *ModelCreate {
+	return _c.SetPricingID(v.ID)
+}
+
+// AddApikeyIDs adds the "apikeys" edge to the ModelApiKey entity by IDs.
+func (_c *ModelCreate) AddApikeyIDs(ids ...uuid.UUID) *ModelCreate {
+	_c.mutation.AddApikeyIDs(ids...)
+	return _c
+}
+
+// AddApikeys adds the "apikeys" edges to the ModelApiKey entity.
+func (_c *ModelCreate) AddApikeys(v ...*ModelApiKey) *ModelCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddApikeyIDs(ids...)
 }
 
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
@@ -583,6 +619,38 @@ func (_c *ModelCreate) createSpec() (*Model, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.PricingIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   model.PricingTable,
+			Columns: []string{model.PricingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelpricing.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ApikeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.ApikeysTable,
+			Columns: []string{model.ApikeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

@@ -105,6 +105,30 @@ func (f ModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ModelMutation", m)
 }
 
+// The ModelApiKeyFunc type is an adapter to allow the use of ordinary
+// function as ModelApiKey mutator.
+type ModelApiKeyFunc func(context.Context, *db.ModelApiKeyMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModelApiKeyFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ModelApiKeyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ModelApiKeyMutation", m)
+}
+
+// The ModelPricingFunc type is an adapter to allow the use of ordinary
+// function as ModelPricing mutator.
+type ModelPricingFunc func(context.Context, *db.ModelPricingMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModelPricingFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.ModelPricingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ModelPricingMutation", m)
+}
+
 // The NotifyChannelFunc type is an adapter to allow the use of ordinary
 // function as NotifyChannel mutator.
 type NotifyChannelFunc func(context.Context, *db.NotifyChannelMutation) (db.Value, error)

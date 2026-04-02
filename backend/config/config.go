@@ -28,6 +28,16 @@ type Config struct {
 	Session Session `mapstructure:"session"`
 	SMTP    SMTP    `mapstructure:"smtp"`
 
+	LLMProxy struct {
+		Addr                 string `mapstructure:"addr"`
+		BaseURL              string `mapstructure:"base_url"`
+		Timeout              string `mapstructure:"timeout"`
+		KeepAlive            string `mapstructure:"keep_alive"`
+		ClientPoolSize       int    `mapstructure:"client_pool_size"`
+		StreamClientPoolSize int    `mapstructure:"stream_client_pool_size"`
+		RequestLogPath       string `mapstructure:"request_log_path"`
+	} `mapstructure:"llm_proxy"`
+
 	RootPath   string        `mapstructure:"root_path"`
 	Logger     logger.Config `mapstructure:"logger"`
 	AdminToken string        `mapstructure:"admin_token"`

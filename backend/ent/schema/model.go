@@ -60,5 +60,7 @@ func (Model) Edges() []ent.Edge {
 		edge.From("groups", TeamGroup.Type).Ref("models").Through("team_group_models", TeamGroupModel.Type),
 		edge.To("vms", VirtualMachine.Type),
 		edge.To("project_tasks", ProjectTask.Type),
+		edge.To("pricing", ModelPricing.Type).Unique(),
+		edge.To("apikeys", ModelApiKey.Type),
 	}
 }

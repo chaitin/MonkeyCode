@@ -260,9 +260,27 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 		if err != nil {
 			return errcode.ErrModelAccessDenied.Wrap(err)
 		}
-		m, err := tx.Model.Query().WithUser().Where(model.ID(mid)).First(ctx)
+		m, err := tx.Model.Query().
+			WithPricing().
+			WithUser().
+			Where(model.ID(mid)).
+			First(ctx)
 		if err != nil {
 			return err
+		}
+
+		var mak *db.ModelApiKey
+		if p := m.Edges.Pricing; p != nil {
+			apikey := uuid.NewString()
+			mak, err = tx.ModelApiKey.Create().
+				SetAPIKey(apikey).
+				SetUserID(u.ID).
+				SetModelID(m.ID).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
+			m.Edges.Apikeys = append(m.Edges.Apikeys, mak)
 		}
 
 		img, err := tx.Image.Query().Where(image.ID(req.ImageID)).First(ctx)
@@ -343,6 +361,14 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetVirtualmachineID(vm.ID)
 		if err := tvm.Exec(ctx); err != nil {
 			return err
+		}
+
+		if mak != nil {
+			if err := tx.ModelApiKey.UpdateOneID(mak.ID).
+				SetVirtualmachineID(vm.ID).
+				Exec(ctx); err != nil {
+				return err
+			}
 		}
 
 		return nil

@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -37,6 +39,8 @@ type ModelQuery struct {
 	withGroups          *TeamGroupQuery
 	withVms             *VirtualMachineQuery
 	withProjectTasks    *ProjectTaskQuery
+	withPricing         *ModelPricingQuery
+	withApikeys         *ModelApiKeyQuery
 	withTeamModels      *TeamModelQuery
 	withTeamGroupModels *TeamGroupModelQuery
 	modifiers           []func(*sql.Selector)
@@ -179,6 +183,50 @@ func (_q *ModelQuery) QueryProjectTasks() *ProjectTaskQuery {
 			sqlgraph.From(model.Table, model.FieldID, selector),
 			sqlgraph.To(projecttask.Table, projecttask.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, model.ProjectTasksTable, model.ProjectTasksColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryPricing chains the current query on the "pricing" edge.
+func (_q *ModelQuery) QueryPricing() *ModelPricingQuery {
+	query := (&ModelPricingClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, selector),
+			sqlgraph.To(modelpricing.Table, modelpricing.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, model.PricingTable, model.PricingColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryApikeys chains the current query on the "apikeys" edge.
+func (_q *ModelQuery) QueryApikeys() *ModelApiKeyQuery {
+	query := (&ModelApiKeyClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, selector),
+			sqlgraph.To(modelapikey.Table, modelapikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.ApikeysTable, model.ApikeysColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -427,6 +475,8 @@ func (_q *ModelQuery) Clone() *ModelQuery {
 		withGroups:          _q.withGroups.Clone(),
 		withVms:             _q.withVms.Clone(),
 		withProjectTasks:    _q.withProjectTasks.Clone(),
+		withPricing:         _q.withPricing.Clone(),
+		withApikeys:         _q.withApikeys.Clone(),
 		withTeamModels:      _q.withTeamModels.Clone(),
 		withTeamGroupModels: _q.withTeamGroupModels.Clone(),
 		// clone intermediate query.
@@ -488,6 +538,28 @@ func (_q *ModelQuery) WithProjectTasks(opts ...func(*ProjectTaskQuery)) *ModelQu
 		opt(query)
 	}
 	_q.withProjectTasks = query
+	return _q
+}
+
+// WithPricing tells the query-builder to eager-load the nodes that are connected to
+// the "pricing" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ModelQuery) WithPricing(opts ...func(*ModelPricingQuery)) *ModelQuery {
+	query := (&ModelPricingClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withPricing = query
+	return _q
+}
+
+// WithApikeys tells the query-builder to eager-load the nodes that are connected to
+// the "apikeys" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ModelQuery) WithApikeys(opts ...func(*ModelApiKeyQuery)) *ModelQuery {
+	query := (&ModelApiKeyClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withApikeys = query
 	return _q
 }
 
@@ -591,12 +663,14 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 	var (
 		nodes       = []*Model{}
 		_spec       = _q.querySpec()
-		loadedTypes = [7]bool{
+		loadedTypes = [9]bool{
 			_q.withUser != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
 			_q.withVms != nil,
 			_q.withProjectTasks != nil,
+			_q.withPricing != nil,
+			_q.withApikeys != nil,
 			_q.withTeamModels != nil,
 			_q.withTeamGroupModels != nil,
 		}
@@ -653,6 +727,19 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 		if err := _q.loadProjectTasks(ctx, query, nodes,
 			func(n *Model) { n.Edges.ProjectTasks = []*ProjectTask{} },
 			func(n *Model, e *ProjectTask) { n.Edges.ProjectTasks = append(n.Edges.ProjectTasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withPricing; query != nil {
+		if err := _q.loadPricing(ctx, query, nodes, nil,
+			func(n *Model, e *ModelPricing) { n.Edges.Pricing = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withApikeys; query != nil {
+		if err := _q.loadApikeys(ctx, query, nodes,
+			func(n *Model) { n.Edges.Apikeys = []*ModelApiKey{} },
+			func(n *Model, e *ModelApiKey) { n.Edges.Apikeys = append(n.Edges.Apikeys, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -869,6 +956,63 @@ func (_q *ModelQuery) loadProjectTasks(ctx context.Context, query *ProjectTaskQu
 	}
 	query.Where(predicate.ProjectTask(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(model.ProjectTasksColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ModelID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "model_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ModelQuery) loadPricing(ctx context.Context, query *ModelPricingQuery, nodes []*Model, init func(*Model), assign func(*Model, *ModelPricing)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Model)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(modelpricing.FieldModelID)
+	}
+	query.Where(predicate.ModelPricing(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(model.PricingColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ModelID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "model_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ModelQuery) loadApikeys(ctx context.Context, query *ModelApiKeyQuery, nodes []*Model, init func(*Model), assign func(*Model, *ModelApiKey)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Model)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(modelapikey.FieldModelID)
+	}
+	query.Where(predicate.ModelApiKey(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(model.ApikeysColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

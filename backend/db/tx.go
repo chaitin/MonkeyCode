@@ -30,6 +30,10 @@ type Tx struct {
 	Image *ImageClient
 	// Model is the client for interacting with the Model builders.
 	Model *ModelClient
+	// ModelApiKey is the client for interacting with the ModelApiKey builders.
+	ModelApiKey *ModelApiKeyClient
+	// ModelPricing is the client for interacting with the ModelPricing builders.
+	ModelPricing *ModelPricingClient
 	// NotifyChannel is the client for interacting with the NotifyChannel builders.
 	NotifyChannel *NotifyChannelClient
 	// NotifySendLog is the client for interacting with the NotifySendLog builders.
@@ -217,6 +221,8 @@ func (tx *Tx) init() {
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
 	tx.Model = NewModelClient(tx.config)
+	tx.ModelApiKey = NewModelApiKeyClient(tx.config)
+	tx.ModelPricing = NewModelPricingClient(tx.config)
 	tx.NotifyChannel = NewNotifyChannelClient(tx.config)
 	tx.NotifySendLog = NewNotifySendLogClient(tx.config)
 	tx.NotifySubscription = NewNotifySubscriptionClient(tx.config)
