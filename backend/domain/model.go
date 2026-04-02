@@ -44,6 +44,7 @@ type Model struct {
 	Owner            *Owner               `json:"owner,omitempty"`
 	InterfaceType    consts.InterfaceType `json:"interface_type"`
 	IsFree           bool                 `json:"is_free"`
+	AccessLevel      string               `json:"access_level"` // 访问级别 basic | pro
 	LastCheckAt      int64                `json:"last_check_at"`
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
