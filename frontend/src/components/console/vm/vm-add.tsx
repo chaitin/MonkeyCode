@@ -144,6 +144,18 @@ export default function VmAddDialog({
       return
     }
 
+    const selectedCpuOption = cpuOptions.find(opt => opt.value === cpu)
+    if (!selectedCpuOption) {
+      toast.error("请选择 CPU")
+      return
+    }
+
+    const selectedMemoryOption = memoryOptions.find(opt => opt.value === memory)
+    if (!selectedMemoryOption) {
+      toast.error("请选择内存")
+      return
+    }
+
     // 构建请求参数
     const requestData: DomainCreateVMReq = {
       git_identity_id: selectedIdentityId || undefined,
@@ -156,31 +168,15 @@ export default function VmAddDialog({
         repo_url: repoUrl,
         branch: repoBranch || undefined,
       },
-      resource: {},
+      resource: {
+        cpu: selectedCpuOption.cores,
+        memory: selectedMemoryOption.memoryMB,
+      },
     }
     if (life) {
       const selectedOption = lifeOptions.find(opt => opt.value === life)
       if (selectedOption) {
         requestData.life = selectedOption.seconds
-      }
-    }
-    if (cpu || memory) {
-      requestData.resource = {}
-      if (cpu) {
-        const selectedCpuOption = cpuOptions.find(opt => opt.value === cpu)
-        if (selectedCpuOption) {
-          requestData.resource.cpu = selectedCpuOption.cores
-        }
-      }
-      if (memory) {
-        const selectedMemoryOption = memoryOptions.find(opt => opt.value === memory)
-        if (selectedMemoryOption) {
-          requestData.resource.memory = selectedMemoryOption.memoryMB
-        }
-      }
-      // 如果 resource 对象为空，则不添加
-      if (Object.keys(requestData.resource).length === 0) {
-        delete requestData.resource
       }
     }
 

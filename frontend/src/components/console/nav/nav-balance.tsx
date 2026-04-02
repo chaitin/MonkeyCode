@@ -25,7 +25,8 @@ interface NavBalanceProps {
 export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
   const [exchangeCode, setExchangeCode] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isExchangeLoading, setIsExchangeLoading] = useState(false);
+  const [isProLoading, setIsProLoading] = useState(false);
   const [page, setPage] = useState<number>(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -87,6 +88,8 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
 
   const remainingPoints = balance + dailyBalance
   const triggerPlanLabel = getTriggerPlanLabel(subscription?.plan)
+  const proSubscriptionPrice = 10000
+  const canUpgradeToPro = remainingPoints >= proSubscriptionPrice
 
   const getTransactionLabel = (kind?: ConstsTransactionKind) => {
     switch (kind) {
@@ -168,7 +171,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
       return;
     }
     
-    setIsLoading(true);
+    setIsExchangeLoading(true);
     await apiRequest('v1UsersWalletExchangeCreate', { code: exchangeCode.trim() }, [], (resp) => {
       if (resp.code === 0) {
         toast.success("兑换成功");
@@ -178,7 +181,27 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
         toast.error(resp.message || "兑换失败");
       }
     })
-    setIsLoading(false);
+    setIsExchangeLoading(false);
+  }
+
+  const handleOpenPro = async () => {
+    if (!canUpgradeToPro) {
+      toast.error("积分不足");
+      return;
+    }
+
+    setIsProLoading(true);
+    await apiRequest('v1UsersSubscriptionProCreate', {}, [], (resp) => {
+      if (resp.code === 0) {
+        toast.success("开通专业版成功");
+        reloadWallet();
+        reloadSubscription();
+        fetchTranscations(1, true);
+      } else {
+        toast.error(resp.message || "开通专业版失败");
+      }
+    })
+    setIsProLoading(false);
   }
 
   useEffect(() => {
@@ -286,6 +309,17 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                     <div className="text-muted-foreground">有效期至</div>
                     <div>{formatSubscriptionExpiry(subscription?.expires_at)}</div>
                   </div>
+                  {subscription?.plan !== "pro" && (
+                    <div className="pt-2">
+                      <div className="mb-2 text-xs text-muted-foreground">
+                        消耗 {formatPoints(proSubscriptionPrice)} 积分兑换 1 个月专业版
+                      </div>
+                      <Button onClick={handleOpenPro} disabled={!canUpgradeToPro || isProLoading}>
+                        {isProLoading && <Spinner />}
+                        开通专业版
+                      </Button>
+                    </div>
+                  )}
                   {subscription?.source && (
                     <div className="flex items-center justify-between gap-4">
                       <div className="text-muted-foreground">开通方式</div>
@@ -316,9 +350,9 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                 <Button 
                   variant="outline" 
                   onClick={handleExchange}
-                  disabled={isLoading}
+                  disabled={isExchangeLoading}
                 >
-                  {isLoading && <Spinner />}
+                  {isExchangeLoading && <Spinner />}
                   兑换
                 </Button>
               </div>
