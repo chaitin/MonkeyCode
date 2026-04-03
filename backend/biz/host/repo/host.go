@@ -323,10 +323,12 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 		}
 
 		var m *db.Model
+		var mak *db.ModelApiKey
 		if len(req.ModelID) > 0 {
 			switch req.ModelID {
 			case "economy":
 				m, err = tx.Model.Query().
+					WithPricing().
 					WithUser().
 					Where(model.HasUserWith(user.Role(consts.UserRoleAdmin))).
 					Where(model.Remark(req.ModelID)).
@@ -339,9 +341,24 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 				if err != nil {
 					return err
 				}
-				m, err = tx.Model.Query().WithUser().Where(model.ID(mid)).First(ctx)
+				m, err = tx.Model.Query().WithPricing().WithUser().Where(model.ID(mid)).First(ctx)
 				if err != nil {
 					return err
+				}
+			}
+
+			if m != nil {
+				if p := m.Edges.Pricing; p != nil {
+					apikey := uuid.NewString()
+					mak, err = tx.ModelApiKey.Create().
+						SetAPIKey(apikey).
+						SetUserID(u.ID).
+						SetModelID(m.ID).
+						Save(ctx)
+					if err != nil {
+						return err
+					}
+					m.Edges.Apikeys = append(m.Edges.Apikeys, mak)
 				}
 			}
 		}
@@ -389,9 +406,21 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 		if len(req.ModelID) > 0 {
 			crt.SetModelID(m.ID)
 		}
+		if req.GitIdentityID != uuid.Nil {
+			crt.SetGitIdentityID(req.GitIdentityID)
+		}
 		if err := crt.Exec(ctx); err != nil {
 			return err
 		}
+
+		if mak != nil {
+			if err := tx.ModelApiKey.UpdateOneID(mak.ID).
+				SetVirtualmachineID(vm.ID).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	return res, err

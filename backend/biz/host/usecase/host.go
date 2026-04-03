@@ -41,6 +41,7 @@ type HostUsecase struct {
 	repo             domain.HostRepo
 	taskRepo         domain.TaskRepo
 	userRepo         domain.UserRepo
+	girepo           domain.GitIdentityRepo
 	notifyDispatcher *dispatcher.Dispatcher
 	vmSleepQueue     *delayqueue.VMSleepQueue
 	vmNotifyQueue    *delayqueue.VMNotifyQueue
@@ -59,6 +60,7 @@ func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 		repo:             do.MustInvoke[domain.HostRepo](i),
 		taskRepo:         do.MustInvoke[domain.TaskRepo](i),
 		userRepo:         do.MustInvoke[domain.UserRepo](i),
+		girepo:           do.MustInvoke[domain.GitIdentityRepo](i),
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
 		vmSleepQueue:     do.MustInvoke[*delayqueue.VMSleepQueue](i),
 		vmNotifyQueue:    do.MustInvoke[*delayqueue.VMNotifyQueue](i),
@@ -528,6 +530,12 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 		h.logger.InfoContext(ctx, "create vm", "req", req, "kind", kind, "seconds", req.Life)
 
 		temperature := new(float32)
+		if model != nil {
+			if keys := model.Edges.Apikeys; len(keys) > 0 {
+				model.APIKey = keys[0].APIKey
+				model.BaseURL = h.cfg.LLMProxy.BaseURL + "/v1"
+			}
+		}
 		var LLMConfig taskflow.LLMProviderReq
 		if model != nil {
 			LLMConfig = taskflow.LLMProviderReq{
@@ -553,11 +561,17 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 			Branch: branch,
 		}
 		if req.GitIdentityID != uuid.Nil {
+			identity, err := h.girepo.Get(ctx, req.GitIdentityID)
+			if err != nil {
+				return nil, fmt.Errorf("get git identity: %w", err)
+			}
 			t, err := h.tokenProvider.GetToken(ctx, req.GitIdentityID)
 			if err != nil {
 				return nil, fmt.Errorf("get git token: %w", err)
 			}
 			git.Token = t
+			git.Username = identity.Username
+			git.Email = identity.Email
 		}
 
 		tfvm, err := h.taskflow.VirtualMachiner().Create(
