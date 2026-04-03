@@ -445,18 +445,133 @@ func (g *Gitee) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*doma
 
 // Branches 实现 GitPlatformClient 接口
 func (g *Gitee) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
-	// TODO: 实现 Gitee branches 列表
-	return nil, fmt.Errorf("not implemented")
+	resp, err := ListBranches(ctx, opts.Token, opts.Owner, opts.Repo, opts.Page, opts.PerPage, opts.IsOAuth)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.BranchInfo, 0, len(resp))
+	for _, b := range resp {
+		result = append(result, &domain.BranchInfo{Name: b.Name})
+	}
+	return result, nil
 }
 
 // DeleteWebhook 实现 GitPlatformClient 接口
 func (g *Gitee) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) error {
-	// TODO: 实现 Gitee webhook 删除
-	return fmt.Errorf("not implemented")
+	owner, repo, err := parseGiteeRepoPath(opts.RepoURL)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	// 分页查找匹配的 webhook
+	for page := 1; ; page++ {
+		apiURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/hooks?page=%d&per_page=100",
+			url.PathEscape(owner), url.PathEscape(repo), page)
+		if opts.IsOAuth {
+			apiURL += "&access_token=" + url.QueryEscape(opts.Token)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		if !opts.IsOAuth {
+			req.Header.Set("Authorization", "token "+opts.Token)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("list hooks: %w", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("list hooks returned status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var hooks []struct {
+			ID  int64  `json:"id"`
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(body, &hooks); err != nil {
+			return fmt.Errorf("unmarshal hooks: %w", err)
+		}
+		if len(hooks) == 0 {
+			break
+		}
+		for _, hook := range hooks {
+			if hook.URL == opts.WebhookURL {
+				deleteURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/hooks/%d",
+					url.PathEscape(owner), url.PathEscape(repo), hook.ID)
+				if opts.IsOAuth {
+					deleteURL += "?access_token=" + url.QueryEscape(opts.Token)
+				}
+				delReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, deleteURL, nil)
+				if err != nil {
+					return fmt.Errorf("create delete request: %w", err)
+				}
+				if !opts.IsOAuth {
+					delReq.Header.Set("Authorization", "token "+opts.Token)
+				}
+				delResp, err := client.Do(delReq)
+				if err != nil {
+					return fmt.Errorf("delete hook %d: %w", hook.ID, err)
+				}
+				delResp.Body.Close()
+				if delResp.StatusCode != http.StatusOK && delResp.StatusCode != http.StatusNoContent {
+					return fmt.Errorf("delete hook %d returned status %d", hook.ID, delResp.StatusCode)
+				}
+				return nil
+			}
+		}
+	}
+	return nil
 }
 
 // CreateWebhook 实现 GitPlatformClient 接口
 func (g *Gitee) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOptions) error {
-	// TODO: 实现 Gitee webhook 创建
-	return fmt.Errorf("not implemented")
+	owner, repo, err := parseGiteeRepoPath(opts.RepoURL)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	apiURL := fmt.Sprintf("https://gitee.com/api/v5/repos/%s/%s/hooks",
+		url.PathEscape(owner), url.PathEscape(repo))
+
+	payload := map[string]any{
+		"url":                   opts.WebhookURL,
+		"password":              opts.SecretToken,
+		"push_events":          true,
+		"merge_requests_events": true,
+		"note_events":          true,
+	}
+	if opts.IsOAuth {
+		payload["access_token"] = opts.Token
+	}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if !opts.IsOAuth {
+		req.Header.Set("Authorization", "token "+opts.Token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("create webhook: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("create webhook returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }
