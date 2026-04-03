@@ -32,8 +32,9 @@ export default function StartDevelopTaskDialog({
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const [branches, setBranches] = useState<string[]>([])
-  const [selectedBranch, setSelectedBranch] = useState<string>('')
+  const [selectedBranch, setSelectedBranch] = useState<string>('main')
   const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
+  const [branchFetchFailed, setBranchFetchFailed] = useState<boolean>(false)
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const { images, models, hosts, subscription } = useCommonData()
@@ -47,17 +48,21 @@ export default function StartDevelopTaskDialog({
     if (project.platform === ConstsGitPlatform.GitPlatformInternal) {
       setSelectedBranch('')
       setBranches([])
+      setBranchFetchFailed(false)
       return
     }
 
     setLoadingBranches(true)
+    setBranchFetchFailed(false)
+    setBranches([])
+    setSelectedBranch('main')
     
     try {
       // 直接使用 full_name 字段
       const escapedRepoFullName = project?.full_name || ''
       
       if (!escapedRepoFullName) {
-        toast.error('无法获取仓库信息')
+        setBranchFetchFailed(true)
         setLoadingBranches(false)
         return
       }
@@ -69,6 +74,12 @@ export default function StartDevelopTaskDialog({
         if (resp.code === 0 && resp.data) {
           const branchList = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
           setBranches(branchList)
+
+          if (branchList.length === 0) {
+            setBranchFetchFailed(true)
+            setSelectedBranch('main')
+            return
+          }
           
           // 优先选择 main 或 master，否则选择第一个
           if (branchList.includes('main')) {
@@ -79,11 +90,15 @@ export default function StartDevelopTaskDialog({
             setSelectedBranch(branchList[0])
           }
         } else {
+          setBranchFetchFailed(true)
+          setSelectedBranch('main')
           toast.error('获取分支列表失败: ' + resp.message)
         }
       })
     } catch (error) {
       console.error('Fetch branches error:', error)
+      setBranchFetchFailed(true)
+      setSelectedBranch('main')
       toast.error('获取分支列表失败')
     } finally {
       setLoadingBranches(false)
@@ -98,6 +113,7 @@ export default function StartDevelopTaskDialog({
       if (justOpened) {
         setUserMessage('')
         setSelectedModelId(selectPreferredTaskModel(models, subscription))
+        setSelectedBranch('main')
       }
       fetchBranches()
     } else {
@@ -124,8 +140,13 @@ export default function StartDevelopTaskDialog({
       return
     }
 
-    if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && !selectedBranch) {
-      toast.error('请选择分支')
+    if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && loadingBranches) {
+      toast.error('分支列表加载中，请稍后')
+      return
+    }
+
+    if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && !selectedBranch.trim()) {
+      toast.error('请输入分支名称')
       return
     }
 
@@ -144,7 +165,7 @@ export default function StartDevelopTaskDialog({
       image_id: selectImage(images, false),
       host_id: selectHost(hosts, false),
       repo: {
-        branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch,
+        branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch.trim(),
       },
       resource: {
         core: 2,
@@ -190,27 +211,34 @@ export default function StartDevelopTaskDialog({
           {(project?.platform !== ConstsGitPlatform.GitPlatformInternal) && (
             <div className="space-y-2">
               <Label>代码仓库分支</Label>
-              <Select value={selectedBranch} onValueChange={setSelectedBranch} disabled={loadingBranches || branches.length === 0}>
-                <SelectTrigger className="w-full">
-                  {loadingBranches ? (
-                    <div className="flex items-center gap-2">
-                      <Spinner className="size-4" />
-                      <span>加载中...</span>
-                    </div>
-                  ) : (
+              {loadingBranches ? (
+                <div className="flex h-10 items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground">
+                  <Spinner className="size-4" />
+                  <span>加载中...</span>
+                </div>
+              ) : branchFetchFailed || branches.length === 0 ? (
+                <Input
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  placeholder="请输入分支名称"
+                  required
+                />
+              ) : (
+                <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="请选择分支" />
-                  )}
-                </SelectTrigger>
-                <SelectContent className="break-all">
-                  {branches.map((branch) => (
-                    <SelectItem key={branch} value={branch}>
-                      {branch}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-               </Select>
-             </div>
-           )}
+                  </SelectTrigger>
+                  <SelectContent className="break-all">
+                    {branches.map((branch) => (
+                      <SelectItem key={branch} value={branch}>
+                        {branch}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label>大模型</Label>
             <Select value={selectedModelId} onValueChange={setSelectedModelId}>
