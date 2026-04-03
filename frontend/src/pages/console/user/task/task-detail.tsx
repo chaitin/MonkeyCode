@@ -7,7 +7,7 @@ import { MessageItem, type MessageType } from "@/components/console/task/message
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
-import type { AvailableCommands, RepoFileChange } from "@/components/console/task/task-shared"
+import type { AvailableCommands } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import { Button } from "@/components/ui/button"
@@ -38,8 +38,8 @@ export default function TaskDetailPage() {
   const [sending, setSending] = React.useState(false)
   const [historyMessages, setHistoryMessages] = React.useState<MessageType[]>([])
   const [liveMessages, setLiveMessages] = React.useState<MessageType[]>([])
-  const [fileChangesMap, setFileChangesMap] = React.useState<Map<string, RepoFileChange>>(new Map())
-  const [changedPaths, setChangedPaths] = React.useState<string[]>([])
+  const [fileChangesCount, setFileChangesCount] = React.useState(0)
+  const [fileRefreshSignal, setFileRefreshSignal] = React.useState(0)
   const [historyCursor, setHistoryCursor] = React.useState<string | null>(null)
   const [historyHasMore, setHistoryHasMore] = React.useState(true)
   const [historyLoaded, setHistoryLoaded] = React.useState(false)
@@ -241,8 +241,8 @@ export default function TaskDetailPage() {
     setSending(false)
     setHistoryMessages([])
     setLiveMessages([])
-    setFileChangesMap(new Map())
-    setChangedPaths([])
+    setFileChangesCount(0)
+    setFileRefreshSignal(0)
     setHistoryCursor(null)
     setHistoryHasMore(true)
     setHistoryLoaded(false)
@@ -268,25 +268,17 @@ export default function TaskDetailPage() {
     return result
   }, [taskId])
 
-  const fetchFileChanges = React.useCallback(async () => {
+  const syncFileChangesCount = React.useCallback(async () => {
     const changes = await taskControlClientRef.current?.getFileChanges()
     if (cancelledRef.current || changes === null || changes === undefined) return
-
-    const nextMap = new Map<string, RepoFileChange>()
-    const nextPaths: string[] = []
-    changes.forEach((change) => {
-      nextMap.set(change.path, change)
-      nextPaths.push(change.path)
-    })
-
-    setFileChangesMap(nextMap)
-    setChangedPaths(nextPaths)
+    setFileChangesCount(changes.length)
   }, [])
 
   const applyRepoFileChange = React.useCallback(() => {
     if (cancelledRef.current) return
-    fetchFileChanges()
-  }, [fetchFileChanges])
+    setFileRefreshSignal((prev) => prev + 1)
+    void syncFileChangesCount()
+  }, [syncFileChangesCount])
 
   const fetchPortForwards = React.useCallback(async () => {
     const ports = await taskControlClientRef.current?.getPortForwardList()
@@ -433,11 +425,6 @@ export default function TaskDetailPage() {
   }, [fetchTaskRounds, historyLoaded, historyLoading, liveMessages.length, task])
 
   React.useEffect(() => {
-    if (!vmOnline || activeSidePanel !== "files") return
-    fetchFileChanges()
-  }, [activeSidePanel, fetchFileChanges, vmOnline])
-
-  React.useEffect(() => {
     if (!vmOnline || !previewDialogOpen) return
     fetchPortForwards()
   }, [fetchPortForwards, previewDialogOpen, vmOnline])
@@ -575,7 +562,7 @@ export default function TaskDetailPage() {
               disabled={!vmOnline}
             >
               <IconFile className="size-3.5" />
-              文件{changedPaths.length > 0 ? ` (${changedPaths.length})` : ""}
+              文件{fileChangesCount > 0 ? ` (${fileChangesCount})` : ""}
             </Button>
             <Button
               variant="ghost"
@@ -706,10 +693,9 @@ export default function TaskDetailPage() {
                         <div className="flex-1 min-h-0 overflow-hidden">
                           <TaskFileExplorer
                             disabled={!vmOnline}
-                            fileChangesMap={fileChangesMap}
-                            changedPaths={changedPaths}
-                            taskManager={taskControlClientRef.current}
-                            onRefresh={fetchFileChanges}
+                            repository={taskControlClientRef.current}
+                            refreshSignal={fileRefreshSignal}
+                            onChangesCountChange={setFileChangesCount}
                             onClosePanel={() => setActiveSidePanel(null)}
                             envid={envid}
                           />

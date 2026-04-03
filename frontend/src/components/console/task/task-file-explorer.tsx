@@ -46,10 +46,9 @@ import "react-diff-view/style/index.css"
 interface TaskFileExplorerProps {
   className?: string
   disabled?: boolean
-  fileChangesMap: Map<string, RepoFileChange>
-  changedPaths?: string[]
-  taskManager: TaskRepositoryClient | null
-  onRefresh?: () => Promise<void> | void
+  repository: TaskRepositoryClient | null
+  refreshSignal?: number
+  onChangesCountChange?: (count: number) => void
   onClosePanel?: () => void
   envid?: string
 }
@@ -349,16 +348,18 @@ DirNode.displayName = 'DirNode'
 export const TaskFileExplorer = ({
   className,
   disabled,
-  fileChangesMap,
-  changedPaths,
-  taskManager,
-  onRefresh,
+  repository,
+  refreshSignal,
+  onChangesCountChange,
   onClosePanel,
   envid,
 }: TaskFileExplorerProps): React.JSX.Element => {
   const rootRef = useRef<DirNodeRef>(null)
+  const lastRefreshSignalRef = useRef<number | undefined>(undefined)
   const pendingTreeRefreshRef = useRef(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [fileChangesMap, setFileChangesMap] = useState<Map<string, RepoFileChange>>(new Map())
+  const [changedPaths, setChangedPaths] = useState<string[]>([])
   const [currentFile, setCurrentFile] = useState<FileItem | null>(null)
   const [fileLoading, setFileLoading] = useState(false)
   const [panelMode, setPanelMode] = useState<FilePanelMode>("tree")
@@ -372,23 +373,46 @@ export const TaskFileExplorer = ({
     setRefreshKey((prev) => prev + 1)
   }, [])
 
-  const refreshChanges = useCallback(async () => {
-    setChangesLoading(true)
-    try {
-      await onRefresh?.()
-    } finally {
-      setChangesLoading(false)
+  const loadFileChanges = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setChangesLoading(true)
     }
-  }, [onRefresh])
+    try {
+      const changes = await repository?.getFileChanges()
+      if (changes === null || changes === undefined) {
+        return null
+      }
+
+      const nextMap = new Map<string, RepoFileChange>()
+      const nextPaths: string[] = []
+      changes.forEach((change) => {
+        nextMap.set(change.path, change)
+        nextPaths.push(change.path)
+      })
+
+      setFileChangesMap(nextMap)
+      setChangedPaths(nextPaths)
+      onChangesCountChange?.(nextPaths.length)
+      return changes
+    } finally {
+      if (showLoading) {
+        setChangesLoading(false)
+      }
+    }
+  }, [onChangesCountChange, repository])
+
+  const refreshChanges = useCallback(async () => {
+    await loadFileChanges(true)
+  }, [loadFileChanges])
 
   const handleRefresh = useCallback(async () => {
     if (panelMode === "tree") {
       refreshFileTree()
-      void onRefresh?.()
+      void loadFileChanges(false)
       return
     }
     await refreshChanges()
-  }, [onRefresh, panelMode, refreshChanges, refreshFileTree])
+  }, [loadFileChanges, panelMode, refreshChanges, refreshFileTree])
 
   useEffect(() => {
     if (disabled) {
@@ -396,6 +420,22 @@ export const TaskFileExplorer = ({
     }
     void handleRefresh()
   }, [disabled, handleRefresh])
+
+  useEffect(() => {
+    if (disabled || refreshSignal === undefined) {
+      return
+    }
+    if (lastRefreshSignalRef.current === undefined) {
+      lastRefreshSignalRef.current = refreshSignal
+      return
+    }
+    if (refreshSignal === lastRefreshSignalRef.current) {
+      return
+    }
+
+    lastRefreshSignalRef.current = refreshSignal
+    void loadFileChanges(panelMode === "changes")
+  }, [disabled, loadFileChanges, panelMode, refreshSignal])
 
   const refreshPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -432,13 +472,13 @@ export const TaskFileExplorer = ({
   const fetchFileContent = useCallback(async (path: string) => {
     let bytes: Uint8Array | null = null
     setFileLoading(true)
-    if (taskManager) {
-      bytes = await taskManager.getFileContent(path)
+    if (repository) {
+      bytes = await repository.getFileContent(path)
       if (!bytes) toast.error(`文件读取失败`)
     }
     setFileLoading(false)
     return bytes
-  }, [taskManager])
+  }, [repository])
 
   const openFile = useCallback(async (path: string) => {
     if (!envid || !path) return null
@@ -511,10 +551,10 @@ export const TaskFileExplorer = ({
     if (!currentFile) return
     setDiffLoading(true)
     setDiffContent("")
-    const diff = await taskManager?.getFileDiff(currentFile.path)
+    const diff = await repository?.getFileDiff(currentFile.path)
     setDiffContent(diff || "")
     setDiffLoading(false)
-  }, [currentFile, taskManager])
+  }, [currentFile, repository])
 
   useEffect(() => {
     if (panelMode !== "changes" || !currentFile) {
@@ -736,7 +776,7 @@ export const TaskFileExplorer = ({
             depth={0}
             onFileSelect={handleFileSelect}
             defaultExpanded
-            taskManager={taskManager}
+            taskManager={repository}
             fileChangesMap={fileChangesMap}
             envid={envid}
             onRefresh={handleRefresh}
