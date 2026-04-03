@@ -766,11 +766,11 @@ export const TaskFileExplorer = ({
                 }
               }}
             >
-              <ToggleGroupItem value="tree" className="h-7 px-2 text-xs gap-1.5">
+              <ToggleGroupItem value="tree" className="h-7 px-2 text-xs gap-1.5 data-[state=on]:text-primary hover:data-[state=on]:text-primary">
                 <IconFolder className="size-3.5" />
                 目录
               </ToggleGroupItem>
-              <ToggleGroupItem value="changes" className="h-7 px-2 text-xs gap-1.5">
+              <ToggleGroupItem value="changes" className="h-7 px-2 text-xs gap-1.5 data-[state=on]:text-primary hover:data-[state=on]:text-primary">
                 <IconFileDiff className="size-3.5" />
                 变更
               </ToggleGroupItem>
