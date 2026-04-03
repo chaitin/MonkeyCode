@@ -706,7 +706,6 @@ export default function TaskDetailPage() {
                         <div className="flex-1 min-h-0 overflow-hidden">
                           <TaskFileExplorer
                             disabled={!vmOnline}
-                            streamStatus={streamStatus}
                             fileChangesMap={fileChangesMap}
                             changedPaths={changedPaths}
                             taskManager={taskControlClientRef.current}

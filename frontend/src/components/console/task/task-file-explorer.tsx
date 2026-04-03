@@ -4,13 +4,11 @@ import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { IconCloudOff, IconFileCode, IconFileDiff, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconReport, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
-import type { TaskMessageHandlerStatus } from "./task-message-handler"
 import {
   RepoFileEntryMode,
   type RepoFileChange,
   type RepoFileStatus,
   type TaskRepositoryClient,
-  type TaskStreamStatus,
 } from "./task-shared"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { FileActionsDropdown } from "./file-actions-dropdown"
@@ -48,11 +46,10 @@ import "react-diff-view/style/index.css"
 interface TaskFileExplorerProps {
   className?: string
   disabled?: boolean
-  streamStatus?: TaskStreamStatus | TaskMessageHandlerStatus
   fileChangesMap: Map<string, RepoFileChange>
   changedPaths?: string[]
   taskManager: TaskRepositoryClient | null
-  onRefresh?: () => void
+  onRefresh?: () => Promise<void> | void
   onClosePanel?: () => void
   envid?: string
 }
@@ -189,12 +186,11 @@ const DirNode = forwardRef<DirNodeRef, {
   onFileSelect?: (path: string, file: RepoFileStatus) => void
   defaultExpanded?: boolean
   taskManager: TaskRepositoryClient | null
-  streamStatus?: TaskStreamStatus | TaskMessageHandlerStatus
   fileChangesMap: Map<string, RepoFileChange>
   envid?: string
   onRefresh?: () => void
   selectedPath?: string | null
-}>(({ file, depth, onFileSelect, defaultExpanded = false, streamStatus, taskManager, fileChangesMap, envid, onRefresh, selectedPath }, ref) => {
+}>(({ file, depth, onFileSelect, defaultExpanded = false, taskManager, fileChangesMap, envid, onRefresh, selectedPath }, ref) => {
   const [children, setChildren] = useState<RepoFileStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -245,12 +241,6 @@ const DirNode = forwardRef<DirNodeRef, {
     setExpanded(open)
     if (open && !loaded) fetchChildren(true)
   }, [loaded, fetchChildren])
-
-  useEffect(() => {
-    if (defaultExpanded && !loaded && (streamStatus === 'waiting' || streamStatus === 'executing' || streamStatus === 'connected')) {
-      fetchChildren(true)
-    }
-  }, [defaultExpanded, loaded, fetchChildren, streamStatus])
 
   const hasChangesInChildren = useMemo(() => {
     if (fileChangesMap.has(fullPath)) return true
@@ -359,7 +349,6 @@ DirNode.displayName = 'DirNode'
 export const TaskFileExplorer = ({
   className,
   disabled,
-  streamStatus,
   fileChangesMap,
   changedPaths,
   taskManager,
@@ -375,27 +364,37 @@ export const TaskFileExplorer = ({
   const [panelMode, setPanelMode] = useState<FilePanelMode>("tree")
   const [diffContent, setDiffContent] = useState("")
   const [diffLoading, setDiffLoading] = useState(false)
+  const [changesLoading, setChangesLoading] = useState(false)
   const sortedChangedPaths = useMemo(() => [...fileChangesMap.keys()].sort((a, b) => a.localeCompare(b)), [fileChangesMap])
-
-  const handleRefresh = useCallback(() => {
-    setRefreshKey((prev) => prev + 1)
-    onRefresh?.()
-  }, [onRefresh])
 
   const refreshFileTree = useCallback(() => {
     pendingTreeRefreshRef.current = true
     setRefreshKey((prev) => prev + 1)
   }, [])
 
-  const refreshChanges = useCallback(() => {
-    onRefresh?.()
+  const refreshChanges = useCallback(async () => {
+    setChangesLoading(true)
+    try {
+      await onRefresh?.()
+    } finally {
+      setChangesLoading(false)
+    }
   }, [onRefresh])
+
+  const handleRefresh = useCallback(async () => {
+    if (panelMode === "tree") {
+      refreshFileTree()
+      void onRefresh?.()
+      return
+    }
+    await refreshChanges()
+  }, [onRefresh, panelMode, refreshChanges, refreshFileTree])
 
   useEffect(() => {
     if (disabled) {
       return
     }
-    handleRefresh()
+    void handleRefresh()
   }, [disabled, handleRefresh])
 
   const refreshPathsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -502,16 +501,11 @@ export const TaskFileExplorer = ({
       return
     }
     setPanelMode(mode)
-    if (mode === "tree") {
-      refreshFileTree()
-    } else {
-      refreshChanges()
-    }
     setDiffContent("")
     setDiffLoading(false)
     setFileLoading(false)
     setCurrentFile(null)
-  }, [panelMode, refreshChanges, refreshFileTree])
+  }, [panelMode])
 
   const loadCurrentFileDiff = useCallback(async () => {
     if (!currentFile) return
@@ -666,6 +660,19 @@ export const TaskFileExplorer = ({
   }
 
   const renderChangedFiles = () => {
+    if (changesLoading) {
+      return (
+        <Empty className="w-full flex-1 min-h-0 py-12">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <IconLoader className="size-6 animate-spin" />
+            </EmptyMedia>
+            <EmptyDescription>正在加载...</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )
+    }
+
     if (sortedChangedPaths.length === 0) {
       return (
         <Empty className="w-full flex-1 min-h-0 py-12">
@@ -726,7 +733,6 @@ export const TaskFileExplorer = ({
           <DirNode
             key={refreshKey}
             ref={rootRef}
-            streamStatus={streamStatus}
             depth={0}
             onFileSelect={handleFileSelect}
             defaultExpanded
@@ -785,14 +791,16 @@ export const TaskFileExplorer = ({
               </TooltipTrigger>
               <TooltipContent>刷新</TooltipContent>
             </Tooltip>
-            <FileActionsDropdown
-              file={{ entry_mode: RepoFileEntryMode.RepoEntryModeTree, mode: 0, modified_at: 0, name: 'workspace', path: '', size: 0 }}
-              envid={envid}
-              onRefresh={handleRefresh}
-              onSuccess={handleRefresh}
-              alwaysVisible
-              hideDestructive
-            />
+            {panelMode === "tree" && (
+              <FileActionsDropdown
+                file={{ entry_mode: RepoFileEntryMode.RepoEntryModeTree, mode: 0, modified_at: 0, name: 'workspace', path: '', size: 0 }}
+                envid={envid}
+                onRefresh={handleRefresh}
+                onSuccess={handleRefresh}
+                alwaysVisible
+                hideDestructive
+              />
+            )}
             {onClosePanel && (
               <Tooltip>
                 <TooltipTrigger asChild>
