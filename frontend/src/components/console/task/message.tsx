@@ -24,16 +24,20 @@ interface MessageType {
   role: 'agent' | 'user' | 'system'
   type: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_input' | 'user_cancel' | 'tool_call' | 'tool_call_update' | 'available_commands_update' | 'plan' | 'error_message' | 'ask_user_question' | 'system_message' | 'restart_session'
   data: {
-    _meta?: unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _meta?: any
     requestId?: string
     details?: string
-    content?: unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    content?: any
     kind?: string
     status?: string
     title?: string
     toolCallId?: string
-    rawInput?: unknown
-    rawOutput?: unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rawInput?: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rawOutput?: any
     locations?: string
     entries?: {
       content: string
@@ -53,7 +57,8 @@ interface MessageType {
       }[]
     }[]
   }
-  onResponseAskUserQuestion?: (askId: string, answers: Record<string, string | string[]>) => "sent" | "queued" | "rejected"
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onResponseAskUserQuestion?: (askId: string, answers: any) => "sent" | "queued" | "rejected"
   onReloadSession?: () => void
   onUserInput?: (content: string) => void
 }
