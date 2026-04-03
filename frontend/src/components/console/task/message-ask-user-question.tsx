@@ -9,257 +9,322 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: MessageType; onResponse?: (askId: string, answers: any) => void }) => {
-  // 使用 Map 存储每个问题的选中项，key 是问题索引，value 是选中的 option label 集合
-  const [selections, setSelections] = useState<Set<string>[]>(() => 
-    Array.from({ length: message.data.questions?.length || 0 }, () => new Set<string>())
+type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
+
+export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: MessageType; onResponse?: (askId: string, answers: Record<string, string | string[]>) => "sent" | "queued" | "rejected" }) => {
+  const questions = useMemo(() => message.data.questions || [], [message.data.questions])
+  const status = (message.data.status || "pending") as AskUserQuestionStatus
+  const isInteractive = status === "pending"
+  const [selections, setSelections] = useState<Set<string>[]>(() =>
+    Array.from({ length: questions.length }, () => new Set<string>()),
   )
-  const [disabled, setDisabled] = useState(false)
-  const [userCustomAnswers, setUserCustomAnswers] = useState<string[]>(Array(message.data.questions?.length || 0).fill(''))
+  const [userCustomAnswers, setUserCustomAnswers] = useState<string[]>(() => Array(questions.length).fill(""))
 
   useEffect(() => {
-    const newSelections = (message.data.questions || []).map((question) => {
+    const nextSelections = questions.map((question) => {
       if (Array.isArray(question.answer)) {
         return new Set(question.answer)
-      } else if (typeof question.answer === "string") {
+      }
+      if (typeof question.answer === "string" && question.answer !== "") {
         return new Set([question.answer])
-      } else {
-        return new Set<string>()
       }
+      return new Set<string>()
     })
-    
-    setSelections(newSelections)
-  }, [message.data.questions])
 
-  const handleCheckboxClick = (questionIndex: number, optionLabel: string, checked: boolean) => {
-    setSelections(prev => {
-      const newSelections = [...prev]
+    setSelections(nextSelections)
+    setUserCustomAnswers((prev) => questions.map((question, questionIndex) => {
+      const optionLabels = question.options.map((option) => option.label)
+      if (Array.isArray(question.answer)) {
+        return question.answer.find((answer) => !optionLabels.includes(answer)) || ""
+      }
+      if (typeof question.answer === "string" && !optionLabels.includes(question.answer)) {
+        return question.answer
+      }
+      return prev[questionIndex] || ""
+    }))
+  }, [questions])
+
+  const updateSelection = useCallback((questionIndex: number, updater: (current: Set<string>) => Set<string>) => {
+    setSelections((prev) => {
+      const nextSelections = [...prev]
+      const current = nextSelections[questionIndex] ? new Set(nextSelections[questionIndex]) : new Set<string>()
+      nextSelections[questionIndex] = updater(current)
+      return nextSelections
+    })
+  }, [])
+
+  const handleCheckboxClick = useCallback((questionIndex: number, optionLabel: string, checked: boolean) => {
+    updateSelection(questionIndex, (current) => {
       if (checked) {
-        newSelections[questionIndex].add(optionLabel)
+        current.add(optionLabel)
       } else {
-        newSelections[questionIndex].delete(optionLabel)
+        current.delete(optionLabel)
       }
-
-      return newSelections
+      return current
     })
-  }
+  }, [updateSelection])
 
-  const handleRadioClick = (questionIndex: number, optionLabel: string) => {
-    setSelections(prev => {
-      const newSelections = [...prev]
-      newSelections[questionIndex].clear()
-      newSelections[questionIndex].add(optionLabel)
-      return newSelections
-    })
-  }
+  const handleRadioClick = useCallback((questionIndex: number, optionLabel: string) => {
+    updateSelection(questionIndex, () => new Set([optionLabel]))
+  }, [updateSelection])
 
   const hasUserCustomAnswer = useCallback((questionIndex: number) => {
-    const question = message.data.questions?.[questionIndex]
-    const options = question?.options.map(option => option.label) || []
-    if (question?.multiSelect) {
-      return ((question?.answer || []) as string[]).some(answer => !options.includes(answer))
-    } else {
-      return question?.answer && !options.includes(question?.answer)
+    const question = questions[questionIndex]
+    const options = question?.options.map((option) => option.label) || []
+    if (!question) {
+      return false
     }
-  }, [message.data.questions])
+
+    if (Array.isArray(question.answer)) {
+      return question.answer.some((answer) => !options.includes(answer))
+    }
+
+    return typeof question.answer === "string" && question.answer !== "" && !options.includes(question.answer)
+  }, [questions])
 
   const userCustomAnswer = useCallback((questionIndex: number) => {
-    const question = message.data.questions?.[questionIndex]
-    const options = question?.options.map(option => option.label) || []
+    const question = questions[questionIndex]
+    const options = question?.options.map((option) => option.label) || []
+    if (!question) {
+      return ""
+    }
 
-    return ((question?.answer || []) as string[]).find((answer: string) => !options.includes(answer)) || ''
+    if (Array.isArray(question.answer)) {
+      return question.answer.find((answer) => !options.includes(answer)) || ""
+    }
 
-  }, [message.data.questions])
+    return typeof question.answer === "string" && !options.includes(question.answer) ? question.answer : ""
+  }, [questions])
 
   const isCheckboxChecked = useCallback((questionIndex: number, optionLabel: string) => {
-    return selections[questionIndex].has(optionLabel)
+    return selections[questionIndex]?.has(optionLabel) ?? false
   }, [selections])
 
   const isAllQuestionsAnswered = useMemo(() => {
-    const questions = message.data.questions || []
-    if (questions.length === 0) return false
-    
+    if (questions.length === 0) {
+      return false
+    }
+
     return questions.every((_, questionIndex) => {
       const selectedSet = selections[questionIndex]
-
-      if (selectedSet.size === 0) return false
-
-      if (selectedSet.has('user-custom') && userCustomAnswers[questionIndex] === '') {
+      if (!selectedSet || selectedSet.size === 0) {
+        return false
+      }
+      if (selectedSet.has("user-custom") && userCustomAnswers[questionIndex].trim() === "") {
         return false
       }
       return true
     })
-  }, [selections, message.data.questions, userCustomAnswers])
+  }, [questions, selections, userCustomAnswers])
 
-  const sumbit = () => {
-    setDisabled(true)
+  const handleSubmit = useCallback(() => {
+    if (!isInteractive || !onResponse) {
+      return
+    }
+
     const answers: Record<string, string | string[]> = {}
-    message.data.questions?.forEach((question, questionIndex) => {
+    questions.forEach((question, questionIndex) => {
       const selectedSet = selections[questionIndex]
-      if (selectedSet && selectedSet.size > 0) {
-        const answerSet = new Set(selectedSet)
-
-        if (answerSet.has('user-custom')) {
-          answerSet.delete('user-custom')
-          answerSet.add(userCustomAnswers[questionIndex])
-        }
-
-        answers[question.question] = question.multiSelect ? Array.from(answerSet) : answerSet.values().next().value || ''
+      if (!selectedSet || selectedSet.size === 0) {
+        return
       }
+
+      const answerSet = new Set(selectedSet)
+      if (answerSet.has("user-custom")) {
+        answerSet.delete("user-custom")
+        answerSet.add(userCustomAnswers[questionIndex].trim())
+      }
+
+      answers[question.question] = question.multiSelect
+        ? Array.from(answerSet)
+        : answerSet.values().next().value || ""
     })
-    onResponse?.(message.data.askId || '', answers)
-  }
+
+    onResponse(message.data.askId || "", answers)
+  }, [isInteractive, message.data.askId, onResponse, questions, selections, userCustomAnswers])
+
+  const footerText = useMemo(() => {
+    switch (status) {
+      case "queued":
+        return "等待重连后发送"
+      case "submitting":
+        return "提交中"
+      case "completed":
+        return "已提交"
+      case "expired":
+        return "问题已过期"
+      default:
+        return null
+    }
+  }, [status])
 
   return (
-    <div className="w-max-[80%] w-[80%] border rounded-md p-2" onClick={() => {
-      console.log(message.data.questions)
-    }}>
-      {message.data.questions?.map((question, questionIndex) => (
-        <Fragment key={questionIndex}>
-          <div className="flex flex-col p-2 gap-4">
-            <div className="text-sm font-bold">
-              {question.question}
-            </div>
-            {question.multiSelect ? (
-              <FieldGroup 
-                className="max-w-sm flex flex-wrap gap-2">
-                {question.options.map((option, index) => {
-                  return (
-                    <Field orientation="horizontal" key={index} >
-                      <Checkbox 
+    <div className="w-max-[80%] w-[80%] border rounded-md p-2">
+      {questions.map((question, questionIndex) => {
+        const selectedSet = selections[questionIndex] ?? new Set<string>()
+        const selectedRadioValue = selectedSet.values().next().value || ""
+
+        return (
+          <Fragment key={questionIndex}>
+            <div className="flex flex-col gap-4 p-2">
+              <div className="text-sm font-bold">
+                {question.question}
+              </div>
+              {question.multiSelect ? (
+                <FieldGroup className="max-w-sm flex flex-wrap gap-2">
+                  {question.options.map((option, index) => (
+                    <Field orientation="horizontal" key={index}>
+                      <Checkbox
                         id={`${message.data.askId}-${questionIndex}-${option.label}`}
                         name={`${message.data.askId}-${questionIndex}-${option.label}`}
-                        disabled={message.data.status !== 'pending' || disabled}
+                        disabled={!isInteractive}
                         checked={isCheckboxChecked(questionIndex, option.label)}
                         onCheckedChange={(checked) => {
-                          handleCheckboxClick(questionIndex, option.label, checked)
+                          handleCheckboxClick(questionIndex, option.label, checked === true)
                         }}
                       />
-                      <Label 
-                        htmlFor={`${message.data.askId}-${questionIndex}-${option.label}`} 
-                        className={cn("font-normal truncate", (message.data.status !== 'pending' && !isCheckboxChecked(questionIndex, option.label)) ? 'text-muted-foreground/50' : '')}>{option.label}</Label>
-                    </Field>
-                  )
-                })}
-                {message.data.status === 'pending' ? (
-                  <>
-                    <Field orientation="horizontal">
-                      <Checkbox 
-                        id={`${message.data.askId}-${questionIndex}-user-custom`}
-                        name={`${message.data.askId}-${questionIndex}-user-custom`}
-                        disabled={message.data.status !== 'pending' || disabled}
-                        checked={isCheckboxChecked(questionIndex, 'user-custom')}
-                        onCheckedChange={(checked) => {
-                          handleCheckboxClick(questionIndex, 'user-custom', checked)
-                        }}
+                      <Label
+                        htmlFor={`${message.data.askId}-${questionIndex}-${option.label}`}
+                        className={cn("font-normal truncate", (!isInteractive && !isCheckboxChecked(questionIndex, option.label)) ? "text-muted-foreground/50" : "")}
                       >
-                      </Checkbox>
-                      <Label htmlFor={`${message.data.askId}-${questionIndex}-user-custom`} className="font-normal" >其他 - 自定义</Label>
+                        {option.label}
+                      </Label>
                     </Field>
-                    {selections[questionIndex].has('user-custom') && <Field orientation="horizontal" >
-                      <Input
-                        value={userCustomAnswers[questionIndex]}
-                        disabled={disabled}
-                        placeholder="请输入其他答案"
-                        onChange={(e) => {
-                          setUserCustomAnswers(prev => {
-                            const newUserCustomAnswers = [...prev]
-                            newUserCustomAnswers[questionIndex] = e.target.value
-                            return newUserCustomAnswers
-                          })
-                        }}
+                  ))}
+                  {isInteractive ? (
+                    <>
+                      <Field orientation="horizontal">
+                        <Checkbox
+                          id={`${message.data.askId}-${questionIndex}-user-custom`}
+                          name={`${message.data.askId}-${questionIndex}-user-custom`}
+                          disabled={!isInteractive}
+                          checked={isCheckboxChecked(questionIndex, "user-custom")}
+                          onCheckedChange={(checked) => {
+                            handleCheckboxClick(questionIndex, "user-custom", checked === true)
+                          }}
+                        />
+                        <Label htmlFor={`${message.data.askId}-${questionIndex}-user-custom`} className="font-normal">
+                          其他 - 自定义
+                        </Label>
+                      </Field>
+                      {selectedSet.has("user-custom") && (
+                        <Field orientation="horizontal">
+                          <Input
+                            value={userCustomAnswers[questionIndex] || ""}
+                            disabled={!isInteractive}
+                            placeholder="请输入其他答案"
+                            onChange={(e) => {
+                              setUserCustomAnswers((prev) => {
+                                const nextAnswers = [...prev]
+                                nextAnswers[questionIndex] = e.target.value
+                                return nextAnswers
+                              })
+                            }}
+                          />
+                        </Field>
+                      )}
+                    </>
+                  ) : hasUserCustomAnswer(questionIndex) ? (
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
+                        name={question.answer?.toString() || ""}
+                        checked={true}
+                        disabled={true}
                       />
-                    </Field>}
-                  </>
-                ) : (hasUserCustomAnswer(questionIndex) ? (
-                  <Field orientation="horizontal" >
-                    <Checkbox 
-                      id={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
-                      name={question.answer || ''}
-                      checked={true}
-                      disabled={true}
-                    >
-                    </Checkbox>
-                    <Label 
-                      htmlFor={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`} 
-                      className="font-normal truncate">{userCustomAnswer(questionIndex)}</Label>
-                  </Field>
-                ) : (
-                  null
-                ))}
-              </FieldGroup>
-            ) : (
-              <RadioGroup 
-                className="max-w-sm flex flex-wrap gap-2" 
-                value={question.answer}
-                onValueChange={(value) => {
-                  handleRadioClick(questionIndex, value)
-                }}
-                disabled={message.data.status !== 'pending' || disabled}>
-                {question.options.map((option, index) => {
-                  return (
-                    <Field orientation="horizontal" key={index} >
-                      <RadioGroupItem 
+                      <Label
+                        htmlFor={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
+                        className="font-normal truncate"
+                      >
+                        {userCustomAnswer(questionIndex)}
+                      </Label>
+                    </Field>
+                  ) : null}
+                </FieldGroup>
+              ) : (
+                <RadioGroup
+                  className="max-w-sm flex flex-wrap gap-2"
+                  value={selectedRadioValue}
+                  onValueChange={(value) => {
+                    handleRadioClick(questionIndex, value)
+                  }}
+                  disabled={!isInteractive}
+                >
+                  {question.options.map((option, index) => (
+                    <Field orientation="horizontal" key={index}>
+                      <RadioGroupItem
                         id={`${message.data.askId}-${questionIndex}-${option.label}`}
                         value={option.label}
-                      >
-                      </RadioGroupItem>
-                      <FieldLabel 
-                        htmlFor={`${message.data.askId}-${questionIndex}-${option.label}`} 
-                        className={cn("font-normal truncate", (message.data.status !== 'pending' && question.answer !== option.label) ? 'text-muted-foreground/50' : '')}>{option.label}</FieldLabel>
-                    </Field>
-                  )
-                })}
-                {message.data.status === 'pending' ? (
-                  <>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem 
-                        id={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
-                        value="user-custom"
-                      >
-                      </RadioGroupItem>
-                      <FieldLabel htmlFor={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`} className="font-normal" >其他 - 自定义</FieldLabel>
-                    </Field>
-                    {selections[questionIndex].has('user-custom') && <Field orientation="horizontal" >
-                      <Input 
-                        value={userCustomAnswers[questionIndex]}
-                        placeholder="请输入其他答案"
-                        disabled={disabled}
-                        onChange={(e) => {
-                          setUserCustomAnswers(prev => {
-                            const newUserCustomAnswers = [...prev]
-                            newUserCustomAnswers[questionIndex] = e.target.value
-                            return newUserCustomAnswers
-                          })
-                        }}
                       />
-                    </Field>}
-                  </>
-                ) : (hasUserCustomAnswer(questionIndex) ? (
-                  <Field orientation="horizontal" >
-                    <RadioGroupItem 
-                      id={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
-                      value={question.answer || ''}
-                    >
-                    </RadioGroupItem>
-                    <FieldLabel 
-                      htmlFor={`${message.data.askId}-${question.answer}-user-custom`} className="font-normal truncate" >{question.answer}</FieldLabel>
-                  </Field>
-                ) : (
-                  null
-                ))}
-              </RadioGroup>
-            )}
-          </div>
-          {questionIndex !== (message.data.questions?.length || 0) - 1 && <Separator className="my-2" />}
-        </Fragment>
-      ))}
-      {!disabled && message.data.status === 'pending' && <>
-        <Separator className="my-2" />
-        <Button variant="secondary" size="sm" className="w-full mt-2" onClick={sumbit} disabled={disabled || !isAllQuestionsAnswered}>
-          {isAllQuestionsAnswered ? '提交' : '提交 (未完成)'}
+                      <FieldLabel
+                        htmlFor={`${message.data.askId}-${questionIndex}-${option.label}`}
+                        className={cn("font-normal truncate", (!isInteractive && selectedRadioValue !== option.label) ? "text-muted-foreground/50" : "")}
+                      >
+                        {option.label}
+                      </FieldLabel>
+                    </Field>
+                  ))}
+                  {isInteractive ? (
+                    <>
+                      <Field orientation="horizontal">
+                        <RadioGroupItem
+                          id={`${message.data.askId}-${questionIndex}-user-custom`}
+                          value="user-custom"
+                        />
+                        <FieldLabel htmlFor={`${message.data.askId}-${questionIndex}-user-custom`} className="font-normal">
+                          其他 - 自定义
+                        </FieldLabel>
+                      </Field>
+                      {selectedSet.has("user-custom") && (
+                        <Field orientation="horizontal">
+                          <Input
+                            value={userCustomAnswers[questionIndex] || ""}
+                            placeholder="请输入其他答案"
+                            disabled={!isInteractive}
+                            onChange={(e) => {
+                              setUserCustomAnswers((prev) => {
+                                const nextAnswers = [...prev]
+                                nextAnswers[questionIndex] = e.target.value
+                                return nextAnswers
+                              })
+                            }}
+                          />
+                        </Field>
+                      )}
+                    </>
+                  ) : hasUserCustomAnswer(questionIndex) ? (
+                    <Field orientation="horizontal">
+                      <RadioGroupItem
+                        id={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
+                        value={userCustomAnswer(questionIndex)}
+                      />
+                      <FieldLabel
+                        htmlFor={`${message.data.askId}-${questionIndex}-${question.answer}-user-custom`}
+                        className="font-normal truncate"
+                      >
+                        {userCustomAnswer(questionIndex)}
+                      </FieldLabel>
+                    </Field>
+                  ) : null}
+                </RadioGroup>
+              )}
+            </div>
+            {questionIndex !== questions.length - 1 && <Separator className="my-2" />}
+          </Fragment>
+        )
+      })}
+
+      {(status !== "pending" || questions.length > 0) && <Separator className="my-2" />}
+
+      {status === "pending" ? (
+        <Button variant="secondary" size="sm" className="mt-2 w-full" onClick={handleSubmit} disabled={!isAllQuestionsAnswered}>
+          {isAllQuestionsAnswered ? "提交" : "提交 (未完成)"}
         </Button>
-      </>}
+      ) : footerText ? (
+        <div className="px-2 py-1 text-xs text-muted-foreground">
+          {footerText}
+        </div>
+      ) : null}
     </div>
   )
 }

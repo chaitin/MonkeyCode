@@ -24,16 +24,16 @@ interface MessageType {
   role: 'agent' | 'user' | 'system'
   type: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_input' | 'user_cancel' | 'tool_call' | 'tool_call_update' | 'available_commands_update' | 'plan' | 'error_message' | 'ask_user_question' | 'system_message' | 'restart_session'
   data: {
-    _meta?: any
+    _meta?: unknown
     requestId?: string
     details?: string
-    content?: any
+    content?: unknown
     kind?: string
     status?: string
     title?: string
     toolCallId?: string
-    rawInput?: any
-    rawOutput?: any
+    rawInput?: unknown
+    rawOutput?: unknown
     locations?: string
     entries?: {
       content: string
@@ -46,14 +46,14 @@ interface MessageType {
       header: string
       multiSelect: boolean
       question: string
-      answer?: string
+      answer?: string | string[]
       options: {
         label: string
         description: string
       }[]
     }[]
   }
-  onResponseAskUserQuestion?: (askId: string, answers: any) => void
+  onResponseAskUserQuestion?: (askId: string, answers: Record<string, string | string[]>) => "sent" | "queued" | "rejected"
   onReloadSession?: () => void
   onUserInput?: (content: string) => void
 }

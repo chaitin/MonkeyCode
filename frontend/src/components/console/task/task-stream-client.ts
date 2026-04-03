@@ -15,7 +15,15 @@ const normalizeTimestampToMilliseconds = (timestamp: number) => {
 
 export interface TaskStreamClientState extends TaskMessageHandlerState {
   executionTimeMs: number
+  connectionState: TaskStreamConnectionState
+  queuedReplyIds: string[]
+  submittingReplyIds: string[]
+  closeReason: TaskStreamCloseReason | null
 }
+
+export type TaskStreamConnectionState = "connecting" | "connected" | "reconnecting" | "closed"
+export type TaskStreamCloseReason = "manual" | "task_ended" | "unknown" | null
+export type TaskStreamSendReplyResult = "sent" | "queued" | "rejected"
 
 interface TaskStreamClientBaseOptions {
   taskId: string
@@ -65,6 +73,10 @@ export class TaskStreamClient {
   private hasReceivedTaskEnded = false
   private processedChunkKeys = new Set<string>()
   private processedChunkOrder: string[] = []
+  private connectionState: TaskStreamConnectionState = "closed"
+  private closeReason: TaskStreamCloseReason = null
+  private queuedReplies = new Map<string, string>()
+  private submittingReplies = new Set<string>()
 
   private constructor({
     taskId,
@@ -104,6 +116,11 @@ export class TaskStreamClient {
     this.clearReconnectTimer()
     this.resetProcessedChunks()
     this.messageHandler = new TaskMessageHandler({ captureCursor: this.captureCursor })
+    this.queuedReplies.clear()
+    this.submittingReplies.clear()
+    this.connectionState = "connecting"
+    this.closeReason = null
+    this.emitState(this.messageHandler.getState())
 
     this.openSocket()
   }
@@ -113,7 +130,10 @@ export class TaskStreamClient {
     this.socket.onopen = () => {
       this.reconnectAttempts = 0
       this.clearReconnectTimer()
+      this.connectionState = "connected"
+      this.closeReason = null
       this.emitState(this.messageHandler.setConnected())
+      this.flushQueuedReplies()
 
       if (this.initialUserInput) {
         this.sendInitialUserInput(this.initialUserInput)
@@ -132,7 +152,7 @@ export class TaskStreamClient {
       }
     }
 
-    this.socket.onerror = (_event) => {
+    this.socket.onerror = () => {
       if (this.socket?.readyState === WebSocket.OPEN) {
         return
       }
@@ -141,9 +161,15 @@ export class TaskStreamClient {
     this.socket.onclose = (event) => {
       this.socket = null
       if (!this.manuallyDisconnected && !this.hasReceivedTaskEnded) {
+        this.connectionState = "reconnecting"
+        this.closeReason = null
+        this.emitState(this.messageHandler.getState())
         this.scheduleReconnect()
         return
       }
+      this.connectionState = "closed"
+      this.closeReason = this.hasReceivedTaskEnded ? "task_ended" : this.manuallyDisconnected ? "manual" : "unknown"
+      this.emitState(this.messageHandler.getState())
       this.onClose?.(event)
     }
   }
@@ -174,20 +200,37 @@ export class TaskStreamClient {
     })
   }
 
-  sendReplyQuestion(requestId: string, answers: unknown) {
-    this.sendMessage({
+  sendReplyQuestion(requestId: string, answers: unknown): TaskStreamSendReplyResult {
+    const payload = {
       type: "reply-question",
       data: b64encode(JSON.stringify({
         request_id: requestId,
         answers_json: JSON.stringify(answers),
         cancelled: false,
       })),
-    })
+    }
+
+    if (this.sendMessage(payload)) {
+      this.queuedReplies.delete(requestId)
+      this.submittingReplies.add(requestId)
+      this.emitState(this.messageHandler.getState())
+      return "sent"
+    }
+
+    if (this.connectionState === "connecting" || this.connectionState === "reconnecting") {
+      this.queuedReplies.set(requestId, JSON.stringify(payload))
+      this.submittingReplies.delete(requestId)
+      this.emitState(this.messageHandler.getState())
+      return "queued"
+    }
+
+    return "rejected"
   }
 
   private sendMessage(type: { type: string; data?: string }) {
-    if (this.socket?.readyState !== WebSocket.OPEN) return
+    if (this.socket?.readyState !== WebSocket.OPEN) return false
     this.socket.send(JSON.stringify(type))
+    return true
   }
 
   private sendInitialUserInput(content: string) {
@@ -200,6 +243,15 @@ export class TaskStreamClient {
   private handleServerChunk(chunk: TaskStreamServerChunk) {
     if (chunk.type === "task-ended") {
       this.hasReceivedTaskEnded = true
+    }
+
+    if (chunk.type === "reply-question") {
+      const replyData = this.decodeChunkData(chunk.data)
+      const requestId = typeof replyData?.request_id === "string" ? replyData.request_id : null
+      if (requestId) {
+        this.queuedReplies.delete(requestId)
+        this.submittingReplies.delete(requestId)
+      }
     }
 
     if (!this.shouldProcessChunk(chunk)) {
@@ -271,6 +323,40 @@ export class TaskStreamClient {
     this.processedChunkOrder = []
   }
 
+  private flushQueuedReplies() {
+    if (this.socket?.readyState !== WebSocket.OPEN || this.queuedReplies.size === 0) {
+      return
+    }
+
+    let didFlush = false
+    for (const [requestId, payload] of [...this.queuedReplies.entries()]) {
+      if (this.socket?.readyState !== WebSocket.OPEN) {
+        break
+      }
+
+      this.socket.send(payload)
+      this.queuedReplies.delete(requestId)
+      this.submittingReplies.add(requestId)
+      didFlush = true
+    }
+
+    if (didFlush) {
+      this.emitState(this.messageHandler.getState())
+    }
+  }
+
+  private decodeChunkData(data: unknown) {
+    if (typeof data !== "string") {
+      return null
+    }
+
+    try {
+      return JSON.parse(data) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+
   private emitState(state: TaskMessageHandlerState) {
     this.onStateChange?.(this.buildState(state))
   }
@@ -279,6 +365,10 @@ export class TaskStreamClient {
     return {
       ...state,
       executionTimeMs: this.getExecutionTimeMs(state.status),
+      connectionState: this.connectionState,
+      queuedReplyIds: [...this.queuedReplies.keys()],
+      submittingReplyIds: [...this.submittingReplies],
+      closeReason: this.closeReason,
     }
   }
 

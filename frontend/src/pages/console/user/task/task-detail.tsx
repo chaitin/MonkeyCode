@@ -8,7 +8,7 @@ import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands } from "@/components/console/task/task-shared"
-import { TaskStreamClient, type TaskStreamClientState } from "@/components/console/task/task-stream-client"
+import { TaskStreamClient, type TaskStreamClientState, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -25,6 +25,8 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 
 type SidePanelType = "files"
+type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
+type MessageSource = "live" | "history"
 
 export default function TaskDetailPage() {
   const { taskId } = useParams()
@@ -36,8 +38,11 @@ export default function TaskDetailPage() {
   const [streamStatus, setStreamStatus] = React.useState<TaskMessageHandlerStatus>("inited")
   const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
   const [sending, setSending] = React.useState(false)
-  const [historyMessages, setHistoryMessages] = React.useState<MessageType[]>([])
-  const [liveMessages, setLiveMessages] = React.useState<MessageType[]>([])
+  const [rawHistoryMessages, setRawHistoryMessages] = React.useState<MessageType[]>([])
+  const [rawLiveMessages, setRawLiveMessages] = React.useState<MessageType[]>([])
+  const [streamConnectionState, setStreamConnectionState] = React.useState<TaskStreamConnectionState>("closed")
+  const [queuedReplyIds, setQueuedReplyIds] = React.useState<string[]>([])
+  const [submittingReplyIds, setSubmittingReplyIds] = React.useState<string[]>([])
   const [fileChangesCount, setFileChangesCount] = React.useState(0)
   const [fileRefreshSignal, setFileRefreshSignal] = React.useState(0)
   const [historyCursor, setHistoryCursor] = React.useState<string | null>(null)
@@ -65,6 +70,59 @@ export default function TaskDetailPage() {
   const envid = task?.virtualmachine?.id
   const cancelledRef = React.useRef(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queuedReplyIdSet = React.useMemo(() => new Set(queuedReplyIds), [queuedReplyIds])
+  const submittingReplyIdSet = React.useMemo(() => new Set(submittingReplyIds), [submittingReplyIds])
+  const decorateMessages = React.useCallback((sourceMessages: MessageType[], source: MessageSource) => {
+    return sourceMessages.map((message) => {
+      if (message.type !== "ask_user_question") {
+        return message
+      }
+
+      const askId = message.data.askId ?? ""
+      const baseStatus = message.data.status
+      const isCompleted = baseStatus === "completed"
+
+      let nextStatus: AskUserQuestionStatus = isCompleted ? "completed" : "pending"
+      if (!isCompleted) {
+        if (source === "history" || streamConnectionState === "closed") {
+          nextStatus = "expired"
+        } else if (queuedReplyIdSet.has(askId)) {
+          nextStatus = "queued"
+        } else if (submittingReplyIdSet.has(askId)) {
+          nextStatus = "submitting"
+        }
+      }
+
+      return {
+        ...message,
+        data: {
+          ...message.data,
+          status: nextStatus,
+        },
+        onResponseAskUserQuestion: source === "live" && nextStatus === "pending"
+          ? (nextAskId: string, answers: unknown) => {
+            if (!nextAskId) {
+              return "rejected"
+            }
+
+            const streamClient = streamClientRef.current
+            if (!streamClient) {
+              toast.error("当前连接不可用，问题已过期")
+              return "rejected"
+            }
+
+            const result = streamClient.sendReplyQuestion(nextAskId, answers)
+            if (result === "rejected") {
+              toast.error("当前连接已结束，无法提交回答")
+            }
+            return result
+          }
+          : undefined,
+      }
+    })
+  }, [queuedReplyIdSet, streamConnectionState, submittingReplyIdSet])
+  const historyMessages = React.useMemo(() => decorateMessages(rawHistoryMessages, "history"), [decorateMessages, rawHistoryMessages])
+  const liveMessages = React.useMemo(() => decorateMessages(rawLiveMessages, "live"), [decorateMessages, rawLiveMessages])
   const messages = React.useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
   const runningMessagesSignature = React.useMemo(() => JSON.stringify(
     liveMessages
@@ -112,31 +170,6 @@ export default function TaskDetailPage() {
     previewDialogOpenRef.current = previewDialogOpen
   }, [previewDialogOpen])
 
-  const attachMessageHandlers = React.useCallback((messages: MessageType[]) => {
-    return messages.map((message) => {
-      if (message.type !== "ask_user_question") {
-        return message
-      }
-
-      return {
-        ...message,
-        onResponseAskUserQuestion: (askId: string, answers: unknown) => {
-          if (!askId) {
-            return
-          }
-
-          const streamClient = streamClientRef.current
-          if (!streamClient) {
-            toast.error("当前连接不可用，无法提交回答")
-            return
-          }
-
-          streamClient.sendReplyQuestion(askId, answers)
-        },
-      }
-    })
-  }, [])
-
   const disconnectStreamClient = React.useCallback(() => {
     const state = streamClientRef.current?.disconnect() ?? null
     streamClientRef.current = null
@@ -152,14 +185,17 @@ export default function TaskDetailPage() {
     if (!taskId) return
 
     const previousState = disconnectStreamClient()
-    const previousMessages = previousState?.messages ?? liveMessages
+    const previousMessages = previousState?.messages ?? rawLiveMessages
     if (mode === "new" && previousMessages.length > 0) {
-      setHistoryMessages((prev) => [...prev, ...attachMessageHandlers(previousMessages)])
-      setLiveMessages([])
+      setRawHistoryMessages((prev) => [...prev, ...previousMessages])
+      setRawLiveMessages([])
     }
 
     setAvailableCommands(null)
     setStreamStatus("inited")
+    setStreamConnectionState("connecting")
+    setQueuedReplyIds([])
+    setSubmittingReplyIds([])
     setSending(mode === "new")
     setTimeCost(0)
 
@@ -169,9 +205,12 @@ export default function TaskDetailPage() {
         onStateChange: (state: TaskStreamClientState) => {
           if (streamClientRef.current !== client || cancelledRef.current) return
           setStreamStatus(state.status)
-          setLiveMessages(attachMessageHandlers(state.messages))
+          setRawLiveMessages(state.messages)
           setAvailableCommands(state.availableCommands)
           setTimeCost(state.executionTimeMs)
+          setStreamConnectionState(state.connectionState)
+          setQueuedReplyIds(state.queuedReplyIds)
+          setSubmittingReplyIds(state.submittingReplyIds)
           if (!historyLoadedRef.current && state.historyCursor.ready) {
             setHistoryCursorReady(true)
             setHistoryCursor(state.historyCursor.cursor)
@@ -200,9 +239,12 @@ export default function TaskDetailPage() {
       onStateChange: (state: TaskStreamClientState) => {
         if (streamClientRef.current !== client || cancelledRef.current) return
         setStreamStatus(state.status)
-        setLiveMessages(attachMessageHandlers(state.messages))
+        setRawLiveMessages(state.messages)
         setAvailableCommands(state.availableCommands)
         setTimeCost(state.executionTimeMs)
+        setStreamConnectionState(state.connectionState)
+        setQueuedReplyIds(state.queuedReplyIds)
+        setSubmittingReplyIds(state.submittingReplyIds)
       },
       onOpen: () => {
         if (streamClientRef.current !== client || cancelledRef.current) return
@@ -225,7 +267,7 @@ export default function TaskDetailPage() {
 
     streamClientRef.current = client
     client.connect()
-  }, [attachMessageHandlers, disconnectStreamClient, liveMessages, taskId])
+  }, [disconnectStreamClient, rawLiveMessages, taskId])
 
   // taskId 变化时重置状态
   React.useEffect(() => {
@@ -239,8 +281,11 @@ export default function TaskDetailPage() {
     setStreamStatus("inited")
     setAvailableCommands(null)
     setSending(false)
-    setHistoryMessages([])
-    setLiveMessages([])
+    setRawHistoryMessages([])
+    setRawLiveMessages([])
+    setStreamConnectionState("closed")
+    setQueuedReplyIds([])
+    setSubmittingReplyIds([])
     setFileChangesCount(0)
     setFileRefreshSignal(0)
     setHistoryCursor(null)
@@ -360,7 +405,7 @@ export default function TaskDetailPage() {
           const messageHandler = new TaskMessageHandler()
           messageHandler.pushChunks(resp.data?.chunks ?? [])
           const messageState = messageHandler.finalizeCycle()
-          setHistoryMessages((prev) => [...attachMessageHandlers(messageState.messages), ...prev])
+          setRawHistoryMessages((prev) => [...messageState.messages, ...prev])
           setHistoryCursorReady(true)
           setHistoryCursor(resp.data?.next_cursor ?? null)
           setHistoryHasMore(resp.data?.has_more ?? false)
@@ -376,7 +421,7 @@ export default function TaskDetailPage() {
     if (!cancelledRef.current) {
       setHistoryLoading(false)
     }
-  }, [attachMessageHandlers, taskId])
+  }, [taskId])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -414,7 +459,7 @@ export default function TaskDetailPage() {
   React.useEffect(() => {
     if (!task) return
     if (historyLoaded || historyLoading) return
-    if (liveMessages.length > 0) return
+    if (rawLiveMessages.length > 0) return
     if (
       task.status !== ConstsTaskStatus.TaskStatusFinished
       && task.status !== ConstsTaskStatus.TaskStatusError
@@ -422,7 +467,7 @@ export default function TaskDetailPage() {
       return
     }
     fetchTaskRounds()
-  }, [fetchTaskRounds, historyLoaded, historyLoading, liveMessages.length, task])
+  }, [fetchTaskRounds, historyLoaded, historyLoading, rawLiveMessages.length, task])
 
   React.useEffect(() => {
     if (!vmOnline || !previewDialogOpen) return
