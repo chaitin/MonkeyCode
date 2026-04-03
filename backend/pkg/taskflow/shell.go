@@ -29,15 +29,25 @@ func (s *Shell) startPing() {
 		s.mu.Unlock()
 		return
 	}
-	s.pingTicker = time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(15 * time.Second)
+	s.pingTicker = ticker
 	s.mu.Unlock()
 
-	go func() {
+	go func(ticker *time.Ticker) {
+		defer func() {
+			ticker.Stop()
+			s.mu.Lock()
+			if s.pingTicker == ticker {
+				s.pingTicker = nil
+			}
+			s.mu.Unlock()
+		}()
+
 		for {
 			select {
 			case <-s.ctx.Done():
 				return
-			case <-s.pingTicker.C:
+			case <-ticker.C:
 				s.mu.Lock()
 				conn := s.conn
 				s.mu.Unlock()
@@ -56,7 +66,7 @@ func (s *Shell) startPing() {
 				cancel()
 			}
 		}
-	}()
+	}(ticker)
 }
 
 func (s *Shell) reconnect(ctx context.Context) error {
