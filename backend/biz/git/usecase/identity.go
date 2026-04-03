@@ -49,8 +49,13 @@ func (u *GitIdentityUsecase) List(ctx context.Context, uid uuid.UUID) ([]*domain
 	return cvt.Iter(identities, func(_ int, identity *db.GitIdentity) *domain.GitIdentity {
 		tmp := cvt.From(identity, &domain.GitIdentity{})
 		if client := u.gitClienter(identity); client != nil {
+			token, err := u.tokenProvider.GetToken(ctx, identity.ID)
+			if err != nil {
+				u.logger.WarnContext(ctx, "failed to get token", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
+				return tmp
+			}
 			repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
-				Token:     identity.AccessToken,
+				Token:     token,
 				InstallID: identity.InstallationID,
 			})
 			if err != nil {
@@ -91,8 +96,13 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	gi := cvt.From(identity, &domain.GitIdentity{})
 
 	if client := u.gitClienter(identity); client != nil {
+		token, err := u.tokenProvider.GetToken(ctx, identity.ID)
+		if err != nil {
+			u.logger.WarnContext(ctx, "failed to get token", "error", err, "platform", identity.Platform, "identity_id", id)
+			return gi, nil
+		}
 		repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
-			Token:     identity.AccessToken,
+			Token:     token,
 			InstallID: identity.InstallationID,
 		})
 		if err != nil {

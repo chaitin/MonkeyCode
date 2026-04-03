@@ -483,12 +483,102 @@ func (g *Gitea) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*
 
 // DeleteWebhook 实现 GitPlatformClient 接口
 func (g *Gitea) DeleteWebhook(ctx context.Context, opts *domain.WebhookOptions) error {
-	// TODO: 实现 Gitea webhook 删除
-	return fmt.Errorf("not implemented")
+	owner, repo, err := parseGiteaRepoPath(opts.RepoURL)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	for page := 1; ; page++ {
+		apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/hooks?page=%d&limit=50",
+			g.baseURL, url.PathEscape(owner), url.PathEscape(repo), page)
+		body, err := giteaAPIGet(ctx, apiURL, opts.Token)
+		if err != nil {
+			return fmt.Errorf("list hooks: %w", err)
+		}
+
+		var hooks []struct {
+			ID     int64 `json:"id"`
+			Config struct {
+				URL string `json:"url"`
+			} `json:"config"`
+		}
+		if err := json.Unmarshal(body, &hooks); err != nil {
+			return fmt.Errorf("unmarshal hooks: %w", err)
+		}
+		if len(hooks) == 0 {
+			break
+		}
+		for _, hook := range hooks {
+			if hook.Config.URL == opts.WebhookURL {
+				deleteURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/hooks/%d",
+					g.baseURL, url.PathEscape(owner), url.PathEscape(repo), hook.ID)
+				delReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, deleteURL, nil)
+				if err != nil {
+					return fmt.Errorf("create delete request: %w", err)
+				}
+				delReq.Header.Set("Authorization", fmt.Sprintf("token %s", opts.Token))
+				delResp, err := client.Do(delReq)
+				if err != nil {
+					return fmt.Errorf("delete hook %d: %w", hook.ID, err)
+				}
+				delResp.Body.Close()
+				if delResp.StatusCode != http.StatusOK && delResp.StatusCode != http.StatusNoContent {
+					return fmt.Errorf("delete hook %d returned status %d", hook.ID, delResp.StatusCode)
+				}
+				return nil
+			}
+		}
+	}
+	return nil
 }
 
 // CreateWebhook 实现 GitPlatformClient 接口
 func (g *Gitea) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOptions) error {
-	// TODO: 实现 Gitea webhook 创建
-	return fmt.Errorf("not implemented")
+	owner, repo, err := parseGiteaRepoPath(opts.RepoURL)
+	if err != nil {
+		return err
+	}
+
+	events := opts.Events
+	if len(events) == 0 {
+		events = []string{"push", "pull_request", "issue_comment"}
+	}
+
+	payload := map[string]any{
+		"type": "gitea",
+		"config": map[string]string{
+			"url":          opts.WebhookURL,
+			"content_type": "json",
+			"secret":       opts.SecretToken,
+		},
+		"events": events,
+		"active": true,
+	}
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/hooks",
+		g.baseURL, url.PathEscape(owner), url.PathEscape(repo))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("token %s", opts.Token))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("create webhook: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("create webhook returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }
