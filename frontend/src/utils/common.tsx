@@ -389,7 +389,6 @@ export function getPublicModelMetaBadges(model?: DomainModel): React.ReactNode {
     <>
       {model.is_free === true && <Badge>免费</Badge>}
       {model.access_level === "pro" && <Badge variant="secondary">专业版</Badge>}
-      {model.is_free === false && <Badge variant="secondary">消耗点数</Badge>}
     </>
   )
 }
