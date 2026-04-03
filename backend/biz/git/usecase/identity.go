@@ -57,6 +57,7 @@ func (u *GitIdentityUsecase) List(ctx context.Context, uid uuid.UUID) ([]*domain
 			repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
 				Token:     token,
 				InstallID: identity.InstallationID,
+				IsOAuth:   identity.OauthRefreshToken != "",
 			})
 			if err != nil {
 				u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
@@ -73,7 +74,7 @@ func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitCli
 	case consts.GitPlatformGithub:
 		return github.NewGithub(u.logger, u.cfg)
 	case consts.GitPlatformGitLab:
-		return gitlab.NewGitlab(identity.BaseURL, identity.AccessToken, u.logger)
+		return gitlab.NewGitlabForBaseURL(identity.BaseURL, u.logger)
 	case consts.GitPlatformGitea:
 		return gitea.NewGitea(u.logger, identity.BaseURL)
 	case consts.GitPlatformGitee:
@@ -104,6 +105,7 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 		repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
 			Token:     token,
 			InstallID: identity.InstallationID,
+			IsOAuth:   identity.OauthRefreshToken != "",
 		})
 		if err != nil {
 			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", id)
@@ -209,8 +211,13 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 		return nil, errcode.ErrInvalidPlatform
 	}
 
+	token, err := u.tokenProvider.GetToken(ctx, identity.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get token: %w", err)
+	}
+
 	branches, err := client.Branches(ctx, &domain.BranchesOptions{
-		Token: identity.AccessToken, Owner: owner, Repo: repo,
+		Token: token, Owner: owner, Repo: repo,
 		Page: page, PerPage: perPage,
 		InstallID: identity.InstallationID, IsOAuth: identity.OauthRefreshToken != "",
 	})

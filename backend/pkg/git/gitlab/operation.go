@@ -369,7 +369,11 @@ func (g *Gitlab) UserInfo(ctx context.Context, token string) (*domain.PlatformUs
 
 // Repositories 实现 GitPlatformClient 接口
 func (g *Gitlab) Repositories(ctx context.Context, opts *domain.RepositoryOptions) ([]domain.AuthRepository, error) {
-	return g.GetAuthorizedRepositories(ctx, opts.Token)
+	client, err := g.newClientWithToken(opts.Token, opts.IsOAuth)
+	if err != nil {
+		return nil, fmt.Errorf("new client: %w", err)
+	}
+	return g.listProjects(ctx, client)
 }
 
 // Tree 实现 GitPlatformClient 接口
@@ -433,7 +437,11 @@ func (g *Gitlab) Archive(ctx context.Context, opts *domain.ArchiveOptions) (*dom
 
 // Branches 实现 GitPlatformClient 接口
 func (g *Gitlab) Branches(ctx context.Context, opts *domain.BranchesOptions) ([]*domain.BranchInfo, error) {
-	resp, err := g.ListBranches(ctx, opts.Token, opts.Owner, opts.IsOAuth, opts.Page, opts.PerPage)
+	projectPath := opts.Owner
+	if opts.Repo != "" {
+		projectPath = opts.Owner + "/" + opts.Repo
+	}
+	resp, err := g.ListBranches(ctx, opts.Token, projectPath, opts.IsOAuth, opts.Page, opts.PerPage)
 	if err != nil {
 		return nil, err
 	}
