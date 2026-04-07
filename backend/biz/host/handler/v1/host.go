@@ -30,6 +30,7 @@ type HostHandler struct {
 func NewHostHandler(i *do.Injector) (*HostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &HostHandler{
 		usecase:     do.MustInvoke[domain.HostUsecase](i),
@@ -47,7 +48,7 @@ func NewHostHandler(i *do.Injector) (*HostHandler, error) {
 	g.GET("/install", web.BindHandler(h.Install))
 	g.GET("/vms/terminals/join", web.BindHandler(h.JoinTerminal))
 
-	g.Use(auth.Auth())
+	g.Use(auth.Auth(), targetActive.TargetActive())
 	g.GET("/install-command", web.BaseHandler(h.GetInstallCommand))
 	g.DELETE("/:id", web.BindHandler(h.DeleteHost))
 	g.PUT("/:id", web.BindHandler(h.UpdateHost))

@@ -11,6 +11,7 @@ import (
 // ProvideUser 注册 user 模块的服务工厂
 func ProvideUser(i *do.Injector) {
 	do.Provide(i, repo.NewUserRepo)
+	do.Provide(i, repo.NewUserActiveRepo)
 	do.Provide(i, usecase.NewUserUsecase)
 	do.Provide(i, v1.NewAuthHandler)
 }
