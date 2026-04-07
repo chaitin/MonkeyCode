@@ -66,6 +66,9 @@ type ProjectTask func(*sql.Selector)
 // Task is the predicate function for task builders.
 type Task func(*sql.Selector)
 
+// TaskUsageStat is the predicate function for taskusagestat builders.
+type TaskUsageStat func(*sql.Selector)
+
 // TaskVirtualMachine is the predicate function for taskvirtualmachine builders.
 type TaskVirtualMachine func(*sql.Selector)
 

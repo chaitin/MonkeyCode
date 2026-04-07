@@ -653,6 +653,35 @@ var (
 			},
 		},
 	}
+	// TaskUsageStatsColumns holds the columns for the "task_usage_stats" table.
+	TaskUsageStatsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "task_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "model", Type: field.TypeString, Default: ""},
+		{Name: "input_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "output_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "total_tokens", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// TaskUsageStatsTable holds the schema information for the "task_usage_stats" table.
+	TaskUsageStatsTable = &schema.Table{
+		Name:       "task_usage_stats",
+		Columns:    TaskUsageStatsColumns,
+		PrimaryKey: []*schema.Column{TaskUsageStatsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "taskusagestat_task_id",
+				Unique:  false,
+				Columns: []*schema.Column{TaskUsageStatsColumns[1]},
+			},
+			{
+				Name:    "taskusagestat_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{TaskUsageStatsColumns[2]},
+			},
+		},
+	}
 	// TaskVirtualmachinesColumns holds the columns for the "task_virtualmachines" table.
 	TaskVirtualmachinesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1122,6 +1151,7 @@ var (
 		ProjectIssueCommentsTable,
 		ProjectTasksTable,
 		TasksTable,
+		TaskUsageStatsTable,
 		TaskVirtualmachinesTable,
 		TeamsTable,
 		TeamGroupsTable,
@@ -1232,6 +1262,9 @@ func init() {
 	TasksTable.ForeignKeys[0].RefTable = UsersTable
 	TasksTable.Annotation = &entsql.Annotation{
 		Table: "tasks",
+	}
+	TaskUsageStatsTable.Annotation = &entsql.Annotation{
+		Table: "task_usage_stats",
 	}
 	TaskVirtualmachinesTable.ForeignKeys[0].RefTable = TasksTable
 	TaskVirtualmachinesTable.ForeignKeys[1].RefTable = VirtualmachinesTable

@@ -32,6 +32,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -126,6 +127,7 @@ func checkColumn(t, c string) error {
 			projectissuecomment.Table: projectissuecomment.ValidColumn,
 			projecttask.Table:         projecttask.ValidColumn,
 			task.Table:                task.ValidColumn,
+			taskusagestat.Table:       taskusagestat.ValidColumn,
 			taskvirtualmachine.Table:  taskvirtualmachine.ValidColumn,
 			team.Table:                team.ValidColumn,
 			teamgroup.Table:           teamgroup.ValidColumn,
