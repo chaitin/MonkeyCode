@@ -131,18 +131,16 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 		}
 
 		// VM 处于休眠状态时自动恢复
-		if vm.Status == taskflow.VirtualMachineStatusHibernated {
-			go func() {
-				if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
-					HostID:        vm.Host.InternalID,
-					UserID:        task.UserID.String(),
-					ID:            vm.ID,
-					EnvironmentID: vm.EnvironmentID,
-				}); err != nil {
-					logger.WarnContext(context.Background(), "failed to resume vm on control connect", "error", err)
-				}
-			}()
-		}
+		go func() {
+			if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
+				HostID:        vm.Host.InternalID,
+				UserID:        task.UserID.String(),
+				ID:            vm.ID,
+				EnvironmentID: vm.EnvironmentID,
+			}); err != nil {
+				logger.WarnContext(context.Background(), "failed to resume vm on control connect", "error", err)
+			}
+		}()
 	}
 
 	h.controlConns.Add(taskID, wsConn)
@@ -205,7 +203,7 @@ func (h *TaskHandler) controlPing(ctx context.Context, wsConn *ws.WebsocketManag
 
 // controlKeepAlive 定期刷新空闲计时器，防止 VM 被误判空闲
 func (h *TaskHandler) controlKeepAlive(ctx context.Context, vmID string) error {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	for {
 		select {
