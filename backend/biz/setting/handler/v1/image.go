@@ -23,6 +23,7 @@ func NewImageHandler(i *do.Injector) (*ImageHandler, error) {
 	logger := do.MustInvoke[*slog.Logger](i)
 	usecase := do.MustInvoke[domain.ImageUsecase](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &ImageHandler{
 		logger:  logger.With("component", "handler.images"),
@@ -31,7 +32,7 @@ func NewImageHandler(i *do.Injector) (*ImageHandler, error) {
 
 	v1 := w.Group("/api/v1/users/images")
 
-	v1.Use(auth.Auth())
+	v1.Use(auth.Auth(), targetActive.TargetActive())
 	v1.GET("", web.BindHandler(h.List))
 	v1.POST("", web.BindHandler(h.Create))
 	v1.DELETE("/:id", web.BindHandler(h.Delete))

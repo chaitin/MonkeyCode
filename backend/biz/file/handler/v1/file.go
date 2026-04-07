@@ -30,6 +30,7 @@ type FileHandler struct {
 func NewFileHandler(i *do.Injector) (*FileHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	f := &FileHandler{
 		logger:   do.MustInvoke[*slog.Logger](i).With("module", "handler.file"),
@@ -38,7 +39,7 @@ func NewFileHandler(i *do.Injector) (*FileHandler, error) {
 	}
 
 	g := w.Group("/api/v1/users")
-	g.Use(auth.Auth())
+	g.Use(auth.Auth(), targetActive.TargetActive())
 
 	g.GET("/folders", web.BindHandler(f.ListFolder))
 	g.POST("/folders", web.BindHandler(f.Mkdir))
