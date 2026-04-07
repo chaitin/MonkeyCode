@@ -153,7 +153,7 @@ export function FileChangesDialog({
                 `}</style>
 
                 {isSelected && (
-                  <div className="" style={{ '--diff-font-family': 'var(--font-google-sans-code)' } as React.CSSProperties}>
+                  <div className="" style={{ '--diff-font-family': 'var(--font-code)' } as React.CSSProperties}>
                     {loading ? (
                       <Empty className="border mt-2">
                         <EmptyHeader>

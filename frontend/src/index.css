@@ -37,9 +37,10 @@
   --sidebar-accent-foreground: oklch(0.3250 0 0);
   --sidebar-border: oklch(0.9401 0 0);
   --sidebar-ring: oklch(0.7731 0 0);
-  --font-sans: 'Google Sans Code';
-  --font-serif: 'Google Sans Code';
-  --font-mono: 'Google Sans Code';
+  --font-code: 'Geist Mono Variable', 'Geist Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+  --font-sans: 'Geist Variable', 'Geist', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-serif: 'Geist Variable', 'Geist', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: var(--font-code);
   --radius: 0.5rem;
   --shadow-x: 0;
   --shadow-y: 1px;
@@ -92,9 +93,10 @@
   --sidebar-accent-foreground: oklch(0.8074 0.0142 93.0137);
   --sidebar-border: oklch(0.9401 0 0);
   --sidebar-ring: oklch(0.7731 0 0);
-  --font-sans: 'Google Sans Code';
-  --font-serif: 'Google Sans Code';
-  --font-mono: 'Google Sans Code';
+  --font-code: 'Geist Mono Variable', 'Geist Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+  --font-sans: 'Geist Variable', 'Geist', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-serif: 'Geist Variable', 'Geist', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: var(--font-code);
   --radius: 0.5rem;
   --shadow-x: 0;
   --shadow-y: 1px;
@@ -171,7 +173,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
   body {
+    font-family: var(--font-sans);
     @apply bg-background text-foreground;
   }
 }
@@ -183,8 +187,8 @@
        url('//at.alicdn.com/t/c/font_5023051_5lpvozpj09q.ttf?t=1762349624167') format('truetype');
 }
 
-.font-google-sans-code {
-  font-family: 'Google Sans Code';
+.font-code {
+  font-family: var(--font-code);
 }
 
 @keyframes text-flash {

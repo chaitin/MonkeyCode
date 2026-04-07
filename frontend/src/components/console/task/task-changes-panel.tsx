@@ -88,7 +88,7 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
     }
     if (diffFiles.length > 0 && diffFiles.some((file) => file.hunks?.length)) {
       return (
-        <div className="h-full overflow-auto" style={{ "--diff-font-family": "var(--font-google-sans-code)" } as React.CSSProperties}>
+        <div className="h-full overflow-auto" style={{ "--diff-font-family": "var(--font-code)" } as React.CSSProperties}>
           <style>{`
             .task-changes-diff .diff-line td:nth-child(2) {
               border-left: 1px var(--border) solid;

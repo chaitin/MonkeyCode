@@ -145,7 +145,7 @@ export default function MarkdownEditor({
               }}
               showGutter={false}
               setOptions={{
-                fontFamily: "var(--font-google-sans-code)",
+                fontFamily: "var(--font-code)",
                 fontSize: 12,
               }}
             />
@@ -163,4 +163,3 @@ export default function MarkdownEditor({
     </div>
   )
 }
-

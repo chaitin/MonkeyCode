@@ -145,7 +145,7 @@ export default function Terminal({
     xtermInstance.current = new XTerm({
       allowProposedApi: true,
       theme: themes[validTheme as keyof typeof themes],
-      fontFamily: '"Google Sans Code"',
+      fontFamily: '"Geist Mono Variable", "Geist Mono", "SFMono-Regular", "Consolas", "Liberation Mono", monospace',
       fontSize: 12,
     });
     

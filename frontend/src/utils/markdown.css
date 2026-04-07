@@ -170,7 +170,7 @@
 .markdown-body kbd,
 .markdown-body pre,
 .markdown-body samp {
-  font-family: 'Google Sans Code';
+  font-family: var(--font-code);
   font-size: 1em;
 }
 
@@ -310,7 +310,7 @@
 .markdown-body kbd {
   display: inline-block;
   padding: var(--base-size-4);
-  font: 0.8em 'Google Sans Code';
+  font: 0.8em var(--font-code);
   line-height: 10px;
   color: var(--fgColor-default);
   vertical-align: middle;
@@ -407,14 +407,14 @@
 .markdown-body tt,
 .markdown-body code,
 .markdown-body samp {
-  font-family: 'Google Sans Code';
+  font-family: var(--font-code);
   font-size: 0.8em;
 }
 
 .markdown-body pre {
   margin-top: 0;
   margin-bottom: 0;
-  font-family: 'Google Sans Code';
+  font-family: var(--font-code);
   font-size: 0.8em;
   word-wrap: normal;
 }
@@ -782,7 +782,7 @@
 
 .markdown-body pre code {
   font-size: 85% !important;
-  font-family: 'Google Sans Code';
+  font-family: var(--font-code);
 }
 
 .markdown-body pre>code {
@@ -900,7 +900,7 @@
 }
 
 .markdown-body .footnotes .data-footnote-backref g-emoji {
-  font-family: 'Google Sans Code';
+  font-family: var(--font-code);
 }
 
 .markdown-body body:has(:modal) {

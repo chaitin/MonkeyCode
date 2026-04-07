@@ -461,7 +461,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
                 showPrintMargin={false}
                 showGutter={true}
                 setOptions={{
-                  fontFamily: "var(--font-google-sans-code)",
+                  fontFamily: "var(--font-code)",
                   fontSize: 12,
                 }}
               />
@@ -474,4 +474,3 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
 }
 
 export default ProjectFileManager
-

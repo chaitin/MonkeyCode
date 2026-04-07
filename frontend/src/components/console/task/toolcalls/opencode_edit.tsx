@@ -22,7 +22,7 @@ export const renderDetail = (message: MessageType) => {
   return (
     <div 
       className="text-xs"
-      style={{ '--diff-font-family': 'var(--font-google-sans-code)' } as React.CSSProperties}
+      style={{ '--diff-font-family': 'var(--font-code)' } as React.CSSProperties}
     >
       <style>{`
         .user-diff-style .diff-line td:nth-child(2) {

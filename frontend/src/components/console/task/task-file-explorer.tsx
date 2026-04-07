@@ -581,7 +581,7 @@ export const TaskFileExplorer = ({
     const diffFiles = diffContent ? parseDiff(diffContent) : []
     if (diffFiles.length > 0 && diffFiles.some((file) => file.hunks?.length)) {
       return (
-        <div className="h-full overflow-auto" style={{ "--diff-font-family": "var(--font-google-sans-code)" } as React.CSSProperties}>
+        <div className="h-full overflow-auto" style={{ "--diff-font-family": "var(--font-code)" } as React.CSSProperties}>
           <style>{`
             .task-file-preview-diff .diff-line td:nth-child(2) {
               border-left: 1px var(--border) solid;
@@ -660,7 +660,7 @@ export const TaskFileExplorer = ({
         value={currentFile.content || ''}
         showPrintMargin={false}
         showGutter={true}
-        setOptions={{ fontFamily: "var(--font-google-sans-code)", fontSize: 12 }}
+        setOptions={{ fontFamily: "var(--font-code)", fontSize: 12 }}
       />
     )
   }
