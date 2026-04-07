@@ -24,6 +24,7 @@ func NewModelHandler(i *do.Injector) (*ModelHandler, error) {
 	logger := do.MustInvoke[*slog.Logger](i)
 	usecase := do.MustInvoke[domain.ModelUsecase](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &ModelHandler{
 		logger:  logger.With("component", "handler.models"),
@@ -34,7 +35,7 @@ func NewModelHandler(i *do.Injector) (*ModelHandler, error) {
 
 	v1.GET("/providers", web.BindHandler(h.GetProviderModelList))
 
-	v1.Use(auth.Auth())
+	v1.Use(auth.Auth(), targetActive.TargetActive())
 	v1.GET("", web.BindHandler(h.List))
 	v1.POST("", web.BindHandler(h.Create))
 	v1.PUT("/:id", web.BindHandler(h.Update))

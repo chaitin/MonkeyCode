@@ -81,6 +81,13 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return middleware.NewAuthMiddleware(sess, nil, l), nil
 	})
 
+	// TargetActive Middleware
+	do.Provide(i, func(i *do.Injector) (*middleware.TargetActiveMiddleware, error) {
+		l := do.MustInvoke[*slog.Logger](i)
+		activeRepo := do.MustInvoke[domain.UserActiveRepo](i)
+		return middleware.NewTargetActiveMiddleware(l, activeRepo), nil
+	})
+
 	// Audit Middleware
 	do.Provide(i, func(i *do.Injector) (*middleware.AuditMiddleware, error) {
 		l := do.MustInvoke[*slog.Logger](i)

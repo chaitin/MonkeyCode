@@ -29,6 +29,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -641,6 +642,33 @@ func (f TraverseTask) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.TaskQuery", q)
 }
 
+// The TaskUsageStatFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TaskUsageStatFunc func(context.Context, *db.TaskUsageStatQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TaskUsageStatFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TaskUsageStatQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TaskUsageStatQuery", q)
+}
+
+// The TraverseTaskUsageStat type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTaskUsageStat func(context.Context, *db.TaskUsageStatQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTaskUsageStat) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTaskUsageStat) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TaskUsageStatQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TaskUsageStatQuery", q)
+}
+
 // The TaskVirtualMachineFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TaskVirtualMachineFunc func(context.Context, *db.TaskVirtualMachineQuery) (db.Value, error)
 
@@ -1062,6 +1090,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.ProjectTaskQuery, predicate.ProjectTask, projecttask.OrderOption]{typ: db.TypeProjectTask, tq: q}, nil
 	case *db.TaskQuery:
 		return &query[*db.TaskQuery, predicate.Task, task.OrderOption]{typ: db.TypeTask, tq: q}, nil
+	case *db.TaskUsageStatQuery:
+		return &query[*db.TaskUsageStatQuery, predicate.TaskUsageStat, taskusagestat.OrderOption]{typ: db.TypeTaskUsageStat, tq: q}, nil
 	case *db.TaskVirtualMachineQuery:
 		return &query[*db.TaskVirtualMachineQuery, predicate.TaskVirtualMachine, taskvirtualmachine.OrderOption]{typ: db.TypeTaskVirtualMachine, tq: q}, nil
 	case *db.TeamQuery:

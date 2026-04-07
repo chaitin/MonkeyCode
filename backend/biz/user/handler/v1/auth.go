@@ -36,6 +36,7 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	usecase := do.MustInvoke[domain.UserUsecase](i)
 	redisClient := do.MustInvoke[*redis.Client](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 	captchaSvc := do.MustInvoke[*captcha.Captcha](i)
 
 	h := &AuthHandler{
@@ -58,10 +59,10 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	v1.POST("/password-login", web.BindHandler(h.PasswordLogin))
 	v1.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.Check())
 	v1.GET("/status", web.BaseHandler(h.Status), auth.Check())
-	v1.POST("/logout", web.BaseHandler(h.Logout), auth.Auth())
+	v1.POST("/logout", web.BaseHandler(h.Logout), auth.Auth(), targetActive.TargetActive())
 
 	// 邮箱绑定接口
-	v1.PUT("/email/bind-request", web.BindHandler(h.SendBindEmailVerification), auth.Auth())
+	v1.PUT("/email/bind-request", web.BindHandler(h.SendBindEmailVerification), auth.Auth(), targetActive.TargetActive())
 	v1.GET("/email/verify", web.BindHandler(h.VerifyBindEmail))
 
 	return h, nil

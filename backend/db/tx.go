@@ -54,6 +54,8 @@ type Tx struct {
 	ProjectTask *ProjectTaskClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
+	// TaskUsageStat is the client for interacting with the TaskUsageStat builders.
+	TaskUsageStat *TaskUsageStatClient
 	// TaskVirtualMachine is the client for interacting with the TaskVirtualMachine builders.
 	TaskVirtualMachine *TaskVirtualMachineClient
 	// Team is the client for interacting with the Team builders.
@@ -233,6 +235,7 @@ func (tx *Tx) init() {
 	tx.ProjectIssueComment = NewProjectIssueCommentClient(tx.config)
 	tx.ProjectTask = NewProjectTaskClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
+	tx.TaskUsageStat = NewTaskUsageStatClient(tx.config)
 	tx.TaskVirtualMachine = NewTaskVirtualMachineClient(tx.config)
 	tx.Team = NewTeamClient(tx.config)
 	tx.TeamGroup = NewTeamGroupClient(tx.config)

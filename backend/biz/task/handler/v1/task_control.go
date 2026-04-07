@@ -109,6 +109,7 @@ import (
 func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	user := middleware.GetUser(c)
 
+	// 验证 task 归属（必须在 ws.Accept 之前完成）
 	task, _, err := h.usecase.Info(c.Request().Context(), user, req.ID)
 	if err != nil {
 		return err
@@ -122,13 +123,6 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	defer wsConn.Close()
 
 	logger := h.logger.With("task_id", task.ID, "fn", "task.control")
-	taskID := task.ID.String()
-
-	// 连接建立：刷新空闲计时器
-	if vm := task.VirtualMachine; vm != nil {
-		if err := h.idleRefresher.Refresh(c.Request().Context(), vm.ID); err != nil {
-			logger.WarnContext(c.Request().Context(), "failed to refresh idle timers on connect", "error", err)
-		}
 
 		// VM 处于休眠状态时自动恢复
 		go func() {
@@ -159,7 +153,7 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	g, ctx := errgroup.WithContext(c.Request().Context())
 
 	g.Go(func() error {
-		return h.controlPing(ctx, wsConn, taskID)
+		return h.controlPing(ctx, wsConn, task.ID.String())
 	})
 
 	g.Go(func() error {
@@ -167,15 +161,8 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	})
 
 	g.Go(func() error {
-		return h.controlSubscribeTaskEvents(ctx, wsConn, logger, taskID)
+		return h.controlSubscribeTaskEvents(ctx, wsConn, logger, task.ID.String())
 	})
-
-	// 定期刷新空闲计时器，保持 VM 活跃
-	if vm := task.VirtualMachine; vm != nil {
-		g.Go(func() error {
-			return h.controlKeepAlive(ctx, vm.ID)
-		})
-	}
 
 	if err := g.Wait(); err != nil {
 		logger.DebugContext(c.Request().Context(), "control websocket closed", "reason", err)

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -31,6 +32,12 @@ type UserRepo interface {
 	ChangePassword(ctx context.Context, uid uuid.UUID, currentPassword, newPassword string, isReset bool) error
 	GetUserByEmail(ctx context.Context, emails []string) ([]*db.User, error)
 	SetEmail(ctx context.Context, userID uuid.UUID, email string) error
+}
+
+// UserActiveRepo 用户活跃记录仓储接口
+type UserActiveRepo interface {
+	RecordActiveRecord(ctx context.Context, key consts.RedisKey, field string, score time.Time) error
+	GetActiveRecord(ctx context.Context, key consts.RedisKey, userID string) (time.Time, error)
 }
 
 type User struct {

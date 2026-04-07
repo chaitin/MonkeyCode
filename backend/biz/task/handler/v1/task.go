@@ -18,7 +18,6 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
-	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -42,8 +41,7 @@ type TaskHandler struct {
 	nls          *nls.NLS
 	taskConns    *ws.TaskConn
 	controlConns *ws.ControlConn
-	taskSummary   *service.TaskSummaryService
-	idleRefresher vmidle.VMIdleRefresher
+	taskSummary  *service.TaskSummaryService
 }
 
 // NewTaskHandler 创建任务处理器
@@ -56,10 +54,10 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	tf := do.MustInvoke[taskflow.Clienter](i)
 	lok := do.MustInvoke[*loki.Client](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 	tc := do.MustInvoke[*ws.TaskConn](i)
 	cc := do.MustInvoke[*ws.ControlConn](i)
 	ts := do.MustInvoke[*service.TaskSummaryService](i)
-	ir := do.MustInvoke[vmidle.VMIdleRefresher](i)
 
 	// Optional deps
 	var pubhost domain.PublicHostUsecase
@@ -84,7 +82,6 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		taskConns:    tc,
 		controlConns: cc,
 		taskSummary:  ts,
-		idleRefresher: ir,
 	}
 
 	// 注册路由
@@ -92,7 +89,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 
 	v1.GET("/public-stream", web.BindHandler(h.PublicStream), auth.Check())
 
-	v1.Use(auth.Auth())
+	v1.Use(auth.Auth(), targetActive.TargetActive())
 
 	// 任务管理接口
 	v1.GET("", web.BindHandler(h.List, web.WithPage()))
@@ -375,6 +372,17 @@ func (h *TaskHandler) stream(c *web.Context, user *domain.User, task *domain.Tas
 func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task) error {
 	taskID := task.ID.String()
 	taskCreatedAt := time.Unix(task.CreatedAt, 0)
+
+	go func() {
+		if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
+			HostID:        task.VirtualMachine.Host.InternalID,
+			UserID:        task.UserID.String(),
+			ID:            taskID,
+			EnvironmentID: task.VirtualMachine.EnvironmentID,
+		}); err != nil {
+			h.logger.With("task_id", task.ID.String(), "error", err).ErrorContext(ctx, "failed to resume task")
+		}
+	}()
 
 	// 先订阅实时流（触发 flush）
 	streamCh := make(chan *taskflow.TaskChunk, 100)
