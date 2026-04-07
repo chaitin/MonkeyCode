@@ -109,7 +109,6 @@ import (
 func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	user := middleware.GetUser(c)
 
-	// 验证 task 归属（必须在 ws.Accept 之前完成）
 	task, _, err := h.usecase.Info(c.Request().Context(), user, req.ID)
 	if err != nil {
 		return err
@@ -123,14 +122,46 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	defer wsConn.Close()
 
 	logger := h.logger.With("task_id", task.ID, "fn", "task.control")
+	taskID := task.ID.String()
 
-	h.controlConns.Add(task.ID.String(), wsConn)
-	defer h.controlConns.Remove(task.ID.String(), wsConn)
+	// 连接建立：刷新空闲计时器
+	if vm := task.VirtualMachine; vm != nil {
+		if err := h.idleRefresher.Refresh(c.Request().Context(), vm.ID); err != nil {
+			logger.WarnContext(c.Request().Context(), "failed to refresh idle timers on connect", "error", err)
+		}
+
+		// VM 处于休眠状态时自动恢复
+		if vm.Status == taskflow.VirtualMachineStatusHibernated {
+			go func() {
+				if err := h.taskflow.VirtualMachiner().Resume(c.Request().Context(), &taskflow.ResumeVirtualMachineReq{
+					HostID:        vm.Host.InternalID,
+					UserID:        task.UserID.String(),
+					ID:            vm.ID,
+					EnvironmentID: vm.EnvironmentID,
+				}); err != nil {
+					logger.WarnContext(context.Background(), "failed to resume vm on control connect", "error", err)
+				}
+			}()
+		}
+	}
+
+	h.controlConns.Add(taskID, wsConn)
+	defer func() {
+		h.controlConns.Remove(taskID, wsConn)
+		// 最后一个连接断开：刷新计时器（开始空闲倒计时）
+		if vm := task.VirtualMachine; vm != nil && !h.controlConns.Has(taskID) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := h.idleRefresher.Refresh(ctx, vm.ID); err != nil {
+				logger.WarnContext(ctx, "failed to refresh idle timers on disconnect", "error", err)
+			}
+		}
+	}()
 
 	g, ctx := errgroup.WithContext(c.Request().Context())
 
 	g.Go(func() error {
-		return h.controlPing(ctx, wsConn, task.ID.String())
+		return h.controlPing(ctx, wsConn, taskID)
 	})
 
 	g.Go(func() error {
@@ -138,8 +169,15 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	})
 
 	g.Go(func() error {
-		return h.controlSubscribeTaskEvents(ctx, wsConn, logger, task.ID.String())
+		return h.controlSubscribeTaskEvents(ctx, wsConn, logger, taskID)
 	})
+
+	// 定期刷新空闲计时器，保持 VM 活跃
+	if vm := task.VirtualMachine; vm != nil {
+		g.Go(func() error {
+			return h.controlKeepAlive(ctx, vm.ID)
+		})
+	}
 
 	if err := g.Wait(); err != nil {
 		logger.DebugContext(c.Request().Context(), "control websocket closed", "reason", err)
@@ -160,6 +198,22 @@ func (h *TaskHandler) controlPing(ctx context.Context, wsConn *ws.WebsocketManag
 				Type: consts.TaskStreamTypePing,
 			}); err != nil {
 				return fmt.Errorf("control ping failed: %w", err)
+			}
+		}
+	}
+}
+
+// controlKeepAlive 定期刷新空闲计时器，防止 VM 被误判空闲
+func (h *TaskHandler) controlKeepAlive(ctx context.Context, vmID string) error {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if err := h.idleRefresher.Refresh(ctx, vmID); err != nil {
+				h.logger.WarnContext(ctx, "keepalive refresh failed", "vmID", vmID, "error", err)
 			}
 		}
 	}
