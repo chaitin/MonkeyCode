@@ -73,6 +73,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	g.POST("/coding-config", web.BindHandler(h.GetCodingConfig))
 	g.POST("/git-credential", web.BindHandler(h.GitCredential))
 	g.GET("/vm/list", web.BaseHandler(h.VMList))
+	g.POST("/vm/activity", web.BindHandler(h.VMActivity))
 	g.POST("/task-stream-ips", web.BindHandler(h.GetTaskStreamIPs))
 
 	return h, nil
@@ -357,6 +358,14 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 			}
 		}
 
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := h.hostUsecase.RefreshIdleTimers(ctx, vm.ID); err != nil {
+				h.logger.With("error", err).ErrorContext(ctx, "failed to refresh idel timers")
+			}
+		}()
+
 	}
 
 	return c.Success(nil)
@@ -463,6 +472,26 @@ func (h *InternalHostHandler) GitCredential(c *web.Context, req taskflow.GitCred
 		Username: &username,
 		Password: &token,
 	})
+}
+
+// VMActivityReq VM 活动上报请求
+type VMActivityReq struct {
+	VMID         string `json:"vm_id"`
+	LastActiveAt int64  `json:"last_active_at"`
+}
+
+// VMActivity VM 活动回调，用于刷新空闲计时器
+func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) error {
+	h.logger.With("req", req).DebugContext(c.Request().Context(), "vm activity req")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := h.hostUsecase.RefreshIdleTimers(ctx, req.VMID); err != nil {
+			h.logger.With("error", err).ErrorContext(ctx, "failed to refresh idel timers")
+		}
+	}()
+	return c.Success(nil)
 }
 
 // GetTaskStreamIPs 获取任务 WebSocket 连接的客户端 IP
