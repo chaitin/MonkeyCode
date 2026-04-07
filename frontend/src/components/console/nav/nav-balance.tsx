@@ -9,7 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
-import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
 import {
@@ -57,6 +57,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const { balance, dailyBalance, loadingSubscription, reloadSubscription, reloadWallet, subscription, user } = useCommonData();
 
   const positiveKinds = new Set<string>([
@@ -172,7 +173,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
     setIsLoadingMore(true);
     await apiRequest('v1UsersWalletTransactionList', { 
-      size: 10, 
+      size: 20, 
       page: pageToLoad,
     }, [], (resp) => {
       if (resp.code === 0) {
@@ -285,26 +286,36 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   }
 
   useEffect(() => {
+    if (!dialogOpen || activeSection !== "usage") {
+      return;
+    }
+
+    const currentRef = loadMoreRef.current;
+    const rootRef = contentScrollRef.current;
+    if (!currentRef || !rootRef) {
+      return;
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
           loadMore();
         }
       },
-      { threshold: 0.1 }
+      {
+        root: rootRef,
+        threshold: 0,
+        rootMargin: "0px 0px 120px 0px",
+      }
     );
 
-    const currentRef = loadMoreRef.current;
-    if (currentRef) {
-      observer.observe(currentRef);
-    }
+    observer.observe(currentRef);
 
     return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
-      }
+      observer.unobserve(currentRef);
+      observer.disconnect();
     };
-  }, [loadMore]);
+  }, [activeSection, dialogOpen, hasNextPage, loadMore, transcations.length]);
 
   const openDialog = useCallback((section: BalanceSectionId = "balance") => {
     setActiveSection(section)
@@ -651,23 +662,39 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   )
 
   const usageContent = (
-    <ItemGroup className="flex max-h-full flex-col gap-2 overflow-y-auto">
+    <ItemGroup className="flex flex-col">
       {transcations.map((transaction, index) => (
-        <Item key={`${transaction.created_at || 0}-${transaction.kind || "unknown"}-${index}`} variant="outline" size="sm">
-          <ItemContent>
-            <ItemTitle className="flex flex-row w-full">
-              <div className={cn("flex flex-1 flex-row items-center", positiveKinds.has(transaction.kind || ConstsTransactionKind.TransactionKindVMConsumption) ? "text-primary" : "")}>
-                {formatSignedAmount(transaction.amount || ((transaction.amount_balance || 0) + (transaction.amount_daily || 0)), transaction.kind)}
-              </div>
-              <div className="flex flex-row items-center gap-1 text-muted-foreground text-xs font-normal">
-                {transaction.remark || getTransactionLabel(transaction.kind)}
-              </div>
-              <div className="text-muted-foreground text-xs ml-4">
-                {dayjs((transaction.created_at || 0) * 1000).format("YYYY-MM-DD HH:mm:ss")}
-              </div>
-            </ItemTitle>
-          </ItemContent>
-        </Item>
+        <div key={`${transaction.created_at || 0}-${transaction.kind || "unknown"}-${index}`}>
+          <Item
+            variant="default"
+            size="sm"
+            className="px-2 py-2"
+          >
+            <ItemContent>
+              <ItemTitle className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+                <div className="min-w-0">
+                  <div className="truncate text-sm text-foreground font-normal">
+                    {transaction.remark || getTransactionLabel(transaction.kind)}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {dayjs((transaction.created_at || 0) * 1000).format("YYYY-MM-DD HH:mm:ss")}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "text-right tabular-nums",
+                    positiveKinds.has(transaction.kind || ConstsTransactionKind.TransactionKindVMConsumption)
+                      ? "text-green-600"
+                      : "text-red-600",
+                  )}
+                >
+                  {formatSignedAmount(transaction.amount || ((transaction.amount_balance || 0) + (transaction.amount_daily || 0)), transaction.kind)}
+                </div>
+              </ItemTitle>
+            </ItemContent>
+          </Item>
+          {index < transcations.length - 1 && <ItemSeparator />}
+        </div>
       ))}
       {hasNextPage && (
         <div ref={loadMoreRef} className="flex justify-center py-2">
@@ -735,7 +762,7 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                 <div className="text-sm font-medium">{sectionMeta.title}</div>
                 <div className="mt-1 text-xs text-muted-foreground">{sectionMeta.description}</div>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+              <div ref={contentScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
                 {activeSection === "balance"
                   ? balanceContent
                   : activeSection === "earn"
