@@ -30,6 +30,7 @@ type HostUsecase interface {
 	DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID string) error
 	DeleteHost(ctx context.Context, uid uuid.UUID, id string) error
 	UpdateHost(ctx context.Context, uid uuid.UUID, req *UpdateHostReq) error
+	RefreshIdleTimers(ctx context.Context, vmID string) error
 	FireExpiredVM(ctx context.Context, fire bool) ([]FireExpiredVMItem, error)
 	UpdateVM(ctx context.Context, req UpdateVMReq) (*VirtualMachine, error)
 	ApplyPort(ctx context.Context, uid uuid.UUID, req *ApplyPortReq) (*VMPort, error)

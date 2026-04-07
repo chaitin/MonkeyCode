@@ -158,10 +158,3 @@ func (cc *ControlConn) Get(id string) ([]*WebsocketManager, bool) {
 	conns, ok := cc.conns[id]
 	return conns, ok
 }
-
-// Has 检查指定 taskID 是否还有活跃的 control 连接
-func (cc *ControlConn) Has(id string) bool {
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
-	return len(cc.conns[id]) > 0
-}
