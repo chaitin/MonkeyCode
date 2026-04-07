@@ -376,17 +376,6 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	taskID := task.ID.String()
 	taskCreatedAt := time.Unix(task.CreatedAt, 0)
 
-	go func() {
-		if err := h.taskflow.VirtualMachiner().Resume(ctx, &taskflow.ResumeVirtualMachineReq{
-			HostID:        task.VirtualMachine.Host.InternalID,
-			UserID:        task.UserID.String(),
-			ID:            taskID,
-			EnvironmentID: task.VirtualMachine.EnvironmentID,
-		}); err != nil {
-			h.logger.With("task_id", task.ID.String(), "error", err).ErrorContext(ctx, "failed to resume task")
-		}
-	}()
-
 	// 先订阅实时流（触发 flush）
 	streamCh := make(chan *taskflow.TaskChunk, 100)
 	go func() {
