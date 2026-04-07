@@ -11,6 +11,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
@@ -21,6 +22,7 @@ import (
 // TeamGroupUserUsecase 团队分组成员业务逻辑层
 type TeamGroupUserUsecase struct {
 	repo        domain.TeamGroupUserRepo
+	activeRepo  domain.UserActiveRepo
 	logger      *slog.Logger
 	config      *config.Config
 	smtpClient  domain.EmailSender
@@ -33,6 +35,7 @@ func NewTeamGroupUserUsecase(i *do.Injector) (domain.TeamGroupUserUsecase, error
 
 	t := &TeamGroupUserUsecase{
 		repo:        do.MustInvoke[domain.TeamGroupUserRepo](i),
+		activeRepo:  do.MustInvoke[domain.UserActiveRepo](i),
 		logger:      do.MustInvoke[*slog.Logger](i).With("module", "usecase.team_group_user"),
 		config:      cfg,
 		smtpClient:  do.MustInvoke[domain.EmailSender](i),
@@ -207,11 +210,21 @@ func (u *TeamGroupUserUsecase) MemberList(ctx context.Context, teamUser *domain.
 	return &domain.MemberListResp{
 		MemberLimit: team.MemberLimit,
 		Members: cvt.Iter(members, func(_ int, member *db.TeamMember) *domain.TeamMemberInfo {
+			var lastActiveAtTs int64
+			if member.Edges.User != nil && u.activeRepo != nil {
+				lastActiveAt, err := u.activeRepo.GetActiveRecord(ctx, consts.UserActiveKey, member.Edges.User.ID.String())
+				if err != nil {
+					u.logger.ErrorContext(ctx, "get last active time failed", "error", err)
+				}
+				if !lastActiveAt.IsZero() {
+					lastActiveAtTs = lastActiveAt.Unix()
+				}
+			}
 			return &domain.TeamMemberInfo{
 				User:         cvt.From(member.Edges.User, &domain.User{}),
 				Role:         member.Role,
 				CreatedAt:    member.CreatedAt.Unix(),
-				LastActiveAt: 0,
+				LastActiveAt: lastActiveAtTs,
 			}
 		}),
 	}, nil

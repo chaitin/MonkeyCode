@@ -23,6 +23,7 @@ type ProjectHandler struct {
 func NewProjectHandler(i *do.Injector) (*ProjectHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &ProjectHandler{
 		usecase: do.MustInvoke[domain.ProjectUsecase](i),
@@ -30,7 +31,7 @@ func NewProjectHandler(i *do.Injector) (*ProjectHandler, error) {
 	}
 
 	g := w.Group("/api/v1/users/projects")
-	g.Use(auth.Auth())
+	g.Use(auth.Auth(), targetActive.TargetActive())
 	g.GET("", web.BindHandler(h.List))
 	g.GET("/:id", web.BindHandler(h.Get))
 	g.POST("", web.BindHandler(h.Create))

@@ -56,6 +56,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	tf := do.MustInvoke[taskflow.Clienter](i)
 	lok := do.MustInvoke[*loki.Client](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 	tc := do.MustInvoke[*ws.TaskConn](i)
 	cc := do.MustInvoke[*ws.ControlConn](i)
 	ts := do.MustInvoke[*service.TaskSummaryService](i)
@@ -92,7 +93,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 
 	v1.GET("/public-stream", web.BindHandler(h.PublicStream), auth.Check())
 
-	v1.Use(auth.Auth())
+	v1.Use(auth.Auth(), targetActive.TargetActive())
 
 	// 任务管理接口
 	v1.GET("", web.BindHandler(h.List, web.WithPage()))
