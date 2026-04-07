@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -44,16 +45,63 @@ func NewTaskRepo(i *do.Injector) (domain.TaskRepo, error) {
 	}, nil
 }
 
+type statsById struct {
+	ID           uuid.UUID `json:"task_id"`
+	InputTokens  int64     `json:"input_tokens"`
+	OutputTokens int64     `json:"output_tokens"`
+	TotalTokens  int64     `json:"total_tokens"`
+	LLMRequests  int64     `json:"llm_requests"`
+}
+
 // Stat implements domain.TaskRepo.
-// 开源版本无 TaskUsageStat 表，返回空结果
-func (t *TaskRepo) Stat(_ context.Context, _ uuid.UUID) (*domain.TaskStats, error) {
-	return &domain.TaskStats{}, nil
+func (t *TaskRepo) Stat(ctx context.Context, id uuid.UUID) (*domain.TaskStats, error) {
+	var results []*domain.TaskStats
+	err := t.db.TaskUsageStat.Query().
+		Where(taskusagestat.TaskIDEQ(id)).
+		Aggregate(
+			db.As(db.Sum(taskusagestat.FieldInputTokens), "input_tokens"),
+			db.As(db.Sum(taskusagestat.FieldOutputTokens), "output_tokens"),
+			db.As(db.Sum(taskusagestat.FieldTotalTokens), "total_tokens"),
+			db.As(db.Count(), "llm_requests"),
+		).
+		Scan(ctx, &results)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) > 0 {
+		return results[0], nil
+	}
+	return nil, nil
 }
 
 // StatByIDs implements domain.TaskRepo.
-// 开源版本无 TaskUsageStat 表，返回空 map
-func (t *TaskRepo) StatByIDs(_ context.Context, _ []uuid.UUID) (map[uuid.UUID]*domain.TaskStats, error) {
-	return make(map[uuid.UUID]*domain.TaskStats), nil
+func (t *TaskRepo) StatByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*domain.TaskStats, error) {
+	var results []*statsById
+	err := t.db.TaskUsageStat.Query().
+		Where(taskusagestat.TaskIDIn(ids...)).
+		Modify(func(s *sql.Selector) {
+			s.Select(
+				"task_id",
+				sql.As(sql.Sum(s.C(taskusagestat.FieldInputTokens)), "input_tokens"),
+				sql.As(sql.Sum(s.C(taskusagestat.FieldOutputTokens)), "output_tokens"),
+				sql.As(sql.Sum(s.C(taskusagestat.FieldTotalTokens)), "total_tokens"),
+				sql.As(sql.Count("*"), "llm_requests"),
+			).
+				GroupBy(s.C(taskusagestat.FieldTaskID))
+		}).
+		Scan(ctx, &results)
+	if err != nil {
+		return nil, err
+	}
+
+	return cvt.IterToMap(results, func(_ int, s *statsById) (uuid.UUID, *domain.TaskStats) {
+		return s.ID, &domain.TaskStats{
+			InputTokens:  s.InputTokens,
+			OutputTokens: s.OutputTokens,
+			TotalTokens:  s.TotalTokens,
+			LLMRequests:  s.LLMRequests,
+		}
+	}), nil
 }
 
 // GetByID implements domain.TaskRepo.
