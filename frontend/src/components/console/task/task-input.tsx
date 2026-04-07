@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { defaultSkills } from "@/utils/config";
+import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 
 
 interface SkillItemProps {
@@ -210,16 +211,39 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   };
 
   const setDefaultConfig = () => {
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
-    setSelectedHostId(selectHost(hosts, true))
+    const storedParams = readStoredTaskDialogParams();
+    const defaultModelId = selectPreferredTaskModel(models, subscription);
+    const nextModelId = (
+      storedParams.modelId
+      && models.some((model) => model.id === storedParams.modelId)
+      && canUseModelBySubscription(models.find((model) => model.id === storedParams.modelId), subscription)
+    )
+      ? storedParams.modelId
+      : defaultModelId;
+
+    setSelectedModelId(nextModelId);
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
-      setSelectedHostId(selectHost(hosts, true))
-      setSelectedImageId(selectImage(images, true));
-    } else {
-      setSelectedHostId(selectHost(hosts, false))
-      setSelectedImageId(selectImage(images, false));
+      const nextHostId = (
+        storedParams.hostId === "public_host"
+        || hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
+      )
+        ? (storedParams.hostId || "public_host")
+        : selectHost(hosts, true);
+      const nextImageId = (
+        storedParams.imageId
+        && images.some((image) => image.id === storedParams.imageId)
+      )
+        ? storedParams.imageId
+        : selectImage(images, true);
+
+      setSelectedHostId(nextHostId);
+      setSelectedImageId(nextImageId);
+      return;
     }
+
+    setSelectedHostId(selectHost(hosts, false));
+    setSelectedImageId(selectImage(images, false));
   };
 
   const adaptedModelForTool = (): boolean => {
@@ -264,6 +288,13 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       toast.warning('内置模型只能在内置宿主机上使用');
       return;
     }
+
+    const storedParams = readStoredTaskDialogParams();
+    writeStoredTaskDialogParams({
+      modelId: selectedModelId,
+      hostId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedHostId : storedParams.hostId,
+      imageId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedImageId : storedParams.imageId,
+    });
 
     executeTask();
   };

@@ -16,6 +16,7 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
+import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "@/components/console/task/task-dialog-params-storage"
 
 interface StartDevelopTaskDialogProps {
   open: boolean
@@ -111,8 +112,15 @@ export default function StartDevelopTaskDialog({
       const justOpened = !prevOpenRef.current
       prevOpenRef.current = true
       if (justOpened) {
+        const storedParams = readStoredTaskDialogParams()
         setUserMessage('')
-        setSelectedModelId(selectPreferredTaskModel(models, subscription))
+        setSelectedModelId(
+          storedParams.modelId
+            && models.some((model) => model.id === storedParams.modelId)
+            && canUseModelBySubscription(models.find((model) => model.id === storedParams.modelId), subscription)
+            ? storedParams.modelId
+            : selectPreferredTaskModel(models, subscription)
+        )
         setSelectedBranch('main')
       }
       fetchBranches()
@@ -154,6 +162,12 @@ export default function StartDevelopTaskDialog({
       toast.error('请选择大模型')
       return
     }
+
+    const storedParams = readStoredTaskDialogParams()
+    writeStoredTaskDialogParams({
+      ...storedParams,
+      modelId: selectedModelId,
+    })
 
     setSubmitting(true)
 
