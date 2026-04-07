@@ -26,6 +26,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -439,6 +440,32 @@ func init() {
 	task.DefaultUpdatedAt = taskDescUpdatedAt.Default.(func() time.Time)
 	// task.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	task.UpdateDefaultUpdatedAt = taskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	taskusagestatFields := schema.TaskUsageStat{}.Fields()
+	_ = taskusagestatFields
+	// taskusagestatDescModel is the schema descriptor for model field.
+	taskusagestatDescModel := taskusagestatFields[3].Descriptor()
+	// taskusagestat.DefaultModel holds the default value on creation for the model field.
+	taskusagestat.DefaultModel = taskusagestatDescModel.Default.(string)
+	// taskusagestatDescInputTokens is the schema descriptor for input_tokens field.
+	taskusagestatDescInputTokens := taskusagestatFields[4].Descriptor()
+	// taskusagestat.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	taskusagestat.DefaultInputTokens = taskusagestatDescInputTokens.Default.(int64)
+	// taskusagestatDescOutputTokens is the schema descriptor for output_tokens field.
+	taskusagestatDescOutputTokens := taskusagestatFields[5].Descriptor()
+	// taskusagestat.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	taskusagestat.DefaultOutputTokens = taskusagestatDescOutputTokens.Default.(int64)
+	// taskusagestatDescTotalTokens is the schema descriptor for total_tokens field.
+	taskusagestatDescTotalTokens := taskusagestatFields[6].Descriptor()
+	// taskusagestat.DefaultTotalTokens holds the default value on creation for the total_tokens field.
+	taskusagestat.DefaultTotalTokens = taskusagestatDescTotalTokens.Default.(int64)
+	// taskusagestatDescCreatedAt is the schema descriptor for created_at field.
+	taskusagestatDescCreatedAt := taskusagestatFields[7].Descriptor()
+	// taskusagestat.DefaultCreatedAt holds the default value on creation for the created_at field.
+	taskusagestat.DefaultCreatedAt = taskusagestatDescCreatedAt.Default.(func() time.Time)
+	// taskusagestatDescID is the schema descriptor for id field.
+	taskusagestatDescID := taskusagestatFields[0].Descriptor()
+	// taskusagestat.DefaultID holds the default value on creation for the id field.
+	taskusagestat.DefaultID = taskusagestatDescID.Default.(func() uuid.UUID)
 	taskvirtualmachineFields := schema.TaskVirtualMachine{}.Fields()
 	_ = taskvirtualmachineFields
 	// taskvirtualmachineDescCreatedAt is the schema descriptor for created_at field.

@@ -249,6 +249,18 @@ func (f TaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TaskMutation", m)
 }
 
+// The TaskUsageStatFunc type is an adapter to allow the use of ordinary
+// function as TaskUsageStat mutator.
+type TaskUsageStatFunc func(context.Context, *db.TaskUsageStatMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TaskUsageStatFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TaskUsageStatMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TaskUsageStatMutation", m)
+}
+
 // The TaskVirtualMachineFunc type is an adapter to allow the use of ordinary
 // function as TaskVirtualMachine mutator.
 type TaskVirtualMachineFunc func(context.Context, *db.TaskVirtualMachineMutation) (db.Value, error)

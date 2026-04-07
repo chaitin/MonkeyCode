@@ -36,6 +36,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
@@ -99,6 +100,8 @@ type Client struct {
 	ProjectTask *ProjectTaskClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
+	// TaskUsageStat is the client for interacting with the TaskUsageStat builders.
+	TaskUsageStat *TaskUsageStatClient
 	// TaskVirtualMachine is the client for interacting with the TaskVirtualMachine builders.
 	TaskVirtualMachine *TaskVirtualMachineClient
 	// Team is the client for interacting with the Team builders.
@@ -158,6 +161,7 @@ func (c *Client) init() {
 	c.ProjectIssueComment = NewProjectIssueCommentClient(c.config)
 	c.ProjectTask = NewProjectTaskClient(c.config)
 	c.Task = NewTaskClient(c.config)
+	c.TaskUsageStat = NewTaskUsageStatClient(c.config)
 	c.TaskVirtualMachine = NewTaskVirtualMachineClient(c.config)
 	c.Team = NewTeamClient(c.config)
 	c.TeamGroup = NewTeamGroupClient(c.config)
@@ -284,6 +288,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
 		Task:                NewTaskClient(cfg),
+		TaskUsageStat:       NewTaskUsageStatClient(cfg),
 		TaskVirtualMachine:  NewTaskVirtualMachineClient(cfg),
 		Team:                NewTeamClient(cfg),
 		TeamGroup:           NewTeamGroupClient(cfg),
@@ -337,6 +342,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
 		Task:                NewTaskClient(cfg),
+		TaskUsageStat:       NewTaskUsageStatClient(cfg),
 		TaskVirtualMachine:  NewTaskVirtualMachineClient(cfg),
 		Team:                NewTeamClient(cfg),
 		TeamGroup:           NewTeamGroupClient(cfg),
@@ -383,7 +389,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
 		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
 		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
 		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
 		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
@@ -399,7 +405,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
 		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
 		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
 		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
 		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
@@ -451,6 +457,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ProjectTask.mutate(ctx, m)
 	case *TaskMutation:
 		return c.Task.mutate(ctx, m)
+	case *TaskUsageStatMutation:
+		return c.TaskUsageStat.mutate(ctx, m)
 	case *TaskVirtualMachineMutation:
 		return c.TaskVirtualMachine.mutate(ctx, m)
 	case *TeamMutation:
@@ -4322,6 +4330,139 @@ func (c *TaskClient) mutate(ctx context.Context, m *TaskMutation) (Value, error)
 	}
 }
 
+// TaskUsageStatClient is a client for the TaskUsageStat schema.
+type TaskUsageStatClient struct {
+	config
+}
+
+// NewTaskUsageStatClient returns a client for the TaskUsageStat from the given config.
+func NewTaskUsageStatClient(c config) *TaskUsageStatClient {
+	return &TaskUsageStatClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `taskusagestat.Hooks(f(g(h())))`.
+func (c *TaskUsageStatClient) Use(hooks ...Hook) {
+	c.hooks.TaskUsageStat = append(c.hooks.TaskUsageStat, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `taskusagestat.Intercept(f(g(h())))`.
+func (c *TaskUsageStatClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TaskUsageStat = append(c.inters.TaskUsageStat, interceptors...)
+}
+
+// Create returns a builder for creating a TaskUsageStat entity.
+func (c *TaskUsageStatClient) Create() *TaskUsageStatCreate {
+	mutation := newTaskUsageStatMutation(c.config, OpCreate)
+	return &TaskUsageStatCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TaskUsageStat entities.
+func (c *TaskUsageStatClient) CreateBulk(builders ...*TaskUsageStatCreate) *TaskUsageStatCreateBulk {
+	return &TaskUsageStatCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TaskUsageStatClient) MapCreateBulk(slice any, setFunc func(*TaskUsageStatCreate, int)) *TaskUsageStatCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TaskUsageStatCreateBulk{err: fmt.Errorf("calling to TaskUsageStatClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TaskUsageStatCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TaskUsageStatCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TaskUsageStat.
+func (c *TaskUsageStatClient) Update() *TaskUsageStatUpdate {
+	mutation := newTaskUsageStatMutation(c.config, OpUpdate)
+	return &TaskUsageStatUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TaskUsageStatClient) UpdateOne(_m *TaskUsageStat) *TaskUsageStatUpdateOne {
+	mutation := newTaskUsageStatMutation(c.config, OpUpdateOne, withTaskUsageStat(_m))
+	return &TaskUsageStatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TaskUsageStatClient) UpdateOneID(id uuid.UUID) *TaskUsageStatUpdateOne {
+	mutation := newTaskUsageStatMutation(c.config, OpUpdateOne, withTaskUsageStatID(id))
+	return &TaskUsageStatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TaskUsageStat.
+func (c *TaskUsageStatClient) Delete() *TaskUsageStatDelete {
+	mutation := newTaskUsageStatMutation(c.config, OpDelete)
+	return &TaskUsageStatDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TaskUsageStatClient) DeleteOne(_m *TaskUsageStat) *TaskUsageStatDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TaskUsageStatClient) DeleteOneID(id uuid.UUID) *TaskUsageStatDeleteOne {
+	builder := c.Delete().Where(taskusagestat.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TaskUsageStatDeleteOne{builder}
+}
+
+// Query returns a query builder for TaskUsageStat.
+func (c *TaskUsageStatClient) Query() *TaskUsageStatQuery {
+	return &TaskUsageStatQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTaskUsageStat},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TaskUsageStat entity by its id.
+func (c *TaskUsageStatClient) Get(ctx context.Context, id uuid.UUID) (*TaskUsageStat, error) {
+	return c.Query().Where(taskusagestat.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TaskUsageStatClient) GetX(ctx context.Context, id uuid.UUID) *TaskUsageStat {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TaskUsageStatClient) Hooks() []Hook {
+	return c.hooks.TaskUsageStat
+}
+
+// Interceptors returns the client interceptors.
+func (c *TaskUsageStatClient) Interceptors() []Interceptor {
+	return c.inters.TaskUsageStat
+}
+
+func (c *TaskUsageStatClient) mutate(ctx context.Context, m *TaskUsageStatMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TaskUsageStatCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TaskUsageStatUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TaskUsageStatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TaskUsageStatDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TaskUsageStat mutation op: %q", m.Op())
+	}
+}
+
 // TaskVirtualMachineClient is a client for the TaskVirtualMachine schema.
 type TaskVirtualMachineClient struct {
 	config
@@ -7160,17 +7301,18 @@ type (
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
 		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
 		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
-		ProjectTask, Task, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
-		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
+		ProjectTask, Task, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
+		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
+		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
 		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
 		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
-		ProjectTask, Task, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
-		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Interceptor
+		ProjectTask, Task, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
+		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
+		TeamImage, TeamMember, TeamModel, User, UserIdentity,
+		VirtualMachine []ent.Interceptor
 	}
 )
 
