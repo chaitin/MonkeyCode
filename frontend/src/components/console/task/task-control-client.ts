@@ -68,8 +68,7 @@ interface TaskControlCallResponse {
 }
 
 export class TaskControlClient implements TaskRepositoryClient {
-  private static readonly RECONNECT_BASE_DELAY_MS = 1000
-  private static readonly RECONNECT_MAX_DELAY_MS = 5000
+  private static readonly CONNECT_TIMEOUT_MS = 10000
 
   private readonly taskId: string
   private readonly onStateChange?: (state: TaskControlClientState) => void
@@ -77,8 +76,8 @@ export class TaskControlClient implements TaskRepositoryClient {
   private readonly onPortChange?: (opened: boolean) => void
 
   private socket: WebSocket | null = null
+  private connectTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private reconnectAttempts = 0
   private disposed = false
   private connectionId = 0
   private state: TaskControlClientState = {
@@ -100,6 +99,7 @@ export class TaskControlClient implements TaskRepositoryClient {
 
   connect() {
     this.disposed = false
+    this.clearConnectTimeout()
     this.clearReconnectTimer()
     const connectionId = this.connectionId + 1
     this.connectionId = connectionId
@@ -107,13 +107,22 @@ export class TaskControlClient implements TaskRepositoryClient {
 
     const socket = new WebSocket(this.buildControlUrl())
     this.socket = socket
+    this.connectTimeoutTimer = setTimeout(() => {
+      if (this.socket !== socket || this.connectionId !== connectionId || this.disposed) {
+        return
+      }
+      if (socket.readyState === WebSocket.CONNECTING) {
+        this.setStatus("error")
+        socket.close()
+      }
+    }, TaskControlClient.CONNECT_TIMEOUT_MS)
 
     socket.onopen = () => {
       if (this.socket !== socket || this.connectionId !== connectionId) {
         socket.close()
         return
       }
-      this.reconnectAttempts = 0
+      this.clearConnectTimeout()
       this.setStatus("connected")
     }
 
@@ -132,6 +141,7 @@ export class TaskControlClient implements TaskRepositoryClient {
     }
 
     socket.onclose = () => {
+      this.clearConnectTimeout()
       if (this.socket === socket) {
         this.socket = null
       }
@@ -151,11 +161,11 @@ export class TaskControlClient implements TaskRepositoryClient {
 
   dispose() {
     this.disposed = true
+    this.clearConnectTimeout()
     this.clearReconnectTimer()
     this.connectionId += 1
     this.failPendingCalls()
     this.closeSocket()
-    this.reconnectAttempts = 0
     this.setStatus("inited")
   }
 
@@ -375,6 +385,7 @@ export class TaskControlClient implements TaskRepositoryClient {
   }
 
   private closeSocket() {
+    this.clearConnectTimeout()
     if (!this.socket) {
       return
     }
@@ -387,19 +398,13 @@ export class TaskControlClient implements TaskRepositoryClient {
       return
     }
 
-    const delay = Math.min(
-      TaskControlClient.RECONNECT_BASE_DELAY_MS * (2 ** this.reconnectAttempts),
-      TaskControlClient.RECONNECT_MAX_DELAY_MS,
-    )
-
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       if (this.disposed) {
         return
       }
-      this.reconnectAttempts += 1
       this.connect()
-    }, delay)
+    }, 0)
   }
 
   private clearReconnectTimer() {
@@ -408,5 +413,13 @@ export class TaskControlClient implements TaskRepositoryClient {
     }
     clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
+  }
+
+  private clearConnectTimeout() {
+    if (!this.connectTimeoutTimer) {
+      return
+    }
+    clearTimeout(this.connectTimeoutTimer)
+    this.connectTimeoutTimer = null
   }
 }
