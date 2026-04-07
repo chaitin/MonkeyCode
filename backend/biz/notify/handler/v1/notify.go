@@ -22,6 +22,7 @@ type NotifyHandler struct {
 func NewNotifyHandler(i *do.Injector) (*NotifyHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &NotifyHandler{
 		channelUsecase: do.MustInvoke[domain.NotifyChannelUsecase](i),
@@ -30,7 +31,7 @@ func NewNotifyHandler(i *do.Injector) (*NotifyHandler, error) {
 
 	// 用户接口
 	usr := w.Group("/api/v1/users/notify")
-	usr.Use(auth.Auth())
+	usr.Use(auth.Auth(), targetActive.TargetActive())
 	usr.POST("/channels", web.BindHandler(h.CreateUserChannel))
 	usr.GET("/channels", web.BaseHandler(h.ListUserChannels))
 	usr.PUT("/channels/:id", web.BindHandler(h.UpdateUserChannel))

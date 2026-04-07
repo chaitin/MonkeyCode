@@ -22,6 +22,7 @@ type GitIdentityHandler struct {
 func NewGitIdentityHandler(i *do.Injector) (*GitIdentityHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &GitIdentityHandler{
 		usecase: do.MustInvoke[domain.GitIdentityUsecase](i),
@@ -29,7 +30,7 @@ func NewGitIdentityHandler(i *do.Injector) (*GitIdentityHandler, error) {
 	}
 
 	g := w.Group("/api/v1/users/git-identities")
-	g.Use(auth.Auth())
+	g.Use(auth.Auth(), targetActive.TargetActive())
 	g.GET("", web.BaseHandler(h.List))
 	g.GET("/:id", web.BindHandler(h.Get))
 	g.POST("", web.BindHandler(h.Add))

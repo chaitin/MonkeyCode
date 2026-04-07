@@ -22,6 +22,7 @@ type GitBotHandler struct {
 func NewGitBotHandler(i *do.Injector) (*GitBotHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
+	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 
 	h := &GitBotHandler{
 		usecase: do.MustInvoke[domain.GitBotUsecase](i),
@@ -29,7 +30,7 @@ func NewGitBotHandler(i *do.Injector) (*GitBotHandler, error) {
 	}
 
 	g := w.Group("/api/v1/users/git-bots")
-	g.Use(auth.Auth())
+	g.Use(auth.Auth(), targetActive.TargetActive())
 	g.GET("", web.BaseHandler(h.List))
 	g.POST("", web.BindHandler(h.Create))
 	g.PUT("", web.BindHandler(h.Update))
