@@ -255,8 +255,9 @@ func (r *TeamGroupUserRepo) Login(ctx context.Context, req *domain.TeamLoginReq)
 // MemberList 获取团队成员列表
 func (r *TeamGroupUserRepo) MemberList(ctx context.Context, teamID uuid.UUID, role consts.TeamMemberRole) ([]*db.TeamMember, error) {
 	query := r.db.TeamMember.Query().
+		WithUser().
 		Where(teammember.TeamIDEQ(teamID)).
-		WithUser()
+		Order(teammember.ByCreatedAt(sql.OrderDesc()))
 
 	if role != "" {
 		query = query.Where(teammember.RoleEQ(role))
