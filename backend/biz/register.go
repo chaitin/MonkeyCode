@@ -4,6 +4,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/file"
+	"github.com/chaitin/MonkeyCode/backend/biz/vmidle"
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
@@ -29,6 +30,7 @@ func RegisterAll(i *do.Injector) error {
 	git.ProvideGit(i)
 	project.ProvideProject(i)
 	file.ProvideFile(i)
+	vmidle.ProvideVMIdle(i)
 
 	// 阶段二：统一触发 handler 初始化（do.MustInvoke，此时所有服务已注册）
 	notify.InvokeNotify(i)
@@ -41,6 +43,7 @@ func RegisterAll(i *do.Injector) error {
 	git.InvokeGit(i)
 	project.InvokeProject(i)
 	file.InvokeFile(i)
+	vmidle.InvokeVMIdle(i)
 
 	return nil
 }
