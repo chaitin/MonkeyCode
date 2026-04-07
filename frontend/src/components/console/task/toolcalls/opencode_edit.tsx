@@ -1,26 +1,23 @@
 import type { MessageType } from "../message";
-import { parseDiff, Diff, Hunk } from "react-diff-view";
-import "react-diff-view/style/index.css";
-import { createPatch } from "diff";
+import { EditDiffPreview } from "./edit-diff-preview";
+
+const formatFilePath = (value: unknown) => {
+  if (typeof value !== "string") {
+    return ""
+  }
+
+  return value.replace(/[\r\n\t]+/g, " ").trim()
+}
 
 export const renderTitle = (message: MessageType) => {
-  return `修改文件${message.data.rawInput?.filePath ? ` "${message.data.rawInput?.filePath}"` : ''}`
+  const filePath = formatFilePath(message.data.rawInput?.filePath)
+  return `修改文件${filePath ? ` "${filePath}"` : ""}`
 }
 
 export const renderDetail = (message: MessageType) => {
-  const oldString = message.data.rawInput?.oldString || "";
-  const newString = message.data.rawInput?.newString || message.data.rawInput?.content || "";
-  const filePath = message.data.rawInput?.filePath;
-
-  let diffText = createPatch(filePath || "", oldString || "", newString || "", "", "", {
-    headerOptions: {
-      includeIndex: false,
-      includeUnderline: false,
-      includeFileHeaders: true,
-    }
-  })
-  
-  const files = diffText ? parseDiff(diffText) : [];
+  const oldString = message.data.rawInput?.oldString
+  const newString = message.data.rawInput?.newString ?? message.data.rawInput?.content
+  const filePath = message.data.rawInput?.filePath
 
   return (
     <div 
@@ -32,11 +29,7 @@ export const renderDetail = (message: MessageType) => {
           border-left: 1px var(--border) solid;
         }
       `}</style>
-      {files.map((file, index) => (
-        <Diff key={index} viewType={!oldString ?  "unified" : "split"} diffType={file.type} hunks={file.hunks} gutterType="none" hunkClassName="user-diff-style" >
-          {(hunks) => hunks.map(hunk => <Hunk key={hunk.content} hunk={hunk} />)}
-        </Diff>
-      ))}
+      <EditDiffPreview filePath={filePath} oldValue={oldString} newValue={newString} hunkClassName="user-diff-style" />
     </div>
-  );
+  )
 }
