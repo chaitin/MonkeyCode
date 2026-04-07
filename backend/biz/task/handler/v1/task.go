@@ -18,6 +18,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
+	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -41,7 +42,8 @@ type TaskHandler struct {
 	nls          *nls.NLS
 	taskConns    *ws.TaskConn
 	controlConns *ws.ControlConn
-	taskSummary  *service.TaskSummaryService
+	taskSummary   *service.TaskSummaryService
+	idleRefresher vmidle.VMIdleRefresher
 }
 
 // NewTaskHandler 创建任务处理器
@@ -57,6 +59,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	tc := do.MustInvoke[*ws.TaskConn](i)
 	cc := do.MustInvoke[*ws.ControlConn](i)
 	ts := do.MustInvoke[*service.TaskSummaryService](i)
+	ir := do.MustInvoke[vmidle.VMIdleRefresher](i)
 
 	// Optional deps
 	var pubhost domain.PublicHostUsecase
@@ -81,6 +84,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		taskConns:    tc,
 		controlConns: cc,
 		taskSummary:  ts,
+		idleRefresher: ir,
 	}
 
 	// 注册路由
