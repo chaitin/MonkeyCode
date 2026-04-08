@@ -252,24 +252,19 @@ func (h *TaskHandler) controlReadMessages(ctx context.Context, wsConn *ws.Websoc
 func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task, m domain.TaskStream) {
 	taskID := task.ID.String()
 
-	// restart 是 fire-and-forget，无响应
-	if m.Kind == "restart" {
+	var result any
+	var err error
+
+	switch m.Kind {
+	case "restart":
 		var req taskflow.RestartTaskReq
 		if err := json.Unmarshal(m.Data, &req); err != nil {
 			logger.WarnContext(ctx, "failed to unmarshal restart task", "error", err)
 			return
 		}
 		req.ID = task.ID
-		if err := h.taskflow.TaskManager().Restart(ctx, req); err != nil {
-			logger.WarnContext(ctx, "failed to restart task", "error", err)
-		}
-		return
-	}
+		result, err = h.taskflow.TaskManager().Restart(ctx, req)
 
-	var result any
-	var err error
-
-	switch m.Kind {
 	case "repo_file_diff":
 		var req taskflow.RepoFileDiffReq
 		if err := json.Unmarshal(m.Data, &req); err != nil {
