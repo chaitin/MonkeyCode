@@ -202,7 +202,7 @@ export function TaskChangesPanel({ fileChanges, fileChangesMap, taskManager, dis
   return (
     <div className="flex flex-col h-full min-h-0">
       {selectedFile ? (
-        <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0 gap-2">
+        <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0 gap-2">
           <ResizablePanel defaultSize={50} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
             {fileListPanel}
           </ResizablePanel>

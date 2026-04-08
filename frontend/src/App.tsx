@@ -29,6 +29,7 @@ import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
 import PrivacyPolicyPage from "./pages/privacy-policy"
 import UserAgreementPage from "./pages/user-agreement"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 function TaskDetailRoute() {
   const { taskId } = useParams()
@@ -38,45 +39,47 @@ function TaskDetailRoute() {
 function App() {
   return (
     <ThemeProvider defaultTheme="light" storageKey="monkeycode-theme">
-      <BrowserRouter>
-        <ThemePathListener />
-        <Routes>
-          <Route path="/" element={<WelcomePage />} />
-          <Route path="/playground" element={<PlaygroundPage />} />
-          <Route path="/playground/create" element={<PostCreatePage />} />
-          <Route path="/playground/detail" element={<PlaygroundDetailPage />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-          <Route path="/user-agreement" element={<UserAgreementPage />} />
-          <Route path="/tasks/public" element={<PublicTaskPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/findpassword" element={<FindPasswordPage />} />
-          <Route path="/resetpassword" element={<ResetPasswordPage />} />
-          <Route path="/console" element={<UserConsolePage />}>
-            <Route index element={<Navigate to="/console/tasks" replace />} />
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="task/:taskId" element={<TaskDetailRoute />} />
-            <Route path="project/:projectId" element={<ProjectOverviewPage />} />
-            <Route path="gitbot" element={<GitBotsPage />} />
-            <Route path="ide" element={<IDEIDE />} />
-          </Route>
-          <Route path="/console/terminal" element={<TerminalPage />} />
-          <Route path="/console/files" element={<FileManagerPage />} />
-          <Route path="/sharedterminal" element={<SharedTerminalPage />} />
-          <Route path="/manager" element={<ManagerConsolePage />}>
-            <Route index element={<Navigate to="/manager/dashboard" replace />} />
-            <Route path="dashboard" element={<TeamManagerDashboard />} />
-            <Route path="members" element={<TeamManagerMembers />} />
-            <Route path="hosts" element={<TeamManagerHosts />} />
-            <Route path="images" element={<TeamManagerImages />} />
-            <Route path="models" element={<TeamManagerModels />} />
-            <Route path="logs" element={<TeamManagerLogs />} />
-            <Route path="manager" element={<TeamManagerManager />} />
-            <Route path="other-settings" element={<TeamManagerOtherSettings />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster position="top-center" />
+      <TooltipProvider>
+        <BrowserRouter>
+          <ThemePathListener />
+          <Routes>
+            <Route path="/" element={<WelcomePage />} />
+            <Route path="/playground" element={<PlaygroundPage />} />
+            <Route path="/playground/create" element={<PostCreatePage />} />
+            <Route path="/playground/detail" element={<PlaygroundDetailPage />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/user-agreement" element={<UserAgreementPage />} />
+            <Route path="/tasks/public" element={<PublicTaskPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/findpassword" element={<FindPasswordPage />} />
+            <Route path="/resetpassword" element={<ResetPasswordPage />} />
+            <Route path="/console" element={<UserConsolePage />}>
+              <Route index element={<Navigate to="/console/tasks" replace />} />
+              <Route path="tasks" element={<TasksPage />} />
+              <Route path="task/:taskId" element={<TaskDetailRoute />} />
+              <Route path="project/:projectId" element={<ProjectOverviewPage />} />
+              <Route path="gitbot" element={<GitBotsPage />} />
+              <Route path="ide" element={<IDEIDE />} />
+            </Route>
+            <Route path="/console/terminal" element={<TerminalPage />} />
+            <Route path="/console/files" element={<FileManagerPage />} />
+            <Route path="/sharedterminal" element={<SharedTerminalPage />} />
+            <Route path="/manager" element={<ManagerConsolePage />}>
+              <Route index element={<Navigate to="/manager/dashboard" replace />} />
+              <Route path="dashboard" element={<TeamManagerDashboard />} />
+              <Route path="members" element={<TeamManagerMembers />} />
+              <Route path="hosts" element={<TeamManagerHosts />} />
+              <Route path="images" element={<TeamManagerImages />} />
+              <Route path="models" element={<TeamManagerModels />} />
+              <Route path="logs" element={<TeamManagerLogs />} />
+              <Route path="manager" element={<TeamManagerManager />} />
+              <Route path="other-settings" element={<TeamManagerOtherSettings />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+        <Toaster position="top-center" />
+      </TooltipProvider>
     </ThemeProvider>
   )
 }

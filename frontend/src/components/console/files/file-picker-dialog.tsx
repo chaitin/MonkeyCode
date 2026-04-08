@@ -335,8 +335,7 @@ export default function FilePickerDialog({
           )}
           {/* Checkbox */}
           <Checkbox
-            checked={isDir ? dirState === 'all' : isSelected}
-            indeterminate={isDir ? dirState === 'some' : false}
+            checked={isDir ? (dirState === "some" ? "indeterminate" : dirState === "all") : isSelected}
             onClick={(e) => {
               e.stopPropagation()
               if (isDir) {

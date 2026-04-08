@@ -57,6 +57,7 @@ export default function TaskDetailPage() {
   const taskControlClientRef = React.useRef<TaskControlClient | null>(null)
   const streamClientRef = React.useRef<TaskStreamClient | null>(null)
   const historyLoadingRef = React.useRef(false)
+  const chatScrollRootRef = React.useRef<HTMLDivElement | null>(null)
   const historyLoadedRef = React.useRef(false)
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
@@ -493,8 +494,18 @@ export default function TaskDetailPage() {
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
+  const getChatScrollContainer = React.useCallback(() => {
+    if (chatScrollRef.current?.isConnected) {
+      return chatScrollRef.current
+    }
+
+    const container = chatScrollRootRef.current?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLDivElement | null
+    chatScrollRef.current = container
+    return container
+  }, [])
+
   const updateChatScrollState = React.useCallback(() => {
-    const container = chatScrollRef.current
+    const container = getChatScrollContainer()
     if (!container) return
 
     const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
@@ -503,10 +514,10 @@ export default function TaskDetailPage() {
     setChatHasOverflow(hasOverflow)
     setChatAtTop(!hasOverflow || container.scrollTop <= 8)
     setChatAtBottom(!hasOverflow || maxScrollTop - container.scrollTop <= 8)
-  }, [])
+  }, [getChatScrollContainer])
 
   React.useEffect(() => {
-    const container = chatScrollRef.current
+    const container = getChatScrollContainer()
     const content = chatContentRef.current
     if (!container) return
 
@@ -527,7 +538,7 @@ export default function TaskDetailPage() {
       container.removeEventListener("scroll", handleScroll)
       resizeObserver.disconnect()
     }
-  }, [updateChatScrollState])
+  }, [getChatScrollContainer, updateChatScrollState])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -537,14 +548,14 @@ export default function TaskDetailPage() {
   }, [messages, hasSidePanel, hasBottomTerminal, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
 
   const scrollChatToTop = React.useCallback(() => {
-    chatScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
-  }, [])
+    getChatScrollContainer()?.scrollTo({ top: 0, behavior: "smooth" })
+  }, [getChatScrollContainer])
 
   const scrollChatToBottom = React.useCallback(() => {
-    const container = chatScrollRef.current
+    const container = getChatScrollContainer()
     if (!container) return
     container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
-  }, [])
+  }, [getChatScrollContainer])
 
   React.useEffect(() => {
     if (historyLoading) return
@@ -558,7 +569,7 @@ export default function TaskDetailPage() {
 
     autoScrollFrameRef.current = window.requestAnimationFrame(() => {
       autoScrollFrameRef.current = null
-      const container = chatScrollRef.current
+      const container = getChatScrollContainer()
       if (!container) return
       container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
     })
@@ -569,7 +580,7 @@ export default function TaskDetailPage() {
         autoScrollFrameRef.current = null
       }
     }
-  }, [historyLoading, runningMessagesSignature])
+  }, [getChatScrollContainer, historyLoading, runningMessagesSignature])
 
   const detailHeader = (
     <div className="shrink-0">
@@ -631,14 +642,14 @@ export default function TaskDetailPage() {
       {showPreparing ? (
         <TaskPreparingView task={task} />
       ) : (
-        <ResizablePanelGroup direction="vertical">
-          <ResizablePanel id="top" order={1} defaultSize={hasBottomTerminal ? 75 : 100} minSize={30} className="min-h-0">
-            <ResizablePanelGroup direction="horizontal">
-              <ResizablePanel id="chat" order={1} defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
+        <ResizablePanelGroup orientation="vertical">
+          <ResizablePanel id="top" defaultSize={hasBottomTerminal ? 75 : 100} minSize={30} className="min-h-0">
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel id="chat" defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
                 <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
                   {/* 消息列表 */}
-                  <div className="flex-1 min-h-0 min-w-0 relative">
-                    <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:!block" viewportRef={chatScrollRef}>
+                  <div ref={chatScrollRootRef} className="flex-1 min-h-0 min-w-0 relative">
+                    <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:!block">
                       <div
                         ref={chatContentRef}
                         className={cn("min-h-full flex flex-col gap-3", hasSidePanel ? "w-full" : "mx-auto max-w-[800px]")}
@@ -732,7 +743,7 @@ export default function TaskDetailPage() {
               {hasSidePanel && (
                 <>
                   <ResizableHandle withHandle className="ml-2 shrink-0 bg-transparent after:hidden" />
-                  <ResizablePanel id="right-panel" order={2} defaultSize={50} minSize={25} className="min-w-0">
+                  <ResizablePanel id="right-panel" defaultSize={50} minSize={25} className="min-w-0">
                     <div className="h-full overflow-hidden flex flex-col">
                       {activeSidePanel === "files" && (
                         <div className="flex-1 min-h-0 overflow-hidden">
@@ -755,7 +766,7 @@ export default function TaskDetailPage() {
           {hasBottomTerminal && (
             <>
               <ResizableHandle withHandle className="mt-2 shrink-0 bg-transparent after:hidden" />
-              <ResizablePanel id="bottom-terminal" order={2} defaultSize={25} minSize={20} className="min-h-0">
+              <ResizablePanel id="bottom-terminal" defaultSize={25} minSize={20} className="min-h-0">
                 <div className="h-full w-full border rounded-md overflow-hidden">
                   <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setTerminalPanelOpen(false)} />
                 </div>

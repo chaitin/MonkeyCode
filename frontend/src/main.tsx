@@ -1,11 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/geist/wght.css'
-import '@fontsource-variable/geist-mono/wght.css'
 import '@fontsource/noto-sans-sc/chinese-simplified-400.css'
 import '@fontsource/noto-sans-sc/chinese-simplified-500.css'
 import '@fontsource/noto-sans-sc/chinese-simplified-600.css'
 import '@fontsource/noto-sans-sc/chinese-simplified-700.css'
+import 'sarasa-mono-web/index.css'
 import './index.css'
 import App from './App.tsx'
 
