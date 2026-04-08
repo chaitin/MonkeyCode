@@ -1,5 +1,6 @@
 import * as React from "react"
 import NavBalance from "./nav-balance"
+import NavCommunity from "./nav-community"
 import NavProject from "./nav-project"
 import NavUser from "./nav-user"
 import {
@@ -40,6 +41,7 @@ export default function UserSidebar({
       </SidebarContent>
       <SidebarFooter>
         <NavBalance hideTrigger />
+        <NavCommunity />
         <div className="flex items-center gap-2">
           <NavUser className="min-w-0 flex-1" />
           <SidebarMenu className="w-auto shrink-0">
