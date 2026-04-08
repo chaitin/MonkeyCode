@@ -128,8 +128,8 @@ export function formatMemory(bytes?: number): string {
 
 export function formatTokens(tokens?: number): string {
   if (tokens === undefined || tokens === null) return ""
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}m`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`
   return tokens.toString()
 }
 
