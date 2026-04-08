@@ -78,10 +78,14 @@ import (
 //	@Description	[{"port":0,"status":"string","process":"string","forward_id":"string?","access_url":"string?","label":"string?","error_message":"string?","whitelist_ips":["string"]}]
 //	@Description	```
 //	@Description
-//	@Description	### Type=call, Kind=restart — 重启任务（无 call-response 返回）
+//	@Description	### Type=call, Kind=restart — 重启任务
 //	@Description	请求 Data:
 //	@Description	```json
 //	@Description	{"request_id":"string?","load_session":true}
+//	@Description	```
+//	@Description	响应 Data:
+//	@Description	```json
+//	@Description	{"id":"uuid","request_id":"string?","success":true,"message":"string","session_id":"string"}
 //	@Description	```
 //	@Description
 //	@Description	### Type=sync-my-ip — 同步 Web 客户端真实 IP
@@ -92,7 +96,7 @@ import (
 //	@Description
 //	@Description	## 下行消息
 //	@Description
-//	@Description	- Type=call-response: 同步请求响应（Kind 与请求一致，restart 除外）。失败时 Data 为:
+//	@Description	- Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为:
 //	@Description	```json
 //	@Description	{"error":"string"}
 //	@Description	```
@@ -238,6 +242,7 @@ func (h *TaskHandler) controlReadMessages(ctx context.Context, wsConn *ws.Websoc
 			logger.WarnContext(ctx, "failed to unmarshal control message", "error", err, "data", string(d))
 			continue
 		}
+		h.logger.With("task req", m, "task_id", task.ID).DebugContext(ctx, "recv task message")
 
 		switch m.Type {
 		case consts.TaskStreamTypeCall:
@@ -262,6 +267,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			logger.WarnContext(ctx, "failed to unmarshal restart task", "error", err)
 			return
 		}
+		h.logger.With("restart", req, "task_id", task.ID).DebugContext(ctx, "recv restart call")
 		req.ID = task.ID
 		result, err = h.taskflow.TaskManager().Restart(ctx, req)
 
