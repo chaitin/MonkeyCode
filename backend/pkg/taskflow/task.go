@@ -23,9 +23,12 @@ func (t *taskClient) Create(ctx context.Context, req CreateTaskReq) error {
 }
 
 // Restart implements TaskManager.
-func (t *taskClient) Restart(ctx context.Context, req RestartTaskReq) error {
-	_, err := request.Post[Resp[any]](t.client, ctx, "/internal/task/restart", req)
-	return err
+func (t *taskClient) Restart(ctx context.Context, req RestartTaskReq) (*RestartTaskResp, error) {
+	resp, err := request.Post[Resp[*RestartTaskResp]](t.client, ctx, "/internal/task/restart", req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
 }
 
 // Stop implements TaskManager.

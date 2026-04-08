@@ -70,7 +70,7 @@ type FileManager interface {
 type TaskManager interface {
 	Create(ctx context.Context, req CreateTaskReq) error
 	Stop(ctx context.Context, req TaskReq) error
-	Restart(ctx context.Context, req RestartTaskReq) error
+	Restart(ctx context.Context, req RestartTaskReq) (*RestartTaskResp, error)
 	Cancel(ctx context.Context, req TaskReq) error
 	Continue(ctx context.Context, req TaskReq) error
 	AutoApprove(ctx context.Context, req TaskApproveReq) error
