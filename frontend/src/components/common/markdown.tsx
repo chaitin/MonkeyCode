@@ -145,14 +145,15 @@ function resolveRelativePath(href: string, currentPath: string): string {
 
 export function Markdown({ children, allowHtml = false, allowInternalLink = true, className }: MarkdownProps) {
   const location = useLocation()
+  const markdownSource = typeof children === "string" ? children : ""
   const [frontMatter, setFrontMatter] = useState<Record<string, any>>({})
-  const [content, setContent] = useState<string>(children)
+  const [content, setContent] = useState<string>(markdownSource)
   
   // 初始化并解析 front matter
   useEffect(() => {
     let mounted = true
     setFrontMatter({})
-    setContent(children)
+    setContent(markdownSource)
     
     async function parseFrontMatter() {
       await initGrayMatter()
@@ -161,15 +162,16 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
       }
       
       try {
-        const result = matter(children)
+        const input = Buffer?.from ? Buffer.from(markdownSource) : markdownSource
+        const result = matter(input)
         if (mounted) {
           setFrontMatter(result.data || {})
-          setContent(result.content)
+          setContent(typeof result.content === "string" ? result.content : markdownSource)
         }
       } catch (err) {
         console.error("Failed to parse front matter:", err)
         if (mounted) {
-          setContent(children)
+          setContent(markdownSource)
         }
       }
     }
@@ -179,7 +181,7 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
     return () => {
       mounted = false
     }
-  }, [children])
+  }, [markdownSource])
   
   const hasFrontMatter = Object.keys(frontMatter).length > 0
 

@@ -21,10 +21,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconChevronDown, IconChevronRight, IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconReload, IconTrash } from "@tabler/icons-react"
+import { IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconReload, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
@@ -37,29 +36,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 
-const STORAGE_KEY = "nav-project-expanded"
-const UNLINKED_KEY = "__unlinked__"
-
-const loadExpandedFromStorage = (): Record<string, boolean> => {
-  try {
-    const cached = localStorage.getItem(STORAGE_KEY)
-    if (cached) return JSON.parse(cached)
-  } catch {}
-  return {}
-}
-
-const saveExpandedToStorage = (state: Record<string, boolean>) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {}
-}
-
 export default function NavProject() {
   const location = useLocation()
   const navigate = useNavigate()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [startTaskProject, setStartTaskProject] = useState<{ id: string; name?: string } | null>(null)
-  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>(loadExpandedFromStorage)
   const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
@@ -129,88 +110,6 @@ export default function NavProject() {
   }
 
   useEffect(() => {
-    const stored = loadExpandedFromStorage()
-    const next: Record<string, boolean> = {}
-    const toSave: Record<string, boolean> = { ...stored }
-    let changed = false
-
-    for (const project of projects) {
-      const projectId = project.id ?? ""
-      const hasActiveTasks = (project.tasks || []).some(
-        (t) => t.status === "pending" || t.status === "processing"
-      )
-      if (hasActiveTasks) {
-        next[projectId] = true
-      } else if (projectId in stored) {
-        next[projectId] = stored[projectId]
-      } else {
-        next[projectId] = false
-      }
-      if (!(projectId in stored)) {
-        toSave[projectId] = next[projectId]
-        changed = true
-      }
-    }
-
-    setExpandedProjects((prev) => {
-      const merged = { ...prev, ...next }
-      return merged
-    })
-    if (changed) saveExpandedToStorage(toSave)
-  }, [projects])
-
-  useEffect(() => {
-    if (loadingUnlinkedTasks) return
-    const stored = loadExpandedFromStorage()
-    const hasActiveUnlinked = unlinkedTasks.some(
-      (t) => t.status === "pending" || t.status === "processing"
-    )
-    const nextUnlinked = hasActiveUnlinked
-      ? true
-      : UNLINKED_KEY in stored
-        ? stored[UNLINKED_KEY]
-        : false
-    const changed = !(UNLINKED_KEY in stored)
-    setExpandedProjects((prev) => ({ ...prev, [UNLINKED_KEY]: nextUnlinked }))
-    if (changed && unlinkedTasks.length > 0) {
-      saveExpandedToStorage({ ...stored, [UNLINKED_KEY]: nextUnlinked })
-    }
-  }, [unlinkedTasks, loadingUnlinkedTasks])
-
-  // 选中项目或默认时自动展开二级菜单并持久化
-  useEffect(() => {
-    if (location.pathname === "/console/tasks") {
-      setExpandedProjects((prev) => {
-        if (prev[UNLINKED_KEY]) return prev
-        const next = { ...prev, [UNLINKED_KEY]: true }
-        saveExpandedToStorage(next)
-        return next
-      })
-      return
-    }
-    const match = location.pathname.match(/^\/console\/project\/([^/]+)/)
-    if (match) {
-      const projectId = match[1]
-      if (projectId && projectId !== UNLINKED_KEY) {
-        setExpandedProjects((prev) => {
-          if (prev[projectId]) return prev
-          const next = { ...prev, [projectId]: true }
-          saveExpandedToStorage(next)
-          return next
-        })
-      }
-    }
-  }, [location.pathname])
-
-  const handleProjectOpenChange = (projectId: string, open: boolean) => {
-    setExpandedProjects((prev) => {
-      const next = { ...prev, [projectId]: open }
-      saveExpandedToStorage(next)
-      return next
-    })
-  }
-
-  useEffect(() => {
     const timer = setInterval(() => {
       reloadProjects()
       reloadUnlinkedTasks()
@@ -271,185 +170,152 @@ onOpenChange={(open) => {
         />
       )}
       <SidebarMenu>
-        <Collapsible
-            open={expandedProjects[UNLINKED_KEY] ?? false}
-            onOpenChange={(open) => handleProjectOpenChange(UNLINKED_KEY, open)}
+        <SidebarMenuItem>
+          <div
+            className={cn(
+              "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+              isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+            )}
           >
-            <SidebarMenuItem>
+            <Link
+              to="/console/tasks"
+              className={cn(
+                "min-w-0 flex-1 truncate",
+                isUnlinkedActive && "font-medium"
+              )}
+            >
+              默认
+            </Link>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-sidebar-accent-foreground hover:text-primary"
+                  asChild
+                >
+                  <Link to="/console/tasks">
+                    <IconPlus className="size-3.5" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">创建任务</TooltipContent>
+            </Tooltip>
+          </div>
+          {unlinkedTasks.length > 0 && (
+            <SidebarMenuSub className="ml-1 mr-0 border-none">
+              <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                {unlinkedTasks.map((task: DomainProjectTask, index) => {
+                  const isPending = task.status === "pending"
+                  const isProcessing = task.status === "processing"
+                  const isFinished = task.status === "finished" || task.status === "error"
+                  const TaskIcon =
+                    isFinished
+                      ? IconPointFilled
+                      : isProcessing
+                        ? IconPointFilled
+                        : IconLoader
+                  return (
+                    <SidebarMenuSubButton
+                      key={`unlinked-${task.id ?? index}-${index}`}
+                      size="md"
+                      isActive={location.pathname === `/console/task/${task.id}`}
+                      asChild
+                      className="group/task-row py-4"
+                    >
+                      <div className="flex w-full min-w-0 items-center gap-1">
+                        <Link
+                          to={`/console/task/${task.id}`}
+                          className="min-w-0 flex-1 flex items-center gap-2 truncate"
+                        >
+                          <TaskIcon
+                            className={cn(
+                              "size-3.5 shrink-0",
+                              isPending && "animate-spin text-primary",
+                              isProcessing && "text-green-500",
+                              isFinished && "text-muted-foreground/40"
+                            )}
+                          />
+                          <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
+                        </Link>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              <IconDotsVertical className="size-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="py-1">
+                            {(task.status === "pending" || task.status === "processing") && (
+                              <DropdownMenuItem
+                                onClick={() => setTaskToStop(task)}
+                                className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                              >
+                                <IconPlayerStopFilled className="mr-1" />
+                                终止任务
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => setTaskToDelete(task)}
+                              className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                            >
+                              <IconTrash className="mr-1" />
+                              删除任务
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </SidebarMenuSubButton>
+                  )
+                })}
+              </SidebarMenuSubItem>
+            </SidebarMenuSub>
+          )}
+        </SidebarMenuItem>
+        {projects.length > 0 ? projects.map((project) => {
+          const projectId = project.id ?? ""
+          const isProjectActive = location.pathname === `/console/project/${projectId}` || location.pathname.startsWith(`/console/project/${projectId}/`)
+          return (
+            <SidebarMenuItem key={projectId}>
               <div
                 className={cn(
-                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
-                  isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+                  isProjectActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
               >
-                <CollapsibleTrigger asChild>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-0.5 hover:text-primary"
-                  >
-                    {(expandedProjects[UNLINKED_KEY] ?? false) ? (
-                      <IconChevronDown className="size-4" />
-                    ) : (
-                      <IconChevronRight className="size-4" />
-                    )}
-                  </button>
-                </CollapsibleTrigger>
                 <Link
-                  to="/console/tasks"
+                  to={`/console/project/${projectId}`}
                   className={cn(
-                    "min-w-0 flex-1 truncate",
-                    isUnlinkedActive && "font-medium"
+                    "min-w-0 flex-1 truncate text-sidebar-foreground/60 group-hover/project-row:text-sidebar-accent-foreground",
+                    isProjectActive && "font-medium text-sidebar-accent-foreground"
                   )}
                 >
-                  默认
+                  {project.name}
                 </Link>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-sidebar-accent-foreground hover:text-primary"
-                      asChild
+                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/project-row:text-sidebar-accent-foreground hover:text-primary"
+                      disabled={isProjectRepoUnbound(project)}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setStartTaskProject({ id: projectId, name: project.name })
+                      }}
                     >
-                      <Link to="/console/tasks">
-                        <IconPlus className="size-3.5" />
-                      </Link>
+                      <IconPlus className="size-3.5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">创建任务</TooltipContent>
+                  <TooltipContent side="right">启动任务</TooltipContent>
                 </Tooltip>
               </div>
-              <CollapsibleContent>
-                {unlinkedTasks.length > 0 && (
-                    <SidebarMenuSub className="ml-1 mr-0 border-none">
-                      <SidebarMenuSubItem className="flex flex-col gap-0.5">
-                      {unlinkedTasks.map((task: DomainProjectTask, index) => {
-                        const isPending = task.status === "pending"
-                        const isProcessing = task.status === "processing"
-                        const isFinished = task.status === "finished" || task.status === "error"
-                        const TaskIcon =
-                          isFinished
-                            ? IconPointFilled
-                            : isProcessing
-                              ? IconPointFilled
-                              : IconLoader
-                        return (
-                          <SidebarMenuSubButton
-                            key={`unlinked-${task.id ?? index}-${index}`}
-                            size="md"
-                            isActive={location.pathname === `/console/task/${task.id}`}
-                            asChild
-                            className="group/task-row"
-                          >
-                            <div className="flex w-full min-w-0 items-center gap-1">
-                              <Link
-                                to={`/console/task/${task.id}`}
-                                className="min-w-0 flex-1 flex items-center gap-2 truncate"
-                              >
-                                <TaskIcon
-                                  className={cn(
-                                    "size-3.5 shrink-0",
-                                    isPending && "animate-spin text-primary",
-                                    isProcessing && "text-green-500",
-                                    isFinished && "text-muted-foreground/40"
-                                  )}
-                                />
-                                <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                              </Link>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
-                                    onClick={(e) => e.preventDefault()}
-                                  >
-                                    <IconDotsVertical className="size-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="py-1">
-                                  {(task.status === "pending" || task.status === "processing") && (
-                                    <DropdownMenuItem
-                                      onClick={() => setTaskToStop(task)}
-                                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                                    >
-                                      <IconPlayerStopFilled className="mr-1" />
-                                      终止任务
-                                    </DropdownMenuItem>
-                                  )}
-                                  <DropdownMenuItem
-                                    onClick={() => setTaskToDelete(task)}
-                                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                                  >
-                                    <IconTrash className="mr-1" />
-                                    删除任务
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </SidebarMenuSubButton>
-                        )
-                      })}
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
-                )}
-              </CollapsibleContent>
-            </SidebarMenuItem>
-          </Collapsible>
-        {projects.length > 0 ? projects.map((project) => {
-          const projectId = project.id ?? ""
-          const isExpanded = expandedProjects[projectId] ?? false
-          const isProjectActive = location.pathname === `/console/project/${projectId}` || location.pathname.startsWith(`/console/project/${projectId}/`)
-          return (
-            <Collapsible
-              key={projectId}
-              open={isExpanded}
-              onOpenChange={(open) => handleProjectOpenChange(projectId, open)}
-            >
-              <SidebarMenuItem>
-                <div
-                  className={cn(
-                    "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
-                    isProjectActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                  )}
-                >
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-0.5 hover:text-primary"
-                    >
-                      {isExpanded ? <IconChevronDown className="size-4" /> : <IconChevronRight className="size-4" />}
-                    </button>
-                  </CollapsibleTrigger>
-                  <Link
-                    to={`/console/project/${projectId}`}
-                    className={cn(
-                      "min-w-0 flex-1 truncate",
-                      isProjectActive && "font-medium"
-                    )}
-                  >
-                    {project.name}
-                  </Link>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-5 shrink-0 text-muted-foreground/50 group-hover/project-row:text-sidebar-accent-foreground hover:text-primary"
-                        disabled={isProjectRepoUnbound(project)}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          setStartTaskProject({ id: projectId, name: project.name })
-                        }}
-                      >
-                        <IconPlus className="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">启动任务</TooltipContent>
-                  </Tooltip>
-                </div>
-                <CollapsibleContent>
+              {(project.tasks || []).length > 0 && (
                   <SidebarMenuSub className="ml-1 mr-0 border-none">
                     <SidebarMenuSubItem className="flex flex-col gap-0.5">
                       {(project.tasks || []).map((task: DomainProjectTask, index) => {
@@ -465,10 +331,9 @@ onOpenChange={(open) => {
                         return (
                           <SidebarMenuSubButton
                             key={`${projectId}-${task.id ?? index}-${index}`}
-                            size="md"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
-                            className="group/task-row"
+                            className="group/task-row py-4"
                           >
                             <div className="flex w-full min-w-0 items-center gap-1">
                               <Link
@@ -521,9 +386,8 @@ onOpenChange={(open) => {
                       })}
                     </SidebarMenuSubItem>
                   </SidebarMenuSub>
-                </CollapsibleContent>
-              </SidebarMenuItem>
-            </Collapsible>
+              )}
+            </SidebarMenuItem>
           )
         }) : (
           <SidebarMenuItem>
