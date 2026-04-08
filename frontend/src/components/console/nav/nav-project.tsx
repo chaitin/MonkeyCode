@@ -336,7 +336,7 @@ onOpenChange={(open) => {
                         return (
                           <SidebarMenuSubButton
                             key={`unlinked-${task.id ?? index}-${index}`}
-                            size="sm"
+                            size="md"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className="group/task-row"
@@ -465,7 +465,7 @@ onOpenChange={(open) => {
                         return (
                           <SidebarMenuSubButton
                             key={`${projectId}-${task.id ?? index}-${index}`}
-                            size="sm"
+                            size="md"
                             isActive={location.pathname === `/console/task/${task.id}`}
                             asChild
                             className="group/task-row"

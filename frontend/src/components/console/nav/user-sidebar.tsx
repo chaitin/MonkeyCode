@@ -27,8 +27,8 @@ export default function UserSidebar({
               <a href="/">
                 <img src="/logo-colored.png" alt="MonkeyCode AI" className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">MonkeyCode AI</span>
-                  <span className="truncate text-xs">智能开发平台</span>
+                  <span className="truncate font-medium">MonkeyCode</span>
+                  <span className="truncate text-xs">长亭百智云</span>
                 </div>
               </a>
             </SidebarMenuButton>
@@ -39,20 +39,22 @@ export default function UserSidebar({
         <NavProject />
       </SidebarContent>
       <SidebarFooter>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton 
-            tooltip="配置"
-            isActive={settingsOpen}
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings />
-            <span>配置</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-        <NavBalance />
-        <NavUser />
+        <NavBalance hideTrigger />
+        <div className="flex items-center gap-2">
+          <NavUser className="min-w-0 flex-1" />
+          <SidebarMenu className="w-auto shrink-0">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="配置"
+                isActive={settingsOpen}
+                onClick={() => setSettingsOpen(true)}
+                className="size-8 justify-center p-0"
+              >
+                <Settings className="size-4" />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
       </SidebarFooter>
     </Sidebar>
   )

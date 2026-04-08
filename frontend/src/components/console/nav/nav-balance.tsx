@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { IconCoin, IconCrown, IconGift, IconWallet } from "@tabler/icons-react";
+import { IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconWallet } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,17 @@ import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/compon
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label";
+import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -24,14 +35,18 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { useCommonData } from "../data-provider";
+import { isValidEmail } from "@/utils/common";
+import { useNavigate } from "react-router-dom";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
+  hideTrigger?: boolean;
 }
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 const BALANCE_NAV = [
+  { id: "profile", name: "我的信息", icon: IconUserHexagon },
   { id: "balance", name: "积分余额", icon: IconWallet },
   { id: "plan", name: "我的套餐", icon: IconCrown },
   { id: "earn", name: "赚积分", icon: IconGift },
@@ -40,7 +55,7 @@ const BALANCE_NAV = [
 
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
 
-export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
+export default function NavBalance({ variant = "sidebar", hideTrigger = false }: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
   const [invitations, setInvitations] = useState<DomainInvitationItem[]>([]);
   const [invitationCount, setInvitationCount] = useState(0);
@@ -56,9 +71,24 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
   const [page, setPage] = useState<number>(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showBindEmailDialog, setShowBindEmailDialog] = useState(false);
+  const [bindEmail, setBindEmail] = useState("");
+  const [bindingEmail, setBindingEmail] = useState(false);
+  const [showChangeNameDialog, setShowChangeNameDialog] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [changingName, setChangingName] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
-  const { balance, dailyBalance, loadingSubscription, reloadSubscription, reloadWallet, subscription, user } = useCommonData();
+  const navigate = useNavigate()
+  const { balance, dailyBalance, loadingSubscription, reloadSubscription, reloadUser, reloadWallet, subscription, user } = useCommonData();
+  const requiresCurrentPassword = !!user?.has_password
+  const passwordActionLabel = requiresCurrentPassword ? "修改密码" : "设置密码"
 
   const positiveKinds = new Set<string>([
     ConstsTransactionKind.TransactionKindSignupBonus,
@@ -168,6 +198,92 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
 
     const parsed = dayjs.unix(timestamp)
     return parsed.isValid() ? `${parsed.fromNow()}注册` : "注册时间未知"
+  }
+
+  const handleLogout = () => {
+    apiRequest("v1UsersLogoutCreate", {}, [], (resp) => {
+      if (resp.code === 0) {
+        navigate("/")
+      } else {
+        toast.error("登出失败: " + resp.message)
+      }
+    })
+  }
+
+  const handleChangePassword = async () => {
+    if (requiresCurrentPassword && !currentPassword) {
+      toast.error("请输入当前密码")
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("新密码和确认密码不一致")
+      return
+    }
+
+    if (newPassword.length < 8) {
+      toast.error("新密码长度至少为8位")
+      return
+    }
+
+    setChangingPassword(true)
+    await apiRequest("v1UsersPasswordsChangeUpdate", {
+      current_password: requiresCurrentPassword ? currentPassword : undefined,
+      new_password: newPassword,
+    }, [], (resp) => {
+      if (resp?.code === 0) {
+        toast.success("密码修改成功")
+        setShowChangePasswordDialog(false)
+        setCurrentPassword("")
+        setNewPassword("")
+        setConfirmPassword("")
+      } else {
+        toast.error(`密码修改失败：${resp?.message || "未知错误"}`)
+      }
+    })
+    setChangingPassword(false)
+  }
+
+  const handleBindEmail = async () => {
+    const email = bindEmail.trim()
+    if (!isValidEmail(email)) {
+      toast.error("请输入正确的邮箱地址")
+      return
+    }
+
+    setBindingEmail(true)
+    await apiRequest("v1UsersEmailBindRequestUpdate", {
+      email,
+    }, [], (resp) => {
+      if (resp?.code === 0) {
+        toast.success("绑定邮件已发送，请前往邮箱完成验证")
+        setShowBindEmailDialog(false)
+        setBindEmail("")
+      } else {
+        toast.error(`绑定邮箱失败：${resp?.message || "未知错误"}`)
+      }
+    })
+    setBindingEmail(false)
+  }
+
+  const handleChangeName = async () => {
+    if (!newName.trim()) {
+      toast.error("昵称不能为空")
+      return
+    }
+
+    setChangingName(true)
+    await apiRequest("v1UsersUpdate", { name: newName.trim() }, [], (resp) => {
+      if (resp?.code === 0) {
+        toast.success("昵称修改成功")
+        reloadUser?.()
+        setShowChangeNameDialog(false)
+        setNewName("")
+      } else {
+        toast.error(`昵称修改失败：${resp?.message || "未知错误"}`)
+      }
+    })
+    setChangingName(false)
   }
 
   const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
@@ -369,7 +485,12 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
     </div>
   );
 
-  const sectionMeta = activeSection === "balance"
+  const sectionMeta = activeSection === "profile"
+    ? {
+        title: "我的信息",
+        description: "查看当前账户资料，并进行基础账号操作",
+      }
+    : activeSection === "balance"
     ? {
         title: "积分余额",
         description: "查看积分、会员与获取方式",
@@ -388,6 +509,89 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
         title: "积分记录",
         description: "查看积分充值、消耗和奖励记录",
       }
+
+  const profileContent = (
+    <div className="space-y-4">
+      <div className="rounded-md border p-5">
+        <div className="flex items-start gap-4">
+          <Avatar className="size-14 rounded-xl">
+            <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+            <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-lg font-semibold">{user?.name || "未知用户"}</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              {subscription?.plan === "pro" ? "专业版" : "基础版"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="rounded-md bg-muted/40 px-4 py-3">
+            <div className="text-xs text-muted-foreground">用户名</div>
+            <div className="mt-2 truncate text-sm font-medium">{user?.name || "-"}</div>
+          </div>
+          <div className="rounded-md bg-muted/40 px-4 py-3">
+            <div className="text-xs text-muted-foreground">邮箱</div>
+            <div className="mt-2 truncate text-sm font-medium">{user?.email || "未绑定"}</div>
+          </div>
+          <div className="rounded-md bg-muted/40 px-4 py-3">
+            <div className="text-xs text-muted-foreground">团队</div>
+            <div className="mt-2 truncate text-sm font-medium">{user?.team?.name || "个人空间"}</div>
+          </div>
+          <div className="rounded-md bg-muted/40 px-4 py-3">
+            <div className="text-xs text-muted-foreground">团队 ID</div>
+            <div className="mt-2 truncate text-sm font-medium">{user?.team?.id || "-"}</div>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-md border p-5">
+        <div className="text-md font-medium">账号操作</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => {
+              setNewName(user?.name || "")
+              setShowChangeNameDialog(true)
+            }}
+          >
+            <IconUserHexagon className="size-4" />
+            修改昵称
+          </Button>
+          <Button
+            variant="outline"
+            className="justify-start"
+            disabled={!!user?.email}
+            onClick={() => {
+              if (!user?.email) {
+                setBindEmail("")
+                setShowBindEmailDialog(true)
+              }
+            }}
+          >
+            <IconMail className="size-4" />
+            {user?.email ? "邮箱已绑定" : "绑定邮箱"}
+          </Button>
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => setShowChangePasswordDialog(true)}
+          >
+            <IconLockCode className="size-4" />
+            {passwordActionLabel}
+          </Button>
+          <Button
+            variant="outline"
+            className="justify-start text-destructive hover:text-destructive"
+            onClick={() => setShowLogoutDialog(true)}
+          >
+            <IconLogout className="size-4" />
+            登出
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 
   const balanceContent = (
     <div className="space-y-4">
@@ -706,35 +910,37 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {variant === "header" ? (
-          <Button className="hidden max-w-[260px] lg:flex" variant="ghost" size="sm">
-            {triggerContent}
-          </Button>
-        ) : (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton className="cursor-pointer">
-                {triggerContent}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          {variant === "header" ? (
+            <Button className="hidden max-w-[260px] lg:flex" variant="ghost" size="sm">
+              {triggerContent}
+            </Button>
+          ) : (
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton className="cursor-pointer">
+                  {triggerContent}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent
         className="flex h-[60vh] max-h-[90vh] w-[90vw] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>钱包</DialogTitle>
-          <DialogDescription>查看积分余额、充值方式和使用记录</DialogDescription>
+          <DialogTitle>信息</DialogTitle>
+          <DialogDescription>查看个人信息、积分余额、套餐和使用记录</DialogDescription>
         </DialogHeader>
         <SidebarProvider className="flex min-h-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 w-full flex-1 overflow-hidden">
             <Sidebar collapsible="none" className="w-12 shrink-0 border-r md:w-44">
               <SidebarHeader>
                 <div className="flex items-center gap-2 px-2 pt-2 pb-4 font-semibold text-md">
-                  <IconWallet className="size-4 shrink-0" />
-                  <span className="hidden sm:inline">钱包</span>
+                  <IconUserHexagon className="size-4 shrink-0" />
+                  <span className="hidden sm:inline">信息</span>
                 </div>
               </SidebarHeader>
               <SidebarContent>
@@ -763,7 +969,9 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
                 <div className="mt-1 text-xs text-muted-foreground">{sectionMeta.description}</div>
               </div>
               <div ref={contentScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-                {activeSection === "balance"
+                {activeSection === "profile"
+                  ? profileContent
+                  : activeSection === "balance"
                   ? balanceContent
                   : activeSection === "earn"
                     ? earnContent
@@ -775,6 +983,162 @@ export default function NavBalance({ variant = "sidebar" }: NavBalanceProps) {
           </div>
         </SidebarProvider>
       </DialogContent>
+      <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认登出</AlertDialogTitle>
+            <AlertDialogDescription>
+              您确定要登出吗？登出后需要重新登录才能继续使用。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout}>
+              确认登出
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={showChangeNameDialog} onOpenChange={setShowChangeNameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>修改昵称</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="wallet-new-name">昵称</Label>
+              <Input
+                id="wallet-new-name"
+                type="text"
+                placeholder="请输入新昵称"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                autoComplete="name"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowChangeNameDialog(false)
+                setNewName("")
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleChangeName}
+              disabled={changingName || !newName.trim()}
+            >
+              {changingName && <Spinner className="mr-2 size-4" />}
+              保存
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showBindEmailDialog} onOpenChange={setShowBindEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>绑定邮箱</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="wallet-bind-email">邮箱</Label>
+              <Input
+                id="wallet-bind-email"
+                type="email"
+                placeholder="请输入要绑定的邮箱"
+                value={bindEmail}
+                onChange={(e) => setBindEmail(e.target.value)}
+                autoComplete="email"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowBindEmailDialog(false)
+                setBindEmail("")
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleBindEmail}
+              disabled={bindingEmail || !bindEmail.trim()}
+            >
+              {bindingEmail && <Spinner className="mr-2 size-4" />}
+              发送验证邮件
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{passwordActionLabel}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {requiresCurrentPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="wallet-current-password">当前密码</Label>
+                <Input
+                  id="wallet-current-password"
+                  type="password"
+                  placeholder="请输入当前密码"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="wallet-new-password">新密码</Label>
+              <Input
+                id="wallet-new-password"
+                type="password"
+                placeholder="请输入新密码"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wallet-confirm-password">确认新密码</Label>
+              <Input
+                id="wallet-confirm-password"
+                type="password"
+                placeholder="请再次输入新密码"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowChangePasswordDialog(false)
+                setCurrentPassword("")
+                setNewPassword("")
+                setConfirmPassword("")
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleChangePassword}
+              disabled={changingPassword || (requiresCurrentPassword && !currentPassword) || !newPassword || !confirmPassword}
+            >
+              {changingPassword && <Spinner className="mr-2 size-4" />}
+              确认修改
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
