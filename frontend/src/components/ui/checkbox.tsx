@@ -1,53 +1,31 @@
 import * as React from "react"
-import { Check, Minus } from "lucide-react"
+import { Checkbox as CheckboxPrimitive } from "radix-ui"
+
 import { cn } from "@/lib/utils"
+import { IconCheck } from "@tabler/icons-react"
 
-export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onClick'> {
-  checked?: boolean
-  indeterminate?: boolean
-  onCheckedChange?: (checked: boolean) => void
-  onClick?: (e: React.MouseEvent) => void
-}
-
-const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, checked, indeterminate, onCheckedChange, onClick, ...props }, ref) => {
-    const handleClick = (e: React.MouseEvent) => {
-      onClick?.(e)
-      if (!props.disabled && onCheckedChange) {
-        onCheckedChange(!checked)
-      }
-    }
-
-    return (
-      <div className="relative inline-flex items-center" onClick={handleClick}>
-        <input
-          type="checkbox"
-          ref={ref}
-          className="peer sr-only"
-          checked={checked}
-          onChange={(e) => {
-            onCheckedChange?.(e.target.checked)
-            props.onChange?.(e)
-          }}
-          {...props}
+function Checkbox({
+  className,
+  ...props
+}: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+  return (
+    <CheckboxPrimitive.Root
+      data-slot="checkbox"
+      className={cn(
+        "peer relative flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input shadow-xs transition-shadow outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
+        className
+      )}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator
+        data-slot="checkbox-indicator"
+        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
+      >
+        <IconCheck
         />
-        <div
-          className={cn(
-            "flex h-4 w-4 items-center justify-center rounded border-1 transition-colors",
-            "peer-checked:bg-primary peer-checked:border-primary",
-            "peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-1",
-            "peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
-            (checked || indeterminate) ? "bg-primary border-primary" : "border-input",
-            className
-          )}
-        >
-          {checked && <Check className="h-3 w-3 text-primary-foreground" />}
-          {!checked && indeterminate && <Minus className="h-3 w-3 text-primary-foreground" />}
-        </div>
-      </div>
-    )
-  }
-)
-Checkbox.displayName = "Checkbox"
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  )
+}
 
 export { Checkbox }
