@@ -615,6 +615,9 @@ func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logg
 		if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
 			logger.With("error", err).WarnContext(ctx, "failed to push task content")
 		}
+		if err := h.usecase.IncrUserInputCount(ctx, user.ID, task.ID); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to incr user input count")
+		}
 		h.enqueueSummary(ctx, logger, task.ID.String(), task.CreatedAt)
 
 	case consts.TaskStreamTypeUserStop:
@@ -639,6 +642,9 @@ func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logg
 
 	case consts.TaskStreamTypeReplyQuestion:
 		h.handleReplyQuestion(ctx, logger, task, m.Data)
+		if err := h.usecase.IncrUserInputCount(ctx, user.ID, task.ID); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to incr user input count")
+		}
 	}
 }
 
