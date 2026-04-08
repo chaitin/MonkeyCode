@@ -256,6 +256,12 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	return nil
 }
 
+// IncrUserInputCount 记录用户输入次数到 Redis Hash
+func (a *TaskUsecase) IncrUserInputCount(ctx context.Context, userID, taskID uuid.UUID) error {
+	key := fmt.Sprintf("mcai:user:%s:input_count", userID.String())
+	return a.redis.HIncrBy(ctx, key, taskID.String(), 1).Err()
+}
+
 // Create implements domain.TaskUsecase.
 func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
 	r, err := a.taskflow.Host().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
@@ -454,6 +460,10 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		return nil, err
 	}
 	a.logger.With("req", req).InfoContext(ctx, "task created")
+
+	if err := a.IncrUserInputCount(ctx, user.ID, pt.Edges.Task.ID); err != nil {
+		a.logger.WarnContext(ctx, "failed to incr user input count on create", "error", err)
+	}
 
 	result := cvt.From(pt, &domain.ProjectTask{})
 
