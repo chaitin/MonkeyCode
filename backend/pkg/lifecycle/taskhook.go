@@ -58,6 +58,7 @@ func (h *TaskHook) OnStateChange(ctx context.Context, id uuid.UUID, from, to con
 
 func (h *TaskHook) withError(ctx context.Context, id, uid uuid.UUID, fn func() error) {
 	if err := fn(); err != nil {
+		h.logger.With("error", err, "task_id", id).ErrorContext(ctx, "failed to handle processing")
 		if err := h.taskLifecycle.Transition(ctx, id, consts.TaskStatusError, TaskMetadata{
 			TaskID: id,
 			UserID: uid,
@@ -78,6 +79,16 @@ func (h *TaskHook) handleError(ctx context.Context, id, uid uuid.UUID) error {
 
 func (h *TaskHook) handleProcessing(ctx context.Context, id uuid.UUID, metadata TaskMetadata) error {
 	h.withError(ctx, id, metadata.UserID, func() error {
+		// 从 DB 查询当前任务状态，如果已经是 processing 说明是 Agent 重连触发的重复 vm-ready，跳过
+		t, err := h.repo.GetByID(ctx, id)
+		if err != nil {
+			return fmt.Errorf("failed to get task: %w", err)
+		}
+		if t.Status == consts.TaskStatusProcessing {
+			h.logger.With("task_id", id).InfoContext(ctx, "task already processing, skipping (likely agent reconnect)")
+			return nil
+		}
+
 		reqKey := fmt.Sprintf("task:create_req:%s", id.String())
 		val, err := h.redis.Get(ctx, reqKey).Result()
 		if err != nil {

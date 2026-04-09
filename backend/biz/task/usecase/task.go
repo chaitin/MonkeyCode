@@ -139,7 +139,9 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 				case types.ConditionTypeFailed:
 					vm.Status = taskflow.VirtualMachineStatusOffline
 				case types.ConditionTypeHibernated:
-					vm.Status = taskflow.VirtualMachineStatusHibernated
+					if strings.ToLower(strings.TrimSpace(cond.Reason)) == "hibernated" {
+						vm.Status = taskflow.VirtualMachineStatusHibernated
+					}
 				case types.ConditionTypeReady:
 					if time.Since(time.Unix(vm.CreatedAt, 0)) > 2*time.Minute {
 						vm.Status = taskflow.VirtualMachineStatusOffline

@@ -29,17 +29,17 @@ import (
 
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
 type InternalHostHandler struct {
-	logger          *slog.Logger
-	repo            domain.HostRepo
-	teamRepo        domain.TeamHostRepo
-	redis           *redis.Client
-	cache           *cache.Cache
-	hook            domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
-	taskLifecycle   *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
-	hostUsecase     domain.HostUsecase
-	taskConns       *ws.TaskConn
-	projectUsecase  domain.ProjectUsecase
-	tokenProvider   *gituc.TokenProvider
+	logger         *slog.Logger
+	repo           domain.HostRepo
+	teamRepo       domain.TeamHostRepo
+	redis          *redis.Client
+	cache          *cache.Cache
+	hook           domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
+	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
+	hostUsecase    domain.HostUsecase
+	taskConns      *ws.TaskConn
+	projectUsecase domain.ProjectUsecase
+	tokenProvider  *gituc.TokenProvider
 }
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
@@ -346,6 +346,9 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 
 	for _, t := range vm.Edges.Tasks {
 		h.logger.With("task", t).DebugContext(c.Request().Context(), "vm-ready")
+		if t.Status == consts.TaskStatusProcessing {
+			continue
+		}
 
 		if t.Kind == consts.TaskTypeReview && t.SubType == consts.TaskSubTypePrReview {
 		} else {
