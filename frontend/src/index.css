@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: 'SarasaMonoCL-Regular', monospace;
     --font-heading: var(--font-sans);
     --font-mono: 'SarasaMonoCL-Regular', monospace;
     --font-code: var(--font-mono);
@@ -123,6 +123,7 @@
     }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
     }
   html {
     @apply font-sans;

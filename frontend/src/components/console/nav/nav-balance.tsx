@@ -41,6 +41,7 @@ import { useNavigate } from "react-router-dom";
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
   hideTrigger?: boolean;
+  triggerMode?: "wallet" | "account";
 }
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
@@ -55,7 +56,7 @@ const BALANCE_NAV = [
 
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
 
-export default function NavBalance({ variant = "sidebar", hideTrigger = false }: NavBalanceProps) {
+export default function NavBalance({ variant = "sidebar", hideTrigger = false, triggerMode = "wallet" }: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
   const [invitations, setInvitations] = useState<DomainInvitationItem[]>([]);
   const [invitationCount, setInvitationCount] = useState(0);
@@ -447,7 +448,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false }:
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
-      openDialog("balance")
+      openDialog(triggerMode === "account" ? "profile" : "balance")
     } else {
       setDialogOpen(false)
       setPage(1)
@@ -472,7 +473,21 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false }:
     toast.success("邀请链接已复制到剪贴板");
   }
 
-  const triggerContent = (
+  const triggerContent = triggerMode === "account" ? (
+    <div className="flex w-full min-w-0 items-center gap-2">
+      <Avatar className="size-8 rounded-lg">
+        <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+        <AvatarFallback className="rounded-lg">{user?.name?.charAt(0) || "-"}</AvatarFallback>
+      </Avatar>
+      <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+        <span className="truncate font-medium">{user?.name || "未知用户"}</span>
+        <span className="truncate text-xs">{triggerPlanLabel}</span>
+      </div>
+      <div className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary tabular-nums group-data-[collapsible=icon]:hidden">
+        {formatPoints(remainingPoints)}
+      </div>
+    </div>
+  ) : (
     <div className="flex w-full min-w-0 items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         <IconCrown className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-4"} />
@@ -919,7 +934,12 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false }:
           ) : (
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton className="cursor-pointer">
+                <SidebarMenuButton
+                  className="cursor-pointer"
+                  size={triggerMode === "account" ? "lg" : "default"}
+                  isActive={triggerMode === "account" && dialogOpen}
+                  tooltip={triggerMode === "account" ? "账户" : "账户与余额"}
+                >
                   {triggerContent}
                 </SidebarMenuButton>
               </SidebarMenuItem>

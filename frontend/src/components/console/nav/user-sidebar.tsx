@@ -2,7 +2,6 @@ import * as React from "react"
 import NavBalance from "./nav-balance"
 import NavCommunity from "./nav-community"
 import NavProject from "./nav-project"
-import NavUser from "./nav-user"
 import {
   Sidebar,
   SidebarContent,
@@ -19,8 +18,9 @@ export default function UserSidebar({
   ...props 
 }: React.ComponentProps<typeof Sidebar>) {
   const { open: settingsOpen, setOpen: setSettingsOpen } = useSettingsDialog()
+
   return (
-    <Sidebar variant="inset" {...props}>
+    <Sidebar variant="inset" collapsible="icon" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -40,23 +40,20 @@ export default function UserSidebar({
         <NavProject />
       </SidebarContent>
       <SidebarFooter>
-        <NavBalance hideTrigger />
         <NavCommunity />
-        <div className="flex items-center gap-2">
-          <NavUser className="min-w-0 flex-1" />
-          <SidebarMenu className="w-auto shrink-0">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="配置"
-                isActive={settingsOpen}
-                onClick={() => setSettingsOpen(true)}
-                className="size-8 justify-center p-0"
-              >
-                <Settings className="size-4" />
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
+        <NavBalance triggerMode="account" />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="配置"
+              isActive={settingsOpen}
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="size-4" />
+              <span>配置</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )

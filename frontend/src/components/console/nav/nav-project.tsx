@@ -10,6 +10,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   AlertDialog,
@@ -35,10 +36,12 @@ import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
+import { FolderOpen, ListTodo } from "lucide-react"
 
 export default function NavProject() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { isMobile, setOpen, state } = useSidebar()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [startTaskProject, setStartTaskProject] = useState<{ id: string; name?: string } | null>(null)
   const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
@@ -118,39 +121,10 @@ export default function NavProject() {
   }, [reloadProjects, reloadUnlinkedTasks])
 
   const isUnlinkedActive = location.pathname === "/console/tasks"
+  const isCollapsed = !isMobile && state === "collapsed"
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="flex items-center justify-between pr-0">
-        <Label>开发项目</Label>
-        <div className="flex items-center gap-0.5">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="size-5" 
-            onClick={() => {
-              reloadProjects()
-              reloadUnlinkedTasks()
-            }}
-            disabled={loadingProjects || loadingUnlinkedTasks}
-          >
-            <IconReload className={`size-3.5 ${(loadingProjects || loadingUnlinkedTasks) ? 'animate-spin' : ''}`} />
-          </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="size-5"
-                onClick={() => setAddDialogOpen(true)}
-              >
-                <IconPlus className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">创建项目</TooltipContent>
-          </Tooltip>
-        </div>
-      </SidebarGroupLabel>
       <AddProjectDialog 
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -169,234 +143,295 @@ onOpenChange={(open) => {
           project={projects.find((p) => p.id === startTaskProject.id)}
         />
       )}
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <div
-            className={cn(
-              "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
-              isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            )}
-          >
-            <Link
-              to="/console/tasks"
-              className={cn(
-                "min-w-0 flex-1 truncate",
-                isUnlinkedActive && "font-medium"
-              )}
+      {isCollapsed ? (
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="默认任务" isActive={isUnlinkedActive} asChild>
+              <Link to="/console/tasks">
+                <ListTodo />
+                <span>默认任务</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip={projects.length > 0 ? "展开项目列表" : "创建项目"}
+              isActive={location.pathname.startsWith("/console/project/")}
+              onClick={() => {
+                if (projects.length > 0) {
+                  setOpen(true)
+                } else {
+                  setAddDialogOpen(true)
+                }
+              }}
             >
-              默认
-            </Link>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-sidebar-accent-foreground hover:text-primary"
-                  asChild
-                >
-                  <Link to="/console/tasks">
+              <FolderOpen />
+              <span>{projects.length > 0 ? "项目列表" : "创建项目"}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      ) : (
+        <>
+          <SidebarGroupLabel className="flex items-center justify-between pr-0">
+            <Label>开发项目</Label>
+            <div className="flex items-center gap-0.5">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="size-5" 
+                onClick={() => {
+                  reloadProjects()
+                  reloadUnlinkedTasks()
+                }}
+                disabled={loadingProjects || loadingUnlinkedTasks}
+              >
+                <IconReload className={`size-3.5 ${(loadingProjects || loadingUnlinkedTasks) ? 'animate-spin' : ''}`} />
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="size-5"
+                    onClick={() => setAddDialogOpen(true)}
+                  >
                     <IconPlus className="size-3.5" />
-                  </Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">创建任务</TooltipContent>
-            </Tooltip>
-          </div>
-          {unlinkedTasks.length > 0 && (
-            <SidebarMenuSub className="ml-1 mr-0 border-none">
-              <SidebarMenuSubItem className="flex flex-col gap-0.5">
-                {unlinkedTasks.map((task: DomainProjectTask, index) => {
-                  const isPending = task.status === "pending"
-                  const isProcessing = task.status === "processing"
-                  const isFinished = task.status === "finished" || task.status === "error"
-                  const TaskIcon =
-                    isFinished
-                      ? IconPointFilled
-                      : isProcessing
-                        ? IconPointFilled
-                        : IconLoader
-                  return (
-                    <SidebarMenuSubButton
-                      key={`unlinked-${task.id ?? index}-${index}`}
-                      size="md"
-                      isActive={location.pathname === `/console/task/${task.id}`}
-                      asChild
-                      className="group/task-row py-4"
-                    >
-                      <div className="flex w-full min-w-0 items-center gap-1">
-                        <Link
-                          to={`/console/task/${task.id}`}
-                          className="min-w-0 flex-1 flex items-center gap-2 truncate"
-                        >
-                          <TaskIcon
-                            className={cn(
-                              "size-3.5 shrink-0",
-                              isPending && "animate-spin text-primary",
-                              isProcessing && "text-green-500",
-                              isFinished && "text-muted-foreground/40"
-                            )}
-                          />
-                          <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                        </Link>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
-                              onClick={(e) => e.preventDefault()}
-                            >
-                              <IconDotsVertical className="size-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="py-1">
-                            {(task.status === "pending" || task.status === "processing") && (
-                              <DropdownMenuItem
-                                onClick={() => setTaskToStop(task)}
-                                className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                              >
-                                <IconPlayerStopFilled className="mr-1" />
-                                终止任务
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => setTaskToDelete(task)}
-                              className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                            >
-                              <IconTrash className="mr-1" />
-                              删除任务
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </SidebarMenuSubButton>
-                  )
-                })}
-              </SidebarMenuSubItem>
-            </SidebarMenuSub>
-          )}
-        </SidebarMenuItem>
-        {projects.length > 0 ? projects.map((project) => {
-          const projectId = project.id ?? ""
-          const isProjectActive = location.pathname === `/console/project/${projectId}` || location.pathname.startsWith(`/console/project/${projectId}/`)
-          return (
-            <SidebarMenuItem key={projectId}>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">创建项目</TooltipContent>
+              </Tooltip>
+            </div>
+          </SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
               <div
                 className={cn(
-                  "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
-                  isProjectActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+                  isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
               >
                 <Link
-                  to={`/console/project/${projectId}`}
+                  to="/console/tasks"
                   className={cn(
-                    "min-w-0 flex-1 truncate text-sidebar-foreground/60 group-hover/project-row:text-sidebar-accent-foreground",
-                    isProjectActive && "font-medium text-sidebar-accent-foreground"
+                    "min-w-0 flex-1 truncate",
+                    isUnlinkedActive && "font-medium"
                   )}
                 >
-                  {project.name}
+                  默认
                 </Link>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/project-row:text-sidebar-accent-foreground hover:text-primary"
-                      disabled={isProjectRepoUnbound(project)}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setStartTaskProject({ id: projectId, name: project.name })
-                      }}
+                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-sidebar-accent-foreground hover:text-primary"
+                      asChild
                     >
-                      <IconPlus className="size-3.5" />
+                      <Link to="/console/tasks">
+                        <IconPlus className="size-3.5" />
+                      </Link>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">启动任务</TooltipContent>
+                  <TooltipContent side="right">创建任务</TooltipContent>
                 </Tooltip>
               </div>
-              {(project.tasks || []).length > 0 && (
-                  <SidebarMenuSub className="ml-1 mr-0 border-none">
-                    <SidebarMenuSubItem className="flex flex-col gap-0.5">
-                      {(project.tasks || []).map((task: DomainProjectTask, index) => {
-                        const isPending = task.status === "pending"
-                        const isProcessing = task.status === "processing"
-                        const isFinished = task.status === "finished" || task.status === "error"
-                        const TaskIcon =
-                          isFinished
+              {unlinkedTasks.length > 0 && (
+                <SidebarMenuSub className="ml-1 mr-0 border-none">
+                  <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                    {unlinkedTasks.map((task: DomainProjectTask, index) => {
+                      const isPending = task.status === "pending"
+                      const isProcessing = task.status === "processing"
+                      const isFinished = task.status === "finished" || task.status === "error"
+                      const TaskIcon =
+                        isFinished
+                          ? IconPointFilled
+                          : isProcessing
                             ? IconPointFilled
-                            : isProcessing
-                              ? IconPointFilled
-                              : IconLoader
-                        return (
-                          <SidebarMenuSubButton
-                            key={`${projectId}-${task.id ?? index}-${index}`}
-                            isActive={location.pathname === `/console/task/${task.id}`}
-                            asChild
-                            className="group/task-row py-4"
-                          >
-                            <div className="flex w-full min-w-0 items-center gap-1">
-                              <Link
-                                to={`/console/task/${task.id}`}
-                                className="min-w-0 flex-1 flex items-center gap-2 truncate"
-                              >
-                                <TaskIcon
-                                  className={cn(
-                                    "size-3.5 shrink-0",
-                                    isPending && "animate-spin text-primary",
-                                    isProcessing && "text-green-500",
-                                    isFinished && "text-muted-foreground/40"
-                                  )}
-                                />
-                                <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                              </Link>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
-                                    onClick={(e) => e.preventDefault()}
-                                  >
-                                    <IconDotsVertical className="size-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="py-1">
-                                  {(task.status === "pending" || task.status === "processing") && (
-                                    <DropdownMenuItem
-                                      onClick={() => setTaskToStop(task)}
-                                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                                    >
-                                      <IconPlayerStopFilled className="mr-1" />
-                                      终止任务
-                                    </DropdownMenuItem>
-                                  )}
+                            : IconLoader
+                      return (
+                        <SidebarMenuSubButton
+                          key={`unlinked-${task.id ?? index}-${index}`}
+                          size="md"
+                          isActive={location.pathname === `/console/task/${task.id}`}
+                          asChild
+                          className="group/task-row py-4"
+                        >
+                          <div className="flex w-full min-w-0 items-center gap-1">
+                            <Link
+                              to={`/console/task/${task.id}`}
+                              className="min-w-0 flex-1 flex items-center gap-2 truncate"
+                            >
+                              <TaskIcon
+                                className={cn(
+                                  "size-3.5 shrink-0",
+                                  isPending && "animate-spin text-primary",
+                                  isProcessing && "text-green-500",
+                                  isFinished && "text-muted-foreground/40"
+                                )}
+                              />
+                              <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
+                            </Link>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+                                  onClick={(e) => e.preventDefault()}
+                                >
+                                  <IconDotsVertical className="size-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="py-1">
+                                {(task.status === "pending" || task.status === "processing") && (
                                   <DropdownMenuItem
-                                    onClick={() => setTaskToDelete(task)}
+                                    onClick={() => setTaskToStop(task)}
                                     className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
                                   >
-                                    <IconTrash className="mr-1" />
-                                    删除任务
+                                    <IconPlayerStopFilled className="mr-1" />
+                                    终止任务
                                   </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </SidebarMenuSubButton>
-                        )
-                      })}
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => setTaskToDelete(task)}
+                                  className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                >
+                                  <IconTrash className="mr-1" />
+                                  删除任务
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </SidebarMenuSubButton>
+                      )
+                    })}
+                  </SidebarMenuSubItem>
+                </SidebarMenuSub>
               )}
             </SidebarMenuItem>
-          )
-        }) : (
-          <SidebarMenuItem>
-            <SidebarMenuButton disabled>
-              暂无项目
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        )}
-      </SidebarMenu>
+            {projects.length > 0 ? projects.map((project) => {
+              const projectId = project.id ?? ""
+              const isProjectActive = location.pathname === `/console/project/${projectId}` || location.pathname.startsWith(`/console/project/${projectId}/`)
+              return (
+                <SidebarMenuItem key={projectId}>
+                  <div
+                    className={cn(
+                      "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
+                      isProjectActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    )}
+                  >
+                    <Link
+                      to={`/console/project/${projectId}`}
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-sidebar-foreground/60 group-hover/project-row:text-sidebar-accent-foreground",
+                        isProjectActive && "font-medium text-sidebar-accent-foreground"
+                      )}
+                    >
+                      {project.name}
+                    </Link>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-5 shrink-0 text-muted-foreground/50 group-hover/project-row:text-sidebar-accent-foreground hover:text-primary"
+                          disabled={isProjectRepoUnbound(project)}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setStartTaskProject({ id: projectId, name: project.name })
+                          }}
+                        >
+                          <IconPlus className="size-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">启动任务</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {(project.tasks || []).length > 0 && (
+                      <SidebarMenuSub className="ml-1 mr-0 border-none">
+                        <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                          {(project.tasks || []).map((task: DomainProjectTask, index) => {
+                            const isPending = task.status === "pending"
+                            const isProcessing = task.status === "processing"
+                            const isFinished = task.status === "finished" || task.status === "error"
+                            const TaskIcon =
+                              isFinished
+                                ? IconPointFilled
+                                : isProcessing
+                                  ? IconPointFilled
+                                  : IconLoader
+                            return (
+                              <SidebarMenuSubButton
+                                key={`${projectId}-${task.id ?? index}-${index}`}
+                                isActive={location.pathname === `/console/task/${task.id}`}
+                                asChild
+                                className="group/task-row py-4"
+                              >
+                                <div className="flex w-full min-w-0 items-center gap-1">
+                                  <Link
+                                    to={`/console/task/${task.id}`}
+                                    className="min-w-0 flex-1 flex items-center gap-2 truncate"
+                                  >
+                                    <TaskIcon
+                                      className={cn(
+                                        "size-3.5 shrink-0",
+                                        isPending && "animate-spin text-primary",
+                                        isProcessing && "text-green-500",
+                                        isFinished && "text-muted-foreground/40"
+                                      )}
+                                    />
+                                    <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
+                                  </Link>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+                                        onClick={(e) => e.preventDefault()}
+                                      >
+                                        <IconDotsVertical className="size-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="py-1">
+                                      {(task.status === "pending" || task.status === "processing") && (
+                                        <DropdownMenuItem
+                                          onClick={() => setTaskToStop(task)}
+                                          className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                        >
+                                          <IconPlayerStopFilled className="mr-1" />
+                                          终止任务
+                                        </DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuItem
+                                        onClick={() => setTaskToDelete(task)}
+                                        className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                      >
+                                        <IconTrash className="mr-1" />
+                                        删除任务
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </SidebarMenuSubButton>
+                            )
+                          })}
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                  )}
+                </SidebarMenuItem>
+              )
+            }) : (
+              <SidebarMenuItem>
+                <SidebarMenuButton disabled>
+                  暂无项目
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+          </SidebarMenu>
+        </>
+      )}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
