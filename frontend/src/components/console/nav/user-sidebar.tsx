@@ -1,5 +1,6 @@
 import * as React from "react"
 import NavBalance from "./nav-balance"
+import NavCheckin from "./nav-checkin"
 import NavCommunity from "./nav-community"
 import NavProject from "./nav-project"
 import {
@@ -40,6 +41,7 @@ export default function UserSidebar({
         <NavProject />
       </SidebarContent>
       <SidebarFooter>
+        <NavCheckin />
         <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
           <NavCommunity
             menuClassName="flex-[2]"

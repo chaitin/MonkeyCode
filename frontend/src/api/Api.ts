@@ -160,6 +160,7 @@ export enum ConstsTransactionKind {
   TransactionKindProAutoRenew = "pro_auto_renew",
   TransactionKindDailyGrant = "daily_grant",
   TransactionKindTopUp = "top_up",
+  TransactionKindCheckin = "checkin",
 }
 
 export enum ConstsUploadUsage {
@@ -337,6 +338,15 @@ export interface DomainCheckByConfigReq {
   interface_type?: "openai_chat" | "openai_responses" | "anthropic";
   model: string;
   provider: ConstsModelProvider;
+}
+
+export interface DomainCheckInReq {
+  captcha_token: string;
+}
+
+export interface DomainCheckInResp {
+  /** 今天是否已签到 */
+  checked_in?: boolean;
 }
 
 export interface DomainCheckModelResp {
@@ -5915,6 +5925,54 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       >({
         path: `/api/v1/users/wallet`,
         method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 查询当天是否已签到
+     *
+     * @tags 【用户】钱包
+     * @name V1UsersWalletCheckinList
+     * @summary 查询签到状态
+     * @request GET:/api/v1/users/wallet/checkin
+     * @secure
+     */
+    v1UsersWalletCheckinList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainCheckInResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/wallet/checkin`,
+        method: "GET",
+        secure: true,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 每日签到领取积分奖励，每天只能签到一次
+     *
+     * @tags 【用户】钱包
+     * @name V1UsersWalletCheckinCreate
+     * @summary 每日签到
+     * @request POST:/api/v1/users/wallet/checkin
+     * @secure
+     */
+    v1UsersWalletCheckinCreate: (req: DomainCheckInReq, params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainCheckInResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/wallet/checkin`,
+        method: "POST",
+        body: req,
         secure: true,
         type: ContentType.Json,
         format: "json",
