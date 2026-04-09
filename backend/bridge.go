@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
+	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 )
 
@@ -81,6 +82,12 @@ func WithProjectHook(hook domain.ProjectHook) BridgeOption {
 func WithSiteResolver(resolver domain.SiteResolver) BridgeOption {
 	return func(i *do.Injector) {
 		do.ProvideValue(i, resolver)
+	}
+}
+
+func WithCaptcha(captcha *captcha.Captcha) BridgeOption {
+	return func(i *do.Injector) {
+		do.OverrideValue(i, captcha)
 	}
 }
 
