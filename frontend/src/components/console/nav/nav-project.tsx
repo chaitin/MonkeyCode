@@ -3,7 +3,6 @@ import { useState, useEffect } from "react"
 
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -24,12 +23,11 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconReload, IconTrash } from "@tabler/icons-react"
+import { IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
 import { isProjectRepoUnbound } from "@/utils/project"
-import { Label } from "@/components/ui/label"
 import { type DomainProjectTask } from "@/api/Api"
 import { stripMarkdown } from "@/utils/common"
 import { cn } from "@/lib/utils"
@@ -49,7 +47,7 @@ export default function NavProject() {
   const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
   const [stopping, setStopping] = useState(false)
 
-  const { projects, loadingProjects, reloadProjects, unlinkedTasks, loadingUnlinkedTasks, reloadUnlinkedTasks } = useCommonData()
+  const { projects, reloadProjects, unlinkedTasks, reloadUnlinkedTasks } = useCommonData()
 
   const handleConfirmDeleteTask = () => {
     if (!taskToDelete?.id) {
@@ -171,38 +169,7 @@ onOpenChange={(open) => {
           </SidebarMenuItem>
         </SidebarMenu>
       ) : (
-        <>
-          <SidebarGroupLabel className="flex items-center justify-between pr-0">
-            <Label>开发项目</Label>
-            <div className="flex items-center gap-0.5">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="size-5" 
-                onClick={() => {
-                  reloadProjects()
-                  reloadUnlinkedTasks()
-                }}
-                disabled={loadingProjects || loadingUnlinkedTasks}
-              >
-                <IconReload className={`size-3.5 ${(loadingProjects || loadingUnlinkedTasks) ? 'animate-spin' : ''}`} />
-              </Button>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="size-5"
-                    onClick={() => setAddDialogOpen(true)}
-                  >
-                    <IconPlus className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">创建项目</TooltipContent>
-              </Tooltip>
-            </div>
-          </SidebarGroupLabel>
-          <SidebarMenu>
+        <SidebarMenu>
             <SidebarMenuItem>
               <div
                 className={cn(
@@ -429,8 +396,13 @@ onOpenChange={(open) => {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => setAddDialogOpen(true)}>
+                <IconPlus />
+                <span>添加项目</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
-        </>
       )}
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
         <AlertDialogContent>
