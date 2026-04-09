@@ -80,7 +80,7 @@ function UserConsoleContent() {
               <SidebarTrigger className="-ml-1 shrink-0" />
               <Separator
                 orientation="vertical"
-                className="mr-2 shrink-0 data-[orientation=vertical]:h-4"
+                className="mr-2 shrink-0 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
               />
               <Breadcrumb className="flex min-w-0 flex-1 overflow-hidden">
                 <BreadcrumbList className="min-w-0 flex-1 flex-nowrap break-normal">
