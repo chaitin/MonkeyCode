@@ -11,15 +11,15 @@ const FinalCTA = () => {
             START
           </div>
           <h2 className="mt-6 text-balance text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            先让 MonkeyCode 跑一遍，再判断它是否适合你的研发方式
+            先不限额度免费用，再判断 MonkeyCode 是否适合你
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-            从一次真实任务开始，比反复比较概念和口号更快。先跑一遍，再决定它是否该进入你的日常研发流程。
+            它首先是在线 AI 编程平台，其次才是各种概念包装。先直接免费跑一次真实任务、用一次云开发环境，再决定要不要把它放进日常研发里。
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Button size="lg" className="pixel-button h-12 border-slate-950 px-6" asChild>
               <Link to="/console">
-                立即开始
+                立即免费使用
                 <IconArrowRight className="size-4" />
               </Link>
             </Button>

@@ -1,26 +1,26 @@
-import { IconBolt, IconPlugConnectedX, IconRouteOff } from "@tabler/icons-react";
+import { IconBolt, IconCloudCode, IconPlugConnectedX } from "@tabler/icons-react";
 
 const items = [
   {
     icon: IconBolt,
     index: "01",
-    title: "AI 会回答，但不真正推进交付",
+    title: "不限额度免费使用，先上手再判断",
     description:
-      "很多工具停留在对话和补全层面，能给建议，却很难持续把一个需求推进成可运行、可审查、可提交的结果。",
+      "这是首页最该被看见的卖点之一。用户可以先用真实任务验证 MonkeyCode 是否适合自己，而不是一开始就被额度和试用门槛卡住。",
+  },
+  {
+    icon: IconCloudCode,
+    index: "02",
+    title: "自带云开发环境，打开就能干活",
+    description:
+      "终端、文件管理、端口预览和任务执行都在平台里，用户不需要先把本地环境、模型配置和运行链路拼起来。",
   },
   {
     icon: IconPlugConnectedX,
-    index: "02",
-    title: "环境和流程经常断开",
-    description:
-      "本地环境、工具链、模型能力和仓库协作是分散的，研发工作很容易在不同工具之间来回切换，失去连续性。",
-  },
-  {
-    icon: IconRouteOff,
     index: "03",
-    title: "快速生成代码，不等于稳定交付",
+    title: "不连接本地开发机，也能在线完成开发",
     description:
-      "Vibe Coding 适合试验灵感，但在真实项目里，缺少边界、规范和追踪链路，最终会把问题留给团队自己收拾。",
+      "MonkeyCode 更像一个随时可用的在线开发入口。无论是临时验证、远程协作还是快速演示，都不用先占用自己的本地机器。",
   },
 ];
 
@@ -30,13 +30,13 @@ const Highlights = () => {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="pixel-badge font-pixel inline-flex items-center border-slate-900 bg-amber-100 px-3 py-2 text-[10px] text-slate-900">
-            WHY NOW
+            WHY MONKEYCODE
           </div>
           <h2 className="mt-6 text-balance text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            问题不在 AI 不够聪明，而在它还没真正进入研发流程
+            先把上手门槛降下来，再让 AI 真正参与编程
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-            如果 AI 只能补全代码、回答问题，却无法进入环境、执行任务、接回 Git 协作，那它对真实研发的帮助就始终停留在边缘位置。
+            对开发者来说，很多 AI 工具真正卡住的不是不会生成代码，而是开始前还要先买额度、准备环境、接本地机器、切换一堆工具。MonkeyCode 把这些前置成本尽量收进平台里。
           </p>
         </div>
 

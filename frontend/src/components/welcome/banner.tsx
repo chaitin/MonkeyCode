@@ -3,15 +3,15 @@ import {
   IconArrowRight,
   IconBrandGithub,
   IconCloudCode,
-  IconPlayerPlayFilled,
+  IconCodeDots,
   IconSparkles,
 } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 
 const stats = [
-  { value: "3", label: "任务模式" },
-  { value: "4", label: "研发环节覆盖" },
-  { value: "Git", label: "协作链路接入" },
+  { value: "不限额", label: "免费使用" },
+  { value: "云端", label: "自带开发环境" },
+  { value: "开源", label: "支持私有化方向" },
 ];
 
 const Banner = () => {
@@ -26,25 +26,25 @@ const Banner = () => {
 
           <div className="flex flex-col gap-4">
             <h1 className="max-w-3xl text-balance text-4xl font-bold leading-tight tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-              让 AI 真正进入
-              <span className="block text-primary">研发交付流程</span>
+              MonkeyCode 是
+              <span className="block text-primary">在线 AI 编程平台</span>
             </h1>
             <p className="max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
-              MonkeyCode 不是只会补全代码的助手，而是一个能从需求理解、技术设计、编码实现到代码审查持续推进的 AI 工程师工作台。
+              支持不限额度免费使用，不需要连接本地开发机，也不需要先折腾复杂环境。你可以直接在平台里创建任务，让 AI 编码，在云端开发环境中使用终端、文件管理和预览，再把结果接回 Git 协作流程。
             </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button size="lg" className="pixel-button h-12 border-slate-900 px-6" asChild>
               <Link to="/console/">
-                立即开始
+                免费立即开始
                 <IconArrowRight className="size-4" />
               </Link>
             </Button>
             <Button size="lg" variant="secondary" className="pixel-button h-12 border-slate-900 bg-white px-6 text-slate-900 hover:bg-slate-50" asChild>
-              <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank" rel="noreferrer">
-                <IconPlayerPlayFilled className="size-4" />
-                查看文档
+              <a href="https://github.com/chaitin/MonkeyCode" target="_blank" rel="noreferrer">
+                <IconCodeDots className="size-4" />
+                查看开源仓库
               </a>
             </Button>
           </div>
@@ -64,11 +64,11 @@ const Banner = () => {
           <div className="flex flex-wrap gap-3 text-sm text-slate-600">
             <div className="pixel-badge inline-flex items-center gap-2 border-slate-900 bg-white px-3 py-2">
               <IconCloudCode className="size-4 text-primary" />
-              独立云开发环境
+              不限额度免费使用
             </div>
             <div className="pixel-badge inline-flex items-center gap-2 border-slate-900 bg-white px-3 py-2">
               <IconBrandGithub className="size-4 text-primary" />
-              Git 协作可接入
+              无需连接本地开发机
             </div>
           </div>
         </div>
@@ -101,13 +101,13 @@ const Banner = () => {
               <div className="border-2 border-slate-900 bg-white px-4 py-4">
                 <div className="font-pixel text-[10px] text-primary">INPUT</div>
                 <p className="mt-3 text-sm leading-7 text-slate-600">
-                  说需求，系统自动拆出执行上下文，不需要先把命令、环境和流程都自己接好。
+                  输入需求就能开始，支持不限额度免费使用，不需要先在自己电脑上准备环境、装工具或连接本地工程机。
                 </p>
               </div>
               <div className="border-2 border-slate-900 bg-amber-50 px-4 py-4">
                 <div className="font-pixel text-[10px] text-primary">OUTPUT</div>
                 <p className="mt-3 text-sm leading-7 text-slate-600">
-                  代码、设计、Review 和 Git 协作回到同一个工作台，而不是散落在多个工具之间。
+                  AI 编码、终端操作、文件修改和 Git 协作都回到同一个在线工作台，而不是散落在多个工具之间。
                 </p>
               </div>
             </div>

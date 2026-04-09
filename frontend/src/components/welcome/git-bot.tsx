@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
   IconBrandGithub,
-  IconBuildingBank,
   IconCloudLock,
   IconGitPullRequest,
+  IconShare2,
   IconShieldLock,
   IconStack2,
 } from "@tabler/icons-react";
@@ -13,26 +13,26 @@ const proofs = [
   {
     icon: IconBrandGithub,
     title: "开源仓库可见",
-    description: "产品不是只展示概念图，核心能力与开源仓库都可以被查看和验证。",
+    description: "不是只给一张落地页和几句口号，用户可以直接查看仓库、版本和公开能力信息。",
   },
   {
     icon: IconStack2,
     title: "支持主流 Git 平台",
-    description: "GitHub、GitLab、Gitea、Gitee 等协作链路可以被纳入同一套工作方式。",
+    description: "GitHub、GitLab、Gitea、Gitee 等协作链路都可以接入，不让 AI 结果停留在平台内部。",
+  },
+  {
+    icon: IconShare2,
+    title: "支持在线远程协作",
+    description: "终端共享和远程协助能力让在线开发不只是自己用，也能服务演示、排障和团队协作场景。",
   },
   {
     icon: IconShieldLock,
-    title: "可走离线部署方向",
-    description: "如果团队更看重数据边界与内网部署，MonkeyCode 也保留了私有化落地路径。",
-  },
-  {
-    icon: IconBuildingBank,
-    title: "背后有明确团队支撑",
-    description: "不是单纯的个人 Demo，而是围绕真实研发场景持续打磨的产品能力。",
+    title: "可走私有化部署方向",
+    description: "如果团队更看重数据边界和内网部署，MonkeyCode 也保留了离线版与私有化落地路径。",
   },
 ];
 
-const platformTags = ["GitHub", "GitLab", "Gitea", "Gitee", "离线部署", "团队协作"];
+const platformTags = ["GitHub", "GitLab", "Gitea", "Gitee", "远程协助", "离线部署"];
 
 const GitBot = () => {
   const typewriterText = "@monkeycode-ai 你好，请帮我 review 这个 PR";
@@ -57,13 +57,13 @@ const GitBot = () => {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="pixel-badge font-pixel inline-flex items-center border-slate-900 bg-emerald-100 px-3 py-2 text-[10px] text-slate-900">
-            TRUST
+            TRUST & COLLAB
           </div>
           <h2 className="mt-6 text-balance text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            为真实研发场景设计，而不是只适合演示
+            不只是在网页上在线写代码，还能接回真实协作
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-            MonkeyCode 的可信度来自真实截图、开源信息、Git 协作能力和私有化落地方向，而不是只靠一句“AI 很强”。
+            MonkeyCode 的价值不只是“在线生成代码”，还包括 Git Review、开源透明度、远程协作和私有化路径。这些才是开发者会长期关心的部分。
           </p>
         </div>
 
@@ -162,7 +162,7 @@ const GitBot = () => {
                 <span className="font-pixel text-[10px]">SYSTEM READY</span>
               </div>
               <p className="mt-4 text-sm leading-7 text-slate-300">
-                不管你更关注开源透明度、Git 协作、团队落地还是私有化路径，MonkeyCode 都不只是停留在抽象口号层面。
+                如果你真正关心的是能不能接入仓库、能不能协作、能不能离线部署，那 MonkeyCode 给出的不是抽象概念，而是明确的产品路径。
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {platformTags.map((tag) => (

@@ -44,13 +44,13 @@ const Task = () => {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">
         <div className="mx-auto max-w-3xl text-center">
           <div className="pixel-badge font-pixel inline-flex items-center border-slate-900 bg-sky-100 px-3 py-2 text-[10px] text-slate-900">
-            FLOW
+            HOW IT WORKS
           </div>
           <h2 className="mt-6 text-balance text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            把一句需求推进成可执行任务，而不是一次聊天
+            在线把一句需求推进成真正可执行的开发任务
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-            MonkeyCode 的重点不是“对话结束了”，而是“任务开始了”。需求、模式、环境和执行结果被放在一条连续链路里。
+            MonkeyCode 不是只给你一段回答，而是把需求、任务模式、云开发环境和执行结果放进同一条在线链路里。
           </p>
         </div>
 

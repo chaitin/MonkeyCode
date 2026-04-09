@@ -69,19 +69,13 @@ const Header = () => {
           </Drawer>
           <Link to="/" className={cn("mr-6 flex flex-row items-center gap-3 text-base font-semibold cursor-pointer", isPixelPage && "text-slate-950")}>
             <img src="/logo-colored.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
-            <div className="flex flex-col leading-none">
-              <span className={cn(isPixelPage && "font-pixel text-[10px] tracking-normal")}>MonkeyCode</span>
-              <span className={cn("text-[11px] font-normal text-muted-foreground", isPixelPage && "text-slate-500")}>AI 智能开发平台</span>
-            </div>
+            <span className={cn(isPixelPage ? "font-pixel text-sm tracking-normal sm:text-base" : "text-base")}>MonkeyCode</span>
           </Link>
         </div>
         <div className="hidden md:flex flex-row items-center gap-2">
           <Link to="/" className={cn("mr-6 flex flex-row items-center gap-3 text-base font-semibold cursor-pointer", isPixelPage && "text-slate-950")}>
             <img src="/logo-colored.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
-            <div className="flex flex-col leading-none">
-              <span className={cn(isPixelPage && "font-pixel text-[10px] tracking-normal")}>MonkeyCode</span>
-              <span className={cn("text-[11px] font-normal text-muted-foreground", isPixelPage && "text-slate-500")}>AI 智能开发平台</span>
-            </div>
+            <span className={cn(isPixelPage ? "font-pixel text-sm tracking-normal sm:text-base" : "text-base")}>MonkeyCode</span>
           </Link>
           <Button variant={"link"} className={cn(
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",

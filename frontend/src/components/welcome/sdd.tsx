@@ -2,25 +2,25 @@ import { IconBrandGithub, IconCloudCode, IconListDetails } from "@tabler/icons-r
 
 const modules = [
   {
-    icon: IconCloudCode,
+    icon: IconListDetails,
     code: "MOD-01",
-    title: "独立云开发环境",
+    title: "在线 AI 编程平台",
     description:
-      "任务直接在云端执行，不要求用户先把本地环境、模型配置和运行链路都准备好，减少真正开始前的阻力。",
+      "MonkeyCode 的核心不是一个聊天框，也不是本地插件，而是一个支持不限额度免费使用、可以直接创建任务并持续推进的在线 AI 编程入口。",
   },
   {
-    icon: IconListDetails,
+    icon: IconCloudCode,
     code: "MOD-02",
-    title: "规范驱动开发",
+    title: "云开发环境直接可用",
     description:
-      "先讲清楚做什么、做到什么程度、验收标准是什么，再让 AI 在边界内推进，避免只追求一时快感的随意生成。",
+      "任务在平台提供的开发环境中运行，终端、文件和预览能力都已经准备好，用户不需要依赖自己的本地开发机。",
   },
   {
     icon: IconBrandGithub,
     code: "MOD-03",
-    title: "回到真实协作流",
+    title: "开源透明，可走私有化方向",
     description:
-      "从任务执行到 Review，再到 PR 和 Issue 协作，MonkeyCode 不把结果困在聊天框里，而是继续推进到团队工作流中。",
+      "既可以在线快速开始，也保留开源仓库和离线部署方向。对开发者来说，这比单纯宣传模型能力更容易建立信任。",
   },
 ];
 
@@ -30,13 +30,13 @@ const SDD = () => {
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-10">
         <div className="mx-auto max-w-3xl text-center">
           <div className="pixel-badge font-pixel inline-flex items-center border-slate-900 bg-slate-900 px-3 py-2 text-[10px] text-slate-50">
-            CORE MODULES
+            CORE VALUE
           </div>
           <h2 className="mt-6 text-balance text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            三件事，把 MonkeyCode 和普通 AI coding 工具区分开
+            三个关键词，概括 MonkeyCode 最值得宣传的点
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-            真正决定研发体验的，不是功能点数量，而是任务能否在稳定环境中执行、是否有明确规范边界，以及结果能否接回协作流。
+            首页不需要堆太多概念。把“它是什么”“为什么容易开始”“为什么值得信任”讲清楚，转化会比空泛口号更有效。
           </p>
         </div>
 
