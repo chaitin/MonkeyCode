@@ -1,75 +1,122 @@
 import { useState } from "react";
 import InputBox from "./inputbox";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog";
-import { IconBulbFilled } from "@tabler/icons-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { IconArrowRight, IconBinaryTree2, IconCloudCode, IconMessageChatbot, IconTerminal2 } from "@tabler/icons-react";
+
+const steps = [
+  {
+    icon: IconMessageChatbot,
+    index: "01",
+    title: "输入需求",
+    description: "用自然语言描述你要完成的任务，不需要先把命令和步骤组织得像脚本一样严谨。",
+  },
+  {
+    icon: IconBinaryTree2,
+    index: "02",
+    title: "选择任务模式",
+    description: "根据阶段选择开发、设计或审查，让 AI 先判断当前该做什么，而不是一上来直接生成代码。",
+  },
+  {
+    icon: IconCloudCode,
+    index: "03",
+    title: "进入云开发环境",
+    description: "任务在独立环境中执行，项目结构、命令运行、文件修改和状态反馈都在同一个工作台里进行。",
+  },
+  {
+    icon: IconTerminal2,
+    index: "04",
+    title: "输出结果并继续协作",
+    description: "拿到代码、方案或 Review 结果后，可以继续迭代，也可以把结果带回 Git 协作流程。",
+  },
+];
+
+const images = [
+  { src: "task-1.png", title: "在线执行任务" },
+  { src: "task-2.png", title: "使用 CLI Coding 工具" },
+  { src: "task-3.png", title: "移动端操作" },
+];
 
 const Task = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const images = [
-    { src: "task-1.png", title: "在线执行任务" },
-    { src: "task-2.png", title: "使用 CLI Coding 工具" },
-    { src: "task-3.png", title: "移动端操作" },
-  ];
-
-  const features = [
-    { title: "云开发环境", description: "每个任务对应一台 2 核 8GB 云服务器，内置在线 IDE、终端、文件管理，开箱即用，无需本地配置。" },
-    { title: "多模型不限量", description: "内置 GLM、MiniMax、Kimi、Deepseek 等大模型，不限额度，可无限畅用。也可接入自己的 API 模型。" },
-    { title: "多种任务模式", description: "开发模式根据需求执行编码任务，设计模式进行架构设计并输出技术方案，审查模式识别代码风险并提出改进建议。" },
-    { title: "全流程覆盖", description: "覆盖需求 → 设计 → 开发 → 代码审查全流程，用自然语言描述需求，AI 帮你写代码、做设计、做 Review。" },
-  ];
-
   return (
-    <div className="w-full px-6 sm:px-10 py-16 sm:py-20 bg-background" id="task">
-      <div className="w-full max-w-[1200px] mx-auto flex flex-col gap-8">
-        <h1 className="text-balance text-center text-3xl sm:text-4xl font-bold">
-          智能任务模式
-        </h1>
-        <div>
+    <section className="w-full px-6 py-14 sm:px-10 sm:py-20" id="task">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="pixel-badge font-pixel inline-flex items-center border-slate-900 bg-sky-100 px-3 py-2 text-[10px] text-slate-900">
+            FLOW
+          </div>
+          <h2 className="mt-6 text-balance text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+            把一句需求推进成可执行任务，而不是一次聊天
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
+            MonkeyCode 的重点不是“对话结束了”，而是“任务开始了”。需求、模式、环境和执行结果被放在一条连续链路里。
+          </p>
+        </div>
+
+        <div className="pixel-panel border-slate-900 bg-white px-4 py-4 sm:px-6 sm:py-6">
           <InputBox />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {features.map((feature, index) => (
-            <div key={index} className="border rounded-lg p-4 flex gap-3 bg-card/40 hover:bg-card hover:shadow-sm transition-all">
-              <IconBulbFilled className="size-6 text-primary/70 flex-shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <div className="font-medium mb-1">{feature.title}</div>
-                <div className="text-sm text-muted-foreground leading-relaxed">{feature.description}</div>
+
+        <div className="grid gap-4 lg:grid-cols-4">
+          {steps.map((step, index) => (
+            <div
+              key={step.title}
+              className="pixel-panel flex h-full flex-col gap-4 border-slate-900 bg-white px-5 py-5"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-pixel text-[10px] text-primary">STEP {step.index}</span>
+                <div className="flex size-10 items-center justify-center border-2 border-slate-900 bg-primary/10 text-primary">
+                  <step.icon className="size-5" />
+                </div>
               </div>
+              <h3 className="text-lg font-semibold text-slate-950">{step.title}</h3>
+              <p className="text-sm leading-7 text-slate-600">{step.description}</p>
+              {index < steps.length - 1 ? (
+                <div className="mt-auto hidden items-center gap-2 pt-3 text-xs text-slate-400 lg:flex">
+                  <span className="h-px flex-1 bg-slate-300" />
+                  <IconArrowRight className="size-4" />
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {images.map((image, index) => (
-              <div
-                key={index}
-                className="bg-muted rounded-md overflow-hidden relative group cursor-pointer"
-                onClick={() => setSelectedImage(image.src)}
-              >
-                <img src={image.src} className="w-full object-cover" alt={image.title} />
-                <div className="absolute inset-0 bg-black opacity-60 group-hover:opacity-0 transition-opacity duration-500 items-center justify-center flex" >
-                  {image.title}
-                </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          {images.map((image) => (
+            <button
+              key={image.title}
+              type="button"
+              className="pixel-panel group cursor-pointer overflow-hidden border-slate-900 bg-white text-left"
+              onClick={() => setSelectedImage(image.src)}
+            >
+              <img
+                src={image.src}
+                className="w-full object-cover transition-transform duration-300 group-hover:scale-[1.015]"
+                alt={image.title}
+              />
+              <div className="flex items-center justify-between border-t-2 border-slate-900 bg-amber-50 px-4 py-3">
+                <span className="font-medium text-slate-950">{image.title}</span>
+                <span className="font-pixel text-[10px] text-slate-500">VIEW</span>
               </div>
-            ))}
+            </button>
+          ))}
         </div>
       </div>
+
       <Dialog open={selectedImage !== null} onOpenChange={(open) => !open && setSelectedImage(null)}>
-        <DialogContent className="max-w-[90vw] md:max-w-[80vw] lg:max-w-[60vw] p-0 border-none">
-          {selectedImage && (
+        <DialogContent className="max-w-[90vw] border-2 border-slate-900 p-0 md:max-w-[80vw] lg:max-w-[60vw]">
+          {selectedImage ? (
             <img
               src={selectedImage}
               alt="放大图片"
-              className="w-full h-full object-contain max-h-[90vh] rounded-lg"
+              className="max-h-[90vh] w-full rounded-none object-contain"
             />
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
-    </div>
-  )
+    </section>
+  );
 };
 
 export default Task;

@@ -11,6 +11,7 @@ const Header = () => {
   const { isLoggedIn } = useAuth();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const location = useLocation();
+  const isPixelPage = location.pathname === "/" || location.pathname.startsWith("/pricing");
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -22,63 +23,95 @@ const Header = () => {
   }, []);
   
   return (
-    <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 px-4 ${
+    <header className={`fixed top-4 left-0 right-0 z-50 px-4 transition-all duration-300 ${
       isScrolled 
-        ? 'backdrop-blur-md bg-background/60 shadow-sm' 
-        : 'bg-transparent'
+        ? 'translate-y-0'
+        : 'translate-y-0'
     }`}>
-      <div className="flex flex-row justify-between mx-auto max-w-[1200px] py-4">
+      <div className={cn(
+        "mx-auto flex max-w-[1200px] flex-row justify-between px-4 py-3 transition-all duration-300",
+        isPixelPage
+          ? "pixel-panel border-slate-900 bg-[#fffdf8]"
+          : "rounded-2xl border",
+        !isPixelPage && (
+          isScrolled
+            ? "border-border/80 bg-background/88 shadow-lg shadow-primary/5 backdrop-blur-xl"
+            : "border-border/40 bg-background/72 backdrop-blur-md"
+        ),
+        isPixelPage && (isScrolled ? "bg-[#fffaf0]" : "bg-[#fffdf8]")
+      )}>
         <div className="md:hidden flex flex-row items-center gap-2">
           <Drawer>
             <DrawerTrigger asChild>
-              <Button variant="ghost" size="icon-sm">
+              <Button variant="ghost" size="icon-sm" className={cn(isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")}>
                 <IconMenu2 className="size-5" />
               </Button>
             </DrawerTrigger>
-            <DrawerContent>
+            <DrawerContent className={cn(isPixelPage && "border-2 border-slate-900 bg-[#fffdf8]")}>
               <DrawerHeader>
-                <DrawerTitle>MonkeyCode</DrawerTitle>
+                <DrawerTitle className={cn(isPixelPage && "font-pixel text-xs text-slate-900")}>MonkeyCode</DrawerTitle>
               </DrawerHeader>
               <div className="flex flex-col gap-2 my-4">
-                <Button variant="link" asChild>
-                  <Link to="/">产品介绍</Link>
+                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
+                  <Link to="/">介绍</Link>
                 </Button>
-                <Button variant="link" asChild>
+                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
+                  <Link to="/pricing">型号</Link>
+                </Button>
+                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
                   <Link to="/playground">广场</Link>
                 </Button>
-                <Button variant="link" asChild>
+                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
                   <Link to="https://monkeycode.docs.baizhi.cloud/" target="_blank">使用文档</Link>
                 </Button>
               </div>
             </DrawerContent>
           </Drawer>
-          <Link to="/" className="flex flex-row items-center gap-2 text-xl mr-6 cursor-pointer">
-            <img src="/logo-colored.png" className="size-8" />
-            MonkeyCode
+          <Link to="/" className={cn("mr-6 flex flex-row items-center gap-3 text-base font-semibold cursor-pointer", isPixelPage && "text-slate-950")}>
+            <img src="/logo-colored.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
+            <div className="flex flex-col leading-none">
+              <span className={cn(isPixelPage && "font-pixel text-[10px] tracking-normal")}>MonkeyCode</span>
+              <span className={cn("text-[11px] font-normal text-muted-foreground", isPixelPage && "text-slate-500")}>AI 智能开发平台</span>
+            </div>
           </Link>
         </div>
         <div className="hidden md:flex flex-row items-center gap-2">
-          <Link to="/" className="flex flex-row items-center gap-2 text-xl mr-6 cursor-pointer">
-            <img src="/logo-colored.png" className="size-8" />
-            MonkeyCode
+          <Link to="/" className={cn("mr-6 flex flex-row items-center gap-3 text-base font-semibold cursor-pointer", isPixelPage && "text-slate-950")}>
+            <img src="/logo-colored.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
+            <div className="flex flex-col leading-none">
+              <span className={cn(isPixelPage && "font-pixel text-[10px] tracking-normal")}>MonkeyCode</span>
+              <span className={cn("text-[11px] font-normal text-muted-foreground", isPixelPage && "text-slate-500")}>AI 智能开发平台</span>
+            </div>
           </Link>
-          <Button variant={"link"} className={cn(location.pathname === "/" ? "underline decoration-2" : "text-foreground")}>
-            <Link to="/">产品介绍</Link>
+          <Button variant={"link"} className={cn(
+            isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
+            location.pathname === "/" ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
+          )}>
+            <Link to="/">介绍</Link>
           </Button>
-          <Button variant={"link"} className={cn(location.pathname.startsWith("/playground") ? "underline decoration-2" : "text-foreground")}>
+          <Button variant={"link"} className={cn(
+            isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
+            location.pathname.startsWith("/pricing") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
+          )}>
+            <Link to="/pricing">型号</Link>
+          </Button>
+          <Button variant={"link"} className={cn(
+            isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
+            location.pathname.startsWith("/playground") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
+          )}>
             <Link to="/playground">广场</Link>
           </Button>
-          <Button variant={"link"} className="text-foreground">
+          <Button variant={"link"} className={cn(isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "text-foreground")}>
             <Link to="https://monkeycode.docs.baizhi.cloud/" target="_blank">使用文档</Link>
           </Button>
         </div>
-        <div className="flex flex-row items-center gap-4">
+        <div className="flex flex-row items-center gap-2 sm:gap-3">
           {isLoggedIn ? (
-            <Button asChild><Link to="/console">控制台</Link></Button>
+            <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/console">控制台</Link></Button>
           ) : (
             <>
-              <Button variant="secondary" asChild><a href={"/api/v1/users/login?redirect=&inviter_id=" + (localStorage.getItem('ic') || '')}>注册</a></Button>
-              <Button asChild><Link to="/login">登录</Link></Button>
+              <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={"/api/v1/users/login?redirect=&inviter_id=" + (localStorage.getItem('ic') || '')}>注册</a></Button>
+              <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/login">立即开始</Link></Button>
             </>
           )}
         </div>

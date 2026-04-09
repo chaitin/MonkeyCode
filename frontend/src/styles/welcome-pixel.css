@@ -1,0 +1,49 @@
+@import "@fontsource/press-start-2p";
+@import "@fontsource/vt323";
+
+@theme inline {
+  --font-pixel: "Press Start 2P", monospace;
+  --font-terminal: "VT323", monospace;
+}
+
+@layer utilities {
+  .font-pixel {
+    font-family: var(--font-pixel);
+  }
+
+  .font-terminal {
+    font-family: var(--font-terminal);
+    letter-spacing: 0.04em;
+  }
+
+  .pixel-badge {
+    border-radius: 0;
+    border-width: 2px;
+    box-shadow: 4px 4px 0 rgba(15, 23, 42, 0.14);
+  }
+
+  .pixel-panel {
+    border-radius: 0;
+    border-width: 2px;
+    box-shadow: 6px 6px 0 rgba(15, 23, 42, 0.12);
+  }
+
+  .pixel-panel-dark {
+    border-radius: 0;
+    border-width: 2px;
+    box-shadow: 6px 6px 0 rgba(249, 115, 22, 0.35);
+  }
+
+  .pixel-button {
+    border-radius: 0;
+    border-width: 2px;
+    box-shadow: 4px 4px 0 rgba(15, 23, 42, 0.16);
+  }
+
+  .pixel-grid {
+    background-image:
+      linear-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+}

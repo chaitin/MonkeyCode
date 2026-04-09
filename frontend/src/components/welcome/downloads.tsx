@@ -33,12 +33,18 @@ const clients = [
 
 const Downloads = () => {
   return (
-    <section className="w-full py-16 md:py-24 px-6 sm:px-10 bg-primary text-background" id="downloads">
-      <div className="w-full max-w-[1200px] mx-auto flex flex-col gap-6">
-        <div className="max-w-2xl mx-auto text-center">
-          <h1 className="text-balance text-2xl md:text-4xl font-bold text-center">
+    <section className="w-full px-6 py-16 sm:px-10 md:py-24" id="downloads">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 rounded-[32px] border border-border/70 bg-primary px-6 py-10 text-background shadow-[0_24px_80px_rgba(249,115,22,0.2)] sm:px-10">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="mb-3 text-sm font-medium uppercase tracking-[0.2em] text-background/70">
+            Client Apps
+          </p>
+          <h2 className="text-balance text-2xl font-bold text-center md:text-4xl">
             全平台客户端
-          </h1>
+          </h2>
+          <p className="mt-4 text-sm leading-7 text-background/75 sm:text-base">
+            Web、桌面端和移动端统一接入同一套 AI 研发能力。需要切换设备时，不用重新适配工作流。
+          </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-6 md:mt-10">
           {clients.map((client) => (
@@ -47,7 +53,7 @@ const Downloads = () => {
               href={RELEASE_URL}
               target="_blank"
               rel="noreferrer"
-              className="group flex h-full flex-col justify-between rounded-xl border border-background/20 bg-background/5 p-4 hover:border-background/40 hover:bg-background/10 hover:-translate-y-0.5 transition-all"
+              className="group flex h-full flex-col justify-between rounded-2xl border border-background/20 bg-background/8 p-5 transition-all duration-200 hover:-translate-y-1 hover:border-background/40 hover:bg-background/12"
             >
               <div className="flex items-center gap-3">
                 <div className="size-12 rounded-lg bg-background/10 text-background flex items-center justify-center shrink-0">

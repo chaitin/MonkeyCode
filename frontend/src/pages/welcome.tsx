@@ -2,13 +2,14 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import Header from "@/components/welcome/header"
 import Banner from "@/components/welcome/banner"
-import Downloads from "@/components/welcome/downloads"
 import Highlights from "@/components/welcome/highlights"
 import Task from "@/components/welcome/task";
 import Footer from "@/components/welcome/footer";
-import Pricing from "@/components/welcome/pricing";
 import GitBot from "@/components/welcome/git-bot";
+import SDD from "@/components/welcome/sdd";
+import FinalCTA from "@/components/welcome/final-cta";
 import { AuthProvider } from "@/components/auth-provider";
+import "@/styles/welcome-pixel.css";
 
 const WelcomePage = () => {
   const [searchParams] = useSearchParams();
@@ -22,15 +23,15 @@ const WelcomePage = () => {
 
   return (
     <AuthProvider>
-      <div className="flex flex-col">
+      <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,#fff7ed_0%,#fffdf8_28%,#ffffff_60%)]">
         <Header />
-        <main className="flex flex-col w-full">
+        <main className="flex w-full flex-col">
           <Banner />
           <Highlights />
-          <Downloads />
           <Task />
+          <SDD />
           <GitBot />
-          <Pricing />
+          <FinalCTA />
         </main>
         <Footer />
       </div>
