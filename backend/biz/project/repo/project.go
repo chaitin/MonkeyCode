@@ -91,6 +91,7 @@ func (r *ProjectRepo) List(ctx context.Context, uid uuid.UUID, cursor domain.Cur
 				Where(projecttask.HasTaskWith(task.And(
 					task.DeletedAtIsNil(),
 					task.UserID(uid),
+					task.StatusIn(consts.TaskStatusPending, consts.TaskStatusProcessing),
 				))).
 				Order(projecttask.ByCreatedAt(sql.OrderDesc()))
 		}).
