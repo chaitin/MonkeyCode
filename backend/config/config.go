@@ -110,6 +110,7 @@ type TaskSummary struct {
 	InterfaceType string `mapstructure:"interface_type"` // API 接口类型（openai_chat/openai_responses/anthropic）
 	Delay         int    `mapstructure:"delay"`          // 延迟时间（秒），默认 3600
 	MaxChars      int    `mapstructure:"max_chars"`      // 摘要最大字符数，默认 300
+	MaxRounds     int    `mapstructure:"max_rounds"`     // 最近对话轮数，默认 3
 	MaxWorkers    int    `mapstructure:"max_workers"`    // 最大消费者数量，默认 5
 }
 
