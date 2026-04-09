@@ -758,7 +758,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
           <div className="mt-5 space-y-3">
             <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">可选择更多 AI 模型</div>
             <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
-            <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">每日赠送 1000 积分</div>
+            <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">每日赠送 2000 积分</div>
           </div>
           {subscription?.plan === "pro" ? (
             <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3">
