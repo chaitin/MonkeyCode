@@ -587,18 +587,13 @@ export default function TaskDetailPage() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Badge variant="outline" className="shrink-0">{task?.model?.model}</Badge>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
           {totalTokens > 0 && (
             <span className="text-xs text-muted-foreground shrink-0">
-              <span className="sm:hidden">
-                {formatTokens(totalTokens)} tokens
-              </span>
-              <span className="hidden sm:inline">
-                输入 {formatTokens(task?.stats?.input_tokens) || "-"} / 输出 {formatTokens(task?.stats?.output_tokens) || "-"} tokens
-              </span>
+              {formatTokens(totalTokens)} tokens
             </span>
           )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
