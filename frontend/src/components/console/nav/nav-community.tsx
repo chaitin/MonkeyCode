@@ -12,14 +12,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
-export default function NavCommunity() {
+interface NavCommunityProps {
+  menuClassName?: string
+  itemClassName?: string
+  buttonClassName?: string
+}
+
+export default function NavCommunity({
+  menuClassName,
+  itemClassName,
+  buttonClassName,
+}: NavCommunityProps = {}) {
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
+    <SidebarMenu className={menuClassName}>
+      <SidebarMenuItem className={itemClassName}>
         <Dialog>
           <DialogTrigger asChild>
-            <SidebarMenuButton tooltip="技术交流群">
+            <SidebarMenuButton tooltip="技术交流群" className={cn("w-full", buttonClassName)}>
               <Users className="size-4" />
               <span>技术交流群</span>
             </SidebarMenuButton>

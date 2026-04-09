@@ -40,20 +40,27 @@ export default function UserSidebar({
         <NavProject />
       </SidebarContent>
       <SidebarFooter>
-        <NavCommunity />
+        <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
+          <NavCommunity
+            menuClassName="flex-[2]"
+            itemClassName="h-full"
+            buttonClassName="h-full"
+          />
+          <SidebarMenu className="flex-1">
+            <SidebarMenuItem className="h-full">
+              <SidebarMenuButton
+                tooltip="配置"
+                isActive={settingsOpen}
+                onClick={() => setSettingsOpen(true)}
+                className="h-full"
+              >
+                <Settings className="size-4" />
+                <span>配置</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
         <NavBalance triggerMode="account" />
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="配置"
-              isActive={settingsOpen}
-              onClick={() => setSettingsOpen(true)}
-            >
-              <Settings className="size-4" />
-              <span>配置</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )
