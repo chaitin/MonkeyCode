@@ -261,9 +261,9 @@ func (s *TaskSummaryService) handleJob(ctx context.Context, job *delayqueue.Job[
 	return nil
 }
 
-// fetchConversation 从 Loki 获取历史对话，返回消息数组
+// fetchConversation 从 Loki 获取历史对话，只保留最近 3 条用户消息（user-input / reply-question）
 func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID string, createdAt time.Time) ([]llm.Message, error) {
-	var messages []llm.Message
+	var userMessages []llm.Message
 
 	taskUUID, err := uuid.Parse(taskID)
 	if err != nil {
@@ -274,9 +274,8 @@ func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
-	messages = append(messages, llm.Message{Role: "user", Content: t.Content})
+	userMessages = append(userMessages, llm.Message{Role: "user", Content: t.Content})
 
-	agentMsg := []string{}
 	_, err = s.loki.History(ctx, taskID, createdAt, func(entries []loki.LogEntry) {
 		for _, entry := range entries {
 			if entry.Line == "" {
@@ -301,8 +300,7 @@ func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID strin
 				continue
 			}
 
-			switch lokiEnt.Event {
-			case "user-input", "reply-question":
+			if lokiEnt.Event == "user-input" || lokiEnt.Event == "reply-question" {
 				var userInputText string
 				var ur userReply
 				if err := json.Unmarshal(decoded, &ur); err != nil {
@@ -310,23 +308,7 @@ func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID strin
 				} else {
 					userInputText = ur.AnswersJSON
 				}
-
-				if len(agentMsg) > 0 {
-					agentContent := strings.Join(agentMsg, "")
-					messages = append(messages, llm.Message{Role: "assistant", Content: agentContent})
-					agentMsg = []string{}
-				}
-
-				messages = append(messages, llm.Message{Role: "user", Content: userInputText})
-
-			case "task-running":
-				var taskMsg wsData
-				if err := json.Unmarshal(decoded, &taskMsg); err != nil {
-					continue
-				}
-				if taskMsg.Update.SessionUpdate == "agent_message_chunk" {
-					agentMsg = append(agentMsg, taskMsg.Update.Content.Text)
-				}
+				userMessages = append(userMessages, llm.Message{Role: "user", Content: userInputText})
 			}
 		}
 	})
@@ -334,17 +316,17 @@ func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID strin
 		return nil, fmt.Errorf("failed to fetch loki history: %w", err)
 	}
 
-	if len(messages) == 0 {
+	if len(userMessages) == 0 {
 		return nil, errNoConversation
 	}
 
-	if len(agentMsg) > 0 {
-		agentContent := strings.Join(agentMsg, "")
-		messages = append(messages, llm.Message{Role: "assistant", Content: agentContent})
+	// 只保留最近 3 条用户消息
+	if len(userMessages) > 3 {
+		userMessages = userMessages[len(userMessages)-3:]
 	}
 
-	s.logger.DebugContext(ctx, "conversation", "messages_count", messages)
-	return messages, nil
+	s.logger.DebugContext(ctx, "conversation", "messages_count", len(userMessages), "messages", userMessages)
+	return userMessages, nil
 }
 
 // generateSummary 调用 LLM 生成摘要
@@ -367,6 +349,7 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
   - 如果是开发任务：说明做的是什么应用/功能（如"开发五子棋游戏"）
   - 如果是问问题：说明问的是什么问题（如"React Hooks 如何管理状态"）
   - 如果是修 bug：说明修的是什么问题（如"修复用户登录失败问题"）
+- 中英文之间要加空格（如"修复 React 组件的 bug"而不是"修复React组件的bug"）
 - 如果对话无实质内容，就用最近一条用户输入作为标题`, maxChars)
 
 	messages := []llm.Message{

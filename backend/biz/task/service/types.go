@@ -35,3 +35,4 @@ type wsContent struct {
 	Content string `json:"content"`
 	Message string `json:"message"`
 }
+
