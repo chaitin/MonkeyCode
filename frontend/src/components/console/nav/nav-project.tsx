@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconDotsVertical, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
+import { IconDotsVertical, IconFolderOpen, IconFolderPlus, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
@@ -123,7 +123,7 @@ export default function NavProject() {
 
   return (
     <SidebarGroup>
-      <AddProjectDialog 
+      <AddProjectDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onSuccess={reloadProjects}
@@ -131,7 +131,7 @@ export default function NavProject() {
       {startTaskProject && (
         <StartDevelopTaskDialog
           open={!!startTaskProject}
-onOpenChange={(open) => {
+          onOpenChange={(open) => {
               if (!open) {
                 setStartTaskProject(null)
                 reloadProjects()
@@ -142,7 +142,7 @@ onOpenChange={(open) => {
         />
       )}
       {isCollapsed ? (
-        <SidebarMenu>
+        <SidebarMenu className="gap-2">
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="默认任务" isActive={isUnlinkedActive} asChild>
               <Link to="/console/tasks">
@@ -169,29 +169,30 @@ onOpenChange={(open) => {
           </SidebarMenuItem>
         </SidebarMenu>
       ) : (
-        <SidebarMenu>
+        <SidebarMenu className="gap-2">
             <SidebarMenuItem>
               <div
                 className={cn(
-                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
-                  isUnlinkedActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
+                  isUnlinkedActive && "font-medium text-primary"
                 )}
               >
                 <Link
                   to="/console/tasks"
                   className={cn(
-                    "min-w-0 flex-1 truncate",
-                    isUnlinkedActive && "font-medium"
+                    "min-w-0 flex-1 flex items-center gap-2 truncate text-sidebar-foreground/70 group-hover/default-row:text-primary",
+                    isUnlinkedActive && "text-primary"
                   )}
                 >
-                  默认
+                  <IconFolderOpen className="size-3.5 shrink-0 opacity-50" />
+                  <span className="truncate">默认</span>
                 </Link>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-sidebar-accent-foreground hover:text-primary"
+                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-primary hover:text-primary"
                       asChild
                     >
                       <Link to="/console/tasks">
@@ -203,7 +204,7 @@ onOpenChange={(open) => {
                 </Tooltip>
               </div>
               {unlinkedTasks.length > 0 && (
-                <SidebarMenuSub className="ml-1 mr-0 border-none">
+                <SidebarMenuSub className="border-none px-0 mx-0">
                   <SidebarMenuSubItem className="flex flex-col gap-0.5">
                     {unlinkedTasks.map((task: DomainProjectTask, index) => {
                       const isPending = task.status === "pending"
@@ -278,30 +279,34 @@ onOpenChange={(open) => {
             </SidebarMenuItem>
             {projects.length > 0 ? projects.map((project) => {
               const projectId = project.id ?? ""
-              const isProjectActive = location.pathname === `/console/project/${projectId}` || location.pathname.startsWith(`/console/project/${projectId}/`)
+              const isProjectActive =
+                location.pathname === `/console/project/${projectId}` ||
+                location.pathname.startsWith(`/console/project/${projectId}/`) ||
+                (project.tasks || []).some((task) => location.pathname === `/console/task/${task.id}`)
               return (
                 <SidebarMenuItem key={projectId}>
                   <div
                     className={cn(
-                      "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md p-1 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0",
-                      isProjectActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                      "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
+                      isProjectActive && "font-medium text-primary"
                     )}
                   >
                     <Link
                       to={`/console/project/${projectId}`}
                       className={cn(
-                        "min-w-0 flex-1 truncate text-sidebar-foreground/60 group-hover/project-row:text-sidebar-accent-foreground",
-                        isProjectActive && "font-medium text-sidebar-accent-foreground"
+                        "min-w-0 flex-1 flex items-center gap-2 truncate text-sidebar-foreground/70 group-hover/project-row:text-primary",
+                        isProjectActive && "text-primary"
                       )}
                     >
-                      {project.name}
+                      <IconFolderOpen className="size-3.5 shrink-0 opacity-50" />
+                      <span className="truncate">{project.name}</span>
                     </Link>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-5 shrink-0 text-muted-foreground/50 group-hover/project-row:text-sidebar-accent-foreground hover:text-primary"
+                          className="size-5 shrink-0 text-muted-foreground/50 group-hover/project-row:text-primary hover:text-primary"
                           disabled={isProjectRepoUnbound(project)}
                           onClick={(e) => {
                             e.preventDefault()
@@ -316,7 +321,7 @@ onOpenChange={(open) => {
                     </Tooltip>
                   </div>
                   {(project.tasks || []).length > 0 && (
-                      <SidebarMenuSub className="ml-1 mr-0 border-none">
+                      <SidebarMenuSub className="border-none px-0 mx-0">
                         <SidebarMenuSubItem className="flex flex-col gap-0.5">
                           {(project.tasks || []).map((task: DomainProjectTask, index) => {
                             const isPending = task.status === "pending"
@@ -396,9 +401,9 @@ onOpenChange={(open) => {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            <SidebarMenuItem>
+            <SidebarMenuItem className="-mx-2 mt-2">
               <SidebarMenuButton onClick={() => setAddDialogOpen(true)}>
-                <IconPlus />
+                <IconFolderPlus />
                 <span>添加项目</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

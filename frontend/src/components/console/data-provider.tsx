@@ -292,10 +292,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const UNLINKED_TASKS_LIMIT = 5
   const UNLINKED_TASKS_FETCH_SIZE = 50
+  const UNLINKED_TASKS_STATUS = "pending,processing"
 
   const fetchUnlinkedTasks = async () => {
     setLoadingUnlinkedTasks(true)
-    await apiRequest('v1UsersTasksList', { page: 1, size: UNLINKED_TASKS_FETCH_SIZE, quick_start: true }, [], (resp) => {
+    await apiRequest('v1UsersTasksList', { page: 1, size: UNLINKED_TASKS_FETCH_SIZE, quick_start: true, status: UNLINKED_TASKS_STATUS }, [], (resp) => {
       if (resp.code === 0) {
         const allTasks = resp.data?.tasks || []
         const unlinked = allTasks
