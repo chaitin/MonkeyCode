@@ -3,6 +3,7 @@ package v1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,6 +30,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
+
+var errRoundEnded = errors.New("round ended")
 
 // TaskHandler 任务处理器
 type TaskHandler struct {
@@ -481,63 +484,10 @@ func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.Canc
 				return
 			}
 			if chunk.Event == "task-ended" {
-				cancel(fmt.Errorf("round ended"))
+				cancel(errRoundEnded)
 				return
 			}
 		}
-	}
-}
-
-func (h *TaskHandler) findTailStart(ctx context.Context, taskID string, taskCreatedAt time.Time) time.Time {
-	lastInputTS, err := h.loki.FindLastEvent(ctx, taskID, "user-input", taskCreatedAt, time.Time{})
-	if err != nil {
-		h.logger.With("error", err).WarnContext(ctx, "failed to find last task-ended")
-	}
-
-	if !lastInputTS.IsZero() {
-		return lastInputTS
-	}
-
-	return taskCreatedAt
-}
-
-func (h *TaskHandler) tailLogs(ctx context.Context, cancel context.CancelCauseFunc, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, tailStart time.Time) {
-	logLimit := h.cfg.Task.LogLimit
-	if logLimit <= 0 {
-		logLimit = 200
-	}
-
-	err := h.loki.Tail(ctx, taskID, tailStart, logLimit, time.Time{}, func(le []loki.LogEntry) error {
-		for _, l := range le {
-			if l.Line == "" {
-				continue
-			}
-			var chunk taskflow.TaskChunk
-			if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
-				logger.ErrorContext(ctx, "failed to unmarshal log entry", "line", l.Line, "error", err)
-				continue
-			}
-			if err := wsConn.WriteJSON(domain.TaskStream{
-				Type:      consts.TaskStreamType(chunk.Event),
-				Data:      chunk.Data,
-				Kind:      chunk.Kind,
-				Timestamp: l.Timestamp.UnixMilli(),
-			}); err != nil {
-				return fmt.Errorf("failed to write to websocket: %w", err)
-			}
-
-			if chunk.Event == "task-ended" {
-				cancel(fmt.Errorf("round ended"))
-				return fmt.Errorf("round ended")
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		logger.ErrorContext(ctx, "tailer failed", "error", err)
-		h.writeError(wsConn, fmt.Errorf("failed to tail logs %w", err))
-		cancel(fmt.Errorf("failed to tail logs %w", err))
 	}
 }
 
@@ -553,13 +503,13 @@ func (h *TaskHandler) subscribeRealtimeStream(ctx context.Context, cancel contex
 		}
 
 		if chunk.Event == "task-ended" {
-			cancel(fmt.Errorf("round ended"))
-			return fmt.Errorf("round ended")
+			cancel(errRoundEnded)
+			return errRoundEnded
 		}
 		return nil
 	})
 
-	if err != nil {
+	if err != nil && !errors.Is(err, errRoundEnded) {
 		logger.ErrorContext(ctx, "realtime stream failed", "error", err)
 		h.writeError(wsConn, fmt.Errorf("failed to subscribe realtime stream: %w", err))
 		cancel(fmt.Errorf("failed to subscribe realtime stream: %w", err))
