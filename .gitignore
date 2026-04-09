@@ -5,6 +5,7 @@ logs
 
 # Editor / IDE
 .vscode/
+.codex/
 
 # Local build artifacts
 monkeycode-ai/
