@@ -42,7 +42,7 @@ type CommonData = {
   loadingProjects: boolean;
   reloadProjects: () => void;
 
-  /** 未关联项目的任务（quick_start），用于侧边栏「默认」分组展示 */
+  /** 未关联项目的任务（quick_start），用于侧边栏「空项目」分组展示 */
   unlinkedTasks: DomainProjectTask[];
   loadingUnlinkedTasks: boolean;
   reloadUnlinkedTasks: () => void;

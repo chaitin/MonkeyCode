@@ -440,7 +440,6 @@ export function getHostBadges(host?: DomainHost): React.ReactNode {
 
   return <>
     {getHostStatusBadge(host.status)}
-    {host.is_default && <Badge>默认</Badge>}
     {getOwnerTypeBadge(host.owner)}
     {host.arch !== 'x86_64' && <Badge variant="secondary" className="hidden sm:inline">{host.arch}</Badge>}
     <Badge variant="secondary" className="hidden sm:inline">{host.cores} 核</Badge>
@@ -614,11 +613,6 @@ export function getFileExtension(filename: string): string {
 export function selectPreferredTaskModel(models: DomainModel[], subscription?: DomainSubscriptionResp | null): string {
   const accessibleModels = models.filter((model) => canUseModelBySubscription(model, subscription))
 
-  const defaultModelId = accessibleModels.find((model) => model.is_default && model.id)?.id
-  if (defaultModelId) {
-    return defaultModelId
-  }
-
   return accessibleModels.find((model) => (
     model.id
     && model.owner?.type === ConstsOwnerType.OwnerTypePublic
@@ -633,7 +627,7 @@ export function selectHost(hosts: DomainHost[], followDefault: boolean = true): 
   let result = 'public_host'
 
   if (followDefault) {
-    result = onlineHosts.find(host => host.is_default)?.id || onlineHosts[0]?.id || result
+    result = onlineHosts[0]?.id || result
   }
 
   return result
@@ -647,7 +641,7 @@ export function selectImage(images: DomainImage[], followDefault: boolean = true
   })?.id || result
 
   if (followDefault) {
-    result = images.find(image => image.is_default)?.id || result
+    result = images[0]?.id || result
   }
 
   return result

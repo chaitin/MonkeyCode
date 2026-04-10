@@ -42,12 +42,10 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
 
   useEffect(() => {
     if (open) {
-      const defaultHost = hosts.sort((a, _) => {
+      const defaultHost = [...hosts].sort((a, _) => {
         return a.status === ConstsHostStatus.HostStatusOnline ? -1 : 1
-      }).filter((host: DomainHost) => (
+      }).find((host: DomainHost) => (
         host.status === ConstsHostStatus.HostStatusOnline
-      )).find((host: DomainHost) => (
-        host.is_default === true
       )) || hosts[0]
       
       if (defaultHost?.id) {

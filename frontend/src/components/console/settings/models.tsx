@@ -46,8 +46,7 @@ import Icon from "@/components/common/Icon"
 import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge, getOwnerTypeBadge } from "@/utils/common"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
-import { Badge } from "@/components/ui/badge"
-import { IconAlertHexagon, IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconStar, IconTrash, IconX } from "@tabler/icons-react"
+import { IconAlertHexagon, IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
 
 export default function Models() {
@@ -60,24 +59,6 @@ export default function Models() {
   const [checkMessage, setCheckMessage] = useState<string>('')
   const { models, reloadModels, loadingModels } = useCommonData();
 
-
-  const handleSetDefault = async (model: DomainModel) => {
-    if (!model.id) {
-      toast.error("模型信息不完整")
-      return
-    }
-
-    await apiRequest('v1UsersModelsUpdate', {
-      is_default: true,
-    }, [model.id], (resp) => {
-      if (resp.code === 0) {
-        toast.success("设置成功")  
-      } else {
-        toast.error("设置默认模型失败: " + resp.message)
-      }
-    })
-    reloadModels?.()
-  }
 
   const handleEdit = (model: DomainModel) => {
     setSelectedModel(model)
@@ -183,7 +164,6 @@ export default function Models() {
             <ItemTitle className="break-all">
               {getModelHealthBadge(model)}
               {model.model || '未知模型'}
-              {model.is_default && <Badge>默认</Badge>}
               {getInterfaceTypeBadge(model.interface_type)}
               {getOwnerTypeBadge(model.owner)}
             </ItemTitle>
@@ -196,10 +176,6 @@ export default function Models() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleSetDefault(model)} disabled={model.is_default}>
-                  <IconStar />
-                  设为默认
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleCheck(model)}>
                   <IconHeartRateMonitor />
                   检查

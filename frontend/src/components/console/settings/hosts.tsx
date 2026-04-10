@@ -49,7 +49,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { IconAlertHexagon, IconPencil, IconStar, IconTrash } from "@tabler/icons-react"
+import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
 
 export default function Hosts() {
@@ -107,22 +107,6 @@ export default function Hosts() {
         toast.error("移除宿主机失败: " + resp.message)
       }
     })
-  }
-
-  const handleSetDefault = async (host: DomainHost) => {
-    if (!host.id) {
-      toast.error("宿主机信息不完整")
-      return
-    }
-
-    await apiRequest('v1UsersHostsUpdate', { is_default: true }, [host.id], (resp) => {
-      if (resp.code === 0) {
-        toast.success("设置成功")
-      } else {
-        toast.error("设置默认宿主机失败: " + resp.message)
-      }
-    })
-    reloadHosts?.()
   }
 
   const handleOpenRemarkDialog = (host: DomainHost) => {
@@ -204,10 +188,6 @@ export default function Hosts() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleSetDefault(host)} disabled={host.is_default}>
-                    <IconStar />
-                    设为默认
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleOpenRemarkDialog(host)} disabled={host.owner?.type !== ConstsOwnerType.OwnerTypePrivate}>
                     <IconPencil />
                     修改备注

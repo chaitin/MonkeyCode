@@ -311,7 +311,6 @@ export default function VmAddDialog({
                             <div className="flex items-center gap-2">
                               <Icon name={getOSFromImageName(image.name || '')} className="h-4 w-4" />
                               <span>{image.remark || getImageShortName(image.name || '')}</span>
-                              {image.is_default && <Badge>默认</Badge>}
                               {getOwnerTypeBadge(image.owner)}
                             </div>
                             </TooltipTrigger>
@@ -340,7 +339,6 @@ export default function VmAddDialog({
                           <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                           {getModelHealthBadge(model)}
                           <span>{model.model || '未知模型'}</span>
-                          {model.is_default && <Badge>默认</Badge>}
                           {getOwnerTypeBadge(model.owner)}
                           {getInterfaceTypeBadge(model.interface_type)}
                         </div>

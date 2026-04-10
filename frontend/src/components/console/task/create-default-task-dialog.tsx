@@ -539,7 +539,7 @@ export default function CreateDefaultTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>新建默认任务</DialogTitle>
+          <DialogTitle>新建空项目</DialogTitle>
           <DialogDescription>
             先完成与任务页一致的选择交互，后续再接实际任务创建。
           </DialogDescription>
@@ -933,7 +933,6 @@ export default function CreateDefaultTaskDialog({
                       >
                         <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
                         {model.model}
-                        {model.is_default && <Badge>默认</Badge>}
                         {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                         {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
                           <Badge className="!text-primary-foreground">免费</Badge>
@@ -1062,7 +1061,6 @@ export default function CreateDefaultTaskDialog({
                                   <div className="flex items-center gap-2">
                                     <Icon name={getOSFromImageName(image.name || "")} className="h-4 w-4" />
                                     <span>{image.remark || getImageShortName(image.name || "")}</span>
-                                    {image.is_default && <Badge>默认</Badge>}
                                     {getOwnerTypeBadge(image.owner)}
                                   </div>
                                 </TooltipTrigger>

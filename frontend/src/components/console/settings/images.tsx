@@ -41,9 +41,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { IconAlertHexagon, IconPencil, IconStar, IconTrash } from "@tabler/icons-react"
+import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
-import { Badge } from "@/components/ui/badge"
 
 export default function Images() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -76,22 +75,6 @@ export default function Images() {
         toast.error("移除镜像失败: " + resp.message)
       }
     })
-  }
-
-  const handleSetDefault = async (image: DomainImage) => {
-    if (!image.id) {
-      toast.error("镜像信息不完整")
-      return
-    }
-
-    await apiRequest('v1UsersImagesUpdate', { is_default: true }, [image.id], (resp) => {
-      if (resp.code === 0) {
-        toast.success("设置成功")
-      } else {
-        toast.error("设置默认镜像失败: " + resp.message)
-      }
-    })
-    reloadImages()
   }
 
   const loadImages = () => {
@@ -143,7 +126,6 @@ export default function Images() {
             <ItemContent>
               <ItemTitle className="break-all">
                 {image.remark || getImageShortName(image.name || '')}
-                {image.is_default && <Badge>默认</Badge>}
                 {getOwnerTypeBadge(image.owner)}
               </ItemTitle>
               <ItemDescription className="hidden md:block">
@@ -158,10 +140,6 @@ export default function Images() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleSetDefault(image)} disabled={image.is_default}>
-                  <IconStar />
-                  设为默认
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleEdit(image)} disabled={image.owner?.type !== ConstsOwnerType.OwnerTypePrivate}>
                   <IconPencil />
                   修改

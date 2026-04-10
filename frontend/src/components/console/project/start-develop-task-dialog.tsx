@@ -1,7 +1,6 @@
 import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -265,7 +264,6 @@ export default function StartDevelopTaskDialog({
                     <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                     {getModelHealthBadge(model)}
                     {model.model}
-                    {model.is_default && <Badge>默认</Badge>}
                     {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                     {getPublicModelMetaBadges(model)}
                   </SelectItem>

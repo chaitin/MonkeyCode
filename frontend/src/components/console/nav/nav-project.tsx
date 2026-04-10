@@ -150,10 +150,10 @@ export default function NavProject() {
       {isCollapsed ? (
         <SidebarMenu className="gap-2">
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="默认任务" isActive={isUnlinkedActive} asChild>
+            <SidebarMenuButton tooltip="空项目" isActive={isUnlinkedActive} asChild>
               <Link to="/console/tasks">
                 <ListTodo />
-                <span>默认任务</span>
+                <span>空项目</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -191,7 +191,7 @@ export default function NavProject() {
                   )}
                 >
                   <IconFolderOpen className="size-3.5 shrink-0 opacity-50" />
-                  <span className="truncate">默认</span>
+                  <span className="truncate">空项目</span>
                 </Link>
                 <Tooltip>
                   <TooltipTrigger asChild>

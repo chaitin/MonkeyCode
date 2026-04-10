@@ -804,7 +804,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                       disabled={!adaptedModelForTool() || !canUseModelBySubscription(model, subscription)}>
                       <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                       {model.model}
-                      {model.is_default && <Badge>默认</Badge>}
                       {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                       {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
                         <Badge className="!text-primary-foreground">免费</Badge>
@@ -898,7 +897,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                           <div className="flex items-center gap-2">
                             <Icon name={getOSFromImageName(image.name || '')} className="h-4 w-4" />
                             <span>{image.remark || getImageShortName(image.name || '')}</span>
-                            {image.is_default && <Badge>默认</Badge>}
                             {getOwnerTypeBadge(image.owner)}
                           </div>
                           </TooltipTrigger>
