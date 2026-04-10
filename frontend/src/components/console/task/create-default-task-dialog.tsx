@@ -21,7 +21,6 @@ import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -31,6 +30,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -536,13 +537,10 @@ export default function CreateDefaultTaskDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>新建空项目</DialogTitle>
-          <DialogDescription>
-            先完成与任务页一致的选择交互，后续再接实际任务创建。
-          </DialogDescription>
+          <DialogTitle>创建任务</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -560,10 +558,10 @@ export default function CreateDefaultTaskDialog({
             className="min-h-36 resize-none"
           />
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Popover open={taskTypePopoverOpen} onOpenChange={setTaskTypePopoverOpen}>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="rounded-full text-primary hover:text-primary">
+                <Button size="sm" variant="outline" className="rounded-md text-primary hover:text-primary">
                   {taskType === ConstsTaskType.TaskTypeDevelop && <><IconTerminal2 /><span>开发</span></>}
                   {taskType === ConstsTaskType.TaskTypeDesign && <><IconVocabulary /><span>设计</span></>}
                   {taskType === ConstsTaskType.TaskTypeReview && <><IconBug /><span>审查</span></>}
@@ -645,7 +643,7 @@ export default function CreateDefaultTaskDialog({
                   size="sm"
                   variant="outline"
                   className={cn(
-                    "max-w-[240px] rounded-full",
+                    "max-w-[240px] rounded-md",
                     selectedRepo && "text-primary hover:text-primary"
                   )}
                 >
@@ -862,7 +860,7 @@ export default function CreateDefaultTaskDialog({
                   size="sm"
                   variant="outline"
                   className={cn(
-                    "rounded-full",
+                    "rounded-md",
                     selectedSkill.length > 0 && "text-primary hover:text-primary"
                   )}
                 >
@@ -912,27 +910,39 @@ export default function CreateDefaultTaskDialog({
                 </Tabs>
               </PopoverContent>
             </Popover>
-          </div>
 
-          <Separator />
-
-          <div className="space-y-4">
-            <Field>
-              <FieldLabel>大模型</FieldLabel>
-              <FieldContent>
-                <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择大模型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {models.map((model) => (
-                      <SelectItem
-                        key={model.id}
-                        value={model.id || ""}
-                        disabled={!canUseModelBySubscription(model, subscription)}
-                      >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto max-w-[220px] rounded-md"
+                >
+                  {selectedModel ? (
+                    <>
+                      <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
+                      <span className="truncate">{selectedModel.model}</span>
+                    </>
+                  ) : (
+                    <span className="truncate">大模型</span>
+                  )}
+                  <IconChevronDown className="size-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[320px]">
+                <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
+                  {models.map((model) => (
+                    <DropdownMenuRadioItem
+                      key={model.id}
+                      value={model.id || ""}
+                      disabled={!canUseModelBySubscription(model, subscription)}
+                      className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
                         <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                        {model.model}
+                        <span className="truncate">{model.model}</span>
+                      </div>
+                      <div className="flex shrink-0 items-center justify-end gap-1.5">
                         {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                         {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
                           <Badge className="!text-primary-foreground">免费</Badge>
@@ -940,13 +950,17 @@ export default function CreateDefaultTaskDialog({
                         {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.access_level === "pro" && (
                           <Badge variant="secondary">专业版</Badge>
                         )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldContent>
-            </Field>
+                      </div>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
+          <Separator />
+
+          <div className="space-y-4">
             <Collapsible
               open={advancedOptionsOpen}
               onOpenChange={setAdvancedOptionsOpen}

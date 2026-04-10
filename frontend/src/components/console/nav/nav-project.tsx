@@ -124,7 +124,7 @@ export default function NavProject() {
   const isCollapsed = !isMobile && state === "collapsed"
 
   return (
-    <SidebarGroup>
+    <SidebarGroup className="mt-4 p-0">
       <CreateDefaultTaskDialog
         open={defaultTaskDialogOpen}
         onOpenChange={setDefaultTaskDialogOpen}
@@ -179,7 +179,7 @@ export default function NavProject() {
             <SidebarMenuItem>
               <div
                 className={cn(
-                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
+                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md pl-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
                   isUnlinkedActive && "font-medium text-primary"
                 )}
               >
@@ -295,7 +295,7 @@ export default function NavProject() {
                 <SidebarMenuItem key={projectId}>
                   <div
                     className={cn(
-                      "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
+                      "group/project-row flex w-full items-center gap-1 overflow-hidden rounded-md pl-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
                       isProjectActive && "font-medium text-primary"
                     )}
                   >
@@ -409,7 +409,7 @@ export default function NavProject() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            <SidebarMenuItem className="-mx-2 mt-2">
+            <SidebarMenuItem className="mt-2">
               <SidebarMenuButton onClick={() => setAddDialogOpen(true)}>
                 <IconFolderPlus />
                 <span>添加项目</span>

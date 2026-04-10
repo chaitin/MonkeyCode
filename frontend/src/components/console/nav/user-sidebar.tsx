@@ -22,7 +22,7 @@ export default function UserSidebar({
 
   return (
     <Sidebar variant="inset" collapsible="icon" {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="p-0">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
@@ -40,7 +40,7 @@ export default function UserSidebar({
       <SidebarContent>
         <NavProject />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="p-0">
         <NavCheckin />
         <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
           <NavCommunity
