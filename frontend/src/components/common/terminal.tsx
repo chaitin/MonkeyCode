@@ -145,7 +145,7 @@ export default function Terminal({
     xtermInstance.current = new XTerm({
       allowProposedApi: true,
       theme: themes[validTheme as keyof typeof themes],
-      fontFamily: '"SarasaMonoCL-Regular", monospace',
+      fontFamily: '"JetBrains Mono Variable", monospace',
       fontSize: 12,
     });
     

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import 'sarasa-mono-web/index.css'
+import '@fontsource-variable/jetbrains-mono/wght.css'
+import '@fontsource-variable/noto-sans-sc/wght.css'
 import './index.css'
 import App from './App.tsx'
 
