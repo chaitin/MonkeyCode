@@ -614,3 +614,8 @@ func (r *ProjectRepo) GetUserProjectPerm(ctx context.Context, uid uuid.UUID, pro
 	}
 	return collaborator.Role, nil
 }
+
+// TouchUpdatedAt 更新项目的更新时间
+func (r *ProjectRepo) TouchUpdatedAt(ctx context.Context, projectID uuid.UUID) error {
+	return r.db.Project.UpdateOneID(projectID).SetUpdatedAt(time.Now()).Exec(ctx)
+}

@@ -635,3 +635,11 @@ func (a *TaskUsecase) GitTask(ctx context.Context, id uuid.UUID) (*domain.GitTas
 	}
 	return nil, errcode.ErrNotFound
 }
+
+// TouchProjectUpdatedAt 更新任务关联项目的更新时间
+func (a *TaskUsecase) TouchProjectUpdatedAt(ctx context.Context, task *domain.Task) error {
+	if task.Extra == nil || task.Extra.ProjectID == uuid.Nil {
+		return nil
+	}
+	return a.projectRepo.TouchUpdatedAt(ctx, task.Extra.ProjectID)
+}

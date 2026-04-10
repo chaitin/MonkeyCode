@@ -55,6 +55,7 @@ type ProjectRepo interface {
 	GetProjectIDByTask(ctx context.Context, taskID string) (*db.Project, error)
 	GetIssueByTaskID(ctx context.Context, taskID string) (*db.ProjectIssue, error)
 	GetUserProjectPerm(ctx context.Context, uid uuid.UUID, projectID uuid.UUID) (consts.ProjectCollaboratorRole, error)
+	TouchUpdatedAt(ctx context.Context, projectID uuid.UUID) error
 }
 
 // ListProjectResp 项目列表响应

@@ -569,6 +569,9 @@ func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logg
 		if err := h.usecase.IncrUserInputCount(ctx, user.ID, task.ID); err != nil {
 			logger.With("error", err).WarnContext(ctx, "failed to incr user input count")
 		}
+		if err := h.usecase.TouchProjectUpdatedAt(ctx, task); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to touch project updated_at")
+		}
 		h.enqueueSummary(ctx, logger, task.ID.String(), task.CreatedAt)
 
 	case consts.TaskStreamTypeUserStop:
@@ -593,6 +596,9 @@ func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logg
 
 	case consts.TaskStreamTypeReplyQuestion:
 		h.handleReplyQuestion(ctx, logger, task, m.Data)
+		if err := h.usecase.TouchProjectUpdatedAt(ctx, task); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to touch project updated_at")
+		}
 	}
 }
 
