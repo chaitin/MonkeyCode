@@ -96,7 +96,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     ConstsTransactionKind.TransactionKindVoucherExchange,
     ConstsTransactionKind.TransactionKindInvitationReward,
     ConstsTransactionKind.TransactionKindDailyGrant,
-    "top_up",
+    ConstsTransactionKind.TransactionKindTopUp,
+    ConstsTransactionKind.TransactionKindCheckin,
   ])
 
   const negativeKinds = new Set<string>([
@@ -105,6 +106,17 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     ConstsTransactionKind.TransactionKindProSubscription,
     ConstsTransactionKind.TransactionKindProAutoRenew,
   ])
+
+  const getTransactionDirection = (kind?: ConstsTransactionKind) => {
+    const kindKey = kind || ""
+    if (positiveKinds.has(kindKey)) {
+      return 1
+    }
+    if (negativeKinds.has(kindKey)) {
+      return -1
+    }
+    return 1
+  }
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
@@ -182,12 +194,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     }
 
     const normalized = rawValue / 1000
-    const kindKey = kind || ""
-    const direction = positiveKinds.has(kindKey)
-      ? 1
-      : negativeKinds.has(kindKey)
-        ? -1
-        : 1
+    const direction = getTransactionDirection(kind)
     const sign = direction >= 0 ? "+" : "-"
     return `${sign}${formatPoints(Math.abs(normalized))}`
   }
@@ -902,9 +909,9 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
                 <div
                   className={cn(
                     "text-right tabular-nums",
-                    positiveKinds.has(transaction.kind || ConstsTransactionKind.TransactionKindVMConsumption)
-                      ? "text-green-600"
-                      : "text-red-600",
+                    getTransactionDirection(transaction.kind) >= 0
+                      ? "text-red-600"
+                      : "text-green-600",
                   )}
                 >
                   {formatSignedAmount(transaction.amount || ((transaction.amount_balance || 0) + (transaction.amount_daily || 0)), transaction.kind)}
