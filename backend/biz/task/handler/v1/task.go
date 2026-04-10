@@ -32,16 +32,16 @@ import (
 
 // TaskHandler 任务处理器
 type TaskHandler struct {
-	cfg          *config.Config
-	usecase      domain.TaskUsecase
-	userusecase  domain.UserUsecase
-	pubhost      domain.PublicHostUsecase
-	logger       *slog.Logger
-	taskflow     taskflow.Clienter
-	loki         *loki.Client
-	nls          *nls.NLS
-	taskConns    *ws.TaskConn
-	controlConns *ws.ControlConn
+	cfg           *config.Config
+	usecase       domain.TaskUsecase
+	userusecase   domain.UserUsecase
+	pubhost       domain.PublicHostUsecase
+	logger        *slog.Logger
+	taskflow      taskflow.Clienter
+	loki          *loki.Client
+	nls           *nls.NLS
+	taskConns     *ws.TaskConn
+	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
 	idleRefresher vmidle.VMIdleRefresher
 }
@@ -73,17 +73,17 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	}
 
 	h := &TaskHandler{
-		cfg:          cfg,
-		usecase:      uc,
-		userusecase:  uuc,
-		pubhost:      pubhost,
-		logger:       logger.With("handler", "task.handler"),
-		taskflow:     tf,
-		loki:         lok,
-		nls:          nlsSvc,
-		taskConns:    tc,
-		controlConns: cc,
-		taskSummary:  ts,
+		cfg:           cfg,
+		usecase:       uc,
+		userusecase:   uuc,
+		pubhost:       pubhost,
+		logger:        logger.With("handler", "task.handler"),
+		taskflow:      tf,
+		loki:          lok,
+		nls:           nlsSvc,
+		taskConns:     tc,
+		controlConns:  cc,
+		taskSummary:   ts,
 		idleRefresher: ir,
 	}
 
@@ -614,6 +614,9 @@ func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logg
 	case consts.TaskStreamTypeUserInput:
 		if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
 			logger.With("error", err).WarnContext(ctx, "failed to push task content")
+		}
+		if err := h.usecase.IncrUserInputCount(ctx, user.ID, task.ID); err != nil {
+			logger.With("error", err).WarnContext(ctx, "failed to incr user input count")
 		}
 		h.enqueueSummary(ctx, logger, task.ID.String(), task.CreatedAt)
 
