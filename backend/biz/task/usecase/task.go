@@ -258,6 +258,23 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	return nil
 }
 
+// IncrUserInputCount 记录用户输入次数到 Redis Hash，并按天计数
+func (a *TaskUsecase) IncrUserInputCount(ctx context.Context, userID, taskID uuid.UUID) error {
+	// 按 task 维度计数（总量，不设过期）
+	key := fmt.Sprintf("mcai:user:%s:input_count", userID.String())
+	if err := a.redis.HIncrBy(ctx, key, taskID.String(), 1).Err(); err != nil {
+		return err
+	}
+
+	// 按天计数（用于时间范围统计，90 天过期）
+	dailyKey := fmt.Sprintf("mcai:user:%s:input_daily:%s", userID.String(), time.Now().Format("2006-01-02"))
+	pipe := a.redis.Pipeline()
+	pipe.Incr(ctx, dailyKey)
+	pipe.Expire(ctx, dailyKey, 90*24*time.Hour)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 // Create implements domain.TaskUsecase.
 func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
 	r, err := a.taskflow.Host().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
@@ -458,6 +475,10 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		if err := a.vmLifecycle.Transition(ctx, createdVm.ID, lifecycle.VMStatePending, vmMeta); err != nil {
 			a.logger.WarnContext(ctx, "vm lifecycle transition failed", "error", err)
 		}
+	}
+
+	if err := a.IncrUserInputCount(ctx, user.ID, pt.Edges.Task.ID); err != nil {
+		a.logger.WarnContext(ctx, "failed to incr user input count on create", "error", err)
 	}
 
 	result := cvt.From(pt, &domain.ProjectTask{})
