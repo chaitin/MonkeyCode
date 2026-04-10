@@ -372,8 +372,8 @@ const PlaygroundDetailPage = () => {
                     queueSize={0}
                     sendUserInput={() => {}}
                     sendCancelCommand={() => {}}
-                    sendResetSession={() => {}}
-                    sendReloadSession={() => {}}
+                    sendResetSession={async () => false}
+                    sendReloadSession={async () => false}
                   />
                   {showPlayOverlay && (
                     <div className="absolute inset-0 flex items-center justify-center cursor-pointer hover:text-primary" onClick={handlePlayClick} >

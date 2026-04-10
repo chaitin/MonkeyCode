@@ -26,8 +26,8 @@ interface TaskChatInputBoxProps {
   onSend: (content: string) => void
   sending: boolean
   queueSize: number
-  sendResetSession: () => void
-  sendReloadSession: () => void
+  sendResetSession: () => Promise<boolean>
+  sendReloadSession: () => Promise<boolean>
   executionTimeMs?: number
   onCancel?: () => void
 }
@@ -114,7 +114,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                         <IconRecycle />
                         重置上下文
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => sendReloadSession()}>
+                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => void sendReloadSession()}>
                         <IconReload />
                         重新加载开发工具
                       </DropdownMenuItem>
@@ -134,7 +134,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                         <IconRecycle />
                         重置上下文
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => sendReloadSession()}>
+                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => void sendReloadSession()}>
                         <IconReload />
                         重新加载开发工具
                       </DropdownMenuItem>
@@ -206,7 +206,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                sendResetSession()
+                void sendResetSession()
                 setResetDialogOpen(false)
               }}
             >

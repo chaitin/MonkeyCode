@@ -157,8 +157,8 @@ interface TaskChatPanelProps {
   queueSize: number
   sendUserInput: (content: string) => void
   sendCancelCommand: () => void
-  sendResetSession: () => void
-  sendReloadSession: () => void
+  sendResetSession: () => Promise<boolean>
+  sendReloadSession: () => Promise<boolean>
 }
 
 export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize }: TaskChatPanelProps) => {

@@ -72,16 +72,19 @@ import (
 //	@Description	```
 //	@Description
 //	@Description	### Type=call, Kind=port_forward_list — 获取端口转发列表
-//	@Description	请求 Data: 无需额外字段
+//	@Description	请求 Data:
+//	@Description	```json
+//	@Description	{"request_id":"string"}
+//	@Description	```
 //	@Description	响应 Data:
 //	@Description	```json
-//	@Description	[{"port":0,"status":"string","process":"string","forward_id":"string?","access_url":"string?","label":"string?","error_message":"string?","whitelist_ips":["string"]}]
+//	@Description	{"request_id":"string","ports":[{"port":0,"status":"string","process":"string","forward_id":"string?","access_url":"string?","label":"string?","error_message":"string?","whitelist_ips":["string"]}]}
 //	@Description	```
 //	@Description
 //	@Description	### Type=call, Kind=restart — 重启任务
 //	@Description	请求 Data:
 //	@Description	```json
-//	@Description	{"request_id":"string?","load_session":true}
+//	@Description	{"request_id":"string","load_session":true}
 //	@Description	```
 //	@Description	响应 Data:
 //	@Description	```json
@@ -98,7 +101,7 @@ import (
 //	@Description
 //	@Description	- Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为:
 //	@Description	```json
-//	@Description	{"error":"string"}
+//	@Description	{"request_id":"string","success":false,"error":"string"}
 //	@Description	```
 //	@Description	- Type=task-event: 任务事件（从 TaskLive 订阅转发）
 //	@Description	- Type=ping: 心跳（无 Data）
@@ -259,18 +262,9 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 
 	var result any
 	var err error
+	var requestID string
 
 	switch m.Kind {
-	case "restart":
-		var req taskflow.RestartTaskReq
-		if err := json.Unmarshal(m.Data, &req); err != nil {
-			logger.WarnContext(ctx, "failed to unmarshal restart task", "error", err)
-			return
-		}
-		h.logger.With("restart", req, "task_id", task.ID).DebugContext(ctx, "recv restart call")
-		req.ID = task.ID
-		result, err = h.taskflow.TaskManager().Restart(ctx, req)
-
 	case "repo_file_diff":
 		var req taskflow.RepoFileDiffReq
 		if err := json.Unmarshal(m.Data, &req); err != nil {
@@ -278,6 +272,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.TaskId = taskID
+		requestID = req.RequestId
 		result, err = h.taskflow.TaskManager().FileDiff(ctx, req)
 
 	case "repo_file_list":
@@ -287,6 +282,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.TaskId = taskID
+		requestID = req.RequestId
 		result, err = h.taskflow.TaskManager().ListFiles(ctx, req)
 
 	case "repo_read_file":
@@ -296,6 +292,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.TaskId = taskID
+		requestID = req.RequestId
 		result, err = h.taskflow.TaskManager().ReadFile(ctx, req)
 
 	case "repo_file_changes":
@@ -305,6 +302,7 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.TaskId = taskID
+		requestID = req.RequestId
 		result, err = h.taskflow.TaskManager().FileChanges(ctx, req)
 
 	case "port_forward_list":
@@ -314,7 +312,18 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.ID = task.VirtualMachine.ID
+		requestID = req.RequestId
 		result, err = h.taskflow.PortForwarder().List(ctx, req)
+
+	case "restart":
+		var req taskflow.RestartTaskReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.WarnContext(ctx, "failed to unmarshal restart task", "error", err)
+			return
+		}
+		req.ID = task.ID
+		requestID = req.RequestId
+		result, err = h.taskflow.TaskManager().Restart(ctx, req)
 
 	default:
 		return
@@ -322,7 +331,11 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 
 	if err != nil {
 		logger.WarnContext(ctx, "control call failed", "error", err, "kind", m.Kind)
-		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		errData, _ := json.Marshal(map[string]any{
+			"request_id": requestID,
+			"success":    false,
+			"error":      err.Error(),
+		})
 		wsConn.WriteJSON(domain.TaskStream{
 			Type:      consts.TaskStreamTypeCallResponse,
 			Data:      errData,

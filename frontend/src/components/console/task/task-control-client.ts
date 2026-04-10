@@ -67,6 +67,12 @@ interface TaskControlCallResponse {
   error?: string | null
 }
 
+interface RestartTaskResponse extends TaskControlCallResponse {
+  id?: string
+  message?: string
+  session_id?: string
+}
+
 export class TaskControlClient implements TaskRepositoryClient {
   private static readonly CONNECT_TIMEOUT_MS = 10000
 
@@ -258,20 +264,9 @@ export class TaskControlClient implements TaskRepositoryClient {
   }
 
   restart(loadSession: boolean) {
-    this.send({
-      type: "call",
-      kind: "restart",
-      data: b64encode(JSON.stringify({
-        load_session: loadSession,
-      })),
-    })
-  }
-
-  private send(message: Record<string, unknown>) {
-    if (this.socket?.readyState !== WebSocket.OPEN) {
-      return
-    }
-    this.socket.send(JSON.stringify(message))
+    return this.call<RestartTaskResponse>("restart", {
+      load_session: loadSession,
+    }).then((response) => !!response?.success)
   }
 
   private handleSocketMessage(rawData: string) {

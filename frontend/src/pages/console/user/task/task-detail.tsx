@@ -484,12 +484,22 @@ export default function TaskDetailPage() {
     streamClientRef.current?.sendCancel()
   }, [])
 
-  const handleResetSession = React.useCallback(() => {
-    taskControlClientRef.current?.restart(false)
+  const handleResetSession = React.useCallback(async () => {
+    const success = await taskControlClientRef.current?.restart(false)
+    if (!success) {
+      toast.error("重置上下文失败")
+      return false
+    }
+    return true
   }, [])
 
-  const handleReloadSession = React.useCallback(() => {
-    taskControlClientRef.current?.restart(true)
+  const handleReloadSession = React.useCallback(async () => {
+    const success = await taskControlClientRef.current?.restart(true)
+    if (!success) {
+      toast.error("重新加载开发工具失败")
+      return false
+    }
+    return true
   }, [])
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
