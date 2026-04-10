@@ -342,6 +342,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 
 	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
 
+	var createdVm *taskflow.VirtualMachine
 	pt, err := a.repo.Create(ctx, user, req, token, func(pt *db.ProjectTask, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error) {
 		t := pt.Edges.Task
 		if t == nil {
@@ -387,6 +388,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		if vm == nil {
 			return nil, fmt.Errorf("vm is nil")
 		}
+		createdVm = vm
 
 		mcps := []taskflow.McpServerConfig{
 			{
@@ -405,23 +407,6 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 					},
 				},
 			},
-		}
-
-		taskMeta := lifecycle.TaskMetadata{
-			TaskID: t.ID,
-			UserID: user.ID,
-		}
-		if err := a.taskLifecycle.Transition(ctx, t.ID, consts.TaskStatusPending, taskMeta); err != nil {
-			a.logger.WarnContext(ctx, "task lifecycle transition failed", "error", err)
-		}
-
-		vmMeta := lifecycle.VMMetadata{
-			VMID:   vm.ID,
-			TaskID: &t.ID,
-			UserID: user.ID,
-		}
-		if err := a.vmLifecycle.Transition(ctx, vm.ID, lifecycle.VMStatePending, vmMeta); err != nil {
-			a.logger.WarnContext(ctx, "vm lifecycle transition failed", "error", err)
 		}
 
 		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
@@ -456,6 +441,24 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		return nil, err
 	}
 	a.logger.With("req", req).InfoContext(ctx, "task created")
+	taskMeta := lifecycle.TaskMetadata{
+		TaskID: pt.TaskID,
+		UserID: user.ID,
+	}
+	if err := a.taskLifecycle.Transition(ctx, pt.TaskID, consts.TaskStatusPending, taskMeta); err != nil {
+		a.logger.WarnContext(ctx, "task lifecycle transition failed", "error", err)
+	}
+
+	if createdVm != nil {
+		vmMeta := lifecycle.VMMetadata{
+			VMID:   createdVm.ID,
+			TaskID: &pt.TaskID,
+			UserID: user.ID,
+		}
+		if err := a.vmLifecycle.Transition(ctx, createdVm.ID, lifecycle.VMStatePending, vmMeta); err != nil {
+			a.logger.WarnContext(ctx, "vm lifecycle transition failed", "error", err)
+		}
+	}
 
 	result := cvt.From(pt, &domain.ProjectTask{})
 
