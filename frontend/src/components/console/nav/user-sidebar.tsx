@@ -46,7 +46,7 @@ export default function UserSidebar({
           <NavCommunity
             menuClassName="flex-[2]"
             itemClassName="h-full"
-            buttonClassName="h-full"
+            buttonClassName="h-full py-1"
           />
           <SidebarMenu className="flex-1">
             <SidebarMenuItem className="h-full">
@@ -54,7 +54,7 @@ export default function UserSidebar({
                 tooltip="配置"
                 isActive={settingsOpen}
                 onClick={() => setSettingsOpen(true)}
-                className="h-full"
+                className="h-full py-1"
               >
                 <Settings className="size-4" />
                 <span>配置</span>

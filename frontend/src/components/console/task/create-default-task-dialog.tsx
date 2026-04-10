@@ -871,20 +871,20 @@ export default function CreateDefaultTaskDialog({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="flex max-h-[30vh] w-fit max-w-[90vw] overflow-hidden p-2 md:max-w-xl"
+                className="max-h-[50vh] w-[90vw] max-w-xl overflow-hidden p-2"
                 align="start"
               >
                 <Tabs
                   value={activeSkillTag}
                   onValueChange={setActiveSkillTag}
-                  className="flex flex-row"
+                  className="w-full"
                 >
-                  <TabsList className="h-full flex-col justify-start gap-1 overflow-y-auto bg-background p-0 pr-2">
+                  <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
                     {skillTags.map((tag) => (
                       <TabsTrigger
                         key={tag}
                         value={tag}
-                        className="w-full justify-start text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none"
+                        className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none"
                       >
                         {getSkillTagIcon(tag)}
                         {tag}
@@ -895,7 +895,7 @@ export default function CreateDefaultTaskDialog({
                     <TabsContent
                       key={tag}
                       value={tag}
-                      className="overflow-y-auto rounded-md border bg-background p-1"
+                      className="max-h-[18rem] overflow-y-auto rounded-md border bg-background p-1"
                     >
                       {skillList
                         .filter((skill) => tag === "全部" || (skill.tags || []).includes(tag))

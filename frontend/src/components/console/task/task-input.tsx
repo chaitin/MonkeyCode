@@ -103,6 +103,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [codeDropdownOpen, setCodeDropdownOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills);
   const [skillList, setSkillList] = useState<DomainSkill[]>([]);
+  const [activeSkillTag, setActiveSkillTag] = useState<string>("全部");
 
   // 运行参数状态（工具固定为 opencode）
   const [selectedModelId, setSelectedModelId] = useState<string>("");
@@ -443,6 +444,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     return ["全部"].concat(sortedTags);
   }, [skillList]);
 
+  useEffect(() => {
+    if (!skillTags.includes(activeSkillTag)) {
+      setActiveSkillTag(skillTags[0] || "全部");
+    }
+  }, [activeSkillTag, skillTags]);
+
   const handleSkillChange = (skillId: string, checked: boolean) => {
 
     if (defaultSkills.includes(skillId)) {
@@ -735,18 +742,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   </span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="flex p-2 w-fit max-w-[90vw] md:max-w-xl max-h-[30vh] overflow-hidden" align="start">
-                <Tabs className="flex flex-row">
-                  <TabsList className="flex flex-col h-full justify-start overflow-y-auto bg-background p-0 -mr-2 pr-2 gap-1">
+              <PopoverContent className="max-h-[50vh] w-[90vw] max-w-xl overflow-hidden p-2" align="start">
+                <Tabs value={activeSkillTag} onValueChange={setActiveSkillTag} className="w-full">
+                  <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
                     {skillTags.map((tag, index) => (
-                      <TabsTrigger key={index} value={tag} className="w-full text-xs justify-start hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none">
+                      <TabsTrigger key={index} value={tag} className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none">
                         {getSkillTagIcon(tag)}
                         {tag}
                       </TabsTrigger>
                     ))}
                   </TabsList>
                   {skillTags.map((tag, index) => (
-                    <TabsContent key={index} value={tag} className="border rounded-md p-1 overflow-y-auto bg-background">
+                    <TabsContent key={index} value={tag} className="max-h-[18rem] overflow-y-auto rounded-md border bg-background p-1">
                       {skillList.filter(skill => {
                         return (skill.tags || []).includes(tag) || tag === "全部";
                       }).map((skill, skillIndex) => (
