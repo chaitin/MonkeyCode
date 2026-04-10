@@ -598,7 +598,7 @@ export default function TaskDetailPage() {
             <Button
               variant="ghost"
               size="sm"
-              className={cn("h-7 min-w-0 px-2 gap-1 text-xs font-normal", terminalPanelOpen && "text-primary bg-accent")}
+              className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", terminalPanelOpen && "text-primary bg-accent")}
               onClick={toggleTerminalPanel}
               disabled={!vmOnline}
             >
@@ -608,7 +608,7 @@ export default function TaskDetailPage() {
             <Button
               variant="ghost"
               size="sm"
-              className={cn("h-7 min-w-0 px-2 gap-1 text-xs font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
+              className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
               onClick={() => toggleSidePanel("files")}
               disabled={!vmOnline}
             >
@@ -618,7 +618,7 @@ export default function TaskDetailPage() {
             <Button
               variant="ghost"
               size="sm"
-              className={cn("h-7 min-w-0 px-2 gap-1 text-xs font-normal", previewDialogOpen && "text-primary bg-accent")}
+              className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", previewDialogOpen && "text-primary bg-accent")}
               onClick={togglePreviewDialog}
               disabled={!vmOnline}
             >

@@ -9,33 +9,6 @@ import { Link, useLocation } from "react-router-dom"
 import "@/utils/markdown.css"
 import { cn } from "@/lib/utils"
 
-// 动态导入 gray-matter 和 Buffer
-let matter: any = null
-let Buffer: any = null
-
-async function initGrayMatter() {
-  if (matter && Buffer) return
-  
-  try {
-    const [{ default: matterModule }, { Buffer: BufferModule }] = await Promise.all([
-      import("gray-matter"),
-      import("buffer")
-    ])
-    matter = matterModule
-    Buffer = BufferModule
-    
-    // 设置全局 Buffer
-    if (typeof window !== 'undefined') {
-      (window as any).Buffer = Buffer
-    }
-    if (typeof globalThis !== 'undefined') {
-      (globalThis as any).Buffer = Buffer
-    }
-  } catch (err) {
-    console.error("Failed to load gray-matter:", err)
-  }
-}
-
 // 初始化 mermaid 配置
 mermaid.initialize({
   startOnLoad: false,
@@ -146,74 +119,9 @@ function resolveRelativePath(href: string, currentPath: string): string {
 export function Markdown({ children, allowHtml = false, allowInternalLink = true, className }: MarkdownProps) {
   const location = useLocation()
   const markdownSource = typeof children === "string" ? children : ""
-  const [frontMatter, setFrontMatter] = useState<Record<string, any>>({})
-  const [content, setContent] = useState<string>(markdownSource)
-  
-  // 初始化并解析 front matter
-  useEffect(() => {
-    let mounted = true
-    setFrontMatter({})
-    setContent(markdownSource)
-    
-    async function parseFrontMatter() {
-      await initGrayMatter()
-      if (!mounted || !matter) {
-        return
-      }
-      
-      try {
-        const input = Buffer?.from ? Buffer.from(markdownSource) : markdownSource
-        const result = matter(input)
-        if (mounted) {
-          setFrontMatter(result.data || {})
-          setContent(typeof result.content === "string" ? result.content : markdownSource)
-        }
-      } catch (err) {
-        console.error("Failed to parse front matter:", err)
-        if (mounted) {
-          setContent(markdownSource)
-        }
-      }
-    }
-    
-    parseFrontMatter()
-    
-    return () => {
-      mounted = false
-    }
-  }, [markdownSource])
-  
-  const hasFrontMatter = Object.keys(frontMatter).length > 0
 
   return (
     <div className={cn("markdown-body pb-2", className)}>
-      {/* 渲染 front matter */}
-      {hasFrontMatter && (
-        <div className="overflow-x-auto mb-4 border-b">
-          <table className="w-full text-sm">
-            <tbody>
-              {Object.entries(frontMatter).map(([key, value]) => (
-                <tr key={key} className="border-b border-border/50 last:border-0">
-                  <td className="py-2 pr-4 font-medium text-muted-foreground align-top w-32">
-                    {key}
-                  </td>
-                  <td className="py-2 break-words">
-                    {typeof value === 'object' && value !== null ? (
-                      <pre className="text-xs bg-background p-2 rounded overflow-x-auto">
-                        {JSON.stringify(value, null, 2)}
-                      </pre>
-                    ) : (
-                      <span>{String(value)}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      
-      {/* 渲染 markdown 内容 */}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={allowHtml ? [rehypeRaw, rehypeSanitize] : []}
@@ -263,7 +171,7 @@ export function Markdown({ children, allowHtml = false, allowInternalLink = true
           }
         }}
       >
-        {content}
+        {markdownSource}
       </ReactMarkdown>
     </div>
   )

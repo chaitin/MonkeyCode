@@ -109,12 +109,12 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                         <IconMenu4 />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => setResetDialogOpen(true)}>
+                    <DropdownMenuContent className="w-48 min-w-48">
+                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => setResetDialogOpen(true)}>
                         <IconRecycle />
                         重置上下文
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => sendReloadSession()}>
+                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => sendReloadSession()}>
                         <IconReload />
                         重新加载开发工具
                       </DropdownMenuItem>
@@ -129,12 +129,12 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                         <IconMenu4 />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => setResetDialogOpen(true)}>
+                    <DropdownMenuContent className="w-48 min-w-48">
+                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => setResetDialogOpen(true)}>
                         <IconRecycle />
                         重置上下文
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => sendReloadSession()}>
+                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => sendReloadSession()}>
                         <IconReload />
                         重新加载开发工具
                       </DropdownMenuItem>
@@ -147,15 +147,15 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                         <IconTerminal2 />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="max-w-[min(90vw,800px)]">
+                    <DropdownMenuContent className="w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]">
                       {availableCommands?.commands?.map((command: AvailableCommand, index: number) => (
-                        <DropdownMenuItem key={index} className="flex flex-col gap-1 items-start" onClick={() => setContent(`/${command.name}`)}>
-                          <div className="flex flex-row gap-2 items-center">
+                        <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setContent(`/${command.name}`)}>
+                          <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
                             <IconCommand />
                             <div className="font-bold text-xs">/{command.name}</div>
                             {command.input?.hint && <div className="text-muted-foreground text-xs">[{command.input.hint}]</div>}
                           </div>
-                          <div className="text-xs text-muted-foreground pl-6">
+                          <div className="pl-6 text-xs text-muted-foreground whitespace-normal break-words">
                             {command.description}
                           </div>
                         </DropdownMenuItem>
