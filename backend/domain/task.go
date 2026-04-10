@@ -27,6 +27,7 @@ type TaskUsecase interface {
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
+	IncrUserInputCount(ctx context.Context, userID, taskID uuid.UUID) error
 }
 
 // TaskRepo 任务数据访问接口
