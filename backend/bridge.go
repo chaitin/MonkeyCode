@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"context"
-
 	"github.com/GoYoko/web"
 	"github.com/GoYoko/web/locale"
 	"github.com/labstack/echo/v4"
@@ -17,8 +15,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
-	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
-	"github.com/chaitin/MonkeyCode/backend/pkg/service"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 )
 
@@ -95,10 +91,10 @@ func WithCaptcha(captcha *captcha.Captcha) BridgeOption {
 	}
 }
 
-func Register(e *echo.Echo, dir string, opts ...BridgeOption) (service.Servicer, error) {
+func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 	cfg, err := config.Init(dir)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	injector := do.New()
@@ -110,7 +106,7 @@ func Register(e *echo.Echo, dir string, opts ...BridgeOption) (service.Servicer,
 
 	// 注册 infra
 	if err := pkg.RegisterInfra(injector, w); err != nil {
-		return nil, err
+		return err
 	}
 
 	// 应用可选配置（如自定义 EmailSender）
@@ -119,33 +115,8 @@ func Register(e *echo.Echo, dir string, opts ...BridgeOption) (service.Servicer,
 	}
 
 	if err := biz.RegisterAll(injector); err != nil {
-		return nil, err
+		return err
 	}
 
-	return &svc{
-		dispatcher: do.MustInvoke[*dispatcher.Dispatcher](injector),
-	}, nil
-}
-
-type svc struct {
-	dispatcher *dispatcher.Dispatcher
-}
-
-// Name implements [service.Servicer].
-func (s *svc) Name() string {
-	return "MonkeyCode Bridge Service"
-}
-
-// Start implements [service.Servicer].
-func (s *svc) Start() error {
-	s.dispatcher.Start(context.Background())
 	return nil
 }
-
-// Stop implements [service.Servicer].
-func (s *svc) Stop() error {
-	s.dispatcher.Close()
-	return nil
-}
-
-var _ service.Servicer = &svc{}
