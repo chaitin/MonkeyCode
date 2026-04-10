@@ -28,6 +28,7 @@ type TaskUsecase interface {
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
 	IncrUserInputCount(ctx context.Context, userID, taskID uuid.UUID) error
+	TouchProjectUpdatedAt(ctx context.Context, task *Task) error
 }
 
 // TaskRepo 任务数据访问接口

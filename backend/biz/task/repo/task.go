@@ -376,6 +376,11 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 		if err != nil {
 			return err
 		}
+		if req.Extra.ProjectID != uuid.Nil {
+			if err := tx.Project.UpdateOneID(req.Extra.ProjectID).SetUpdatedAt(time.Now()).Exec(ctx); err != nil {
+				return err
+			}
+		}
 		pt.Edges.Task = tk
 		pt.Edges.Model = m
 		pt.Edges.Image = img
