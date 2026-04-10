@@ -234,6 +234,7 @@ type PortForwardInfo struct {
 type CreatePortForward struct {
 	ID           string   `json:"id" query:"id" validate:"required"`
 	UserID       string   `json:"user_id"`
+	TaskID       string   `json:"task_id,omitempty"`
 	LocalPort    int32    `json:"local_port"`
 	WhitelistIPs []string `json:"whitelist_ips"`
 }

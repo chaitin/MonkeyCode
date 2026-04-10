@@ -673,12 +673,21 @@ func (h *HostUsecase) UpdateVM(ctx context.Context, req domain.UpdateVMReq) (*do
 
 // ApplyPort implements domain.HostUsecase.
 func (h *HostUsecase) ApplyPort(ctx context.Context, uid uuid.UUID, req *domain.ApplyPortReq) (*domain.VMPort, error) {
+	// 通过 vm_id 反查关联的 task_id（可选，查不到不影响端口申请）
+	var taskID string
+	if vm, err := h.repo.GetVirtualMachine(ctx, req.ID); err == nil {
+		if tasks := vm.Edges.Tasks; len(tasks) > 0 {
+			taskID = tasks[0].ID.String()
+		}
+	}
+
 	if req.ForwardID == "" {
 		forwardInfo, err := h.taskflow.PortForwarder().Create(
 			ctx,
 			taskflow.CreatePortForward{
 				ID:           req.ID,
 				UserID:       uid.String(),
+				TaskID:       taskID,
 				LocalPort:    int32(req.Port),
 				WhitelistIPs: req.WhiteList,
 			},
