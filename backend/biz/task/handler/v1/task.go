@@ -35,16 +35,16 @@ var errRoundEnded = errors.New("round ended")
 
 // TaskHandler 任务处理器
 type TaskHandler struct {
-	cfg          *config.Config
-	usecase      domain.TaskUsecase
-	userusecase  domain.UserUsecase
-	pubhost      domain.PublicHostUsecase
-	logger       *slog.Logger
-	taskflow     taskflow.Clienter
-	loki         *loki.Client
-	nls          *nls.NLS
-	taskConns    *ws.TaskConn
-	controlConns *ws.ControlConn
+	cfg           *config.Config
+	usecase       domain.TaskUsecase
+	userusecase   domain.UserUsecase
+	pubhost       domain.PublicHostUsecase
+	logger        *slog.Logger
+	taskflow      taskflow.Clienter
+	loki          *loki.Client
+	nls           *nls.NLS
+	taskConns     *ws.TaskConn
+	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
 	idleRefresher vmidle.VMIdleRefresher
 }
@@ -77,17 +77,17 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	}
 
 	h := &TaskHandler{
-		cfg:          cfg,
-		usecase:      uc,
-		userusecase:  uuc,
-		pubhost:      pubhost,
-		logger:       logger.With("handler", "task.handler"),
-		taskflow:     tf,
-		loki:         lok,
-		nls:          nlsSvc,
-		taskConns:    tc,
-		controlConns: cc,
-		taskSummary:  ts,
+		cfg:           cfg,
+		usecase:       uc,
+		userusecase:   uuc,
+		pubhost:       pubhost,
+		logger:        logger.With("handler", "task.handler"),
+		taskflow:      tf,
+		loki:          lok,
+		nls:           nlsSvc,
+		taskConns:     tc,
+		controlConns:  cc,
+		taskSummary:   ts,
 		idleRefresher: ir,
 	}
 
@@ -403,7 +403,7 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	h.writeCursor(wsConn, roundStart, hasMore)
 
 	// 读最新论次的 loki 历史窗口
-	ended, err := h.replayLatestRoundHistory(ctx, wsConn, logger, taskID, roundStart, attachNow)
+	ended, err := h.replayLatestRoundHistory(ctx, wsConn, logger, task, roundStart, attachNow)
 	if err != nil {
 		return err
 	}
@@ -417,7 +417,17 @@ func (h *TaskHandler) attachStream(ctx context.Context, cancel context.CancelCau
 	return nil
 }
 
-func buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, logger *slog.Logger) ([]domain.TaskStream, bool) {
+func (h *TaskHandler) buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, task *domain.Task) ([]domain.TaskStream, bool) {
+	if len(entries) == 0 {
+		stream := domain.TaskStream{
+			Type:      consts.TaskStreamTypeUserInput,
+			Data:      []byte(task.Content),
+			Kind:      "",
+			Timestamp: task.CreatedAt * 1000,
+		}
+		return []domain.TaskStream{stream}, false
+	}
+
 	streams := make([]domain.TaskStream, 0, len(entries))
 	ended := false
 
@@ -427,7 +437,7 @@ func buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, logger *slog.Lo
 		}
 		var chunk taskflow.TaskChunk
 		if err := json.Unmarshal([]byte(l.Line), &chunk); err != nil {
-			logger.Error("failed to unmarshal log entry", "line", l.Line, "error", err)
+			h.logger.With("task_id", task.ID).Error("failed to unmarshal log entry", "line", l.Line, "error", err)
 			continue
 		}
 		streams = append(streams, domain.TaskStream{
@@ -444,13 +454,13 @@ func buildTaskStreamsFromHistoryEntries(entries []loki.LogEntry, logger *slog.Lo
 	return streams, ended
 }
 
-func (h *TaskHandler) replayLatestRoundHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, taskID string, start, end time.Time) (bool, error) {
-	entries, err := h.loki.QueryWindowByTaskID(ctx, taskID, start, end)
+func (h *TaskHandler) replayLatestRoundHistory(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task, start, end time.Time) (bool, error) {
+	entries, err := h.loki.QueryWindowByTaskID(ctx, task.ID.String(), start, end)
 	if err != nil {
 		return false, fmt.Errorf("query latest round history: %w", err)
 	}
 
-	streams, ended := buildTaskStreamsFromHistoryEntries(entries, logger)
+	streams, ended := h.buildTaskStreamsFromHistoryEntries(entries, task)
 	for _, stream := range streams {
 		if err := wsConn.WriteJSON(stream); err != nil {
 			return false, err
