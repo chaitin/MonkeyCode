@@ -27,6 +27,7 @@ import { IconDotsVertical, IconFolderOpen, IconFolderPlus, IconLoader, IconPlaye
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
+import CreateDefaultTaskDialog from "../task/create-default-task-dialog"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { type DomainProjectTask } from "@/api/Api"
 import { stripMarkdown } from "@/utils/common"
@@ -41,6 +42,7 @@ export default function NavProject() {
   const navigate = useNavigate()
   const { isMobile, setOpen, state } = useSidebar()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [defaultTaskDialogOpen, setDefaultTaskDialogOpen] = useState(false)
   const [startTaskProject, setStartTaskProject] = useState<{ id: string; name?: string } | null>(null)
   const [taskToDelete, setTaskToDelete] = useState<DomainProjectTask | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -123,6 +125,10 @@ export default function NavProject() {
 
   return (
     <SidebarGroup>
+      <CreateDefaultTaskDialog
+        open={defaultTaskDialogOpen}
+        onOpenChange={setDefaultTaskDialogOpen}
+      />
       <AddProjectDialog
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -193,11 +199,13 @@ export default function NavProject() {
                       variant="ghost"
                       size="icon"
                       className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-primary hover:text-primary"
-                      asChild
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setDefaultTaskDialogOpen(true)
+                      }}
                     >
-                      <Link to="/console/tasks">
-                        <IconPlus className="size-3.5" />
-                      </Link>
+                      <IconPlus className="size-3.5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="right">创建任务</TooltipContent>

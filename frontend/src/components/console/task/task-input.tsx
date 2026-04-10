@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelHealthBadge, getOSFromImageName, getOwnerTypeBadge, getPublicModelMetaBadges, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
+import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -796,11 +796,15 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                       value={model.id || ""} 
                       disabled={!adaptedModelForTool() || !canUseModelBySubscription(model, subscription)}>
                       <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                      {getModelHealthBadge(model)}
                       {model.model}
                       {model.is_default && <Badge>默认</Badge>}
                       {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                      {getPublicModelMetaBadges(model)}
+                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
+                        <Badge className="!text-primary-foreground">免费</Badge>
+                      )}
+                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.access_level === "pro" && (
+                        <Badge variant="secondary">专业版</Badge>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -852,7 +856,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   <SelectItem value={"public_host"}>
                     <div className="flex items-center gap-2">
                       <span>MonkeyCode</span>
-                      <Badge>免费</Badge>
+                      <Badge className="!text-primary-foreground">免费</Badge>
                     </div>
                   </SelectItem>
                   {hosts.map((host) => {
