@@ -230,7 +230,7 @@ export default function VmsPage() {
                 </AvatarFallback>
               </Avatar> 
             </ItemMedia>
-            <ItemContent>
+            <ItemContent className="min-w-0">
               <HoverCard>
                 <HoverCardTrigger asChild>
                   <ItemTitle className="flex items-center gap-2 break-all">
@@ -250,7 +250,7 @@ export default function VmsPage() {
                   {title: "回收时间", content: vm.life_time_seconds ? dayjs.unix(new Date().getTime() / 1000).add(vm.life_time_seconds as number, 'seconds').format("YYYY-MM-DD HH:mm:ss") : "永不回收"},
                 ])}
               </HoverCard>
-              <ItemDescription className="line-clamp-1 truncate">
+              <ItemDescription className="min-w-0 max-w-full overflow-hidden line-clamp-1 truncate">
                 {vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline && <>
                   {Boolean(vm.cores) && `${vm.cores} 核 CPU，`}
                   {Boolean(vm.memory) && `${formatMemory(vm.memory)} 内存，`}
@@ -325,16 +325,16 @@ export default function VmsPage() {
                 <MoreVertical className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem  onClick={() => setCreateDialogOpen(true)}>
+            <DropdownMenuContent align="end" className="w-46 min-w-46">
+              <DropdownMenuItem className="whitespace-nowrap" onClick={() => setCreateDialogOpen(true)}>
                 <CirclePlusIcon />
                 创建开发环境
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={reloadHosts} disabled={loadingHosts}>
+              <DropdownMenuItem className="whitespace-nowrap" onClick={reloadHosts} disabled={loadingHosts}>
                 <IconReload className={loadingHosts ? "animate-spin" : ""} />
                 刷新
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => {
+              <DropdownMenuItem className="whitespace-nowrap" onClick={(e) => {
                 setShowOfflineVms(!showOfflineVms)
                 e.preventDefault()
               }}>

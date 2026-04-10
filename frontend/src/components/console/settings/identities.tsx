@@ -385,8 +385,9 @@ export default function Identities() {
                 <ChevronDown className="ml-1 size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-48 min-w-48">
               <DropdownMenuItem
+                className="whitespace-nowrap"
                 onClick={() => githubAppInstallUrl && window.open(githubAppInstallUrl, "_blank")}
                 disabled={!githubAppInstallUrl}
               >
@@ -394,6 +395,7 @@ export default function Identities() {
                 绑定 GitHub 身份
               </DropdownMenuItem>
               <DropdownMenuItem
+                className="whitespace-nowrap"
                 onClick={handleGiteeBind}
                 disabled={giteeBindLoading}
               >
@@ -401,6 +403,7 @@ export default function Identities() {
                 绑定 Gitee 身份
               </DropdownMenuItem>
               <DropdownMenuItem
+                className="whitespace-nowrap"
                 onClick={handleGiteaBind}
                 disabled={giteaBindLoading}
               >
@@ -408,13 +411,14 @@ export default function Identities() {
                 绑定 Gitea 身份
               </DropdownMenuItem>
               <DropdownMenuItem
+                className="whitespace-nowrap"
                 onClick={handleGitLabBind}
                 disabled={gitlabBindLoading}
               >
                 <Icon name="GitLab" className="size-4" />
                 绑定 GitLab 身份
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setIsDialogOpen(true)}>
+              <DropdownMenuItem className="whitespace-nowrap" onClick={() => setIsDialogOpen(true)}>
                 <IconPlugConnected className="size-4" />
                 绑定其他平台
               </DropdownMenuItem>
