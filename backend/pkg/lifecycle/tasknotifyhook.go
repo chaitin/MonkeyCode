@@ -14,7 +14,7 @@ import (
 
 // TaskNotifyHook 任务状态变更时发送通知
 type TaskNotifyHook struct {
-	notify NotifyPublisher
+	notify *dispatcher.Dispatcher
 	logger *slog.Logger
 }
 
