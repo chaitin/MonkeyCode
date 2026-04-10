@@ -107,6 +107,7 @@ func (t *TaskRepo) StatByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUI
 // GetByID implements domain.TaskRepo.
 func (t *TaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error) {
 	return t.db.Task.Query().
+		WithUser().
 		WithProjectTasks(func(ptq *db.ProjectTaskQuery) {
 			ptq.
 				WithModel().
