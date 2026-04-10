@@ -490,15 +490,7 @@ export default function TaskDetailPage() {
       toast.error("重置上下文失败")
       return false
     }
-    return true
-  }, [])
-
-  const handleReloadSession = React.useCallback(async () => {
-    const success = await taskControlClientRef.current?.restart(true)
-    if (!success) {
-      toast.error("重新加载开发工具失败")
-      return false
-    }
+    toast.success("上下文已重置")
     return true
   }, [])
 
@@ -735,7 +727,6 @@ export default function TaskDetailPage() {
                         queueSize={0}
                         executionTimeMs={timeCost}
                         sendResetSession={handleResetSession}
-                        sendReloadSession={handleReloadSession}
                       />
                     ) : (
                       <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">

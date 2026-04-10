@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconMenu4, IconPlayerStopFilled, IconRecycle, IconReload, IconSend, IconTerminal2 } from "@tabler/icons-react"
+import { IconCommand, IconLoader, IconPlayerStopFilled, IconRecycle, IconSend, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -27,12 +27,11 @@ interface TaskChatInputBoxProps {
   sending: boolean
   queueSize: number
   sendResetSession: () => Promise<boolean>
-  sendReloadSession: () => Promise<boolean>
   executionTimeMs?: number
   onCancel?: () => void
 }
 
-export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, sendResetSession, sendReloadSession, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
+export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, sendResetSession, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
   const [content, setContent] = useState('')
   const [isComposing, setIsComposing] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
@@ -84,6 +83,9 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     return sending || queueSize > 0
   }, [sending, queueSize])
 
+  const commandItems = availableCommands?.commands ?? []
+  const showCommandItems = !isExecuting && commandItems.length > 0
+
   return (
     <div className="relative w-full">
       <InputGroup>
@@ -101,69 +103,40 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
         <InputGroupAddon align="block-end" className="pb-1.5">
           <div className="flex flex-row justify-between w-full">
             <div className="flex flex-row gap-2 items-center min-w-0">
-              {isExecuting ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled}>
-                        <IconMenu4 />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-48 min-w-48">
-                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => setResetDialogOpen(true)}>
-                        <IconRecycle />
-                        重置上下文
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => void sendReloadSession()}>
-                        <IconReload />
-                        重新加载开发工具
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : (
-                <>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled}>
-                        <IconMenu4 />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-48 min-w-48">
-                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => setResetDialogOpen(true)}>
-                        <IconRecycle />
-                        重置上下文
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="whitespace-nowrap" onClick={() => void sendReloadSession()}>
-                        <IconReload />
-                        重新加载开发工具
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled}>
-                        <IconTerminal2 />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]">
-                      {availableCommands?.commands?.map((command: AvailableCommand, index: number) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled}>
+                    <IconTerminal2 />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className={showCommandItems ? "w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]" : "w-48 min-w-48"}>
+                  <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setResetDialogOpen(true)}>
+                    <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
+                      <IconRecycle />
+                      <div className="font-bold text-xs">重置上下文</div>
+                    </div>
+                    <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
+                      清空当前会话上下文，后续操作将基于新的上下文继续进行。
+                    </div>
+                  </DropdownMenuItem>
+                  {showCommandItems && (
+                    <>
+                      {commandItems.map((command: AvailableCommand, index: number) => (
                         <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setContent(`/${command.name}`)}>
                           <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
                             <IconCommand />
                             <div className="font-bold text-xs">/{command.name}</div>
                             {command.input?.hint && <div className="text-muted-foreground text-xs">[{command.input.hint}]</div>}
                           </div>
-                          <div className="pl-6 text-xs text-muted-foreground whitespace-normal break-words">
+                          <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
                             {command.description}
                           </div>
                         </DropdownMenuItem>
                       ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              )}
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <div className="flex flex-row gap-2 items-center min-w-0">
               {isExecuting && (

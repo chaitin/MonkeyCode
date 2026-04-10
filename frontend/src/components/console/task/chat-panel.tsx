@@ -158,10 +158,9 @@ interface TaskChatPanelProps {
   sendUserInput: (content: string) => void
   sendCancelCommand: () => void
   sendResetSession: () => Promise<boolean>
-  sendReloadSession: () => Promise<boolean>
 }
 
-export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, sendReloadSession, queueSize }: TaskChatPanelProps) => {
+export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, sendResetSession, queueSize }: TaskChatPanelProps) => {
   const [timeCost, setTimeCost] = React.useState(0)
   const internalScrollRef = React.useRef<HTMLDivElement>(null)
   const scrollContainerRef = externalScrollRef ?? internalScrollRef
@@ -301,7 +300,6 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
                 sending={sending}
                 queueSize={queueSize}
                 sendResetSession={sendResetSession}
-                sendReloadSession={sendReloadSession}
               />
             ),
             inputPortalTargetRef.current
@@ -319,7 +317,6 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
               sending={sending}
               queueSize={queueSize}
               sendResetSession={sendResetSession}
-              sendReloadSession={sendReloadSession}
             />
           ))}
 
