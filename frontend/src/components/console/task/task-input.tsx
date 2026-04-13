@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconLink, IconPuzzle, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconHelpCircle, IconLink, IconPuzzle, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -68,6 +68,8 @@ interface RepoOption {
   username: string;
   repository: DomainAuthRepository;
 }
+
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 /** 支持从仓库列表选择的身份（GitHub App、Gitee、Gitea、GitLab OAuth） */
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
@@ -125,6 +127,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
   const { models, images, hosts, identities, user, subscription } = useCommonData();
   const { setOpen: setSettingsOpen } = useSettingsDialog();
+
+  const handleOpenModelPricing = () => {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+      detail: { section: "pricing" },
+    }))
+  }
 
   const selectableIdentities = useMemo(
     () => identities.filter(isIdentityWithRepos),
@@ -784,26 +792,43 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
           <Field>
             <FieldLabel>大模型</FieldLabel>
             <FieldContent>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择大模型" />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem 
-                      key={model.id} 
-                      value={model.id || ""} 
-                      disabled={!adaptedModelForTool()}>
-                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                      {model.model}
-                      {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
-                        <Badge className="!text-primary-foreground">免费</Badge>
-                      )}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择大模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((model) => (
+                      <SelectItem 
+                        key={model.id} 
+                        value={model.id || ""} 
+                        disabled={!adaptedModelForTool()}>
+                        <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                        {model.model}
+                        {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                        {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
+                          <Badge className="!text-primary-foreground">免费</Badge>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={handleOpenModelPricing}
+                      aria-label="查看模型定价"
+                    >
+                      <IconHelpCircle className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>查看模型定价</TooltipContent>
+                </Tooltip>
+              </div>
             </FieldContent>
           </Field>
           {selectedRepo && !selectedRepoDisplayName.endsWith('.zip') && <>

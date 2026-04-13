@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconCpu, IconPencil, IconCamera } from "@tabler/icons-react";
+import { IconChevronDown, IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconCpu, IconPencil, IconCamera } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Api, ConstsTransactionKind, ConstsUploadUsage, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
+import Icon from "@/components/common/Icon";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +26,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -36,7 +43,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { useCommonData } from "../data-provider";
-import { captchaChallenge, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail } from "@/utils/common";
+import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 
 interface NavBalanceProps {
@@ -56,18 +63,21 @@ const BALANCE_NAV = [
 ] as const
 
 const MODEL_PRICING = [
-  { model: "minimax-m2.7", credits: 0 },
-  { model: "gpt5.4", credits: 1000 },
-  { model: "gpt5.2", credits: 600 },
-  { model: "gpt5.3-codex", credits: 600 },
-  { model: "gpt5.1", credits: 500 },
-  { model: "glm-5.1", credits: 600 },
-  { model: "glm-5", credits: 400 },
-  { model: "glm-4.7", credits: 200 },
-  { model: "qwen3-max", credits: 400 },
-  { model: "qwen3.6-plus", credits: 200 },
-  { model: "kimi-k2.5", credits: 400 },
+  { model: "minimax-m2.7", credits: 0, score: 637 },
+  { model: "qwen3.5-plus", credits: 0, score: 538 },
+  { model: "gpt5.4", credits: 1000, score: 922 },
+  { model: "gpt5.2", credits: 600, score: 887 },
+  { model: "gpt5.3-codex", credits: 600, score: 918 },
+  { model: "gpt5.1", credits: 500, score: 883 },
+  { model: "glm-5.1", credits: 600, score: 904 },
+  { model: "glm-5", credits: 400, score: 847 },
+  { model: "glm-4.7", credits: 200, score: 709 },
+  { model: "qwen3-max", credits: 400, score: 840 },
+  { model: "qwen3.6-plus", credits: 200, score: 751 },
+  { model: "kimi-k2.5", credits: 400, score: 889 },
 ] as const
+
+const TOP_MODEL_COUNT = 3
 
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
 type WalletSectionId = BalanceSectionId | "profile" | "plan" | "balance"
@@ -105,6 +115,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [newName, setNewName] = useState("");
   const [changingName, setChangingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [pricingSort, setPricingSort] = useState<"value" | "score" | "name">("value")
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -168,6 +179,35 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     return normalized.toString()
   }
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
+  const pricingSortLabel = pricingSort === "value"
+    ? "性价比排序"
+    : pricingSort === "score"
+      ? "代码能力排序"
+      : "按名字排序"
+  const topScoreModels = [...MODEL_PRICING]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, TOP_MODEL_COUNT)
+  const scoreRankMap = new Map(topScoreModels.map((item, index) => [item.model, index + 1]))
+  const sortedModelPricing = [...MODEL_PRICING].sort((a, b) => {
+    if (pricingSort === "name") {
+      return a.model.localeCompare(b.model)
+    }
+
+    if (pricingSort === "score") {
+      return b.score - a.score
+    }
+
+    if (a.credits === 0 && b.credits === 0) {
+      return b.score - a.score
+    }
+    if (a.credits === 0) {
+      return -1
+    }
+    if (b.credits === 0) {
+      return 1
+    }
+    return (b.score / b.credits) - (a.score / a.credits)
+  })
 
   const formatSubscriptionExpiry = (expiresAt?: string) => {
     if (!expiresAt) {
@@ -1133,32 +1173,69 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
 
   const pricingContent = (
     <div className="space-y-4">
-      <div className="rounded-md border p-5">
-        <div className="text-md font-medium">计费说明</div>
-        <div className="mt-2 text-sm text-muted-foreground">
-          以下价格单位为每百万 token 消耗多少积分。免费模型不会扣减积分。
+      <div className="flex items-center justify-between gap-4">
+        <div className="text-sm text-muted-foreground">
+          价格按每百万 Token 计算
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline" className="gap-2">
+              <span>{pricingSortLabel}</span>
+              <IconChevronDown className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setPricingSort("value")}>
+              性价比排序
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPricingSort("score")}>
+              代码能力排序
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPricingSort("name")}>
+              按名字排序
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {MODEL_PRICING.map((item) => (
-          <div key={item.model} className="rounded-md border p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate font-mono text-sm font-medium">{item.model}</div>
-                <div className="mt-1 text-xs text-muted-foreground">每百万 token</div>
-              </div>
-              <div
-                className={cn(
-                  "shrink-0 rounded-full px-2.5 py-1 text-xs font-medium",
-                  item.credits === 0 ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
-                )}
-              >
-                {item.credits === 0 ? "免费" : `${formatPoints(item.credits)} 积分`}
-              </div>
-            </div>
+      <ItemGroup className="flex flex-col gap-0 has-data-[size=sm]:gap-0 has-data-[size=xs]:gap-0">
+        {sortedModelPricing.map((item, index) => (
+          <div key={item.model}>
+            <Item variant="default" size="sm" className="px-2 py-3">
+              <ItemContent>
+                <ItemTitle className="grid w-full grid-cols-[minmax(0,1.6fr)_minmax(120px,0.8fr)_minmax(100px,0.6fr)] items-center gap-4">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Icon name={getBrandFromModelName(item.model)} className="size-4 shrink-0" />
+                    <div className="truncate font-mono text-sm font-medium">{item.model}</div>
+                  </div>
+                  <div>
+                    <Badge
+                      variant={item.credits === 0 ? "default" : "outline"}
+                      className={cn(
+                        "h-6 rounded-full px-2.5 text-xs font-medium",
+                        item.credits === 0 && "hover:bg-primary",
+                      )}
+                    >
+                      {item.credits === 0 ? "免费" : `${formatPoints(item.credits)} 积分 / 1M`}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-end">
+                    <Badge
+                      variant={scoreRankMap.has(item.model) ? "default" : "secondary"}
+                      className={cn(
+                        "h-6 rounded-full px-2.5 text-xs font-medium tabular-nums",
+                        scoreRankMap.has(item.model) && "bg-amber-500 text-white hover:bg-amber-500",
+                      )}
+                    >
+                      {item.score} 分
+                    </Badge>
+                  </div>
+                </ItemTitle>
+              </ItemContent>
+            </Item>
+            {index < sortedModelPricing.length - 1 && <ItemSeparator className="my-0" />}
           </div>
         ))}
-      </div>
+      </ItemGroup>
     </div>
   )
 

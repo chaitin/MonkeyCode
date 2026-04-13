@@ -70,6 +70,7 @@ import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-
 import {
   IconBug,
   IconChevronDown,
+  IconHelpCircle,
   IconLink,
   IconPuzzle,
   IconSourceCode,
@@ -83,6 +84,8 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog"
+
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 interface CreateDefaultTaskDialogProps {
   open: boolean
@@ -371,6 +374,11 @@ export default function CreateDefaultTaskDialog({
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
   )
+  const handleOpenModelPricing = () => {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+      detail: { section: "pricing" },
+    }))
+  }
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
 
   useEffect(() => {
@@ -902,47 +910,64 @@ export default function CreateDefaultTaskDialog({
               </PopoverContent>
             </Popover>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto max-w-[220px] rounded-md"
-                >
-                  {selectedModel ? (
-                    <>
-                      <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
-                      <span className="truncate">{selectedModel.model}</span>
-                    </>
-                  ) : (
-                    <span className="truncate">大模型</span>
-                  )}
-                  <IconChevronDown className="size-3.5 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[320px]">
-                <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
-                  {models.map((model) => (
-                    <DropdownMenuRadioItem
-                      key={model.id}
-                      value={model.id || ""}
-                      className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                        <span className="truncate">{model.model}</span>
-                      </div>
-                      <div className="flex shrink-0 items-center justify-end gap-1.5">
-                        {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                        {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
-                          <Badge className="!text-primary-foreground">免费</Badge>
-                        )}
-                      </div>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="ml-auto flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="max-w-[220px] rounded-md"
+                  >
+                    {selectedModel ? (
+                      <>
+                        <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
+                        <span className="truncate">{selectedModel.model}</span>
+                      </>
+                    ) : (
+                      <span className="truncate">大模型</span>
+                    )}
+                    <IconChevronDown className="size-3.5 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[320px]">
+                  <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
+                    {models.map((model) => (
+                      <DropdownMenuRadioItem
+                        key={model.id}
+                        value={model.id || ""}
+                        className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
+                          <span className="truncate">{model.model}</span>
+                        </div>
+                        <div className="flex shrink-0 items-center justify-end gap-1.5">
+                          {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                          {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
+                            <Badge className="!text-primary-foreground">免费</Badge>
+                          )}
+                        </div>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
+                    className="shrink-0 rounded-md"
+                    onClick={handleOpenModelPricing}
+                    aria-label="查看模型定价"
+                  >
+                    <IconHelpCircle className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>查看模型定价</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
 
           <Separator />

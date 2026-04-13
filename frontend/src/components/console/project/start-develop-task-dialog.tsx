@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner"
 import { canUseModelBySubscription, getBrandFromModelName, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconSparkles } from "@tabler/icons-react"
+import { IconHelpCircle, IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -23,6 +23,8 @@ interface StartDevelopTaskDialogProps {
   onOpenChange: (open: boolean) => void
   project?: DomainProject
 }
+
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 export default function StartDevelopTaskDialog({
   open,
@@ -39,6 +41,12 @@ export default function StartDevelopTaskDialog({
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const { images, models, hosts, subscription } = useCommonData()
+
+  const handleOpenModelPricing = () => {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+      detail: { section: "pricing" },
+    }))
+  }
 
   const fetchBranches = async () => {
     if (!project?.git_identity_id || !project?.repo_url) {
@@ -242,23 +250,35 @@ export default function StartDevelopTaskDialog({
           )}
           <div className="space-y-2">
             <Label>大模型</Label>
-            <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择大模型" />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id || ""}>
-                    <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                    {model.model}
-                    {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                    {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
-                      <Badge className="!text-primary-foreground">免费</Badge>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="选择大模型" />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((model) => (
+                    <SelectItem key={model.id} value={model.id || ""}>
+                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                      {model.model}
+                      {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
+                        <Badge className="!text-primary-foreground">免费</Badge>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={handleOpenModelPricing}
+                aria-label="查看模型定价"
+              >
+                <IconHelpCircle className="size-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>任务内容</Label>

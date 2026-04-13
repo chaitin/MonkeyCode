@@ -111,16 +111,65 @@ export default function VmAddDialog({
   }, [hosts, selectedHostId])
 
   useEffect(() => {
-    if (open) {      
-      setSelectedHostId(selectHost(hosts, true));
-      setSelectedImageId(selectImage(images, true));
-      setSelectedModelId(selectPreferredTaskModel(models, subscription));
+    if (!open) return
 
-      setCpu("1")
-      setMemory("2")
-      setLife("1h")
+    setSelectedHostId(selectHost(hosts, true))
+    setSelectedImageId(selectImage(images, true))
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+    setCpu("1")
+    setMemory("2")
+    setLife("1h")
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+
+    const hostIsValid = selectedHostId === "public_host"
+      || hosts.some((host) => host.id === selectedHostId && host.status === ConstsHostStatus.HostStatusOnline)
+
+    if (!hostIsValid) {
+      setSelectedHostId(selectHost(hosts, true))
     }
-  }, [open, hosts, images, models, subscription])
+  }, [hosts, open, selectedHostId])
+
+  useEffect(() => {
+    if (!open) return
+
+    const imageIsValid = images.some((image) => image.id === selectedImageId)
+    if (!imageIsValid) {
+      setSelectedImageId(selectImage(images, true))
+    }
+  }, [images, open, selectedImageId])
+
+  useEffect(() => {
+    if (!open) return
+
+    const modelIsValid = models.some((model) => model.id === selectedModelId)
+    if (!modelIsValid) {
+      setSelectedModelId(selectPreferredTaskModel(models, subscription))
+    }
+  }, [models, open, selectedModelId, subscription])
+
+  useEffect(() => {
+    if (!open) return
+
+    if (cpuOptions.some((option) => option.value === cpu)) return
+    setCpu(cpuOptions[0]?.value || "")
+  }, [cpu, cpuOptions, open])
+
+  useEffect(() => {
+    if (!open) return
+
+    if (memoryOptions.some((option) => option.value === memory)) return
+    setMemory(memoryOptions[0]?.value || "")
+  }, [memory, memoryOptions, open])
+
+  useEffect(() => {
+    if (!open) return
+
+    if (lifeOptions.some((option) => option.value === life)) return
+    setLife(lifeOptions[0]?.value || "")
+  }, [life, lifeOptions, open])
 
   const handleCreate = async () => {
     if (!canCreateVm) {
