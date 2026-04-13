@@ -542,9 +542,9 @@ func (g *Gitee) CreateWebhook(ctx context.Context, opts *domain.CreateWebhookOpt
 	payload := map[string]any{
 		"url":                   opts.WebhookURL,
 		"password":              opts.SecretToken,
-		"push_events":          true,
+		"push_events":           true,
 		"merge_requests_events": true,
-		"note_events":          true,
+		"note_events":           true,
 	}
 	if opts.IsOAuth {
 		payload["access_token"] = opts.Token

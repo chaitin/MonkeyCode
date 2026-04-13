@@ -45,15 +45,15 @@ type HostUsecase struct {
 
 func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 	h := &HostUsecase{
-		cfg:              do.MustInvoke[*config.Config](i),
-		redis:            do.MustInvoke[*redis.Client](i),
-		taskflow:         do.MustInvoke[taskflow.Clienter](i),
-		logger:           do.MustInvoke[*slog.Logger](i).With("module", "HostUsecase"),
-		repo:             do.MustInvoke[domain.HostRepo](i),
-		userRepo:         do.MustInvoke[domain.UserRepo](i),
-		girepo:           do.MustInvoke[domain.GitIdentityRepo](i),
-		vmexpireQueue:    do.MustInvoke[*delayqueue.VMExpireQueue](i),
-		tokenProvider:    do.MustInvoke[*gituc.TokenProvider](i),
+		cfg:           do.MustInvoke[*config.Config](i),
+		redis:         do.MustInvoke[*redis.Client](i),
+		taskflow:      do.MustInvoke[taskflow.Clienter](i),
+		logger:        do.MustInvoke[*slog.Logger](i).With("module", "HostUsecase"),
+		repo:          do.MustInvoke[domain.HostRepo](i),
+		userRepo:      do.MustInvoke[domain.UserRepo](i),
+		girepo:        do.MustInvoke[domain.GitIdentityRepo](i),
+		vmexpireQueue: do.MustInvoke[*delayqueue.VMExpireQueue](i),
+		tokenProvider: do.MustInvoke[*gituc.TokenProvider](i),
 	}
 
 	// 可选注入 PrivilegeChecker

@@ -22,9 +22,9 @@ const (
 type ProxyProtocol string
 
 const (
-	ProxyProtocolHTTP    ProxyProtocol = "http"
-	ProxyProtocolHTTPS   ProxyProtocol = "https"
-	ProxyProtocolSOCKS5  ProxyProtocol = "socks5"
+	ProxyProtocolHTTP   ProxyProtocol = "http"
+	ProxyProtocolHTTPS  ProxyProtocol = "https"
+	ProxyProtocolSOCKS5 ProxyProtocol = "socks5"
 )
 
 // TerminalMode 终端模式
