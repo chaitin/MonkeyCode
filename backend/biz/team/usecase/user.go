@@ -102,8 +102,8 @@ func (u *TeamGroupUserUsecase) AddUser(ctx context.Context, teamUser *domain.Tea
 				continue
 			}
 			// 存一份到 redis
-			key := fmt.Sprintf("reset_password_token:%s", user.ID.String())
-			if err := u.redisClient.Set(ctx, key, token, time.Hour*24).Err(); err != nil {
+			key := fmt.Sprintf("reset_password_token:%s", token)
+			if err := u.redisClient.Set(ctx, key, user.ID.String(), time.Hour*24).Err(); err != nil {
 				u.logger.ErrorContext(ctx, "set redis failed", "key", key, "token", token, "error", err)
 				continue
 			}
@@ -130,8 +130,8 @@ func (u *TeamGroupUserUsecase) AddAdmin(ctx context.Context, teamUser *domain.Te
 			return nil, err
 		}
 		// 存一份到 redis
-		key := fmt.Sprintf("reset_password_token:%s", user.ID.String())
-		if err := u.redisClient.Set(ctx, key, token, time.Hour*24).Err(); err != nil {
+		key := fmt.Sprintf("reset_password_token:%s", token)
+		if err := u.redisClient.Set(ctx, key, user.ID.String(), time.Hour*24).Err(); err != nil {
 			u.logger.ErrorContext(ctx, "set redis failed", "key", key, "token", token, "error", err)
 			return nil, err
 		}
