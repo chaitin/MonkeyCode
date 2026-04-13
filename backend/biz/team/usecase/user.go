@@ -27,6 +27,7 @@ type TeamGroupUserUsecase struct {
 	config      *config.Config
 	smtpClient  domain.EmailSender
 	redisClient *redis.Client
+	teamHook    domain.TeamHook
 }
 
 // NewTeamGroupUserUsecase 创建团队分组成员业务逻辑层实例
@@ -40,6 +41,10 @@ func NewTeamGroupUserUsecase(i *do.Injector) (domain.TeamGroupUserUsecase, error
 		config:      cfg,
 		smtpClient:  do.MustInvoke[domain.EmailSender](i),
 		redisClient: do.MustInvoke[*redis.Client](i),
+	}
+
+	if hook, err := do.Invoke[domain.TeamHook](i); err == nil {
+		t.teamHook = hook
 	}
 
 	go t.initTeam()
@@ -93,6 +98,13 @@ func (u *TeamGroupUserUsecase) AddUser(ctx context.Context, teamUser *domain.Tea
 	if err != nil {
 		return nil, err
 	}
+	if u.teamHook != nil {
+		for _, user := range users {
+			if err := u.teamHook.OnMemberAdded(ctx, teamUser.GetTeamID(), user.ID); err != nil {
+				u.logger.WarnContext(ctx, "teamHook.OnMemberAdded failed", "user_id", user.ID, "error", err)
+			}
+		}
+	}
 	// 发送重置密码邮件（如果没有发送成功就用户自己请求重置）
 	for _, user := range users {
 		if user.Email != "" {
@@ -122,6 +134,11 @@ func (u *TeamGroupUserUsecase) AddAdmin(ctx context.Context, teamUser *domain.Te
 	user, err := u.repo.CreateAdmin(ctx, teamUser.GetTeamID(), req)
 	if err != nil {
 		return nil, err
+	}
+	if u.teamHook != nil {
+		if err := u.teamHook.OnMemberAdded(ctx, teamUser.GetTeamID(), user.ID); err != nil {
+			u.logger.WarnContext(ctx, "teamHook.OnMemberAdded failed", "user_id", user.ID, "error", err)
+		}
 	}
 	if user.Email != "" {
 		token, err := u.generateResetPWDToken(ctx, user.ID)

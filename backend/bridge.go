@@ -78,6 +78,13 @@ func WithProjectHook(hook domain.ProjectHook) BridgeOption {
 	}
 }
 
+// WithTeamHook 注入团队成员变更回调
+func WithTeamHook(hook domain.TeamHook) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, hook)
+	}
+}
+
 // WithSiteResolver 注入站点解析器
 func WithSiteResolver(resolver domain.SiteResolver) BridgeOption {
 	return func(i *do.Injector) {

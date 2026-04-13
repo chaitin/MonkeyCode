@@ -56,6 +56,12 @@ type ProjectHook interface {
 	GetInternalRepoToken(ctx context.Context, userID uuid.UUID, projectID uuid.UUID) (string, error)
 }
 
+// TeamHook 团队成员变更回调接口（可选，内部项目通过 WithTeamHook 注入）
+type TeamHook interface {
+	// OnMemberAdded 团队成员添加后回调（如授予专业版订阅）
+	OnMemberAdded(ctx context.Context, teamID, userID uuid.UUID) error
+}
+
 // SiteResolver 站点解析接口（可选，内部项目通过 WithSiteResolver 注入）
 type SiteResolver interface {
 	// ResolveByHost 通过域名解析站点配置
