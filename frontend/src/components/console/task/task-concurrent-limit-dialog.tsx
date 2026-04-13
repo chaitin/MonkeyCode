@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
+import { getSubscriptionPlanShortLabel, hasProSubscription } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconPlayerStopFilled } from "@tabler/icons-react"
 import { useState, useEffect } from "react"
@@ -21,9 +22,9 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
   const [loading, setLoading] = useState(false)
   const [stoppingId, setStoppingId] = useState<string | null>(null)
   const { subscription } = useCommonData()
-  const isProPlan = subscription?.plan === "pro"
-  const planLabel = isProPlan ? "专业版" : "基础版"
-  const concurrentLimit = isProPlan ? 3 : 1
+  const hasAdvancedPlan = hasProSubscription(subscription)
+  const planLabel = getSubscriptionPlanShortLabel(subscription?.plan)
+  const concurrentLimit = hasAdvancedPlan ? 3 : 1
 
   useEffect(() => {
     if (!open) return
@@ -99,14 +100,14 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
             ))
           )}
         </div>
-        {!isProPlan && (
+        {!hasAdvancedPlan && (
           <div className="text-sm">
             <button
               type="button"
               className="text-primary underline-offset-4 hover:underline"
               onClick={handleUpgradePlan}
             >
-              升级专业版，可支持同时运行 3 个任务
+              升级专业版或旗舰版，可支持同时运行 3 个任务
             </button>
           </div>
         )}

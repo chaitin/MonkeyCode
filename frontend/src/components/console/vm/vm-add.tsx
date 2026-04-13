@@ -20,7 +20,7 @@ import Icon from "@/components/common/Icon"
 import { ConstsHostStatus, type DomainCreateVMReq } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import { canManageDevEnvironment, canUseModelBySubscription, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
+import { canManageDevEnvironment, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
 import { Spinner } from "@/components/ui/spinner"
 import {
   Tooltip,
@@ -121,14 +121,6 @@ export default function VmAddDialog({
       setLife("1h")
     }
   }, [open, hosts, images, models, subscription])
-
-  useEffect(() => {
-    const selectedModel = models.find((model) => model.id === selectedModelId)
-    if (!selectedModel || canUseModelBySubscription(selectedModel, subscription)) {
-      return
-    }
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
-  }, [models, selectedModelId, subscription])
 
   const handleCreate = async () => {
     if (!canCreateVm) {
@@ -339,9 +331,9 @@ export default function VmAddDialog({
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    {models.filter(model => model.id).map((model) => (
-                      <SelectItem key={model.id} value={model.id!} disabled={!canUseModelBySubscription(model, subscription)}>
+                    <SelectContent>
+                      {models.filter(model => model.id).map((model) => (
+                      <SelectItem key={model.id} value={model.id!}>
                         <div className="flex items-center gap-2">
                           <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                           {getModelHealthBadge(model)}

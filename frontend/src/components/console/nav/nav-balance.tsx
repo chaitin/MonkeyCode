@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
@@ -35,7 +36,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { useCommonData } from "../data-provider";
-import { captchaChallenge, isValidEmail } from "@/utils/common";
+import { captchaChallenge, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 
 interface NavBalanceProps {
@@ -48,6 +49,7 @@ const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 const BALANCE_NAV = [
   { id: "account", name: "我的账户", icon: IconUserHexagon },
+  { id: "plan", name: "我的套餐", icon: IconCrown },
   { id: "earn", name: "赚积分", icon: IconGift },
   { id: "usage", name: "积分记录", icon: IconCoin },
   { id: "pricing", name: "模型定价", icon: IconCpu },
@@ -79,6 +81,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [exchangeCode, setExchangeCode] = useState("");
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
   const [isProLoading, setIsProLoading] = useState(false);
+  const [isFlagshipLoading, setIsFlagshipLoading] = useState(false);
   const [isAutoRenewLoading, setIsAutoRenewLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<BalanceSectionId>("account");
@@ -133,6 +136,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     ConstsTransactionKind.TransactionKindModelConsumption,
     ConstsTransactionKind.TransactionKindProSubscription,
     ConstsTransactionKind.TransactionKindProAutoRenew,
+    ConstsTransactionKind.TransactionKindUltraSubscription,
+    ConstsTransactionKind.TransactionKindUltraAutoRenew,
   ])
 
   const getTransactionDirection = (kind?: ConstsTransactionKind) => {
@@ -149,28 +154,6 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
 
-  const getPlanLabel = (plan?: string) => {
-    switch (plan) {
-      case "pro":
-        return "专业会员"
-      case "basic":
-        return "普通会员"
-      default:
-        return "普通会员"
-    }
-  }
-
-  const getTriggerPlanLabel = (plan?: string) => {
-    switch (plan) {
-      case "pro":
-        return "专业版"
-      case "basic":
-        return "基础版"
-      default:
-        return "基础版"
-    }
-  }
-
   const formatSubscriptionExpiry = (expiresAt?: string) => {
     if (!expiresAt) {
       return "长期有效"
@@ -181,9 +164,13 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   }
 
   const remainingPoints = balance + dailyBalance
-  const triggerPlanLabel = getTriggerPlanLabel(subscription?.plan)
+  const triggerPlanLabel = getSubscriptionPlanShortLabel(subscription?.plan)
+  const hasAdvancedPlan = hasProSubscription(subscription)
+  const isProPlan = subscription?.plan === "pro"
+  const isFlagshipPlan = subscription?.plan === "flagship" || subscription?.plan === "ultra"
+  const isTeamUser = !!user?.team?.id
   const proSubscriptionPrice = 10000
-  const canUpgradeToPro = remainingPoints >= proSubscriptionPrice
+  const flagshipSubscriptionPrice = 100000
   const invitationLink = `https://monkeycode-ai.com/?ic=${user.id}`
   const rechargeOptions = [
     { credits: 10000, price: 50 },
@@ -207,6 +194,10 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
         return "兑换专业版"
       case ConstsTransactionKind.TransactionKindProAutoRenew:
         return "专业版自动续费"
+      case ConstsTransactionKind.TransactionKindUltraSubscription:
+        return "兑换旗舰版"
+      case ConstsTransactionKind.TransactionKindUltraAutoRenew:
+        return "旗舰版自动续费"
       case ConstsTransactionKind.TransactionKindDailyGrant:
         return "当日钱包发放"
       case ConstsTransactionKind.TransactionKindTopUp:
@@ -364,7 +355,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   }, [fetchTranscations, hasNextPage, isLoadingMore, page]);
 
   const normalizeSection = useCallback((section: WalletSectionId): BalanceSectionId => {
-    if (section === "profile" || section === "plan" || section === "balance") {
+    if (section === "profile" || section === "balance") {
       return "account"
     }
     return section
@@ -390,13 +381,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   }
 
   const handleOpenPro = async () => {
-    if (!canUpgradeToPro) {
-      toast.error("积分不足");
-      return;
-    }
-
     setIsProLoading(true);
-    await apiRequest('v1UsersSubscriptionProCreate', {}, [], (resp) => {
+    await apiRequest('v1UsersSubscriptionCreate', { plan: "pro" }, [], (resp) => {
       if (resp.code === 0) {
         toast.success("开通专业版成功");
         reloadWallet();
@@ -409,8 +395,23 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     setIsProLoading(false);
   }
 
+  const handleOpenFlagship = async () => {
+    setIsFlagshipLoading(true);
+    await apiRequest('v1UsersSubscriptionCreate', { plan: "ultra" }, [], (resp) => {
+      if (resp.code === 0) {
+        toast.success("开通旗舰版成功");
+        reloadWallet();
+        reloadSubscription();
+        fetchTranscations(1, true);
+      } else {
+        toast.error(resp.message || "开通旗舰版失败");
+      }
+    })
+    setIsFlagshipLoading(false);
+  }
+
   const handleToggleAutoRenew = async (checked: boolean) => {
-    if (subscription?.plan !== "pro") {
+    if (!hasAdvancedPlan) {
       return;
     }
 
@@ -584,7 +585,12 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const sectionMeta = activeSection === "account"
     ? {
         title: "我的账户",
-        description: "查看账户资料、积分余额、会员状态，并进行账号与套餐操作",
+        description: "查看账户资料、积分余额，并进行账号操作",
+      }
+    : activeSection === "plan"
+      ? {
+          title: "我的套餐",
+          description: "查看基础版、专业版与旗舰版权益，以及当前套餐状态",
       }
     : activeSection === "earn"
       ? {
@@ -616,11 +622,11 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <div className={cn(
                   "rounded-full px-2.5 py-1 text-xs font-medium",
-                  subscription?.plan === "pro" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+                  hasAdvancedPlan ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
                 )}>
                   {triggerPlanLabel}
                 </div>
-                {subscription?.plan === "pro" && (
+                {hasAdvancedPlan && (
                   <div className="text-xs text-muted-foreground">
                     有效期至 {formatSubscriptionExpiry(subscription?.expires_at)}
                   </div>
@@ -631,15 +637,15 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
           <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px] lg:max-w-[360px]">
             <div className="rounded-md bg-muted/40 px-4 py-3">
               <div className="text-xs text-muted-foreground">当前套餐</div>
-              <div className="mt-2 text-sm font-medium">{getPlanLabel(subscription?.plan)}</div>
+              <div className="mt-2 text-sm font-medium">{getSubscriptionPlanLabel(subscription?.plan)}</div>
             </div>
             <div className="rounded-md bg-muted/40 px-4 py-3">
               <div className="text-xs text-muted-foreground">自动续费</div>
               <div className="mt-2 text-sm font-medium">
                 {loadingSubscription
                   ? "加载中..."
-                  : subscription?.plan === "pro"
-                  ? subscription.auto_renew ? "已开启" : "已关闭"
+                  : hasAdvancedPlan
+                  ? subscription?.auto_renew ? "已开启" : "已关闭"
                   : "未启用"}
               </div>
             </div>
@@ -648,9 +654,9 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               <div className="mt-2 text-sm font-medium">
                 {loadingSubscription
                   ? "加载中..."
-                  : subscription?.plan === "pro"
-                  ? `专业版将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`
-                  : "当前为基础版，可升级到专业版"}
+                  : hasAdvancedPlan
+                  ? `${triggerPlanLabel}将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`
+                  : "当前为基础版，可升级到专业版或旗舰版"}
               </div>
             </div>
           </div>
@@ -767,77 +773,107 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
           </Button>
         </div>
       </div>
-      <div className="rounded-md border p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-md font-medium">套餐说明</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              对比基础版与专业版权益，并在这里完成升级或续费设置。
-            </div>
+    </div>
+  )
+
+  const planContent = (
+    <div className="flex flex-1 flex-col gap-4">
+      {!isTeamUser && hasAdvancedPlan ? (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-md border px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>{triggerPlanLabel}</Badge>
+            <span className="text-muted-foreground">
+              {loadingSubscription ? `${triggerPlanLabel}到期时间加载中...` : `${triggerPlanLabel}将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`}
+            </span>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="font-medium">
+              {loadingSubscription ? "自动续费加载中..." : `自动续费${subscription?.auto_renew ? "已开启" : "已关闭"}`}
+            </span>
+            <Switch
+              checked={!!subscription?.auto_renew}
+              onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
+              disabled={loadingSubscription || isAutoRenewLoading}
+            />
           </div>
         </div>
-        <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <div className={cn("rounded-md border p-5", subscription?.plan !== "pro" && "border-2 border-primary")}>
+      ) : null}
+      <div className="flex-1 grid gap-4 md:grid-cols-3">
+          <div className={cn("flex h-full flex-col rounded-md border p-5", !hasAdvancedPlan && "border-2 border-primary")}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-md font-medium">基础版</div>
-                <div className="mt-1 text-sm text-muted-foreground">免费</div>
               </div>
-              {subscription?.plan !== "pro" && (
-                <div className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">当前套餐</div>
+              {!hasAdvancedPlan && (
+                <Badge>当前套餐</Badge>
               )}
             </div>
-            <div className="mt-5 space-y-3">
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">官方指定免费模型</div>
+            <div className="mt-5 flex-1 space-y-3">
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">免费</div>
               <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">最多同时运行 1 个任务</div>
               <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">不含每日赠送积分</div>
             </div>
           </div>
-          <div className={cn("rounded-md border p-5", subscription?.plan === "pro" && "border-2 border-primary")}>
+          <div className={cn("flex h-full flex-col rounded-md border p-5", isProPlan && "border-2 border-primary")}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-md font-medium">专业版</div>
-                <div className="mt-1 text-sm text-muted-foreground">{formatPoints(proSubscriptionPrice)} 积分 / 月</div>
               </div>
-              {subscription?.plan === "pro" ? (
-                <div className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">当前套餐</div>
+              {isProPlan ? (
+                <Badge>当前套餐</Badge>
               ) : null}
             </div>
-            <div className="mt-5 space-y-3">
-              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">可选择更多 AI 模型</div>
+            <div className="mt-5 flex-1 space-y-3">
+              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">{formatPoints(proSubscriptionPrice)} 积分 / 月</div>
               <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
               <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">每日赠送 2000 积分，仅当日有效，不累计</div>
             </div>
-            {subscription?.plan === "pro" ? (
-              <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium">自动续费</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {subscription.auto_renew ? "已开启，套餐到期后自动续费" : "未开启，到期后不会自动续费"}
-                    </div>
-                  </div>
-                  <Switch
-                    checked={!!subscription.auto_renew}
-                    onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
-                    disabled={isAutoRenewLoading}
-                  />
-                </div>
+            {isProPlan ? null : isFlagshipPlan ? (
+              <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
+                当前已是更高等级的旗舰版套餐，已包含专业版权益。
               </div>
             ) : (
               <Button
-                className="mt-5 w-full"
+                className="mt-5 h-auto w-full py-3"
                 onClick={handleOpenPro}
-                disabled={!canUpgradeToPro || isProLoading}
+                disabled={isProLoading}
               >
                 {isProLoading && <Spinner />}
-                {canUpgradeToPro
-                  ? `开通专业版（${formatPoints(proSubscriptionPrice)} 积分）`
-                  : "积分不足"}
+                <span className="flex flex-col items-center leading-tight">
+                  <span>开通专业版</span>
+                  <span className="text-xs font-normal opacity-80">{formatPoints(proSubscriptionPrice)} 积分 / 月</span>
+                </span>
               </Button>
             )}
           </div>
-        </div>
+          <div className={cn("flex h-full flex-col rounded-md border p-5", isFlagshipPlan && "border-2 border-primary")}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-md font-medium">旗舰版</div>
+              </div>
+              {isFlagshipPlan ? (
+                <Badge>当前套餐</Badge>
+              ) : null}
+            </div>
+            <div className="mt-5 flex-1 space-y-3">
+              <div className="rounded-md bg-primary/10 px-3 py-2 text-sm">{formatPoints(flagshipSubscriptionPrice)} 积分 / 月</div>
+              <div className="rounded-md bg-primary/10 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
+              <div className="rounded-md bg-primary/10 px-3 py-2 text-sm">每日赠送 30000 积分，仅当日有效，不累计</div>
+            </div>
+            {isFlagshipPlan ? null : (
+              <Button
+                className="mt-5 h-auto w-full py-3"
+                onClick={handleOpenFlagship}
+                disabled={isFlagshipLoading}
+              >
+                {isFlagshipLoading && <Spinner />}
+                <span className="flex flex-col items-center leading-tight">
+                  <span>开通旗舰版</span>
+                  <span className="text-xs font-normal opacity-80">{formatPoints(flagshipSubscriptionPrice)} 积分 / 月</span>
+                </span>
+              </Button>
+            )}
+          </div>
       </div>
     </div>
   )
@@ -1117,6 +1153,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               <div ref={contentScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
                 {activeSection === "account"
                   ? accountContent
+                  : activeSection === "plan"
+                    ? planContent
                   : activeSection === "earn"
                     ? earnContent
                     : activeSection === "usage"

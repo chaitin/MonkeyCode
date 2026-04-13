@@ -10,12 +10,13 @@ import {
 } from "@/components/ui/sidebar"
 import { useCommonData } from "@/components/console/data-provider"
 import { cn } from "@/lib/utils"
+import { getSubscriptionPlanShortLabel } from "@/utils/common"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 export default function NavUser({ className }: { className?: string }) {
   const { user, subscription } = useCommonData()
-  const planLabel = subscription?.plan === "pro" ? "专业版" : "基础版"
+  const planLabel = getSubscriptionPlanShortLabel(subscription?.plan)
 
   const handleOpenProfile = () => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {

@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { canUseModelBySubscription, getBrandFromModelName, getModelHealthBadge, getOwnerTypeBadge, getPublicModelMetaBadges, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
@@ -127,19 +127,6 @@ export default function StartDevelopTaskDialog({
       prevOpenRef.current = false
     }
   }, [open, project, models, subscription])
-
-  const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedModelId),
-    [models, selectedModelId]
-  )
-  const selectedProModelDisabled = selectedModel?.access_level === "pro" && subscription?.plan !== "pro"
-
-  useEffect(() => {
-    if (!selectedProModelDisabled) {
-      return
-    }
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
-  }, [models, selectedProModelDisabled, subscription])
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {
@@ -260,7 +247,7 @@ export default function StartDevelopTaskDialog({
               </SelectTrigger>
               <SelectContent>
                 {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id || ""} disabled={!canUseModelBySubscription(model, subscription)}>
+                  <SelectItem key={model.id} value={model.id || ""}>
                     <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                     {getModelHealthBadge(model)}
                     {model.model}

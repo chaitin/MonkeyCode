@@ -388,21 +388,44 @@ export function getPublicModelMetaBadges(model?: DomainModel): React.ReactNode {
   return (
     <>
       {model.is_free === true && <Badge>免费</Badge>}
-      {model.access_level === "pro" && <Badge variant="secondary">专业版</Badge>}
     </>
   )
 }
 
-export function canUseModelBySubscription(model?: DomainModel, subscription?: DomainSubscriptionResp | null): boolean {
-  if (!model) {
-    return false
-  }
+export function canUseModelBySubscription(model?: DomainModel, _subscription?: DomainSubscriptionResp | null): boolean {
+  return Boolean(model)
+}
 
-  if (subscription?.plan === "pro") {
-    return true
-  }
+export function hasProSubscription(subscription?: DomainSubscriptionResp | null): boolean {
+  return subscription?.plan === "pro" || subscription?.plan === "flagship" || subscription?.plan === "ultra"
+}
 
-  return model.access_level !== "pro"
+export function getSubscriptionPlanLabel(plan?: string | null): string {
+  switch (plan) {
+    case "flagship":
+    case "ultra":
+      return "旗舰会员"
+    case "pro":
+      return "专业会员"
+    case "basic":
+      return "普通会员"
+    default:
+      return "普通会员"
+  }
+}
+
+export function getSubscriptionPlanShortLabel(plan?: string | null): string {
+  switch (plan) {
+    case "flagship":
+    case "ultra":
+      return "旗舰版"
+    case "pro":
+      return "专业版"
+    case "basic":
+      return "基础版"
+    default:
+      return "基础版"
+  }
 }
 
 export function canManageDevEnvironment(user?: DomainUser | null): boolean {

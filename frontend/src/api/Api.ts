@@ -158,6 +158,8 @@ export enum ConstsTransactionKind {
   TransactionKindInvitationReward = "invitation_reward",
   TransactionKindProSubscription = "pro_subscription",
   TransactionKindProAutoRenew = "pro_auto_renew",
+  TransactionKindUltraSubscription = "ultra_subscription",
+  TransactionKindUltraAutoRenew = "ultra_auto_renew",
   TransactionKindDailyGrant = "daily_grant",
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
@@ -365,6 +367,7 @@ export interface DomainCollaborator {
   name?: string;
   /** 权限 */
   permission?: ConstsProjectCollaboratorRole;
+  read_only?: boolean;
   role?: ConstsUserRole;
   status?: ConstsUserStatus;
   team?: DomainTeam;
@@ -749,7 +752,7 @@ export interface DomainMemberListResp {
 }
 
 export interface DomainModel {
-  /** 访问级别 basic | pro */
+  /** 访问级别 basic | pro | ultra */
   access_level?: string;
   api_key?: string;
   base_url?: string;
@@ -1222,10 +1225,14 @@ export interface DomainStats {
   repo_stars?: number;
 }
 
+export interface DomainSubscribeReq {
+  plan: "pro" | "ultra";
+}
+
 export interface DomainSubscriptionResp {
   auto_renew?: boolean;
   expires_at?: string;
-  /** "basic" | "pro" */
+  /** "basic" | "pro" | "ultra" */
   plan?: string;
   /** "points_exchange" | "team_member" | "admin_grant" */
   source?: string;
@@ -1562,6 +1569,7 @@ export interface DomainUser {
   identities?: DomainUserIdentity[];
   is_blocked?: boolean;
   name?: string;
+  read_only?: boolean;
   role?: ConstsUserRole;
   status?: ConstsUserStatus;
   team?: DomainTeam;
@@ -1955,6 +1963,29 @@ export class HttpClient<SecurityDataType = unknown> {
  */
 export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDataType> {
   api = {
+    /**
+     * @description 通过管理后台生成的一次性 token，以只读方式登录指定用户账号
+     *
+     * @tags 【用户】认证
+     * @name V1AuthImpersonateList
+     * @summary 管理员模拟登录
+     * @request GET:/api/v1/auth/impersonate
+     */
+    v1AuthImpersonateList: (
+      query: {
+        /** 一次性模拟登录 token */
+        token: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<any, string>({
+        path: `/api/v1/auth/impersonate`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        ...params,
+      }),
+
     /**
      * @description 获取 Gitea OAuth 授权 URL
      *
@@ -5606,6 +5637,26 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 消耗点数兑换 1 个月会员，通过 plan 指定 pro 或 ultra
+     *
+     * @tags 【用户】会员
+     * @name V1UsersSubscriptionCreate
+     * @summary 兑换会员
+     * @request POST:/api/v1/users/subscription
+     * @secure
+     */
+    v1UsersSubscriptionCreate: (req: DomainSubscribeReq, params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+        path: `/api/v1/users/subscription`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 设置专业版自动续费开关
      *
      * @tags 【用户】会员
@@ -5619,25 +5670,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/subscription/auto-renew`,
         method: "PUT",
         body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 消耗 10000 点兑换 1 个月专业版会员
-     *
-     * @tags 【用户】会员
-     * @name V1UsersSubscriptionProCreate
-     * @summary 兑换专业版
-     * @request POST:/api/v1/users/subscription/pro
-     * @secure
-     */
-    v1UsersSubscriptionProCreate: (params: RequestParams = {}) =>
-      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
-        path: `/api/v1/users/subscription/pro`,
-        method: "POST",
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -5710,7 +5742,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` 独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。 task 结束后连接不断开，仍可用于文件操作。 支持同一 taskID 多 tab 并发连接。 ## 上行消息 ### Type=call, Kind=repo_file_diff — 获取文件 diff 请求 Data: ```json {"request_id":"string","path":"string","unified":true,"context_lines":3} ``` 响应 Data: ```json {"request_id":"string","path":"string","diff":"string","success":true,"error":"string?"} ``` ### Type=call, Kind=repo_file_list — 列出目录文件 请求 Data: ```json {"request_id":"string","path":"string","glob_pattern":"string?","include_hidden":false} ``` 响应 Data: ```json {"request_id":"string","path":"string","files":[{"name":"string","path":"string","entry_mode":0,"size":0,"modified_at":0}],"success":true,"error":"string?"} ``` ### Type=call, Kind=repo_read_file — 读取文件内容 请求 Data: ```json {"request_id":"string","path":"string","offset":0,"length":0} ``` 响应 Data: ```json {"request_id":"string","path":"string","content":"bytes","total_size":0,"offset":0,"length":0,"is_truncated":false,"success":true,"error":"string?"} ``` ### Type=call, Kind=repo_file_changes — 查询变更文件列表 请求 Data: ```json {"request_id":"string"} ``` 响应 Data: ```json {"request_id":"string","changes":[{"path":"string","status":"string","additions":0,"deletions":0,"old_path":"string?"}],"branch":"string?","commit_hash":"string?","success":true,"error":"string?"} ``` ### Type=call, Kind=port_forward_list — 获取端口转发列表 请求 Data: 无需额外字段 响应 Data: ```json [{"port":0,"status":"string","process":"string","forward_id":"string?","access_url":"string?","label":"string?","error_message":"string?","whitelist_ips":["string"]}] ``` ### Type=call, Kind=restart — 重启任务（无 call-response 返回） 请求 Data: ```json {"request_id":"string?","load_session":true} ``` ### Type=sync-my-ip — 同步 Web 客户端真实 IP 请求 Data: ```json {"client_ip":"string"} ``` ## 下行消息 - Type=call-response: 同步请求响应（Kind 与请求一致，restart 除外）。失败时 Data 为: ```json {"error":"string"} ``` - Type=task-event: 任务事件（从 TaskLive 订阅转发） - Type=ping: 心跳（无 Data）
+     * @description 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` 独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。 task 结束后连接不断开，仍可用于文件操作。 支持同一 taskID 多 tab 并发连接。 ## 上行消息 ### Type=call, Kind=repo_file_diff — 获取文件 diff 请求 Data: ```json {"request_id":"string","path":"string","unified":true,"context_lines":3} ``` 响应 Data: ```json {"request_id":"string","path":"string","diff":"string","success":true,"error":"string?"} ``` ### Type=call, Kind=repo_file_list — 列出目录文件 请求 Data: ```json {"request_id":"string","path":"string","glob_pattern":"string?","include_hidden":false} ``` 响应 Data: ```json {"request_id":"string","path":"string","files":[{"name":"string","path":"string","entry_mode":0,"size":0,"modified_at":0}],"success":true,"error":"string?"} ``` ### Type=call, Kind=repo_read_file — 读取文件内容 请求 Data: ```json {"request_id":"string","path":"string","offset":0,"length":0} ``` 响应 Data: ```json {"request_id":"string","path":"string","content":"bytes","total_size":0,"offset":0,"length":0,"is_truncated":false,"success":true,"error":"string?"} ``` ### Type=call, Kind=repo_file_changes — 查询变更文件列表 请求 Data: ```json {"request_id":"string"} ``` 响应 Data: ```json {"request_id":"string","changes":[{"path":"string","status":"string","additions":0,"deletions":0,"old_path":"string?"}],"branch":"string?","commit_hash":"string?","success":true,"error":"string?"} ``` ### Type=call, Kind=port_forward_list — 获取端口转发列表 请求 Data: ```json {"request_id":"string"} ``` 响应 Data: ```json {"request_id":"string","ports":[{"port":0,"status":"string","process":"string","forward_id":"string?","access_url":"string?","label":"string?","error_message":"string?","whitelist_ips":["string"]}]} ``` ### Type=call, Kind=restart — 重启任务 请求 Data: ```json {"request_id":"string","load_session":true} ``` 响应 Data: ```json {"id":"uuid","request_id":"string?","success":true,"message":"string","session_id":"string"} ``` ### Type=sync-my-ip — 同步 Web 客户端真实 IP 请求 Data: ```json {"client_ip":"string"} ``` ## 下行消息 - Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为: ```json {"request_id":"string","success":false,"error":"string"} ``` - Type=task-event: 任务事件（从 TaskLive 订阅转发） - Type=ping: 心跳（无 Data）
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksControlList

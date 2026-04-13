@@ -256,16 +256,8 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
   );
-  const selectedProModelDisabled = selectedModel?.access_level === "pro" && subscription?.plan !== "pro"
 
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic;
-
-  useEffect(() => {
-    if (!selectedProModelDisabled) {
-      return
-    }
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
-  }, [models, selectedProModelDisabled, subscription])
 
   useEffect(() => {
     if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
@@ -801,15 +793,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                     <SelectItem 
                       key={model.id} 
                       value={model.id || ""} 
-                      disabled={!adaptedModelForTool() || !canUseModelBySubscription(model, subscription)}>
+                      disabled={!adaptedModelForTool()}>
                       <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
                       {model.model}
                       {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                       {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
                         <Badge className="!text-primary-foreground">免费</Badge>
-                      )}
-                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.access_level === "pro" && (
-                        <Badge variant="secondary">专业版</Badge>
                       )}
                     </SelectItem>
                   ))}

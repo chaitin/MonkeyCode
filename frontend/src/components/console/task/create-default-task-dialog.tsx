@@ -371,16 +371,7 @@ export default function CreateDefaultTaskDialog({
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
   )
-  const selectedProModelDisabled = selectedModel?.access_level === "pro" && subscription?.plan !== "pro"
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
-
-  useEffect(() => {
-    if (!selectedProModelDisabled) {
-      return
-    }
-
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
-  }, [models, selectedProModelDisabled, subscription])
 
   useEffect(() => {
     if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
@@ -935,7 +926,6 @@ export default function CreateDefaultTaskDialog({
                     <DropdownMenuRadioItem
                       key={model.id}
                       value={model.id || ""}
-                      disabled={!canUseModelBySubscription(model, subscription)}
                       className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
                     >
                       <div className="flex min-w-0 items-center gap-2">
@@ -946,9 +936,6 @@ export default function CreateDefaultTaskDialog({
                         {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                         {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
                           <Badge className="!text-primary-foreground">免费</Badge>
-                        )}
-                        {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.access_level === "pro" && (
-                          <Badge variant="secondary">专业版</Badge>
                         )}
                       </div>
                     </DropdownMenuRadioItem>
