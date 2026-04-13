@@ -8,23 +8,8 @@ import { Gift } from "lucide-react"
 import { toast } from "sonner"
 
 export default function NavCheckin() {
-  const { reloadWallet } = useCommonData()
-  const [visible, setVisible] = React.useState(false)
+  const { checkedInToday, reloadCheckinStatus, reloadWallet } = useCommonData()
   const [submitting, setSubmitting] = React.useState(false)
-
-  React.useEffect(() => {
-    apiRequest(
-      "v1UsersWalletCheckinList",
-      {},
-      [],
-      (resp) => {
-        setVisible(resp.data?.checked_in !== true)
-      },
-      () => {
-        setVisible(false)
-      },
-    )
-  }, [])
 
   const handleCheckin = async () => {
     if (submitting) {
@@ -47,7 +32,7 @@ export default function NavCheckin() {
       (resp) => {
         if (resp.code === 0) {
           reloadWallet()
-          setVisible(false)
+          reloadCheckinStatus()
           toast.success("签到成功，已领取 100 积分")
           return
         }
@@ -62,7 +47,7 @@ export default function NavCheckin() {
     setSubmitting(false)
   }
 
-  if (!visible) {
+  if (checkedInToday !== false) {
     return null
   }
 

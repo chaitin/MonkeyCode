@@ -29,6 +29,9 @@ type CommonData = {
   balance: number;
   dailyBalance: number;
   dailyRefreshedAt?: string;
+  checkedInToday: boolean | null;
+  loadingCheckinStatus: boolean;
+  reloadCheckinStatus: () => void;
   reloadWallet: () => void;
   subscription: DomainSubscriptionResp | null;
   loadingSubscription: boolean;
@@ -69,6 +72,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [balance, setBalance] = useState(0);
   const [dailyBalance, setDailyBalance] = useState(0);
   const [dailyRefreshedAt, setDailyRefreshedAt] = useState<string | undefined>(undefined);
+  const [checkedInToday, setCheckedInToday] = useState<boolean | null>(null);
+  const [loadingCheckinStatus, setLoadingCheckinStatus] = useState(true);
   const [subscription, setSubscription] = useState<DomainSubscriptionResp | null>(null);
   const [loadingSubscription, setLoadingSubscription] = useState(true);
   
@@ -244,6 +249,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
   }
 
+  const fetchCheckinStatus = async (showLoading = true) => {
+    if (showLoading) {
+      setLoadingCheckinStatus(true)
+    }
+
+    await apiRequest(
+      'v1UsersWalletCheckinList',
+      {},
+      [],
+      (resp) => {
+        setCheckedInToday(resp.data?.checked_in === true)
+        if (showLoading) {
+          setLoadingCheckinStatus(false)
+        }
+      },
+      () => {
+        setCheckedInToday(null)
+        if (showLoading) {
+          setLoadingCheckinStatus(false)
+        }
+      },
+    )
+  }
+
   const fetchSubscription = async (showLoading = true) => {
     if (showLoading) {
       setLoadingSubscription(true)
@@ -315,6 +344,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchImages();
     fetchIdentities();
     fetchWallet();
+    fetchCheckinStatus();
     fetchSubscription();
     fetchMembers();
     fetchProjects();
@@ -324,6 +354,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const timer = window.setInterval(() => {
       fetchWallet();
+      fetchCheckinStatus(false);
       fetchSubscription(false);
     }, 60 * 1000);
 
@@ -358,6 +389,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         balance: balance,
         dailyBalance: dailyBalance,
         dailyRefreshedAt: dailyRefreshedAt,
+        checkedInToday: checkedInToday,
+        loadingCheckinStatus: loadingCheckinStatus,
+        reloadCheckinStatus: () => fetchCheckinStatus(),
         reloadWallet: fetchWallet,
         subscription: subscription,
         loadingSubscription: loadingSubscription,
