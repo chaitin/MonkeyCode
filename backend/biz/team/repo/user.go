@@ -102,7 +102,7 @@ func (r *TeamGroupUserRepo) CreateUsers(ctx context.Context, teamID uuid.UUID, r
 			SetEmail(emailAddr).
 			SetStatus(consts.UserStatusActive).
 			SetPassword("").
-			SetRole(consts.UserRoleIndividual).
+			SetRole(consts.UserRoleSubAccount).
 			Save(ctx)
 		if err != nil {
 			r.logger.ErrorContext(ctx, "create user failed", "error", err, "email", emailAddr)
