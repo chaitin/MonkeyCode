@@ -1,4 +1,4 @@
-import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort, TaskflowVirtualMachineStatus } from "@/api/Api"
+import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
@@ -66,8 +66,7 @@ export default function TaskDetailPage() {
   const activeSidePanelRef = React.useRef<SidePanelType | null>(null)
   const previewDialogOpenRef = React.useRef(false)
   const showPreparing = useShouldShowPreparing(task)
-  const vmOnline = task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline
-    || task?.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusHibernated
+  const taskInteractive = task?.status === ConstsTaskStatus.TaskStatusProcessing
   const envid = task?.virtualmachine?.id
   const cancelledRef = React.useRef(false)
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -357,7 +356,7 @@ export default function TaskDetailPage() {
   }, [fetchPortForwards])
 
   React.useEffect(() => {
-    if (!taskId) return
+    if (!taskId || !taskInteractive) return
 
     const client = new TaskControlClient({
       taskId,
@@ -373,16 +372,16 @@ export default function TaskDetailPage() {
       }
       client.dispose()
     }
-  }, [applyRepoFileChange, handlePortChange, taskId])
+  }, [applyRepoFileChange, handlePortChange, taskId, taskInteractive])
 
   const scheduleFetchTaskDetail = React.useCallback(async () => {
     const currentTask = await fetchTaskDetail()
     if (cancelledRef.current) return
-    const vmStatus = currentTask?.virtualmachine?.status
-    let delay = 30000
-    if (vmStatus === TaskflowVirtualMachineStatus.VirtualMachineStatusPending) {
+    const taskStatus = currentTask?.status
+    let delay = 60000
+    if (taskStatus === ConstsTaskStatus.TaskStatusPending) {
       delay = 2000
-    } else if (vmStatus === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline) {
+    } else if (taskStatus === ConstsTaskStatus.TaskStatusProcessing) {
       delay = 10000
     }
     timeoutRef.current = setTimeout(scheduleFetchTaskDetail, delay)
@@ -452,10 +451,9 @@ export default function TaskDetailPage() {
     if (!taskId || !task) return
     if (streamStatus !== "inited") return
     if (streamClientRef.current) return
-    if (task.status !== ConstsTaskStatus.TaskStatusProcessing) return
-    if (task.virtualmachine?.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending) return
+    if (!taskInteractive) return
     connectStreamClient("attach")
-  }, [connectStreamClient, streamStatus, task, taskId])
+  }, [connectStreamClient, streamStatus, task, taskId, taskInteractive])
 
   React.useEffect(() => {
     if (!task) return
@@ -471,9 +469,9 @@ export default function TaskDetailPage() {
   }, [fetchTaskRounds, historyLoaded, historyLoading, rawLiveMessages.length, task])
 
   React.useEffect(() => {
-    if (!vmOnline || !previewDialogOpen) return
+    if (!taskInteractive || !previewDialogOpen) return
     fetchPortForwards()
-  }, [fetchPortForwards, previewDialogOpen, vmOnline])
+  }, [fetchPortForwards, previewDialogOpen, taskInteractive])
 
   const handleSend = React.useCallback((content: string) => {
     if (!taskId) return
@@ -602,7 +600,7 @@ export default function TaskDetailPage() {
               size="sm"
               className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", terminalPanelOpen && "text-primary bg-accent")}
               onClick={toggleTerminalPanel}
-              disabled={!vmOnline}
+              disabled={!taskInteractive}
             >
               <IconTerminal2 className="size-3.5" />
               终端
@@ -612,7 +610,7 @@ export default function TaskDetailPage() {
               size="sm"
               className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", activeSidePanel === "files" && "text-primary bg-accent")}
               onClick={() => toggleSidePanel("files")}
-              disabled={!vmOnline}
+              disabled={!taskInteractive}
             >
               <IconFile className="size-3.5" />
               文件{fileChangesCount > 0 ? ` (${fileChangesCount})` : ""}
@@ -622,7 +620,7 @@ export default function TaskDetailPage() {
               size="sm"
               className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", previewDialogOpen && "text-primary bg-accent")}
               onClick={togglePreviewDialog}
-              disabled={!vmOnline}
+              disabled={!taskInteractive}
             >
               <IconDeviceDesktop className="size-3.5" />
               预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
@@ -717,7 +715,7 @@ export default function TaskDetailPage() {
                   </div>
                   {/* 输入框 */}
                   <div className={cn("shrink-0", hasSidePanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
-                    {vmOnline ? (
+                    {taskInteractive ? (
                       <TaskChatInputBox
                         streamStatus={streamStatus}
                         availableCommands={availableCommands}
@@ -744,7 +742,7 @@ export default function TaskDetailPage() {
                       {activeSidePanel === "files" && (
                         <div className="flex-1 min-h-0 overflow-hidden">
                           <TaskFileExplorer
-                            disabled={!vmOnline}
+                            disabled={!taskInteractive}
                             repository={taskControlClientRef.current}
                             refreshSignal={fileRefreshSignal}
                             onChangesCountChange={setFileChangesCount}
@@ -764,7 +762,7 @@ export default function TaskDetailPage() {
               <ResizableHandle withHandle className="mt-2 shrink-0 bg-transparent after:hidden" />
               <ResizablePanel id="bottom-terminal" defaultSize={25} minSize={20} className="min-h-0">
                 <div className="h-full w-full border rounded-md overflow-hidden">
-                  <TaskTerminalPanel envid={envid} disabled={!vmOnline} onClosePanel={() => setTerminalPanelOpen(false)} />
+                  <TaskTerminalPanel envid={envid} disabled={!taskInteractive} onClosePanel={() => setTerminalPanelOpen(false)} />
                 </div>
               </ResizablePanel>
             </>
@@ -780,7 +778,7 @@ export default function TaskDetailPage() {
               size="icon-sm"
               className="shrink-0"
               onClick={() => void fetchPortForwards()}
-              disabled={!vmOnline}
+              disabled={!taskInteractive}
             >
               <IconReload className="size-4" />
             </Button>
@@ -788,7 +786,7 @@ export default function TaskDetailPage() {
           <TaskPreviewPanel
             ports={previewPorts}
             onRefresh={fetchPortForwards}
-            disabled={!vmOnline}
+            disabled={!taskInteractive}
             embedded
           />
         </DialogContent>
