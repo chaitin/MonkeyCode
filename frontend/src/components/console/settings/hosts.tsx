@@ -27,7 +27,7 @@ import {
   MoreVertical,
 } from "lucide-react"
 import { apiRequest } from "@/utils/requestUtils"
-import { getHostBadges } from "@/utils/common"
+import { canManageDevEnvironment, getHostBadges } from "@/utils/common"
 import { toast } from "sonner"
 import { type DomainHost, ConstsOwnerType, TaskflowVirtualMachineStatus } from "@/api/Api"
 import {
@@ -61,9 +61,16 @@ export default function Hosts() {
   const [remarkInput, setRemarkInput] = useState("")
   const [remarkLoading, setRemarkLoading] = useState(false)
 
-  const { hosts, reloadHosts, loadingHosts } = useCommonData();
+  const { hosts, reloadHosts, loadingHosts, user } = useCommonData();
+  const canManageHosts = canManageDevEnvironment(user)
 
   const fetchInstallCommand = async () => {
+    if (!canManageHosts) {
+      toast.error("仅团队空间支持绑定宿主机")
+      setOpen(false)
+      return
+    }
+
     setLoadingCommand(true)
     await apiRequest('v1UsersHostsInstallCommandList', {}, [], (resp) => {
       if (resp.code === 0) {
@@ -79,7 +86,7 @@ export default function Hosts() {
     if (open) {
       fetchInstallCommand()
     }
-  }, [open])
+  }, [open, canManageHosts])
 
   const handleCopy = async () => {
     if (!command) return
@@ -241,10 +248,17 @@ export default function Hosts() {
               开发环境宿主机
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              用于在宿主机上创建开发环境
+              用于在宿主机上创建开发环境，当前能力仅对团队空间开放
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>绑定</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(true)}
+            disabled={!canManageHosts}
+          >
+            绑定
+          </Button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
           {loadingHosts ? loadHosts() : hosts.length === 0 ? noHosts() : listHosts()}

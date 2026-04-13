@@ -33,7 +33,7 @@ import {
 import CreateVM from "@/components/console/vm/vm-add";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Icon from "@/components/common/Icon";
-import { getOSFromImageName, humanTime, translateStatus, getStatusBadgeProps, formatMemory, renderHoverCardContent, getVmMessage, getLastCondition } from "@/utils/common";
+import { canManageDevEnvironment, getOSFromImageName, humanTime, translateStatus, getStatusBadgeProps, formatMemory, renderHoverCardContent, getVmMessage, getLastCondition } from "@/utils/common";
 import { Badge } from "@/components/ui/badge";
 import dayjs from "dayjs";
 import {
@@ -67,8 +67,9 @@ export default function VmsPage() {
   const [renewDialogOpen, setRenewDialogOpen] = useState(false)
   const [vmToRenew, setVmToRenew] = useState<DomainVirtualMachine | null>(null)
 
-  const { reloadHosts, loadingHosts, hostsInited, vms } = useCommonData();
+  const { reloadHosts, loadingHosts, hostsInited, vms, user } = useCommonData();
   const reloadHostsRef = useRef(reloadHosts)
+  const canCreateVm = canManageDevEnvironment(user)
 
   useEffect(() => {
     reloadHostsRef.current = reloadHosts
@@ -183,18 +184,18 @@ export default function VmsPage() {
             还没有创建任何开发环境
           </EmptyDescription>
         </EmptyHeader>
-        <EmptyContent>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => reloadHosts()}>
-              <IconReload />
-              刷新
-            </Button>
-            <Button onClick={() => setCreateDialogOpen(true)}>
+          <EmptyContent>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => reloadHosts()}>
+                <IconReload />
+                刷新
+              </Button>
+            <Button onClick={() => setCreateDialogOpen(true)} disabled={!canCreateVm}>
               <CirclePlusIcon />
               创建开发环境
             </Button>
-          </div>
-        </EmptyContent>
+            </div>
+          </EmptyContent>
       </Empty>
     )
   }
@@ -316,7 +317,7 @@ export default function VmsPage() {
             开发环境
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            用于在宿主机上创建开发环境
+            用于在宿主机上创建开发环境，当前能力仅对团队空间开放
           </p>
         </div>
         <DropdownMenu>
@@ -326,7 +327,7 @@ export default function VmsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-46 min-w-46">
-              <DropdownMenuItem className="whitespace-nowrap" onClick={() => setCreateDialogOpen(true)}>
+              <DropdownMenuItem className="whitespace-nowrap" onClick={() => setCreateDialogOpen(true)} disabled={!canCreateVm}>
                 <CirclePlusIcon />
                 创建开发环境
               </DropdownMenuItem>

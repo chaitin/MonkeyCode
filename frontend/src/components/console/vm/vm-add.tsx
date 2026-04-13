@@ -20,7 +20,7 @@ import Icon from "@/components/common/Icon"
 import { ConstsHostStatus, type DomainCreateVMReq } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import { canUseModelBySubscription, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
+import { canManageDevEnvironment, canUseModelBySubscription, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getModelHealthBadge, getInterfaceTypeBadge } from "@/utils/common"
 import { Spinner } from "@/components/ui/spinner"
 import {
   Tooltip,
@@ -73,7 +73,8 @@ export default function VmAddDialog({
     }
     return BASE_LIFE_OPTIONS;
   }, [selectedHostId]);
-  const { models, images, identities, hosts, subscription } = useCommonData();
+  const { models, images, identities, hosts, subscription, user } = useCommonData();
+  const canCreateVm = canManageDevEnvironment(user)
 
   const cpuOptions = useMemo(() => {
     let maxCpu = 0
@@ -130,6 +131,12 @@ export default function VmAddDialog({
   }, [models, selectedModelId, subscription])
 
   const handleCreate = async () => {
+    if (!canCreateVm) {
+      toast.error("仅团队空间支持创建开发环境")
+      onOpenChange(false)
+      return
+    }
+
     // 验证必填项
     if (!vmName.trim()) {
       toast.error("请输入开发环境名称")
@@ -404,7 +411,7 @@ export default function VmAddDialog({
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
             取消
           </Button>
-          <Button onClick={handleCreate} disabled={loading}>
+          <Button onClick={handleCreate} disabled={loading || !canCreateVm}>
             {loading && <Spinner className="mr-2 h-4 w-4" />}
             创建
           </Button>
