@@ -899,11 +899,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
                 <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
               </div>
             </div>
-            {isProPlan ? null : isFlagshipPlan ? (
-              <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
-                当前已是更高等级的旗舰版套餐，已包含专业版权益。
-              </div>
-            ) : (
+            {isProPlan ? null : isFlagshipPlan ? null : (
                 <Button
                   className="mt-5 w-full"
                   onClick={() => setConfirmSubscriptionPlan("pro")}

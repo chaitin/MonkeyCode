@@ -591,7 +591,7 @@ export default function TaskDetailPage() {
           <Badge variant="outline" className="shrink-0">{task?.model?.model}</Badge>
           {totalTokens > 0 && (
             <span className="text-xs text-muted-foreground shrink-0">
-              {formatTokens(totalTokens)} tokens
+              已使用 {formatTokens(totalTokens)} tokens
             </span>
           )}
         </div>

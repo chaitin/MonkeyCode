@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Folder } from "lucide-react"
 import Icon from "@/components/common/Icon"
-import { IconAssembly, IconBrandChrome, IconBrandPython, IconBug, IconCircleCheckFilled, IconCircleXFilled, IconDeviceGamepad2, IconFileText, IconHelpHexagon, IconPalette, IconPuzzle, IconShieldChevron, IconTerminal2, IconTestPipe } from "@tabler/icons-react"
+import { IconAssembly, IconBrandChrome, IconBrandPython, IconBug, IconDeviceGamepad2, IconFileText, IconHelpHexagon, IconPalette, IconPuzzle, IconShieldChevron, IconTerminal2, IconTestPipe } from "@tabler/icons-react"
 import Cap from "@cap.js/widget"
 import { HoverCardContent } from "@/components/ui/hover-card"
 import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
@@ -9,8 +9,6 @@ import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
 import streamSaver from "streamsaver"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import dayjs from "dayjs"
 
 /** GitHub App 安装地址：https://monkeycode-ai.com 用正式环境，其他域名用开发环境 */
 export function getGithubAppInstallUrl(): string {
@@ -380,18 +378,6 @@ export function getOwnerTypeBadge(owner?: DomainOwner): React.ReactNode {
   }
 }
 
-export function getPublicModelMetaBadges(model?: DomainModel): React.ReactNode {
-  if (!model || model.owner?.type !== ConstsOwnerType.OwnerTypePublic) {
-    return null
-  }
-
-  return (
-    <>
-      {model.is_free === true && <Badge>免费</Badge>}
-    </>
-  )
-}
-
 export function canUseModelBySubscription(model?: DomainModel, _subscription?: DomainSubscriptionResp | null): boolean {
   return Boolean(model)
 }
@@ -430,34 +416,6 @@ export function getSubscriptionPlanShortLabel(plan?: string | null): string {
 
 export function canManageDevEnvironment(user?: DomainUser | null): boolean {
   return Boolean(user?.team?.id)
-}
-
-export function getModelHealthBadge(model?: DomainModel): React.ReactNode {
-  if (!model) {
-    return null
-  }
-
-  return <Tooltip>
-    <TooltipTrigger asChild>
-      {model.last_check_success ? (
-        <IconCircleCheckFilled className="text-teal-500 size-4 shrink-0" />
-      ) : (
-        <IconCircleXFilled className="text-red-500 size-4 shrink-0" />
-      )}
-    </TooltipTrigger>
-    <TooltipContent>
-      {model.last_check_at ? (
-        <p>检测于 {dayjs(model.last_check_at * 1000).fromNow()}</p>
-      ) : (
-        <p>尚未进行健康检查</p>
-      )}
-      {model.last_check_error && <p className="max-w-xl break-all whitespace-pre-wrap mt-2">
-        {model.last_check_error}
-      </p>}
-    </TooltipContent>
-  </Tooltip>
-
-  return <Badge variant="secondary">1231</Badge>
 }
 
 export function getHostBadges(host?: DomainHost): React.ReactNode {

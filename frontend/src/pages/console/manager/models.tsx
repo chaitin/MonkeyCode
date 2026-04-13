@@ -53,7 +53,7 @@ import type { DomainTeamModel } from "@/api/Api"
 import AddModel from "@/components/manager/add-model"
 import EditModel from "@/components/manager/edit-model"
 import Icon from "@/components/common/Icon"
-import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge } from "@/utils/common"
+import { getBrandFromModelName, getInterfaceTypeBadge } from "@/utils/common"
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
@@ -182,7 +182,6 @@ export default function TeamManagerModels() {
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle className="break-all">
-                    {getModelHealthBadge(model)}
                     {model.model || '未知模型'}
                     {getInterfaceTypeBadge(model.interface_type)}
                   </ItemTitle>

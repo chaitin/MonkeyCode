@@ -1,6 +1,7 @@
 import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -8,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { canUseModelBySubscription, getBrandFromModelName, getModelHealthBadge, getOwnerTypeBadge, getPublicModelMetaBadges, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import { canUseModelBySubscription, getBrandFromModelName, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useRef } from "react"
@@ -249,10 +250,11 @@ export default function StartDevelopTaskDialog({
                 {models.map((model) => (
                   <SelectItem key={model.id} value={model.id || ""}>
                     <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                    {getModelHealthBadge(model)}
                     {model.model}
                     {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                    {getPublicModelMetaBadges(model)}
+                    {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
+                      <Badge className="!text-primary-foreground">免费</Badge>
+                    )}
                   </SelectItem>
                 ))}
               </SelectContent>

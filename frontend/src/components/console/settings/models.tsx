@@ -43,7 +43,7 @@ import { ConstsOwnerType, type DomainModel } from "@/api/Api"
 import AddModel from "../settings/add-model"
 import EditModel from "../settings/edit-model"
 import Icon from "@/components/common/Icon"
-import { getBrandFromModelName, getInterfaceTypeBadge, getModelHealthBadge, getOwnerTypeBadge } from "@/utils/common"
+import { getBrandFromModelName, getInterfaceTypeBadge, getOwnerTypeBadge } from "@/utils/common"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { IconAlertHexagon, IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
@@ -160,9 +160,8 @@ export default function Models() {
               </AvatarFallback>
             </Avatar> 
           </ItemMedia>
-          <ItemContent>
-            <ItemTitle className="break-all">
-              {getModelHealthBadge(model)}
+            <ItemContent>
+              <ItemTitle className="break-all">
               {model.model || '未知模型'}
               {getInterfaceTypeBadge(model.interface_type)}
               {getOwnerTypeBadge(model.owner)}
