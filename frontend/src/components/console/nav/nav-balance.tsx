@@ -35,7 +35,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { useCommonData } from "../data-provider";
-import { isValidEmail } from "@/utils/common";
+import { captchaChallenge, isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 
 interface NavBalanceProps {
@@ -75,6 +75,9 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [invitations, setInvitations] = useState<DomainInvitationItem[]>([]);
   const [invitationCount, setInvitationCount] = useState(0);
   const [isInvitationsLoading, setIsInvitationsLoading] = useState(false);
+  const [hasCheckedInToday, setHasCheckedInToday] = useState<boolean | null>(null);
+  const [isCheckinStatusLoading, setIsCheckinStatusLoading] = useState(false);
+  const [isCheckinSubmitting, setIsCheckinSubmitting] = useState(false);
   const [exchangeCode, setExchangeCode] = useState("");
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
   const [isProLoading, setIsProLoading] = useState(false);
@@ -344,6 +347,22 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     setIsInvitationsLoading(false)
   }, [])
 
+  const fetchCheckinStatus = useCallback(async () => {
+    setIsCheckinStatusLoading(true)
+    await apiRequest(
+      "v1UsersWalletCheckinList",
+      {},
+      [],
+      (resp) => {
+        setHasCheckedInToday(resp.data?.checked_in === true)
+      },
+      () => {
+        setHasCheckedInToday(null)
+      },
+    )
+    setIsCheckinStatusLoading(false)
+  }, [])
+
   const loadMore = useCallback(() => {
     if (hasNextPage && !isLoadingMore) {
       fetchTranscations(page);
@@ -432,6 +451,43 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     setRechargingCredits(null)
   }
 
+  const handleCheckin = async () => {
+    if (isCheckinSubmitting || hasCheckedInToday) {
+      return
+    }
+
+    setIsCheckinSubmitting(true)
+
+    const captchaToken = await captchaChallenge()
+    if (!captchaToken) {
+      toast.error("验证码验证失败")
+      setIsCheckinSubmitting(false)
+      return
+    }
+
+    await apiRequest(
+      "v1UsersWalletCheckinCreate",
+      { captcha_token: captchaToken },
+      [],
+      (resp) => {
+        if (resp.code === 0) {
+          setHasCheckedInToday(true)
+          reloadWallet()
+          fetchTranscations(1, true)
+          toast.success("签到成功，已领取 100 积分")
+          return
+        }
+
+        toast.error(resp.message || "签到失败，请重试")
+      },
+      () => {
+        toast.error("签到失败，请重试")
+      },
+    )
+
+    setIsCheckinSubmitting(false)
+  }
+
   useEffect(() => {
     if (!dialogOpen || activeSection !== "usage") {
       return;
@@ -474,7 +530,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     setHasNextPage(false);
     fetchTranscations(1, true);
     fetchInvitations();
-  }, [fetchInvitations, fetchTranscations, normalizeSection, reloadSubscription, reloadWallet])
+    fetchCheckinStatus();
+  }, [fetchCheckinStatus, fetchInvitations, fetchTranscations, normalizeSection, reloadSubscription, reloadWallet])
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
@@ -793,6 +850,52 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
 
   const earnContent = (
     <div className="space-y-4">
+      <div className="rounded-md border p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-md font-medium">每日签到</div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              每天可签到 1 次，完成后获得 100 积分奖励。
+            </div>
+          </div>
+          <div className={cn(
+            "rounded-full px-2.5 py-1 text-xs font-medium",
+            hasCheckedInToday === true
+              ? "bg-primary/10 text-primary"
+              : hasCheckedInToday === false
+                ? "bg-amber-100 text-amber-900"
+                : "bg-muted text-muted-foreground",
+          )}>
+            {isCheckinStatusLoading
+              ? "状态加载中..."
+              : hasCheckedInToday === true
+                ? "今日已签到"
+                : hasCheckedInToday === false
+                  ? "今日未签到"
+                  : "状态获取失败"}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 rounded-md bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-medium">{dayjs().format("YYYY-MM-DD")} 签到状态</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {hasCheckedInToday === true
+                ? "今天已经领取过签到积分，明天可再次签到。"
+                : hasCheckedInToday === false
+                  ? "今日尚未签到，点击右侧按钮即可领取积分。"
+                  : "暂时无法确认签到状态，请稍后重试。"}
+            </div>
+          </div>
+          <Button
+            className="sm:min-w-28"
+            onClick={handleCheckin}
+            disabled={isCheckinStatusLoading || isCheckinSubmitting || hasCheckedInToday !== false}
+          >
+            {isCheckinSubmitting && <Spinner />}
+            {hasCheckedInToday === true ? "今日已签到" : "签到领 100 积分"}
+          </Button>
+        </div>
+      </div>
       <div className="rounded-md border p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
