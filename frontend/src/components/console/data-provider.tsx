@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 type CommonData = {
   user: DomainUser;
-  reloadUser: () => void;
+  reloadUser: () => Promise<DomainUser>;
 
   hosts: DomainHost[];
   vms: DomainVirtualMachine[];
@@ -86,10 +86,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [unlinkedTasks, setUnlinkedTasks] = useState<DomainProjectTask[]>([]);
   const [loadingUnlinkedTasks, setLoadingUnlinkedTasks] = useState(true);
 
-  const fetchUserInfo = () => {
-    apiRequest('v1UsersStatusList', {}, [], (resp) => {
-      setUserInfo(resp.data?.user || {});
+  const fetchUserInfo = async () => {
+    let nextUser: DomainUser = {}
+    await apiRequest('v1UsersStatusList', {}, [], (resp) => {
+      nextUser = resp.data?.user || {}
+      setUserInfo(nextUser);
     })
+    return nextUser
   }
 
   const fetchHosts = async () => {

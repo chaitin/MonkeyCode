@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconCpu } from "@tabler/icons-react";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconCpu, IconPencil, IconCamera } from "@tabler/icons-react";
+import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
+import { Api, ConstsTransactionKind, ConstsUploadUsage, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import dayjs from "dayjs";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,7 @@ const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 const BALANCE_NAV = [
   { id: "account", name: "我的账户", icon: IconUserHexagon },
   { id: "plan", name: "我的套餐", icon: IconCrown },
-  { id: "earn", name: "赚积分", icon: IconGift },
+  { id: "earn", name: "我的积分", icon: IconGift },
   { id: "usage", name: "积分记录", icon: IconCoin },
   { id: "pricing", name: "模型定价", icon: IconCpu },
 ] as const
@@ -104,8 +104,10 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [showChangeNameDialog, setShowChangeNameDialog] = useState(false);
   const [newName, setNewName] = useState("");
   const [changingName, setChangingName] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate()
   const {
     balance,
@@ -324,6 +326,71 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
       }
     })
     setChangingName(false)
+  }
+
+  const handleAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+
+    if (!file) {
+      return
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件")
+      return
+    }
+
+    setUploadingAvatar(true)
+
+    try {
+      const api = new Api()
+      const uploadResp = await api.api.v1UploaderCreate({
+        usage: ConstsUploadUsage.UploadUsageAvatar,
+        file,
+      })
+
+      const uploadResult = uploadResp.data as { code?: number; message?: string; data?: string }
+      const avatarUrl = uploadResult?.data
+      if (uploadResult?.code !== 0 || !avatarUrl) {
+        toast.error(uploadResult?.message || "头像上传失败")
+        return
+      }
+
+      const updateResp = await api.api.v1UsersUpdate({
+        avatar_url: avatarUrl,
+      })
+      const updateResult = updateResp.data as { code?: number; message?: string }
+
+      if (updateResult?.code === 0) {
+        let avatarSynced = false
+
+        for (let i = 0; i < 8; i += 1) {
+          const latestUser = await reloadUser()
+          if (latestUser?.avatar_url === avatarUrl) {
+            avatarSynced = true
+            break
+          }
+
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 400)
+          })
+        }
+
+        if (avatarSynced) {
+          toast.success("头像修改成功")
+        } else {
+          toast.warning("头像已更新，界面稍后会自动同步")
+        }
+      } else {
+        toast.error(updateResult?.message || "头像更新失败")
+      }
+    } catch (error) {
+      toast.error("头像上传失败，请重试")
+      console.error(error)
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
@@ -616,8 +683,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
       }
     : activeSection === "earn"
       ? {
-          title: "赚积分",
-          description: "通过兑换码和邀请注册获得积分",
+          title: "我的积分",
+          description: "查看当前积分，并通过签到、兑换码和邀请注册获得积分",
         }
     : activeSection === "usage"
       ? {
@@ -632,167 +699,130 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const accountContent = (
     <div className="space-y-4">
       <div className="rounded-md border p-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-4">
-            <Avatar className="size-14 rounded-xl">
-              <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
-              <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-lg font-semibold">{user?.name || "未知用户"}</div>
-              <div className="mt-1 truncate text-sm text-muted-foreground">{user?.email || "暂未绑定邮箱"}</div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className={cn(
-                  "rounded-full px-2.5 py-1 text-xs font-medium",
-                  hasAdvancedPlan ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
-                )}>
-                  {triggerPlanLabel}
-                </div>
-                {hasAdvancedPlan && (
-                  <div className="text-xs text-muted-foreground">
-                    有效期至 {formatSubscriptionExpiry(subscription?.expires_at)}
-                  </div>
-                )}
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex items-start gap-4">
+              <button
+                type="button"
+                className="group relative shrink-0"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+              >
+                <Avatar className="size-14 rounded-xl">
+                  <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+                  <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
+                </Avatar>
+                <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  {uploadingAvatar ? <Spinner className="size-4" /> : <IconCamera className="size-4" />}
+                </span>
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  className="group inline-flex max-w-full items-center gap-1 truncate text-left text-lg font-semibold transition-colors hover:text-primary"
+                  onClick={() => {
+                    setNewName(user?.name || "")
+                    setShowChangeNameDialog(true)
+                  }}
+                >
+                  <span className="truncate">{user?.name || "未知用户"}</span>
+                  <IconPencil className="size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
+                </button>
+                <div className="mt-1 truncate text-sm text-muted-foreground">{user?.id || "-"}</div>
               </div>
+            </div>
+            <div className="grid shrink-0 gap-3 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                className="justify-start"
+                onClick={() => setShowChangePasswordDialog(true)}
+              >
+                <IconLockCode className="size-4" />
+                {passwordActionLabel}
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start text-destructive hover:text-destructive"
+                onClick={() => setShowLogoutDialog(true)}
+              >
+                <IconLogout className="size-4" />
+                登出
+              </Button>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px] lg:max-w-[360px]">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-md bg-muted/40 px-4 py-3">
-              <div className="text-xs text-muted-foreground">当前套餐</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground">当前套餐</div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setActiveSection("plan")}
+                >
+                  升级套餐
+                </Button>
+              </div>
               <div className="mt-2 text-sm font-medium">{getSubscriptionPlanLabel(subscription?.plan)}</div>
-            </div>
-            <div className="rounded-md bg-muted/40 px-4 py-3">
-              <div className="text-xs text-muted-foreground">自动续费</div>
-              <div className="mt-2 text-sm font-medium">
-                {loadingSubscription
-                  ? "加载中..."
-                  : hasAdvancedPlan
-                  ? subscription?.auto_renew ? "已开启" : "已关闭"
-                  : "未启用"}
+              <div className="mt-2 text-xs text-muted-foreground">
+                {formatSubscriptionExpiry(subscription?.expires_at) === "长期有效"
+                  ? "长期有效"
+                  : `${formatSubscriptionExpiry(subscription?.expires_at)} 前有效`}
               </div>
             </div>
-            <div className="rounded-md bg-muted/40 px-4 py-3 sm:col-span-2">
-              <div className="text-xs text-muted-foreground">会员状态</div>
-              <div className="mt-2 text-sm font-medium">
-                {loadingSubscription
-                  ? "加载中..."
-                  : hasAdvancedPlan
-                  ? `${triggerPlanLabel}将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`
-                  : "当前为基础版，可升级到专业版或旗舰版"}
+            <div className="rounded-md bg-muted/40 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground">当前积分</div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setActiveSection("earn")}
+                >
+                  充值
+                </Button>
+              </div>
+              <div className="mt-2 text-sm font-medium tabular-nums">{formatPoints(remainingPoints)}</div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                长期积分 {formatPoints(balance)}，今日积分 {formatPoints(dailyBalance)}
               </div>
             </div>
           </div>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3">
           <div className="rounded-md bg-muted/40 px-4 py-3">
-            <div className="text-xs text-muted-foreground">用户名</div>
-            <div className="mt-2 truncate text-sm font-medium">{user?.name || "-"}</div>
-          </div>
-          <div className="rounded-md bg-muted/40 px-4 py-3">
-            <div className="text-xs text-muted-foreground">邮箱</div>
-            <div className="mt-2 truncate text-sm font-medium">{user?.email || "未绑定"}</div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">邮箱</div>
+                <div className="mt-2 truncate text-sm font-medium">{user?.email || "未绑定"}</div>
+              </div>
+              {!user?.email ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => {
+                    setBindEmail("")
+                    setShowBindEmailDialog(true)
+                  }}
+                >
+                  <IconMail className="size-4" />
+                  绑定邮箱
+                </Button>
+              ) : null}
+            </div>
           </div>
           <div className="rounded-md bg-muted/40 px-4 py-3">
             <div className="text-xs text-muted-foreground">团队</div>
             <div className="mt-2 truncate text-sm font-medium">{user?.team?.name || "个人空间"}</div>
           </div>
-          <div className="rounded-md bg-muted/40 px-4 py-3">
-            <div className="text-xs text-muted-foreground">团队 ID</div>
-            <div className="mt-2 truncate text-sm font-medium">{user?.team?.id || "-"}</div>
-          </div>
-        </div>
-      </div>
-      <div className="space-y-4 rounded-md border p-5">
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-md border p-5 md:col-span-2">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-md font-medium">积分概览</div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  充值时会在弹框中选择具体档位并跳转支付页面。
-                </div>
-              </div>
-              <Button
-                className="shrink-0"
-                onClick={() => {
-                  setSelectedRechargeCredits(null)
-                  setShowRechargeDialog(true)
-                }}
-              >
-                充值积分
-              </Button>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-md bg-muted/40 px-4 py-3">
-                <div className="text-xs text-muted-foreground">总积分</div>
-                <div className="mt-2 text-2xl font-semibold tabular-nums">{formatPoints(balance)}</div>
-              </div>
-              <div className="rounded-md bg-muted/40 px-4 py-3">
-                <div className="text-xs text-muted-foreground">今日积分</div>
-                <div className="mt-2 text-2xl font-semibold tabular-nums">{formatPoints(dailyBalance)}</div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-md border p-5">
-            <div className="text-md font-medium">当前可用</div>
-            <div className="mt-3 text-3xl font-semibold tabular-nums">{formatPoints(remainingPoints)}</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              侧边栏展示的是总积分与今日积分之和，便于直接判断当前还能使用多少积分。
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="rounded-md border p-5">
-        <div>
-          <div>
-            <div className="text-md font-medium">账号操作</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              维护账户资料与登录信息。
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Button
-            variant="outline"
-            className="justify-start"
-            onClick={() => {
-              setNewName(user?.name || "")
-              setShowChangeNameDialog(true)
-            }}
-          >
-            <IconUserHexagon className="size-4" />
-            修改昵称
-          </Button>
-          <Button
-            variant="outline"
-            className="justify-start"
-            disabled={!!user?.email}
-            onClick={() => {
-              if (!user?.email) {
-                setBindEmail("")
-                setShowBindEmailDialog(true)
-              }
-            }}
-          >
-            <IconMail className="size-4" />
-            {user?.email ? "邮箱已绑定" : "绑定邮箱"}
-          </Button>
-          <Button
-            variant="outline"
-            className="justify-start"
-            onClick={() => setShowChangePasswordDialog(true)}
-          >
-            <IconLockCode className="size-4" />
-            {passwordActionLabel}
-          </Button>
-          <Button
-            variant="outline"
-            className="justify-start text-destructive hover:text-destructive"
-            onClick={() => setShowLogoutDialog(true)}
-          >
-            <IconLogout className="size-4" />
-            登出
-          </Button>
         </div>
       </div>
     </div>
@@ -926,43 +956,49 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const earnContent = (
     <div className="space-y-4">
       <div className="rounded-md border p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-md font-medium">每日签到</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              每天可签到 1 次，完成后获得 100 积分奖励。
-            </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-md font-medium">当前可用积分</div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => {
+              setSelectedRechargeCredits(null)
+              setShowRechargeDialog(true)
+            }}
+          >
+            充值
+          </Button>
+        </div>
+        <div className="mt-3 text-3xl font-semibold tabular-nums">{formatPoints(remainingPoints)}</div>
+        <div className="mt-2 text-sm text-muted-foreground">
+          当前可用积分由长期积分与今日积分组成，可直接用于模型调用与其他消耗。
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-md bg-muted/40 px-4 py-3">
+            <div className="text-xs text-muted-foreground">长期积分</div>
+            <div className="mt-2 text-lg font-medium tabular-nums">{formatPoints(balance)}</div>
           </div>
-          <div className={cn(
-            "rounded-full px-2.5 py-1 text-xs font-medium",
-            checkedInToday === true
-              ? "bg-primary/10 text-primary"
-              : checkedInToday === false
-                ? "bg-amber-100 text-amber-900"
-                : "bg-muted text-muted-foreground",
-          )}>
-            {loadingCheckinStatus
-              ? "状态加载中..."
-              : checkedInToday === true
-                ? "今日已签到"
-                : checkedInToday === false
-                  ? "今日未签到"
-                  : "状态获取失败"}
+          <div className="rounded-md bg-muted/40 px-4 py-3">
+            <div className="text-xs text-muted-foreground">今日积分（凌晨自动清零）</div>
+            <div className="mt-2 text-lg font-medium tabular-nums">{formatPoints(dailyBalance)}</div>
           </div>
         </div>
-        <div className="mt-4 flex flex-col gap-3 rounded-md bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+      </div>
+      <div className="rounded-md border p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-sm font-medium">{dayjs().format("YYYY-MM-DD")} 签到状态</div>
-            <div className="mt-1 text-xs text-muted-foreground">
+            <div className="text-md font-medium">每日签到</div>
+            <div className="mt-1 text-sm text-muted-foreground">
               {checkedInToday === true
-                ? "今天已经领取过签到积分，明天可再次签到。"
+                ? "今日已领取 100 积分，明天可再次签到。"
                 : checkedInToday === false
-                  ? "今日尚未签到，点击右侧按钮即可领取积分。"
+                  ? "每天可签到 1 次，完成后获得 100 积分奖励。"
                   : "暂时无法确认签到状态，请稍后重试。"}
             </div>
           </div>
           <Button
-            className="sm:min-w-28"
+            className="sm:min-w-32"
             onClick={handleCheckin}
             disabled={loadingCheckinStatus || isCheckinSubmitting || checkedInToday !== false}
           >
