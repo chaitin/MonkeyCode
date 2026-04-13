@@ -91,6 +91,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [page, setPage] = useState<number>(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [confirmSubscriptionPlan, setConfirmSubscriptionPlan] = useState<"pro" | "ultra" | null>(null);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -152,6 +153,18 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   }
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
+  const formatPlanPoints = (value: number) => {
+    const normalized = Math.ceil(value)
+    if (normalized >= 10000) {
+      const wan = normalized / 10000
+      return `${Number.isInteger(wan) ? wan : wan.toFixed(1).replace(/\.0$/, "")} 万`
+    }
+    if (normalized >= 1000) {
+      const qian = normalized / 1000
+      return `${Number.isInteger(qian) ? qian : qian.toFixed(1).replace(/\.0$/, "")} 千`
+    }
+    return normalized.toString()
+  }
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
 
   const formatSubscriptionExpiry = (expiresAt?: string) => {
@@ -408,6 +421,15 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
       }
     })
     setIsFlagshipLoading(false);
+  }
+
+  const handleConfirmSubscription = async () => {
+    if (confirmSubscriptionPlan === "pro") {
+      await handleOpenPro()
+    } else if (confirmSubscriptionPlan === "ultra") {
+      await handleOpenFlagship()
+    }
+    setConfirmSubscriptionPlan(null)
   }
 
   const handleToggleAutoRenew = async (checked: boolean) => {
@@ -809,9 +831,18 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               )}
             </div>
             <div className="mt-5 flex-1 space-y-3">
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">免费</div>
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">最多同时运行 1 个任务</div>
-              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">不含每日赠送积分</div>
+              <div className="rounded-md bg-muted/40 px-3 py-2">
+                <div className="text-xs text-muted-foreground">价格</div>
+                <div className="mt-1 text-sm font-medium">免费</div>
+              </div>
+              <div className="rounded-md bg-muted/40 px-3 py-2">
+                <div className="text-xs text-muted-foreground">并发任务限制</div>
+                <div className="mt-1 text-sm font-medium">1 个任务</div>
+              </div>
+              <div className="rounded-md bg-muted/40 px-3 py-2">
+                <div className="text-xs text-muted-foreground">每日积分</div>
+                <div className="mt-1 text-sm font-medium">无</div>
+              </div>
             </div>
           </div>
           <div className={cn("flex h-full flex-col rounded-md border p-5", isProPlan && "border-2 border-primary")}>
@@ -824,25 +855,32 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               ) : null}
             </div>
             <div className="mt-5 flex-1 space-y-3">
-              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">{formatPoints(proSubscriptionPrice)} 积分 / 月</div>
-              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
-              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">每日赠送 2000 积分，仅当日有效，不累计</div>
+              <div className="rounded-md bg-primary/5 px-3 py-2">
+                <div className="text-xs text-muted-foreground">价格</div>
+                <div className="mt-1 text-sm font-medium">{formatPlanPoints(proSubscriptionPrice)}积分/月</div>
+              </div>
+              <div className="rounded-md bg-primary/5 px-3 py-2">
+                <div className="text-xs text-muted-foreground">并发任务限制</div>
+                <div className="mt-1 text-sm font-medium">3 个任务</div>
+              </div>
+              <div className="rounded-md bg-primary/5 px-3 py-2">
+                <div className="text-xs text-muted-foreground">每日积分</div>
+                <div className="mt-1 text-sm font-medium">每日赠送 {formatPlanPoints(2000)}积分</div>
+                <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
+              </div>
             </div>
             {isProPlan ? null : isFlagshipPlan ? (
               <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
                 当前已是更高等级的旗舰版套餐，已包含专业版权益。
               </div>
             ) : (
-              <Button
-                className="mt-5 h-auto w-full py-3"
-                onClick={handleOpenPro}
-                disabled={isProLoading}
-              >
-                {isProLoading && <Spinner />}
-                <span className="flex flex-col items-center leading-tight">
-                  <span>开通专业版</span>
-                  <span className="text-xs font-normal opacity-80">{formatPoints(proSubscriptionPrice)} 积分 / 月</span>
-                </span>
+                <Button
+                  className="mt-5 w-full"
+                  onClick={() => setConfirmSubscriptionPlan("pro")}
+                  disabled={isProLoading}
+                >
+                  {isProLoading && <Spinner />}
+                开通专业版
               </Button>
             )}
           </div>
@@ -856,21 +894,28 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               ) : null}
             </div>
             <div className="mt-5 flex-1 space-y-3">
-              <div className="rounded-md bg-primary/10 px-3 py-2 text-sm">{formatPoints(flagshipSubscriptionPrice)} 积分 / 月</div>
-              <div className="rounded-md bg-primary/10 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
-              <div className="rounded-md bg-primary/10 px-3 py-2 text-sm">每日赠送 30000 积分，仅当日有效，不累计</div>
+              <div className="rounded-md bg-primary/10 px-3 py-2">
+                <div className="text-xs text-muted-foreground">价格</div>
+                <div className="mt-1 text-sm font-medium">{formatPlanPoints(flagshipSubscriptionPrice)}积分/月</div>
+              </div>
+              <div className="rounded-md bg-primary/10 px-3 py-2">
+                <div className="text-xs text-muted-foreground">并发任务限制</div>
+                <div className="mt-1 text-sm font-medium">3 个任务</div>
+              </div>
+              <div className="rounded-md bg-primary/10 px-3 py-2">
+                <div className="text-xs text-muted-foreground">每日积分</div>
+                <div className="mt-1 text-sm font-medium">每日赠送 {formatPlanPoints(30000)}积分</div>
+                <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
+              </div>
             </div>
             {isFlagshipPlan ? null : (
-              <Button
-                className="mt-5 h-auto w-full py-3"
-                onClick={handleOpenFlagship}
-                disabled={isFlagshipLoading}
-              >
-                {isFlagshipLoading && <Spinner />}
-                <span className="flex flex-col items-center leading-tight">
-                  <span>开通旗舰版</span>
-                  <span className="text-xs font-normal opacity-80">{formatPoints(flagshipSubscriptionPrice)} 积分 / 月</span>
-                </span>
+                <Button
+                  className="mt-5 w-full"
+                  onClick={() => setConfirmSubscriptionPlan("ultra")}
+                  disabled={isFlagshipLoading}
+                >
+                  {isFlagshipLoading && <Spinner />}
+                开通旗舰版
               </Button>
             )}
           </div>
@@ -1177,6 +1222,33 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={handleLogout}>
               确认登出
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={confirmSubscriptionPlan !== null} onOpenChange={(open) => !open && setConfirmSubscriptionPlan(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认开通套餐</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmSubscriptionPlan === "pro"
+                ? `确认开通专业版，价格为 ${formatPlanPoints(proSubscriptionPrice)}积分/月？`
+                : confirmSubscriptionPlan === "ultra"
+                  ? `确认开通旗舰版，价格为 ${formatPlanPoints(flagshipSubscriptionPrice)}积分/月？`
+                  : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProLoading || isFlagshipLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                void handleConfirmSubscription()
+              }}
+              disabled={isProLoading || isFlagshipLoading}
+            >
+              {(isProLoading || isFlagshipLoading) && <Spinner className="mr-2 size-4" />}
+              确认开通
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

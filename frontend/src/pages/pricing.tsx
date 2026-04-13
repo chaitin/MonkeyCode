@@ -13,27 +13,27 @@ import "@/styles/welcome-pixel.css";
 const comparisonRows = [
   {
     feature: "适用对象",
-    values: ["个人开发者", "深度使用的个人开发者", "协作团队", "私有化与合规场景"],
+    values: ["个人开发者", "日常高频开发者", "重度使用者", "私有化与合规场景"],
   },
   {
-    feature: "模型选择",
-    values: ["平台指定免费模型", "多种内置模型自主选择", "按团队策略统一管理", "可按内网环境定制"],
+    feature: "模型使用",
+    values: ["支持", "支持", "支持", "可按内网环境定制"],
   },
   {
     feature: "任务并行",
-    values: ["1 个任务", "多个任务并行", "支持团队协作分工", "按部署能力规划"],
+    values: ["1 个任务", "3 个任务", "3 个任务", "按部署能力规划"],
+  },
+  {
+    feature: "每日积分",
+    values: ["无", "2 千", "3 万", "按部署方案定制"],
   },
   {
     feature: "云开发环境",
-    values: ["2 核 8GB", "2 核 8GB", "团队共享协作能力", "本地 / 内网自部署"],
+    values: ["2 核 8GB", "2 核 8GB", "2 核 8GB", "本地 / 内网自部署"],
   },
   {
     feature: "Git 机器人",
     values: ["支持", "支持", "支持", "支持"],
-  },
-  {
-    feature: "团队管理",
-    values: ["-", "-", "支持", "支持"],
   },
   {
     feature: "数据私有化",
@@ -48,14 +48,14 @@ const faqs = [
       "可以。个人用户注册后默认进入基础版，可直接体验云开发环境、智能任务和 Git 机器人等核心能力，用于上手和日常轻量研发。",
   },
   {
-    question: "专业版的 10,000 积分 / 月如何理解？",
+    question: "专业版的 1 万积分 / 月如何理解？",
     answer:
-      "专业版按积分兑换，核心价值是解锁多模型自选与多任务并行。页面保留月度参考值，实际使用时仍以平台内积分规则和说明为准。",
+      "专业版按积分兑换，核心价值是把并发任务限制提升到 3 个，并且每天赠送 2 千积分。页面保留月度参考值，实际使用时仍以平台内积分规则和说明为准。",
   },
   {
-    question: "团队版适合什么团队？",
+    question: "旗舰版和专业版有什么区别？",
     answer:
-      "适合希望把 AI 研发能力接入团队协作流程的团队。除了个人版能力外，还会增加团队协作开发和团队管理相关能力。",
+      "两者都支持同时运行 3 个任务，主要区别在于每日积分额度。专业版每天赠送 2 千积分，旗舰版每天赠送 3 万积分，赠送积分都仅限当日有效，不累计。",
   },
   {
     question: "离线版和在线版的区别是什么？",
@@ -79,7 +79,7 @@ function PricingPageContent() {
                 从免费开始，按研发深度选择合适型号
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-8 text-slate-300 sm:text-base">
-                MonkeyCode 的型号围绕真实研发使用方式展开。先用基础版快速验证，再按模型选择、并行任务、团队协作和私有化需求逐步扩展。
+                MonkeyCode 的型号围绕真实研发使用方式展开。先用基础版快速验证，再按并发任务、每日积分和部署方式逐步扩展。
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -88,12 +88,12 @@ function PricingPageContent() {
                 <div className="mt-1 text-sm text-slate-300">基础版可直接开始</div>
               </div>
               <div className="pixel-panel border-amber-200 bg-white/8 p-4">
-                <div className="font-terminal text-3xl font-semibold">多模型</div>
-                <div className="mt-1 text-sm text-slate-300">专业版可自主选择</div>
+                <div className="font-terminal text-3xl font-semibold">3 并发</div>
+                <div className="mt-1 text-sm text-slate-300">专业版提升任务效率</div>
               </div>
               <div className="pixel-panel border-amber-200 bg-white/8 p-4">
-                <div className="font-terminal text-3xl font-semibold">私有化</div>
-                <div className="mt-1 text-sm text-slate-300">离线版适配内网部署</div>
+                <div className="font-terminal text-3xl font-semibold">3 万</div>
+                <div className="mt-1 text-sm text-slate-300">旗舰版每日积分更高</div>
               </div>
             </div>
           </div>
@@ -173,12 +173,13 @@ function PricingPageContent() {
                 开始，先确认产品工作流是否适合你的研发方式。
               </p>
               <p>
-                如果你已经明确需要更高的模型自由度和并行效率，再升级到
+                如果你已经明确需要更高的并行效率和稳定的每日积分，再升级到
                 <span className="font-semibold text-foreground">专业版</span>。
               </p>
               <p>
-                如果你关注协作管理、权限边界或本地部署，再看
-                <span className="font-semibold text-foreground">团队版 / 离线版</span>。
+                如果你是重度用户，需要更高每日积分额度，可以直接看
+                <span className="font-semibold text-foreground">旗舰版</span>；如果你关注本地部署，再看
+                <span className="font-semibold text-foreground">离线版</span>。
               </p>
             </div>
           </div>

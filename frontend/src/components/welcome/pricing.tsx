@@ -27,11 +27,11 @@ export const plans: Plan[] = [
   {
     eyebrow: "在线版 · 个人",
     name: "基础版",
-    description: "注册即可使用，云开发环境与大模型在平台规则内免费使用。",
+    description: "注册即可使用，适合轻量体验与日常入门。",
     price: "免费",
     features: [
-      "使用平台指定的免费模型",
-      "同时仅可并行 1 个任务",
+      "并发任务限制：1 个任务",
+      "每日积分：无",
       "云开发环境（2 核 8GB）",
       "智能任务 + Git 机器人",
     ],
@@ -43,33 +43,34 @@ export const plans: Plan[] = [
   {
     eyebrow: "在线版 · 个人",
     name: "专业版",
-    description: "使用积分兑换，解锁多模型自选与多任务并行。",
-    price: "10,000",
+    description: "适合日常高频开发，提升并发效率与每日额度。",
+    price: "1 万",
     priceUnit: "积分 / 月",
     features: [
-      "可从多种内置模型中自主选择",
-      "支持多个任务并行执行",
+      "并发任务限制：3 个任务",
+      "每日积分：2 千",
+      "赠送积分仅当日有效，不累计",
       "含基础版全部能力",
-      "积分来源：注册赠送 5,000、每邀请新用户 5,000、支持充值",
     ],
     buttonText: "立即开始",
     buttonLink: "/console",
     buttonVariant: "outline",
   },
   {
-    eyebrow: "在线版 · 团队",
-    name: "团队版",
-    description: "在个人版能力基础上，提供团队协作与团队管理。",
-    price: "限时免费",
+    eyebrow: "在线版 · 个人",
+    name: "旗舰版",
+    description: "适合重度使用与长期开发，提供更高每日积分额度。",
+    price: "10 万",
+    priceUnit: "积分 / 月",
     features: [
-      "团队协作开发",
-      "团队管理面板",
-      "智能任务、Git 机器人、IDE 辅助等个人版能力",
+      "并发任务限制：3 个任务",
+      "每日积分：3 万",
+      "赠送积分仅当日有效，不累计",
+      "含专业版全部能力",
     ],
-    buttonText: "在线申请",
-    buttonLink: "https://baizhi.cloud/consult",
+    buttonText: "立即开始",
+    buttonLink: "/console",
     buttonVariant: "outline",
-    external: true,
   },
   {
     eyebrow: "离线部署",
@@ -115,7 +116,7 @@ const Pricing = ({ showIntro = true, pixelized = false }: PricingProps) => {
               {pixelized ? "型号一览" : "版本与方案"}
             </h2>
             <p className="text-center text-muted-foreground text-sm sm:text-base max-w-2xl mx-auto mb-10">
-              在线版在云端使用，分为个人与团队；离线版可本地部署。个人用户默认为基础版，可使用积分兑换专业版。
+              在线版在云端使用，分为基础版、专业版与旗舰版；离线版可本地部署。个人用户默认为基础版，可按需升级。
             </p>
           </>
         ) : null}
