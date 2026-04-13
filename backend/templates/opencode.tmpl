@@ -9,7 +9,11 @@
       },
       "models": {
         "{{.model}}": {
-          "name": "{{.model}}"
+{{- if .disable_thinking }}
+          "options": {"thinking": {"type":"disabled"}},
+{{- end }}
+          "name": "{{.model}}",
+          "limit": {"context": 200000, "output": 32000}
         }
       }
     }

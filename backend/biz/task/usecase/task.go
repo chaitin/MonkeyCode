@@ -539,12 +539,17 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 	if err != nil {
 		return coding, nil, err
 	}
+	disableThinking := false
+	if strings.Contains(m.Model, "kimi") {
+		disableThinking = true
+	}
 
 	var buf bytes.Buffer
 	if err := temp.Execute(&buf, map[string]any{
-		"model":    m.Model,
-		"base_url": m.BaseURL,
-		"api_key":  m.APIKey,
+		"model":            m.Model,
+		"base_url":         m.BaseURL,
+		"api_key":          m.APIKey,
+		"disable_thinking": disableThinking,
 	}); err != nil {
 		return coding, nil, err
 	}
