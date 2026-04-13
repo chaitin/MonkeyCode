@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconWallet } from "@tabler/icons-react";
+import { IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconCpu } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
@@ -47,14 +47,28 @@ interface NavBalanceProps {
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 const BALANCE_NAV = [
-  { id: "profile", name: "我的信息", icon: IconUserHexagon },
-  { id: "balance", name: "积分余额", icon: IconWallet },
-  { id: "plan", name: "我的套餐", icon: IconCrown },
+  { id: "account", name: "我的账户", icon: IconUserHexagon },
   { id: "earn", name: "赚积分", icon: IconGift },
   { id: "usage", name: "积分记录", icon: IconCoin },
+  { id: "pricing", name: "模型定价", icon: IconCpu },
+] as const
+
+const MODEL_PRICING = [
+  { model: "minimax-m2.7", credits: 0 },
+  { model: "gpt5.4", credits: 1000 },
+  { model: "gpt5.2", credits: 600 },
+  { model: "gpt5.3-codex", credits: 600 },
+  { model: "gpt5.1", credits: 500 },
+  { model: "glm-5.1", credits: 600 },
+  { model: "glm-5", credits: 400 },
+  { model: "glm-4.7", credits: 200 },
+  { model: "qwen3-max", credits: 400 },
+  { model: "qwen3.6-plus", credits: 200 },
+  { model: "kimi-k2.5", credits: 400 },
 ] as const
 
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
+type WalletSectionId = BalanceSectionId | "profile" | "plan" | "balance"
 
 export default function NavBalance({ variant = "sidebar", hideTrigger = false, triggerMode = "wallet" }: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
@@ -66,9 +80,10 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [isProLoading, setIsProLoading] = useState(false);
   const [isAutoRenewLoading, setIsAutoRenewLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<BalanceSectionId>("balance");
+  const [activeSection, setActiveSection] = useState<BalanceSectionId>("account");
   const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null);
   const [rechargingCredits, setRechargingCredits] = useState<number | null>(null);
+  const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [page, setPage] = useState<number>(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -335,6 +350,13 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     }
   }, [fetchTranscations, hasNextPage, isLoadingMore, page]);
 
+  const normalizeSection = useCallback((section: WalletSectionId): BalanceSectionId => {
+    if (section === "profile" || section === "plan" || section === "balance") {
+      return "account"
+    }
+    return section
+  }, [])
+
   const handleExchange = async () => {
     if (!exchangeCode.trim()) {
       toast.error("请输入兑换码");
@@ -401,6 +423,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     await apiRequest('v1UsersWalletRechargeCreate', { credits: selectedRechargeCredits }, [], (resp) => {
       const paymentUrl = resp.data?.url
       if (resp.code === 0 && paymentUrl) {
+        setShowRechargeDialog(false)
         window.open(paymentUrl, "_blank", "noopener,noreferrer")
       } else {
         toast.error(resp.message || "获取支付链接失败")
@@ -441,8 +464,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     };
   }, [activeSection, dialogOpen, hasNextPage, loadMore, transcations.length]);
 
-  const openDialog = useCallback((section: BalanceSectionId = "balance") => {
-    setActiveSection(section)
+  const openDialog = useCallback((section: WalletSectionId = "account") => {
+    setActiveSection(normalizeSection(section))
     setDialogOpen(true)
     reloadWallet();
     reloadSubscription();
@@ -451,11 +474,11 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     setHasNextPage(false);
     fetchTranscations(1, true);
     fetchInvitations();
-  }, [fetchInvitations, fetchTranscations, reloadSubscription, reloadWallet])
+  }, [fetchInvitations, fetchTranscations, normalizeSection, reloadSubscription, reloadWallet])
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
-      openDialog(triggerMode === "account" ? "profile" : "balance")
+      openDialog("account")
     } else {
       setDialogOpen(false)
       setPage(1)
@@ -464,8 +487,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
 
   useEffect(() => {
     const handleOpenWallet = (event: Event) => {
-      const customEvent = event as CustomEvent<{ section?: BalanceSectionId }>
-      openDialog(customEvent.detail?.section || "balance")
+      const customEvent = event as CustomEvent<{ section?: WalletSectionId }>
+      openDialog(customEvent.detail?.section || "account")
     }
 
     window.addEventListener(OPEN_WALLET_DIALOG_EVENT, handleOpenWallet as EventListener)
@@ -507,47 +530,81 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     </div>
   );
 
-  const sectionMeta = activeSection === "profile"
+  const sectionMeta = activeSection === "account"
     ? {
-        title: "我的信息",
-        description: "查看当前账户资料，并进行基础账号操作",
-      }
-    : activeSection === "balance"
-    ? {
-        title: "积分余额",
-        description: "查看积分、会员与获取方式",
+        title: "我的账户",
+        description: "查看账户资料、积分余额、会员状态，并进行账号与套餐操作",
       }
     : activeSection === "earn"
       ? {
           title: "赚积分",
           description: "通过兑换码和邀请注册获得积分",
         }
-    : activeSection === "plan"
+    : activeSection === "usage"
       ? {
-          title: "我的套餐",
-          description: "查看基础版和专业版区别，并切换到专业版",
-        }
-    : {
         title: "积分记录",
         description: "查看积分充值、消耗和奖励记录",
       }
+    : {
+        title: "模型定价",
+        description: "查看不同模型每百万 token 对应的积分消耗",
+      }
 
-  const profileContent = (
+  const accountContent = (
     <div className="space-y-4">
       <div className="rounded-md border p-5">
-        <div className="flex items-start gap-4">
-          <Avatar className="size-14 rounded-xl">
-            <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
-            <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-lg font-semibold">{user?.name || "未知用户"}</div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              {subscription?.plan === "pro" ? "专业版" : "基础版"}
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-4">
+            <Avatar className="size-14 rounded-xl">
+              <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+              <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-lg font-semibold">{user?.name || "未知用户"}</div>
+              <div className="mt-1 truncate text-sm text-muted-foreground">{user?.email || "暂未绑定邮箱"}</div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className={cn(
+                  "rounded-full px-2.5 py-1 text-xs font-medium",
+                  subscription?.plan === "pro" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+                )}>
+                  {triggerPlanLabel}
+                </div>
+                {subscription?.plan === "pro" && (
+                  <div className="text-xs text-muted-foreground">
+                    有效期至 {formatSubscriptionExpiry(subscription?.expires_at)}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px] lg:max-w-[360px]">
+            <div className="rounded-md bg-muted/40 px-4 py-3">
+              <div className="text-xs text-muted-foreground">当前套餐</div>
+              <div className="mt-2 text-sm font-medium">{getPlanLabel(subscription?.plan)}</div>
+            </div>
+            <div className="rounded-md bg-muted/40 px-4 py-3">
+              <div className="text-xs text-muted-foreground">自动续费</div>
+              <div className="mt-2 text-sm font-medium">
+                {loadingSubscription
+                  ? "加载中..."
+                  : subscription?.plan === "pro"
+                  ? subscription.auto_renew ? "已开启" : "已关闭"
+                  : "未启用"}
+              </div>
+            </div>
+            <div className="rounded-md bg-muted/40 px-4 py-3 sm:col-span-2">
+              <div className="text-xs text-muted-foreground">会员状态</div>
+              <div className="mt-2 text-sm font-medium">
+                {loadingSubscription
+                  ? "加载中..."
+                  : subscription?.plan === "pro"
+                  ? `专业版将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`
+                  : "当前为基础版，可升级到专业版"}
+              </div>
             </div>
           </div>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-md bg-muted/40 px-4 py-3">
             <div className="text-xs text-muted-foreground">用户名</div>
             <div className="mt-2 truncate text-sm font-medium">{user?.name || "-"}</div>
@@ -566,8 +623,55 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
           </div>
         </div>
       </div>
+      <div className="space-y-4 rounded-md border p-5">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-md border p-5 md:col-span-2">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-md font-medium">积分概览</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  充值时会在弹框中选择具体档位并跳转支付页面。
+                </div>
+              </div>
+              <Button
+                className="shrink-0"
+                onClick={() => {
+                  setSelectedRechargeCredits(null)
+                  setShowRechargeDialog(true)
+                }}
+              >
+                充值积分
+              </Button>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md bg-muted/40 px-4 py-3">
+                <div className="text-xs text-muted-foreground">总积分</div>
+                <div className="mt-2 text-2xl font-semibold tabular-nums">{formatPoints(balance)}</div>
+              </div>
+              <div className="rounded-md bg-muted/40 px-4 py-3">
+                <div className="text-xs text-muted-foreground">今日积分</div>
+                <div className="mt-2 text-2xl font-semibold tabular-nums">{formatPoints(dailyBalance)}</div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-md border p-5">
+            <div className="text-md font-medium">当前可用</div>
+            <div className="mt-3 text-3xl font-semibold tabular-nums">{formatPoints(remainingPoints)}</div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              侧边栏展示的是总积分与今日积分之和，便于直接判断当前还能使用多少积分。
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="rounded-md border p-5">
-        <div className="text-md font-medium">账号操作</div>
+        <div>
+          <div>
+            <div className="text-md font-medium">账号操作</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              维护账户资料与登录信息。
+            </div>
+          </div>
+        </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Button
             variant="outline"
@@ -612,189 +716,76 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
           </Button>
         </div>
       </div>
-    </div>
-  )
-
-  const balanceContent = (
-    <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-md border p-5">
-          <div className="text-md font-medium">积分概览</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md bg-muted/40 px-4 py-3">
-              <div className="text-xs text-muted-foreground">总积分</div>
-              <div className="mt-2 text-2xl font-semibold tabular-nums">{formatPoints(balance)}</div>
-            </div>
-            <div className="rounded-md bg-muted/40 px-4 py-3">
-              <div className="text-xs text-muted-foreground">今日积分</div>
-              <div className="mt-2 text-2xl font-semibold tabular-nums">{formatPoints(dailyBalance)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-md border p-5">
-          {loadingSubscription ? (
-            <div className="text-sm text-muted-foreground">加载中...</div>
-          ) : (
-            <>
-              <div className="text-md font-medium">账户状态</div>
-              <div className="mt-5 space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="text-muted-foreground">当前身份</div>
-                  <div>{getPlanLabel(subscription?.plan)}</div>
-                </div>
-                {subscription?.plan === "pro" && (
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-muted-foreground">有效期至</div>
-                    <div>{formatSubscriptionExpiry(subscription?.expires_at)}</div>
-                  </div>
-                )}
-                {subscription?.plan === "pro" && (
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-muted-foreground">自动续费</div>
-                    <div>{subscription.auto_renew ? "已开启" : "已关闭"}</div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
       <div className="rounded-md border p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-md font-medium">充值积分</div>
-          </div>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {rechargeOptions.map((option) => (
-            <button
-              key={option.credits}
-              type="button"
-              className={cn(
-                "rounded-md border p-4 text-left transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-60",
-                selectedRechargeCredits === option.credits && "border-2 border-primary",
-              )}
-              onClick={() => setSelectedRechargeCredits(option.credits)}
-              disabled={rechargingCredits !== null}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-sm">{formatPoints(option.credits)} 积分</div>
-                {option.discountLabel && (
-                  <div className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    {option.discountLabel}
-                  </div>
-                )}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <div
-                  className={cn(
-                    "text-primary text-lg font-medium",
-                    selectedRechargeCredits === option.credits && "font-bold",
-                  )}
-                >
-                  ¥ {option.price}
-                </div>
-                {option.originalPrice && (
-                  <div className="text-xs text-muted-foreground line-through">¥ {option.originalPrice}</div>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-        <Button
-          className="mt-4"
-          onClick={() => void handleRecharge()}
-          disabled={!selectedRechargeCredits || rechargingCredits !== null}
-        >
-          {rechargingCredits !== null && <Spinner />}
-          确认充值
-        </Button>
-      </div>
-    </div>
-  )
-
-  const planContent = (
-    <div className="space-y-4">
-      <div className="rounded-md border p-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="text-md font-medium">当前套餐</div>
-            <div className="mt-3 flex items-center gap-2">
-              <div className={cn(
-                "rounded-full px-2.5 py-1 text-xs font-medium",
-                subscription?.plan === "pro" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
-              )}>
-                {getPlanLabel(subscription?.plan)}
-              </div>
-              {subscription?.plan === "pro" && (
-                <div className="text-xs text-muted-foreground">
-                  有效期至 {formatSubscriptionExpiry(subscription?.expires_at)}
-                </div>
-              )}
+            <div className="text-md font-medium">套餐说明</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              对比基础版与专业版权益，并在这里完成升级或续费设置。
             </div>
           </div>
         </div>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className={cn("rounded-md border p-5", subscription?.plan !== "pro" && "border-2 border-primary")}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-md font-medium">基础版</div>
-              <div className="mt-1 text-sm text-muted-foreground">免费</div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className={cn("rounded-md border p-5", subscription?.plan !== "pro" && "border-2 border-primary")}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-md font-medium">基础版</div>
+                <div className="mt-1 text-sm text-muted-foreground">免费</div>
+              </div>
+              {subscription?.plan !== "pro" && (
+                <div className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">当前套餐</div>
+              )}
             </div>
-            {subscription?.plan !== "pro" && (
-              <div className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">当前套餐</div>
-            )}
+            <div className="mt-5 space-y-3">
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">官方指定免费模型</div>
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">最多同时运行 1 个任务</div>
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">不含每日赠送积分</div>
+            </div>
           </div>
-          <div className="mt-5 space-y-3">
-            <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">官方指定免费模型</div>
-            <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">最多同时运行 1 个任务</div>
-            <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">不含每日赠送积分</div>
-          </div>
-        </div>
-        <div className={cn("rounded-md border p-5", subscription?.plan === "pro" && "border-2 border-primary")}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-md font-medium">专业版</div>
-              <div className="mt-1 text-sm text-muted-foreground">{formatPoints(proSubscriptionPrice)} 积分 / 月</div>
+          <div className={cn("rounded-md border p-5", subscription?.plan === "pro" && "border-2 border-primary")}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-md font-medium">专业版</div>
+                <div className="mt-1 text-sm text-muted-foreground">{formatPoints(proSubscriptionPrice)} 积分 / 月</div>
+              </div>
+              {subscription?.plan === "pro" ? (
+                <div className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">当前套餐</div>
+              ) : null}
+            </div>
+            <div className="mt-5 space-y-3">
+              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">可选择更多 AI 模型</div>
+              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
+              <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">每日赠送 2000 积分，仅当日有效，不累计</div>
             </div>
             {subscription?.plan === "pro" ? (
-              <div className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">当前套餐</div>
-            ) : null}
-          </div>
-          <div className="mt-5 space-y-3">
-            <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">可选择更多 AI 模型</div>
-            <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">最多同时运行 3 个任务</div>
-            <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">每日赠送 2000 积分</div>
-          </div>
-          {subscription?.plan === "pro" ? (
-            <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium">自动续费</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {subscription.auto_renew ? "已开启，套餐到期后自动续费" : "未开启，到期后不会自动续费"}
+              <div className="mt-5 rounded-md border bg-muted/30 px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">自动续费</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {subscription.auto_renew ? "已开启，套餐到期后自动续费" : "未开启，到期后不会自动续费"}
+                    </div>
                   </div>
+                  <Switch
+                    checked={!!subscription.auto_renew}
+                    onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
+                    disabled={isAutoRenewLoading}
+                  />
                 </div>
-                <Switch
-                  checked={!!subscription.auto_renew}
-                  onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
-                  disabled={isAutoRenewLoading}
-                />
               </div>
-            </div>
-          ) : (
-            <Button
-              className="mt-5 w-full"
-              onClick={handleOpenPro}
-              disabled={!canUpgradeToPro || isProLoading}
-            >
-              {isProLoading && <Spinner />}
-              {canUpgradeToPro
-                ? `开通专业版（${formatPoints(proSubscriptionPrice)} 积分）`
-                : "积分不足"}
-            </Button>
-          )}
+            ) : (
+              <Button
+                className="mt-5 w-full"
+                onClick={handleOpenPro}
+                disabled={!canUpgradeToPro || isProLoading}
+              >
+                {isProLoading && <Spinner />}
+                {canUpgradeToPro
+                  ? `开通专业版（${formatPoints(proSubscriptionPrice)} 积分）`
+                  : "积分不足"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -888,7 +879,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   )
 
   const usageContent = (
-    <ItemGroup className="flex flex-col">
+    <ItemGroup className="flex flex-col gap-0 has-data-[size=sm]:gap-0 has-data-[size=xs]:gap-0">
       {transcations.map((transaction, index) => (
         <div key={`${transaction.created_at || 0}-${transaction.kind || "unknown"}-${index}`}>
           <Item
@@ -919,7 +910,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               </ItemTitle>
             </ItemContent>
           </Item>
-          {index < transcations.length - 1 && <ItemSeparator />}
+          {index < transcations.length - 1 && <ItemSeparator className="my-0" />}
         </div>
       ))}
       {hasNextPage && (
@@ -928,6 +919,37 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
         </div>
       )}
     </ItemGroup>
+  )
+
+  const pricingContent = (
+    <div className="space-y-4">
+      <div className="rounded-md border p-5">
+        <div className="text-md font-medium">计费说明</div>
+        <div className="mt-2 text-sm text-muted-foreground">
+          以下价格单位为每百万 token 消耗多少积分。免费模型不会扣减积分。
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {MODEL_PRICING.map((item) => (
+          <div key={item.model} className="rounded-md border p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-mono text-sm font-medium">{item.model}</div>
+                <div className="mt-1 text-xs text-muted-foreground">每百万 token</div>
+              </div>
+              <div
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-1 text-xs font-medium",
+                  item.credits === 0 ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
+                )}
+              >
+                {item.credits === 0 ? "免费" : `${formatPoints(item.credits)} 积分`}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 
   return (
@@ -958,8 +980,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
         className="flex h-[60vh] max-h-[90vh] w-[90vw] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>信息</DialogTitle>
-          <DialogDescription>查看个人信息、积分余额、套餐和使用记录</DialogDescription>
+          <DialogTitle>我的账户</DialogTitle>
+          <DialogDescription>查看账户资料、积分余额、套餐与使用记录</DialogDescription>
         </DialogHeader>
         <SidebarProvider className="flex min-h-0 flex-1 overflow-hidden">
           <div className="flex min-h-0 w-full flex-1 overflow-hidden">
@@ -967,7 +989,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
               <SidebarHeader>
                 <div className="flex items-center gap-2 px-2 pt-2 pb-4 font-semibold text-md">
                   <IconUserHexagon className="size-4 shrink-0" />
-                  <span className="hidden sm:inline">信息</span>
+                  <span className="hidden sm:inline">账户</span>
                 </div>
               </SidebarHeader>
               <SidebarContent>
@@ -996,15 +1018,13 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
                 <div className="mt-1 text-xs text-muted-foreground">{sectionMeta.description}</div>
               </div>
               <div ref={contentScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-                {activeSection === "profile"
-                  ? profileContent
-                  : activeSection === "balance"
-                  ? balanceContent
+                {activeSection === "account"
+                  ? accountContent
                   : activeSection === "earn"
                     ? earnContent
-                    : activeSection === "plan"
-                      ? planContent
-                    : usageContent}
+                    : activeSection === "usage"
+                      ? usageContent
+                      : pricingContent}
               </div>
             </main>
           </div>
@@ -1098,6 +1118,79 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
             >
               {bindingEmail && <Spinner className="mr-2 size-4" />}
               发送验证邮件
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={showRechargeDialog}
+        onOpenChange={(open) => {
+          setShowRechargeDialog(open)
+          if (!open && rechargingCredits === null) {
+            setSelectedRechargeCredits(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>充值积分</DialogTitle>
+            <DialogDescription>请选择一个充值档位，系统会为你打开支付页面。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {rechargeOptions.map((option) => (
+              <button
+                key={option.credits}
+                type="button"
+                className={cn(
+                  "w-full rounded-md border p-4 text-left transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-60",
+                  selectedRechargeCredits === option.credits && "border-2 border-primary",
+                )}
+                onClick={() => setSelectedRechargeCredits(option.credits)}
+                disabled={rechargingCredits !== null}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-sm font-medium">{formatPoints(option.credits)} 积分</div>
+                  {option.discountLabel && (
+                    <div className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      {option.discountLabel}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <div
+                    className={cn(
+                      "text-primary text-lg font-medium",
+                      selectedRechargeCredits === option.credits && "font-bold",
+                    )}
+                  >
+                    ¥ {option.price}
+                  </div>
+                  {option.originalPrice && (
+                    <div className="text-xs text-muted-foreground line-through">¥ {option.originalPrice}</div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRechargeDialog(false)
+                if (rechargingCredits === null) {
+                  setSelectedRechargeCredits(null)
+                }
+              }}
+              disabled={rechargingCredits !== null}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => void handleRecharge()}
+              disabled={!selectedRechargeCredits || rechargingCredits !== null}
+            >
+              {rechargingCredits !== null && <Spinner className="mr-2 size-4" />}
+              确认充值
             </Button>
           </div>
         </DialogContent>

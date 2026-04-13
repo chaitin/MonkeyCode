@@ -19,7 +19,7 @@ export default function NavUser({ className }: { className?: string }) {
 
   const handleOpenProfile = () => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "profile" },
+      detail: { section: "account" },
     }))
   }
 

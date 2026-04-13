@@ -56,7 +56,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
     onOpenChange(false)
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-        detail: { section: "plan" },
+        detail: { section: "account" },
       }))
     }, 0)
   }
