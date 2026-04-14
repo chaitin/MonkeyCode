@@ -44,6 +44,7 @@ type Config struct {
 	Proxies    []string      `mapstructure:"proxies"`
 
 	TaskFlow    TaskFlow    `mapstructure:"taskflow"`
+	MCPHub      MCPHub      `mapstructure:"mcp_hub"`
 	PublicHost  PublicHost  `mapstructure:"public_host"`
 	Task        Task        `mapstructure:"task"`
 	TaskSummary TaskSummary `mapstructure:"task_summary"`
@@ -84,6 +85,12 @@ type TaskFlow struct {
 	GrpcHost string `mapstructure:"grpc_host"`
 	GrpcPort int    `mapstructure:"grpc_port"`
 	GrpcURL  string `mapstructure:"grpc_url"`
+}
+
+type MCPHub struct {
+	Enabled bool   `mapstructure:"enabled"`
+	URL     string `mapstructure:"url"`
+	Token   string `mapstructure:"token"`
 }
 
 // PublicHost 公共主机配置（可选，内部项目通过 WithPublicHost 注入时生效）
@@ -192,6 +199,11 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("init_team.name", "")
 	v.SetDefault("init_team.password", "")
 	v.SetDefault("taskflow.grpc_url", "")
+	v.SetDefault("task.at_keyword", "")
+	v.SetDefault("task.host_ids", []string{})
+	v.SetDefault("mcp_hub.enabled", false)
+	v.SetDefault("mcp_hub.url", "")
+	v.SetDefault("mcp_hub.token", "")
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)

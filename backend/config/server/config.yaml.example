@@ -34,6 +34,11 @@ admin_token: "change-me"
 logger:
   level: "info"
 
+mcp_hub:
+  enabled: false
+  url: "http://mcp-hub:8897/mcp"
+  token: ""
+
 vm_idle:
   sleep_seconds: 600
   recycle_seconds: 604800
