@@ -49,6 +49,11 @@ type CommonData = {
   unlinkedTasks: DomainProjectTask[];
   loadingUnlinkedTasks: boolean;
   reloadUnlinkedTasks: () => void;
+
+  /** 最近任务，用于侧边栏「历史任务」分组展示 */
+  historicalTasks: DomainProjectTask[];
+  loadingHistoricalTasks: boolean;
+  reloadHistoricalTasks: () => void;
 };
 
 const DataContext = createContext<CommonData | null>(null);
@@ -85,6 +90,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [unlinkedTasks, setUnlinkedTasks] = useState<DomainProjectTask[]>([]);
   const [loadingUnlinkedTasks, setLoadingUnlinkedTasks] = useState(true);
+  const [historicalTasks, setHistoricalTasks] = useState<DomainProjectTask[]>([]);
+  const [loadingHistoricalTasks, setLoadingHistoricalTasks] = useState(true);
 
   const fetchUserInfo = async () => {
     let nextUser: DomainUser = {}
@@ -325,6 +332,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const UNLINKED_TASKS_LIMIT = 5
   const UNLINKED_TASKS_FETCH_SIZE = 50
   const UNLINKED_TASKS_STATUS = "pending,processing"
+  const HISTORICAL_TASKS_LIMIT = 5
+  const HISTORICAL_TASKS_FETCH_SIZE = 50
+  const HISTORICAL_TASKS_STATUS = "error,finished"
 
   const fetchUnlinkedTasks = async () => {
     setLoadingUnlinkedTasks(true)
@@ -340,6 +350,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, () => setLoadingUnlinkedTasks(false))
   }
 
+  const fetchHistoricalTasks = async () => {
+    setLoadingHistoricalTasks(true)
+    await apiRequest('v1UsersTasksList', { page: 1, size: HISTORICAL_TASKS_FETCH_SIZE, status: HISTORICAL_TASKS_STATUS }, [], (resp) => {
+      if (resp.code === 0) {
+        const allTasks = resp.data?.tasks || []
+        const recentTasks = allTasks
+          .sort((a: DomainProjectTask, b: DomainProjectTask) => (b.created_at || 0) - (a.created_at || 0))
+          .slice(0, HISTORICAL_TASKS_LIMIT)
+        setHistoricalTasks(recentTasks)
+      }
+      setLoadingHistoricalTasks(false)
+    }, () => setLoadingHistoricalTasks(false))
+  }
+
   useEffect(() => {
     fetchUserInfo();
     fetchHosts();
@@ -352,6 +376,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMembers();
     fetchProjects();
     fetchUnlinkedTasks();
+    fetchHistoricalTasks();
   }, []);
 
   useEffect(() => {
@@ -411,6 +436,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unlinkedTasks: unlinkedTasks,
         loadingUnlinkedTasks: loadingUnlinkedTasks,
         reloadUnlinkedTasks: fetchUnlinkedTasks,
+
+        historicalTasks: historicalTasks,
+        loadingHistoricalTasks: loadingHistoricalTasks,
+        reloadHistoricalTasks: fetchHistoricalTasks,
     }}>
       {children}
     </DataContext.Provider>

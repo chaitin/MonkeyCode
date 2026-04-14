@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconDotsVertical, IconFolderOpen, IconFolderPlus, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
+import { IconChevronDown, IconChevronRight, IconDots, IconDotsVertical, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
@@ -48,8 +48,79 @@ export default function NavProject() {
   const [deleting, setDeleting] = useState(false)
   const [taskToStop, setTaskToStop] = useState<DomainProjectTask | null>(null)
   const [stopping, setStopping] = useState(false)
+  const [historyExpanded, setHistoryExpanded] = useState(false)
 
-  const { projects, reloadProjects, unlinkedTasks, reloadUnlinkedTasks } = useCommonData()
+  const { projects, reloadProjects, unlinkedTasks, reloadUnlinkedTasks, historicalTasks, reloadHistoricalTasks } = useCommonData()
+
+  const renderTaskList = (tasks: DomainProjectTask[], keyPrefix: string) => (
+    tasks.map((task: DomainProjectTask, index) => {
+      const isPending = task.status === "pending"
+      const isProcessing = task.status === "processing"
+      const isFinished = task.status === "finished" || task.status === "error"
+      const TaskIcon =
+        isFinished
+          ? IconPointFilled
+          : isProcessing
+            ? IconPointFilled
+            : IconLoader
+      return (
+        <SidebarMenuSubButton
+          key={`${keyPrefix}-${task.id ?? index}-${index}`}
+          size="md"
+          isActive={location.pathname === `/console/task/${task.id}`}
+          asChild
+          className="group/task-row py-4"
+        >
+          <div className="flex w-full min-w-0 items-center gap-1">
+            <Link
+              to={`/console/task/${task.id}`}
+              className="min-w-0 flex-1 flex items-center gap-2 truncate"
+            >
+              <TaskIcon
+                className={cn(
+                  "size-3.5 shrink-0",
+                  isPending && "animate-spin text-primary",
+                  isProcessing && "text-green-500",
+                  isFinished && "text-muted-foreground/40"
+                )}
+              />
+              <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <IconDotsVertical className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="py-1">
+                {(task.status === "pending" || task.status === "processing") && (
+                  <DropdownMenuItem
+                    onClick={() => setTaskToStop(task)}
+                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                  >
+                    <IconPlayerStopFilled className="mr-1" />
+                    终止任务
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => setTaskToDelete(task)}
+                  className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                >
+                  <IconTrash className="mr-1" />
+                  删除任务
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </SidebarMenuSubButton>
+      )
+    })
+  )
 
   const handleConfirmDeleteTask = () => {
     if (!taskToDelete?.id) {
@@ -70,6 +141,7 @@ export default function NavProject() {
           toast.success("任务已删除")
           reloadProjects()
           reloadUnlinkedTasks()
+          reloadHistoricalTasks()
           if (isOnDeletedPage) {
             navigate("/console/tasks")
           }
@@ -101,6 +173,7 @@ export default function NavProject() {
           toast.success("任务已终止")
           reloadProjects()
           reloadUnlinkedTasks()
+          reloadHistoricalTasks()
         } else {
           toast.error(resp.message || "终止失败")
         }
@@ -116,9 +189,10 @@ export default function NavProject() {
     const timer = setInterval(() => {
       reloadProjects()
       reloadUnlinkedTasks()
+      reloadHistoricalTasks()
     }, 30000)
     return () => clearInterval(timer)
-  }, [reloadProjects, reloadUnlinkedTasks])
+  }, [reloadProjects, reloadUnlinkedTasks, reloadHistoricalTasks])
 
   const isUnlinkedActive = location.pathname === "/console/tasks"
   const isCollapsed = !isMobile && state === "collapsed"
@@ -211,79 +285,58 @@ export default function NavProject() {
                   <TooltipContent side="right">创建任务</TooltipContent>
                 </Tooltip>
               </div>
-              {unlinkedTasks.length > 0 && (
-                <SidebarMenuSub className="border-none px-0 mx-0">
-                  <SidebarMenuSubItem className="flex flex-col gap-0.5">
-                    {unlinkedTasks.map((task: DomainProjectTask, index) => {
-                      const isPending = task.status === "pending"
-                      const isProcessing = task.status === "processing"
-                      const isFinished = task.status === "finished" || task.status === "error"
-                      const TaskIcon =
-                        isFinished
-                          ? IconPointFilled
-                          : isProcessing
-                            ? IconPointFilled
-                            : IconLoader
-                      return (
-                        <SidebarMenuSubButton
-                          key={`unlinked-${task.id ?? index}-${index}`}
-                          size="md"
-                          isActive={location.pathname === `/console/task/${task.id}`}
-                          asChild
-                          className="group/task-row py-4"
+              <SidebarMenuSub className="border-none px-0 mx-0">
+                <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                  {renderTaskList(unlinkedTasks, "unlinked")}
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
+              <SidebarMenuSub className="border-none px-0 mx-0">
+                <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                  <button
+                    type="button"
+                    className="group/history-row flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    onClick={() => setHistoryExpanded((expanded) => !expanded)}
+                  >
+                    {historyExpanded ? (
+                      <IconFolderOpen className="size-3.5 shrink-0 opacity-40" />
+                    ) : (
+                      <IconFolder className="size-3.5 shrink-0 opacity-40" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-left">历史任务</span>
+                    {historyExpanded ? (
+                      <IconChevronDown className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/history-row:opacity-50" />
+                    ) : (
+                      <IconChevronRight className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/history-row:opacity-50" />
+                    )}
+                  </button>
+                  {historyExpanded && renderTaskList(historicalTasks, "history")}
+                  {historyExpanded && (
+                    <SidebarMenuSubButton
+                      asChild
+                      size="md"
+                      isActive={location.pathname === "/console/tasks"}
+                      className="group/task-row py-4"
+                    >
+                      <div className="flex w-full min-w-0 items-center gap-1">
+                        <Link
+                          to="/console/tasks"
+                          className="min-w-0 flex-1 flex items-center gap-2 truncate"
                         >
-                          <div className="flex w-full min-w-0 items-center gap-1">
-                            <Link
-                              to={`/console/task/${task.id}`}
-                              className="min-w-0 flex-1 flex items-center gap-2 truncate"
-                            >
-                              <TaskIcon
-                                className={cn(
-                                  "size-3.5 shrink-0",
-                                  isPending && "animate-spin text-primary",
-                                  isProcessing && "text-green-500",
-                                  isFinished && "text-muted-foreground/40"
-                                )}
-                              />
-                              <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                            </Link>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
-                                  onClick={(e) => e.preventDefault()}
-                                >
-                                  <IconDotsVertical className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="py-1">
-                                {(task.status === "pending" || task.status === "processing") && (
-                                  <DropdownMenuItem
-                                    onClick={() => setTaskToStop(task)}
-                                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                                  >
-                                    <IconPlayerStopFilled className="mr-1" />
-                                    终止任务
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() => setTaskToDelete(task)}
-                                  className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
-                                >
-                                  <IconTrash className="mr-1" />
-                                  删除任务
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </SidebarMenuSubButton>
-                      )
-                    })}
-                  </SidebarMenuSubItem>
-                </SidebarMenuSub>
-              )}
+                          <IconDots className="size-3.5 shrink-0" />
+                          <span className="truncate">查看更多</span>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-5 shrink-0 opacity-0 pointer-events-none"
+                          tabIndex={-1}
+                          aria-hidden="true"
+                        />
+                      </div>
+                    </SidebarMenuSubButton>
+                  )}
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
             </SidebarMenuItem>
             {projects.length > 0 ? projects.map((project) => {
               const projectId = project.id ?? ""
