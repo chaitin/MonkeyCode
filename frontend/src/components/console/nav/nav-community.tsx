@@ -40,12 +40,12 @@ export default function NavCommunity({
               <span>技术交流群</span>
             </SidebarMenuButton>
           </DialogTrigger>
-          <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-4 sm:max-w-lg sm:p-6">
+          <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden p-4 sm:max-w-3xl sm:p-6">
             <DialogHeader className="pb-0 pr-8">
               <DialogTitle>扫码加入技术交流群</DialogTitle>
             </DialogHeader>
             <div className="mt-4 flex-1 overflow-y-auto pr-1">
-              <div className="flex flex-col gap-4">
+              <div className="grid gap-4 md:grid-cols-3">
                 {communityGroups.map((group) => (
                   <div key={group.label} className="flex flex-col items-center gap-3 rounded-xl border px-4 py-4">
                     <div className="text-sm font-medium">{group.label}</div>
