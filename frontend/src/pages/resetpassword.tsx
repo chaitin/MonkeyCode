@@ -1,4 +1,5 @@
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FieldGroup } from "@/components/ui/field";
@@ -14,6 +15,9 @@ import { toast } from "sonner";
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
+  const missingToken = !token;
+  const tokenErrorMessage = '令牌无效或已过期，请重新发送找回密码邮件。';
+  const [pageError, setPageError] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState('');
@@ -42,19 +46,29 @@ export default function ResetPasswordPage() {
   };
 
   useEffect(() => {
-    if (token) {
+    if (missingToken) {
+      setPageError(tokenErrorMessage);
+      return;
+    }
+
+    const loadAccountInfo = async () => {
+      setPageError('');
       setLoading(true);
-      apiRequest('v1UsersPasswordsAccountsDetail', {}, [token], (resp) => {
+      await apiRequest('v1UsersPasswordsAccountsDetail', {}, [token], (resp) => {
         console.log(resp);
         if (resp.code === 0) {
+          setPageError('');
           setEmail(resp.data.user.email || '');
         } else {
-          toast.error(resp.message || '获取账户信息失败');
+          setEmail('');
+          setPageError(tokenErrorMessage);
         }
       });
       setLoading(false);
-    }
-  }, [token]);
+    };
+
+    void loadAccountInfo();
+  }, [missingToken, token, tokenErrorMessage]);
 
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
@@ -72,14 +86,26 @@ export default function ResetPasswordPage() {
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="password">密码</FieldLabel>
-                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={!!pageError}
+                  />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="password">确认密码</FieldLabel>
-                  <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={!!pageError}
+                  />
                 </Field>
                 <Field>
-                  <Button onClick={handleResetPassword} disabled={loading || !email || !password || !confirmPassword}>
+                  <Button onClick={handleResetPassword} disabled={!!pageError || loading || !email || !password || !confirmPassword}>
                     {loading && <Spinner />}
                     重置密码
                   </Button>
@@ -87,6 +113,14 @@ export default function ResetPasswordPage() {
               </FieldGroup>
             </CardContent>
           </Card>
+          {pageError && (
+            <Alert variant="destructive">
+              <AlertTitle>重置链接无效</AlertTitle>
+              <AlertDescription>
+                {pageError}
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
       </div>
       <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
