@@ -173,6 +173,11 @@ func (h *TeamGroupUserHandler) Status(c *web.Context) error {
 //	@Router			/api/v1/teams/users/passwords/change [put]
 func (h *TeamGroupUserHandler) ChangePassword(c *web.Context, req domain.ChangePasswordReq) error {
 	teamUser := middleware.GetTeamUser(c)
+
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
 	err := h.usecase.ChangePassword(c.Request().Context(), teamUser.User.ID, &req)
 	if err != nil {
 		return err

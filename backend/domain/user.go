@@ -2,14 +2,15 @@ package domain
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/chaitin/MonkeyCode/backend/db"
-	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
-
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/errcode"
+	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 )
 
 type UserUsecase interface {
@@ -41,13 +42,13 @@ type UserActiveRepo interface {
 }
 
 type User struct {
-	ID         uuid.UUID         `json:"id"`
-	Name       string            `json:"name"`
-	AvatarURL  string            `json:"avatar_url"`
-	Email      string            `json:"email"`
-	Role       consts.UserRole   `json:"role"`
-	Status     consts.UserStatus `json:"status"`
-	IsBlocked  bool              `json:"is_blocked"`
+	ID          uuid.UUID         `json:"id"`
+	Name        string            `json:"name"`
+	AvatarURL   string            `json:"avatar_url"`
+	Email       string            `json:"email"`
+	Role        consts.UserRole   `json:"role"`
+	Status      consts.UserStatus `json:"status"`
+	IsBlocked   bool              `json:"is_blocked"`
 	Token       string            `json:"token,omitempty"`
 	Identities  []*UserIdentity   `json:"identities"`
 	Team        *Team             `json:"team,omitempty"`
@@ -143,14 +144,33 @@ type GetAccountInfoReq struct {
 
 // ResetUserPasswordReq 修改密码请求
 type ResetUserPasswordReq struct {
-	NewPassword string `json:"new_password" validate:"required,min=8,max=32"`
+	NewPassword string `json:"new_password" validate:"required"`
 	Token       string `json:"token" validate:"required"`
+}
+
+func (r *ResetUserPasswordReq) Validate() error {
+	if len(r.NewPassword) < 8 || len(r.NewPassword) > 32 {
+		return errcode.ErrPasswordLength
+	}
+	return nil
 }
 
 // ResetUserPasswordEmailReq 发送重置密码邮件请求
 type ResetUserPasswordEmailReq struct {
 	Emails       []string `json:"emails" validate:"required"`
 	CaptchaToken string   `json:"captcha_token"`
+}
+
+func (r *ResetUserPasswordEmailReq) Validate() error {
+	if len(r.Emails) == 0 {
+		return errcode.ErrEmailRequired
+	}
+	for _, email := range r.Emails {
+		if strings.TrimSpace(email) == "" {
+			return errcode.ErrEmailRequired
+		}
+	}
+	return nil
 }
 
 // TeamMembersResp 团队成员列表响应

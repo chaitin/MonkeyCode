@@ -97,6 +97,9 @@ func (u *UserUsecase) SendResetPasswordEmail(ctx context.Context, req *domain.Re
 	if err != nil {
 		return err
 	}
+	if len(users) != len(req.Emails) {
+		return errcode.ErrEmailNotBound
+	}
 
 	for _, user := range users {
 		token := uuid.NewString()
