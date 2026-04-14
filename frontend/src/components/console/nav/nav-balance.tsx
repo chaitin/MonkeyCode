@@ -42,6 +42,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "@/components/ui/sidebar";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useCommonData } from "../data-provider";
 import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
@@ -77,6 +78,12 @@ const MODEL_PRICING = [
   { model: "kimi-k2.5", credits: 400, score: 889 },
 ] as const
 
+const COMMUNITY_GROUPS = [
+  { id: "wechat", src: "/wechat.png", alt: "微信二维码", label: "微信群", iconName: "wecom" },
+  { id: "dingtalk", src: "/dingtalk.png", alt: "钉钉群二维码", label: "钉钉群", iconName: "dingtalk" },
+  { id: "feishu", src: "/feishu.png", alt: "飞书群二维码", label: "飞书群", iconName: "lark" },
+] as const
+
 const TOP_MODEL_COUNT = 3
 
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
@@ -87,6 +94,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [invitations, setInvitations] = useState<DomainInvitationItem[]>([]);
   const [invitationCount, setInvitationCount] = useState(0);
   const [isInvitationsLoading, setIsInvitationsLoading] = useState(false);
+  const [isInvitationListExpanded, setIsInvitationListExpanded] = useState(false);
   const [isCheckinSubmitting, setIsCheckinSubmitting] = useState(false);
   const [exchangeCode, setExchangeCode] = useState("");
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
@@ -647,6 +655,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const openDialog = useCallback((section: WalletSectionId = "account") => {
     setActiveSection(normalizeSection(section))
     setDialogOpen(true)
+    setIsInvitationListExpanded(false)
     reloadWallet();
     reloadSubscription();
     setPage(1);
@@ -662,6 +671,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
       openDialog("account")
     } else {
       setDialogOpen(false)
+      setIsInvitationListExpanded(false)
       setPage(1)
     }
   };
@@ -995,9 +1005,9 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
         <div className="flex items-center justify-between gap-3">
           <div className="text-md font-medium">当前可用积分</div>
           <Button
-            variant="outline"
+            variant="default"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="px-3"
             onClick={() => {
               setSelectedRechargeCredits(null)
               setShowRechargeDialog(true)
@@ -1005,10 +1015,6 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
           >
             充值
           </Button>
-        </div>
-        <div className="mt-3 text-3xl font-semibold tabular-nums">{formatPoints(remainingPoints)}</div>
-        <div className="mt-2 text-sm text-muted-foreground">
-          当前可用积分由长期积分与今日积分组成，可直接用于模型调用与其他消耗。
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-md bg-muted/40 px-4 py-3">
@@ -1019,6 +1025,104 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
             <div className="text-xs text-muted-foreground">今日积分（凌晨自动清零）</div>
             <div className="mt-2 text-lg font-medium tabular-nums">{formatPoints(dailyBalance)}</div>
           </div>
+        </div>
+      </div>
+      <div className="rounded-md border p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-md font-medium">邀请注册</div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              将下方邀请链接分享给好友。好友通过该链接注册后，你将获得 5000 积分奖励。
+            </div>
+          </div>
+          <div className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+            +5,000
+          </div>
+        </div>
+        <div className="mt-4 flex flex-row justify-between gap-2">
+          <Input value={invitationLink} readOnly />
+          <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
+        </div>
+        <div className="mt-4">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+            onClick={() => setIsInvitationListExpanded((prev) => !prev)}
+          >
+            <span className="text-sm font-medium">已邀请 {formatPoints(invitationCount)} 人</span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              {isInvitationListExpanded ? "收起列表" : "展开列表"}
+              <IconChevronDown className={cn("size-4 transition-transform", isInvitationListExpanded && "rotate-180")} />
+            </span>
+          </button>
+          {isInvitationListExpanded ? (
+            <div className="mt-3 space-y-2">
+              {isInvitationsLoading ? (
+                <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                  <Spinner />
+                  <span className="ml-2">加载邀请用户中...</span>
+                </div>
+              ) : invitations.length > 0 ? (
+                invitations.map((invitation) => (
+                  <div
+                    key={invitation.id || `${invitation.name || "unknown"}-${invitation.invited_at || 0}`}
+                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar className="size-8">
+                        <AvatarImage src={invitation.avatar_url} alt={invitation.name || "邀请用户头像"} />
+                        <AvatarFallback>{getInvitationInitial(invitation.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">
+                          {invitation.name || "未命名用户"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatInvitationTime(invitation.invited_at)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-sm font-medium text-primary">
+                      +{formatPoints(invitation.credits || 0)} 积分
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  暂无邀请记录
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="rounded-md border p-4">
+        <div>
+          <div className="text-md font-medium">社区活动</div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            加入技术交流群，参与不定期社区活动与福利互动，赢取更多积分奖励。
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          {COMMUNITY_GROUPS.map((group) => (
+            <HoverCard key={group.id} openDelay={120} closeDelay={80}>
+              <HoverCardTrigger asChild>
+                <Button variant="outline">
+                  <Icon name={group.iconName} className="size-4" />
+                  {group.label}
+                </Button>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-auto p-3" side="top" align="center">
+                <div className="flex items-center justify-center">
+                  <img
+                    src={group.src}
+                    alt={group.alt}
+                    className="h-40 w-40 rounded-lg object-contain"
+                  />
+                </div>
+              </HoverCardContent>
+            </HoverCard>
+          ))}
         </div>
       </div>
       <div className="rounded-md border p-4">
@@ -1034,6 +1138,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
             </div>
           </div>
           <Button
+            variant={checkedInToday === true ? "outline" : "default"}
             className="sm:min-w-32"
             onClick={handleCheckin}
             disabled={loadingCheckinStatus || isCheckinSubmitting || checkedInToday !== false}
@@ -1064,65 +1169,6 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
             {isExchangeLoading && <Spinner />}
             兑换
           </Button>
-        </div>
-      </div>
-      <div className="rounded-md border p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-md font-medium">邀请注册</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              将下方邀请链接分享给好友。好友通过该链接注册后，你将获得 5000 积分奖励。
-            </div>
-          </div>
-          <div className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-            +5,000
-          </div>
-        </div>
-        <div className="mt-4 flex flex-row justify-between gap-2">
-          <Input value={invitationLink} readOnly />
-          <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
-        </div>
-        <div className="mt-4">
-          <div className="text-sm font-medium">
-            已邀请 {formatPoints(invitationCount)} 人
-          </div>
-          <div className="mt-3 space-y-2">
-            {isInvitationsLoading ? (
-              <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
-                <Spinner />
-                <span className="ml-2">加载邀请用户中...</span>
-              </div>
-            ) : invitations.length > 0 ? (
-              invitations.map((invitation) => (
-                <div
-                  key={invitation.id || `${invitation.name || "unknown"}-${invitation.invited_at || 0}`}
-                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar className="size-8">
-                      <AvatarImage src={invitation.avatar_url} alt={invitation.name || "邀请用户头像"} />
-                      <AvatarFallback>{getInvitationInitial(invitation.name)}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">
-                        {invitation.name || "未命名用户"}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatInvitationTime(invitation.invited_at)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-sm font-medium text-primary">
-                    +{formatPoints(invitation.credits || 0)} 积分
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                暂无邀请记录
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>
