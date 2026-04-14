@@ -350,16 +350,12 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 			continue
 		}
 
-		if t.Kind == consts.TaskTypeReview && t.SubType == consts.TaskSubTypePrReview {
-		} else {
-			if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
-				TaskID: t.ID,
-				UserID: t.UserID,
-			}); err != nil {
-				h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
-			}
+		if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
+			TaskID: t.ID,
+			UserID: t.UserID,
+		}); err != nil {
+			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
 		}
-
 	}
 
 	return c.Success(nil)

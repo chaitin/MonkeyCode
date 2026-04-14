@@ -6,6 +6,7 @@ require (
 	entgo.io/ent v0.14.5
 	github.com/GoYoko/web v1.6.0
 	github.com/ackcoder/go-cap v1.1.3
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1
 	github.com/coder/websocket v1.8.14
 	github.com/gogo/protobuf v1.3.2
@@ -20,6 +21,7 @@ require (
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/samber/do v1.6.0
 	github.com/sashabaranov/go-openai v1.41.2
+	github.com/shurcooL/githubv4 v0.0.0-20260209031235-2402fdf4a9ed
 	github.com/spf13/viper v1.21.0
 	gitlab.com/gitlab-org/api/client-go v1.46.0
 	golang.org/x/crypto v0.49.0
@@ -75,7 +77,6 @@ require (
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
-	github.com/shurcooL/githubv4 v0.0.0-20260209031235-2402fdf4a9ed // indirect
 	github.com/shurcooL/graphql v0.0.0-20240915155400-7ee5256398cf // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
@@ -84,6 +85,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
