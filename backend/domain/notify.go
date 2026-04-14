@@ -107,10 +107,10 @@ type NotifyEventPayload struct {
 
 // CreateNotifySendLogReq 创建通知发送日志请求
 type CreateNotifySendLogReq struct {
-	SubscriptionID uuid.UUID                `json:"subscription_id"`
-	ChannelID      uuid.UUID                `json:"channel_id"`
-	EventType      consts.NotifyEventType   `json:"event_type"`
-	EventRefID     string                   `json:"event_ref_id"`
-	Status         consts.NotifySendStatus  `json:"status"`
-	Error          string                   `json:"error"`
+	SubscriptionID uuid.UUID               `json:"subscription_id"`
+	ChannelID      uuid.UUID               `json:"channel_id"`
+	EventType      consts.NotifyEventType  `json:"event_type"`
+	EventRefID     string                  `json:"event_ref_id"`
+	Status         consts.NotifySendStatus `json:"status"`
+	Error          string                  `json:"error"`
 }

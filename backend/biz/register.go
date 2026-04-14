@@ -4,7 +4,6 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/file"
-	"github.com/chaitin/MonkeyCode/backend/biz/vmidle"
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
@@ -14,6 +13,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/task"
 	"github.com/chaitin/MonkeyCode/backend/biz/team"
 	"github.com/chaitin/MonkeyCode/backend/biz/user"
+	"github.com/chaitin/MonkeyCode/backend/biz/vmidle"
 )
 
 // RegisterAll 注册所有 biz 模块

@@ -108,6 +108,7 @@ type RepositoryOptions struct {
 	Token     string
 	InstallID int64 // GitHub App 模式，其他平台忽略
 	IsOAuth   bool  // GitLab/Gitea OAuth 模式，其他平台忽略
+	Flush     bool
 }
 
 // TreeOptions 获取文件树参数

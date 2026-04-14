@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/patrickmn/go-cache"
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
@@ -15,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	gitpkg "github.com/chaitin/MonkeyCode/backend/pkg/git"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitea"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitee"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/github"
@@ -27,6 +30,7 @@ type GitIdentityUsecase struct {
 	repo          domain.GitIdentityRepo
 	tokenProvider *TokenProvider
 	logger        *slog.Logger
+	repoCache     *cache.Cache
 }
 
 // NewGitIdentityUsecase 创建 Git 身份认证用例
@@ -36,6 +40,7 @@ func NewGitIdentityUsecase(i *do.Injector) (domain.GitIdentityUsecase, error) {
 		repo:          do.MustInvoke[domain.GitIdentityRepo](i),
 		tokenProvider: do.MustInvoke[*TokenProvider](i),
 		logger:        do.MustInvoke[*slog.Logger](i).With("module", "GitIdentityUsecase"),
+		repoCache:     cache.New(7*24*time.Hour, 10*time.Minute),
 	}, nil
 }
 
@@ -47,45 +52,29 @@ func (u *GitIdentityUsecase) List(ctx context.Context, uid uuid.UUID) ([]*domain
 		return nil, err
 	}
 	return cvt.Iter(identities, func(_ int, identity *db.GitIdentity) *domain.GitIdentity {
-		tmp := cvt.From(identity, &domain.GitIdentity{})
-		if client := u.gitClienter(identity); client != nil {
-			token, err := u.tokenProvider.GetToken(ctx, identity.ID)
-			if err != nil {
-				u.logger.WarnContext(ctx, "failed to get token", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
-				return tmp
-			}
-			repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
-				Token:     token,
-				InstallID: identity.InstallationID,
-				IsOAuth:   identity.OauthRefreshToken != "",
-			})
-			if err != nil {
-				u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
-			} else {
-				tmp.AuthorizedRepositories = repos
-			}
-		}
-		return tmp
+		return cvt.From(identity, &domain.GitIdentity{})
 	}), nil
 }
 
 func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitClienter {
+	var inner domain.GitClienter
 	switch identity.Platform {
 	case consts.GitPlatformGithub:
-		return github.NewGithub(u.logger, u.cfg)
+		inner = github.NewGithub(u.logger, u.cfg)
 	case consts.GitPlatformGitLab:
-		return gitlab.NewGitlabForBaseURL(identity.BaseURL, u.logger)
+		inner = gitlab.NewGitlabForBaseURL(identity.BaseURL, u.logger)
 	case consts.GitPlatformGitea:
-		return gitea.NewGitea(u.logger, identity.BaseURL)
+		inner = gitea.NewGitea(u.logger, identity.BaseURL)
 	case consts.GitPlatformGitee:
-		return gitee.NewGitee(identity.BaseURL, u.logger)
+		inner = gitee.NewGitee(identity.BaseURL, u.logger)
 	default:
 		return nil
 	}
+	return gitpkg.NewCachedGitClient(inner, u.repoCache, identity.UserID.String()+":"+identity.ID.String())
 }
 
 // Get 获取单个 Git 身份认证（仅限当前用户）
-func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUID) (*domain.GitIdentity, error) {
+func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUID, flush bool) (*domain.GitIdentity, error) {
 	identity, err := u.repo.GetByUserID(ctx, uid, id)
 	if err != nil {
 		if db.IsNotFound(err) {
@@ -99,19 +88,20 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	if client := u.gitClienter(identity); client != nil {
 		token, err := u.tokenProvider.GetToken(ctx, identity.ID)
 		if err != nil {
-			u.logger.WarnContext(ctx, "failed to get token", "error", err, "platform", identity.Platform, "identity_id", id)
+			u.logger.WarnContext(ctx, "failed to get token", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
 			return gi, nil
 		}
 		repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
 			Token:     token,
 			InstallID: identity.InstallationID,
 			IsOAuth:   identity.OauthRefreshToken != "",
+			Flush:     flush,
 		})
 		if err != nil {
-			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", id)
-		} else {
-			gi.AuthorizedRepositories = repos
+			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
+			return gi, nil
 		}
+		gi.AuthorizedRepositories = repos
 	}
 
 	return gi, nil
@@ -134,6 +124,7 @@ func (u *GitIdentityUsecase) Update(ctx context.Context, uid uuid.UUID, req *dom
 		return err
 	}
 	u.tokenProvider.ClearCache(req.ID)
+	u.repoCache.Delete(uid.String() + ":" + req.ID.String())
 	return nil
 }
 
@@ -164,6 +155,7 @@ func (u *GitIdentityUsecase) Delete(ctx context.Context, uid uuid.UUID, id uuid.
 		return err
 	}
 	u.tokenProvider.ClearCache(id)
+	u.repoCache.Delete(uid.String() + ":" + id.String())
 	return nil
 }
 
