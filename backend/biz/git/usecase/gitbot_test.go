@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -67,8 +69,57 @@ func TestGitBotUsecaseGetAccessToken_ReturnsErrorWhenNoTokenAvailable(t *testing
 	if err == nil {
 		t.Fatal("expected GetAccessToken to return error")
 	}
-	if err.Error() != "no token found" {
+	if !strings.Contains(err.Error(), "no token found") {
 		t.Fatalf("expected no token found error, got %v", err)
+	}
+}
+
+func TestGitBotUsecaseGetAccessToken_ReturnsWrappedErrorWhenGetGitIdentityIDFails(t *testing.T) {
+	expectedErr := errors.New("lookup failed")
+	u := &GitBotUsecase{
+		repo: &stubGitBotRepo{
+			getGitIdentityIDErr: expectedErr,
+		},
+	}
+
+	_, err := u.GetAccessToken(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatal("expected GetAccessToken to return error")
+	}
+	if !strings.Contains(err.Error(), "get git identity id") {
+		t.Fatalf("expected wrapped git identity lookup error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), expectedErr.Error()) {
+		t.Fatalf("expected wrapped original error, got %v", err)
+	}
+}
+
+func TestGitBotUsecaseGetAccessToken_ReturnsBotLookupError(t *testing.T) {
+	expectedErr := errors.New("bot lookup failed")
+	u := &GitBotUsecase{
+		repo: &stubGitBotRepo{
+			getByIDErr: expectedErr,
+		},
+	}
+
+	_, err := u.GetAccessToken(context.Background(), uuid.New())
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected bot lookup error %v, got %v", expectedErr, err)
+	}
+}
+
+func TestGitBotUsecaseGetAccessToken_ReturnsTokenProviderError(t *testing.T) {
+	expectedErr := errors.New("token provider failed")
+	u := &GitBotUsecase{
+		repo: &stubGitBotRepo{
+			gitIdentityID: uuid.New(),
+		},
+		tokenProvider: &stubTokenGetter{err: expectedErr},
+	}
+
+	_, err := u.GetAccessToken(context.Background(), uuid.New())
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected token provider error %v, got %v", expectedErr, err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v74/github"
@@ -54,6 +55,9 @@ func TestGetPullRequest(t *testing.T) {
 		if r.URL.Path != "/repos/octo/repo/pulls/10" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
+		if got := r.Header.Get("Authorization"); got != "Bearer installation-token" {
+			t.Fatalf("expected authorization header, got %q", got)
+		}
 		_, _ = w.Write([]byte(`{"id":2001,"number":10,"title":"Fix bug","html_url":"https://github.com/octo/repo/pull/10"}`))
 	}))
 	defer server.Close()
@@ -85,7 +89,7 @@ func TestGetPullRequest_ReturnsErrorOnNon200(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected GetPullRequest to return error")
 	}
-	if err.Error() != "get pull request status 502" {
+	if !strings.Contains(err.Error(), "status 502") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
