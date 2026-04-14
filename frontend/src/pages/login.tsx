@@ -8,7 +8,6 @@ import {
   Field,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,7 +22,7 @@ import { toast } from "sonner"
 import { apiRequest } from "@/utils/requestUtils"
 import { Link, useNavigate } from "react-router-dom"
 import { captchaChallenge } from "@/utils/common"
-import { Eye, EyeOff } from "lucide-react"
+import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
@@ -39,7 +38,10 @@ export default function LoginPage({
   const [logging, setLogging] = React.useState(false)
   const [showUserPassword, setShowUserPassword] = React.useState(false)
   const [showManagerPassword, setShowManagerPassword] = React.useState(false)
+  const [userLoginView, setUserLoginView] = React.useState<'choices' | 'password'>('choices')
   const navigate = useNavigate()
+  const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
+  const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
 
   React.useEffect(() => {
     try {
@@ -128,71 +130,92 @@ export default function LoginPage({
           <Card>
             <CardContent>
               <Tabs defaultValue="user">
-                <TabsList>
+                <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="user">普通用户</TabsTrigger>
                   <TabsTrigger value="manager">团队管理员</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="user" className="mt-4">
-                  <form onSubmit={(e) => { e.preventDefault(); handleUserLogin(); }}>
-                    <FieldGroup>
-                      <Field>
-                        <FieldLabel htmlFor="user-email">账号</FieldLabel>
-                        <Input
-                          value={userEmail}
-                          placeholder="monkeycode@example.com"
-                          onChange={(e) => setUserEmail(e.target.value)}
-                          id="user-email"
-                          type="email"
-                          required
-                          disabled={logging}
-                        />
-                      </Field>
-                      <Field>
-                        <div className="flex flex-row items-center justify-between">
-                          <FieldLabel htmlFor="user-password">密码</FieldLabel>
-                          <Link to="/findpassword" tabIndex={-1} className="text-sm text-muted-foreground hover:underline">
-                            找回密码
-                          </Link>
-                        </div>
-                        <div className="relative">
-                          <Input
-                            value={userPassword}
-                            placeholder="************"
-                            onChange={(e) => setUserPassword(e.target.value)}
-                            id="user-password"
-                            type={showUserPassword ? "text" : "password"}
-                            required
-                            disabled={logging}
-                            className="pr-9"
-                          />
-                          <button
-                            type="button"
-                            tabIndex={-1}
-                            onClick={() => setShowUserPassword(v => !v)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          >
-                            {showUserPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </Field>
-                      <Field>
-                        <Button type="submit" disabled={logging} variant="outline">
-                        {logging && <Spinner className="mr-2" />}
-                        登录
+                  {userLoginView === 'choices' ? (
+                    <div className="mt-1 flex flex-col gap-4">
+                      <div className="text-sm font-medium">选择登录方式</div>
+                      <Button size="lg" className="w-full" asChild>
+                        <a href={userLoginHref}>百智云登录 - 推荐</a>
                       </Button>
-                    </Field>
-                    <FieldSeparator>其他方式</FieldSeparator>
-                    <div className="flex flex-col gap-4">
-                      <Button asChild>
-                        <a href={"/api/v1/users/login?redirect=&inviter_id=" + (localStorage.getItem('ic') || '')}>百智云账号登录</a>
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setUserLoginView('password')}
+                      >
+                        账号密码登录
                       </Button>
-                      <Button variant="secondary" asChild>
-                        <a href={"/api/v1/users/login?redirect=&inviter_id=" + (localStorage.getItem('ic') || '')}>注册</a>
+                      <Button size="lg" variant="secondary" className="w-full" asChild>
+                        <a href={userLoginHref}>快速注册</a>
                       </Button>
                     </div>
-                  </FieldGroup>
-                  </form>
+                  ) : (
+                    <div className="mt-1 flex flex-col gap-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium">账号密码登录</div>
+                        <Button type="button" variant="secondary" size="sm" onClick={() => setUserLoginView('choices')}>
+                          <ArrowLeft size={14} />
+                          返回
+                        </Button>
+                      </div>
+                      <form onSubmit={(e) => { e.preventDefault(); handleUserLogin(); }}>
+                        <FieldGroup className="gap-5">
+                          <Field>
+                            <FieldLabel htmlFor="user-email">账号</FieldLabel>
+                            <Input
+                              value={userEmail}
+                              placeholder="monkeycode@example.com"
+                              onChange={(e) => setUserEmail(e.target.value)}
+                              id="user-email"
+                              type="email"
+                              required
+                              disabled={logging}
+                            />
+                          </Field>
+                          <Field>
+                            <div className="flex flex-row items-center justify-between">
+                              <FieldLabel htmlFor="user-password">密码</FieldLabel>
+                              <Link to="/findpassword" tabIndex={-1} className="text-sm text-muted-foreground hover:underline">
+                                找回密码
+                              </Link>
+                            </div>
+                            <div className="relative">
+                              <Input
+                                value={userPassword}
+                                placeholder="************"
+                                onChange={(e) => setUserPassword(e.target.value)}
+                                id="user-password"
+                                type={showUserPassword ? "text" : "password"}
+                                required
+                                disabled={logging}
+                                className="pr-9"
+                              />
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => setShowUserPassword(v => !v)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              >
+                                {showUserPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </Field>
+                          <Field>
+                            <Button type="submit" disabled={logging} className="w-full">
+                              {logging && <Spinner className="mr-2" />}
+                              登录
+                            </Button>
+                          </Field>
+                        </FieldGroup>
+                      </form>
+                    </div>
+                  )}
                 </TabsContent>
                 <TabsContent value="manager" className="mt-4">
                   <form onSubmit={(e) => { e.preventDefault(); handleTeamManagerLogin(); }}>
