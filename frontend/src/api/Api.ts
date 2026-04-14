@@ -160,6 +160,7 @@ export enum ConstsTransactionKind {
   TransactionKindProAutoRenew = "pro_auto_renew",
   TransactionKindUltraSubscription = "ultra_subscription",
   TransactionKindUltraAutoRenew = "ultra_auto_renew",
+  TransactionKindProUpgradeRefund = "pro_upgrade_refund",
   TransactionKindDailyGrant = "daily_grant",
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
@@ -311,11 +312,11 @@ export interface DomainAutoRenewReq {
 export interface DomainAvailableModelResp {
   access_level?: string;
   id?: string;
-  /** 点数/1K input tokens（账面值） */
+  /** 积分/1K input tokens（账面值） */
   input_price?: number;
   is_free?: boolean;
   name?: string;
-  /** 点数/1K output tokens（账面值） */
+  /** 积分/1K output tokens（账面值） */
   output_price?: number;
 }
 
@@ -1053,7 +1054,7 @@ export interface DomainPullRequest {
 }
 
 export interface DomainRechargeReq {
-  /** 充值点数: 10000 / 50000 / 300000 */
+  /** 充值积分: 10000 / 50000 / 300000 */
   credits?: number;
 }
 
@@ -1656,6 +1657,7 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
+/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -3676,10 +3678,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsList: (params: RequestParams = {}) =>
       this.request<
-        GithubComGoYokoWebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainListGitBotResp;
         },
-        GithubComGoYokoWebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/git-bots`,
         method: "GET",
@@ -3699,7 +3701,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsUpdate: (req: DomainUpdateGitBotReq, params: RequestParams = {}) =>
-      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/git-bots`,
         method: "PUT",
         body: req,
@@ -3720,10 +3722,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsCreate: (req: DomainCreateGitBotReq, params: RequestParams = {}) =>
       this.request<
-        GithubComGoYokoWebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainGitBot;
         },
-        GithubComGoYokoWebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/git-bots`,
         method: "POST",
@@ -3744,7 +3746,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsShareCreate: (req: DomainShareGitBotReq, params: RequestParams = {}) =>
-      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/git-bots/share`,
         method: "POST",
         body: req,
@@ -3777,10 +3779,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        GithubComGoYokoWebResp & {
+        GitInChaitinNetGoDevWebResp & {
           data?: DomainListGitBotTaskResp;
         },
-        GithubComGoYokoWebResp
+        GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/users/git-bots/tasks`,
         method: "GET",
@@ -3801,7 +3803,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/git-bots/${id}`,
         method: "DELETE",
         secure: true,
@@ -3819,7 +3821,13 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request GET:/api/v1/users/git-identities
      * @secure
      */
-    v1UsersGitIdentitiesList: (params: RequestParams = {}) =>
+    v1UsersGitIdentitiesList: (
+      query?: {
+        /** 是否刷新缓存 */
+        flush?: boolean;
+      },
+      params: RequestParams = {},
+    ) =>
       this.request<
         GithubComGoYokoWebResp & {
           data?: DomainGitIdentity[];
@@ -3828,6 +3836,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       >({
         path: `/api/v1/users/git-identities`,
         method: "GET",
+        query: query,
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -3903,7 +3912,14 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request GET:/api/v1/users/git-identities/{id}
      * @secure
      */
-    v1UsersGitIdentitiesDetail: (id: string, params: RequestParams = {}) =>
+    v1UsersGitIdentitiesDetail: (
+      id: string,
+      query?: {
+        /** 是否刷新缓存 */
+        flush?: boolean;
+      },
+      params: RequestParams = {},
+    ) =>
       this.request<
         GithubComGoYokoWebResp & {
           data?: DomainGitIdentity;
@@ -3912,6 +3928,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       >({
         path: `/api/v1/users/git-identities/${id}`,
         method: "GET",
+        query: query,
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -5011,7 +5028,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 百智云支付回调，验证签名后充值点数
+     * @description 百智云支付回调，验证签名后充值积分
      *
      * @tags 【用户】钱包
      * @name V1UsersPayNotifyList
@@ -5637,7 +5654,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 消耗点数兑换 1 个月会员，通过 plan 指定 pro 或 ultra
+     * @description 消耗积分兑换 1 个月会员，通过 plan 指定 pro 或 ultra
      *
      * @tags 【用户】会员
      * @name V1UsersSubscriptionCreate
@@ -6032,11 +6049,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 充值点数
+     * @description 充值积分
      *
      * @tags 【用户】钱包
      * @name V1UsersWalletRechargeCreate
-     * @summary 充值点数
+     * @summary 充值积分
      * @request POST:/api/v1/users/wallet/recharge
      * @secure
      */
