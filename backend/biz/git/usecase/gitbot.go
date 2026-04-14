@@ -20,7 +20,11 @@ type GitBotUsecase struct {
 	cfg           *config.Config
 	repo          domain.GitBotRepo
 	logger        *slog.Logger
-	tokenProvider *TokenProvider
+	tokenProvider tokenGetter
+}
+
+type tokenGetter interface {
+	GetToken(ctx context.Context, identityID uuid.UUID) (string, error)
 }
 
 // NewGitBotUsecase 创建 GitBot 业务逻辑
