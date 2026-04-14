@@ -10,6 +10,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/errcode"
 )
 
 // TeamGroupUserUsecase 团队分组成员业务逻辑接口
@@ -292,6 +293,13 @@ type TeamMemberInfo struct {
 type ChangePasswordReq struct {
 	CurrentPassword string `json:"current_password" validate:"omitempty"`         // 当前密码
 	NewPassword     string `json:"new_password" validate:"required,min=8,max=32"` // 新密码
+}
+
+func (r *ChangePasswordReq) Validate() error {
+	if len(r.NewPassword) < 8 || len(r.NewPassword) > 32 {
+		return errcode.ErrPasswordLength
+	}
+	return nil
 }
 
 // ChangePasswordResp 修改密码响应

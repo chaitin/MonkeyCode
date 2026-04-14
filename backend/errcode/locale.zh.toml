@@ -94,6 +94,9 @@ other = "团队成员数量超出限制"
 [err-invalid-password]
 other = "密码无效"
 
+[err-password-length]
+other = "密码长度必须在 8 到 32 个字符之间"
+
 [err-sms-failed]
 other = "短信发送失败"
 

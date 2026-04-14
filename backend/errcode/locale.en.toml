@@ -85,6 +85,9 @@ other = "Team member limit exceeded"
 [err-invalid-password]
 other = "Invalid password"
 
+[err-password-length]
+other = "Password must be between 8 and 32 characters"
+
 [err-sms-failed]
 other = "SMS send failed"
 

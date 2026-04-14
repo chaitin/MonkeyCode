@@ -279,6 +279,9 @@ func (h *AuthHandler) GetAccountInfo(c *web.Context, req domain.GetAccountInfoRe
 //	@Success		200	{object}	web.Resp{}
 //	@Router			/api/v1/users/passwords/reset [put]
 func (h *AuthHandler) ResetPassword(c *web.Context, req domain.ResetUserPasswordReq) error {
+	if err := req.Validate(); err != nil {
+		return err
+	}
 	// 重置前检查 redis 里的 Key
 	key := fmt.Sprintf("reset_password_token:%s", req.Token)
 	userID, err := h.redis.Get(c.Request().Context(), key).Result()

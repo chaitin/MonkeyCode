@@ -78,6 +78,7 @@ var (
 	ErrUserAlreadyExists       = web.NewErr(http.StatusOK, 10503, "err-user-already-exists")
 	ErrChangePasswordFailed    = web.NewErr(http.StatusOK, 10504, "err-change-password-failed")
 	ErrPasswordHashFailed      = web.NewErr(http.StatusOK, 10505, "err-password-hash-failed")
+	ErrPasswordLength          = web.NewErr(http.StatusOK, 10506, "err-password-length")
 
 	// 用户管理
 	ErrIdentityAlreadyBound = web.NewErr(http.StatusOK, 10601, "err-identity-already-bound")
