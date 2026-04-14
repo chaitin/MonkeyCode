@@ -49,8 +49,8 @@ func NewGitIdentityHandler(i *do.Injector) (*GitIdentityHandler, error) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Success		200	{object}	web.Resp{data=[]domain.GitIdentity}	"成功"
-//	@Failure		500	{object}	web.Resp							"服务器内部错误"
+//	@Success		200		{object}	web.Resp{data=[]domain.GitIdentity}	"成功"
+//	@Failure		500		{object}	web.Resp							"服务器内部错误"
 //	@Router			/api/v1/users/git-identities [get]
 func (h *GitIdentityHandler) List(c *web.Context) error {
 	user := middleware.GetUser(c)
@@ -69,15 +69,16 @@ func (h *GitIdentityHandler) List(c *web.Context) error {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Param			id	path		string								true	"Git 身份认证ID"
-//	@Success		200	{object}	web.Resp{data=domain.GitIdentity}	"成功"
-//	@Failure		400	{object}	web.Resp							"请求参数错误"
-//	@Failure		404	{object}	web.Resp							"资源不存在"
-//	@Failure		500	{object}	web.Resp							"服务器内部错误"
+//	@Param			id		path		string								true	"Git 身份认证ID"
+//	@Param			flush	query		bool								false	"是否刷新缓存"
+//	@Success		200		{object}	web.Resp{data=domain.GitIdentity}	"成功"
+//	@Failure		400		{object}	web.Resp							"请求参数错误"
+//	@Failure		404		{object}	web.Resp							"资源不存在"
+//	@Failure		500		{object}	web.Resp							"服务器内部错误"
 //	@Router			/api/v1/users/git-identities/{id} [get]
 func (h *GitIdentityHandler) Get(c *web.Context, req domain.GetGitIdentityReq) error {
 	user := middleware.GetUser(c)
-	identity, err := h.usecase.Get(c.Request().Context(), user.ID, req.ID)
+	identity, err := h.usecase.Get(c.Request().Context(), user.ID, req.ID, req.Flush)
 	if err != nil {
 		return err
 	}

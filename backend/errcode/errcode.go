@@ -94,9 +94,9 @@ var (
 	ErrEmailTaken           = web.NewErr(http.StatusOK, 10613, "err-email-taken")
 
 	// captcha 模块
-	ErrCreateCaptchaFailed  = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")
-	ErrRedeemCaptchaFailed  = web.NewErr(http.StatusOK, 10701, "err-redeem-captcha-failed")
-	ErrCaptchaVerifyFailed  = web.NewErr(http.StatusOK, 10702, "err-captcha-verify-failed")
+	ErrCreateCaptchaFailed = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")
+	ErrRedeemCaptchaFailed = web.NewErr(http.StatusOK, 10701, "err-redeem-captcha-failed")
+	ErrCaptchaVerifyFailed = web.NewErr(http.StatusOK, 10702, "err-captcha-verify-failed")
 
 	ErrDepositFailed = web.NewErr(http.StatusOK, 10801, "err-deposit-failed")
 

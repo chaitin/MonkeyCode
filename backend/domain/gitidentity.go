@@ -13,7 +13,7 @@ import (
 // GitIdentityUsecase Git 身份认证业务逻辑接口
 type GitIdentityUsecase interface {
 	List(ctx context.Context, uid uuid.UUID) ([]*GitIdentity, error)
-	Get(ctx context.Context, uid uuid.UUID, id uuid.UUID) (*GitIdentity, error)
+	Get(ctx context.Context, uid uuid.UUID, id uuid.UUID, flush bool) (*GitIdentity, error)
 	Add(ctx context.Context, uid uuid.UUID, req *AddGitIdentityReq) (*GitIdentity, error)
 	Update(ctx context.Context, uid uuid.UUID, req *UpdateGitIdentityReq) error
 	Delete(ctx context.Context, uid uuid.UUID, id uuid.UUID) error
@@ -92,9 +92,11 @@ type UpdateGitIdentityReq struct {
 	OAuthExpiresAt    *time.Time          `json:"-"` // 内部使用，OAuth 过期时间
 }
 
+
 // GetGitIdentityReq 获取 Git 身份认证详情请求
 type GetGitIdentityReq struct {
-	ID uuid.UUID `param:"id" validate:"required"`
+	ID    uuid.UUID `param:"id" validate:"required"`
+	Flush bool      `query:"flush"`
 }
 
 // DeleteGitIdentityReq 删除 Git 身份认证请求

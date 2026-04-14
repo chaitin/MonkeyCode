@@ -41,13 +41,13 @@ type UserActiveRepo interface {
 }
 
 type User struct {
-	ID         uuid.UUID         `json:"id"`
-	Name       string            `json:"name"`
-	AvatarURL  string            `json:"avatar_url"`
-	Email      string            `json:"email"`
-	Role       consts.UserRole   `json:"role"`
-	Status     consts.UserStatus `json:"status"`
-	IsBlocked  bool              `json:"is_blocked"`
+	ID          uuid.UUID         `json:"id"`
+	Name        string            `json:"name"`
+	AvatarURL   string            `json:"avatar_url"`
+	Email       string            `json:"email"`
+	Role        consts.UserRole   `json:"role"`
+	Status      consts.UserStatus `json:"status"`
+	IsBlocked   bool              `json:"is_blocked"`
 	Token       string            `json:"token,omitempty"`
 	Identities  []*UserIdentity   `json:"identities"`
 	Team        *Team             `json:"team,omitempty"`
