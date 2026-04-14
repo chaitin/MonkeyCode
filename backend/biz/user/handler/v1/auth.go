@@ -116,6 +116,10 @@ func (h *AuthHandler) PasswordLogin(c *web.Context, req domain.TeamLoginReq) err
 func (h *AuthHandler) ChangePassword(c *web.Context, req domain.ChangePasswordReq) error {
 	ctx := c.Request().Context()
 
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
 	user := middleware.GetUser(c)
 	if user == nil {
 		return errcode.ErrUnauthorized

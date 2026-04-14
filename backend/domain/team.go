@@ -291,8 +291,8 @@ type TeamMemberInfo struct {
 
 // ChangePasswordReq 修改密码请求
 type ChangePasswordReq struct {
-	CurrentPassword string `json:"current_password" validate:"omitempty"`         // 当前密码
-	NewPassword     string `json:"new_password" validate:"required,min=8,max=32"` // 新密码
+	CurrentPassword string `json:"current_password" validate:"omitempty"` // 当前密码
+	NewPassword     string `json:"new_password" validate:"required"`      // 新密码
 }
 
 func (r *ChangePasswordReq) Validate() error {
