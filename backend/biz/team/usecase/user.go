@@ -121,6 +121,8 @@ func (u *TeamGroupUserUsecase) AddUser(ctx context.Context, teamUser *domain.Tea
 			}
 			u.logger.InfoContext(ctx, "set redis success", "key", key, "token", token)
 			go u.sendResetPasswordEmail(ctx, user.Email, user.Name, token)
+		} else {
+			return nil, errcode.ErrEmailRequired
 		}
 	}
 	teamUsers := cvt.Iter(users, func(_ int, user *db.User) *domain.TeamUser {
@@ -154,6 +156,8 @@ func (u *TeamGroupUserUsecase) AddAdmin(ctx context.Context, teamUser *domain.Te
 		}
 		u.logger.InfoContext(ctx, "set redis success", "key", key, "token", token)
 		go u.sendResetPasswordEmail(ctx, user.Email, user.Name, token)
+	} else {
+		return nil, errcode.ErrEmailRequired
 	}
 
 	teamUserResp := cvt.From(user, &domain.TeamUser{})

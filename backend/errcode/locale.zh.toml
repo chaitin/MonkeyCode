@@ -148,6 +148,9 @@ other = "该邮箱已绑定"
 [err-email-taken]
 other = "该邮箱已被使用"
 
+[err-email-required]
+other = "邮箱不能为空"
+
 [err-deposit-failed]
 other = "充值失败"
 

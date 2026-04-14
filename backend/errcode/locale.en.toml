@@ -141,6 +141,9 @@ other = "Email already bound"
 [err-email-taken]
 other = "Email already taken by another user"
 
+[err-email-required]
+other = "Email is required"
+
 [err-deposit-failed]
 other = "Deposit failed"
 

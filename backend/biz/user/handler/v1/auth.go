@@ -201,6 +201,9 @@ func (h *AuthHandler) Status(c *web.Context) error {
 //	@Router			/api/v1/users/passwords/reset-request [put]
 func (h *AuthHandler) SendResetPasswordEmail(c *web.Context, req domain.ResetUserPasswordEmailReq) error {
 	ctx := c.Request().Context()
+	if err := req.Validate(); err != nil {
+		return err
+	}
 	if !h.captcha.ValidateToken(ctx, req.CaptchaToken) {
 		return errcode.ErrForbidden
 	}

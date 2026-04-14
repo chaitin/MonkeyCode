@@ -93,6 +93,7 @@ var (
 	ErrEmailVerifyFailed    = web.NewErr(http.StatusOK, 10611, "err-email-verify-failed")
 	ErrEmailAlreadyBound    = web.NewErr(http.StatusOK, 10612, "err-email-already-bound")
 	ErrEmailTaken           = web.NewErr(http.StatusOK, 10613, "err-email-taken")
+	ErrEmailRequired        = web.NewErr(http.StatusOK, 10614, "err-email-required")
 
 	// captcha 模块
 	ErrCreateCaptchaFailed  = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")

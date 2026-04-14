@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -158,6 +159,18 @@ func (r *ResetUserPasswordReq) Validate() error {
 type ResetUserPasswordEmailReq struct {
 	Emails       []string `json:"emails" validate:"required"`
 	CaptchaToken string   `json:"captcha_token"`
+}
+
+func (r *ResetUserPasswordEmailReq) Validate() error {
+	if len(r.Emails) == 0 {
+		return errcode.ErrEmailRequired
+	}
+	for _, email := range r.Emails {
+		if strings.TrimSpace(email) == "" {
+			return errcode.ErrEmailRequired
+		}
+	}
+	return nil
 }
 
 // TeamMembersResp 团队成员列表响应
