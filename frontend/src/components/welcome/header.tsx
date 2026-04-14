@@ -62,7 +62,7 @@ const Header = () => {
                   <Link to="/pricing">型号</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
-                  <Link to="/points">赚积分</Link>
+                  <Link to="/points">积分</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
                   <Link to="/playground">广场</Link>
@@ -99,7 +99,7 @@ const Header = () => {
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
             location.pathname.startsWith("/points") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
           )}>
-            <Link to="/points">赚积分</Link>
+            <Link to="/points">积分</Link>
           </Button>
           <Button variant={"link"} className={cn(
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
