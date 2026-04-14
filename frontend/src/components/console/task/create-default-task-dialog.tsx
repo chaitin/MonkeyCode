@@ -73,6 +73,7 @@ import {
   IconHelpCircle,
   IconLink,
   IconPuzzle,
+  IconReload,
   IconSourceCode,
   IconTerminal2,
   IconUpload,
@@ -244,10 +245,21 @@ export default function CreateDefaultTaskDialog({
     }
   }, [selectedRepo, identities, selectedIdentityId])
 
-  const loadReposForAllIdentities = async () => {
+  const loadReposForAllIdentities = async (flush = false, targetIdentityId?: string) => {
+    const targetIdentities = selectableIdentities.filter((identity) => {
+      if (!identity.id) {
+        return false
+      }
+      return targetIdentityId ? identity.id === targetIdentityId : true
+    })
+
+    if (targetIdentities.length === 0) {
+      return
+    }
+
     setLoadingByIdentity((prev) => {
       const next = { ...prev }
-      selectableIdentities.forEach((identity) => {
+      targetIdentities.forEach((identity) => {
         if (identity.id) {
           next[identity.id] = true
         }
@@ -255,10 +267,14 @@ export default function CreateDefaultTaskDialog({
       return next
     })
 
+    if (!targetIdentityId) {
+      setReposByIdentity({})
+    }
+
     const nextRepos: Record<string, RepoOption[]> = {}
     const nextLoading: Record<string, boolean> = {}
 
-    for (const identity of selectableIdentities) {
+    for (const identity of targetIdentities) {
       const identityId = identity.id
       if (!identityId) {
         continue
@@ -267,7 +283,7 @@ export default function CreateDefaultTaskDialog({
       await new Promise<void>((resolve) => {
         apiRequest(
           "v1UsersGitIdentitiesDetail",
-          {},
+          flush ? { flush: true } : {},
           [identityId],
           (detailResp) => {
             if (detailResp.code !== 0) {
@@ -721,21 +737,8 @@ export default function CreateDefaultTaskDialog({
                               </DropdownMenuSubTrigger>
                               <DropdownMenuPortal>
                                 <DropdownMenuSubContent className="max-h-[320px] min-w-[380px] overflow-y-auto p-0">
-                                  {isLoading ? (
-                                    <Empty className="m-2 border border-dashed">
-                                      <EmptyHeader>
-                                        <EmptyMedia variant="icon">
-                                          <Spinner className="size-5" />
-                                        </EmptyMedia>
-                                        <EmptyDescription>加载中...</EmptyDescription>
-                                      </EmptyHeader>
-                                    </Empty>
-                                  ) : repos.length === 0 ? (
-                                    <div className="px-3 py-4">
-                                      <span className="text-sm text-muted-foreground">没有仓库</span>
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-col bg-popover p-2">
+                                  <div className="flex flex-col bg-popover p-2">
+                                    <div className="flex items-center gap-2">
                                       <Input
                                         placeholder="搜索仓库..."
                                         className="min-w-0 text-sm"
@@ -748,54 +751,81 @@ export default function CreateDefaultTaskDialog({
                                         }}
                                         onKeyDown={(e) => e.stopPropagation()}
                                       />
-                                      <Separator className="my-2" />
-                                      <div className="grid max-h-[240px] gap-2 overflow-y-auto">
-                                        {filteredRepos.length === 0 ? (
-                                          <div className="py-6 text-center text-sm text-muted-foreground">
-                                            {search.trim() ? "未找到匹配的仓库" : null}
-                                          </div>
-                                        ) : (
-                                          filteredRepos.map((option) => {
-                                            const repoUrl = option.repository.url?.trim() || ""
-                                            if (!repoUrl) {
-                                              return null
-                                            }
-
-                                            const repoName = (
-                                              option.repository.full_name || repoUrl
-                                            ).replace(`${option.username}/`, "")
-
-                                            return (
-                                              <DropdownMenuItem
-                                                key={`${option.gitIdentityId}:${repoUrl}`}
-                                                onSelect={() => {
-                                                  setSelectedRepo(repoUrl)
-                                                  setSelectedRepoDisplayName(repoName)
-                                                  setSelectedRepoFromMyRepos(true)
-                                                  setSelectedZipFile(null)
-                                                  setSelectedIdentityId(option.gitIdentityId)
-                                                }}
-                                                className="flex min-w-0 max-w-full flex-col items-start gap-0.5 py-1"
-                                              >
-                                                <div className="flex w-full min-w-0 max-w-[320px] items-center gap-2">
-                                                  {getRepoIcon(repoUrl)}
-                                                  <span className="flex-1 truncate text-sm" title={repoName}>
-                                                    {repoName}
-                                                  </span>
-                                                </div>
-                                                <span
-                                                  className="w-full max-w-[400px] truncate pl-6 text-xs text-muted-foreground"
-                                                  title={option.repository.description || undefined}
-                                                >
-                                                  {option.repository.description || "暂无描述"}
-                                                </span>
-                                              </DropdownMenuItem>
-                                            )
-                                          })
-                                        )}
-                                      </div>
+                                      <Button
+                                        type="button"
+                                        size="icon-sm"
+                                        variant="outline"
+                                        className="shrink-0"
+                                        disabled={isLoading}
+                                        aria-label="刷新仓库列表"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          void loadReposForAllIdentities(true, identityId)
+                                        }}
+                                      >
+                                        <IconReload className={cn("size-4", isLoading && "animate-spin")} />
+                                      </Button>
                                     </div>
-                                  )}
+                                    <Separator className="my-2" />
+                                    <div className="grid max-h-[240px] gap-2 overflow-y-auto">
+                                      {isLoading ? (
+                                        <Empty className="border border-dashed">
+                                          <EmptyHeader>
+                                            <EmptyMedia variant="icon">
+                                              <Spinner className="size-5" />
+                                            </EmptyMedia>
+                                            <EmptyDescription>加载中...</EmptyDescription>
+                                          </EmptyHeader>
+                                        </Empty>
+                                      ) : repos.length === 0 ? (
+                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                          没有仓库
+                                        </div>
+                                      ) : filteredRepos.length === 0 ? (
+                                        <div className="py-6 text-center text-sm text-muted-foreground">
+                                          {search.trim() ? "未找到匹配的仓库" : null}
+                                        </div>
+                                      ) : (
+                                        filteredRepos.map((option) => {
+                                          const repoUrl = option.repository.url?.trim() || ""
+                                          if (!repoUrl) {
+                                            return null
+                                          }
+
+                                          const repoName = (
+                                            option.repository.full_name || repoUrl
+                                          ).replace(`${option.username}/`, "")
+
+                                          return (
+                                            <DropdownMenuItem
+                                              key={`${option.gitIdentityId}:${repoUrl}`}
+                                              onSelect={() => {
+                                                setSelectedRepo(repoUrl)
+                                                setSelectedRepoDisplayName(repoName)
+                                                setSelectedRepoFromMyRepos(true)
+                                                setSelectedZipFile(null)
+                                                setSelectedIdentityId(option.gitIdentityId)
+                                              }}
+                                              className="flex min-w-0 max-w-full flex-col items-start gap-0.5 py-1"
+                                            >
+                                              <div className="flex w-full min-w-0 max-w-[320px] items-center gap-2">
+                                                {getRepoIcon(repoUrl)}
+                                                <span className="flex-1 truncate text-sm" title={repoName}>
+                                                  {repoName}
+                                                </span>
+                                              </div>
+                                              <span
+                                                className="w-full max-w-[400px] truncate pl-6 text-xs text-muted-foreground"
+                                                title={option.repository.description || undefined}
+                                              >
+                                                {option.repository.description || "暂无描述"}
+                                              </span>
+                                            </DropdownMenuItem>
+                                          )
+                                        })
+                                      )}
+                                    </div>
+                                  </div>
                                 </DropdownMenuSubContent>
                               </DropdownMenuPortal>
                             </DropdownMenuSub>

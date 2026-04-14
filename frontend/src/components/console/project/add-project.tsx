@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/utils"
 import { getGitPlatformIcon } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconCheck, IconChevronDown, IconGitBranch, IconLoader } from "@tabler/icons-react"
+import { IconCheck, IconChevronDown, IconGitBranch, IconLoader, IconReload } from "@tabler/icons-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useSettingsDialog } from "@/pages/console/user/page"
@@ -90,13 +90,13 @@ export default function AddProjectDialog({
     identity.remark || identity.username || identity.base_url || "未命名身份"
 
   const loadReposForIdentity = useCallback(
-    async (identityId: string) => {
+    async (identityId: string, flush = false) => {
       setLoadingIdentityRepos(true)
       setIdentityRepoOptions([])
 
       await apiRequest(
         "v1UsersGitIdentitiesDetail",
-        {},
+        flush ? { flush: true } : {},
         [identityId],
         (detailResp) => {
           if (detailResp.code !== 0) {
@@ -279,7 +279,9 @@ export default function AddProjectDialog({
             {selectedIdentityId ? (
               <div className="flex flex-col gap-2">
                 <Label>选择仓库</Label>
-                <Popover open={repoPopoverOpen} onOpenChange={setRepoPopoverOpen} modal={true}>
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Popover open={repoPopoverOpen} onOpenChange={setRepoPopoverOpen} modal={true}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -288,7 +290,7 @@ export default function AddProjectDialog({
                           className="w-full justify-between font-normal"
                           disabled={loading}
                         >
-                          <span className={cn(!selectedRepoValue && "text-muted-foreground")}>
+                          <span className={cn("truncate", !selectedRepoValue && "text-muted-foreground")}>
                             {loadingIdentityRepos
                               ? "正在获取仓库..."
                               : selectedRepoValue
@@ -302,7 +304,7 @@ export default function AddProjectDialog({
                       </PopoverTrigger>
                       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                         {loadingIdentityRepos ? (
-                          <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground justify-center">
+                          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                             <Spinner />
                             正在获取仓库...
                           </div>
@@ -320,7 +322,7 @@ export default function AddProjectDialog({
                         ) : (
                           <Command>
                             <CommandInput placeholder="搜索仓库..." />
-                            <CommandList className="max-h-48">
+                            <CommandList className="max-h-48 p-1">
                               <CommandEmpty>未找到匹配的仓库</CommandEmpty>
                               {identityRepoOptions.map((option) => {
                                 const value = `${option.gitIdentityId}:${option.repository.url || ""}`
@@ -337,7 +339,7 @@ export default function AddProjectDialog({
                                       setRepoPopoverOpen(false)
                                     }}
                                     className={cn(
-                                      "cursor-pointer flex flex-col items-start gap-0.5 py-1",
+                                      "cursor-pointer flex flex-col items-start gap-0.5 py-1 [&>svg:last-child]:hidden",
                                       selectedRepoValue === value &&
                                         "bg-muted/50 data-[selected=true]:bg-muted/70"
                                     )}
@@ -366,6 +368,19 @@ export default function AddProjectDialog({
                         )}
                       </PopoverContent>
                     </Popover>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => loadReposForIdentity(selectedIdentityId, true)}
+                    disabled={loading || loadingIdentityRepos || !selectedIdentityId}
+                    aria-label="刷新仓库列表"
+                  >
+                    <IconReload className={cn("size-4", loadingIdentityRepos && "animate-spin")} />
+                  </Button>
+                </div>
               </div>
             ) : null}
           </div>

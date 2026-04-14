@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconHelpCircle, IconLink, IconPuzzle, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconHelpCircle, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -166,26 +166,38 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     });
   };
 
-  const loadReposForAllIdentities = async () => {
+  const loadReposForAllIdentities = async (flush = false, targetIdentityId?: string) => {
+    const targetIdentities = selectableIdentities.filter((identity) => {
+      if (!identity.id) return false;
+      return targetIdentityId ? identity.id === targetIdentityId : true;
+    });
+
+    if (targetIdentities.length === 0) {
+      return;
+    }
+
     setLoadingByIdentity((prev) => {
       const next = { ...prev };
-      selectableIdentities.forEach((i) => {
-        if (i.id) next[i.id] = true;
+      targetIdentities.forEach((identity) => {
+        if (identity.id) next[identity.id] = true;
       });
       return next;
     });
-    setReposByIdentity({});
+
+    if (!targetIdentityId) {
+      setReposByIdentity({});
+    }
 
     const newRepos: Record<string, RepoOption[]> = {};
     const newLoading: Record<string, boolean> = {};
 
-    for (const identity of selectableIdentities) {
+    for (const identity of targetIdentities) {
       const id = identity.id;
       if (!id) continue;
       await new Promise<void>((resolve) => {
         apiRequest(
           "v1UsersGitIdentitiesDetail",
-          {},
+          flush ? { flush: true } : {},
           [id],
           (detailResp) => {
             if (detailResp.code !== 0) {
@@ -607,21 +619,8 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                             </DropdownMenuSubTrigger>
                             <DropdownMenuPortal>
                               <DropdownMenuSubContent className="max-h-[320px] overflow-y-auto min-w-[380px] p-0">
-                                {isLoading ? (
-                                  <Empty className="border border-dashed m-2">
-                                    <EmptyHeader>
-                                      <EmptyMedia variant="icon">
-                                        <Spinner className="size-5" />
-                                      </EmptyMedia>
-                                      <EmptyDescription>加载中...</EmptyDescription>
-                                    </EmptyHeader>
-                                  </Empty>
-                                ) : repos.length === 0 ? (
-                                  <div className="px-3 py-4">
-                                    <span className="text-sm text-muted-foreground">没有仓库</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col bg-popover p-2">
+                                <div className="flex flex-col bg-popover p-2">
+                                  <div className="flex items-center gap-2">
                                     <Input
                                       placeholder="搜索仓库..."
                                       className="text-sm w-full min-w-0"
@@ -629,43 +628,70 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                                       onChange={(e) => setIdentitySearch((prev) => ({ ...prev, [identityId]: e.target.value }))}
                                       onKeyDown={(e) => e.stopPropagation()}
                                     />
-                                    <Separator className="my-2" />
-                                    <div className="grid gap-2 overflow-y-auto max-h-[240px]">
-                                      {filteredRepos.length === 0 ? (
-                                        <div className="py-6 text-center text-sm text-muted-foreground">
-                                          {search.trim() ? "未找到匹配的仓库" : null}
-                                        </div>
-                                      ) : (
-                                        filteredRepos.map((option) => {
-                                          const repoUrl = option.repository.url?.trim() || "";
-                                          if (!repoUrl) return null;
-                                          const repoName = (option.repository.full_name || repoUrl).replace(`${option.username}/`, "");
-                                          const desc = option.repository.description;
-                                          return (
-                                            <DropdownMenuItem
-                                              key={`${option.gitIdentityId}:${repoUrl}`}
-                                              onSelect={() => {
-                                                setSelectedRepo(repoUrl);
-                                                setSelectedRepoDisplayName(repoName);
-                                                setSelectedIdentityId(option.gitIdentityId);
-                                                setSelectedRepoFromMyRepos(true);
-                                              }}
-                                              className="flex flex-col items-start gap-0.5 py-1 cursor-pointer min-w-0 max-w-full"
-                                            >
-                                              <div className="flex items-center gap-2 w-full min-w-0 max-w-[320px]">
-                                                {getRepoIcon(repoUrl)}
-                                                <span className="truncate flex-1 text-sm" title={repoName}>{repoName}</span>
-                                              </div>
-                                              <span className="text-xs text-muted-foreground truncate w-full max-w-[400px] pl-6" title={desc || undefined}>
-                                                {desc || "暂无描述"}
-                                              </span>
-                                            </DropdownMenuItem>
-                                          );
-                                        })
-                                      )}
-                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="icon-sm"
+                                      variant="outline"
+                                      className="shrink-0"
+                                      disabled={isLoading}
+                                      aria-label="刷新仓库列表"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void loadReposForAllIdentities(true, identityId);
+                                      }}
+                                    >
+                                      <IconReload className={cn("size-4", isLoading && "animate-spin")} />
+                                    </Button>
                                   </div>
-                                )}
+                                  <Separator className="my-2" />
+                                  <div className="grid gap-2 overflow-y-auto max-h-[240px]">
+                                    {isLoading ? (
+                                      <Empty className="border border-dashed">
+                                        <EmptyHeader>
+                                          <EmptyMedia variant="icon">
+                                            <Spinner className="size-5" />
+                                          </EmptyMedia>
+                                          <EmptyDescription>加载中...</EmptyDescription>
+                                        </EmptyHeader>
+                                      </Empty>
+                                    ) : repos.length === 0 ? (
+                                      <div className="py-6 text-center text-sm text-muted-foreground">
+                                        没有仓库
+                                      </div>
+                                    ) : filteredRepos.length === 0 ? (
+                                      <div className="py-6 text-center text-sm text-muted-foreground">
+                                        {search.trim() ? "未找到匹配的仓库" : null}
+                                      </div>
+                                    ) : (
+                                      filteredRepos.map((option) => {
+                                        const repoUrl = option.repository.url?.trim() || "";
+                                        if (!repoUrl) return null;
+                                        const repoName = (option.repository.full_name || repoUrl).replace(`${option.username}/`, "");
+                                        const desc = option.repository.description;
+                                        return (
+                                          <DropdownMenuItem
+                                            key={`${option.gitIdentityId}:${repoUrl}`}
+                                            onSelect={() => {
+                                              setSelectedRepo(repoUrl);
+                                              setSelectedRepoDisplayName(repoName);
+                                              setSelectedIdentityId(option.gitIdentityId);
+                                              setSelectedRepoFromMyRepos(true);
+                                            }}
+                                            className="flex flex-col items-start gap-0.5 py-1 cursor-pointer min-w-0 max-w-full"
+                                          >
+                                            <div className="flex items-center gap-2 w-full min-w-0 max-w-[320px]">
+                                              {getRepoIcon(repoUrl)}
+                                              <span className="truncate flex-1 text-sm" title={repoName}>{repoName}</span>
+                                            </div>
+                                            <span className="text-xs text-muted-foreground truncate w-full max-w-[400px] pl-6" title={desc || undefined}>
+                                              {desc || "暂无描述"}
+                                            </span>
+                                          </DropdownMenuItem>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </div>
                               </DropdownMenuSubContent>
                             </DropdownMenuPortal>
                           </DropdownMenuSub>
