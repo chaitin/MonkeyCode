@@ -127,6 +127,15 @@ func (u *GitIdentityUsecase) Add(ctx context.Context, uid uuid.UUID, req *domain
 	return cvt.From(identity, &domain.GitIdentity{}), nil
 }
 
+func (u *GitIdentityUsecase) UpsertByInstallationID(ctx context.Context, uid uuid.UUID, req *domain.UpsertGitIdentityByInstallationReq) (*domain.GitIdentity, error) {
+	identity, err := u.repo.UpsertByInstallationID(ctx, uid, req)
+	if err != nil {
+		u.logger.ErrorContext(ctx, "failed to upsert git identity by installation id", "error", err, "user_id", uid, "installation_id", req.InstallationID)
+		return nil, err
+	}
+	return cvt.From(identity, &domain.GitIdentity{}), nil
+}
+
 // Update 更新 Git 身份认证
 func (u *GitIdentityUsecase) Update(ctx context.Context, uid uuid.UUID, req *domain.UpdateGitIdentityReq) error {
 	if err := u.repo.Update(ctx, uid, req.ID, req); err != nil {

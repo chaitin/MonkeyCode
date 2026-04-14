@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
+	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
@@ -52,6 +54,45 @@ func (r *GitIdentityRepo) Create(ctx context.Context, uid uuid.UUID, req *domain
 		SetUsername(req.Username).
 		SetEmail(req.Email).
 		SetRemark(req.Remark).
+		Save(ctx)
+}
+
+// UpsertByInstallationID 按 installation 绑定 GitHub identity
+func (r *GitIdentityRepo) UpsertByInstallationID(ctx context.Context, uid uuid.UUID, req *domain.UpsertGitIdentityByInstallationReq) (*db.GitIdentity, error) {
+	findOnly := func(predicates ...predicate.GitIdentity) (*db.GitIdentity, error) {
+		return r.db.GitIdentity.Query().
+			Where(append([]predicate.GitIdentity{
+				gitidentity.UserID(uid),
+				gitidentity.Platform(req.Platform),
+			}, predicates...)...).
+			Only(ctx)
+	}
+
+	existing, err := findOnly(gitidentity.Username(req.AccountLogin))
+	if err != nil && !db.IsNotFound(err) {
+		return nil, fmt.Errorf("find git identity by username: %w", err)
+	}
+	if existing == nil {
+		existing, err = findOnly()
+		if err != nil && !db.IsNotFound(err) {
+			return nil, fmt.Errorf("find git identity by user and platform: %w", err)
+		}
+	}
+	if existing != nil {
+		return r.db.GitIdentity.UpdateOneID(existing.ID).
+			SetInstallationID(req.InstallationID).
+			SetUsername(req.AccountLogin).
+			Save(ctx)
+	}
+
+	return r.db.GitIdentity.Create().
+		SetID(uuid.New()).
+		SetUserID(uid).
+		SetPlatform(req.Platform).
+		SetInstallationID(req.InstallationID).
+		SetUsername(req.AccountLogin).
+		SetEmail("monkeycode-ai@chaitin.com").
+		SetBaseURL("https://github.com").
 		Save(ctx)
 }
 

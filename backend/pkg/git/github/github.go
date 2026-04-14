@@ -3,7 +3,9 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -62,6 +64,48 @@ func (g *Github) GetInstallationToken(ctx context.Context, installID int64) (str
 		return "", fmt.Errorf("create installation token: %w", err)
 	}
 	return token.GetToken(), nil
+}
+
+// GetInstallation 获取 GitHub App installation 信息
+func (g *Github) GetInstallation(ctx context.Context, installID int64) (*github.Installation, error) {
+	client, err := g.githubapp.NewAppClient()
+	if err != nil {
+		return nil, fmt.Errorf("create app client: %w", err)
+	}
+	installation, _, err := client.Apps.GetInstallation(ctx, installID)
+	if err != nil {
+		return nil, fmt.Errorf("get installation: %w", err)
+	}
+	return installation, nil
+}
+
+// GetPullRequest 根据 GitHub API URL 获取完整 PR 信息
+func (g *Github) GetPullRequest(ctx context.Context, token, pullRequestURL string) (*github.PullRequest, error) {
+	client, err := g.GetClient(ctx, token, 0)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pullRequestURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new pull request request: %w", err)
+	}
+	resp, err := client.Client().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("get pull request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("get pull request status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read pull request body: %w", err)
+	}
+	var pr github.PullRequest
+	if err := json.Unmarshal(body, &pr); err != nil {
+		return nil, fmt.Errorf("decode pull request: %w", err)
+	}
+	return &pr, nil
 }
 
 // GetClient 使用 PAT 或 Installation 创建 GitHub 客户端

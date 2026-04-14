@@ -94,11 +94,13 @@ type PublicHost struct {
 
 // Task 任务相关配置
 type Task struct {
-	LogLimit         int    `mapstructure:"log_limit"`          // Loki tail 日志 limit
-	TaskerTTLSeconds int    `mapstructure:"tasker_ttl_seconds"` // Tasker 状态机 TTL（秒）
-	ImageID          string `mapstructure:"image_id"`           // 默认镜像 ID
-	Core             int    `mapstructure:"core"`               // VM CPU 核数
-	Memory           uint64 `mapstructure:"memory"`             // VM 内存（字节）
+	LogLimit         int      `mapstructure:"log_limit"`          // Loki tail 日志 limit
+	TaskerTTLSeconds int      `mapstructure:"tasker_ttl_seconds"` // Tasker 状态机 TTL（秒）
+	ImageID          string   `mapstructure:"image_id"`           // 默认镜像 ID
+	Core             int      `mapstructure:"core"`               // VM CPU 核数
+	Memory           uint64   `mapstructure:"memory"`             // VM 内存（字节）
+	AtKeyword        string   `mapstructure:"at_keyword"`         // GitHub comment 触发关键字
+	HostIDs          []string `mapstructure:"host_ids"`           // 默认任务宿主机列表
 }
 
 // TaskSummary 任务摘要生成配置
@@ -192,6 +194,8 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("init_team.name", "")
 	v.SetDefault("init_team.password", "")
 	v.SetDefault("taskflow.grpc_url", "")
+	v.SetDefault("task.at_keyword", "")
+	v.SetDefault("task.host_ids", []string{})
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
@@ -204,6 +208,13 @@ func Init(dir string) (*Config, error) {
 	}
 
 	return &c, nil
+}
+
+func (c *Config) GetGithubAppInstallRedirectURL() string {
+	if c.Github.App.RedirectURL != "" {
+		return c.Github.App.RedirectURL
+	}
+	return "/"
 }
 
 // GithubConfig GitHub 配置

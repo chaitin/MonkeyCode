@@ -18,6 +18,7 @@ func ProvideGit(i *do.Injector) {
 	do.Provide(i, repo.NewGitBotRepo)
 	do.Provide(i, usecase.NewGitBotUsecase)
 	do.Provide(i, v1.NewGitBotHandler)
+	do.Provide(i, v1.NewGithubAppHandler)
 	do.Provide(i, v1.NewGithubWebhookHandler)
 	do.Provide(i, v1.NewGitlabWebhookHandler)
 	do.Provide(i, v1.NewGiteeWebhookHandler)
@@ -28,6 +29,7 @@ func ProvideGit(i *do.Injector) {
 func InvokeGit(i *do.Injector) {
 	do.MustInvoke[*v1.GitIdentityHandler](i)
 	do.MustInvoke[*v1.GitBotHandler](i)
+	do.MustInvoke[*v1.GithubAppHandler](i)
 	do.MustInvoke[*v1.GithubWebhookHandler](i)
 	do.MustInvoke[*v1.GitlabWebhookHandler](i)
 	do.MustInvoke[*v1.GiteeWebhookHandler](i)

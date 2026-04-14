@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ type GitIdentityUsecase interface {
 	Add(ctx context.Context, uid uuid.UUID, req *AddGitIdentityReq) (*GitIdentity, error)
 	Update(ctx context.Context, uid uuid.UUID, req *UpdateGitIdentityReq) error
 	Delete(ctx context.Context, uid uuid.UUID, id uuid.UUID) error
+	UpsertByInstallationID(ctx context.Context, uid uuid.UUID, req *UpsertGitIdentityByInstallationReq) (*GitIdentity, error)
 	ListBranches(ctx context.Context, uid uuid.UUID, identityID uuid.UUID, repoFullName string, page, perPage int) ([]*Branch, error)
 }
 
@@ -29,6 +31,7 @@ type GitIdentityRepo interface {
 	Update(ctx context.Context, uid uuid.UUID, id uuid.UUID, req *UpdateGitIdentityReq) error
 	Delete(ctx context.Context, uid uuid.UUID, id uuid.UUID) error
 	CountProjectsByGitIdentityID(ctx context.Context, id uuid.UUID) (int, error)
+	UpsertByInstallationID(ctx context.Context, uid uuid.UUID, req *UpsertGitIdentityByInstallationReq) (*db.GitIdentity, error)
 }
 
 // AuthRepository 授权仓库信息
@@ -100,6 +103,29 @@ type GetGitIdentityReq struct {
 // DeleteGitIdentityReq 删除 Git 身份认证请求
 type DeleteGitIdentityReq struct {
 	ID uuid.UUID `param:"id" validate:"required"`
+}
+
+type UpsertGitIdentityByInstallationReq struct {
+	InstallationID int64              `json:"installation_id"`
+	AccountLogin   string             `json:"account_login"`
+	Platform       consts.GitPlatform `json:"platform"`
+}
+
+type GithubAppSetupReq struct {
+	InstallationID int64  `query:"installation_id" validate:"omitempty"`
+	SetupAction    string `query:"setup_action" validate:"omitempty"`
+}
+
+func (r *GithubAppSetupReq) Validation() error {
+	if r.InstallationID == 0 {
+		return errors.New("Organization owners can install GitHub Apps on their organization. Organization members and outside collaborators that cannot install an app on the organization can still select the organization during the install process. Instead of installing the app, GitHub will send a notification to the organization owner to request the organization owner to install the app.")
+	}
+	switch r.SetupAction {
+	case "install", "update", "request":
+	default:
+		return errors.New("invalid setup action")
+	}
+	return nil
 }
 
 // ListBranchesReq 获取仓库分支列表请求

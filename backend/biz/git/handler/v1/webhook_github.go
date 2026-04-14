@@ -77,13 +77,16 @@ func (h *GithubWebhookHandler) Webhook(c *web.Context) error {
 
 	event := c.Request().Header.Get("X-Github-Event")
 	if event == "pull_request" {
-		h.handlePullRequest(ctx, bot, body)
+		if err := h.handlePullRequest(ctx, bot, body); err != nil {
+			h.logger.With("error", err, "bot_id", bot.ID).ErrorContext(ctx, "failed to handle github pull request webhook")
+			return c.String(http.StatusInternalServerError, "retry later")
+		}
 	}
 
 	return c.String(http.StatusOK, "ok")
 }
 
-func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domain.GitBot, payload []byte) {
+func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domain.GitBot, payload []byte) error {
 	var ev struct {
 		Action      string `json:"action"`
 		PullRequest *struct {
@@ -113,32 +116,40 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		} `json:"pull_request"`
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil {
-		h.logger.With("error", err).ErrorContext(ctx, "failed to unmarshal github pr event")
-		return
+		return fmt.Errorf("unmarshal github pr event: %w", err)
 	}
 
 	pr := ev.PullRequest
 	if pr == nil || pr.Head == nil || pr.Head.Repo == nil || pr.User == nil {
-		return
+		return nil
 	}
 
 	switch ev.Action {
 	case "opened", "synchronize", "reopened":
 	default:
-		return
+		return nil
 	}
 
-	if !dedup(ctx, h.redis, pr.HTMLURL, h.logger) {
-		return
+	if prHandled(ctx, h.redis, pr.HTMLURL, h.logger) {
+		return nil
+	}
+
+	token, err := h.gitbotUsecase.GetAccessToken(ctx, bot.ID)
+	if err != nil {
+		return fmt.Errorf("get github token for bot %s: %w", bot.ID, err)
+	}
+	installID, err := h.gitbotUsecase.GetInstallationID(ctx, bot.ID)
+	if err != nil {
+		return fmt.Errorf("get github installation id for bot %s: %w", bot.ID, err)
 	}
 
 	branch := pr.Head.Ref
 	repo := pr.Head.Repo
-	h.gitTaskUsecase.Create(ctx, domain.CreateGitTaskReq{
+	if _, err := h.gitTaskUsecase.Create(ctx, domain.CreateGitTaskReq{
 		HostID:  bot.Host.ID,
 		ImageID: uuid.MustParse(h.cfg.Task.ImageID),
 		Prompt:  pr.HTMLURL,
-		Git:     taskflow.Git{Token: bot.Token},
+		Git:     taskflow.Git{Token: token},
 		Subject: domain.Subject{
 			ID: fmt.Sprintf("%d", pr.ID), Type: "PullRequest",
 			Title: pr.Title, URL: pr.HTMLURL, Number: pr.Number,
@@ -148,13 +159,18 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 			FullName: repo.FullName, URL: repo.HTMLURL,
 			Desc: repo.Description, IsPrivate: repo.Private, Branch: &branch,
 		},
-		Platform: consts.GitPlatformGithub,
-		User:     domain.User{Name: pr.User.Login, AvatarURL: pr.User.AvatarURL, Email: pr.User.Email},
-		Body:     pr.Body,
-		Time:     time.Now(),
-		Env:      map[string]string{"GITHUB_TOKEN": bot.Token},
-		Bot:      bot,
-	})
+		Platform:             consts.GitPlatformGithub,
+		User:                 domain.User{Name: pr.User.Login, AvatarURL: pr.User.AvatarURL, Email: pr.User.Email},
+		Body:                 pr.Body,
+		Time:                 time.Now(),
+		GithubInstallationID: installID,
+		Env:                  map[string]string{"GITHUB_TOKEN": token},
+		Bot:                  bot,
+	}); err != nil {
+		return fmt.Errorf("create git task: %w", err)
+	}
+	markPRHandled(ctx, h.redis, pr.HTMLURL, h.logger)
+	return nil
 }
 
 // --- 公共工具函数 ---
@@ -172,17 +188,29 @@ func validateHMACSHA256(secret, signature string, body []byte) error {
 	return nil
 }
 
-func dedup(ctx context.Context, rdb *redis.Client, key string, logger *slog.Logger) bool {
-	ok, err := rdb.SetNX(ctx, fmt.Sprintf("pr_review:%s", key), 1, 5*time.Minute).Result()
+func prHandled(ctx context.Context, rdb *redis.Client, key string, logger *slog.Logger) bool {
+	if rdb == nil {
+		return false
+	}
+	exists, err := rdb.Exists(ctx, fmt.Sprintf("pr_review:%s", key)).Result()
 	if err != nil {
-		logger.With("pr", key).ErrorContext(ctx, "failed to setnx pr review")
+		logger.With("pr", key).ErrorContext(ctx, "failed to query pr review dedup key")
 		return false
 	}
-	if !ok {
-		logger.With("pr", key).WarnContext(ctx, "skip duplicate pr review")
-		return false
+	return exists > 0
+}
+
+func markPRHandled(ctx context.Context, rdb *redis.Client, key string, logger *slog.Logger) {
+	if rdb == nil {
+		return
 	}
-	return true
+	if err := rdb.Set(ctx, fmt.Sprintf("pr_review:%s", key), 1, 5*time.Minute).Err(); err != nil {
+		logger.With("pr", key).WarnContext(ctx, "failed to mark pr review handled", "error", err)
+	}
+}
+
+func dedup(ctx context.Context, rdb *redis.Client, key string, logger *slog.Logger) bool {
+	return !prHandled(ctx, rdb, key, logger)
 }
 
 func firstNonEmpty(values ...string) string {
