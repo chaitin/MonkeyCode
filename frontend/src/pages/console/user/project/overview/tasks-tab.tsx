@@ -208,8 +208,9 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="py-1">
                     <DropdownMenuItem
+                      variant="destructive"
                       onClick={() => setTaskToDelete(task)}
-                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                      className="text-xs py-1 px-1.5 [&_svg]:size-3"
                     >
                       <IconTrash className="mr-1" />
                       删除

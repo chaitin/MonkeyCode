@@ -25,6 +25,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useCommonData } from "../data-provider"
 import { IconChevronDown, IconChevronRight, IconDots, IconDotsVertical, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
 import CreateDefaultTaskDialog from "../task/create-default-task-dialog"
@@ -100,16 +101,18 @@ export default function NavProject() {
               <DropdownMenuContent align="end" className="py-1">
                 {(task.status === "pending" || task.status === "processing") && (
                   <DropdownMenuItem
+                    variant="destructive"
                     onClick={() => setTaskToStop(task)}
-                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                    className="text-xs py-1 px-1.5 [&_svg]:size-3"
                   >
                     <IconPlayerStopFilled className="mr-1" />
                     终止任务
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
+                  variant="destructive"
                   onClick={() => setTaskToDelete(task)}
-                  className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                  className="text-xs py-1 px-1.5 [&_svg]:size-3"
                 >
                   <IconTrash className="mr-1" />
                   删除任务
@@ -251,40 +254,6 @@ export default function NavProject() {
       ) : (
         <SidebarMenu className="gap-2">
             <SidebarMenuItem>
-              <div
-                className={cn(
-                  "group/default-row flex w-full items-center gap-1 overflow-hidden rounded-md pl-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 my-1",
-                  isUnlinkedActive && "font-medium text-primary"
-                )}
-              >
-                <Link
-                  to="/console/tasks"
-                  className={cn(
-                    "min-w-0 flex-1 flex items-center gap-2 truncate text-sidebar-foreground/70 group-hover/default-row:text-primary",
-                    isUnlinkedActive && "text-primary"
-                  )}
-                >
-                  <IconFolderOpen className="size-3.5 shrink-0 opacity-50" />
-                  <span className="truncate">空项目</span>
-                </Link>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-5 shrink-0 text-muted-foreground/50 group-hover/default-row:text-primary hover:text-primary"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setDefaultTaskDialogOpen(true)
-                      }}
-                    >
-                      <IconPlus className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">创建任务</TooltipContent>
-                </Tooltip>
-              </div>
               <SidebarMenuSub className="border-none px-0 mx-0">
                 <SidebarMenuSubItem className="flex flex-col gap-0.5">
                   {renderTaskList(unlinkedTasks, "unlinked")}
@@ -292,6 +261,20 @@ export default function NavProject() {
               </SidebarMenuSub>
               <SidebarMenuSub className="border-none px-0 mx-0">
                 <SidebarMenuSubItem className="flex flex-col gap-0.5">
+                  <SidebarMenuSubButton
+                    asChild
+                    size="md"
+                    className="group/task-row py-4 text-sidebar-foreground/70 [&>svg]:size-3.5 [&>svg]:text-sidebar-foreground/70 hover:text-sidebar-accent-foreground hover:[&>svg]:text-sidebar-accent-foreground"
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full min-w-0 items-center gap-2 truncate"
+                      onClick={() => setDefaultTaskDialogOpen(true)}
+                    >
+                      <IconPlus className="size-3.5 shrink-0" />
+                      <span className="truncate">启动任务</span>
+                    </button>
+                  </SidebarMenuSubButton>
                   <button
                     type="button"
                     className="group/history-row flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -338,6 +321,7 @@ export default function NavProject() {
                 </SidebarMenuSubItem>
               </SidebarMenuSub>
             </SidebarMenuItem>
+            {projects.length > 0 && <Separator className="my-2" />}
             {projects.length > 0 ? projects.map((project) => {
               const projectId = project.id ?? ""
               const isProjectActive =
@@ -430,16 +414,18 @@ export default function NavProject() {
                                     <DropdownMenuContent align="end" className="py-1">
                                       {(task.status === "pending" || task.status === "processing") && (
                                         <DropdownMenuItem
+                                          variant="destructive"
                                           onClick={() => setTaskToStop(task)}
-                                          className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                          className="text-xs py-1 px-1.5 [&_svg]:size-3"
                                         >
                                           <IconPlayerStopFilled className="mr-1" />
                                           终止任务
                                         </DropdownMenuItem>
                                       )}
                                       <DropdownMenuItem
+                                        variant="destructive"
                                         onClick={() => setTaskToDelete(task)}
-                                        className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                                        className="text-xs py-1 px-1.5 [&_svg]:size-3"
                                       >
                                         <IconTrash className="mr-1" />
                                         删除任务
@@ -462,8 +448,8 @@ export default function NavProject() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            <SidebarMenuItem className="mt-2">
-              <SidebarMenuButton onClick={() => setAddDialogOpen(true)}>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => setAddDialogOpen(true)} className="[&>svg]:size-3.5">
                 <IconFolderPlus />
                 <span>添加项目</span>
               </SidebarMenuButton>

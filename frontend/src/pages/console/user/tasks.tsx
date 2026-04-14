@@ -120,7 +120,7 @@ export default function TasksPage() {
       loadingRef.current = false
       setLoading(false)
     }
-    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE, quick_start: true }, [], (resp) => {
+    apiRequest('v1UsersTasksList', { page: pageNum, size: PAGE_SIZE }, [], (resp) => {
       if (resp.code === 0) {
         const newTasks = resp.data?.tasks || []
         setTasks(prev => append ? [...prev, ...newTasks] : newTasks)
@@ -216,16 +216,18 @@ export default function TasksPage() {
                 <DropdownMenuContent align="end" className="py-1">
                   {(task.status === ConstsTaskStatus.TaskStatusPending || task.status === ConstsTaskStatus.TaskStatusProcessing) && (
                     <DropdownMenuItem
+                      variant="destructive"
                       onClick={() => setTaskToStop(task)}
-                      className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                      className="text-xs py-1 px-1.5 [&_svg]:size-3"
                     >
                       <IconPlayerStopFilled className="mr-1" />
                       终止
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
+                    variant="destructive"
                     onClick={() => setTaskToDelete(task)}
-                    className="text-destructive focus:text-destructive text-xs py-1 px-1.5 [&_svg]:size-3"
+                    className="text-xs py-1 px-1.5 [&_svg]:size-3"
                   >
                     <IconTrash className="mr-1" />
                     删除
