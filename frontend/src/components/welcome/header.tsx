@@ -11,7 +11,10 @@ const Header = () => {
   const { isLoggedIn } = useAuth();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const location = useLocation();
-  const isPixelPage = location.pathname === "/" || location.pathname.startsWith("/pricing");
+  const isPixelPage =
+    location.pathname === "/" ||
+    location.pathname.startsWith("/pricing") ||
+    location.pathname.startsWith("/points");
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -59,6 +62,9 @@ const Header = () => {
                   <Link to="/pricing">型号</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
+                  <Link to="/points">赚积分</Link>
+                </Button>
+                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
                   <Link to="/playground">广场</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
@@ -88,6 +94,12 @@ const Header = () => {
             location.pathname.startsWith("/pricing") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
           )}>
             <Link to="/pricing">型号</Link>
+          </Button>
+          <Button variant={"link"} className={cn(
+            isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
+            location.pathname.startsWith("/points") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
+          )}>
+            <Link to="/points">赚积分</Link>
           </Button>
           <Button variant={"link"} className={cn(
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
