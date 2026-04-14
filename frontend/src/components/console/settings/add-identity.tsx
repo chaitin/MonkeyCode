@@ -53,15 +53,21 @@ export default function AddIdentity({
     return !forbiddenChars.test(username)
   }
 
-  // 根据平台类型自动设置 Base URL（Gitee 使用 OAuth 绑定，不在此表单中）
+  // 根据平台类型自动设置 Base URL，用户仍可按需修改为自建实例地址
   useEffect(() => {
     if (platform) {
       switch (platform) {
+        case ConstsGitPlatform.GitPlatformGithub:
+          setBaseUrl("https://github.com")
+          break
         case ConstsGitPlatform.GitPlatformGitLab:
           setBaseUrl("https://gitlab.com")
           break
         case ConstsGitPlatform.GitPlatformGitea:
           setBaseUrl("https://gitea.com")
+          break
+        case ConstsGitPlatform.GitPlatformGitee:
+          setBaseUrl("https://gitee.com")
           break
         default:
           setBaseUrl("")
@@ -151,11 +157,17 @@ export default function AddIdentity({
                     <SelectValue placeholder="请选择" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformGithub}>
+                      <Icon name="GitHub-Uncolor" className="fill-foreground" />GitHub
+                    </SelectItem>
                     <SelectItem value={ConstsGitPlatform.GitPlatformGitLab}>
                       <Icon name="GitLab" />GitLab
                     </SelectItem>
                     <SelectItem value={ConstsGitPlatform.GitPlatformGitea}>
                       <Icon name="Gitea" />Gitea
+                    </SelectItem>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformGitee}>
+                      <Icon name="Gitee" />Gitee
                     </SelectItem>
                   </SelectContent>
                 </Select>
