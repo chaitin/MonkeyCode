@@ -94,6 +94,9 @@ other = "团队成员数量超出限制"
 [err-invalid-password]
 other = "密码无效"
 
+[err-password-length]
+other = "密码长度必须在 8 到 32 个字符之间"
+
 [err-sms-failed]
 other = "短信发送失败"
 
@@ -144,6 +147,12 @@ other = "该邮箱已绑定"
 
 [err-email-taken]
 other = "该邮箱已被使用"
+
+[err-email-required]
+other = "邮箱不能为空"
+
+[err-email-not-bound]
+other = "存在未绑定邮箱的用户，请绑定邮箱后再重置密码"
 
 [err-deposit-failed]
 other = "充值失败"

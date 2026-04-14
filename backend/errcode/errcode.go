@@ -78,6 +78,7 @@ var (
 	ErrUserAlreadyExists       = web.NewErr(http.StatusOK, 10503, "err-user-already-exists")
 	ErrChangePasswordFailed    = web.NewErr(http.StatusOK, 10504, "err-change-password-failed")
 	ErrPasswordHashFailed      = web.NewErr(http.StatusOK, 10505, "err-password-hash-failed")
+	ErrPasswordLength          = web.NewErr(http.StatusOK, 10506, "err-password-length")
 
 	// 用户管理
 	ErrIdentityAlreadyBound = web.NewErr(http.StatusOK, 10601, "err-identity-already-bound")
@@ -92,6 +93,8 @@ var (
 	ErrEmailVerifyFailed    = web.NewErr(http.StatusOK, 10611, "err-email-verify-failed")
 	ErrEmailAlreadyBound    = web.NewErr(http.StatusOK, 10612, "err-email-already-bound")
 	ErrEmailTaken           = web.NewErr(http.StatusOK, 10613, "err-email-taken")
+	ErrEmailRequired        = web.NewErr(http.StatusOK, 10614, "err-email-required")
+	ErrEmailNotBound        = web.NewErr(http.StatusOK, 10615, "err-email-not-bound")
 
 	// captcha 模块
 	ErrCreateCaptchaFailed  = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")

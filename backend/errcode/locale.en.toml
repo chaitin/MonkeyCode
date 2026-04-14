@@ -85,6 +85,9 @@ other = "Team member limit exceeded"
 [err-invalid-password]
 other = "Invalid password"
 
+[err-password-length]
+other = "Password must be between 8 and 32 characters"
+
 [err-sms-failed]
 other = "SMS send failed"
 
@@ -137,6 +140,12 @@ other = "Email already bound"
 
 [err-email-taken]
 other = "Email already taken by another user"
+
+[err-email-required]
+other = "Email is required"
+
+[err-email-not-bound]
+other = "Some emails are not bound, please bind email before resetting password"
 
 [err-deposit-failed]
 other = "Deposit failed"
