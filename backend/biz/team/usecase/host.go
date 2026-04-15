@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
@@ -106,8 +107,10 @@ func (u *TeamHostUsecase) List(ctx context.Context, teamUser *domain.TeamUser) (
 		dHost.VirtualMachines = cvt.Iter(host.Edges.Vms, func(_ int, vm *db.VirtualMachine) *domain.VirtualMachine {
 			return cvt.From(vm, &domain.VirtualMachine{
 				Status: vmstatus.Resolve(vmstatus.Input{
-					Online:     vmonline.OnlineMap[vm.ID],
-					Conditions: vm.Conditions.Conditions,
+					Online: vmonline.OnlineMap[vm.ID],
+					Conditions: cvt.NilWithZero(vm.Conditions, func(t *types.VirtualMachineCondition) []*types.Condition {
+						return t.Conditions
+					}),
 					IsRecycled: vm.IsRecycled,
 					CreatedAt:  vm.CreatedAt,
 					Now:        time.Now(),
