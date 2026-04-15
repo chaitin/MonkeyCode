@@ -27,6 +27,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/random"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
 	"github.com/chaitin/MonkeyCode/backend/templates"
 )
 
@@ -225,12 +226,14 @@ func (h *HostUsecase) List(ctx context.Context, uid uuid.UUID) (*domain.HostList
 		dHost := cvt.From(host, &domain.Host{Status: status})
 		dHost.IsDefault = dHost.GetIsDefault(user)
 		dHost.VirtualMachines = cvt.Iter(host.Edges.Vms, func(_ int, vm *db.VirtualMachine) *domain.VirtualMachine {
-			status := taskflow.VirtualMachineStatusOffline
-			if vmonline.OnlineMap[vm.ID] {
-				status = taskflow.VirtualMachineStatusOnline
-			}
 			return cvt.From(vm, &domain.VirtualMachine{
-				Status: status,
+				Status: vmstatus.Resolve(vmstatus.Input{
+					Online:     vmonline.OnlineMap[vm.ID],
+					Conditions: vm.Conditions.Conditions,
+					IsRecycled: vm.IsRecycled,
+					CreatedAt:  vm.CreatedAt,
+					Now:        time.Now(),
+				}),
 			})
 		})
 
@@ -476,17 +479,22 @@ func (h *HostUsecase) VMInfo(ctx context.Context, uid uuid.UUID, id string) (*do
 		return nil, err
 	}
 
-	status := taskflow.VirtualMachineStatusOffline
+	reportedStatus := taskflow.VirtualMachineStatusUnknown
 	if info, err := h.taskflow.VirtualMachiner().Info(ctx, taskflow.VirtualMachineInfoReq{
 		ID:     vm.ID,
 		UserID: vm.UserID.String(),
 	}); err == nil && info != nil && info.Status != taskflow.VirtualMachineStatusUnknown {
-		status = info.Status
-	} else if vmonline.OnlineMap[vm.ID] {
-		status = taskflow.VirtualMachineStatusOnline
+		reportedStatus = info.Status
 	}
 	dvm := cvt.From(vm, &domain.VirtualMachine{
-		Status: status,
+		Status: vmstatus.Resolve(vmstatus.Input{
+			ReportedStatus: reportedStatus,
+			Online:         vmonline.OnlineMap[vm.ID],
+			Conditions:     vm.Conditions.Conditions,
+			IsRecycled:     vm.IsRecycled,
+			CreatedAt:      vm.CreatedAt,
+			Now:            time.Now(),
+		}),
 	})
 
 	if dvm.Host != nil {

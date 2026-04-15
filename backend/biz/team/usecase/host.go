@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
 )
 
 // TeamHostUsecase 团队宿主机业务逻辑层
@@ -103,12 +104,14 @@ func (u *TeamHostUsecase) List(ctx context.Context, teamUser *domain.TeamUser) (
 		})
 
 		dHost.VirtualMachines = cvt.Iter(host.Edges.Vms, func(_ int, vm *db.VirtualMachine) *domain.VirtualMachine {
-			status := taskflow.VirtualMachineStatusOffline
-			if vmonline.OnlineMap[vm.ID] {
-				status = taskflow.VirtualMachineStatusOnline
-			}
 			return cvt.From(vm, &domain.VirtualMachine{
-				Status: status,
+				Status: vmstatus.Resolve(vmstatus.Input{
+					Online:     vmonline.OnlineMap[vm.ID],
+					Conditions: vm.Conditions.Conditions,
+					IsRecycled: vm.IsRecycled,
+					CreatedAt:  vm.CreatedAt,
+					Now:        time.Now(),
+				}),
 			})
 		})
 

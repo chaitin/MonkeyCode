@@ -12,6 +12,7 @@ import (
 	etypes "github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
 )
 
 // HostUsecase 主机业务逻辑接口
@@ -167,29 +168,16 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 	v.Version = vm.Version
 	v.EnvironmentID = vm.EnvironmentID
 	v.CreatedAt = vm.CreatedAt.Unix()
-
 	if vm.Conditions != nil {
 		v.Conditions = vm.Conditions.Conditions
-		if v.Status != taskflow.VirtualMachineStatusOnline {
-			v.Status = taskflow.VirtualMachineStatusPending
-			for _, cond := range vm.Conditions.Conditions {
-				switch cond.Type {
-				case etypes.ConditionTypeFailed:
-					v.Status = taskflow.VirtualMachineStatusOffline
-				case etypes.ConditionTypeHibernated:
-					v.Status = taskflow.VirtualMachineStatusHibernated
-				case etypes.ConditionTypeReady:
-					if time.Since(time.UnixMilli(cond.LastTransitionTime)) > 3*time.Minute {
-						v.Status = taskflow.VirtualMachineStatusOffline
-					}
-				}
-			}
-		}
 	}
-
-	if vm.IsRecycled {
-		v.Status = taskflow.VirtualMachineStatusOffline
-	}
+	v.Status = vmstatus.Resolve(vmstatus.Input{
+		Online:     v.Status == taskflow.VirtualMachineStatusOnline,
+		Conditions: v.Conditions,
+		IsRecycled: vm.IsRecycled,
+		CreatedAt:  vm.CreatedAt,
+		Now:        time.Now(),
+	})
 
 	switch vm.TTLKind {
 	case consts.CountDown:
