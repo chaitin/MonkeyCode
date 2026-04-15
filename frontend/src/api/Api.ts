@@ -3686,10 +3686,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsList: (params: RequestParams = {}) =>
       this.request<
-        GitInChaitinNetGoDevWebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListGitBotResp;
         },
-        GitInChaitinNetGoDevWebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-bots`,
         method: "GET",
@@ -3709,7 +3709,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsUpdate: (req: DomainUpdateGitBotReq, params: RequestParams = {}) =>
-      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-bots`,
         method: "PUT",
         body: req,
@@ -3730,10 +3730,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersGitBotsCreate: (req: DomainCreateGitBotReq, params: RequestParams = {}) =>
       this.request<
-        GitInChaitinNetGoDevWebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainGitBot;
         },
-        GitInChaitinNetGoDevWebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-bots`,
         method: "POST",
@@ -3754,7 +3754,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsShareCreate: (req: DomainShareGitBotReq, params: RequestParams = {}) =>
-      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-bots/share`,
         method: "POST",
         body: req,
@@ -3787,10 +3787,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       params: RequestParams = {},
     ) =>
       this.request<
-        GitInChaitinNetGoDevWebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainListGitBotTaskResp;
         },
-        GitInChaitinNetGoDevWebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/git-bots/tasks`,
         method: "GET",
@@ -3811,7 +3811,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @secure
      */
     v1UsersGitBotsDelete: (id: string, params: RequestParams = {}) =>
-      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/users/git-bots/${id}`,
         method: "DELETE",
         secure: true,
@@ -3829,13 +3829,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      * @request GET:/api/v1/users/git-identities
      * @secure
      */
-    v1UsersGitIdentitiesList: (
-      query?: {
-        /** 是否刷新缓存 */
-        flush?: boolean;
-      },
-      params: RequestParams = {},
-    ) =>
+    v1UsersGitIdentitiesList: (params: RequestParams = {}) =>
       this.request<
         GithubComGoYokoWebResp & {
           data?: DomainGitIdentity[];
@@ -3844,7 +3838,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       >({
         path: `/api/v1/users/git-identities`,
         method: "GET",
-        query: query,
         secure: true,
         type: ContentType.Json,
         format: "json",
