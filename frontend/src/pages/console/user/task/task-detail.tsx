@@ -175,9 +175,9 @@ export default function TaskDetailPage() {
   const contextProgress = contextUsage.size && contextUsage.size > 0
     ? Math.min(Math.max((contextUsage.used ?? 0) / contextUsage.size, 0), 1)
     : 0
-  const contextProgressClassName = contextProgress >= 0.9
+  const contextProgressClassName = contextProgress >= 0.8
     ? "text-destructive"
-    : contextProgress >= 0.75
+    : contextProgress >= 0.6
       ? "text-amber-500"
       : "text-foreground"
   const contextUsagePercent = `${(contextProgress * 100).toFixed(1)}%`
