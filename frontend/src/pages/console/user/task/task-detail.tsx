@@ -1,5 +1,6 @@
 import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
+import { PlanStepsBlock } from "@/components/console/task/chat-panel"
 import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
 import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -7,7 +8,7 @@ import { MessageItem, type MessageType } from "@/components/console/task/message
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
-import type { AvailableCommands } from "@/components/console/task/task-shared"
+import type { AvailableCommands, TaskPlan, TaskStreamStatus } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import {
@@ -49,6 +50,10 @@ export default function TaskDetailPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
   const [streamStatus, setStreamStatus] = React.useState<TaskMessageHandlerStatus>("inited")
   const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
+  const [plan, setPlan] = React.useState<TaskPlan>({
+    entries: [],
+    version: 0,
+  })
   const [contextUsage, setContextUsage] = React.useState<{ size: number | null; used: number | null }>({
     size: null,
     used: null,
@@ -166,6 +171,7 @@ export default function TaskDetailPage() {
   const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
   const hasContextUsage = contextUsage.size !== null || contextUsage.used !== null
   const canInput = taskInteractive && !sending && streamStatus !== "connected" && streamStatus !== "inited"
+  const planStreamStatus: TaskStreamStatus = streamStatus === "connected" ? "executing" : streamStatus
   const contextProgress = contextUsage.size && contextUsage.size > 0
     ? Math.min(Math.max((contextUsage.used ?? 0) / contextUsage.size, 0), 1)
     : 0
@@ -221,6 +227,10 @@ export default function TaskDetailPage() {
     }
 
     setAvailableCommands(null)
+    setPlan({
+      entries: [],
+      version: 0,
+    })
     setStreamStatus("inited")
     setStreamConnectionState("connecting")
     setQueuedReplyIds([])
@@ -236,6 +246,7 @@ export default function TaskDetailPage() {
           setStreamStatus(state.status)
           setRawLiveMessages(state.messages)
           setAvailableCommands(state.availableCommands)
+          setPlan(state.plan)
           setContextUsage((prev) => ({
             size: state.contextUsage.size ?? prev.size,
             used: state.contextUsage.used ?? prev.used,
@@ -274,6 +285,7 @@ export default function TaskDetailPage() {
         setStreamStatus(state.status)
         setRawLiveMessages(state.messages)
         setAvailableCommands(state.availableCommands)
+        setPlan(state.plan)
         setContextUsage((prev) => ({
           size: state.contextUsage.size ?? prev.size,
           used: state.contextUsage.used ?? prev.used,
@@ -317,6 +329,10 @@ export default function TaskDetailPage() {
     setPreviewDialogOpen(false)
     setStreamStatus("inited")
     setAvailableCommands(null)
+    setPlan({
+      entries: [],
+      version: 0,
+    })
     setSending(false)
     setRawHistoryMessages([])
     setRawLiveMessages([])
@@ -845,6 +861,11 @@ export default function TaskDetailPage() {
                   </div>
                   {/* 输入框 */}
                   <div className={cn("shrink-0", hasSidePanel ? "w-full" : "mx-auto max-w-[800px] w-full")}>
+                    {taskInteractive && plan.entries.length > 0 && (
+                      <div className="mb-2">
+                        <PlanStepsBlock plan={plan} streamStatus={planStreamStatus} />
+                      </div>
+                    )}
                     {taskInteractive ? (
                       <TaskChatInputBox
                         streamStatus={streamStatus}
