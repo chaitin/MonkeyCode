@@ -23,7 +23,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
-	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
@@ -31,6 +30,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
 	"github.com/chaitin/MonkeyCode/backend/templates"
 )
 
@@ -128,27 +128,12 @@ func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID)
 			IDs: []string{vm.ID},
 		})
 		a.logger.With("resp", resp, "id", vm.ID).DebugContext(ctx, "is online check")
-
-		if resp != nil && resp.OnlineMap[vm.ID] {
-			vm.Status = taskflow.VirtualMachineStatusOnline
-		} else {
-			vm.Status = taskflow.VirtualMachineStatusPending
-
-			for _, cond := range vm.Conditions {
-				switch cond.Type {
-				case types.ConditionTypeFailed:
-					vm.Status = taskflow.VirtualMachineStatusOffline
-				case types.ConditionTypeHibernated:
-					if strings.ToLower(strings.TrimSpace(cond.Reason)) == "hibernated" {
-						vm.Status = taskflow.VirtualMachineStatusHibernated
-					}
-				case types.ConditionTypeReady:
-					if time.Since(time.Unix(vm.CreatedAt, 0)) > 2*time.Minute {
-						vm.Status = taskflow.VirtualMachineStatusOffline
-					}
-				}
-			}
-		}
+		vm.Status = vmstatus.Resolve(vmstatus.Input{
+			Online:     resp != nil && resp.OnlineMap[vm.ID],
+			Conditions: vm.Conditions,
+			CreatedAt:  time.Unix(vm.CreatedAt, 0),
+			Now:        time.Now(),
+		})
 	}
 
 	if stat, err := a.repo.Stat(ctx, id); err == nil {
