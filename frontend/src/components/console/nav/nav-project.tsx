@@ -21,22 +21,76 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCommonData } from "../data-provider"
-import { IconChevronDown, IconChevronRight, IconDots, IconDotsVertical, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader, IconPlayerStopFilled, IconPlus, IconPointFilled, IconTrash } from "@tabler/icons-react"
+import { IconChevronDown, IconChevronRight, IconDots, IconFolder, IconFolderOpen, IconFolderPlus, IconLoader, IconPlus, IconPointFilled } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import AddProjectDialog from "../project/add-project"
 import StartDevelopTaskDialog from "../project/start-develop-task-dialog"
 import CreateDefaultTaskDialog from "../task/create-default-task-dialog"
+import { TaskActionsDropdown } from "../task/task-actions-dropdown"
 import { isProjectRepoUnbound } from "@/utils/project"
 import { type DomainProjectTask } from "@/api/Api"
-import { stripMarkdown } from "@/utils/common"
+import { getTaskDisplayName } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { FolderOpen, ListTodo } from "lucide-react"
+
+type SidebarTaskItemProps = {
+  task: DomainProjectTask
+  isActive: boolean
+  onStop: (task: DomainProjectTask) => void
+  onDelete: (task: DomainProjectTask) => void
+  onRenameSuccess: () => void
+}
+
+function SidebarTaskItem({ task, isActive, onStop, onDelete, onRenameSuccess }: SidebarTaskItemProps) {
+  const isPending = task.status === "pending"
+  const isProcessing = task.status === "processing"
+  const isFinished = task.status === "finished" || task.status === "error"
+  const canStop = isPending || isProcessing
+  const TaskIcon =
+    isFinished
+      ? IconPointFilled
+      : isProcessing
+        ? IconPointFilled
+        : IconLoader
+
+  return (
+    <SidebarMenuSubButton
+      size="md"
+      isActive={isActive}
+      asChild
+      className="group/task-row py-4"
+    >
+      <div className="flex w-full min-w-0 items-center gap-1">
+        <Link
+          to={`/console/task/${task.id}`}
+          className="min-w-0 flex-1 flex items-center gap-2 truncate"
+        >
+          <TaskIcon
+            className={cn(
+              "size-3.5 shrink-0",
+              isPending && "animate-spin text-primary",
+              isProcessing && "text-green-500",
+              isFinished && "text-muted-foreground/40"
+            )}
+          />
+          <span className="truncate">{getTaskDisplayName(task)}</span>
+        </Link>
+        <TaskActionsDropdown
+          task={task}
+          onStop={onStop}
+          onDelete={onDelete}
+          onRenameSuccess={onRenameSuccess}
+          triggerClassName="opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
+        />
+      </div>
+    </SidebarMenuSubButton>
+  )
+}
 
 export default function NavProject() {
   const location = useLocation()
@@ -55,72 +109,19 @@ export default function NavProject() {
 
   const renderTaskList = (tasks: DomainProjectTask[], keyPrefix: string) => (
     tasks.map((task: DomainProjectTask, index) => {
-      const isPending = task.status === "pending"
-      const isProcessing = task.status === "processing"
-      const isFinished = task.status === "finished" || task.status === "error"
-      const TaskIcon =
-        isFinished
-          ? IconPointFilled
-          : isProcessing
-            ? IconPointFilled
-            : IconLoader
       return (
-        <SidebarMenuSubButton
+        <SidebarTaskItem
           key={`${keyPrefix}-${task.id ?? index}-${index}`}
-          size="md"
+          task={task}
           isActive={location.pathname === `/console/task/${task.id}`}
-          asChild
-          className="group/task-row py-4"
-        >
-          <div className="flex w-full min-w-0 items-center gap-1">
-            <Link
-              to={`/console/task/${task.id}`}
-              className="min-w-0 flex-1 flex items-center gap-2 truncate"
-            >
-              <TaskIcon
-                className={cn(
-                  "size-3.5 shrink-0",
-                  isPending && "animate-spin text-primary",
-                  isProcessing && "text-green-500",
-                  isFinished && "text-muted-foreground/40"
-                )}
-              />
-              <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-            </Link>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <IconDotsVertical className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="py-1">
-                {(task.status === "pending" || task.status === "processing") && (
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => setTaskToStop(task)}
-                    className="text-xs py-1 px-1.5 [&_svg]:size-3"
-                  >
-                    <IconPlayerStopFilled className="mr-1" />
-                    终止任务
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setTaskToDelete(task)}
-                  className="text-xs py-1 px-1.5 [&_svg]:size-3"
-                >
-                  <IconTrash className="mr-1" />
-                  删除任务
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </SidebarMenuSubButton>
+          onStop={setTaskToStop}
+          onDelete={setTaskToDelete}
+          onRenameSuccess={() => {
+            reloadProjects()
+            reloadUnlinkedTasks()
+            reloadHistoricalTasks()
+          }}
+        />
       )
     })
   )
@@ -369,71 +370,19 @@ export default function NavProject() {
                       <SidebarMenuSub className="border-none px-0 mx-0">
                         <SidebarMenuSubItem className="flex flex-col gap-0.5">
                           {(project.tasks || []).map((task: DomainProjectTask, index) => {
-                            const isPending = task.status === "pending"
-                            const isProcessing = task.status === "processing"
-                            const isFinished = task.status === "finished" || task.status === "error"
-                            const TaskIcon =
-                              isFinished
-                                ? IconPointFilled
-                                : isProcessing
-                                  ? IconPointFilled
-                                  : IconLoader
                             return (
-                              <SidebarMenuSubButton
+                              <SidebarTaskItem
                                 key={`${projectId}-${task.id ?? index}-${index}`}
+                                task={task}
                                 isActive={location.pathname === `/console/task/${task.id}`}
-                                asChild
-                                className="group/task-row py-4"
-                              >
-                                <div className="flex w-full min-w-0 items-center gap-1">
-                                  <Link
-                                    to={`/console/task/${task.id}`}
-                                    className="min-w-0 flex-1 flex items-center gap-2 truncate"
-                                  >
-                                    <TaskIcon
-                                      className={cn(
-                                        "size-3.5 shrink-0",
-                                        isPending && "animate-spin text-primary",
-                                        isProcessing && "text-green-500",
-                                        isFinished && "text-muted-foreground/40"
-                                      )}
-                                    />
-                                    <span className="truncate">{task.summary || stripMarkdown(task.content || "")}</span>
-                                  </Link>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="size-5 shrink-0 opacity-0 group-hover/task-row:opacity-100 hover:opacity-100 text-muted-foreground/50 group-hover/task-row:text-sidebar-accent-foreground hover:text-primary"
-                                        onClick={(e) => e.preventDefault()}
-                                      >
-                                        <IconDotsVertical className="size-3.5" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="py-1">
-                                      {(task.status === "pending" || task.status === "processing") && (
-                                        <DropdownMenuItem
-                                          variant="destructive"
-                                          onClick={() => setTaskToStop(task)}
-                                          className="text-xs py-1 px-1.5 [&_svg]:size-3"
-                                        >
-                                          <IconPlayerStopFilled className="mr-1" />
-                                          终止任务
-                                        </DropdownMenuItem>
-                                      )}
-                                      <DropdownMenuItem
-                                        variant="destructive"
-                                        onClick={() => setTaskToDelete(task)}
-                                        className="text-xs py-1 px-1.5 [&_svg]:size-3"
-                                      >
-                                        <IconTrash className="mr-1" />
-                                        删除任务
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </SidebarMenuSubButton>
+                                onStop={setTaskToStop}
+                                onDelete={setTaskToDelete}
+                                onRenameSuccess={() => {
+                                  reloadProjects()
+                                  reloadUnlinkedTasks()
+                                  reloadHistoricalTasks()
+                                }}
+                              />
                             )
                           })}
                         </SidebarMenuSubItem>
@@ -461,7 +410,7 @@ export default function NavProject() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除任务</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除任务「{taskToDelete ? (taskToDelete.summary || stripMarkdown(taskToDelete.content || "")) : ""}」吗？此操作不可撤销。
+              确定要删除任务「{getTaskDisplayName(taskToDelete)}」吗？此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -484,7 +433,7 @@ export default function NavProject() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认终止任务</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要终止任务「{taskToStop ? (taskToStop.summary || stripMarkdown(taskToStop.content || "")) : ""}」吗？
+              确定要终止任务「{getTaskDisplayName(taskToStop)}」吗？
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

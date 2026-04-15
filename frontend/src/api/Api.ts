@@ -1029,6 +1029,8 @@ export interface DomainProjectTask {
   sub_type?: ConstsTaskSubType;
   /** 任务摘要 */
   summary?: string;
+  /** 任务标题 */
+  title?: string;
   /** 任务类型 */
   type?: ConstsTaskType;
   /** 虚拟机 */
@@ -1265,6 +1267,8 @@ export interface DomainTask {
   sub_type?: ConstsTaskSubType;
   /** 任务摘要 */
   summary?: string;
+  /** 任务标题 */
+  title?: string;
   /** 任务类型 */
   type?: ConstsTaskType;
   /** 虚拟机 */
@@ -1500,6 +1504,10 @@ export interface DomainUpdateProjectReq {
   image_id?: string;
   /** 项目名 */
   name?: string;
+}
+
+export interface DomainUpdateTaskReq {
+  title?: string;
 }
 
 export interface DomainUpdateTeamGroupReq {
@@ -5931,6 +5939,26 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       >({
         path: `/api/v1/users/tasks/${id}`,
         method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新任务信息（如标题）
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksUpdate
+     * @summary 更新任务
+     * @request PUT:/api/v1/users/tasks/{id}
+     * @secure
+     */
+    v1UsersTasksUpdate: (id: string, param: DomainUpdateTaskReq, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/tasks/${id}`,
+        method: "PUT",
+        body: param,
         secure: true,
         type: ContentType.Json,
         format: "json",

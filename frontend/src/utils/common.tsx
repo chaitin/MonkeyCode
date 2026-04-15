@@ -4,7 +4,7 @@ import Icon from "@/components/common/Icon"
 import { IconAssembly, IconBrandChrome, IconBrandPython, IconBug, IconDeviceGamepad2, IconFileText, IconHelpHexagon, IconPalette, IconPuzzle, IconShieldChevron, IconTerminal2, IconTestPipe } from "@tabler/icons-react"
 import Cap from "@cap.js/widget"
 import { HoverCardContent } from "@/components/ui/hover-card"
-import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
+import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProjectTask, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
@@ -575,6 +575,29 @@ export function stripMarkdown(markdown: string | undefined): string {
 
   const result = remark().use(strip).processSync(markdown)
   return String(result).trim()
+}
+
+export function getTaskDisplayName(task?: Pick<DomainProjectTask, "title" | "summary" | "content"> | null, fallback = ""): string {
+  if (!task) {
+    return fallback
+  }
+
+  const title = task.title?.trim()
+  if (title) {
+    return title
+  }
+
+  const summary = task.summary?.trim()
+  if (summary) {
+    return summary
+  }
+
+  const content = stripMarkdown(task.content)
+  if (content) {
+    return content
+  }
+
+  return fallback
 }
 
 /**

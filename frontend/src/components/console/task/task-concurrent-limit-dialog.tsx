@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
-import { getSubscriptionPlanShortLabel, hasProSubscription } from "@/utils/common"
+import { getSubscriptionPlanShortLabel, getTaskDisplayName, hasProSubscription } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconPlayerStopFilled } from "@tabler/icons-react"
 import { useState, useEffect } from "react"
@@ -83,7 +83,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
               <div key={task.id} className="flex min-w-0 items-center gap-3 overflow-hidden rounded-md border px-3 py-2">
                 <div className="w-0 min-w-0 flex-1 overflow-hidden">
                   <span className="block truncate text-sm">
-                    {task.summary || task.content || "未命名任务"}
+                    {getTaskDisplayName(task, "未命名任务")}
                   </span>
                 </div>
                 <Button

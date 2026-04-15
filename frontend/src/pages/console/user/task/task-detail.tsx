@@ -30,7 +30,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
-import { formatTokens } from "@/utils/common"
+import { formatTokens, getTaskDisplayName } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
@@ -498,8 +498,7 @@ export default function TaskDetailPage() {
   React.useEffect(() => {
     if (!setTaskName) return
     if (task) {
-      const name = task.summary || task.content
-      setTaskName(name?.trim() || "未知任务名称")
+      setTaskName(getTaskDisplayName(task, "未知任务名称"))
     }
     return () => setTaskName?.(null)
   }, [task, setTaskName])
