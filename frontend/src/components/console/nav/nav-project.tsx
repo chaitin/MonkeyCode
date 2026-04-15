@@ -50,7 +50,6 @@ function SidebarTaskItem({ task, isActive, onStop, onDelete, onRenameSuccess }: 
   const isPending = task.status === "pending"
   const isProcessing = task.status === "processing"
   const isFinished = task.status === "finished" || task.status === "error"
-  const canStop = isPending || isProcessing
   const TaskIcon =
     isFinished
       ? IconPointFilled

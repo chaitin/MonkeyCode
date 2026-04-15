@@ -75,6 +75,8 @@ interface RestartTaskResponse extends TaskControlCallResponse {
 
 export class TaskControlClient implements TaskRepositoryClient {
   private static readonly CONNECT_TIMEOUT_MS = 10000
+  private static readonly DEFAULT_CALL_TIMEOUT_MS = 5000
+  private static readonly RESTART_TIMEOUT_MS = 15000
 
   private readonly taskId: string
   private readonly onStateChange?: (state: TaskControlClientState) => void
@@ -179,7 +181,11 @@ export class TaskControlClient implements TaskRepositoryClient {
     return { ...this.state }
   }
 
-  async call<T>(kind: string, payload: Record<string, unknown>, timeout = 5000): Promise<T | null> {
+  async call<T>(
+    kind: string,
+    payload: Record<string, unknown>,
+    timeout = TaskControlClient.DEFAULT_CALL_TIMEOUT_MS,
+  ): Promise<T | null> {
     if (this.socket?.readyState !== WebSocket.OPEN) {
       return null
     }
@@ -266,7 +272,7 @@ export class TaskControlClient implements TaskRepositoryClient {
   restart(loadSession: boolean) {
     return this.call<RestartTaskResponse>("restart", {
       load_session: loadSession,
-    }).then((response) => !!response?.success)
+    }, TaskControlClient.RESTART_TIMEOUT_MS).then((response) => !!response?.success)
   }
 
   private handleSocketMessage(rawData: string) {

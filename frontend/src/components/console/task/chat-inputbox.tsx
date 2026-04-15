@@ -1,22 +1,12 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconPlayerStopFilled, IconRecycle, IconSend, IconTerminal2 } from "@tabler/icons-react"
+import { IconCommand, IconLoader, IconPlayerStopFilled, IconSend, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import type { AvailableCommand, AvailableCommands, TaskStreamStatus } from "./task-shared"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 
 
@@ -26,15 +16,13 @@ interface TaskChatInputBoxProps {
   onSend: (content: string) => void
   sending: boolean
   queueSize: number
-  sendResetSession: () => Promise<boolean>
   executionTimeMs?: number
   onCancel?: () => void
 }
 
-export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, sendResetSession, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
+export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
   const [content, setContent] = useState('')
   const [isComposing, setIsComposing] = useState(false)
-  const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
 
@@ -109,20 +97,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
             <div className="flex flex-row gap-2 items-center min-w-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled}>
+                  <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled || !showCommandItems}>
                     <IconTerminal2 />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className={showCommandItems ? "w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]" : "w-48 min-w-48"}>
-                  <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setResetDialogOpen(true)}>
-                    <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
-                      <IconRecycle />
-                      <div className="font-bold text-xs">重置上下文</div>
-                    </div>
-                    <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
-                      清空当前会话上下文，后续操作将基于新的上下文继续进行。
-                    </div>
-                  </DropdownMenuItem>
                   {showCommandItems && (
                     <>
                       {commandItems.map((command: AvailableCommand, index: number) => (
@@ -169,30 +148,6 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           </div>
         </InputGroupAddon>
       </InputGroup>
-
-      {/* Reset Session 确认对话框 */}
-      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>重置上下文</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要重置当前上下文吗？后续操作将会基于新的上下文进行。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                void sendResetSession()
-                setResetDialogOpen(false)
-              }}
-            >
-              确认
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
     </div>
   )
 }

@@ -13,7 +13,6 @@ import { TaskStreamClient, type TaskStreamClientState, type TaskStreamConnection
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -25,7 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CircularProgress } from "@/components/ui/circular-progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
@@ -74,6 +73,7 @@ export default function TaskDetailPage() {
   const [previewPorts, setPreviewPorts] = React.useState<DomainVMPort[] | undefined>(undefined)
   const [contextUsagePopoverOpen, setContextUsagePopoverOpen] = React.useState(false)
   const [resetContextDialogOpen, setResetContextDialogOpen] = React.useState(false)
+  const [resetContextSubmitting, setResetContextSubmitting] = React.useState(false)
   const [chatHasOverflow, setChatHasOverflow] = React.useState(false)
   const [chatAtTop, setChatAtTop] = React.useState(true)
   const [chatAtBottom, setChatAtBottom] = React.useState(true)
@@ -534,19 +534,36 @@ export default function TaskDetailPage() {
     connectStreamClient("new", content)
   }, [connectStreamClient, taskId])
 
+  const handleCompactContext = React.useCallback(() => {
+    if (!canInput) return
+    setContextUsagePopoverOpen(false)
+    handleSend("/compact")
+  }, [canInput, handleSend])
+
   const handleCancel = React.useCallback(() => {
     streamClientRef.current?.sendCancel()
   }, [])
 
   const handleResetSession = React.useCallback(async () => {
     const success = await taskControlClientRef.current?.restart(false)
-    if (!success) {
-      toast.error("重置上下文失败")
-      return false
-    }
-    toast.success("上下文已重置")
-    return true
+    return !!success
   }, [])
+
+  const handleConfirmResetContext = React.useCallback(async () => {
+    if (resetContextSubmitting) return
+
+    setResetContextSubmitting(true)
+    const success = await handleResetSession()
+    setResetContextSubmitting(false)
+
+    if (success) {
+      setResetContextDialogOpen(false)
+      toast.success("上下文已重置")
+      return
+    }
+
+    toast.error("重置上下文失败")
+  }, [handleResetSession, resetContextSubmitting])
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
@@ -645,15 +662,16 @@ export default function TaskDetailPage() {
           <Badge variant="outline" className="shrink-0">{task?.model?.model}</Badge>
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {hasContextUsage && (
-              <Popover open={contextUsagePopoverOpen} onOpenChange={setContextUsagePopoverOpen}>
-                <PopoverTrigger asChild>
+              <HoverCard
+                open={contextUsagePopoverOpen}
+                onOpenChange={setContextUsagePopoverOpen}
+                openDelay={120}
+                closeDelay={180}
+              >
+                <HoverCardTrigger asChild>
                   <button
                     type="button"
                     className="inline-flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    onMouseEnter={() => setContextUsagePopoverOpen(true)}
-                    onMouseLeave={() => setContextUsagePopoverOpen(false)}
-                    onFocus={() => setContextUsagePopoverOpen(true)}
-                    onBlur={() => setContextUsagePopoverOpen(false)}
                     aria-label="查看上下文使用情况"
                   >
                     <CircularProgress
@@ -664,16 +682,14 @@ export default function TaskDetailPage() {
                       indicatorClassName={contextProgressClassName}
                     />
                   </button>
-                </PopoverTrigger>
-                <PopoverContent
+                </HoverCardTrigger>
+                <HoverCardContent
                   side="bottom"
                   align="start"
-                  className="w-64 p-3"
-                  onMouseEnter={() => setContextUsagePopoverOpen(true)}
-                  onMouseLeave={() => setContextUsagePopoverOpen(false)}
+                  className="w-90 p-0"
                 >
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-3 rounded-md bg-muted/40 px-3 py-2">
+                  <div className="overflow-hidden rounded-md bg-background">
+                    <div className="flex items-center gap-3 border-b bg-muted/35 px-3 py-3">
                       <CircularProgress
                         value={contextUsage.used ?? 0}
                         max={contextUsage.size ?? 0}
@@ -682,33 +698,62 @@ export default function TaskDetailPage() {
                         indicatorClassName={contextProgressClassName}
                       />
                       <div className="min-w-0">
-                        <div className="text-xs text-muted-foreground">
-                          上下文占用
-                        </div>
                         <div className={cn("text-sm font-medium", contextProgressClassName)}>
-                          已使用 {contextUsagePercent}
+                          上下文已使用 {contextUsagePercent}
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-md border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
-                      上下文过大可能导致响应变慢、消耗增多，必要时可以重置上下文，让后续对话从更精简的上下文继续。
+                    <div className="px-3 py-2.5 text-xs leading-5 text-foreground">
+                      上下文过大可能导致 AI 模型响应变慢、token 消耗量增多。
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-full"
-                      disabled={!canInput}
-                      onClick={() => {
-                        setContextUsagePopoverOpen(false)
-                        setResetContextDialogOpen(true)
-                      }}
-                    >
-                      重置上下文
-                    </Button>
+                    <div className="space-y-2 border-t bg-muted/15 p-2">
+                      <div className="rounded-md border bg-background px-3 py-2.5 shadow-xs">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">压缩上下文</div>
+                            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                              尽量保留关键信息，减少上下文占用。
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={contextProgress >= 0.5 ? "default" : "secondary"}
+                            className="shrink-0"
+                            disabled={!canInput}
+                            onClick={handleCompactContext}
+                          >
+                            压缩
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="rounded-md border bg-background px-3 py-2.5 shadow-xs">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium">重置上下文</div>
+                            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                              直接清空当前上下文，重新开始后续对话。
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="shrink-0"
+                            disabled={!canInput}
+                            onClick={() => {
+                              setContextUsagePopoverOpen(false)
+                              setResetContextDialogOpen(true)
+                            }}
+                          >
+                            重置
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </PopoverContent>
-              </Popover>
+                </HoverCardContent>
+              </HoverCard>
             )}
             {totalTokens > 0 && (
               <span className="hidden shrink-0 lg:inline">
@@ -758,7 +803,13 @@ export default function TaskDetailPage() {
   return (
     <div className="flex flex-col h-full min-h-0 gap-2">
       {detailHeader}
-      <AlertDialog open={resetContextDialogOpen} onOpenChange={setResetContextDialogOpen}>
+      <AlertDialog
+        open={resetContextDialogOpen}
+        onOpenChange={(open) => {
+          if (resetContextSubmitting) return
+          setResetContextDialogOpen(open)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>重置上下文</AlertDialogTitle>
@@ -767,15 +818,17 @@ export default function TaskDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
+            <AlertDialogCancel disabled={resetContextSubmitting}>取消</AlertDialogCancel>
+            <Button
+              type="button"
               onClick={() => {
-                void handleResetSession()
-                setResetContextDialogOpen(false)
+                void handleConfirmResetContext()
               }}
+              disabled={resetContextSubmitting}
             >
+              {resetContextSubmitting && <Spinner className="mr-2 size-4" />}
               确认
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -874,7 +927,6 @@ export default function TaskDetailPage() {
                         sending={sending}
                         queueSize={0}
                         executionTimeMs={timeCost}
-                        sendResetSession={handleResetSession}
                       />
                     ) : (
                       <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
