@@ -12,12 +12,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Item, ItemContent, ItemDescription, ItemFooter, ItemHeader, ItemTitle } from "@/components/ui/item";
+import { Item, ItemContent, ItemFooter, ItemHeader, ItemTitle } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { TaskActionsDropdown } from "@/components/console/task/task-actions-dropdown";
 import { cn } from "@/lib/utils";
-import { formatTokens, getRepoNameFromUrl, getTaskDisplayName, renderHoverCardContent } from "@/utils/common";
+import { formatTokens, getTaskDisplayName, renderHoverCardContent } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import dayjs from "dayjs";
@@ -222,9 +222,6 @@ export default function TasksPage() {
                 triggerClassName="text-muted-foreground/50 group-hover:text-primary hover:text-primary"
               />
             </ItemHeader>
-            <ItemDescription className="whitespace-normal line-clamp-1 break-all">
-              {getRepoNameFromUrl(task?.repo_url || '') || task.repo_filename || '-'}
-            </ItemDescription>
           </ItemContent>
           <ItemFooter className="flex flex-row gap-2 justify-between border-t pt-3 text-xs text-muted-foreground">
             <div className="flex flex-row gap-2">
