@@ -93,6 +93,42 @@ func (f ImageFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ImageMutation", m)
 }
 
+// The MCPToolFunc type is an adapter to allow the use of ordinary
+// function as MCPTool mutator.
+type MCPToolFunc func(context.Context, *db.MCPToolMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MCPToolFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.MCPToolMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.MCPToolMutation", m)
+}
+
+// The MCPUpstreamFunc type is an adapter to allow the use of ordinary
+// function as MCPUpstream mutator.
+type MCPUpstreamFunc func(context.Context, *db.MCPUpstreamMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MCPUpstreamFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.MCPUpstreamMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.MCPUpstreamMutation", m)
+}
+
+// The MCPUserToolSettingFunc type is an adapter to allow the use of ordinary
+// function as MCPUserToolSetting mutator.
+type MCPUserToolSettingFunc func(context.Context, *db.MCPUserToolSettingMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MCPUserToolSettingFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.MCPUserToolSettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.MCPUserToolSettingMutation", m)
+}
+
 // The ModelFunc type is an adapter to allow the use of ordinary
 // function as Model mutator.
 type ModelFunc func(context.Context, *db.ModelMutation) (db.Value, error)

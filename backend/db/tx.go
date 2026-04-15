@@ -28,6 +28,12 @@ type Tx struct {
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
 	Image *ImageClient
+	// MCPTool is the client for interacting with the MCPTool builders.
+	MCPTool *MCPToolClient
+	// MCPUpstream is the client for interacting with the MCPUpstream builders.
+	MCPUpstream *MCPUpstreamClient
+	// MCPUserToolSetting is the client for interacting with the MCPUserToolSetting builders.
+	MCPUserToolSetting *MCPUserToolSettingClient
 	// Model is the client for interacting with the Model builders.
 	Model *ModelClient
 	// ModelApiKey is the client for interacting with the ModelApiKey builders.
@@ -222,6 +228,9 @@ func (tx *Tx) init() {
 	tx.GitIdentity = NewGitIdentityClient(tx.config)
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
+	tx.MCPTool = NewMCPToolClient(tx.config)
+	tx.MCPUpstream = NewMCPUpstreamClient(tx.config)
+	tx.MCPUserToolSetting = NewMCPUserToolSettingClient(tx.config)
 	tx.Model = NewModelClient(tx.config)
 	tx.ModelApiKey = NewModelApiKeyClient(tx.config)
 	tx.ModelPricing = NewModelPricingClient(tx.config)

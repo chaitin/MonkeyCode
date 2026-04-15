@@ -27,6 +27,15 @@ type Host func(*sql.Selector)
 // Image is the predicate function for image builders.
 type Image func(*sql.Selector)
 
+// MCPTool is the predicate function for mcptool builders.
+type MCPTool func(*sql.Selector)
+
+// MCPUpstream is the predicate function for mcpupstream builders.
+type MCPUpstream func(*sql.Selector)
+
+// MCPUserToolSetting is the predicate function for mcpusertoolsetting builders.
+type MCPUserToolSetting func(*sql.Selector)
+
 // Model is the predicate function for model builders.
 type Model func(*sql.Selector)
 
