@@ -109,6 +109,48 @@ func (_m *ImageQuery) Page(ctx context.Context, page, size int) ([]*Image, *Page
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *MCPToolQuery) Page(ctx context.Context, page, size int) ([]*MCPTool, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *MCPUpstreamQuery) Page(ctx context.Context, page, size int) ([]*MCPUpstream, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *MCPUserToolSettingQuery) Page(ctx context.Context, page, size int) ([]*MCPUserToolSetting, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *ModelQuery) Page(ctx context.Context, page, size int) ([]*Model, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
