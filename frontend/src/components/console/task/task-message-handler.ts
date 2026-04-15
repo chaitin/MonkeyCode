@@ -29,6 +29,10 @@ export interface TaskMessageHandlerState {
   messages: MessageType[]
   plan: TaskPlan
   availableCommands: AvailableCommands
+  contextUsage: {
+    size: number | null
+    used: number | null
+  }
   historyCursor: TaskHistoryCursorState
 }
 
@@ -45,6 +49,10 @@ export class TaskMessageHandler {
     availableCommands: {
       commands: [],
       version: 0,
+    },
+    contextUsage: {
+      size: null,
+      used: null,
     },
     historyCursor: {
       cursor: null,
@@ -68,6 +76,10 @@ export class TaskMessageHandler {
       availableCommands: {
         commands: [],
         version: 0,
+      },
+      contextUsage: {
+        size: null,
+        used: null,
       },
       historyCursor: {
         cursor: null,
@@ -116,6 +128,9 @@ export class TaskMessageHandler {
       availableCommands: {
         ...this.state.availableCommands,
         commands: [...this.state.availableCommands.commands],
+      },
+      contextUsage: {
+        ...this.state.contextUsage,
       },
       historyCursor: {
         ...this.state.historyCursor,
@@ -343,7 +358,14 @@ export class TaskMessageHandler {
           }
         }
         break
+      case "usage_update":
+        this.state.contextUsage = {
+          size: typeof data.update.size === "number" ? data.update.size : this.state.contextUsage.size,
+          used: typeof data.update.used === "number" ? data.update.used : this.state.contextUsage.used,
+        }
+        break
       default:
+        console.warn("TaskMessageHandler: unknown ACP sessionUpdate", data)
         break
     }
   }

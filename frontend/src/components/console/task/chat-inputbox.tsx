@@ -75,13 +75,17 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     setIsComposing(false)
   }
 
-  const inputDisabled = React.useMemo(() => {
-    return sending || isExecuting || queueSize > 0
+  const canInput = React.useMemo(() => {
+    return !sending && !isExecuting && queueSize === 0
   }, [sending, isExecuting, queueSize])
 
+  const inputDisabled = React.useMemo(() => {
+    return !canInput
+  }, [canInput])
+
   const controlsDisabled = React.useMemo(() => {
-    return sending || queueSize > 0
-  }, [sending, queueSize])
+    return !canInput
+  }, [canInput])
 
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0

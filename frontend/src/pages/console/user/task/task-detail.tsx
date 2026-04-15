@@ -10,8 +10,21 @@ import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CircularProgress } from "@/components/ui/circular-progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
@@ -22,7 +35,6 @@ import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, I
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { Badge } from "@/components/ui/badge"
 
 type SidePanelType = "files"
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
@@ -37,6 +49,10 @@ export default function TaskDetailPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = React.useState(false)
   const [streamStatus, setStreamStatus] = React.useState<TaskMessageHandlerStatus>("inited")
   const [availableCommands, setAvailableCommands] = React.useState<AvailableCommands | null>(null)
+  const [contextUsage, setContextUsage] = React.useState<{ size: number | null; used: number | null }>({
+    size: null,
+    used: null,
+  })
   const [sending, setSending] = React.useState(false)
   const [rawHistoryMessages, setRawHistoryMessages] = React.useState<MessageType[]>([])
   const [rawLiveMessages, setRawLiveMessages] = React.useState<MessageType[]>([])
@@ -51,6 +67,8 @@ export default function TaskDetailPage() {
   const [historyLoading, setHistoryLoading] = React.useState(false)
   const [historyCursorReady, setHistoryCursorReady] = React.useState(false)
   const [previewPorts, setPreviewPorts] = React.useState<DomainVMPort[] | undefined>(undefined)
+  const [contextUsagePopoverOpen, setContextUsagePopoverOpen] = React.useState(false)
+  const [resetContextDialogOpen, setResetContextDialogOpen] = React.useState(false)
   const [chatHasOverflow, setChatHasOverflow] = React.useState(false)
   const [chatAtTop, setChatAtTop] = React.useState(true)
   const [chatAtBottom, setChatAtBottom] = React.useState(true)
@@ -146,6 +164,17 @@ export default function TaskDetailPage() {
   const [timeCost, setTimeCost] = React.useState(0)
   const previewPortCount = (previewPorts ?? []).length
   const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
+  const hasContextUsage = contextUsage.size !== null || contextUsage.used !== null
+  const canInput = taskInteractive && !sending && streamStatus !== "connected" && streamStatus !== "inited"
+  const contextProgress = contextUsage.size && contextUsage.size > 0
+    ? Math.min(Math.max((contextUsage.used ?? 0) / contextUsage.size, 0), 1)
+    : 0
+  const contextProgressClassName = contextProgress >= 0.9
+    ? "text-destructive"
+    : contextProgress >= 0.75
+      ? "text-amber-500"
+      : "text-foreground"
+  const contextUsagePercent = `${(contextProgress * 100).toFixed(1)}%`
 
   const hasSidePanel = activeSidePanel !== null
   const hasBottomTerminal = terminalPanelOpen
@@ -207,6 +236,10 @@ export default function TaskDetailPage() {
           setStreamStatus(state.status)
           setRawLiveMessages(state.messages)
           setAvailableCommands(state.availableCommands)
+          setContextUsage((prev) => ({
+            size: state.contextUsage.size ?? prev.size,
+            used: state.contextUsage.used ?? prev.used,
+          }))
           setTimeCost(state.executionTimeMs)
           setStreamConnectionState(state.connectionState)
           setQueuedReplyIds(state.queuedReplyIds)
@@ -241,6 +274,10 @@ export default function TaskDetailPage() {
         setStreamStatus(state.status)
         setRawLiveMessages(state.messages)
         setAvailableCommands(state.availableCommands)
+        setContextUsage((prev) => ({
+          size: state.contextUsage.size ?? prev.size,
+          used: state.contextUsage.used ?? prev.used,
+        }))
         setTimeCost(state.executionTimeMs)
         setStreamConnectionState(state.connectionState)
         setQueuedReplyIds(state.queuedReplyIds)
@@ -406,6 +443,10 @@ export default function TaskDetailPage() {
           messageHandler.pushChunks(resp.data?.chunks ?? [])
           const messageState = messageHandler.finalizeCycle()
           setRawHistoryMessages((prev) => [...messageState.messages, ...prev])
+          setContextUsage((prev) => ({
+            size: messageState.contextUsage.size ?? prev.size,
+            used: messageState.contextUsage.used ?? prev.used,
+          }))
           setHistoryCursorReady(true)
           setHistoryCursor(resp.data?.next_cursor ?? null)
           setHistoryHasMore(resp.data?.has_more ?? false)
@@ -587,11 +628,79 @@ export default function TaskDetailPage() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Badge variant="outline" className="shrink-0">{task?.model?.model}</Badge>
-          {totalTokens > 0 && (
-            <span className="text-xs text-muted-foreground shrink-0">
-              已使用 {formatTokens(totalTokens)} tokens
-            </span>
-          )}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {hasContextUsage && (
+              <Popover open={contextUsagePopoverOpen} onOpenChange={setContextUsagePopoverOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    onMouseEnter={() => setContextUsagePopoverOpen(true)}
+                    onMouseLeave={() => setContextUsagePopoverOpen(false)}
+                    onFocus={() => setContextUsagePopoverOpen(true)}
+                    onBlur={() => setContextUsagePopoverOpen(false)}
+                    aria-label="查看上下文使用情况"
+                  >
+                    <CircularProgress
+                      value={contextUsage.used ?? 0}
+                      max={contextUsage.size ?? 0}
+                      size={16}
+                      strokeWidth={2.5}
+                      indicatorClassName={contextProgressClassName}
+                    />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="bottom"
+                  align="start"
+                  className="w-64 p-3"
+                  onMouseEnter={() => setContextUsagePopoverOpen(true)}
+                  onMouseLeave={() => setContextUsagePopoverOpen(false)}
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3 rounded-md bg-muted/40 px-3 py-2">
+                      <CircularProgress
+                        value={contextUsage.used ?? 0}
+                        max={contextUsage.size ?? 0}
+                        size={24}
+                        strokeWidth={3}
+                        indicatorClassName={contextProgressClassName}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs text-muted-foreground">
+                          上下文占用
+                        </div>
+                        <div className={cn("text-sm font-medium", contextProgressClassName)}>
+                          已使用 {contextUsagePercent}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-md border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                      上下文过大可能导致响应变慢、消耗增多，必要时可以重置上下文，让后续对话从更精简的上下文继续。
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-full"
+                      disabled={!canInput}
+                      onClick={() => {
+                        setContextUsagePopoverOpen(false)
+                        setResetContextDialogOpen(true)
+                      }}
+                    >
+                      重置上下文
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+            {totalTokens > 0 && (
+              <span className="hidden shrink-0 lg:inline">
+                累计消耗 {formatTokens(totalTokens)} tokens
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-0.5">
@@ -634,6 +743,27 @@ export default function TaskDetailPage() {
   return (
     <div className="flex flex-col h-full min-h-0 gap-2">
       {detailHeader}
+      <AlertDialog open={resetContextDialogOpen} onOpenChange={setResetContextDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>重置上下文</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要重置当前上下文吗？后续操作将会基于新的上下文进行。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                void handleResetSession()
+                setResetContextDialogOpen(false)
+              }}
+            >
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {showPreparing ? (
         <TaskPreparingView task={task} />
       ) : (
