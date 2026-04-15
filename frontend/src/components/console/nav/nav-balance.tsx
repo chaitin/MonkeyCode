@@ -66,10 +66,9 @@ const BALANCE_NAV = [
 const MODEL_PRICING = [
   { model: "minimax-m2.7", credits: 0, score: 637 },
   { model: "qwen3.5-plus", credits: 0, score: 538 },
-  { model: "gpt5.4", credits: 1000, score: 922 },
-  { model: "gpt5.2", credits: 600, score: 887 },
-  { model: "gpt5.3-codex", credits: 600, score: 918 },
-  { model: "gpt5.1", credits: 500, score: 883 },
+  { model: "gpt-5.4", credits: 1000, score: 922 },
+  { model: "gpt-5.2", credits: 600, score: 887 },
+  { model: "gpt-5.3-codex", credits: 600, score: 918 },
   { model: "glm-5.1", credits: 600, score: 904 },
   { model: "glm-5", credits: 400, score: 847 },
   { model: "glm-4.7", credits: 200, score: 709 },
