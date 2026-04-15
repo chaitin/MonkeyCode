@@ -632,6 +632,7 @@ var (
 		{Name: "kind", Type: field.TypeString},
 		{Name: "sub_type", Type: field.TypeString, Nullable: true},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "title", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "status", Type: field.TypeString},
 		{Name: "created_at", Type: field.TypeTime},
@@ -647,7 +648,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "tasks_users_tasks",
-				Columns:    []*schema.Column{TasksColumns[10]},
+				Columns:    []*schema.Column{TasksColumns[11]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

@@ -25,6 +25,8 @@ const (
 	FieldSubType = "sub_type"
 	// FieldContent holds the string denoting the content field in the database.
 	FieldContent = "content"
+	// FieldTitle holds the string denoting the title field in the database.
+	FieldTitle = "title"
 	// FieldSummary holds the string denoting the summary field in the database.
 	FieldSummary = "summary"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -90,6 +92,7 @@ var Columns = []string{
 	FieldKind,
 	FieldSubType,
 	FieldContent,
+	FieldTitle,
 	FieldSummary,
 	FieldStatus,
 	FieldCreatedAt,
@@ -162,6 +165,11 @@ func BySubType(opts ...sql.OrderTermOption) OrderOption {
 // ByContent orders the results by the content field.
 func ByContent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContent, opts...).ToFunc()
+}
+
+// ByTitle orders the results by the title field.
+func ByTitle(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTitle, opts...).ToFunc()
 }
 
 // BySummary orders the results by the summary field.

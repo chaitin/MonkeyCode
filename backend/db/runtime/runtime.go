@@ -431,11 +431,11 @@ func init() {
 	// task.ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	task.ContentValidator = taskDescContent.Validators[0].(func(string) error)
 	// taskDescCreatedAt is the schema descriptor for created_at field.
-	taskDescCreatedAt := taskFields[7].Descriptor()
+	taskDescCreatedAt := taskFields[8].Descriptor()
 	// task.DefaultCreatedAt holds the default value on creation for the created_at field.
 	task.DefaultCreatedAt = taskDescCreatedAt.Default.(func() time.Time)
 	// taskDescUpdatedAt is the schema descriptor for updated_at field.
-	taskDescUpdatedAt := taskFields[8].Descriptor()
+	taskDescUpdatedAt := taskFields[9].Descriptor()
 	// task.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	task.DefaultUpdatedAt = taskDescUpdatedAt.Default.(func() time.Time)
 	// task.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

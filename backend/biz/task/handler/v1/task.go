@@ -107,6 +107,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	v1.POST("", web.BindHandler(h.Create))
 	v1.PUT("/stop", web.BindHandler(h.Stop))
 	v1.DELETE("/:id", web.BindHandler(h.Delete))
+	v1.PUT("/:id", web.BindHandler(h.Update))
 	// 语音识别文字接口
 	v1.POST("/speech-to-text", web.BaseHandler(h.SpeechToText))
 
@@ -128,6 +129,27 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 func (h *TaskHandler) Delete(c *web.Context, req domain.IDReq[uuid.UUID]) error {
 	user := middleware.GetUser(c)
 	if err := h.usecase.Delete(c.Request().Context(), user, req.ID); err != nil {
+		return err
+	}
+	return c.Success(nil)
+}
+
+// Update 更新任务
+//
+//	@Summary		更新任务
+//	@Description	更新任务信息（如标题）
+//	@Tags			【用户】任务管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id		path		string					true	"任务 ID"
+//	@Param			param	body		domain.UpdateTaskReq	true	"请求参数"
+//	@Success		200		{object}	web.Resp{}				"成功"
+//	@Failure		500		{object}	web.Resp				"服务器内部错误"
+//	@Router			/api/v1/users/tasks/{id} [put]
+func (h *TaskHandler) Update(c *web.Context, req domain.UpdateTaskReq) error {
+	user := middleware.GetUser(c)
+	if err := h.usecase.Update(c.Request().Context(), user, req); err != nil {
 		return err
 	}
 	return c.Success(nil)

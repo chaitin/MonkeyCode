@@ -76,6 +76,20 @@ func (_c *TaskCreate) SetContent(v string) *TaskCreate {
 	return _c
 }
 
+// SetTitle sets the "title" field.
+func (_c *TaskCreate) SetTitle(v string) *TaskCreate {
+	_c.mutation.SetTitle(v)
+	return _c
+}
+
+// SetNillableTitle sets the "title" field if the given value is not nil.
+func (_c *TaskCreate) SetNillableTitle(v *string) *TaskCreate {
+	if v != nil {
+		_c.SetTitle(*v)
+	}
+	return _c
+}
+
 // SetSummary sets the "summary" field.
 func (_c *TaskCreate) SetSummary(v string) *TaskCreate {
 	_c.mutation.SetSummary(v)
@@ -343,6 +357,10 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 		_spec.SetField(task.FieldContent, field.TypeString, value)
 		_node.Content = value
 	}
+	if value, ok := _c.mutation.Title(); ok {
+		_spec.SetField(task.FieldTitle, field.TypeString, value)
+		_node.Title = value
+	}
 	if value, ok := _c.mutation.Summary(); ok {
 		_spec.SetField(task.FieldSummary, field.TypeString, value)
 		_node.Summary = value
@@ -572,6 +590,24 @@ func (u *TaskUpsert) UpdateContent() *TaskUpsert {
 	return u
 }
 
+// SetTitle sets the "title" field.
+func (u *TaskUpsert) SetTitle(v string) *TaskUpsert {
+	u.Set(task.FieldTitle, v)
+	return u
+}
+
+// UpdateTitle sets the "title" field to the value that was provided on create.
+func (u *TaskUpsert) UpdateTitle() *TaskUpsert {
+	u.SetExcluded(task.FieldTitle)
+	return u
+}
+
+// ClearTitle clears the value of the "title" field.
+func (u *TaskUpsert) ClearTitle() *TaskUpsert {
+	u.SetNull(task.FieldTitle)
+	return u
+}
+
 // SetSummary sets the "summary" field.
 func (u *TaskUpsert) SetSummary(v string) *TaskUpsert {
 	u.Set(task.FieldSummary, v)
@@ -773,6 +809,27 @@ func (u *TaskUpsertOne) SetContent(v string) *TaskUpsertOne {
 func (u *TaskUpsertOne) UpdateContent() *TaskUpsertOne {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateContent()
+	})
+}
+
+// SetTitle sets the "title" field.
+func (u *TaskUpsertOne) SetTitle(v string) *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetTitle(v)
+	})
+}
+
+// UpdateTitle sets the "title" field to the value that was provided on create.
+func (u *TaskUpsertOne) UpdateTitle() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateTitle()
+	})
+}
+
+// ClearTitle clears the value of the "title" field.
+func (u *TaskUpsertOne) ClearTitle() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearTitle()
 	})
 }
 
@@ -1156,6 +1213,27 @@ func (u *TaskUpsertBulk) SetContent(v string) *TaskUpsertBulk {
 func (u *TaskUpsertBulk) UpdateContent() *TaskUpsertBulk {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateContent()
+	})
+}
+
+// SetTitle sets the "title" field.
+func (u *TaskUpsertBulk) SetTitle(v string) *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetTitle(v)
+	})
+}
+
+// UpdateTitle sets the "title" field to the value that was provided on create.
+func (u *TaskUpsertBulk) UpdateTitle() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateTitle()
+	})
+}
+
+// ClearTitle clears the value of the "title" field.
+func (u *TaskUpsertBulk) ClearTitle() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearTitle()
 	})
 }
 

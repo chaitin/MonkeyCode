@@ -84,6 +84,11 @@ func Content(v string) predicate.Task {
 	return predicate.Task(sql.FieldEQ(FieldContent, v))
 }
 
+// Title applies equality check predicate on the "title" field. It's identical to TitleEQ.
+func Title(v string) predicate.Task {
+	return predicate.Task(sql.FieldEQ(FieldTitle, v))
+}
+
 // Summary applies equality check predicate on the "summary" field. It's identical to SummaryEQ.
 func Summary(v string) predicate.Task {
 	return predicate.Task(sql.FieldEQ(FieldSummary, v))
@@ -421,6 +426,81 @@ func ContentEqualFold(v string) predicate.Task {
 // ContentContainsFold applies the ContainsFold predicate on the "content" field.
 func ContentContainsFold(v string) predicate.Task {
 	return predicate.Task(sql.FieldContainsFold(FieldContent, v))
+}
+
+// TitleEQ applies the EQ predicate on the "title" field.
+func TitleEQ(v string) predicate.Task {
+	return predicate.Task(sql.FieldEQ(FieldTitle, v))
+}
+
+// TitleNEQ applies the NEQ predicate on the "title" field.
+func TitleNEQ(v string) predicate.Task {
+	return predicate.Task(sql.FieldNEQ(FieldTitle, v))
+}
+
+// TitleIn applies the In predicate on the "title" field.
+func TitleIn(vs ...string) predicate.Task {
+	return predicate.Task(sql.FieldIn(FieldTitle, vs...))
+}
+
+// TitleNotIn applies the NotIn predicate on the "title" field.
+func TitleNotIn(vs ...string) predicate.Task {
+	return predicate.Task(sql.FieldNotIn(FieldTitle, vs...))
+}
+
+// TitleGT applies the GT predicate on the "title" field.
+func TitleGT(v string) predicate.Task {
+	return predicate.Task(sql.FieldGT(FieldTitle, v))
+}
+
+// TitleGTE applies the GTE predicate on the "title" field.
+func TitleGTE(v string) predicate.Task {
+	return predicate.Task(sql.FieldGTE(FieldTitle, v))
+}
+
+// TitleLT applies the LT predicate on the "title" field.
+func TitleLT(v string) predicate.Task {
+	return predicate.Task(sql.FieldLT(FieldTitle, v))
+}
+
+// TitleLTE applies the LTE predicate on the "title" field.
+func TitleLTE(v string) predicate.Task {
+	return predicate.Task(sql.FieldLTE(FieldTitle, v))
+}
+
+// TitleContains applies the Contains predicate on the "title" field.
+func TitleContains(v string) predicate.Task {
+	return predicate.Task(sql.FieldContains(FieldTitle, v))
+}
+
+// TitleHasPrefix applies the HasPrefix predicate on the "title" field.
+func TitleHasPrefix(v string) predicate.Task {
+	return predicate.Task(sql.FieldHasPrefix(FieldTitle, v))
+}
+
+// TitleHasSuffix applies the HasSuffix predicate on the "title" field.
+func TitleHasSuffix(v string) predicate.Task {
+	return predicate.Task(sql.FieldHasSuffix(FieldTitle, v))
+}
+
+// TitleIsNil applies the IsNil predicate on the "title" field.
+func TitleIsNil() predicate.Task {
+	return predicate.Task(sql.FieldIsNull(FieldTitle))
+}
+
+// TitleNotNil applies the NotNil predicate on the "title" field.
+func TitleNotNil() predicate.Task {
+	return predicate.Task(sql.FieldNotNull(FieldTitle))
+}
+
+// TitleEqualFold applies the EqualFold predicate on the "title" field.
+func TitleEqualFold(v string) predicate.Task {
+	return predicate.Task(sql.FieldEqualFold(FieldTitle, v))
+}
+
+// TitleContainsFold applies the ContainsFold predicate on the "title" field.
+func TitleContainsFold(v string) predicate.Task {
+	return predicate.Task(sql.FieldContainsFold(FieldTitle, v))
 }
 
 // SummaryEQ applies the EQ predicate on the "summary" field.
