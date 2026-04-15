@@ -597,13 +597,19 @@ export function getFileExtension(filename: string): string {
 
 export function selectPreferredTaskModel(models: DomainModel[], subscription?: DomainSubscriptionResp | null): string {
   const accessibleModels = models.filter((model) => canUseModelBySubscription(model, subscription))
-
-  return accessibleModels.find((model) => (
+  const preferredModels = accessibleModels.filter((model) => (
     model.id
     && model.owner?.type === ConstsOwnerType.OwnerTypePublic
     && model.access_level === "basic"
     && model.is_free === true
-  ))?.id || ""
+  ))
+
+  if (preferredModels.length === 0) {
+    return ""
+  }
+
+  const randomIndex = Math.floor(Math.random() * preferredModels.length)
+  return preferredModels[randomIndex]?.id || ""
 }
 
 
