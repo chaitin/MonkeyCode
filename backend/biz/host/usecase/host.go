@@ -479,21 +479,13 @@ func (h *HostUsecase) VMInfo(ctx context.Context, uid uuid.UUID, id string) (*do
 		return nil, err
 	}
 
-	reportedStatus := taskflow.VirtualMachineStatusUnknown
-	if info, err := h.taskflow.VirtualMachiner().Info(ctx, taskflow.VirtualMachineInfoReq{
-		ID:     vm.ID,
-		UserID: vm.UserID.String(),
-	}); err == nil && info != nil && info.Status != taskflow.VirtualMachineStatusUnknown {
-		reportedStatus = info.Status
-	}
 	dvm := cvt.From(vm, &domain.VirtualMachine{
 		Status: vmstatus.Resolve(vmstatus.Input{
-			ReportedStatus: reportedStatus,
-			Online:         vmonline.OnlineMap[vm.ID],
-			Conditions:     vm.Conditions.Conditions,
-			IsRecycled:     vm.IsRecycled,
-			CreatedAt:      vm.CreatedAt,
-			Now:            time.Now(),
+			Online:     vmonline.OnlineMap[vm.ID],
+			Conditions: vm.Conditions.Conditions,
+			IsRecycled: vm.IsRecycled,
+			CreatedAt:  vm.CreatedAt,
+			Now:        time.Now(),
 		}),
 	})
 

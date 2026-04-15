@@ -1,12 +1,19 @@
 package vmstatus
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
 	etypes "github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
+
+func TestInputDoesNotExposeReportedStatus(t *testing.T) {
+	if _, ok := reflect.TypeOf(Input{}).FieldByName("ReportedStatus"); ok {
+		t.Fatal("Input should not expose ReportedStatus")
+	}
+}
 
 func TestResolve(t *testing.T) {
 	now := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
@@ -19,29 +26,27 @@ func TestResolve(t *testing.T) {
 		{
 			name: "is recycled overrides everything",
 			input: Input{
-				ReportedStatus: taskflow.VirtualMachineStatusOnline,
-				Online:         true,
-				IsRecycled:     true,
-				CreatedAt:      now.Add(-10 * time.Minute),
-				Now:            now,
+				Online:     true,
+				IsRecycled: true,
+				CreatedAt:  now.Add(-10 * time.Minute),
+				Now:        now,
 			},
 			want: taskflow.VirtualMachineStatusOffline,
 		},
 		{
-			name: "reported status wins over online and conditions",
+			name: "online returns online before conditions",
 			input: Input{
-				ReportedStatus: taskflow.VirtualMachineStatusHibernated,
-				Online:         true,
+				Online: true,
 				Conditions: []*etypes.Condition{
 					{Type: etypes.ConditionTypeFailed},
 				},
 				CreatedAt: now.Add(-10 * time.Minute),
 				Now:       now,
 			},
-			want: taskflow.VirtualMachineStatusHibernated,
+			want: taskflow.VirtualMachineStatusOnline,
 		},
 		{
-			name: "online returns online when no reported status",
+			name: "online returns online",
 			input: Input{
 				Online:    true,
 				CreatedAt: now.Add(-10 * time.Minute),

@@ -10,21 +10,16 @@ import (
 const readyTimeout = 3 * time.Minute
 
 type Input struct {
-	ReportedStatus taskflow.VirtualMachineStatus
-	Online         bool
-	Conditions     []*etypes.Condition
-	IsRecycled     bool
-	CreatedAt      time.Time
-	Now            time.Time
+	Online     bool
+	Conditions []*etypes.Condition
+	IsRecycled bool
+	CreatedAt  time.Time
+	Now        time.Time
 }
 
 func Resolve(input Input) taskflow.VirtualMachineStatus {
 	if input.IsRecycled {
 		return taskflow.VirtualMachineStatusOffline
-	}
-
-	if input.ReportedStatus != "" && input.ReportedStatus != taskflow.VirtualMachineStatusUnknown {
-		return input.ReportedStatus
 	}
 
 	if input.Online {
