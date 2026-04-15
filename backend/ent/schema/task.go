@@ -40,6 +40,7 @@ func (Task) Fields() []ent.Field {
 		field.String("kind").GoType(consts.TaskType("")),
 		field.String("sub_type").GoType(consts.TaskSubType("")).Optional(),
 		field.Text("content").NotEmpty(),
+		field.Text("title").Optional(),
 		field.Text("summary").Optional(),
 		field.String("status").GoType(consts.TaskStatus("")),
 		field.Time("created_at").Default(time.Now),

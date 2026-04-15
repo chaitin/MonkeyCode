@@ -27,6 +27,7 @@ type TaskUsecase interface {
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
+	Update(ctx context.Context, user *User, req UpdateTaskReq) error
 	IncrUserInputCount(ctx context.Context, userID, taskID uuid.UUID) error
 }
 
@@ -101,6 +102,12 @@ func (r *CreateTaskReq) Validate() error {
 	return nil
 }
 
+// UpdateTaskReq 更新任务请求
+type UpdateTaskReq struct {
+	ID    uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	Title *string   `json:"title"`
+}
+
 // ListTaskResp 任务列表响应
 type ListTaskResp struct {
 	Tasks    []*ProjectTask `json:"tasks"`
@@ -167,6 +174,7 @@ type Task struct {
 	Type           consts.TaskType    `json:"type"`
 	SubType        consts.TaskSubType `json:"sub_type"`
 	Content        string             `json:"content"`
+	Title          string             `json:"title"`
 	Summary        string             `json:"summary"`
 	Status         consts.TaskStatus  `json:"status"`
 	VirtualMachine *VirtualMachine    `json:"virtualmachine"`
@@ -202,6 +210,7 @@ func (t *Task) From(src *db.Task) *Task {
 	t.Type = src.Kind
 	t.SubType = src.SubType
 	t.Content = src.Content
+	t.Title = src.Title
 	t.Summary = src.Summary
 	t.Status = src.Status
 	t.CreatedAt = src.CreatedAt.Unix()

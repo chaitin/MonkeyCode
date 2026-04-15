@@ -118,6 +118,26 @@ func (_u *TaskUpdate) SetNillableContent(v *string) *TaskUpdate {
 	return _u
 }
 
+// SetTitle sets the "title" field.
+func (_u *TaskUpdate) SetTitle(v string) *TaskUpdate {
+	_u.mutation.SetTitle(v)
+	return _u
+}
+
+// SetNillableTitle sets the "title" field if the given value is not nil.
+func (_u *TaskUpdate) SetNillableTitle(v *string) *TaskUpdate {
+	if v != nil {
+		_u.SetTitle(*v)
+	}
+	return _u
+}
+
+// ClearTitle clears the value of the "title" field.
+func (_u *TaskUpdate) ClearTitle() *TaskUpdate {
+	_u.mutation.ClearTitle()
+	return _u
+}
+
 // SetSummary sets the "summary" field.
 func (_u *TaskUpdate) SetSummary(v string) *TaskUpdate {
 	_u.mutation.SetSummary(v)
@@ -442,6 +462,12 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(task.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Title(); ok {
+		_spec.SetField(task.FieldTitle, field.TypeString, value)
+	}
+	if _u.mutation.TitleCleared() {
+		_spec.ClearField(task.FieldTitle, field.TypeString)
 	}
 	if value, ok := _u.mutation.Summary(); ok {
 		_spec.SetField(task.FieldSummary, field.TypeString, value)
@@ -786,6 +812,26 @@ func (_u *TaskUpdateOne) SetNillableContent(v *string) *TaskUpdateOne {
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetTitle sets the "title" field.
+func (_u *TaskUpdateOne) SetTitle(v string) *TaskUpdateOne {
+	_u.mutation.SetTitle(v)
+	return _u
+}
+
+// SetNillableTitle sets the "title" field if the given value is not nil.
+func (_u *TaskUpdateOne) SetNillableTitle(v *string) *TaskUpdateOne {
+	if v != nil {
+		_u.SetTitle(*v)
+	}
+	return _u
+}
+
+// ClearTitle clears the value of the "title" field.
+func (_u *TaskUpdateOne) ClearTitle() *TaskUpdateOne {
+	_u.mutation.ClearTitle()
 	return _u
 }
 
@@ -1143,6 +1189,12 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(task.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Title(); ok {
+		_spec.SetField(task.FieldTitle, field.TypeString, value)
+	}
+	if _u.mutation.TitleCleared() {
+		_spec.ClearField(task.FieldTitle, field.TypeString)
 	}
 	if value, ok := _u.mutation.Summary(); ok {
 		_spec.SetField(task.FieldSummary, field.TypeString, value)

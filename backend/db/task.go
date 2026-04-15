@@ -30,6 +30,8 @@ type Task struct {
 	SubType consts.TaskSubType `json:"sub_type,omitempty"`
 	// Content holds the value of the "content" field.
 	Content string `json:"content,omitempty"`
+	// Title holds the value of the "title" field.
+	Title string `json:"title,omitempty"`
 	// Summary holds the value of the "summary" field.
 	Summary string `json:"summary,omitempty"`
 	// Status holds the value of the "status" field.
@@ -115,7 +117,7 @@ func (*Task) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case task.FieldKind, task.FieldSubType, task.FieldContent, task.FieldSummary, task.FieldStatus:
+		case task.FieldKind, task.FieldSubType, task.FieldContent, task.FieldTitle, task.FieldSummary, task.FieldStatus:
 			values[i] = new(sql.NullString)
 		case task.FieldDeletedAt, task.FieldCreatedAt, task.FieldUpdatedAt, task.FieldCompletedAt:
 			values[i] = new(sql.NullTime)
@@ -171,6 +173,12 @@ func (_m *Task) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field content", values[i])
 			} else if value.Valid {
 				_m.Content = value.String
+			}
+		case task.FieldTitle:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field title", values[i])
+			} else if value.Valid {
+				_m.Title = value.String
 			}
 		case task.FieldSummary:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -277,6 +285,9 @@ func (_m *Task) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("content=")
 	builder.WriteString(_m.Content)
+	builder.WriteString(", ")
+	builder.WriteString("title=")
+	builder.WriteString(_m.Title)
 	builder.WriteString(", ")
 	builder.WriteString("summary=")
 	builder.WriteString(_m.Summary)

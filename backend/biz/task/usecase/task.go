@@ -581,6 +581,16 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 	return coding, cfs, nil
 }
 
+// Update implements domain.TaskUsecase.
+func (a *TaskUsecase) Update(ctx context.Context, user *domain.User, req domain.UpdateTaskReq) error {
+	return a.repo.Update(ctx, user, req.ID, func(up *db.TaskUpdateOne) error {
+		if req.Title != nil {
+			up.SetTitle(*req.Title)
+		}
+		return nil
+	})
+}
+
 // Delete implements domain.TaskUsecase.
 func (a *TaskUsecase) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
 	t, err := a.repo.Info(ctx, user, id, false)
