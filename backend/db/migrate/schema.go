@@ -210,6 +210,91 @@ var (
 			},
 		},
 	}
+	// McpToolsColumns holds the columns for the "mcp_tools" table.
+	McpToolsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "upstream_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 256},
+		{Name: "namespaced_name", Type: field.TypeString, Size: 320},
+		{Name: "scope", Type: field.TypeString, Size: 16, Default: "platform"},
+		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "input_schema", Type: field.TypeJSON, Nullable: true},
+		{Name: "price", Type: field.TypeInt64, Default: 0},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "version_hash", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// McpToolsTable holds the schema information for the "mcp_tools" table.
+	McpToolsTable = &schema.Table{
+		Name:       "mcp_tools",
+		Columns:    McpToolsColumns,
+		PrimaryKey: []*schema.Column{McpToolsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mcptool_scope_user_id_namespaced_name",
+				Unique:  true,
+				Columns: []*schema.Column{McpToolsColumns[4], McpToolsColumns[5], McpToolsColumns[3]},
+			},
+		},
+	}
+	// McpUpstreamsColumns holds the columns for the "mcp_upstreams" table.
+	McpUpstreamsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "name", Type: field.TypeString, Size: 128},
+		{Name: "slug", Type: field.TypeString, Size: 64},
+		{Name: "scope", Type: field.TypeString, Size: 16, Default: "platform"},
+		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "type", Type: field.TypeString, Size: 16, Default: "server"},
+		{Name: "url", Type: field.TypeString, Size: 2147483647},
+		{Name: "headers", Type: field.TypeJSON, Nullable: true},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "health_status", Type: field.TypeString, Size: 16, Default: "unknown"},
+		{Name: "sync_status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "health_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// McpUpstreamsTable holds the schema information for the "mcp_upstreams" table.
+	McpUpstreamsTable = &schema.Table{
+		Name:       "mcp_upstreams",
+		Columns:    McpUpstreamsColumns,
+		PrimaryKey: []*schema.Column{McpUpstreamsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mcpupstream_scope_user_id_slug",
+				Unique:  true,
+				Columns: []*schema.Column{McpUpstreamsColumns[3], McpUpstreamsColumns[4], McpUpstreamsColumns[2]},
+			},
+		},
+	}
+	// McpUserToolSettingsColumns holds the columns for the "mcp_user_tool_settings" table.
+	McpUserToolSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "tool_id", Type: field.TypeUUID},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// McpUserToolSettingsTable holds the schema information for the "mcp_user_tool_settings" table.
+	McpUserToolSettingsTable = &schema.Table{
+		Name:       "mcp_user_tool_settings",
+		Columns:    McpUserToolSettingsColumns,
+		PrimaryKey: []*schema.Column{McpUserToolSettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mcpusertoolsetting_user_id_tool_id",
+				Unique:  true,
+				Columns: []*schema.Column{McpUserToolSettingsColumns[1], McpUserToolSettingsColumns[2]},
+			},
+		},
+	}
 	// ModelsColumns holds the columns for the "models" table.
 	ModelsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1138,6 +1223,9 @@ var (
 		GitIdentitiesTable,
 		HostsTable,
 		ImagesTable,
+		McpToolsTable,
+		McpUpstreamsTable,
+		McpUserToolSettingsTable,
 		ModelsTable,
 		ModelAPIKeysTable,
 		ModelPricingsTable,
@@ -1199,6 +1287,15 @@ func init() {
 	ImagesTable.ForeignKeys[0].RefTable = UsersTable
 	ImagesTable.Annotation = &entsql.Annotation{
 		Table: "images",
+	}
+	McpToolsTable.Annotation = &entsql.Annotation{
+		Table: "mcp_tools",
+	}
+	McpUpstreamsTable.Annotation = &entsql.Annotation{
+		Table: "mcp_upstreams",
+	}
+	McpUserToolSettingsTable.Annotation = &entsql.Annotation{
+		Table: "mcp_user_tool_settings",
 	}
 	ModelsTable.ForeignKeys[0].RefTable = UsersTable
 	ModelsTable.Annotation = &entsql.Annotation{
