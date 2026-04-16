@@ -898,13 +898,13 @@ export default function CreateDefaultTaskDialog({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="max-h-[50vh] w-[90vw] max-w-xl overflow-hidden p-2"
+                className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[90vw] max-w-xl flex-col overflow-hidden p-2"
                 align="start"
               >
                 <Tabs
                   value={activeSkillTag}
                   onValueChange={setActiveSkillTag}
-                  className="w-full"
+                  className="flex min-h-0 w-full flex-1 flex-col"
                 >
                   <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
                     {skillTags.map((tag) => (
@@ -922,7 +922,7 @@ export default function CreateDefaultTaskDialog({
                     <TabsContent
                       key={tag}
                       value={tag}
-                      className="max-h-[18rem] overflow-y-auto rounded-md border bg-background p-1"
+                      className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
                     >
                       {skillList
                         .filter((skill) => tag === "全部" || (skill.tags || []).includes(tag))

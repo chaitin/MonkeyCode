@@ -768,8 +768,8 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   </span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="max-h-[50vh] w-[90vw] max-w-xl overflow-hidden p-2" align="start">
-                <Tabs value={activeSkillTag} onValueChange={setActiveSkillTag} className="w-full">
+              <PopoverContent className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[90vw] max-w-xl flex-col overflow-hidden p-2" align="start">
+                <Tabs value={activeSkillTag} onValueChange={setActiveSkillTag} className="flex min-h-0 w-full flex-1 flex-col">
                   <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
                     {skillTags.map((tag, index) => (
                       <TabsTrigger key={index} value={tag} className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none">
@@ -779,7 +779,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                     ))}
                   </TabsList>
                   {skillTags.map((tag, index) => (
-                    <TabsContent key={index} value={tag} className="max-h-[18rem] overflow-y-auto rounded-md border bg-background p-1">
+                    <TabsContent key={index} value={tag} className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1">
                       {skillList.filter(skill => {
                         return (skill.tags || []).includes(tag) || tag === "全部";
                       }).map((skill, skillIndex) => (
