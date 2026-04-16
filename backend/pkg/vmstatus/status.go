@@ -26,17 +26,21 @@ func Resolve(input Input) taskflow.VirtualMachineStatus {
 		return taskflow.VirtualMachineStatusOnline
 	}
 
-	for _, cond := range input.Conditions {
-		switch cond.Type {
+	if cs := input.Conditions; len(cs) > 0 {
+		last := cs[len(cs)-1]
+		switch last.Type {
 		case etypes.ConditionTypeFailed:
 			return taskflow.VirtualMachineStatusOffline
+
 		case etypes.ConditionTypeHibernated:
-			return taskflow.VirtualMachineStatusHibernated
-		case etypes.ConditionTypeReady:
-			if !input.CreatedAt.IsZero() && input.Now.Sub(input.CreatedAt) > readyTimeout {
-				return taskflow.VirtualMachineStatusOffline
+			if last.Reason == "Hibernated" {
+				return taskflow.VirtualMachineStatusHibernated
 			}
 		}
+	}
+
+	if input.Now.Sub(input.CreatedAt) > readyTimeout {
+		return taskflow.VirtualMachineStatusOffline
 	}
 
 	return taskflow.VirtualMachineStatusPending

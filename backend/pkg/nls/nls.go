@@ -95,10 +95,7 @@ func (n *NLS) SpeechRecognition(ctx context.Context, user uuid.UUID, audio []byt
 		// 320 samples * 2 bytes per sample for 16-bit PCM
 		chunkSize := 320 * 2
 		for i := 0; i < len(audio); i += chunkSize {
-			end := i + chunkSize
-			if end > len(audio) {
-				end = len(audio)
-			}
+			end := min(i+chunkSize, len(audio))
 			chunk := audio[i:end]
 			if err := sr.SendAudioData(chunk); err != nil {
 				errorCh <- err
