@@ -22,17 +22,33 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	etypes "github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
+type internalHostRepo interface {
+	UpsertHost(context.Context, *taskflow.Host) error
+	UpsertVirtualMachine(context.Context, *taskflow.VirtualMachine) error
+	GetVirtualMachine(context.Context, string) (*db.VirtualMachine, error)
+	UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error
+	GetByID(context.Context, string) (*db.Host, error)
+	GetVirtualMachineByEnvID(context.Context, string) (*db.VirtualMachine, error)
+	GetGitCredentialByTask(context.Context, string) (*domain.GitCredentialInfo, error)
+}
+
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
 type InternalHostHandler struct {
 	logger         *slog.Logger
-	repo           domain.HostRepo
+	repo           internalHostRepo
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
+	getAgentToken  agentTokenGetter
+	limiter        vmDeleteLimiter
+	vmDeleter      vmDeleter
+	skipSoftDelete func(context.Context) context.Context
+	runAsync       asyncRunner
 	cache          *cache.Cache
 	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	hostUsecase    domain.HostUsecase
@@ -43,13 +59,21 @@ type InternalHostHandler struct {
 
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
+	tf := do.MustInvoke[taskflow.Clienter](i)
+	rdb := do.MustInvoke[*redis.Client](i)
 
 	h := &InternalHostHandler{
 		logger:         do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
 		repo:           do.MustInvoke[domain.HostRepo](i),
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
-		redis:          do.MustInvoke[*redis.Client](i),
+		redis:          rdb,
+		getAgentToken:  defaultAgentTokenGetter(rdb),
+		limiter:        rdb,
+		vmDeleter:      tf.VirtualMachiner(),
+		skipSoftDelete: entx.SkipSoftDelete,
+		runAsync:       defaultAsyncRunner,
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
+		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
@@ -177,53 +201,44 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) (*taskflow.Token, error) {
 	// 1) 优先从 Redis 读取一次性 agent token，并清除
 	key := fmt.Sprintf("agent:token:%s", token)
-	luaGetDel := `
-local v = redis.call('GET', KEYS[1])
-if v then
-	 redis.call('DEL', KEYS[1])
-	 return v
-end
-return nil
-`
-	res, err := h.redis.Eval(ctx, luaGetDel, []string{key}).Result()
-	h.logger.With("mid", mid, "key", key, "res", res, "error", err).DebugContext(ctx, "agent auth...")
+	res, err := h.getAgentToken(ctx, key)
+	h.logger.With("mid", mid, "key", key, "hit", err == nil, "error", err).DebugContext(ctx, "agent auth...")
 	if err == nil {
-		if b, ok := res.(string); ok && b != "" {
-			var t taskflow.Token
-			if uerr := json.Unmarshal([]byte(b), &t); uerr != nil {
-				h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal token from redis")
-				return nil, uerr
-			}
-
-			if mid != "" {
-				if err := h.repo.UpdateVirtualMachine(ctx, token, func(up *db.VirtualMachineUpdateOne) error {
-					up.SetMachineID(mid)
-					return nil
-				}); err != nil {
-					h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to update virtual machine machine id")
-					return nil, err
-				}
-			}
-
-			return &t, nil
+		var t taskflow.Token
+		if uerr := json.Unmarshal([]byte(res), &t); uerr != nil {
+			h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal token from redis")
+			return nil, uerr
 		}
+
+		if mid != "" {
+			if err := h.repo.UpdateVirtualMachine(ctx, token, func(up *db.VirtualMachineUpdateOne) error {
+				up.SetMachineID(mid)
+				return nil
+			}); err != nil {
+				h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to update virtual machine machine id")
+				return nil, err
+			}
+		}
+
+		return &t, nil
 	} else if !errors.Is(err, redis.Nil) {
 		h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to get redis token via lua, fallback to db")
 	}
 
 	// 2) Redis 没值时根据数据库校验 token
-	vm, err := h.repo.GetVirtualMachine(ctx, token)
+	vm, err := h.repo.GetVirtualMachine(h.skipSoftDelete(ctx), token)
 	if err != nil {
 		return nil, err
+	}
+
+	if vm.IsRecycled {
+		h.tryRecycledVMDelete(ctx, vm, mid)
+		return nil, errAgentVMRecycled
 	}
 
 	// 机器码绑定校验
 	if mid != "" && vm.MachineID != "" && vm.MachineID != mid {
 		return nil, fmt.Errorf("mismatch machine id")
-	}
-
-	if vm.IsRecycled {
-		return nil, fmt.Errorf("vm is recycled")
 	}
 
 	if vm.Edges.Host == nil {
