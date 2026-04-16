@@ -385,7 +385,6 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 				}
 				break
 			}
-			break
 		}
 	}
 
