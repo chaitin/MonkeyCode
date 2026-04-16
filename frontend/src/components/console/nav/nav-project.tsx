@@ -432,7 +432,7 @@ export default function NavProject() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认终止任务</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要终止任务「{getTaskDisplayName(taskToStop)}」吗？
+              确定要终止任务「{getTaskDisplayName(taskToStop)}」吗？任务终止后无法恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

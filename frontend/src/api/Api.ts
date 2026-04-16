@@ -162,6 +162,7 @@ export enum ConstsTransactionKind {
   TransactionKindUltraAutoRenew = "ultra_auto_renew",
   TransactionKindProUpgradeRefund = "pro_upgrade_refund",
   TransactionKindDailyGrant = "daily_grant",
+  TransactionKindMCPToolConsumption = "mcp_tool_consumption",
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
 }
@@ -602,6 +603,28 @@ export interface DomainGitRepository {
   url?: string;
 }
 
+export interface DomainHelpAgentChatReq {
+  captcha_token: string;
+  message: string;
+}
+
+export interface DomainHelpAgentSSEvent {
+  /** 事件数据 */
+  data?: DomainHelpAgentSSEventData;
+  /**
+   * 事件类型
+   * @example "text_delta"
+   */
+  event?: "text_delta" | "done" | "error";
+}
+
+export interface DomainHelpAgentSSEventData {
+  /** 文本增量内容（text_delta 事件） */
+  content?: string;
+  /** 错误信息（error 事件） */
+  message?: string;
+}
+
 export interface DomainHost {
   arch?: string;
   cores?: number;
@@ -749,10 +772,6 @@ export interface DomainListTransactionResp {
   transactions?: DomainTransactionLog[];
 }
 
-export interface DomainListUserMCPToolsResp {
-  items?: DomainMCPTool[];
-}
-
 export interface DomainListUserMCPUpstreamsResp {
   items?: DomainMCPUpstream[];
 }
@@ -823,6 +842,7 @@ export interface DomainModel {
   provider?: string;
   temperature?: number;
   updated_at?: number;
+  weight?: number;
 }
 
 export interface DomainNotifyChannel {
@@ -1731,7 +1751,6 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
-/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -2194,6 +2213,24 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/gitlab/sites`,
         method: "GET",
         secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 流式 SSE 对话，返回 text_delta / done / error 事件
+     *
+     * @tags helpagent
+     * @name V1HelpagentChatCreate
+     * @summary HelpAgent 智能助手对话
+     * @request POST:/api/v1/helpagent/chat
+     */
+    v1HelpagentChatCreate: (body: DomainHelpAgentChatReq, params: RequestParams = {}) =>
+      this.request<DomainHelpAgentSSEvent[], GitInChaitinNetGoDevWebResp>({
+        path: `/api/v1/helpagent/chat`,
+        method: "POST",
+        body: body,
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -4631,30 +4668,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       this.request<Record<string, string>, any>({
         path: `/api/v1/users/logout`,
         method: "POST",
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * @description 获取当前登录用户可使用的 MCP Tool 列表及其启用状态
-     *
-     * @tags 【用户】MCP 配置
-     * @name V1UsersMcpToolsList
-     * @summary 获取当前用户可见的 MCP Tool 列表
-     * @request GET:/api/v1/users/mcp/tools
-     * @secure
-     */
-    v1UsersMcpToolsList: (params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainListUserMCPToolsResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/users/mcp/tools`,
-        method: "GET",
-        secure: true,
         type: ContentType.Json,
         format: "json",
         ...params,
