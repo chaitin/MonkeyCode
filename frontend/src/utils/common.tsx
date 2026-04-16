@@ -118,6 +118,43 @@ export function getBrandFromModelName(modelName: string): string {
   return 'openai';
 }
 
+export type ModelPricingItem = {
+  model: string;
+  credits: number;
+  score: number;
+}
+
+export const modelPricingList: readonly ModelPricingItem[] = [
+  { model: "minimax-m2.7", credits: 0, score: 637 },
+  { model: "qwen3.5-plus", credits: 0, score: 538 },
+  { model: "gpt-5.4", credits: 1000, score: 922 },
+  { model: "gpt-5.2", credits: 600, score: 887 },
+  { model: "gpt-5.3-codex", credits: 600, score: 918 },
+  { model: "glm-5.1", credits: 600, score: 904 },
+  { model: "glm-5", credits: 400, score: 847 },
+  { model: "glm-4.7", credits: 200, score: 709 },
+  { model: "qwen3-max", credits: 400, score: 840 },
+  { model: "qwen3.6-plus", credits: 200, score: 751 },
+  { model: "kimi-k2.5", credits: 400, score: 889 },
+]
+
+export function getModelPricingItem(modelName?: string): ModelPricingItem | undefined {
+  if (!modelName) {
+    return undefined
+  }
+
+  const normalizedModelName = modelName.trim().toLowerCase()
+  return modelPricingList.find((item) => item.model.toLowerCase() === normalizedModelName)
+}
+
+export function getModelPricingPriceLabel(pricing?: ModelPricingItem): string | null {
+  if (!pricing) {
+    return null
+  }
+
+  return pricing.credits === 0 ? "免费" : `${pricing.credits.toLocaleString()} 积分`
+}
+
 export function formatMemory(bytes?: number): string {
   if (!bytes) return "未知"
   const gb = bytes / (1024 * 1024 * 1024)

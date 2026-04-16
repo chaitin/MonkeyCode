@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
+import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelPricingItem, getModelPricingPriceLabel, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconBug, IconHelpCircle, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -825,17 +825,36 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   </SelectTrigger>
                   <SelectContent>
                     {models.map((model) => (
+                      (() => {
+                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                        const pricingLabel = getModelPricingPriceLabel(pricing)
+
+                        return (
                       <SelectItem 
                         key={model.id} 
                         value={model.id || ""} 
                         disabled={!adaptedModelForTool()}>
-                        <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                        {model.model}
-                        {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                        {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
-                          <Badge className="!text-primary-foreground">免费</Badge>
-                        )}
+                        <div className="flex w-full items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                            <span className="truncate">{model.model}</span>
+                            {showPricingSummary && pricingLabel && (
+                              <Badge
+                                variant={pricing?.credits === 0 ? "default" : "secondary"}
+                                className={pricing?.credits === 0 ? "shrink-0 !text-primary-foreground" : "shrink-0 !text-secondary-foreground"}
+                              >
+                                {pricingLabel}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                          </div>
+                        </div>
                       </SelectItem>
+                        )
+                      })()
                     ))}
                   </SelectContent>
                 </Select>

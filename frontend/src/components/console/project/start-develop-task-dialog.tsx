@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { canUseModelBySubscription, getBrandFromModelName, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import { canUseModelBySubscription, getBrandFromModelName, getModelPricingItem, getModelPricingPriceLabel, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconHelpCircle, IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useRef } from "react"
@@ -255,17 +255,36 @@ export default function StartDevelopTaskDialog({
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="选择大模型" />
                 </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id || ""}>
-                      <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                      {model.model}
-                      {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                      {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
-                        <Badge className="!text-primary-foreground">免费</Badge>
-                      )}
-                    </SelectItem>
-                  ))}
+                  <SelectContent>
+                    {models.map((model) => (
+                      (() => {
+                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                        const pricingLabel = getModelPricingPriceLabel(pricing)
+
+                        return (
+                          <SelectItem key={model.id} value={model.id || ""}>
+                            <div className="flex w-full items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                                <span className="truncate">{model.model}</span>
+                                {showPricingSummary && pricingLabel && (
+                                  <Badge
+                                    variant={pricing?.credits === 0 ? "default" : "secondary"}
+                                    className={pricing?.credits === 0 ? "shrink-0 !text-primary-foreground" : "shrink-0 !text-secondary-foreground"}
+                                  >
+                                    {pricingLabel}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        )
+                      })()
+                    ))}
                 </SelectContent>
               </Select>
               <Button

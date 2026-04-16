@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/sidebar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useCommonData } from "../data-provider";
-import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail } from "@/utils/common";
+import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail, modelPricingList } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 
 interface NavBalanceProps {
@@ -61,20 +61,6 @@ const BALANCE_NAV = [
   { id: "earn", name: "我的积分", icon: IconGift },
   { id: "usage", name: "积分记录", icon: IconCoin },
   { id: "pricing", name: "模型定价", icon: IconCpu },
-] as const
-
-const MODEL_PRICING = [
-  { model: "minimax-m2.7", credits: 0, score: 637 },
-  { model: "qwen3.5-plus", credits: 0, score: 538 },
-  { model: "gpt-5.4", credits: 1000, score: 922 },
-  { model: "gpt-5.2", credits: 600, score: 887 },
-  { model: "gpt-5.3-codex", credits: 600, score: 918 },
-  { model: "glm-5.1", credits: 600, score: 904 },
-  { model: "glm-5", credits: 400, score: 847 },
-  { model: "glm-4.7", credits: 200, score: 709 },
-  { model: "qwen3-max", credits: 400, score: 840 },
-  { model: "qwen3.6-plus", credits: 200, score: 751 },
-  { model: "kimi-k2.5", credits: 400, score: 889 },
 ] as const
 
 const COMMUNITY_GROUPS = [
@@ -191,11 +177,11 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     : pricingSort === "score"
       ? "代码能力排序"
       : "按名字排序"
-  const topScoreModels = [...MODEL_PRICING]
+  const topScoreModels = [...modelPricingList]
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_MODEL_COUNT)
   const scoreRankMap = new Map(topScoreModels.map((item, index) => [item.model, index + 1]))
-  const sortedModelPricing = [...MODEL_PRICING].sort((a, b) => {
+  const sortedModelPricing = [...modelPricingList].sort((a, b) => {
     if (pricingSort === "name") {
       return a.model.localeCompare(b.model)
     }

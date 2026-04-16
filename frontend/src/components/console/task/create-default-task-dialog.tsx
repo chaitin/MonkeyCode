@@ -56,6 +56,8 @@ import {
   getGitPlatformIcon,
   getHostBadges,
   getImageShortName,
+  getModelPricingItem,
+  getModelPricingPriceLabel,
   getOSFromImageName,
   getOwnerTypeBadge,
   getRepoIcon,
@@ -962,6 +964,12 @@ export default function CreateDefaultTaskDialog({
                 <DropdownMenuContent align="end" className="min-w-[320px]">
                   <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
                     {models.map((model) => (
+                      (() => {
+                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                        const pricingLabel = getModelPricingPriceLabel(pricing)
+
+                        return (
                       <DropdownMenuRadioItem
                         key={model.id}
                         value={model.id || ""}
@@ -970,14 +978,21 @@ export default function CreateDefaultTaskDialog({
                         <div className="flex min-w-0 items-center gap-2">
                           <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
                           <span className="truncate">{model.model}</span>
+                          {showPricingSummary && pricingLabel && (
+                            <Badge
+                              variant={pricing?.credits === 0 ? "default" : "secondary"}
+                              className={pricing?.credits === 0 ? "shrink-0 !text-primary-foreground" : "shrink-0 !text-secondary-foreground"}
+                            >
+                              {pricingLabel}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex shrink-0 items-center justify-end gap-1.5">
                           {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                          {model.owner?.type === ConstsOwnerType.OwnerTypePublic && model.is_free === true && (
-                            <Badge className="!text-primary-foreground">免费</Badge>
-                          )}
                         </div>
                       </DropdownMenuRadioItem>
+                        )
+                      })()
                     ))}
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
