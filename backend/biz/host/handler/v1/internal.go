@@ -52,6 +52,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
+		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
 		tokenProvider:  do.MustInvoke[*gituc.TokenProvider](i),
 	}
