@@ -34,7 +34,6 @@ type InternalHostHandler struct {
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
 	cache          *cache.Cache
-	hook           domain.InternalHook // 可选，由内部项目通过 WithInternalHook 注入
 	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	hostUsecase    domain.HostUsecase
 	taskConns      *ws.TaskConn
@@ -56,11 +55,6 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
 		tokenProvider:  do.MustInvoke[*gituc.TokenProvider](i),
-	}
-
-	// 可选注入 InternalHook
-	if hook, err := do.Invoke[domain.InternalHook](i); err == nil {
-		h.hook = hook
 	}
 
 	g := w.Group("/internal")
@@ -350,16 +344,12 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 			continue
 		}
 
-		if t.Kind == consts.TaskTypeReview && t.SubType == consts.TaskSubTypePrReview {
-		} else {
-			if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
-				TaskID: t.ID,
-				UserID: t.UserID,
-			}); err != nil {
-				h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
-			}
+		if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
+			TaskID: t.ID,
+			UserID: t.UserID,
+		}); err != nil {
+			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
 		}
-
 	}
 
 	return c.Success(nil)
@@ -384,12 +374,15 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 		return err
 	}
 
-	// 条件失败时通过 hook 通知内部项目（任务状态转换等）
-	if h.hook != nil {
+	if ts := vm.Edges.Tasks; len(ts) > 0 {
+		t := ts[0]
 		for _, cond := range req.Conditions {
 			if cond.Type == string(etypes.ConditionTypeFailed) {
-				if err := h.hook.OnVmConditionFailed(c.Request().Context(), vm.ID); err != nil {
-					h.logger.With("error", err).ErrorContext(c.Request().Context(), "hook OnVmConditionFailed failed")
+				if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusError, lifecycle.TaskMetadata{
+					TaskID: t.ID,
+					UserID: t.UserID,
+				}); err != nil {
+					h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
 				}
 				break
 			}
