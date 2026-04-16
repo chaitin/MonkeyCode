@@ -231,6 +231,7 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		)
 
 		lc.Register(
+			lifecycle.NewVMTaskHook(i),
 			lifecycle.NewVMRecycleHook(i),
 		)
 
