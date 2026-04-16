@@ -10,7 +10,7 @@ import (
 )
 
 func TestInputDoesNotExposeReportedStatus(t *testing.T) {
-	if _, ok := reflect.TypeOf(Input{}).FieldByName("ReportedStatus"); ok {
+	if _, ok := reflect.TypeFor[Input]().FieldByName("ReportedStatus"); ok {
 		t.Fatal("Input should not expose ReportedStatus")
 	}
 }

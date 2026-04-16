@@ -6,6 +6,7 @@ require (
 	entgo.io/ent v0.14.5
 	github.com/GoYoko/web v1.6.0
 	github.com/ackcoder/go-cap v1.1.3
+	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1
 	github.com/coder/websocket v1.8.14
 	github.com/gogo/protobuf v1.3.2
@@ -83,6 +84,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

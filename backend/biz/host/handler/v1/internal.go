@@ -50,7 +50,6 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
 		redis:          do.MustInvoke[*redis.Client](i),
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
-		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
@@ -386,6 +385,7 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 				}
 				break
 			}
+			break
 		}
 	}
 
