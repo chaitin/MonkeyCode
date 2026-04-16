@@ -479,6 +479,15 @@ export interface DomainCreateTaskReq {
   task_type?: ConstsTaskType;
 }
 
+export interface DomainCreateUserMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  headers?: DomainMCPHeader[];
+  name?: string;
+  slug?: string;
+  url?: string;
+}
+
 export interface DomainCreateVMReq {
   /** Git 身份 ID */
   git_identity_id?: string;
@@ -740,11 +749,55 @@ export interface DomainListTransactionResp {
   transactions?: DomainTransactionLog[];
 }
 
+export interface DomainListUserMCPToolsResp {
+  items?: DomainMCPTool[];
+}
+
+export interface DomainListUserMCPUpstreamsResp {
+  items?: DomainMCPUpstream[];
+}
+
 export interface DomainListUserPlaygroundPostResp {
   /** 游标信息 */
   page?: Dbv2Cursor;
   /** 广场帖子列表 */
   playground_posts?: DomainPlaygroundPost[];
+}
+
+export interface DomainMCPHeader {
+  name?: string;
+  value?: string;
+}
+
+export interface DomainMCPTool {
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  id?: string;
+  input_schema?: Record<string, any>;
+  name?: string;
+  namespaced_name?: string;
+  price?: number;
+  scope?: GithubComChaitinMonkeyCodeBackendDbMcptoolScope;
+}
+
+export interface DomainMCPUpstream {
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  headers?: DomainMCPHeader[];
+  health_checked_at?: number;
+  health_status?: string;
+  id?: string;
+  last_synced_at?: number;
+  name?: string;
+  scope?: GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope;
+  slug?: string;
+  sync_status?: string;
+  tools?: DomainMCPTool[];
+  type?: string;
+  url?: string;
+  user?: DomainUser;
 }
 
 export interface DomainMemberListResp {
@@ -1551,6 +1604,19 @@ export interface DomainUpdateTeamUserResp {
   user?: DomainUser;
 }
 
+export interface DomainUpdateUserMCPToolSettingReq {
+  enabled?: boolean;
+}
+
+export interface DomainUpdateUserMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  headers?: DomainMCPHeader[];
+  name?: string;
+  slug?: string;
+  url?: string;
+}
+
 export interface DomainUpdateUserResp {
   message?: string;
   success?: boolean;
@@ -1694,6 +1760,16 @@ export interface GithubComGoYokoWebResp {
   code?: number;
   data?: any;
   message?: string;
+}
+
+export enum GithubComChaitinMonkeyCodeBackendDbMcptoolScope {
+  ScopeUser = "user",
+  ScopePlatform = "platform",
+}
+
+export enum GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope {
+  ScopeUser = "user",
+  ScopePlatform = "platform",
 }
 
 export interface GithubComChaitinMonkeyCodeBackendDomainIDReqGithubComGoogleUuidUUID {
@@ -4555,6 +4631,166 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       this.request<Record<string, string>, any>({
         path: `/api/v1/users/logout`,
         method: "POST",
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前登录用户可使用的 MCP Tool 列表及其启用状态
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpToolsList
+     * @summary 获取当前用户可见的 MCP Tool 列表
+     * @request GET:/api/v1/users/mcp/tools
+     * @secure
+     */
+    v1UsersMcpToolsList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainListUserMCPToolsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/mcp/tools`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新当前登录用户指定 MCP Tool 的启用状态
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpToolsUpdate
+     * @summary 更新当前用户的 MCP Tool 开关配置
+     * @request PUT:/api/v1/users/mcp/tools/{id}
+     * @secure
+     */
+    v1UsersMcpToolsUpdate: (id: string, req: DomainUpdateUserMCPToolSettingReq, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/mcp/tools/${id}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前登录用户可管理的 MCP Upstream 列表
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpUpstreamsList
+     * @summary 获取当前用户的 MCP Upstream 列表
+     * @request GET:/api/v1/users/mcp/upstreams
+     * @secure
+     */
+    v1UsersMcpUpstreamsList: (
+      query?: {
+        /** 游标，首页传空。下一页回传回包中的 cursor */
+        cursor?: string;
+        /** 页数 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainListUserMCPUpstreamsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/mcp/upstreams`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 为当前登录用户创建自定义 MCP Upstream
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpUpstreamsCreate
+     * @summary 创建当前用户的 MCP Upstream
+     * @request POST:/api/v1/users/mcp/upstreams
+     * @secure
+     */
+    v1UsersMcpUpstreamsCreate: (req: DomainCreateUserMCPUpstreamReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainMCPUpstream;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/mcp/upstreams`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新当前登录用户指定的 MCP Upstream 配置
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpUpstreamsUpdate
+     * @summary 更新当前用户的 MCP Upstream
+     * @request PUT:/api/v1/users/mcp/upstreams/{id}
+     * @secure
+     */
+    v1UsersMcpUpstreamsUpdate: (id: string, req: DomainUpdateUserMCPUpstreamReq, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/mcp/upstreams/${id}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除当前登录用户指定的 MCP Upstream
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpUpstreamsDelete
+     * @summary 删除当前用户的 MCP Upstream
+     * @request DELETE:/api/v1/users/mcp/upstreams/{id}
+     * @secure
+     */
+    v1UsersMcpUpstreamsDelete: (id: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/mcp/upstreams/${id}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 触发当前登录用户指定 MCP Upstream 的工具同步
+     *
+     * @tags 【用户】MCP 配置
+     * @name V1UsersMcpUpstreamsSyncCreate
+     * @summary 同步当前用户的 MCP Upstream
+     * @request POST:/api/v1/users/mcp/upstreams/{id}/sync
+     * @secure
+     */
+    v1UsersMcpUpstreamsSyncCreate: (id: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/mcp/upstreams/${id}/sync`,
+        method: "POST",
+        secure: true,
         type: ContentType.Json,
         format: "json",
         ...params,

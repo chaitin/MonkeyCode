@@ -47,14 +47,14 @@ export default function AddMcpServerDialog({
 }: AddMcpServerDialogProps) {
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
-  const [headersJson, setHeadersJson] = useState("{}")
+  const [headersJson, setHeadersJson] = useState("")
   const isEditMode = Boolean(server?.id)
 
   useEffect(() => {
     if (!open) {
       setName("")
       setUrl("")
-      setHeadersJson("{}")
+      setHeadersJson("")
       return
     }
 
@@ -70,12 +70,12 @@ export default function AddMcpServerDialog({
       setHeadersJson(
         Object.keys(headersObject).length > 0
           ? JSON.stringify(headersObject, null, 2)
-          : "{}"
+          : ""
       )
     } else {
       setName("")
       setUrl("")
-      setHeadersJson("{}")
+      setHeadersJson("")
     }
   }, [open, server])
 
@@ -149,10 +149,10 @@ export default function AddMcpServerDialog({
           </Field>
 
           <Field>
-            <FieldLabel>URL</FieldLabel>
+            <FieldLabel>MCP 服务器地址</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入 MCP 服务器 URL"
+                placeholder="例如: https://mcp.example.com/sse"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
@@ -163,7 +163,7 @@ export default function AddMcpServerDialog({
             <FieldLabel>HTTP Header</FieldLabel>
             <FieldContent className="gap-2">
               <Textarea
-                className="min-h-28 font-mono"
+                className="min-h-28 break-all font-mono"
                 placeholder={`{\n  "Authorization": "Bearer <token>",\n  "X-API-Key": "<your-api-key>"\n}`}
                 value={headersJson}
                 onChange={(e) => setHeadersJson(e.target.value)}

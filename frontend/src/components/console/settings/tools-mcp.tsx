@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
-import { Blocks, MoreVertical, Plus, RefreshCw, ServerCog } from "lucide-react"
+import { Blocks, MoreVertical, Plus, ServerCog } from "lucide-react"
 
 import { Api, type DomainCreateUserMCPUpstreamReq, type DomainMCPTool, type DomainMCPUpstream } from "@/api/Api"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -30,7 +31,6 @@ import AddMcpServerDialog from "./add-mcp-server-dialog"
 
 export default function ToolsAndMcp() {
   const [servers, setServers] = useState<DomainMCPUpstream[]>([])
-  const [tools, setTools] = useState<DomainMCPTool[]>([])
   const [loading, setLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -46,21 +46,12 @@ export default function ToolsAndMcp() {
     }
     try {
       const api = new Api()
-      const [upstreamsResp, toolsResp] = await Promise.all([
-        api.api.v1UsersMcpUpstreamsList({ limit: 100 }),
-        api.api.v1UsersMcpToolsList(),
-      ])
+      const upstreamsResp = await api.api.v1UsersMcpUpstreamsList({ limit: 100 })
 
       if (upstreamsResp.data?.code === 0) {
         setServers(upstreamsResp.data?.data?.items || [])
       } else {
         toast.error(upstreamsResp.data?.message || "加载 MCP 服务失败")
-      }
-
-      if (toolsResp.data?.code === 0) {
-        setTools(toolsResp.data?.data?.items || [])
-      } else {
-        toast.error(toolsResp.data?.message || "加载 MCP 工具失败")
       }
     } catch {
       toast.error("加载 MCP 配置失败")
@@ -149,8 +140,6 @@ export default function ToolsAndMcp() {
     }
   }
 
-  const builtinTools = tools
-
   const handleToggleTool = async (tool: DomainMCPTool, enabled: boolean) => {
     if (!tool.id) {
       toast.error("工具信息不完整")
@@ -162,15 +151,18 @@ export default function ToolsAndMcp() {
       const api = new Api()
       const resp = await api.api.v1UsersMcpToolsUpdate(tool.id, { enabled })
       if (resp.data?.code === 0) {
-        setTools((current) =>
-          current.map((item) =>
-            item.id === tool.id
-              ? {
-                  ...item,
-                  enabled,
-                }
-              : item
-          )
+        setServers((current) =>
+          current.map((server) => ({
+            ...server,
+            tools: (server.tools || []).map((item) =>
+              item.id === tool.id
+                ? {
+                    ...item,
+                    enabled,
+                  }
+                : item
+            ),
+          }))
         )
       } else {
         toast.error(resp.data?.message || "工具开关更新失败")
@@ -259,6 +251,7 @@ export default function ToolsAndMcp() {
     description,
     tools,
     editable,
+    isPlatform,
     onEdit,
     onSync,
     syncing,
@@ -270,6 +263,7 @@ export default function ToolsAndMcp() {
     description?: string
     tools: DomainMCPTool[]
     editable: boolean
+    isPlatform?: boolean
     onEdit?: () => void
     onSync?: () => void
     syncing?: boolean
@@ -290,13 +284,33 @@ export default function ToolsAndMcp() {
                 <span className="truncate">{name}</span>
               </ItemTitle>
               {url ? (
-                <div className="mt-1 break-all text-sm text-muted-foreground">
+                <div className="mt-1 break-all text-xs text-muted-foreground">
                   {url}
                 </div>
               ) : null}
             </div>
-            {editable ? (
+            {isPlatform ? (
               <ItemActions className="shrink-0">
+                <Badge variant="outline">内置 MCP 服务</Badge>
+              </ItemActions>
+            ) : null}
+            {editable ? (
+              <ItemActions className="shrink-0 gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onSync}
+                  disabled={syncing}
+                >
+                  {syncing ? (
+                    <>
+                      <Spinner className="size-3.5" />
+                      同步中
+                    </>
+                  ) : (
+                    "同步"
+                  )}
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon-sm">
@@ -304,10 +318,6 @@ export default function ToolsAndMcp() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={onSync} disabled={syncing}>
-                      <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} />
-                      同步
-                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={onEdit}>
                       <IconPencil />
                       修改
@@ -355,6 +365,17 @@ export default function ToolsAndMcp() {
     )
   }
 
+  const orderedServers = [...servers].sort((left, right) => {
+    const leftIsPlatform = left.scope === "platform"
+    const rightIsPlatform = right.scope === "platform"
+
+    if (leftIsPlatform === rightIsPlatform) {
+      return 0
+    }
+
+    return leftIsPlatform ? -1 : 1
+  })
+
   return (
     <>
       <div className="flex h-full min-h-0 flex-col">
@@ -384,21 +405,16 @@ export default function ToolsAndMcp() {
             loadServers()
           ) : (
             <ItemGroup className="flex flex-col gap-4">
-              {renderServerCard({
-                key: "builtin-monkeycode",
-                name: "MonkeyCode 内置工具",
-                tools: builtinTools,
-                editable: false,
-                toolInteractive: true,
-              })}
-              {servers.map((server) =>
+              {orderedServers.map((server) =>
                 renderServerCard({
                   key: server.id || server.name || server.url || Math.random().toString(36),
                   name: server.name || "未命名 MCP 服务",
                   url: server.url,
                   description: server.description,
-                  tools: [],
-                  editable: true,
+                  tools: server.tools || [],
+                  editable: server.scope !== "platform",
+                  isPlatform: server.scope === "platform",
+                  toolInteractive: true,
                   onEdit: () => {
                     setEditingServer(server)
                     setIsEditDialogOpen(true)
