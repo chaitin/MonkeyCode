@@ -378,7 +378,7 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 		t := ts[0]
 		for _, cond := range req.Conditions {
 			if cond.Type == string(etypes.ConditionTypeFailed) {
-				if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
+				if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusError, lifecycle.TaskMetadata{
 					TaskID: t.ID,
 					UserID: t.UserID,
 				}); err != nil {
