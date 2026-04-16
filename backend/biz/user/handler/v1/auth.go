@@ -56,14 +56,14 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	v1.PUT("/passwords/reset", web.BindHandler(h.ResetPassword))
 
 	// 密码登录
-	v1.POST("/password-login", web.BindHandler(h.PasswordLogin))
-	v1.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.Check())
-	v1.GET("/status", web.BaseHandler(h.Status), auth.Check())
+	v1.POST("/password-login", web.BindHandler(h.PasswordLogin), targetActive.TargetActive())
+	v1.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.Check(), targetActive.TargetActive())
+	v1.GET("/status", web.BaseHandler(h.Status), auth.Check(), targetActive.TargetActive())
 	v1.POST("/logout", web.BaseHandler(h.Logout), auth.Auth(), targetActive.TargetActive())
 
 	// 邮箱绑定接口
 	v1.PUT("/email/bind-request", web.BindHandler(h.SendBindEmailVerification), auth.Auth(), targetActive.TargetActive())
-	v1.GET("/email/verify", web.BindHandler(h.VerifyBindEmail))
+	v1.GET("/email/verify", web.BindHandler(h.VerifyBindEmail), targetActive.TargetActive())
 
 	return h, nil
 }
