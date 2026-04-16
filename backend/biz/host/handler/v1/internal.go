@@ -34,7 +34,7 @@ type InternalHostHandler struct {
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
 	cache          *cache.Cache
-	vmLifecycle    *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
+	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	hostUsecase    domain.HostUsecase
 	taskConns      *ws.TaskConn
 	projectUsecase domain.ProjectUsecase
@@ -50,7 +50,6 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
 		redis:          do.MustInvoke[*redis.Client](i),
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
-		vmLifecycle:    do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
@@ -344,12 +343,11 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 			continue
 		}
 
-		if err := h.vmLifecycle.Transition(c.Request().Context(), vm.ID, lifecycle.VMStateRunning, lifecycle.VMMetadata{
-			VMID:   vm.ID,
-			TaskID: &t.ID,
+		if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
+			TaskID: t.ID,
 			UserID: t.UserID,
 		}); err != nil {
-			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition vm to running")
+			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
 		}
 	}
 
@@ -375,19 +373,18 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 		return err
 	}
 
-	for _, task := range vm.Edges.Tasks {
+	if ts := vm.Edges.Tasks; len(ts) > 0 {
+		t := ts[0]
 		for _, cond := range req.Conditions {
-			if cond.Type != string(etypes.ConditionTypeFailed) {
-				continue
+			if cond.Type == string(etypes.ConditionTypeFailed) {
+				if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusError, lifecycle.TaskMetadata{
+					TaskID: t.ID,
+					UserID: t.UserID,
+				}); err != nil {
+					h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
+				}
+				break
 			}
-			if err := h.vmLifecycle.Transition(c.Request().Context(), vm.ID, lifecycle.VMStateFailed, lifecycle.VMMetadata{
-				VMID:   vm.ID,
-				TaskID: &task.ID,
-				UserID: task.UserID,
-			}); err != nil {
-				h.logger.With("task", task, "error", err).ErrorContext(c.Request().Context(), "failed to transition vm to failed")
-			}
-			break
 		}
 	}
 
