@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   Bell,
   Bot,
+  Blocks,
   Box,
   HardDrive,
   MonitorCloud,
@@ -47,9 +48,11 @@ import Hosts from "./hosts"
 import Identities from "./identities"
 import VmsPage from "./vms"
 import Notifications from "./notifications"
+import ToolsAndMcp from "./tools-mcp"
 
 const SETTINGS_NAV = [
   { id: "identities", name: "Git 身份", icon: IconPasswordFingerprint },
+  { id: "tools-mcp", name: "MCP 与工具", icon: Blocks },
   { id: "models", name: "AI 大模型", icon: Bot },
   { id: "images", name: "系统镜像", icon: Box },
   { id: "hosts", name: "宿主机", icon: HardDrive },
@@ -63,6 +66,8 @@ function SettingsContent({ section }: { section: SettingsSectionId }) {
   switch (section) {
     case "identities":
       return <Identities />
+    case "tools-mcp":
+      return <ToolsAndMcp />
     case "models":
       return <Models />
     case "images":

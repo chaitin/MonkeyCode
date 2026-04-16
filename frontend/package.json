@@ -42,6 +42,7 @@
     "lucide-react": "^1.7.0",
     "mermaid": "^11.14.0",
     "next-themes": "^0.4.6",
+    "pinyin-pro": "^3.28.1",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
     "react-ace": "^14.0.1",
