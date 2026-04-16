@@ -47,6 +47,7 @@ type TaskHandler struct {
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
 	idleRefresher vmidle.VMIdleRefresher
+	activeRepo    domain.UserActiveRepo
 }
 
 // NewTaskHandler 创建任务处理器
@@ -76,6 +77,8 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		nlsSvc = n
 	}
 
+	activeRepo := do.MustInvoke[domain.UserActiveRepo](i)
+
 	h := &TaskHandler{
 		cfg:           cfg,
 		usecase:       uc,
@@ -89,6 +92,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		controlConns:  cc,
 		taskSummary:   ts,
 		idleRefresher: ir,
+		activeRepo:    activeRepo,
 	}
 
 	// 注册路由
@@ -583,6 +587,11 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 }
 
 func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logger, user *domain.User, task *domain.Task, m domain.TaskStream) {
+	// 记录用户活跃时间
+	if err := h.activeRepo.RecordActiveRecord(ctx, consts.UserActiveKey, user.ID.String(), time.Now()); err != nil {
+		logger.With("error", err).WarnContext(ctx, "failed to record user active time")
+	}
+
 	switch m.Type {
 	case consts.TaskStreamTypeUserInput:
 		if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
