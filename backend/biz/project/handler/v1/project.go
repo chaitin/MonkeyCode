@@ -39,22 +39,22 @@ func NewProjectHandler(i *do.Injector) (*ProjectHandler, error) {
 	g.DELETE("/:id", web.BindHandler(h.Delete))
 
 	gi := w.Group("/api/v1/users/projects/:id/issues")
-	gi.Use(auth.Auth())
+	gi.Use(auth.Auth(), targetActive.TargetActive())
 	gi.GET("", web.BindHandler(h.ListIssues))
 	gi.POST("", web.BindHandler(h.CreateIssue))
 	gi.PUT("/:issue_id", web.BindHandler(h.UpdateIssue))
 
 	gic := w.Group("/api/v1/users/projects/:id/issues/:issue_id/comments")
-	gic.Use(auth.Auth())
+	gic.Use(auth.Auth(), targetActive.TargetActive())
 	gic.GET("", web.BindHandler(h.ListIssueComments))
 	gic.POST("", web.BindHandler(h.CreateIssueComment))
 
 	gc := w.Group("/api/v1/users/projects/:id/collaborators")
-	gc.Use(auth.Auth())
+	gc.Use(auth.Auth(), targetActive.TargetActive())
 	gc.GET("", web.BindHandler(h.ListCollaborators))
 
 	gt := w.Group("/api/v1/users/projects/:id/tree")
-	gt.Use(auth.Auth())
+	gt.Use(auth.Auth(), targetActive.TargetActive())
 	gt.GET("", web.BindHandler(h.GetProjectTree))
 	gt.GET("/blob", web.BindHandler(h.GetProjectBlob))
 	gt.GET("/logs", web.BindHandler(h.GetProjectLogs))
