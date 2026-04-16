@@ -21,6 +21,25 @@ const isWebglSupported = (): boolean => {
   }
 };
 
+const buildWebSocketUrl = (rawUrl: string): string => {
+  if (!rawUrl) {
+    return rawUrl;
+  }
+
+  if (rawUrl.startsWith('ws://') || rawUrl.startsWith('wss://')) {
+    return rawUrl;
+  }
+
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    const normalized = new URL(rawUrl);
+    normalized.protocol = normalized.protocol === 'https:' ? 'wss:' : 'ws:';
+    return normalized.toString();
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`;
+};
+
 interface TerminalProps {
   ws: string
   theme: string
@@ -183,7 +202,7 @@ export default function Terminal({
   const connectWebSocket = () => {
     setConnecting(true);
     
-    websocketInstance.current = new WebSocket(ws);
+    websocketInstance.current = new WebSocket(buildWebSocketUrl(ws));
     
     websocketInstance.current.onopen = () => {
       pingLooper.current = window.setInterval(() => {
