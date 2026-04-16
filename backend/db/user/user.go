@@ -69,6 +69,8 @@ const (
 	EdgeProjectIssueComments = "project_issue_comments"
 	// EdgeGitBots holds the string denoting the git_bots edge name in mutations.
 	EdgeGitBots = "git_bots"
+	// EdgeMcpUpstreams holds the string denoting the mcp_upstreams edge name in mutations.
+	EdgeMcpUpstreams = "mcp_upstreams"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
@@ -183,6 +185,13 @@ const (
 	// GitBotsInverseTable is the table name for the GitBot entity.
 	// It exists in this package in order to avoid circular dependency with the "gitbot" package.
 	GitBotsInverseTable = "git_bots"
+	// McpUpstreamsTable is the table that holds the mcp_upstreams relation/edge.
+	McpUpstreamsTable = "mcp_upstreams"
+	// McpUpstreamsInverseTable is the table name for the MCPUpstream entity.
+	// It exists in this package in order to avoid circular dependency with the "mcpupstream" package.
+	McpUpstreamsInverseTable = "mcp_upstreams"
+	// McpUpstreamsColumn is the table column denoting the mcp_upstreams relation/edge.
+	McpUpstreamsColumn = "user_id"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -546,6 +555,20 @@ func ByGitBots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByMcpUpstreamsCount orders the results by mcp_upstreams count.
+func ByMcpUpstreamsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newMcpUpstreamsStep(), opts...)
+	}
+}
+
+// ByMcpUpstreams orders the results by mcp_upstreams terms.
+func ByMcpUpstreams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newMcpUpstreamsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -697,6 +720,13 @@ func newGitBotsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GitBotsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, false, GitBotsTable, GitBotsPrimaryKey...),
+	)
+}
+func newMcpUpstreamsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(McpUpstreamsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, McpUpstreamsTable, McpUpstreamsColumn),
 	)
 }
 func newTeamMembersStep() *sqlgraph.Step {

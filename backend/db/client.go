@@ -23,6 +23,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
 	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
@@ -74,6 +77,12 @@ type Client struct {
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
 	Image *ImageClient
+	// MCPTool is the client for interacting with the MCPTool builders.
+	MCPTool *MCPToolClient
+	// MCPUpstream is the client for interacting with the MCPUpstream builders.
+	MCPUpstream *MCPUpstreamClient
+	// MCPUserToolSetting is the client for interacting with the MCPUserToolSetting builders.
+	MCPUserToolSetting *MCPUserToolSettingClient
 	// Model is the client for interacting with the Model builders.
 	Model *ModelClient
 	// ModelApiKey is the client for interacting with the ModelApiKey builders.
@@ -148,6 +157,9 @@ func (c *Client) init() {
 	c.GitIdentity = NewGitIdentityClient(c.config)
 	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
+	c.MCPTool = NewMCPToolClient(c.config)
+	c.MCPUpstream = NewMCPUpstreamClient(c.config)
+	c.MCPUserToolSetting = NewMCPUserToolSettingClient(c.config)
 	c.Model = NewModelClient(c.config)
 	c.ModelApiKey = NewModelApiKeyClient(c.config)
 	c.ModelPricing = NewModelPricingClient(c.config)
@@ -275,6 +287,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GitIdentity:         NewGitIdentityClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
+		MCPTool:             NewMCPToolClient(cfg),
+		MCPUpstream:         NewMCPUpstreamClient(cfg),
+		MCPUserToolSetting:  NewMCPUserToolSettingClient(cfg),
 		Model:               NewModelClient(cfg),
 		ModelApiKey:         NewModelApiKeyClient(cfg),
 		ModelPricing:        NewModelPricingClient(cfg),
@@ -329,6 +344,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GitIdentity:         NewGitIdentityClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
+		MCPTool:             NewMCPToolClient(cfg),
+		MCPUpstream:         NewMCPUpstreamClient(cfg),
+		MCPUserToolSetting:  NewMCPUserToolSettingClient(cfg),
 		Model:               NewModelClient(cfg),
 		ModelApiKey:         NewModelApiKeyClient(cfg),
 		ModelPricing:        NewModelPricingClient(cfg),
@@ -387,9 +405,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
-		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
-		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
+		c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
+		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
+		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
+		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
 		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
 		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
 		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
@@ -403,9 +422,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
-		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
-		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
+		c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
+		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
+		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
+		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
 		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
 		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
 		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
@@ -431,6 +451,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Host.mutate(ctx, m)
 	case *ImageMutation:
 		return c.Image.mutate(ctx, m)
+	case *MCPToolMutation:
+		return c.MCPTool.mutate(ctx, m)
+	case *MCPUpstreamMutation:
+		return c.MCPUpstream.mutate(ctx, m)
+	case *MCPUserToolSettingMutation:
+		return c.MCPUserToolSetting.mutate(ctx, m)
 	case *ModelMutation:
 		return c.Model.mutate(ctx, m)
 	case *ModelApiKeyMutation:
@@ -1860,6 +1886,453 @@ func (c *ImageClient) mutate(ctx context.Context, m *ImageMutation) (Value, erro
 		return (&ImageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Image mutation op: %q", m.Op())
+	}
+}
+
+// MCPToolClient is a client for the MCPTool schema.
+type MCPToolClient struct {
+	config
+}
+
+// NewMCPToolClient returns a client for the MCPTool from the given config.
+func NewMCPToolClient(c config) *MCPToolClient {
+	return &MCPToolClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mcptool.Hooks(f(g(h())))`.
+func (c *MCPToolClient) Use(hooks ...Hook) {
+	c.hooks.MCPTool = append(c.hooks.MCPTool, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mcptool.Intercept(f(g(h())))`.
+func (c *MCPToolClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MCPTool = append(c.inters.MCPTool, interceptors...)
+}
+
+// Create returns a builder for creating a MCPTool entity.
+func (c *MCPToolClient) Create() *MCPToolCreate {
+	mutation := newMCPToolMutation(c.config, OpCreate)
+	return &MCPToolCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MCPTool entities.
+func (c *MCPToolClient) CreateBulk(builders ...*MCPToolCreate) *MCPToolCreateBulk {
+	return &MCPToolCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MCPToolClient) MapCreateBulk(slice any, setFunc func(*MCPToolCreate, int)) *MCPToolCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MCPToolCreateBulk{err: fmt.Errorf("calling to MCPToolClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MCPToolCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MCPToolCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MCPTool.
+func (c *MCPToolClient) Update() *MCPToolUpdate {
+	mutation := newMCPToolMutation(c.config, OpUpdate)
+	return &MCPToolUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MCPToolClient) UpdateOne(_m *MCPTool) *MCPToolUpdateOne {
+	mutation := newMCPToolMutation(c.config, OpUpdateOne, withMCPTool(_m))
+	return &MCPToolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MCPToolClient) UpdateOneID(id uuid.UUID) *MCPToolUpdateOne {
+	mutation := newMCPToolMutation(c.config, OpUpdateOne, withMCPToolID(id))
+	return &MCPToolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MCPTool.
+func (c *MCPToolClient) Delete() *MCPToolDelete {
+	mutation := newMCPToolMutation(c.config, OpDelete)
+	return &MCPToolDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MCPToolClient) DeleteOne(_m *MCPTool) *MCPToolDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MCPToolClient) DeleteOneID(id uuid.UUID) *MCPToolDeleteOne {
+	builder := c.Delete().Where(mcptool.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MCPToolDeleteOne{builder}
+}
+
+// Query returns a query builder for MCPTool.
+func (c *MCPToolClient) Query() *MCPToolQuery {
+	return &MCPToolQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMCPTool},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MCPTool entity by its id.
+func (c *MCPToolClient) Get(ctx context.Context, id uuid.UUID) (*MCPTool, error) {
+	return c.Query().Where(mcptool.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MCPToolClient) GetX(ctx context.Context, id uuid.UUID) *MCPTool {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUpstream queries the upstream edge of a MCPTool.
+func (c *MCPToolClient) QueryUpstream(_m *MCPTool) *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcptool.Table, mcptool.FieldID, id),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, mcptool.UpstreamTable, mcptool.UpstreamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *MCPToolClient) Hooks() []Hook {
+	return c.hooks.MCPTool
+}
+
+// Interceptors returns the client interceptors.
+func (c *MCPToolClient) Interceptors() []Interceptor {
+	return c.inters.MCPTool
+}
+
+func (c *MCPToolClient) mutate(ctx context.Context, m *MCPToolMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MCPToolCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MCPToolUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MCPToolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MCPToolDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown MCPTool mutation op: %q", m.Op())
+	}
+}
+
+// MCPUpstreamClient is a client for the MCPUpstream schema.
+type MCPUpstreamClient struct {
+	config
+}
+
+// NewMCPUpstreamClient returns a client for the MCPUpstream from the given config.
+func NewMCPUpstreamClient(c config) *MCPUpstreamClient {
+	return &MCPUpstreamClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mcpupstream.Hooks(f(g(h())))`.
+func (c *MCPUpstreamClient) Use(hooks ...Hook) {
+	c.hooks.MCPUpstream = append(c.hooks.MCPUpstream, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mcpupstream.Intercept(f(g(h())))`.
+func (c *MCPUpstreamClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MCPUpstream = append(c.inters.MCPUpstream, interceptors...)
+}
+
+// Create returns a builder for creating a MCPUpstream entity.
+func (c *MCPUpstreamClient) Create() *MCPUpstreamCreate {
+	mutation := newMCPUpstreamMutation(c.config, OpCreate)
+	return &MCPUpstreamCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MCPUpstream entities.
+func (c *MCPUpstreamClient) CreateBulk(builders ...*MCPUpstreamCreate) *MCPUpstreamCreateBulk {
+	return &MCPUpstreamCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MCPUpstreamClient) MapCreateBulk(slice any, setFunc func(*MCPUpstreamCreate, int)) *MCPUpstreamCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MCPUpstreamCreateBulk{err: fmt.Errorf("calling to MCPUpstreamClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MCPUpstreamCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MCPUpstreamCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MCPUpstream.
+func (c *MCPUpstreamClient) Update() *MCPUpstreamUpdate {
+	mutation := newMCPUpstreamMutation(c.config, OpUpdate)
+	return &MCPUpstreamUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MCPUpstreamClient) UpdateOne(_m *MCPUpstream) *MCPUpstreamUpdateOne {
+	mutation := newMCPUpstreamMutation(c.config, OpUpdateOne, withMCPUpstream(_m))
+	return &MCPUpstreamUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MCPUpstreamClient) UpdateOneID(id uuid.UUID) *MCPUpstreamUpdateOne {
+	mutation := newMCPUpstreamMutation(c.config, OpUpdateOne, withMCPUpstreamID(id))
+	return &MCPUpstreamUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MCPUpstream.
+func (c *MCPUpstreamClient) Delete() *MCPUpstreamDelete {
+	mutation := newMCPUpstreamMutation(c.config, OpDelete)
+	return &MCPUpstreamDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MCPUpstreamClient) DeleteOne(_m *MCPUpstream) *MCPUpstreamDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MCPUpstreamClient) DeleteOneID(id uuid.UUID) *MCPUpstreamDeleteOne {
+	builder := c.Delete().Where(mcpupstream.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MCPUpstreamDeleteOne{builder}
+}
+
+// Query returns a query builder for MCPUpstream.
+func (c *MCPUpstreamClient) Query() *MCPUpstreamQuery {
+	return &MCPUpstreamQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMCPUpstream},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MCPUpstream entity by its id.
+func (c *MCPUpstreamClient) Get(ctx context.Context, id uuid.UUID) (*MCPUpstream, error) {
+	return c.Query().Where(mcpupstream.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MCPUpstreamClient) GetX(ctx context.Context, id uuid.UUID) *MCPUpstream {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTools queries the tools edge of a MCPUpstream.
+func (c *MCPUpstreamClient) QueryTools(_m *MCPUpstream) *MCPToolQuery {
+	query := (&MCPToolClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, id),
+			sqlgraph.To(mcptool.Table, mcptool.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, mcpupstream.ToolsTable, mcpupstream.ToolsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUser queries the user edge of a MCPUpstream.
+func (c *MCPUpstreamClient) QueryUser(_m *MCPUpstream) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, mcpupstream.UserTable, mcpupstream.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *MCPUpstreamClient) Hooks() []Hook {
+	return c.hooks.MCPUpstream
+}
+
+// Interceptors returns the client interceptors.
+func (c *MCPUpstreamClient) Interceptors() []Interceptor {
+	return c.inters.MCPUpstream
+}
+
+func (c *MCPUpstreamClient) mutate(ctx context.Context, m *MCPUpstreamMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MCPUpstreamCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MCPUpstreamUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MCPUpstreamUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MCPUpstreamDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown MCPUpstream mutation op: %q", m.Op())
+	}
+}
+
+// MCPUserToolSettingClient is a client for the MCPUserToolSetting schema.
+type MCPUserToolSettingClient struct {
+	config
+}
+
+// NewMCPUserToolSettingClient returns a client for the MCPUserToolSetting from the given config.
+func NewMCPUserToolSettingClient(c config) *MCPUserToolSettingClient {
+	return &MCPUserToolSettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mcpusertoolsetting.Hooks(f(g(h())))`.
+func (c *MCPUserToolSettingClient) Use(hooks ...Hook) {
+	c.hooks.MCPUserToolSetting = append(c.hooks.MCPUserToolSetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mcpusertoolsetting.Intercept(f(g(h())))`.
+func (c *MCPUserToolSettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MCPUserToolSetting = append(c.inters.MCPUserToolSetting, interceptors...)
+}
+
+// Create returns a builder for creating a MCPUserToolSetting entity.
+func (c *MCPUserToolSettingClient) Create() *MCPUserToolSettingCreate {
+	mutation := newMCPUserToolSettingMutation(c.config, OpCreate)
+	return &MCPUserToolSettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MCPUserToolSetting entities.
+func (c *MCPUserToolSettingClient) CreateBulk(builders ...*MCPUserToolSettingCreate) *MCPUserToolSettingCreateBulk {
+	return &MCPUserToolSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MCPUserToolSettingClient) MapCreateBulk(slice any, setFunc func(*MCPUserToolSettingCreate, int)) *MCPUserToolSettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MCPUserToolSettingCreateBulk{err: fmt.Errorf("calling to MCPUserToolSettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MCPUserToolSettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MCPUserToolSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MCPUserToolSetting.
+func (c *MCPUserToolSettingClient) Update() *MCPUserToolSettingUpdate {
+	mutation := newMCPUserToolSettingMutation(c.config, OpUpdate)
+	return &MCPUserToolSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MCPUserToolSettingClient) UpdateOne(_m *MCPUserToolSetting) *MCPUserToolSettingUpdateOne {
+	mutation := newMCPUserToolSettingMutation(c.config, OpUpdateOne, withMCPUserToolSetting(_m))
+	return &MCPUserToolSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MCPUserToolSettingClient) UpdateOneID(id uuid.UUID) *MCPUserToolSettingUpdateOne {
+	mutation := newMCPUserToolSettingMutation(c.config, OpUpdateOne, withMCPUserToolSettingID(id))
+	return &MCPUserToolSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MCPUserToolSetting.
+func (c *MCPUserToolSettingClient) Delete() *MCPUserToolSettingDelete {
+	mutation := newMCPUserToolSettingMutation(c.config, OpDelete)
+	return &MCPUserToolSettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MCPUserToolSettingClient) DeleteOne(_m *MCPUserToolSetting) *MCPUserToolSettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MCPUserToolSettingClient) DeleteOneID(id uuid.UUID) *MCPUserToolSettingDeleteOne {
+	builder := c.Delete().Where(mcpusertoolsetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MCPUserToolSettingDeleteOne{builder}
+}
+
+// Query returns a query builder for MCPUserToolSetting.
+func (c *MCPUserToolSettingClient) Query() *MCPUserToolSettingQuery {
+	return &MCPUserToolSettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMCPUserToolSetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MCPUserToolSetting entity by its id.
+func (c *MCPUserToolSettingClient) Get(ctx context.Context, id uuid.UUID) (*MCPUserToolSetting, error) {
+	return c.Query().Where(mcpusertoolsetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MCPUserToolSettingClient) GetX(ctx context.Context, id uuid.UUID) *MCPUserToolSetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MCPUserToolSettingClient) Hooks() []Hook {
+	return c.hooks.MCPUserToolSetting
+}
+
+// Interceptors returns the client interceptors.
+func (c *MCPUserToolSettingClient) Interceptors() []Interceptor {
+	return c.inters.MCPUserToolSetting
+}
+
+func (c *MCPUserToolSettingClient) mutate(ctx context.Context, m *MCPUserToolSettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MCPUserToolSettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MCPUserToolSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MCPUserToolSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MCPUserToolSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown MCPUserToolSetting mutation op: %q", m.Op())
 	}
 }
 
@@ -6838,6 +7311,22 @@ func (c *UserClient) QueryGitBots(_m *User) *GitBotQuery {
 	return query
 }
 
+// QueryMcpUpstreams queries the mcp_upstreams edge of a User.
+func (c *UserClient) QueryMcpUpstreams(_m *User) *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.McpUpstreamsTable, user.McpUpstreamsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a User.
 func (c *UserClient) QueryTeamMembers(_m *User) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -7298,21 +7787,22 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
-		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
-		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
-		ProjectTask, Task, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
+		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, MCPTool,
+		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
+		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
+		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
+		TaskUsageStat, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
-		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, Model,
-		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
-		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
-		ProjectTask, Task, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity,
-		VirtualMachine []ent.Interceptor
+		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, MCPTool,
+		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
+		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
+		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
+		TaskUsageStat, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Interceptor
 	}
 )
 

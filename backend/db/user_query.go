@@ -19,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
@@ -59,6 +60,7 @@ type UserQuery struct {
 	withProjectCollaborators *ProjectCollaboratorQuery
 	withProjectIssueComments *ProjectIssueCommentQuery
 	withGitBots              *GitBotQuery
+	withMcpUpstreams         *MCPUpstreamQuery
 	withTeamMembers          *TeamMemberQuery
 	withTeamGroupMembers     *TeamGroupMemberQuery
 	withGitBotUsers          *GitBotUserQuery
@@ -451,6 +453,28 @@ func (_q *UserQuery) QueryGitBots() *GitBotQuery {
 	return query
 }
 
+// QueryMcpUpstreams chains the current query on the "mcp_upstreams" edge.
+func (_q *UserQuery) QueryMcpUpstreams() *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.McpUpstreamsTable, user.McpUpstreamsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryTeamMembers chains the current query on the "team_members" edge.
 func (_q *UserQuery) QueryTeamMembers() *TeamMemberQuery {
 	query := (&TeamMemberClient{config: _q.config}).Query()
@@ -725,6 +749,7 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withProjectCollaborators: _q.withProjectCollaborators.Clone(),
 		withProjectIssueComments: _q.withProjectIssueComments.Clone(),
 		withGitBots:              _q.withGitBots.Clone(),
+		withMcpUpstreams:         _q.withMcpUpstreams.Clone(),
 		withTeamMembers:          _q.withTeamMembers.Clone(),
 		withTeamGroupMembers:     _q.withTeamGroupMembers.Clone(),
 		withGitBotUsers:          _q.withGitBotUsers.Clone(),
@@ -911,6 +936,17 @@ func (_q *UserQuery) WithGitBots(opts ...func(*GitBotQuery)) *UserQuery {
 	return _q
 }
 
+// WithMcpUpstreams tells the query-builder to eager-load the nodes that are connected to
+// the "mcp_upstreams" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithMcpUpstreams(opts ...func(*MCPUpstreamQuery)) *UserQuery {
+	query := (&MCPUpstreamClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withMcpUpstreams = query
+	return _q
+}
+
 // WithTeamMembers tells the query-builder to eager-load the nodes that are connected to
 // the "team_members" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithTeamMembers(opts ...func(*TeamMemberQuery)) *UserQuery {
@@ -1022,7 +1058,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [19]bool{
+		loadedTypes = [20]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
@@ -1039,6 +1075,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withProjectCollaborators != nil,
 			_q.withProjectIssueComments != nil,
 			_q.withGitBots != nil,
+			_q.withMcpUpstreams != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamGroupMembers != nil,
 			_q.withGitBotUsers != nil,
@@ -1178,6 +1215,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadGitBots(ctx, query, nodes,
 			func(n *User) { n.Edges.GitBots = []*GitBot{} },
 			func(n *User, e *GitBot) { n.Edges.GitBots = append(n.Edges.GitBots, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withMcpUpstreams; query != nil {
+		if err := _q.loadMcpUpstreams(ctx, query, nodes,
+			func(n *User) { n.Edges.McpUpstreams = []*MCPUpstream{} },
+			func(n *User, e *MCPUpstream) { n.Edges.McpUpstreams = append(n.Edges.McpUpstreams, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1775,6 +1819,39 @@ func (_q *UserQuery) loadGitBots(ctx context.Context, query *GitBotQuery, nodes 
 		for kn := range nodes {
 			assign(kn, n)
 		}
+	}
+	return nil
+}
+func (_q *UserQuery) loadMcpUpstreams(ctx context.Context, query *MCPUpstreamQuery, nodes []*User, init func(*User), assign func(*User, *MCPUpstream)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(mcpupstream.FieldUserID)
+	}
+	query.Where(predicate.MCPUpstream(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.McpUpstreamsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "user_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

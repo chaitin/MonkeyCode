@@ -41,6 +41,7 @@ type Model struct {
 	IsDefault        bool                 `json:"is_default"`
 	CreatedAt        int64                `json:"created_at"`
 	UpdatedAt        int64                `json:"updated_at"`
+	Weight           int                  `json:"weight"`
 	Owner            *Owner               `json:"owner,omitempty"`
 	InterfaceType    consts.InterfaceType `json:"interface_type"`
 	IsFree           bool                 `json:"is_free"`
@@ -62,6 +63,7 @@ func (m *Model) From(src *db.Model) *Model {
 	m.Model = src.Model
 	m.Temperature = src.Temperature
 	m.InterfaceType = consts.InterfaceType(src.InterfaceType)
+	m.Weight = src.Weight
 	m.LastCheckSuccess = src.LastCheckSuccess
 	m.LastCheckError = src.LastCheckError
 	m.CreatedAt = src.CreatedAt.Unix()

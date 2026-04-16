@@ -49,8 +49,8 @@ func NewGitIdentityHandler(i *do.Injector) (*GitIdentityHandler, error) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Success		200		{object}	web.Resp{data=[]domain.GitIdentity}	"成功"
-//	@Failure		500		{object}	web.Resp							"服务器内部错误"
+//	@Success		200	{object}	web.Resp{data=[]domain.GitIdentity}	"成功"
+//	@Failure		500	{object}	web.Resp							"服务器内部错误"
 //	@Router			/api/v1/users/git-identities [get]
 func (h *GitIdentityHandler) List(c *web.Context) error {
 	user := middleware.GetUser(c)

@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/project"
@@ -457,6 +458,21 @@ func (_u *UserUpdate) AddGitBots(v ...*GitBot) *UserUpdate {
 	return _u.AddGitBotIDs(ids...)
 }
 
+// AddMcpUpstreamIDs adds the "mcp_upstreams" edge to the MCPUpstream entity by IDs.
+func (_u *UserUpdate) AddMcpUpstreamIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// AddMcpUpstreams adds the "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *UserUpdate) AddMcpUpstreams(v ...*MCPUpstream) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddMcpUpstreamIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdate) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -841,6 +857,27 @@ func (_u *UserUpdate) RemoveGitBots(v ...*GitBot) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGitBotIDs(ids...)
+}
+
+// ClearMcpUpstreams clears all "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *UserUpdate) ClearMcpUpstreams() *UserUpdate {
+	_u.mutation.ClearMcpUpstreams()
+	return _u
+}
+
+// RemoveMcpUpstreamIDs removes the "mcp_upstreams" edge to MCPUpstream entities by IDs.
+func (_u *UserUpdate) RemoveMcpUpstreamIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// RemoveMcpUpstreams removes "mcp_upstreams" edges to MCPUpstream entities.
+func (_u *UserUpdate) RemoveMcpUpstreams(v ...*MCPUpstream) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveMcpUpstreamIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -1789,6 +1826,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.McpUpstreamsTable,
+			Columns: []string{user.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedMcpUpstreamsIDs(); len(nodes) > 0 && !_u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.McpUpstreamsTable,
+			Columns: []string{user.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.McpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.McpUpstreamsTable,
+			Columns: []string{user.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2354,6 +2436,21 @@ func (_u *UserUpdateOne) AddGitBots(v ...*GitBot) *UserUpdateOne {
 	return _u.AddGitBotIDs(ids...)
 }
 
+// AddMcpUpstreamIDs adds the "mcp_upstreams" edge to the MCPUpstream entity by IDs.
+func (_u *UserUpdateOne) AddMcpUpstreamIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// AddMcpUpstreams adds the "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *UserUpdateOne) AddMcpUpstreams(v ...*MCPUpstream) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddMcpUpstreamIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *UserUpdateOne) AddTeamMemberIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -2738,6 +2835,27 @@ func (_u *UserUpdateOne) RemoveGitBots(v ...*GitBot) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGitBotIDs(ids...)
+}
+
+// ClearMcpUpstreams clears all "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *UserUpdateOne) ClearMcpUpstreams() *UserUpdateOne {
+	_u.mutation.ClearMcpUpstreams()
+	return _u
+}
+
+// RemoveMcpUpstreamIDs removes the "mcp_upstreams" edge to MCPUpstream entities by IDs.
+func (_u *UserUpdateOne) RemoveMcpUpstreamIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// RemoveMcpUpstreams removes "mcp_upstreams" edges to MCPUpstream entities.
+func (_u *UserUpdateOne) RemoveMcpUpstreams(v ...*MCPUpstream) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveMcpUpstreamIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -3713,6 +3831,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 		edge.Target.Fields = specE.Fields
 		if specE.ID.Value != nil {
 			edge.Target.Fields = append(edge.Target.Fields, specE.ID)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.McpUpstreamsTable,
+			Columns: []string{user.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedMcpUpstreamsIDs(); len(nodes) > 0 && !_u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.McpUpstreamsTable,
+			Columns: []string{user.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.McpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.McpUpstreamsTable,
+			Columns: []string{user.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}

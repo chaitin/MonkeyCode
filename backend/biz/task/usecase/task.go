@@ -354,9 +354,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			git.URL = pt.RepoURL
 		}
 
+		var token string
 		if keys := m.Edges.Apikeys; len(keys) > 0 {
 			m.APIKey = keys[0].APIKey
 			m.BaseURL = a.cfg.LLMProxy.BaseURL + "/v1"
+			token = keys[0].APIKey
 		}
 
 		coding, configs, err := a.getCodingConfigs(req.CliName, m, req.Extra.SkillIDs)
@@ -392,24 +394,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		}
 		createdVm = vm
 
-		mcps := []taskflow.McpServerConfig{
-			{
-				Type: "http",
-				Name: "mcaiBuiltin",
-				Url:  proto.String(fmt.Sprintf("http://127.0.0.1:65510/mcp?task_id=%s", t.ID.String())),
-			},
-			{
-				Type: "http",
-				Name: "context7",
-				Url:  proto.String("https://mcp.context7.com/mcp"),
-				Headers: []*taskflow.McpHttpHeader{
-					{
-						Name:  "CONTEXT7_API_KEY",
-						Value: a.cfg.Context7ApiKey,
-					},
-				},
-			},
-		}
+		mcps := a.buildMCPConfigs(t.ID, token)
 
 		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
 		createTaskReq := &taskflow.CreateTaskReq{
@@ -476,6 +461,35 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	return result, nil
+}
+
+func (a *TaskUsecase) buildMCPConfigs(taskID uuid.UUID, token string) []taskflow.McpServerConfig {
+	mcps := []taskflow.McpServerConfig{
+		{
+			Type: "http",
+			Name: "mcaiBuiltin",
+			Url:  proto.String(fmt.Sprintf("http://127.0.0.1:65510/mcp?task_id=%s", taskID.String())),
+		},
+	}
+
+	if token != "" {
+		mcps = append(mcps, taskflow.McpServerConfig{
+			Type: "http",
+			Name: "monkeycode-ai",
+			Url:  proto.String(fmt.Sprintf("%s/mcp", strings.TrimRight(a.cfg.Server.BaseURL, "/"))),
+			Headers: []*taskflow.McpHttpHeader{
+				{
+					Name:  "Authorization",
+					Value: fmt.Sprintf("Bearer %s", token),
+				},
+			},
+			Command: new(string),
+			Args:    []string{},
+			Env:     map[string]string{},
+		})
+	}
+
+	return mcps
 }
 
 func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs []string) (taskflow.CodingAgent, []taskflow.ConfigFile, error) {

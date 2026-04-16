@@ -13,6 +13,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
 	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
@@ -145,6 +148,198 @@ func init() {
 	image.DefaultUpdatedAt = imageDescUpdatedAt.Default.(func() time.Time)
 	// image.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	image.UpdateDefaultUpdatedAt = imageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	mcptoolFields := schema.MCPTool{}.Fields()
+	_ = mcptoolFields
+	// mcptoolDescName is the schema descriptor for name field.
+	mcptoolDescName := mcptoolFields[2].Descriptor()
+	// mcptool.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	mcptool.NameValidator = func() func(string) error {
+		validators := mcptoolDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcptoolDescNamespacedName is the schema descriptor for namespaced_name field.
+	mcptoolDescNamespacedName := mcptoolFields[3].Descriptor()
+	// mcptool.NamespacedNameValidator is a validator for the "namespaced_name" field. It is called by the builders before save.
+	mcptool.NamespacedNameValidator = func() func(string) error {
+		validators := mcptoolDescNamespacedName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(namespaced_name string) error {
+			for _, fn := range fns {
+				if err := fn(namespaced_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcptoolDescPrice is the schema descriptor for price field.
+	mcptoolDescPrice := mcptoolFields[8].Descriptor()
+	// mcptool.DefaultPrice holds the default value on creation for the price field.
+	mcptool.DefaultPrice = mcptoolDescPrice.Default.(int64)
+	// mcptoolDescEnabled is the schema descriptor for enabled field.
+	mcptoolDescEnabled := mcptoolFields[9].Descriptor()
+	// mcptool.DefaultEnabled holds the default value on creation for the enabled field.
+	mcptool.DefaultEnabled = mcptoolDescEnabled.Default.(bool)
+	// mcptoolDescVersionHash is the schema descriptor for version_hash field.
+	mcptoolDescVersionHash := mcptoolFields[10].Descriptor()
+	// mcptool.VersionHashValidator is a validator for the "version_hash" field. It is called by the builders before save.
+	mcptool.VersionHashValidator = mcptoolDescVersionHash.Validators[0].(func(string) error)
+	// mcptoolDescCreatedAt is the schema descriptor for created_at field.
+	mcptoolDescCreatedAt := mcptoolFields[13].Descriptor()
+	// mcptool.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mcptool.DefaultCreatedAt = mcptoolDescCreatedAt.Default.(func() time.Time)
+	// mcptoolDescUpdatedAt is the schema descriptor for updated_at field.
+	mcptoolDescUpdatedAt := mcptoolFields[14].Descriptor()
+	// mcptool.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mcptool.DefaultUpdatedAt = mcptoolDescUpdatedAt.Default.(func() time.Time)
+	// mcptool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mcptool.UpdateDefaultUpdatedAt = mcptoolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	mcpupstreamFields := schema.MCPUpstream{}.Fields()
+	_ = mcpupstreamFields
+	// mcpupstreamDescName is the schema descriptor for name field.
+	mcpupstreamDescName := mcpupstreamFields[1].Descriptor()
+	// mcpupstream.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	mcpupstream.NameValidator = func() func(string) error {
+		validators := mcpupstreamDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcpupstreamDescSlug is the schema descriptor for slug field.
+	mcpupstreamDescSlug := mcpupstreamFields[2].Descriptor()
+	// mcpupstream.SlugValidator is a validator for the "slug" field. It is called by the builders before save.
+	mcpupstream.SlugValidator = func() func(string) error {
+		validators := mcpupstreamDescSlug.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(slug string) error {
+			for _, fn := range fns {
+				if err := fn(slug); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcpupstreamDescType is the schema descriptor for type field.
+	mcpupstreamDescType := mcpupstreamFields[5].Descriptor()
+	// mcpupstream.DefaultType holds the default value on creation for the type field.
+	mcpupstream.DefaultType = mcpupstreamDescType.Default.(string)
+	// mcpupstream.TypeValidator is a validator for the "type" field. It is called by the builders before save.
+	mcpupstream.TypeValidator = func() func(string) error {
+		validators := mcpupstreamDescType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(_type string) error {
+			for _, fn := range fns {
+				if err := fn(_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcpupstreamDescURL is the schema descriptor for url field.
+	mcpupstreamDescURL := mcpupstreamFields[6].Descriptor()
+	// mcpupstream.URLValidator is a validator for the "url" field. It is called by the builders before save.
+	mcpupstream.URLValidator = mcpupstreamDescURL.Validators[0].(func(string) error)
+	// mcpupstreamDescEnabled is the schema descriptor for enabled field.
+	mcpupstreamDescEnabled := mcpupstreamFields[9].Descriptor()
+	// mcpupstream.DefaultEnabled holds the default value on creation for the enabled field.
+	mcpupstream.DefaultEnabled = mcpupstreamDescEnabled.Default.(bool)
+	// mcpupstreamDescHealthStatus is the schema descriptor for health_status field.
+	mcpupstreamDescHealthStatus := mcpupstreamFields[10].Descriptor()
+	// mcpupstream.DefaultHealthStatus holds the default value on creation for the health_status field.
+	mcpupstream.DefaultHealthStatus = mcpupstreamDescHealthStatus.Default.(string)
+	// mcpupstream.HealthStatusValidator is a validator for the "health_status" field. It is called by the builders before save.
+	mcpupstream.HealthStatusValidator = func() func(string) error {
+		validators := mcpupstreamDescHealthStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(health_status string) error {
+			for _, fn := range fns {
+				if err := fn(health_status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcpupstreamDescSyncStatus is the schema descriptor for sync_status field.
+	mcpupstreamDescSyncStatus := mcpupstreamFields[11].Descriptor()
+	// mcpupstream.DefaultSyncStatus holds the default value on creation for the sync_status field.
+	mcpupstream.DefaultSyncStatus = mcpupstreamDescSyncStatus.Default.(string)
+	// mcpupstream.SyncStatusValidator is a validator for the "sync_status" field. It is called by the builders before save.
+	mcpupstream.SyncStatusValidator = func() func(string) error {
+		validators := mcpupstreamDescSyncStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(sync_status string) error {
+			for _, fn := range fns {
+				if err := fn(sync_status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcpupstreamDescCreatedAt is the schema descriptor for created_at field.
+	mcpupstreamDescCreatedAt := mcpupstreamFields[14].Descriptor()
+	// mcpupstream.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mcpupstream.DefaultCreatedAt = mcpupstreamDescCreatedAt.Default.(func() time.Time)
+	// mcpupstreamDescUpdatedAt is the schema descriptor for updated_at field.
+	mcpupstreamDescUpdatedAt := mcpupstreamFields[15].Descriptor()
+	// mcpupstream.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mcpupstream.DefaultUpdatedAt = mcpupstreamDescUpdatedAt.Default.(func() time.Time)
+	// mcpupstream.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mcpupstream.UpdateDefaultUpdatedAt = mcpupstreamDescUpdatedAt.UpdateDefault.(func() time.Time)
+	mcpusertoolsettingFields := schema.MCPUserToolSetting{}.Fields()
+	_ = mcpusertoolsettingFields
+	// mcpusertoolsettingDescEnabled is the schema descriptor for enabled field.
+	mcpusertoolsettingDescEnabled := mcpusertoolsettingFields[3].Descriptor()
+	// mcpusertoolsetting.DefaultEnabled holds the default value on creation for the enabled field.
+	mcpusertoolsetting.DefaultEnabled = mcpusertoolsettingDescEnabled.Default.(bool)
+	// mcpusertoolsettingDescCreatedAt is the schema descriptor for created_at field.
+	mcpusertoolsettingDescCreatedAt := mcpusertoolsettingFields[4].Descriptor()
+	// mcpusertoolsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mcpusertoolsetting.DefaultCreatedAt = mcpusertoolsettingDescCreatedAt.Default.(func() time.Time)
+	// mcpusertoolsettingDescUpdatedAt is the schema descriptor for updated_at field.
+	mcpusertoolsettingDescUpdatedAt := mcpusertoolsettingFields[5].Descriptor()
+	// mcpusertoolsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mcpusertoolsetting.DefaultUpdatedAt = mcpusertoolsettingDescUpdatedAt.Default.(func() time.Time)
+	// mcpusertoolsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mcpusertoolsetting.UpdateDefaultUpdatedAt = mcpusertoolsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
 	modelMixin := schema.Model{}.Mixin()
 	modelMixinHooks0 := modelMixin[0].Hooks()
 	model.Hooks[0] = modelMixinHooks0[0]

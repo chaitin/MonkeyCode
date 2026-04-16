@@ -67,5 +67,6 @@ func (User) Edges() []ent.Edge {
 		edge.To("project_collaborators", ProjectCollaborator.Type),
 		edge.To("project_issue_comments", ProjectIssueComment.Type),
 		edge.To("git_bots", GitBot.Type).Through("git_bot_users", GitBotUser.Type),
+		edge.To("mcp_upstreams", MCPUpstream.Type),
 	}
 }
