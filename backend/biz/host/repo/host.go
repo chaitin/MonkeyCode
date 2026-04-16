@@ -441,6 +441,12 @@ func (h *HostRepo) DeleteVirtualMachine(ctx context.Context, uid uuid.UUID, host
 			return err
 		}
 
+		if err := tx.VirtualMachine.UpdateOneID(vm.ID).
+			SetIsRecycled(true).
+			Exec(ctx); err != nil {
+			return err
+		}
+
 		_, err = tx.VirtualMachine.Delete().Where(virtualmachine.ID(id)).Exec(ctx)
 		if err != nil {
 			return err
