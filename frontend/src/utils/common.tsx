@@ -706,10 +706,23 @@ export function selectImage(images: DomainImage[], followDefault: boolean = true
  * @param filename 下载时的文件名（可选，默认从路径中提取）
  * @throws 网络错误或下载失败时抛出错误
  */
-export async function downloadFile(envid: string, path: string, filename?: string): Promise<void> {
+export interface DownloadFileProgress {
+  loaded: number
+  total: number | null
+  percent: number | null
+}
+
+export async function downloadFile(
+  envid: string,
+  path: string,
+  filename?: string,
+  onProgress?: (progress: DownloadFileProgress) => void,
+  signal?: AbortSignal,
+  writableStream?: WritableStream<Uint8Array>,
+): Promise<void> {
   const url = `/api/v1/users/files/download?id=${encodeURIComponent(envid)}&path=${encodeURIComponent(path)}`
   
-  const response = await fetch(url)
+  const response = await fetch(url, { signal })
   
   // 检查 x-internal-error header，如果存在则表示下载失败
   const internalError = response.headers.get('x-internal-error')
@@ -720,17 +733,57 @@ export async function downloadFile(envid: string, path: string, filename?: strin
   if (!response.body) {
     throw new Error('无法获取文件流')
   }
+
+  if (!response.ok) {
+    throw new Error(`下载失败（${response.status}）`)
+  }
   
   const downloadFilename = filename || getFileName(path)
   const contentLength = response.headers.get('content-length')
+  const total = contentLength ? Number(contentLength) : null
   
   // 创建可写流，直接写入磁盘（流式下载）
-  const fileStream = streamSaver.createWriteStream(downloadFilename, {
-    size: contentLength ? Number(contentLength) : undefined
+  const fileStream = writableStream ?? streamSaver.createWriteStream(downloadFilename, {
+    size: total ?? undefined
   })
-  
-  // 将 response body 流式写入文件
-  await response.body.pipeTo(fileStream)
+  const reader = response.body.getReader()
+  const writer = fileStream.getWriter()
+  let loaded = 0
+
+  onProgress?.({
+    loaded,
+    total,
+    percent: total && total > 0 ? 0 : null,
+  })
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      if (!value) {
+        continue
+      }
+
+      await writer.write(value)
+      loaded += value.byteLength
+
+      onProgress?.({
+        loaded,
+        total,
+        percent: total && total > 0 ? Math.min((loaded / total) * 100, 100) : null,
+      })
+    }
+
+    await writer.close()
+  } catch (error) {
+    await writer.abort(error)
+    throw error
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 

@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { IconCopy, IconDotsVertical, IconDownload, IconFile, IconFolder, IconReload, IconTrash, IconTransfer, IconUpload } from "@tabler/icons-react"
-import { normalizePath, downloadFile } from "@/utils/common"
+import { normalizePath } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { RepoFileEntryMode, type RepoFileStatus } from "./task-shared"
@@ -27,6 +27,13 @@ import CreateFileDialog from "@/components/console/files/create-file"
 import UploadFileDialog from "@/components/console/files/upload-file"
 import CopyFileDialog from "@/components/console/files/copy"
 import MoveFileDialog from "@/components/console/files/move"
+import { FileDownloadDialog } from "./file-download-dialog"
+
+type WindowWithSaveFilePicker = Window & {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string
+  }) => Promise<FileSystemFileHandle>
+}
 
 interface FileActionsDropdownProps {
   file: RepoFileStatus
@@ -48,12 +55,14 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
   const [uploadFileDialogOpen, setUploadFileDialogOpen] = useState(false)
   const [copyFileDialogOpen, setCopyFileDialogOpen] = useState(false)
   const [moveFileDialogOpen, setMoveFileDialogOpen] = useState(false)
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false)
+  const [downloadFileHandle, setDownloadFileHandle] = useState<FileSystemFileHandle | null>(null)
 
   const isDirectory = file.entry_mode === RepoFileEntryMode.RepoEntryModeTree
   // 完整路径用于 API 调用
   const filePath = normalizePath('/workspace/' + file.path)
-  // 显示路径用于界面展示（不含 /workspace 前缀）
-  const displayPath = file.path
+  // 展示路径统一使用完整工作区路径
+  const displayPath = filePath
   const downloadFilename = isDirectory ? `${file.name}.zip` : file.name
   const fileType = isDirectory ? '目录' : '文件'
 
@@ -72,6 +81,26 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
       }
     })
     setDeleteDialogOpen(false)
+  }
+
+  const handleDownloadClick = async () => {
+    let nextFileHandle: FileSystemFileHandle | null = null
+    const typedWindow = window as WindowWithSaveFilePicker
+
+    if (typeof typedWindow.showSaveFilePicker === "function") {
+      try {
+        nextFileHandle = await typedWindow.showSaveFilePicker({
+          suggestedName: downloadFilename,
+        })
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+      }
+    }
+
+    setDownloadFileHandle(nextFileHandle)
+    setDownloadDialogOpen(true)
   }
 
   return (
@@ -128,13 +157,8 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
               移动
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={async () => {
-            if (!envid) return
-            try {
-              await downloadFile(envid, filePath, downloadFilename)
-            } catch (error) {
-              toast.error('下载失败：' + (error instanceof Error ? error.message : '未知错误'))
-            }
+          <DropdownMenuItem onClick={() => {
+            void handleDownloadClick()
           }}>
             <IconDownload className="h-4 w-4" />
             下载
@@ -170,6 +194,25 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         </AlertDialogContent>
       </AlertDialog>
 
+      {envid && (
+        <FileDownloadDialog
+          open={downloadDialogOpen}
+          onOpenChange={(open) => {
+            setDownloadDialogOpen(open)
+            if (!open) {
+              setDownloadFileHandle(null)
+            }
+          }}
+          envid={envid}
+          filePath={filePath}
+          displayPath={displayPath}
+          downloadFilename={downloadFilename}
+          fileName={file.name}
+          fileType={fileType}
+          fileHandle={downloadFileHandle}
+        />
+      )}
+
       {/* 创建文件夹对话框 */}
       {envid && (
         <CreateFolderDialog
@@ -177,7 +220,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           onOpenChange={setCreateFolderDialogOpen}
           targetDir={displayPath}
           envid={envid}
-          baseDir="/workspace"
           onSuccess={onSuccess}
         />
       )}
@@ -189,7 +231,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           onOpenChange={setCreateFileDialogOpen}
           targetDir={displayPath}
           envid={envid}
-          baseDir="/workspace"
           onSuccess={onSuccess}
         />
       )}
@@ -201,7 +242,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           onOpenChange={setUploadFileDialogOpen}
           targetDir={displayPath}
           envid={envid}
-          baseDir="/workspace"
           onSuccess={onSuccess}
         />
       )}
@@ -213,7 +253,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           onOpenChange={setCopyFileDialogOpen}
           sourcePath={displayPath}
           envid={envid}
-          baseDir="/workspace"
           onSuccess={onSuccess}
         />
       )}
@@ -225,7 +264,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           onOpenChange={setMoveFileDialogOpen}
           sourcePath={displayPath}
           envid={envid}
-          baseDir="/workspace"
           onSuccess={onSuccess}
         />
       )}
