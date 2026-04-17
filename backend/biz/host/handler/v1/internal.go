@@ -35,8 +35,8 @@ type InternalHostHandler struct {
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
 	getAgentToken  agentTokenGetter
-	limiter        vmDeleteLimiter
-	vmDeleter      vmDeleter
+	limiter        *redis.Client
+	vmDeleter      taskflow.VirtualMachiner
 	skipSoftDelete func(context.Context) context.Context
 	cache          *cache.Cache
 	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]

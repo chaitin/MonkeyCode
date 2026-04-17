@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
@@ -17,6 +18,7 @@ import (
 )
 
 func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
+	rdb := newTestRedis(t)
 	vmClient := &vmDeleterStub{ch: make(chan struct{}, 1)}
 	handler := &InternalHostHandler{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -32,7 +34,7 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 			},
 		},
 		vmDeleter:      vmClient,
-		limiter:        &setNXLimiterStub{result: true},
+		limiter:        rdb,
 		skipSoftDelete: func(ctx context.Context) context.Context { return ctx },
 	}
 
@@ -50,6 +52,10 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 }
 
 func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
+	rdb := newTestRedis(t)
+	if ok, err := rdb.SetNX(context.Background(), "vm:recycle:retry:agent_2", "1", time.Minute).Result(); err != nil || !ok {
+		t.Fatalf("seed redis limiter failed, ok=%v err=%v", ok, err)
+	}
 	vmClient := &vmDeleterStub{ch: make(chan struct{}, 1)}
 	handler := &InternalHostHandler{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -65,7 +71,7 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 			},
 		},
 		vmDeleter:      vmClient,
-		limiter:        &setNXLimiterStub{result: false},
+		limiter:        rdb,
 		skipSoftDelete: func(ctx context.Context) context.Context { return ctx },
 	}
 
@@ -79,6 +85,7 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 }
 
 func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
+	rdb := newTestRedis(t)
 	vmClient := &vmDeleterStub{ch: make(chan struct{}, 1)}
 	skipCalled := false
 	type testSkipMarkerKey struct{}
@@ -101,7 +108,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
 		repo:          repo,
 		vmDeleter:     vmClient,
-		limiter:       &setNXLimiterStub{result: true},
+		limiter:       rdb,
 		skipSoftDelete: func(ctx context.Context) context.Context {
 			skipCalled = true
 			return context.WithValue(ctx, markerKey, markerValue)
@@ -204,19 +211,6 @@ func (s *internalHostRepoStub) GetGitCredentialByTask(context.Context, string) (
 	return nil, errors.New("task not found")
 }
 
-type setNXLimiterStub struct {
-	result bool
-	err    error
-	keys   []string
-	ttl    time.Duration
-}
-
-func (s *setNXLimiterStub) SetNX(_ context.Context, key string, _ interface{}, ttl time.Duration) *redis.BoolCmd {
-	s.keys = append(s.keys, key)
-	s.ttl = ttl
-	return redis.NewBoolResult(s.result, s.err)
-}
-
 type vmDeleterStub struct {
 	reqs []*taskflow.DeleteVirtualMachineReq
 	err  error
@@ -233,6 +227,46 @@ func (s *vmDeleterStub) Delete(_ context.Context, req *taskflow.DeleteVirtualMac
 		}
 	}
 	return s.err
+}
+
+func (s *vmDeleterStub) Create(context.Context, *taskflow.CreateVirtualMachineReq) (*taskflow.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) Hibernate(context.Context, *taskflow.HibernateVirtualMachineReq) error {
+	return errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) Resume(context.Context, *taskflow.ResumeVirtualMachineReq) error {
+	return errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) List(context.Context, string) ([]*taskflow.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) Info(context.Context, taskflow.VirtualMachineInfoReq) (*taskflow.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) Terminal(context.Context, *taskflow.TerminalReq) (taskflow.Sheller, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) Reports(context.Context, taskflow.ReportSubscribeReq) (taskflow.Reporter, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) TerminalList(context.Context, string) ([]*taskflow.Terminal, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) CloseTerminal(context.Context, *taskflow.CloseTerminalReq) error {
+	return errors.New("not implemented")
+}
+
+func (s *vmDeleterStub) IsOnline(context.Context, *taskflow.IsOnlineReq[string]) (*taskflow.IsOnlineResp, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *vmDeleterStub) waitReqs(t *testing.T, timeout time.Duration) []*taskflow.DeleteVirtualMachineReq {
@@ -253,4 +287,20 @@ func (s *vmDeleterStub) hasReqWithin(timeout time.Duration) bool {
 	case <-time.After(timeout):
 		return false
 	}
+}
+
+func newTestRedis(t *testing.T) *redis.Client {
+	t.Helper()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run() error = %v", err)
+	}
+	t.Cleanup(mr.Close)
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() {
+		_ = rdb.Close()
+	})
+	return rdb
 }

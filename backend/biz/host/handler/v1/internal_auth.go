@@ -19,14 +19,6 @@ const (
 
 var errAgentVMRecycled = errors.New("agent vm is recycled")
 
-type vmDeleteLimiter interface {
-	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
-}
-
-type vmDeleter interface {
-	Delete(ctx context.Context, req *taskflow.DeleteVirtualMachineReq) error
-}
-
 type agentTokenGetter func(ctx context.Context, key string) (string, error)
 
 func defaultAgentTokenGetter(rdb *redis.Client) agentTokenGetter {
