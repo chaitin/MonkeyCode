@@ -128,9 +128,9 @@ export type ModelPricingItem = {
 export const modelPricingList: readonly ModelPricingItem[] = [
   { model: "minimax-m2.7", credits: 0, score: 637, tags: ["免费"] },
   { model: "qwen3.5-plus", credits: 0, score: 538, tags: ["免费"] },
-  { model: "gpt-5.4", credits: 500, score: 922, tags: ["能力强"] },
-  { model: "gpt-5.2", credits: 300, score: 887, tags: [] },
-  { model: "gpt-5.3-codex", credits: 300, score: 918, tags: ["能力强", "性价比"] },
+  { model: "gpt-5.4", credits: 600, score: 922, tags: ["能力强"] },
+  { model: "gpt-5.2", credits: 400, score: 887, tags: [] },
+  { model: "gpt-5.3-codex", credits: 400, score: 918, tags: ["能力强", "性价比"] },
   { model: "glm-5.1", credits: 600, score: 904, tags: [] },
   { model: "glm-5", credits: 400, score: 847, tags: [] },
   { model: "glm-4.7", credits: 200, score: 709, tags: ["性价比"] },
