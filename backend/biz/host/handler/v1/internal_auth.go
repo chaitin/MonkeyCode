@@ -27,12 +27,6 @@ type vmDeleter interface {
 	Delete(ctx context.Context, req *taskflow.DeleteVirtualMachineReq) error
 }
 
-type asyncRunner func(func())
-
-func defaultAsyncRunner(fn func()) {
-	go fn()
-}
-
 type agentTokenGetter func(ctx context.Context, key string) (string, error)
 
 func defaultAgentTokenGetter(rdb *redis.Client) agentTokenGetter {
@@ -59,7 +53,7 @@ return nil
 }
 
 func (h *InternalHostHandler) tryRecycledVMDelete(ctx context.Context, vm *db.VirtualMachine, machineID string) {
-	if h.limiter == nil || h.vmDeleter == nil || h.runAsync == nil {
+	if h.limiter == nil || h.vmDeleter == nil {
 		h.logger.WarnContext(ctx, "skip recycled vm delete retry", "vm_id", vm.ID, "machine_id", machineID, "error", "missing dependency")
 		return
 	}
@@ -71,7 +65,7 @@ func (h *InternalHostHandler) tryRecycledVMDelete(ctx context.Context, vm *db.Vi
 		return
 	}
 
-	h.runAsync(func() {
+	go func() {
 		deleteCtx, cancel := context.WithTimeout(context.Background(), recycledDeleteTimeout)
 		defer cancel()
 
@@ -85,5 +79,5 @@ func (h *InternalHostHandler) tryRecycledVMDelete(ctx context.Context, vm *db.Vi
 			return
 		}
 		h.logger.InfoContext(deleteCtx, "reissue recycled vm delete success", "vm_id", vm.ID, "machine_id", machineID)
-	})
+	}()
 }

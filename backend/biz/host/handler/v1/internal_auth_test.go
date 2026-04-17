@@ -17,7 +17,7 @@ import (
 )
 
 func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
-	vmClient := &vmDeleterStub{}
+	vmClient := &vmDeleterStub{ch: make(chan struct{}, 1)}
 	handler := &InternalHostHandler{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
@@ -34,23 +34,23 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 		vmDeleter:      vmClient,
 		limiter:        &setNXLimiterStub{result: true},
 		skipSoftDelete: func(ctx context.Context) context.Context { return ctx },
-		runAsync:       func(fn func()) { fn() },
 	}
 
 	_, err := handler.agentAuth(context.Background(), "agent_1", "machine-1")
 	if !errors.Is(err, errAgentVMRecycled) {
 		t.Fatalf("agent auth error = %v, want %v", err, errAgentVMRecycled)
 	}
-	if len(vmClient.reqs) != 1 {
+	reqs := vmClient.waitReqs(t, time.Second)
+	if len(reqs) != 1 {
 		t.Fatalf("delete calls = %d, want 1", len(vmClient.reqs))
 	}
-	if vmClient.reqs[0].ID != "env_1" {
-		t.Fatalf("delete env id = %q, want env_1", vmClient.reqs[0].ID)
+	if reqs[0].ID != "env_1" {
+		t.Fatalf("delete env id = %q, want env_1", reqs[0].ID)
 	}
 }
 
 func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
-	vmClient := &vmDeleterStub{}
+	vmClient := &vmDeleterStub{ch: make(chan struct{}, 1)}
 	handler := &InternalHostHandler{
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
@@ -67,20 +67,19 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 		vmDeleter:      vmClient,
 		limiter:        &setNXLimiterStub{result: false},
 		skipSoftDelete: func(ctx context.Context) context.Context { return ctx },
-		runAsync:       func(fn func()) { fn() },
 	}
 
 	_, err := handler.agentAuth(context.Background(), "agent_2", "machine-2")
 	if !errors.Is(err, errAgentVMRecycled) {
 		t.Fatalf("agent auth error = %v, want %v", err, errAgentVMRecycled)
 	}
-	if len(vmClient.reqs) != 0 {
+	if vmClient.hasReqWithin(50 * time.Millisecond) {
 		t.Fatalf("delete calls = %d, want 0", len(vmClient.reqs))
 	}
 }
 
 func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
-	vmClient := &vmDeleterStub{}
+	vmClient := &vmDeleterStub{ch: make(chan struct{}, 1)}
 	skipCalled := false
 	type testSkipMarkerKey struct{}
 	markerKey := testSkipMarkerKey{}
@@ -107,7 +106,6 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 			skipCalled = true
 			return context.WithValue(ctx, markerKey, markerValue)
 		},
-		runAsync: func(fn func()) { fn() },
 	}
 
 	_, err := handler.agentAuth(context.Background(), "agent_deleted", "machine-deleted")
@@ -117,7 +115,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 	if !skipCalled {
 		t.Fatal("expected skipSoftDelete to be called")
 	}
-	if len(vmClient.reqs) != 1 {
+	if len(vmClient.waitReqs(t, time.Second)) != 1 {
 		t.Fatalf("delete calls = %d, want 1", len(vmClient.reqs))
 	}
 }
@@ -127,6 +125,14 @@ type internalHostRepoStub struct {
 	assertSkipMarker bool
 	skipMarkerKey    interface{}
 	skipMarkerValue  string
+}
+
+func (s *internalHostRepoStub) List(context.Context, uuid.UUID) ([]*db.Host, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) GetHost(context.Context, uuid.UUID, string) (*domain.Host, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *internalHostRepoStub) UpsertHost(context.Context, *taskflow.Host) error {
@@ -162,6 +168,38 @@ func (s *internalHostRepoStub) GetVirtualMachineByEnvID(context.Context, string)
 	return nil, errors.New("vm not found")
 }
 
+func (s *internalHostRepoStub) GetVirtualMachineWithUser(context.Context, uuid.UUID, string) (*db.VirtualMachine, error) {
+	return nil, errors.New("vm not found")
+}
+
+func (s *internalHostRepoStub) CreateVirtualMachine(context.Context, *domain.User, *domain.CreateVMReq, func(context.Context) (string, error), func(*db.Model, *db.Image) (*domain.VirtualMachine, error)) (*domain.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) PastHourVirtualMachine(context.Context) ([]*db.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) AllCountDownVirtualMachine(context.Context) ([]*db.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) DeleteVirtualMachine(context.Context, uuid.UUID, string, string, func(*db.VirtualMachine) error) error {
+	return errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) DeleteHost(context.Context, uuid.UUID, string) error {
+	return errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) UpdateHost(context.Context, uuid.UUID, *domain.UpdateHostReq) error {
+	return errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) UpdateVM(context.Context, domain.UpdateVMReq, func(*db.VirtualMachine) error) (*db.VirtualMachine, int64, error) {
+	return nil, 0, errors.New("not implemented")
+}
+
 func (s *internalHostRepoStub) GetGitCredentialByTask(context.Context, string) (*domain.GitCredentialInfo, error) {
 	return nil, errors.New("task not found")
 }
@@ -182,10 +220,37 @@ func (s *setNXLimiterStub) SetNX(_ context.Context, key string, _ interface{}, t
 type vmDeleterStub struct {
 	reqs []*taskflow.DeleteVirtualMachineReq
 	err  error
+	ch   chan struct{}
 }
 
 func (s *vmDeleterStub) Delete(_ context.Context, req *taskflow.DeleteVirtualMachineReq) error {
 	cp := *req
 	s.reqs = append(s.reqs, &cp)
+	if s.ch != nil {
+		select {
+		case s.ch <- struct{}{}:
+		default:
+		}
+	}
 	return s.err
+}
+
+func (s *vmDeleterStub) waitReqs(t *testing.T, timeout time.Duration) []*taskflow.DeleteVirtualMachineReq {
+	t.Helper()
+	select {
+	case <-s.ch:
+		return s.reqs
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for delete call")
+		return nil
+	}
+}
+
+func (s *vmDeleterStub) hasReqWithin(timeout time.Duration) bool {
+	select {
+	case <-s.ch:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }

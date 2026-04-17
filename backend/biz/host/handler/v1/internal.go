@@ -28,27 +28,16 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
-type internalHostRepo interface {
-	UpsertHost(context.Context, *taskflow.Host) error
-	UpsertVirtualMachine(context.Context, *taskflow.VirtualMachine) error
-	GetVirtualMachine(context.Context, string) (*db.VirtualMachine, error)
-	UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error
-	GetByID(context.Context, string) (*db.Host, error)
-	GetVirtualMachineByEnvID(context.Context, string) (*db.VirtualMachine, error)
-	GetGitCredentialByTask(context.Context, string) (*domain.GitCredentialInfo, error)
-}
-
 // InternalHostHandler 处理 taskflow 回调的 host/VM 相关接口
 type InternalHostHandler struct {
 	logger         *slog.Logger
-	repo           internalHostRepo
+	repo           domain.HostRepo
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
 	getAgentToken  agentTokenGetter
 	limiter        vmDeleteLimiter
 	vmDeleter      vmDeleter
 	skipSoftDelete func(context.Context) context.Context
-	runAsync       asyncRunner
 	cache          *cache.Cache
 	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
 	hostUsecase    domain.HostUsecase
@@ -71,7 +60,6 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		limiter:        rdb,
 		vmDeleter:      tf.VirtualMachiner(),
 		skipSoftDelete: entx.SkipSoftDelete,
-		runAsync:       defaultAsyncRunner,
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
 		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
