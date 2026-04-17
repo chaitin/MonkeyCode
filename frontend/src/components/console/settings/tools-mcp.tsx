@@ -5,6 +5,17 @@ import { Api, type DomainCreateUserMCPUpstreamReq, type DomainMCPTool, type Doma
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -37,6 +48,7 @@ export default function ToolsAndMcp() {
   const [isCreating, setIsCreating] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [syncingServerId, setSyncingServerId] = useState<string | null>(null)
+  const [deletingServerId, setDeletingServerId] = useState<string | null>(null)
   const [togglingToolId, setTogglingToolId] = useState<string | null>(null)
   const [editingServer, setEditingServer] = useState<DomainMCPUpstream | null>(null)
 
@@ -137,6 +149,29 @@ export default function ToolsAndMcp() {
       toast.error("MCP 服务器同步失败")
     } finally {
       setSyncingServerId(null)
+    }
+  }
+
+  const handleDeleteServer = async (server: DomainMCPUpstream) => {
+    if (!server.id) {
+      toast.error("MCP 服务器信息不完整")
+      return
+    }
+
+    setDeletingServerId(server.id)
+    try {
+      const api = new Api()
+      const resp = await api.api.v1UsersMcpUpstreamsDelete(server.id)
+      if (resp.data?.code === 0) {
+        toast.success("MCP 服务器删除成功")
+        await loadData({ silent: true })
+      } else {
+        toast.error(resp.data?.message || "MCP 服务器删除失败")
+      }
+    } catch {
+      toast.error("MCP 服务器删除失败")
+    } finally {
+      setDeletingServerId(null)
     }
   }
 
@@ -254,7 +289,9 @@ export default function ToolsAndMcp() {
     isPlatform,
     onEdit,
     onSync,
+    onDelete,
     syncing,
+    deleting,
     toolInteractive = false,
   }: {
     key: string
@@ -266,7 +303,9 @@ export default function ToolsAndMcp() {
     isPlatform?: boolean
     onEdit?: () => void
     onSync?: () => void
+    onDelete?: () => void
     syncing?: boolean
+    deleting?: boolean
     toolInteractive?: boolean
   }) => {
     return (
@@ -318,14 +357,36 @@ export default function ToolsAndMcp() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={onEdit}>
+                    <DropdownMenuItem onClick={onEdit} disabled={syncing || deleting}>
                       <IconPencil />
                       修改
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive">
-                      <IconTrash />
-                      删除
-                    </DropdownMenuItem>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onSelect={(e) => { e.preventDefault() }}
+                          disabled={syncing || deleting}
+                        >
+                          <IconTrash />
+                          {deleting ? "删除中" : "删除"}
+                        </DropdownMenuItem>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>确认删除</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            确定要删除 MCP 服务器 "{name}" 吗？此操作不可撤销。
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+                          <AlertDialogAction onClick={onDelete} disabled={deleting}>
+                            {deleting ? "删除中..." : "确认删除"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </ItemActions>
@@ -420,7 +481,9 @@ export default function ToolsAndMcp() {
                     setIsEditDialogOpen(true)
                   },
                   onSync: () => handleSyncServer(server),
+                  onDelete: () => handleDeleteServer(server),
                   syncing: syncingServerId === server.id,
+                  deleting: deletingServerId === server.id,
                 })
               )}
             </ItemGroup>
