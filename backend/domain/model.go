@@ -95,6 +95,15 @@ func (m *Model) From(src *db.Model) *Model {
 		m.APIKey = ""
 		return m
 	}
+	if src.Edges.User.Role == consts.UserRoleAdmin {
+		m.Owner = &Owner{
+			ID:   src.Edges.User.ID.String(),
+			Type: consts.OwnerTypePublic,
+			Name: consts.MonkeyCodeAITeamName,
+		}
+		m.APIKey = ""
+		return m
+	}
 	return m
 }
 
