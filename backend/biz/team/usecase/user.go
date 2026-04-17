@@ -15,7 +15,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
-	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 )
 
@@ -269,12 +268,10 @@ func (u *TeamGroupUserUsecase) UpdateUser(ctx context.Context, req *domain.Updat
 }
 
 // generateResetPWDToken 生成重置密码的 token
+// 使用 UUID 作为随机 handle，实际过期时间由 Redis TTL 控制，
+// 避免 base32 填充字符在邮件传输中被破坏。
 func (u *TeamGroupUserUsecase) generateResetPWDToken(ctx context.Context, userID uuid.UUID) (string, error) {
-	token, err := crypto.Simple(userID.String(), time.Now().Add(time.Hour*24*3))
-	if err != nil {
-		return "", err
-	}
-	return token, nil
+	return uuid.NewString(), nil
 }
 
 // sendResetPasswordEmail 发送重置密码邮件
