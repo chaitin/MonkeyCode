@@ -4,15 +4,16 @@ import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { canUseModelBySubscription, getBrandFromModelName, getModelPricingItem, getModelPricingPriceLabel, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getModelPricingItem, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconHelpCircle, IconSparkles } from "@tabler/icons-react"
-import { useState, useEffect, useRef } from "react"
+import { IconChevronDown, IconHelpCircle, IconSparkles } from "@tabler/icons-react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
@@ -41,6 +42,10 @@ export default function StartDevelopTaskDialog({
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const { images, models, hosts, subscription } = useCommonData()
+  const selectedModel = useMemo(
+    () => models.find((model) => model.id === selectedModelId),
+    [models, selectedModelId]
+  )
 
   const handleOpenModelPricing = () => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
@@ -251,42 +256,59 @@ export default function StartDevelopTaskDialog({
           <div className="space-y-2">
             <Label>大模型</Label>
             <div className="flex items-center gap-2">
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择大模型" />
-                </SelectTrigger>
-                  <SelectContent>
-                    {models.map((model) => (
-                      (() => {
-                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                        const pricingLabel = getModelPricingPriceLabel(pricing)
+              <div className="flex-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" className="w-full justify-between">
+                      {selectedModel ? (
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
+                          <span className="truncate">{selectedModel.model}</span>
+                        </div>
+                      ) : (
+                        <span className="truncate text-muted-foreground">选择大模型</span>
+                      )}
+                      <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-[320px]">
+                    <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
+                      {models.map((model) => (
+                        (() => {
+                          const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                          const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                          const pricingTags = pricing?.tags ?? []
 
-                        return (
-                          <SelectItem key={model.id} value={model.id || ""}>
-                            <div className="flex w-full items-center justify-between gap-3">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                          return (
+                            <DropdownMenuRadioItem
+                              key={model.id}
+                              value={model.id || ""}
+                              className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                                <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
                                 <span className="truncate">{model.model}</span>
-                                {showPricingSummary && pricingLabel && (
-                                  <Badge
-                                    variant={pricing?.credits === 0 ? "default" : "secondary"}
-                                    className={pricing?.credits === 0 ? "shrink-0 !text-primary-foreground" : "shrink-0 !text-secondary-foreground"}
-                                  >
-                                    {pricingLabel}
-                                  </Badge>
-                                )}
                               </div>
-                              <div className="flex shrink-0 items-center gap-1.5">
+                              <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                                {showPricingSummary && pricingTags.map((tag) => (
+                                  <Badge
+                                    key={`${model.id}-${tag}`}
+                                    variant="default"
+                                    className="shrink-0 !bg-primary !text-primary-foreground"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
                                 {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                               </div>
-                            </div>
-                          </SelectItem>
-                        )
-                      })()
-                    ))}
-                </SelectContent>
-              </Select>
+                            </DropdownMenuRadioItem>
+                          )
+                        })()
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               <Button
                 type="button"
                 size="icon-sm"
@@ -304,7 +326,7 @@ export default function StartDevelopTaskDialog({
             <Textarea
               value={userMessage}
               onChange={(e) => setUserMessage(e.target.value)}
-              placeholder="请输入任务内容"
+              placeholder={TASK_PROMPT_PLACEHOLDER}
               rows={4}
               className="resize-none break-all"
             />

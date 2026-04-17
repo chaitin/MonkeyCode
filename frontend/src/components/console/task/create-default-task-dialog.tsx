@@ -57,12 +57,12 @@ import {
   getHostBadges,
   getImageShortName,
   getModelPricingItem,
-  getModelPricingPriceLabel,
   getOSFromImageName,
   getOwnerTypeBadge,
   getRepoIcon,
   getRepoNameFromUrl,
   getSkillTagIcon,
+  TASK_PROMPT_PLACEHOLDER,
   selectHost,
   selectImage,
   selectPreferredTaskModel,
@@ -571,7 +571,7 @@ export default function CreateDefaultTaskDialog({
           <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="请输入任务内容"
+            placeholder={TASK_PROMPT_PLACEHOLDER}
             className="min-h-36 resize-none"
           />
 
@@ -967,7 +967,7 @@ export default function CreateDefaultTaskDialog({
                       (() => {
                         const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
                         const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                        const pricingLabel = getModelPricingPriceLabel(pricing)
+                        const pricingTags = pricing?.tags ?? []
 
                         return (
                       <DropdownMenuRadioItem
@@ -975,19 +975,20 @@ export default function CreateDefaultTaskDialog({
                         value={model.id || ""}
                         className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
                       >
-                        <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                           <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
                           <span className="truncate">{model.model}</span>
-                          {showPricingSummary && pricingLabel && (
-                            <Badge
-                              variant={pricing?.credits === 0 ? "default" : "secondary"}
-                              className={pricing?.credits === 0 ? "shrink-0 !text-primary-foreground" : "shrink-0 !text-secondary-foreground"}
-                            >
-                              {pricingLabel}
-                            </Badge>
-                          )}
                         </div>
-                        <div className="flex shrink-0 items-center justify-end gap-1.5">
+                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                          {showPricingSummary && pricingTags.map((tag) => (
+                            <Badge
+                              key={`${model.id}-${tag}`}
+                              variant="default"
+                              className="shrink-0 !bg-primary !text-primary-foreground"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
                           {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
                         </div>
                       </DropdownMenuRadioItem>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupTextarea } from "@/components/ui/input-group";
@@ -16,9 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelPricingItem, getModelPricingPriceLabel, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
+import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelPricingItem, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconHelpCircle, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconChevronDown, IconHelpCircle, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -482,7 +482,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       <InputGroup className="rounded-4xl p-2 pb-0">
         <InputGroupTextarea 
           className="min-h-30 max-h-60 break-all" 
-          placeholder="请输入任务内容" 
+          placeholder={TASK_PROMPT_PLACEHOLDER} 
           value={taskContent} 
           onChange={(e) => setTaskContent(e.target.value)} 
         />
@@ -819,45 +819,60 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
             <FieldLabel>大模型</FieldLabel>
             <FieldContent>
               <div className="flex items-center gap-2">
-                <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择大模型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {models.map((model) => (
-                      (() => {
-                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                        const pricingLabel = getModelPricingPriceLabel(pricing)
+                <div className="flex-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" className="w-full justify-between">
+                        {selectedModel ? (
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
+                            <span className="truncate">{selectedModel.model}</span>
+                          </div>
+                        ) : (
+                          <span className="truncate text-muted-foreground">选择大模型</span>
+                        )}
+                        <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-[320px]">
+                      <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
+                        {models.map((model) => (
+                          (() => {
+                            const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                            const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                            const pricingTags = pricing?.tags ?? []
 
-                        return (
-                      <SelectItem 
-                        key={model.id} 
-                        value={model.id || ""} 
-                        disabled={!adaptedModelForTool()}>
-                        <div className="flex w-full items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                            <span className="truncate">{model.model}</span>
-                            {showPricingSummary && pricingLabel && (
-                              <Badge
-                                variant={pricing?.credits === 0 ? "default" : "secondary"}
-                                className={pricing?.credits === 0 ? "shrink-0 !text-primary-foreground" : "shrink-0 !text-secondary-foreground"}
+                            return (
+                              <DropdownMenuRadioItem
+                                key={model.id}
+                                value={model.id || ""}
+                                disabled={!adaptedModelForTool()}
+                                className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
                               >
-                                {pricingLabel}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                          </div>
-                        </div>
-                      </SelectItem>
-                        )
-                      })()
-                    ))}
-                  </SelectContent>
-                </Select>
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
+                                  <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
+                                  <span className="truncate">{model.model}</span>
+                                </div>
+                                <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                                  {showPricingSummary && pricingTags.map((tag) => (
+                                    <Badge
+                                      key={`${model.id}-${tag}`}
+                                      variant="default"
+                                      className="shrink-0 !bg-primary !text-primary-foreground"
+                                    >
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                  {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                                </div>
+                              </DropdownMenuRadioItem>
+                            )
+                          })()
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
