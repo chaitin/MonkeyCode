@@ -135,24 +135,6 @@ func (r *mcpRepo) DeleteUserUpstream(ctx context.Context, uid, id uuid.UUID) err
 		return err
 	}
 	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		tools, err := tx.MCPTool.Query().
-			Where(mcptool.UserID(uid)).
-			Where(mcptool.UpstreamID(id)).
-			All(ctx)
-		if err != nil {
-			return err
-		}
-		toolIds := cvt.Iter(tools, func(_ int, t *db.MCPTool) uuid.UUID { return t.ID })
-		if _, err := tx.MCPTool.Delete().
-			Where(mcptool.IDIn(toolIds...)).
-			Exec(ctx); err != nil {
-			return err
-		}
-		if _, err := tx.MCPUserToolSetting.Delete().
-			Where(mcpusertoolsetting.ToolIDIn(toolIds...)).
-			Exec(ctx); err != nil {
-			return err
-		}
 		_, err = tx.MCPUpstream.Delete().
 			Where(mcpupstream.UserID(uid)).
 			Where(mcpupstream.ID(row.ID)).
