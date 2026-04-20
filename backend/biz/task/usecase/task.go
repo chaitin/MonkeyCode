@@ -381,8 +381,8 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				BaseURL:  m.BaseURL,
 				Model:    m.Model,
 			},
-			Cores:  fmt.Sprintf("%d", req.Resource.Core),
-			Memory: req.Resource.Memory,
+			Cores:  "2",
+			Memory: 8 << 30,
 			Envs:   env,
 		})
 		if err != nil {
