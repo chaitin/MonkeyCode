@@ -65,7 +65,7 @@ func (u *User) From(src *db.User) *User {
 	u.AvatarURL = src.AvatarURL
 	u.Email = src.Email
 	u.Role = src.Role
-	u.Status = consts.UserStatusActive
+	u.Status = src.Status
 	u.IsBlocked = src.IsBlocked
 	u.HasPassword = src.Password != ""
 	u.Identities = cvt.Iter(src.Edges.Identities, func(_ int, i *db.UserIdentity) *UserIdentity {
