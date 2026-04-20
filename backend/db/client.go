@@ -2180,12 +2180,14 @@ func (c *MCPUpstreamClient) QueryUser(_m *MCPUpstream) *UserQuery {
 
 // Hooks returns the client hooks.
 func (c *MCPUpstreamClient) Hooks() []Hook {
-	return c.hooks.MCPUpstream
+	hooks := c.hooks.MCPUpstream
+	return append(hooks[:len(hooks):len(hooks)], mcpupstream.Hooks[:]...)
 }
 
 // Interceptors returns the client interceptors.
 func (c *MCPUpstreamClient) Interceptors() []Interceptor {
-	return c.inters.MCPUpstream
+	inters := c.inters.MCPUpstream
+	return append(inters[:len(inters):len(inters)], mcpupstream.Interceptors[:]...)
 }
 
 func (c *MCPUpstreamClient) mutate(ctx context.Context, m *MCPUpstreamMutation) (Value, error) {

@@ -9015,6 +9015,7 @@ type MCPUpstreamMutation struct {
 	op                Op
 	typ               string
 	id                *uuid.UUID
+	deleted_at        *time.Time
 	name              *string
 	slug              *string
 	scope             *mcpupstream.Scope
@@ -9142,6 +9143,55 @@ func (m *MCPUpstreamMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *MCPUpstreamMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *MCPUpstreamMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the MCPUpstream entity.
+// If the MCPUpstream object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MCPUpstreamMutation) OldDeletedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *MCPUpstreamMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[mcpupstream.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *MCPUpstreamMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[mcpupstream.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *MCPUpstreamMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, mcpupstream.FieldDeletedAt)
 }
 
 // SetName sets the "name" field.
@@ -9864,7 +9914,10 @@ func (m *MCPUpstreamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MCPUpstreamMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
+	if m.deleted_at != nil {
+		fields = append(fields, mcpupstream.FieldDeletedAt)
+	}
 	if m.name != nil {
 		fields = append(fields, mcpupstream.FieldName)
 	}
@@ -9918,6 +9971,8 @@ func (m *MCPUpstreamMutation) Fields() []string {
 // schema.
 func (m *MCPUpstreamMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case mcpupstream.FieldDeletedAt:
+		return m.DeletedAt()
 	case mcpupstream.FieldName:
 		return m.Name()
 	case mcpupstream.FieldSlug:
@@ -9957,6 +10012,8 @@ func (m *MCPUpstreamMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *MCPUpstreamMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case mcpupstream.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
 	case mcpupstream.FieldName:
 		return m.OldName(ctx)
 	case mcpupstream.FieldSlug:
@@ -9996,6 +10053,13 @@ func (m *MCPUpstreamMutation) OldField(ctx context.Context, name string) (ent.Va
 // type.
 func (m *MCPUpstreamMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case mcpupstream.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
 	case mcpupstream.FieldName:
 		v, ok := value.(string)
 		if !ok {
@@ -10131,6 +10195,9 @@ func (m *MCPUpstreamMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *MCPUpstreamMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(mcpupstream.FieldDeletedAt) {
+		fields = append(fields, mcpupstream.FieldDeletedAt)
+	}
 	if m.FieldCleared(mcpupstream.FieldUserID) {
 		fields = append(fields, mcpupstream.FieldUserID)
 	}
@@ -10160,6 +10227,9 @@ func (m *MCPUpstreamMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *MCPUpstreamMutation) ClearField(name string) error {
 	switch name {
+	case mcpupstream.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
 	case mcpupstream.FieldUserID:
 		m.ClearUserID()
 		return nil
@@ -10183,6 +10253,9 @@ func (m *MCPUpstreamMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *MCPUpstreamMutation) ResetField(name string) error {
 	switch name {
+	case mcpupstream.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
 	case mcpupstream.FieldName:
 		m.ResetName()
 		return nil

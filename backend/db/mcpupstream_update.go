@@ -32,6 +32,26 @@ func (_u *MCPUpstreamUpdate) Where(ps ...predicate.MCPUpstream) *MCPUpstreamUpda
 	return _u
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *MCPUpstreamUpdate) SetDeletedAt(v time.Time) *MCPUpstreamUpdate {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *MCPUpstreamUpdate) SetNillableDeletedAt(v *time.Time) *MCPUpstreamUpdate {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *MCPUpstreamUpdate) ClearDeletedAt() *MCPUpstreamUpdate {
+	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
 // SetName sets the "name" field.
 func (_u *MCPUpstreamUpdate) SetName(v string) *MCPUpstreamUpdate {
 	_u.mutation.SetName(v)
@@ -310,7 +330,9 @@ func (_u *MCPUpstreamUpdate) ClearUser() *MCPUpstreamUpdate {
 
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *MCPUpstreamUpdate) Save(ctx context.Context) (int, error) {
-	_u.defaults()
+	if err := _u.defaults(); err != nil {
+		return 0, err
+	}
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -337,11 +359,15 @@ func (_u *MCPUpstreamUpdate) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_u *MCPUpstreamUpdate) defaults() {
+func (_u *MCPUpstreamUpdate) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		if mcpupstream.UpdateDefaultUpdatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcpupstream.UpdateDefaultUpdatedAt (forgotten import db/runtime?)")
+		}
 		v := mcpupstream.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -401,6 +427,12 @@ func (_u *MCPUpstreamUpdate) sqlSave(ctx context.Context) (_node int, err error)
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(mcpupstream.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(mcpupstream.FieldDeletedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(mcpupstream.FieldName, field.TypeString, value)
@@ -550,6 +582,26 @@ type MCPUpstreamUpdateOne struct {
 	hooks     []Hook
 	mutation  *MCPUpstreamMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *MCPUpstreamUpdateOne) SetDeletedAt(v time.Time) *MCPUpstreamUpdateOne {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *MCPUpstreamUpdateOne) SetNillableDeletedAt(v *time.Time) *MCPUpstreamUpdateOne {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *MCPUpstreamUpdateOne) ClearDeletedAt() *MCPUpstreamUpdateOne {
+	_u.mutation.ClearDeletedAt()
+	return _u
 }
 
 // SetName sets the "name" field.
@@ -843,7 +895,9 @@ func (_u *MCPUpstreamUpdateOne) Select(field string, fields ...string) *MCPUpstr
 
 // Save executes the query and returns the updated MCPUpstream entity.
 func (_u *MCPUpstreamUpdateOne) Save(ctx context.Context) (*MCPUpstream, error) {
-	_u.defaults()
+	if err := _u.defaults(); err != nil {
+		return nil, err
+	}
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -870,11 +924,15 @@ func (_u *MCPUpstreamUpdateOne) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_u *MCPUpstreamUpdateOne) defaults() {
+func (_u *MCPUpstreamUpdateOne) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		if mcpupstream.UpdateDefaultUpdatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcpupstream.UpdateDefaultUpdatedAt (forgotten import db/runtime?)")
+		}
 		v := mcpupstream.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -951,6 +1009,12 @@ func (_u *MCPUpstreamUpdateOne) sqlSave(ctx context.Context) (_node *MCPUpstream
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(mcpupstream.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(mcpupstream.FieldDeletedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(mcpupstream.FieldName, field.TypeString, value)
