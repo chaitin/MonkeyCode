@@ -133,6 +133,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     ConstsTransactionKind.TransactionKindSignupBonus,
     ConstsTransactionKind.TransactionKindVoucherExchange,
     ConstsTransactionKind.TransactionKindInvitationReward,
+    ConstsTransactionKind.TransactionKindProUpgradeRefund,
     ConstsTransactionKind.TransactionKindDailyGrant,
     ConstsTransactionKind.TransactionKindTopUp,
     ConstsTransactionKind.TransactionKindCheckin,
@@ -141,6 +142,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const negativeKinds = new Set<string>([
     ConstsTransactionKind.TransactionKindVMConsumption,
     ConstsTransactionKind.TransactionKindModelConsumption,
+    ConstsTransactionKind.TransactionKindMCPToolConsumption,
     ConstsTransactionKind.TransactionKindProSubscription,
     ConstsTransactionKind.TransactionKindProAutoRenew,
     ConstsTransactionKind.TransactionKindUltraSubscription,
@@ -238,6 +240,8 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
         return "开发环境消耗"
       case ConstsTransactionKind.TransactionKindModelConsumption:
         return "大模型消耗"
+      case ConstsTransactionKind.TransactionKindMCPToolConsumption:
+        return "MCP 工具消耗"
       case ConstsTransactionKind.TransactionKindProSubscription:
         return "兑换专业版"
       case ConstsTransactionKind.TransactionKindProAutoRenew:
@@ -246,10 +250,14 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
         return "兑换旗舰版"
       case ConstsTransactionKind.TransactionKindUltraAutoRenew:
         return "旗舰版自动续费"
+      case ConstsTransactionKind.TransactionKindProUpgradeRefund:
+        return "套餐升级退款"
       case ConstsTransactionKind.TransactionKindDailyGrant:
         return "当日钱包发放"
       case ConstsTransactionKind.TransactionKindTopUp:
         return "充值积分"
+      case ConstsTransactionKind.TransactionKindCheckin:
+        return "每日签到奖励"
       default:
         return "交易记录"
     }
