@@ -232,10 +232,15 @@ export default function ToolsAndMcp() {
         <div className="min-w-0">
           <div
             className={Boolean(tool.enabled)
-              ? "text-sm font-medium leading-none"
-              : "text-sm font-medium leading-none text-muted-foreground"}
+              ? "flex items-center gap-2 text-sm font-medium leading-none"
+              : "flex items-center gap-2 text-sm font-medium leading-none text-muted-foreground"}
           >
-            {tool.name}
+            <span className="truncate">{tool.name}</span>
+            {tool.price && tool.price > 0 ? (
+              <Badge variant="default" className="shrink-0">
+                {tool.price / 1000} 积分/次
+              </Badge>
+            ) : null}
           </div>
           <TooltipProvider delayDuration={500}>
             <Tooltip>
