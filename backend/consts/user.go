@@ -15,6 +15,7 @@ type UserStatus string
 const (
 	UserStatusActive   UserStatus = "active"
 	UserStatusInactive UserStatus = "inactive"
+	UserStatusBanded   UserStatus = "banded"
 )
 
 type UserRole string
