@@ -26,6 +26,20 @@ type MCPUpstreamCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_c *MCPUpstreamCreate) SetDeletedAt(v time.Time) *MCPUpstreamCreate {
+	_c.mutation.SetDeletedAt(v)
+	return _c
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_c *MCPUpstreamCreate) SetNillableDeletedAt(v *time.Time) *MCPUpstreamCreate {
+	if v != nil {
+		_c.SetDeletedAt(*v)
+	}
+	return _c
+}
+
 // SetName sets the "name" field.
 func (_c *MCPUpstreamCreate) SetName(v string) *MCPUpstreamCreate {
 	_c.mutation.SetName(v)
@@ -229,7 +243,9 @@ func (_c *MCPUpstreamCreate) Mutation() *MCPUpstreamMutation {
 
 // Save creates the MCPUpstream in the database.
 func (_c *MCPUpstreamCreate) Save(ctx context.Context) (*MCPUpstream, error) {
-	_c.defaults()
+	if err := _c.defaults(); err != nil {
+		return nil, err
+	}
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
@@ -256,7 +272,7 @@ func (_c *MCPUpstreamCreate) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_c *MCPUpstreamCreate) defaults() {
+func (_c *MCPUpstreamCreate) defaults() error {
 	if _, ok := _c.mutation.GetType(); !ok {
 		v := mcpupstream.DefaultType
 		_c.mutation.SetType(v)
@@ -274,13 +290,20 @@ func (_c *MCPUpstreamCreate) defaults() {
 		_c.mutation.SetSyncStatus(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
+		if mcpupstream.DefaultCreatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcpupstream.DefaultCreatedAt (forgotten import db/runtime?)")
+		}
 		v := mcpupstream.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		if mcpupstream.DefaultUpdatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcpupstream.DefaultUpdatedAt (forgotten import db/runtime?)")
+		}
 		v := mcpupstream.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -386,6 +409,10 @@ func (_c *MCPUpstreamCreate) createSpec() (*MCPUpstream, *sqlgraph.CreateSpec) {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
+	if value, ok := _c.mutation.DeletedAt(); ok {
+		_spec.SetField(mcpupstream.FieldDeletedAt, field.TypeTime, value)
+		_node.DeletedAt = value
+	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(mcpupstream.FieldName, field.TypeString, value)
 		_node.Name = value
@@ -482,7 +509,7 @@ func (_c *MCPUpstreamCreate) createSpec() (*MCPUpstream, *sqlgraph.CreateSpec) {
 // of the `INSERT` statement. For example:
 //
 //	client.MCPUpstream.Create().
-//		SetName(v).
+//		SetDeletedAt(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -491,7 +518,7 @@ func (_c *MCPUpstreamCreate) createSpec() (*MCPUpstream, *sqlgraph.CreateSpec) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.MCPUpstreamUpsert) {
-//			SetName(v+v).
+//			SetDeletedAt(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *MCPUpstreamCreate) OnConflict(opts ...sql.ConflictOption) *MCPUpstreamUpsertOne {
@@ -526,6 +553,24 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MCPUpstreamUpsert) SetDeletedAt(v time.Time) *MCPUpstreamUpsert {
+	u.Set(mcpupstream.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MCPUpstreamUpsert) UpdateDeletedAt() *MCPUpstreamUpsert {
+	u.SetExcluded(mcpupstream.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MCPUpstreamUpsert) ClearDeletedAt() *MCPUpstreamUpsert {
+	u.SetNull(mcpupstream.FieldDeletedAt)
+	return u
+}
 
 // SetName sets the "name" field.
 func (u *MCPUpstreamUpsert) SetName(v string) *MCPUpstreamUpsert {
@@ -783,6 +828,27 @@ func (u *MCPUpstreamUpsertOne) Update(set func(*MCPUpstreamUpsert)) *MCPUpstream
 		set(&MCPUpstreamUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MCPUpstreamUpsertOne) SetDeletedAt(v time.Time) *MCPUpstreamUpsertOne {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MCPUpstreamUpsertOne) UpdateDeletedAt() *MCPUpstreamUpsertOne {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MCPUpstreamUpsertOne) ClearDeletedAt() *MCPUpstreamUpsertOne {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.ClearDeletedAt()
+	})
 }
 
 // SetName sets the "name" field.
@@ -1166,7 +1232,7 @@ func (_c *MCPUpstreamCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.MCPUpstreamUpsert) {
-//			SetName(v+v).
+//			SetDeletedAt(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *MCPUpstreamCreateBulk) OnConflict(opts ...sql.ConflictOption) *MCPUpstreamUpsertBulk {
@@ -1243,6 +1309,27 @@ func (u *MCPUpstreamUpsertBulk) Update(set func(*MCPUpstreamUpsert)) *MCPUpstrea
 		set(&MCPUpstreamUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MCPUpstreamUpsertBulk) SetDeletedAt(v time.Time) *MCPUpstreamUpsertBulk {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MCPUpstreamUpsertBulk) UpdateDeletedAt() *MCPUpstreamUpsertBulk {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MCPUpstreamUpsertBulk) ClearDeletedAt() *MCPUpstreamUpsertBulk {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.ClearDeletedAt()
+	})
 }
 
 // SetName sets the "name" field.

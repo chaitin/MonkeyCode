@@ -252,6 +252,7 @@ var (
 	// McpUpstreamsColumns holds the columns for the "mcp_upstreams" table.
 	McpUpstreamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString, Size: 128},
 		{Name: "slug", Type: field.TypeString, Size: 64},
 		{Name: "scope", Type: field.TypeEnum, Enums: []string{"user", "platform"}},
@@ -276,7 +277,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "mcp_upstreams_users_mcp_upstreams",
-				Columns:    []*schema.Column{McpUpstreamsColumns[15]},
+				Columns:    []*schema.Column{McpUpstreamsColumns[16]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -285,7 +286,10 @@ var (
 			{
 				Name:    "mcpupstream_scope_user_id_slug",
 				Unique:  true,
-				Columns: []*schema.Column{McpUpstreamsColumns[3], McpUpstreamsColumns[15], McpUpstreamsColumns[2]},
+				Columns: []*schema.Column{McpUpstreamsColumns[4], McpUpstreamsColumns[16], McpUpstreamsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL",
+				},
 			},
 		},
 	}

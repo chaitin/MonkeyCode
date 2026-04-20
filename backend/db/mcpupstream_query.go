@@ -339,12 +339,12 @@ func (_q *MCPUpstreamQuery) WithUser(opts ...func(*UserQuery)) *MCPUpstreamQuery
 // Example:
 //
 //	var v []struct {
-//		Name string `json:"name,omitempty"`
+//		DeletedAt time.Time `json:"deleted_at,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.MCPUpstream.Query().
-//		GroupBy(mcpupstream.FieldName).
+//		GroupBy(mcpupstream.FieldDeletedAt).
 //		Aggregate(db.Count()).
 //		Scan(ctx, &v)
 func (_q *MCPUpstreamQuery) GroupBy(field string, fields ...string) *MCPUpstreamGroupBy {
@@ -362,11 +362,11 @@ func (_q *MCPUpstreamQuery) GroupBy(field string, fields ...string) *MCPUpstream
 // Example:
 //
 //	var v []struct {
-//		Name string `json:"name,omitempty"`
+//		DeletedAt time.Time `json:"deleted_at,omitempty"`
 //	}
 //
 //	client.MCPUpstream.Query().
-//		Select(mcpupstream.FieldName).
+//		Select(mcpupstream.FieldDeletedAt).
 //		Scan(ctx, &v)
 func (_q *MCPUpstreamQuery) Select(fields ...string) *MCPUpstreamSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)

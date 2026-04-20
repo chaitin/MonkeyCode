@@ -10,6 +10,8 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 	"github.com/google/uuid"
+
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 type MCPUpstream struct {
@@ -19,6 +21,12 @@ type MCPUpstream struct {
 func (MCPUpstream) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Table("mcp_upstreams"),
+	}
+}
+
+func (MCPUpstream) Mixin() []ent.Mixin {
+	return []ent.Mixin{
+		entx.SoftDeleteMixin2{},
 	}
 }
 
@@ -45,7 +53,9 @@ func (MCPUpstream) Fields() []ent.Field {
 
 func (MCPUpstream) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("scope", "user_id", "slug").Unique(),
+		index.Fields("scope", "user_id", "slug").
+			Unique().
+			Annotations(entsql.IndexWhere("deleted_at IS NULL")),
 	}
 }
 

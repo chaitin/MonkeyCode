@@ -20,6 +20,8 @@ type MCPUpstream struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
+	// DeletedAt holds the value of the "deleted_at" field.
+	DeletedAt time.Time `json:"deleted_at,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// Slug holds the value of the "slug" field.
@@ -100,7 +102,7 @@ func (*MCPUpstream) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case mcpupstream.FieldName, mcpupstream.FieldSlug, mcpupstream.FieldScope, mcpupstream.FieldType, mcpupstream.FieldURL, mcpupstream.FieldDescription, mcpupstream.FieldHealthStatus, mcpupstream.FieldSyncStatus:
 			values[i] = new(sql.NullString)
-		case mcpupstream.FieldHealthCheckedAt, mcpupstream.FieldLastSyncedAt, mcpupstream.FieldCreatedAt, mcpupstream.FieldUpdatedAt:
+		case mcpupstream.FieldDeletedAt, mcpupstream.FieldHealthCheckedAt, mcpupstream.FieldLastSyncedAt, mcpupstream.FieldCreatedAt, mcpupstream.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case mcpupstream.FieldID:
 			values[i] = new(uuid.UUID)
@@ -124,6 +126,12 @@ func (_m *MCPUpstream) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
 				_m.ID = *value
+			}
+		case mcpupstream.FieldDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
+			} else if value.Valid {
+				_m.DeletedAt = value.Time
 			}
 		case mcpupstream.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -266,6 +274,9 @@ func (_m *MCPUpstream) String() string {
 	var builder strings.Builder
 	builder.WriteString("MCPUpstream(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
+	builder.WriteString("deleted_at=")
+	builder.WriteString(_m.DeletedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
 	builder.WriteString(", ")

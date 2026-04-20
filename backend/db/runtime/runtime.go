@@ -208,6 +208,11 @@ func init() {
 	mcptool.DefaultUpdatedAt = mcptoolDescUpdatedAt.Default.(func() time.Time)
 	// mcptool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	mcptool.UpdateDefaultUpdatedAt = mcptoolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	mcpupstreamMixin := schema.MCPUpstream{}.Mixin()
+	mcpupstreamMixinHooks0 := mcpupstreamMixin[0].Hooks()
+	mcpupstream.Hooks[0] = mcpupstreamMixinHooks0[0]
+	mcpupstreamMixinInters0 := mcpupstreamMixin[0].Interceptors()
+	mcpupstream.Interceptors[0] = mcpupstreamMixinInters0[0]
 	mcpupstreamFields := schema.MCPUpstream{}.Fields()
 	_ = mcpupstreamFields
 	// mcpupstreamDescName is the schema descriptor for name field.
