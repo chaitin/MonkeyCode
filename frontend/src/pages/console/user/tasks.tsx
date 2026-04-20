@@ -137,6 +137,7 @@ export default function TasksPage() {
         setHasMore(newTasks.length >= PAGE_SIZE)
         setPage(pageNum)
       } else {
+        setHasMore(false)
         toast.error("获取任务列表失败: " + resp.message)
       }
       resetLoading()
