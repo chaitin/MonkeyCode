@@ -38,6 +38,8 @@ type Task struct {
 	Status consts.TaskStatus `json:"status,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// LastActiveAt holds the value of the "last_active_at" field.
+	LastActiveAt time.Time `json:"last_active_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// CompletedAt holds the value of the "completed_at" field.
@@ -119,7 +121,7 @@ func (*Task) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case task.FieldKind, task.FieldSubType, task.FieldContent, task.FieldTitle, task.FieldSummary, task.FieldStatus:
 			values[i] = new(sql.NullString)
-		case task.FieldDeletedAt, task.FieldCreatedAt, task.FieldUpdatedAt, task.FieldCompletedAt:
+		case task.FieldDeletedAt, task.FieldCreatedAt, task.FieldLastActiveAt, task.FieldUpdatedAt, task.FieldCompletedAt:
 			values[i] = new(sql.NullTime)
 		case task.FieldID, task.FieldUserID:
 			values[i] = new(uuid.UUID)
@@ -197,6 +199,12 @@ func (_m *Task) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
+			}
+		case task.FieldLastActiveAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_active_at", values[i])
+			} else if value.Valid {
+				_m.LastActiveAt = value.Time
 			}
 		case task.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -297,6 +305,9 @@ func (_m *Task) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("last_active_at=")
+	builder.WriteString(_m.LastActiveAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("updated_at=")
 	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))

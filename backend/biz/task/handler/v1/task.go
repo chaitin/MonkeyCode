@@ -46,6 +46,7 @@ type TaskHandler struct {
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
+	taskActivity  service.TaskActivityRefresher
 	idleRefresher vmidle.VMIdleRefresher
 	activeRepo    domain.UserActiveRepo
 }
@@ -64,6 +65,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	tc := do.MustInvoke[*ws.TaskConn](i)
 	cc := do.MustInvoke[*ws.ControlConn](i)
 	ts := do.MustInvoke[*service.TaskSummaryService](i)
+	ta := do.MustInvoke[service.TaskActivityRefresher](i)
 	ir := do.MustInvoke[vmidle.VMIdleRefresher](i)
 
 	// Optional deps
@@ -91,6 +93,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		taskConns:     tc,
 		controlConns:  cc,
 		taskSummary:   ts,
+		taskActivity:  ta,
 		idleRefresher: ir,
 		activeRepo:    activeRepo,
 	}

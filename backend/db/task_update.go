@@ -186,6 +186,20 @@ func (_u *TaskUpdate) SetNillableCreatedAt(v *time.Time) *TaskUpdate {
 	return _u
 }
 
+// SetLastActiveAt sets the "last_active_at" field.
+func (_u *TaskUpdate) SetLastActiveAt(v time.Time) *TaskUpdate {
+	_u.mutation.SetLastActiveAt(v)
+	return _u
+}
+
+// SetNillableLastActiveAt sets the "last_active_at" field if the given value is not nil.
+func (_u *TaskUpdate) SetNillableLastActiveAt(v *time.Time) *TaskUpdate {
+	if v != nil {
+		_u.SetLastActiveAt(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *TaskUpdate) SetUpdatedAt(v time.Time) *TaskUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -480,6 +494,9 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.LastActiveAt(); ok {
+		_spec.SetField(task.FieldLastActiveAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(task.FieldUpdatedAt, field.TypeTime, value)
@@ -883,6 +900,20 @@ func (_u *TaskUpdateOne) SetNillableCreatedAt(v *time.Time) *TaskUpdateOne {
 	return _u
 }
 
+// SetLastActiveAt sets the "last_active_at" field.
+func (_u *TaskUpdateOne) SetLastActiveAt(v time.Time) *TaskUpdateOne {
+	_u.mutation.SetLastActiveAt(v)
+	return _u
+}
+
+// SetNillableLastActiveAt sets the "last_active_at" field if the given value is not nil.
+func (_u *TaskUpdateOne) SetNillableLastActiveAt(v *time.Time) *TaskUpdateOne {
+	if v != nil {
+		_u.SetLastActiveAt(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *TaskUpdateOne) SetUpdatedAt(v time.Time) *TaskUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -1207,6 +1238,9 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.LastActiveAt(); ok {
+		_spec.SetField(task.FieldLastActiveAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(task.FieldUpdatedAt, field.TypeTime, value)

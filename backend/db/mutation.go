@@ -23369,6 +23369,7 @@ type TaskMutation struct {
 	summary              *string
 	status               *consts.TaskStatus
 	created_at           *time.Time
+	last_active_at       *time.Time
 	updated_at           *time.Time
 	completed_at         *time.Time
 	clearedFields        map[string]struct{}
@@ -23871,6 +23872,42 @@ func (m *TaskMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetLastActiveAt sets the "last_active_at" field.
+func (m *TaskMutation) SetLastActiveAt(t time.Time) {
+	m.last_active_at = &t
+}
+
+// LastActiveAt returns the value of the "last_active_at" field in the mutation.
+func (m *TaskMutation) LastActiveAt() (r time.Time, exists bool) {
+	v := m.last_active_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastActiveAt returns the old "last_active_at" field's value of the Task entity.
+// If the Task object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskMutation) OldLastActiveAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastActiveAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastActiveAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastActiveAt: %w", err)
+	}
+	return oldValue.LastActiveAt, nil
+}
+
+// ResetLastActiveAt resets all changes to the "last_active_at" field.
+func (m *TaskMutation) ResetLastActiveAt() {
+	m.last_active_at = nil
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (m *TaskMutation) SetUpdatedAt(t time.Time) {
 	m.updated_at = &t
@@ -24233,7 +24270,7 @@ func (m *TaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TaskMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.deleted_at != nil {
 		fields = append(fields, task.FieldDeletedAt)
 	}
@@ -24260,6 +24297,9 @@ func (m *TaskMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, task.FieldCreatedAt)
+	}
+	if m.last_active_at != nil {
+		fields = append(fields, task.FieldLastActiveAt)
 	}
 	if m.updated_at != nil {
 		fields = append(fields, task.FieldUpdatedAt)
@@ -24293,6 +24333,8 @@ func (m *TaskMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case task.FieldCreatedAt:
 		return m.CreatedAt()
+	case task.FieldLastActiveAt:
+		return m.LastActiveAt()
 	case task.FieldUpdatedAt:
 		return m.UpdatedAt()
 	case task.FieldCompletedAt:
@@ -24324,6 +24366,8 @@ func (m *TaskMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldStatus(ctx)
 	case task.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case task.FieldLastActiveAt:
+		return m.OldLastActiveAt(ctx)
 	case task.FieldUpdatedAt:
 		return m.OldUpdatedAt(ctx)
 	case task.FieldCompletedAt:
@@ -24399,6 +24443,13 @@ func (m *TaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case task.FieldLastActiveAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastActiveAt(v)
 		return nil
 	case task.FieldUpdatedAt:
 		v, ok := value.(time.Time)
@@ -24522,6 +24573,9 @@ func (m *TaskMutation) ResetField(name string) error {
 		return nil
 	case task.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case task.FieldLastActiveAt:
+		m.ResetLastActiveAt()
 		return nil
 	case task.FieldUpdatedAt:
 		m.ResetUpdatedAt()

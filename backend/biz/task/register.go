@@ -13,6 +13,7 @@ import (
 func ProvideTask(i *do.Injector) {
 	do.Provide(i, usecase.NewTaskUsecase)
 	do.Provide(i, usecase.NewGitTaskUsecase)
+	do.Provide(i, service.NewTaskActivityRefresher)
 	do.Provide(i, service.NewTaskSummaryService)
 	do.Provide(i, v1.NewTaskHandler)
 	do.Provide(i, repo.NewTaskRepo)

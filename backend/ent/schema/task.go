@@ -44,6 +44,7 @@ func (Task) Fields() []ent.Field {
 		field.Text("summary").Optional(),
 		field.String("status").GoType(consts.TaskStatus("")),
 		field.Time("created_at").Default(time.Now),
+		field.Time("last_active_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 		field.Time("completed_at").Optional(),
 	}

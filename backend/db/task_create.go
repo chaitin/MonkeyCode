@@ -124,6 +124,20 @@ func (_c *TaskCreate) SetNillableCreatedAt(v *time.Time) *TaskCreate {
 	return _c
 }
 
+// SetLastActiveAt sets the "last_active_at" field.
+func (_c *TaskCreate) SetLastActiveAt(v time.Time) *TaskCreate {
+	_c.mutation.SetLastActiveAt(v)
+	return _c
+}
+
+// SetNillableLastActiveAt sets the "last_active_at" field if the given value is not nil.
+func (_c *TaskCreate) SetNillableLastActiveAt(v *time.Time) *TaskCreate {
+	if v != nil {
+		_c.SetLastActiveAt(*v)
+	}
+	return _c
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_c *TaskCreate) SetUpdatedAt(v time.Time) *TaskCreate {
 	_c.mutation.SetUpdatedAt(v)
@@ -267,6 +281,13 @@ func (_c *TaskCreate) defaults() error {
 		v := task.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
+	if _, ok := _c.mutation.LastActiveAt(); !ok {
+		if task.DefaultLastActiveAt == nil {
+			return fmt.Errorf("db: uninitialized task.DefaultLastActiveAt (forgotten import db/runtime?)")
+		}
+		v := task.DefaultLastActiveAt()
+		_c.mutation.SetLastActiveAt(v)
+	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		if task.DefaultUpdatedAt == nil {
 			return fmt.Errorf("db: uninitialized task.DefaultUpdatedAt (forgotten import db/runtime?)")
@@ -298,6 +319,9 @@ func (_c *TaskCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`db: missing required field "Task.created_at"`)}
+	}
+	if _, ok := _c.mutation.LastActiveAt(); !ok {
+		return &ValidationError{Name: "last_active_at", err: errors.New(`db: missing required field "Task.last_active_at"`)}
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`db: missing required field "Task.updated_at"`)}
@@ -372,6 +396,10 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.LastActiveAt(); ok {
+		_spec.SetField(task.FieldLastActiveAt, field.TypeTime, value)
+		_node.LastActiveAt = value
 	}
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(task.FieldUpdatedAt, field.TypeTime, value)
@@ -650,6 +678,18 @@ func (u *TaskUpsert) UpdateCreatedAt() *TaskUpsert {
 	return u
 }
 
+// SetLastActiveAt sets the "last_active_at" field.
+func (u *TaskUpsert) SetLastActiveAt(v time.Time) *TaskUpsert {
+	u.Set(task.FieldLastActiveAt, v)
+	return u
+}
+
+// UpdateLastActiveAt sets the "last_active_at" field to the value that was provided on create.
+func (u *TaskUpsert) UpdateLastActiveAt() *TaskUpsert {
+	u.SetExcluded(task.FieldLastActiveAt)
+	return u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (u *TaskUpsert) SetUpdatedAt(v time.Time) *TaskUpsert {
 	u.Set(task.FieldUpdatedAt, v)
@@ -879,6 +919,20 @@ func (u *TaskUpsertOne) SetCreatedAt(v time.Time) *TaskUpsertOne {
 func (u *TaskUpsertOne) UpdateCreatedAt() *TaskUpsertOne {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateCreatedAt()
+	})
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (u *TaskUpsertOne) SetLastActiveAt(v time.Time) *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetLastActiveAt(v)
+	})
+}
+
+// UpdateLastActiveAt sets the "last_active_at" field to the value that was provided on create.
+func (u *TaskUpsertOne) UpdateLastActiveAt() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateLastActiveAt()
 	})
 }
 
@@ -1283,6 +1337,20 @@ func (u *TaskUpsertBulk) SetCreatedAt(v time.Time) *TaskUpsertBulk {
 func (u *TaskUpsertBulk) UpdateCreatedAt() *TaskUpsertBulk {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateCreatedAt()
+	})
+}
+
+// SetLastActiveAt sets the "last_active_at" field.
+func (u *TaskUpsertBulk) SetLastActiveAt(v time.Time) *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetLastActiveAt(v)
+	})
+}
+
+// UpdateLastActiveAt sets the "last_active_at" field to the value that was provided on create.
+func (u *TaskUpsertBulk) UpdateLastActiveAt() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateLastActiveAt()
 	})
 }
 
