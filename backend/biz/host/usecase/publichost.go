@@ -2,8 +2,9 @@ package usecase
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
-	"sync/atomic"
 
 	"github.com/samber/do"
 
@@ -17,8 +18,9 @@ import (
 type PublicHostUsecase struct {
 	repo     domain.PublicHostRepo
 	taskflow taskflow.Clienter
-	rr       uint64
 }
+
+var randUint64n = randomUint64n
 
 func NewPublicHostUsecase(i *do.Injector) (domain.PublicHostUsecase, error) {
 	return &PublicHostUsecase{
@@ -52,9 +54,18 @@ func (p *PublicHostUsecase) PickHost(ctx context.Context) (*domain.Host, error) 
 		return nil, errcode.ErrPublicHostNotFound.Wrap(fmt.Errorf("no online public hosts found"))
 	}
 
-	weights := make([]uint64, len(onlines))
+	selected, err := pickWeightedHost(onlines)
+	if err != nil {
+		return nil, err
+	}
+
+	return cvt.From(selected, &domain.Host{}), nil
+}
+
+func pickWeightedHost(hosts []*db.Host) (*db.Host, error) {
+	weights := make([]uint64, len(hosts))
 	var totalWeight uint64
-	for i, h := range onlines {
+	for i, h := range hosts {
 		w := h.Weight
 		if w <= 0 {
 			w = 1
@@ -66,19 +77,34 @@ func (p *PublicHostUsecase) PickHost(ctx context.Context) (*domain.Host, error) 
 		return nil, errcode.ErrPublicHostNotFound.Wrap(fmt.Errorf("no valid weights found"))
 	}
 
-	idx := atomic.AddUint64(&p.rr, 1) - 1
-	offset := idx % totalWeight
-	var selected *db.Host
+	offset, err := randUint64n(totalWeight)
+	if err != nil {
+		return nil, err
+	}
 	for i, w := range weights {
 		if offset < w {
-			selected = onlines[i]
-			break
+			return hosts[i], nil
 		}
 		offset -= w
 	}
-	if selected == nil {
-		return nil, errcode.ErrPublicHostNotFound.Wrap(fmt.Errorf("failed to select public host"))
+
+	return nil, errcode.ErrPublicHostNotFound.Wrap(fmt.Errorf("failed to select public host"))
+}
+
+func randomUint64n(n uint64) (uint64, error) {
+	if n == 0 {
+		return 0, fmt.Errorf("random upper bound must be positive")
 	}
 
-	return cvt.From(selected, &domain.Host{}), nil
+	limit := ^uint64(0) - (^uint64(0) % n)
+	var buf [8]byte
+	for {
+		if _, err := rand.Read(buf[:]); err != nil {
+			return 0, err
+		}
+		v := binary.BigEndian.Uint64(buf[:])
+		if v < limit {
+			return v % n, nil
+		}
+	}
 }
