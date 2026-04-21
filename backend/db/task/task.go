@@ -33,6 +33,8 @@ const (
 	FieldStatus = "status"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldLastActiveAt holds the string denoting the last_active_at field in the database.
+	FieldLastActiveAt = "last_active_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// FieldCompletedAt holds the string denoting the completed_at field in the database.
@@ -96,6 +98,7 @@ var Columns = []string{
 	FieldSummary,
 	FieldStatus,
 	FieldCreatedAt,
+	FieldLastActiveAt,
 	FieldUpdatedAt,
 	FieldCompletedAt,
 }
@@ -128,6 +131,8 @@ var (
 	ContentValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
+	// DefaultLastActiveAt holds the default value on creation for the "last_active_at" field.
+	DefaultLastActiveAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
 	DefaultUpdatedAt func() time.Time
 	// UpdateDefaultUpdatedAt holds the default value on update for the "updated_at" field.
@@ -185,6 +190,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// ByLastActiveAt orders the results by the last_active_at field.
+func ByLastActiveAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastActiveAt, opts...).ToFunc()
 }
 
 // ByUpdatedAt orders the results by the updated_at field.

@@ -261,6 +261,15 @@ func (t *TaskRepo) Update(ctx context.Context, _ *domain.User, id uuid.UUID, fn 
 	})
 }
 
+func (t *TaskRepo) RefreshLastActiveAt(ctx context.Context, id uuid.UUID, at time.Time, minInterval time.Duration) error {
+	up := t.db.Task.Update().Where(task.ID(id))
+	if minInterval > 0 {
+		up = up.Where(task.LastActiveAtLT(at.Add(-minInterval)))
+	}
+	_, err := up.SetLastActiveAt(at).Save(ctx)
+	return err
+}
+
 // Delete implements domain.TaskRepo.
 func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) error {
 	_, err := t.db.Task.Delete().

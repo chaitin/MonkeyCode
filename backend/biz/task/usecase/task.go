@@ -19,6 +19,8 @@ import (
 	"github.com/samber/do"
 
 	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
+	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
+	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -36,40 +38,44 @@ import (
 
 // TaskUsecase 任务业务逻辑实现
 type TaskUsecase struct {
-	cfg              *config.Config
-	repo             domain.TaskRepo
-	modelRepo        domain.ModelRepo
-	logger           *slog.Logger
-	taskflow         taskflow.Clienter
-	loki             *loki.Client
-	redis            *redis.Client
-	notifyDispatcher *dispatcher.Dispatcher
-	taskHook         domain.TaskHook
-	privilegeChecker domain.PrivilegeChecker
-	modelHook        domain.ModelHook
-	taskLifecycle    *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
-	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
-	girepo           domain.GitIdentityRepo
-	tokenProvider    *gituc.TokenProvider
-	projectRepo      domain.ProjectRepo
+	cfg                   *config.Config
+	repo                  domain.TaskRepo
+	modelRepo             domain.ModelRepo
+	logger                *slog.Logger
+	taskflow              taskflow.Clienter
+	loki                  *loki.Client
+	redis                 *redis.Client
+	notifyDispatcher      *dispatcher.Dispatcher
+	taskHook              domain.TaskHook
+	privilegeChecker      domain.PrivilegeChecker
+	modelHook             domain.ModelHook
+	taskLifecycle         *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
+	vmLifecycle           *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
+	girepo                domain.GitIdentityRepo
+	tokenProvider         *gituc.TokenProvider
+	projectRepo           domain.ProjectRepo
+	taskActivityRefresher service.TaskActivityRefresher
+	idleRefresher         vmidle.VMIdleRefresher
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
 func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 	u := &TaskUsecase{
-		cfg:              do.MustInvoke[*config.Config](i),
-		repo:             do.MustInvoke[domain.TaskRepo](i),
-		modelRepo:        do.MustInvoke[domain.ModelRepo](i),
-		logger:           do.MustInvoke[*slog.Logger](i).With("module", "usecase.TaskUsecase"),
-		taskflow:         do.MustInvoke[taskflow.Clienter](i),
-		loki:             do.MustInvoke[*loki.Client](i),
-		redis:            do.MustInvoke[*redis.Client](i),
-		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
-		taskLifecycle:    do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
-		vmLifecycle:      do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
-		girepo:           do.MustInvoke[domain.GitIdentityRepo](i),
-		tokenProvider:    do.MustInvoke[*gituc.TokenProvider](i),
-		projectRepo:      do.MustInvoke[domain.ProjectRepo](i),
+		cfg:                   do.MustInvoke[*config.Config](i),
+		repo:                  do.MustInvoke[domain.TaskRepo](i),
+		modelRepo:             do.MustInvoke[domain.ModelRepo](i),
+		logger:                do.MustInvoke[*slog.Logger](i).With("module", "usecase.TaskUsecase"),
+		taskflow:              do.MustInvoke[taskflow.Clienter](i),
+		loki:                  do.MustInvoke[*loki.Client](i),
+		redis:                 do.MustInvoke[*redis.Client](i),
+		notifyDispatcher:      do.MustInvoke[*dispatcher.Dispatcher](i),
+		taskLifecycle:         do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
+		vmLifecycle:           do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
+		girepo:                do.MustInvoke[domain.GitIdentityRepo](i),
+		tokenProvider:         do.MustInvoke[*gituc.TokenProvider](i),
+		projectRepo:           do.MustInvoke[domain.ProjectRepo](i),
+		taskActivityRefresher: do.MustInvoke[service.TaskActivityRefresher](i),
+		idleRefresher:         do.MustInvoke[vmidle.VMIdleRefresher](i),
 	}
 
 	// 可选注入 TaskHook
@@ -450,6 +456,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	if err := a.IncrUserInputCount(ctx, user.ID, pt.Edges.Task.ID); err != nil {
 		a.logger.WarnContext(ctx, "failed to incr user input count on create", "error", err)
 	}
+	vmID := ""
+	if createdVm != nil {
+		vmID = createdVm.ID
+	}
+	a.refreshCreatedTaskState(ctx, pt.TaskID, vmID)
 
 	result := cvt.From(pt, &domain.ProjectTask{})
 
@@ -461,6 +472,18 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	return result, nil
+}
+
+func (a *TaskUsecase) refreshCreatedTaskState(ctx context.Context, taskID uuid.UUID, vmID string) {
+	if err := a.taskActivityRefresher.ForceRefresh(ctx, taskID); err != nil {
+		a.logger.WarnContext(ctx, "failed to refresh task last active on create", "task_id", taskID, "error", err)
+	}
+	if vmID == "" {
+		return
+	}
+	if err := a.idleRefresher.Refresh(ctx, vmID); err != nil {
+		a.logger.WarnContext(ctx, "failed to refresh vm idle timers on create", "task_id", taskID, "vm_id", vmID, "error", err)
+	}
 }
 
 func (a *TaskUsecase) buildMCPConfigs(taskID uuid.UUID, token string) []taskflow.McpServerConfig {

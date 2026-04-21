@@ -40,6 +40,7 @@ type TaskRepo interface {
 	List(ctx context.Context, user *User, req TaskListReq) ([]*db.ProjectTask, *db.PageInfo, error)
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
+	RefreshLastActiveAt(ctx context.Context, id uuid.UUID, at time.Time, minInterval time.Duration) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
 }
@@ -179,6 +180,7 @@ type Task struct {
 	Status         consts.TaskStatus  `json:"status"`
 	VirtualMachine *VirtualMachine    `json:"virtualmachine"`
 	CreatedAt      int64              `json:"created_at"`
+	LastActiveAt   int64              `json:"last_active_at"`
 	CompletedAt    int64              `json:"completed_at"`
 	Model          *Model             `json:"model,omitempty"`
 	Image          *Image             `json:"image,omitempty"`
@@ -214,6 +216,7 @@ func (t *Task) From(src *db.Task) *Task {
 	t.Summary = src.Summary
 	t.Status = src.Status
 	t.CreatedAt = src.CreatedAt.Unix()
+	t.LastActiveAt = src.LastActiveAt.Unix()
 	t.CompletedAt = src.CompletedAt.Unix()
 	if vms := src.Edges.Vms; len(vms) > 0 {
 		t.VirtualMachine = cvt.From(vms[0], &VirtualMachine{})
