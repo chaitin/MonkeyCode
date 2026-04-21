@@ -217,6 +217,13 @@ func (h *TaskHandler) controlPing(ctx context.Context, wsConn *ws.WebsocketManag
 
 // controlKeepAlive 定期刷新空闲计时器，防止 VM 被误判空闲
 func (h *TaskHandler) controlKeepAlive(ctx context.Context, taskID uuid.UUID, vmID string) error {
+	if err := h.idleRefresher.Refresh(ctx, vmID); err != nil {
+		h.logger.WarnContext(ctx, "keepalive refresh failed", "vmID", vmID, "error", err)
+	}
+	if err := h.taskActivity.Refresh(ctx, taskID); err != nil {
+		h.logger.WarnContext(ctx, "task activity refresh failed", "taskID", taskID, "error", err)
+	}
+
 	idleTicker := time.NewTicker(1 * time.Minute)
 	activityTicker := time.NewTicker(service.TaskActivityRefreshInterval)
 	defer idleTicker.Stop()
