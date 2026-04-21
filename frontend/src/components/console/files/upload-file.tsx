@@ -17,6 +17,8 @@ interface UploadFileDialogProps {
   onSuccess?: () => void
 }
 
+const MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024
+
 export default function UploadFileDialog({
   open,
   onOpenChange,
@@ -38,6 +40,13 @@ export default function UploadFileDialog({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null
+    if (file && file.size > MAX_UPLOAD_FILE_SIZE) {
+      toast.error('文件大小不能超过 10MB')
+      e.target.value = ''
+      setUploadFile(null)
+      setFileName('')
+      return
+    }
     setUploadFile(file)
     setFileName(file?.name || '')
   }
@@ -50,6 +59,11 @@ export default function UploadFileDialog({
 
     if (!fileName.trim()) {
       toast.error('请输入文件名称')
+      return
+    }
+
+    if (uploadFile.size > MAX_UPLOAD_FILE_SIZE) {
+      toast.error('文件大小不能超过 10MB')
       return
     }
 
