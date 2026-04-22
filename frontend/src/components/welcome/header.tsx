@@ -1,20 +1,30 @@
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
-import { IconMenu2 } from "@tabler/icons-react";
+import { IconMenu2, IconPointFilled } from "@tabler/icons-react";
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer";
 
-const Header = () => {
+const navItems = [
+  { label: "介绍", to: "/" },
+  { label: "广场", to: "/playground" },
+];
 
+const docsLink = "https://monkeycode.docs.baizhi.cloud/";
+const githubLink = "https://github.com/chaitin/MonkeyCode";
+
+const Header = () => {
   const { isLoggedIn } = useAuth();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const location = useLocation();
-  const isPixelPage =
-    location.pathname === "/" ||
-    location.pathname.startsWith("/pricing") ||
-    location.pathname.startsWith("/points");
+  const isWelcomePage = location.pathname === "/";
+  const isPixelPage = isWelcomePage;
+  const inviterId = typeof window !== "undefined" ? localStorage.getItem('ic') || '' : '';
+  const signUpLink = "/api/v1/users/login?redirect=&inviter_id=" + inviterId;
+  const activeNav = navItems.find((item) =>
+    item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
+  )?.to;
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -24,7 +34,167 @@ const Header = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-  
+
+  if (isWelcomePage) {
+    return (
+      <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4 sm:px-6">
+        <div
+          className={cn(
+            "mx-auto flex max-w-[1280px] items-center gap-3 rounded-[22px] border px-3 py-3 text-[#c9d6cc] transition-all duration-300 sm:px-5",
+            isScrolled
+              ? "border-[#2c3a30] bg-[#0a0d0be6] shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+              : "border-[#243329] bg-[#0a0d0bd4] shadow-[0_12px_32px_rgba(0,0,0,0.32)] backdrop-blur-lg"
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <Drawer>
+              <DrawerTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 border border-[#243329] bg-[#111814] text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9] md:hidden"
+                >
+                  <IconMenu2 className="size-5" />
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent className="border-[#243329] bg-[#0d1210] text-[#c9d6cc]">
+                <DrawerHeader className="border-b border-[#1d2a22] text-left">
+                  <DrawerTitle className="flex items-center gap-3 text-sm font-medium tracking-[0.18em] text-[#7cf29c]">
+                    <img
+                      src="/logo-colored.png"
+                      className="size-9 rounded-xl border border-[#243329] bg-[#111814] p-1.5"
+                      alt="MonkeyCode Logo"
+                    />
+                    MONKEYCODE
+                  </DrawerTitle>
+                </DrawerHeader>
+                <div className="space-y-5 px-4 py-5">
+                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[#7a8c80]">
+                    <IconPointFilled className="size-3 text-[#7cf29c]" />
+                    System Online
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {navItems.map((item) => (
+                      <Button
+                        key={item.to}
+                        variant="ghost"
+                        className={cn(
+                          "h-11 justify-start rounded-xl border px-4 text-sm text-[#a9b7ae] hover:bg-[#162019] hover:text-[#e8efe9]",
+                          activeNav === item.to
+                            ? "border-[#35523d] bg-[#131b17] text-[#7cf29c]"
+                            : "border-[#1d2a22] bg-transparent"
+                        )}
+                        asChild
+                      >
+                        <Link to={item.to}>{item.label}</Link>
+                      </Button>
+                    ))}
+                    <Button variant="ghost" className="h-11 justify-start rounded-xl border border-[#1d2a22] px-4 text-sm text-[#a9b7ae] hover:bg-[#162019] hover:text-[#e8efe9]" asChild>
+                      <a href={docsLink} target="_blank" rel="noreferrer">文档</a>
+                    </Button>
+                    <Button variant="ghost" className="h-11 justify-start rounded-xl border border-[#1d2a22] px-4 text-sm text-[#a9b7ae] hover:bg-[#162019] hover:text-[#e8efe9]" asChild>
+                      <a href={githubLink} target="_blank" rel="noreferrer">开源仓库</a>
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {!isLoggedIn && (
+                      <Button
+                        variant="ghost"
+                        className="h-11 rounded-xl border border-[#243329] bg-[#111814] text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9]"
+                        asChild
+                      >
+                        <a href={signUpLink}>注册</a>
+                      </Button>
+                    )}
+                    <Button
+                      className="h-11 rounded-xl border border-[#7cf29c]/30 bg-[#7cf29c] text-[#08110a] hover:bg-[#93f7ae]"
+                      asChild
+                    >
+                      <Link to={isLoggedIn ? "/console" : "/login"}>
+                        {isLoggedIn ? "进入控制台" : "立即开始"}
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
+
+            <Link to="/" className="flex min-w-0 items-center gap-3">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-[#243329] bg-[#111814] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <img src="/logo-colored.png" className="size-7" alt="MonkeyCode Logo" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-[11px] uppercase tracking-[0.26em] text-[#7cf29c]">Terminal Native</div>
+                <div className="truncate text-sm font-medium text-[#e8efe9] sm:text-[15px]">MonkeyCode</div>
+              </div>
+            </Link>
+          </div>
+
+          <nav className="hidden min-w-0 flex-1 items-center justify-center md:flex">
+            <div className="flex items-center rounded-full border border-[#1d2a22] bg-[#111814]/85 p-1">
+              {navItems.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "rounded-full px-4 py-2 text-sm transition-colors",
+                    activeNav === item.to
+                      ? "bg-[#162019] text-[#7cf29c]"
+                      : "text-[#7a8c80] hover:text-[#e8efe9]"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              <a
+                href={docsLink}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full px-4 py-2 text-sm text-[#7a8c80] transition-colors hover:text-[#e8efe9]"
+              >
+                文档
+              </a>
+              <a
+                href={githubLink}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full px-4 py-2 text-sm text-[#7a8c80] transition-colors hover:text-[#e8efe9]"
+              >
+                开源
+              </a>
+            </div>
+          </nav>
+
+          <div className="ml-auto hidden items-center gap-3 md:flex">
+            <div className="hidden rounded-full border border-[#1d2a22] bg-[#111814]/90 px-3 py-2 text-[11px] uppercase tracking-[0.22em] text-[#7a8c80] lg:flex lg:items-center lg:gap-2">
+              <IconPointFilled className="size-3 text-[#7cf29c]" />
+              Build 2.4.1
+            </div>
+
+            {!isLoggedIn && (
+              <Button
+                variant="ghost"
+                className="rounded-full border border-[#243329] bg-[#111814] px-5 text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9]"
+                asChild
+              >
+                <a href={signUpLink}>注册</a>
+              </Button>
+            )}
+
+            <Button
+              className="rounded-full border border-[#7cf29c]/30 bg-[#7cf29c] px-5 text-[#08110a] shadow-[0_0_24px_rgba(124,242,156,0.24)] hover:bg-[#93f7ae]"
+              asChild
+            >
+              <Link to={isLoggedIn ? "/console" : "/login"}>
+                {isLoggedIn ? "进入控制台" : "立即开始"}
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className={`fixed top-4 left-0 right-0 z-50 px-4 transition-all duration-300 ${
       isScrolled 
@@ -59,12 +229,6 @@ const Header = () => {
                   <Link to="/">介绍</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
-                  <Link to="/pricing">型号</Link>
-                </Button>
-                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
-                  <Link to="/points">积分</Link>
-                </Button>
-                <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
                   <Link to="/playground">广场</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
@@ -91,18 +255,6 @@ const Header = () => {
           </Button>
           <Button variant={"link"} className={cn(
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
-            location.pathname.startsWith("/pricing") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
-          )}>
-            <Link to="/pricing">型号</Link>
-          </Button>
-          <Button variant={"link"} className={cn(
-            isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
-            location.pathname.startsWith("/points") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
-          )}>
-            <Link to="/points">积分</Link>
-          </Button>
-          <Button variant={"link"} className={cn(
-            isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
             location.pathname.startsWith("/playground") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
           )}>
             <Link to="/playground">广场</Link>
@@ -116,7 +268,7 @@ const Header = () => {
             <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/console">控制台</Link></Button>
           ) : (
             <>
-              <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={"/api/v1/users/login?redirect=&inviter_id=" + (localStorage.getItem('ic') || '')}>注册</a></Button>
+              <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={signUpLink}>注册</a></Button>
               <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/login">立即开始</Link></Button>
             </>
           )}

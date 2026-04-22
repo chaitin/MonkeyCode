@@ -34,11 +34,10 @@ const themeVars = {
 
 const pageNav = [
   { label: "介绍", href: "#hero" },
-  { label: "功能", href: "#features" },
-  { label: "工作流", href: "#usecases" },
-  { label: "价格", href: "#pricing" },
+  { label: "特色", href: "#features" },
+  { label: "场景", href: "#usecases" },
+  { label: "套餐", href: "#pricing" },
   { label: "文档", href: DOCS_LINK, external: true },
-  { label: "社区", href: "#community" },
 ];
 
 const featureItems = [
@@ -615,8 +614,7 @@ export default function TerminalNativePage() {
                   在线 AI 开发平台
                 </p>
                 <p className="mt-5 max-w-[540px] text-sm leading-8 text-[var(--a-fg-dim)] sm:text-[15px]">
-                  MonkeyCode 是一个在线 AI 编程平台，不限额度免费使用，无需本地开发机，也无需先配环境。
-                  打开浏览器，创建任务，让 AI 在云端帮你写代码、改文件、跑测试、接 Git。
+                  免费使用，无需安装，内置云端开发环境，并支持业内最全的顶尖大模型。无论是开发项目、做调研、写文档，还是分析数据、处理任务，打开浏览器就能随时开始，让 AI 持续帮你推进工作。
                 </p>
 
                 <div className="mt-9 flex flex-wrap gap-3">
@@ -642,7 +640,7 @@ export default function TerminalNativePage() {
           index="01"
           label="FEATURES"
           title="功能与特色"
-          subtitle="从一句话描述需求开始，到云端执行任务、修改代码、运行测试，再到接入 Git 和团队协作，MonkeyCode 把 AI 开发真正串成了一条完整流程。"
+          subtitle="你不需要自己拼工具、搭环境、来回切流程。把需求交给 MonkeyCode，它会从开发到验证一路接住，真正把 AI 编程变成可持续的工作流。"
         >
           <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-line)] md:grid-cols-2 lg:grid-cols-3">
             {featureItems.map((item) => (
@@ -670,7 +668,7 @@ export default function TerminalNativePage() {
           index="02"
           label="USE CASES"
           title="能在 MonkeyCode 上做什么？"
-          subtitle="不只是补代码。从业务需求、安全审查、数据分析，到论文、调研、周末玩票，只要你说得清楚，它就能帮你跑起来。"
+          subtitle="从正经项目到灵感试验，从白天的工作任务到晚上的个人想法，只要你说清目标，MonkeyCode 就能陪你把它真正做出来。"
         >
           <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line-2)] bg-[var(--a-line)] md:grid-cols-2 lg:grid-cols-3">
             {useCaseItems.map((item, index) => (
@@ -962,21 +960,23 @@ export default function TerminalNativePage() {
         <section className="mx-auto max-w-[1280px] px-5 pb-10 pt-6 text-center sm:px-8 sm:pb-14 sm:pt-10">
           <div className="pointer-events-none absolute left-1/2 h-[280px] w-[600px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(124,242,156,0.15),transparent_70%)] blur-3xl" />
           <div className="relative">
-            <div className="text-[11px] tracking-[0.12em] text-[var(--a-accent)]">┌─ READY TO START? ─┐</div>
+            <div className="text-[11px] tracking-[0.12em] text-[var(--a-accent)]">┌─ START WITH MONKEYCODE ─┐</div>
             <h2 className="mt-5 text-4xl font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl lg:text-[56px]">
-              把下一个项目
+              现在就开始，
               <br />
-              <span className="text-[var(--a-accent)]">装进浏览器</span>。
+              <span className="text-[var(--a-accent)]">把想法真正做出来</span>
             </h2>
             <p className="mx-auto mt-4 max-w-[480px] text-sm leading-8 text-[var(--a-fg-dim)]">
-              一分钟注册，零配置，AI 立即可用。不要信用卡。
+              无需本地环境，无需复杂配置。打开浏览器，你就可以立刻开始第一个 AI 开发任务。
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <HeaderAction to={isLoggedIn ? "/console" : "/login"} primary>
-                <span>$</span>&nbsp;免费进入控制台 →
+                <IconArrowRight className="size-4" />
+                <span>开始使用</span>
               </HeaderAction>
-              <HeaderAction href={DOCS_LINK} external>
-                阅读文档
+              <HeaderAction href={GITHUB_LINK} external>
+                <Icon name="GitHub-Uncolor" className="size-4 fill-current" />
+                <span>GitHub</span>
               </HeaderAction>
             </div>
           </div>
@@ -989,8 +989,7 @@ export default function TerminalNativePage() {
             <div>
               <LogoWordmark />
               <p className="mt-5 max-w-[320px] text-sm leading-7 text-[var(--a-fg-dim)]">
-                MonkeyCode 不是 AI 编程工具，是对传统研发模式的变革。
-                是全新的 AI 编程体验，让你的研发团队效率 Max。
+                免费使用，无需安装，内置云端开发环境，并支持业内最全的顶尖大模型。无论是开发项目、做调研、写文档，还是分析数据、处理任务，打开浏览器就能随时开始，让 AI 持续帮你推进工作。
               </p>
             </div>
 
@@ -1022,7 +1021,7 @@ export default function TerminalNativePage() {
           </div>
 
           <div className="mt-10 flex flex-col gap-3 border-t border-dashed border-[var(--a-line-2)] pt-5 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)] sm:flex-row sm:items-center sm:justify-between">
-            <span>© 2026 MonkeyCode · Apache-2.0 · built by humans + agents</span>
+            <span>© 2026 MonkeyCode · 版权所有：北京长亭科技有限公司 · 本应用由 MonkeyCode 开发</span>
             <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--a-fg)]">
               京ICP备2024055124号-12
             </a>

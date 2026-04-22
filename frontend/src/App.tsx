@@ -29,8 +29,6 @@ import ProjectOverviewPage from "./pages/console/user/project/overview"
 import TaskDetailPage from "./pages/console/user/task/task-detail"
 import PrivacyPolicyPage from "./pages/privacy-policy"
 import UserAgreementPage from "./pages/user-agreement"
-import PricingPage from "./pages/pricing"
-import PointsPage from "./pages/points"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 function TaskDetailRoute() {
@@ -46,8 +44,6 @@ function App() {
           <ThemePathListener />
           <Routes>
             <Route path="/" element={<WelcomePage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/points" element={<PointsPage />} />
             <Route path="/playground" element={<PlaygroundPage />} />
             <Route path="/playground/create" element={<PostCreatePage />} />
             <Route path="/playground/detail" element={<PlaygroundDetailPage />} />

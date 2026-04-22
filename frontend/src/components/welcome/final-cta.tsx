@@ -30,7 +30,7 @@ const FinalCTA = () => {
               </a>
             </Button>
             <Button size="lg" variant="ghost" className="pixel-button h-12 border-slate-950 bg-amber-100 px-6 text-slate-900 hover:bg-amber-200" asChild>
-              <Link to="/pricing">
+              <Link to="/#pricing">
                 <IconStack2 className="size-4" />
                 查看型号
               </Link>
