@@ -128,34 +128,83 @@ const compareRows = [
   { label: "开源", values: [1, 0, 0, 0] },
 ];
 
-const testimonialItems = [
+const testimonialItems: Array<{
+  quote: string;
+  name: string;
+  role: string;
+  stat?: string;
+}> = [
   {
     quote:
-      "之前用别家云 IDE 卡 AI 调用数，每次临近月底都得规划 prompt 怎么写最省。切到 MonkeyCode 第一周就放飞自我了。",
-    name: "@chenyu_dev",
-    role: "独立开发者 · 做 SaaS 工具",
-    stat: "3 projects / 847 tasks",
+      "用起来有点像 OpenCode 和 Coze 的结合体。最良心的是提供了隔离的运行环境，启动非常快，编译完成后还能直接生成一个可对外访问的网址。你可以高度自由地配置自己的模型，当然它也内置了免费且高性价比的模型。自带很多实用的技能，上手简单又方便。最关键的是，它是一款开源产品，能陪你一起成长。",
+    name: "aiwenming",
+    role: "产品管理",
   },
   {
     quote:
-      "我平时都在咖啡店写代码，带 iPad 就够了。浏览器开 MonkeyCode，Agent 在云端跑，本地零压力。",
-    name: "@mia.hu",
-    role: "自由职业 · 全栈",
-    stat: "iPad Pro user",
+      "Vibe Coding 是一个全新的时代，告别闷热、逼窒的小格子，到更广阔的天地去，呼吸着自由的空气。即使是出差在路上，也只需带一个轻薄本或 iPad，使用 MonkeyCode，轻松在云端跑着复杂的编码工作。",
+    name: "弈韬",
+    role: "和旭电商 · 电商运营",
   },
   {
     quote:
-      "开源这点对我很重要。客户要求代码可审计、工具链可私有部署，MonkeyCode 直接符合，不用再拼一套自建。",
-    name: "@ryan_wong",
-    role: "技术顾问",
-    stat: "self-hosted · 6 月",
+      "MonkeyCode 的云开发环境体验出色，Agent 能连接终端自主思考执行，真正实现“甩手掌柜”式编程。免费提供 MiniMax 和千问模型，响应快、调用无限制，相比别家月底掐算 Token 的日子一去不复返。",
+    name: "Full",
+    role: "安全工程师",
   },
   {
     quote:
-      "跑了三个 agent 同时改三个模块，每个 agent 自己一个分支，最后合出来测试都过。这个并发模型是真的省时间。",
-    name: "@kazu.dev",
-    role: "独立 App 作者",
-    stat: "ships weekly",
+      "MonkeyCode 是一款定位独特的 AI 编程平台，它不仅仅是一个代码补全工具，更致力于成为一个覆盖“需求 → 设计 → 开发 → 评审”全流程的 AI 研发基础设施。其核心价值在于通过自动化和云端环境，改变传统的研发工作流，尤其适合我们这种传统性开发公司，提供了全流程支撑。",
+    name: "李宏喜",
+    role: "零商界网络科技 · 总经理",
+  },
+  {
+    quote:
+      "很喜欢 MonkeyCode 这种云端轻量级开发模式，开发都不用打开本地 IDE，未跑完的任务手机打开也可以接着跑，满足随时随地都可以开发的需求，而且还内置了各种主流模型、Skills、MCP 等供开发者自由选择，这也是未来的趋势。",
+    name: "Clever",
+    role: "中国电信 · 全栈工程师",
+  },
+  {
+    quote:
+      "MonkeyCode 是我日常写项目、做课设的首选，AI 辅助生成效率很高，环境秒级启动，不用折腾本地配置。对学生党特别友好，很多复杂功能拖拽加描述就能搞定，节省了大量查文档的时间。",
+    name: "司徒北",
+    role: "独立开发者",
+  },
+  {
+    quote:
+      "之前让其他 AI 写代码还要自己不断测试，现在直接让 MonkeyCode 接入我的服务器自动进行写代码和测试就可以，还能自动根据测试的内容给我进行反馈，节省很多人为时间。",
+    name: "sinian-liu",
+    role: "37VPS · 创始人",
+  },
+  {
+    quote:
+      "以往光配置环境就耗费大量时间，低效又繁琐。使用 MonkeyCode 后省去大量无效劳动，开箱即用，可直接专注业务开发，流程顺畅，大幅提升开发体验与效率。",
+    name: "时光旅人",
+    role: "独立开发者",
+  },
+  {
+    quote:
+      "上手零门槛，注册就能用，关键还免费。不用安装任何环境，打开浏览器就能在线编程，从需求到开发、测试到交付，包括终端调试和代码提交，几轮对话就能全部搞定。再也不用背着电脑到处跑了。",
+    name: "不开灯的街",
+    role: "技术负责人",
+  },
+  {
+    quote:
+      "MonkeyCode 是一款 AI 本位的开发工具，提供可落地的 AI + Dev 全链路开发能力。它不仅能帮助我写代码，还能理解项目、执行任务、协助调试，让我把更多时间和精力留给创意。",
+    name: "小谈谈",
+    role: "OPC 创业者",
+  },
+  {
+    quote:
+      "以前带新人做项目，第一步总是先花半天配环境。现在直接把需求和仓库交给 MonkeyCode，大家在同一套云端环境里推进，少了很多无意义的折腾，协作效率高很多。",
+    name: "南山",
+    role: "阿里巴巴 · 技术负责人",
+  },
+  {
+    quote:
+      "我最看重的是它不挑设备。办公室用电脑，回家用平板，临时出门用手机看进度，任务都能接着跑。对经常要在多个场景切换的人来说，这种连续性真的很舒服。",
+    name: "阿杰",
+    role: "独立开发者",
   },
 ];
 
@@ -573,18 +622,20 @@ export default function TerminalNativePage() {
           id="testimonials"
           index="04"
           label="WHAT DEVS SAY"
-          title="开发者怎么评价"
-          subtitle="反馈不是营销文案，而是日常使用 MonkeyCode 的真实体验。"
+          title="用户真实评价"
+          subtitle="来自真实用户的使用反馈，覆盖开发、运营、创业、团队协作等不同场景。"
         >
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-            {testimonialItems.map((item) => (
-              <div key={item.name} className="relative rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
+            {[...testimonialItems].sort((a, b) => a.quote.length - b.quote.length).map((item) => (
+              <div key={item.name} className="relative flex h-full flex-col rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
                 <div className="absolute left-5 top-4 text-4xl leading-none text-[var(--a-accent-dim)] opacity-40">❝</div>
-                <p className="relative text-sm leading-7 text-[var(--a-fg)]">{item.quote}</p>
+                <p className="relative flex-1 text-sm leading-7 text-[var(--a-fg)]">{item.quote}</p>
                 <div className="mt-5 border-t border-dashed border-[var(--a-line-2)] pt-4">
                   <div className="text-sm text-[var(--a-accent)]">{item.name}</div>
                   <div className="mt-1 text-[13px] text-[var(--a-fg-dim)]">{item.role}</div>
-                  <div className="mt-1 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)]">{item.stat}</div>
+                  {item.stat ? (
+                    <div className="mt-1 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)]">{item.stat}</div>
+                  ) : null}
                 </div>
               </div>
             ))}
