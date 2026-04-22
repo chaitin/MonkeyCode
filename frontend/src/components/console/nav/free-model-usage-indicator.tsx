@@ -25,10 +25,6 @@ function normalizeUsagePercent(value?: number) {
     return 0
   }
 
-  if ((value as number) >= 0 && (value as number) <= 1) {
-    return Math.min(Math.max((value as number) * 100, 0), 100)
-  }
-
   return Math.min(Math.max(value as number, 0), 100)
 }
 
