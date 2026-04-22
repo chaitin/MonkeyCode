@@ -192,6 +192,7 @@ export enum ConstsUserRole {
 export enum ConstsUserStatus {
   UserStatusActive = "active",
   UserStatusInactive = "inactive",
+  UserStatusBanned = "banned",
 }
 
 export interface Dbv2Cursor {
@@ -544,6 +545,16 @@ export interface DomainFileSaveReq {
   path: string;
 }
 
+export interface DomainFreePoolUsageResp {
+  daily_token_limit?: number;
+  date?: string;
+  enabled?: boolean;
+  remaining_tokens?: number;
+  usage_percent?: number;
+  used_tokens?: number;
+  used_user_count?: number;
+}
+
 export interface DomainGetProviderModelListResp {
   error?: DomainOpenAIError;
   models?: DomainProviderModelListItem[];
@@ -601,28 +612,6 @@ export interface DomainGitRepository {
   platform?: ConstsGitPlatform;
   repo_name?: string;
   url?: string;
-}
-
-export interface DomainHelpAgentChatReq {
-  captcha_token: string;
-  message: string;
-}
-
-export interface DomainHelpAgentSSEvent {
-  /** 事件数据 */
-  data?: DomainHelpAgentSSEventData;
-  /**
-   * 事件类型
-   * @example "text_delta"
-   */
-  event?: "text_delta" | "done" | "error";
-}
-
-export interface DomainHelpAgentSSEventData {
-  /** 文本增量内容（text_delta 事件） */
-  content?: string;
-  /** 错误信息（error 事件） */
-  message?: string;
 }
 
 export interface DomainHost {
@@ -2219,24 +2208,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 流式 SSE 对话，返回 text_delta / done / error 事件
-     *
-     * @tags helpagent
-     * @name V1HelpagentChatCreate
-     * @summary HelpAgent 智能助手对话
-     * @request POST:/api/v1/helpagent/chat
-     */
-    v1HelpagentChatCreate: (body: DomainHelpAgentChatReq, params: RequestParams = {}) =>
-      this.request<DomainHelpAgentSSEvent[], GitInChaitinNetGoDevWebResp>({
-        path: `/api/v1/helpagent/chat`,
-        method: "POST",
-        body: body,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 绑定第三方平台
      *
      * @tags 【用户】OAuth
@@ -3782,6 +3753,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/folders`,
         method: "POST",
         body: param,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 返回当天免费模型共享池的用量百分比、剩余 Token 和使用人数
+     *
+     * @tags 【用户】会员
+     * @name V1UsersFreeModelPoolUsageList
+     * @summary 查询免费模型共享池实时用量
+     * @request GET:/api/v1/users/free-model-pool/usage
+     * @secure
+     */
+    v1UsersFreeModelPoolUsageList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainFreePoolUsageResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/users/free-model-pool/usage`,
+        method: "GET",
         secure: true,
         type: ContentType.Json,
         format: "json",
