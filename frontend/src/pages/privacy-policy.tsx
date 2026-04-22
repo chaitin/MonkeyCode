@@ -1,8 +1,7 @@
-import { AuthProvider } from "@/components/auth-provider"
-import Footer from "@/components/welcome/footer"
-import Header from "@/components/welcome/header"
+import { AuthProvider } from "@/components/auth-provider";
+import LegalTerminalPage, { type LegalSection } from "@/components/welcome/legal-terminal-page";
 
-const sections = [
+const sections: LegalSection[] = [
   {
     id: "collection",
     title: "我们可能收集的信息",
@@ -88,95 +87,33 @@ const sections = [
     content: [
       "如您对本隐私政策或个人信息处理事项有任何疑问、意见或投诉建议，可通过官方渠道与我们联系。",
     ],
+    footer: (
+      <>
+        官方渠道：
+        <a className="text-[var(--a-accent)] hover:underline" href="https://www.chaitin.cn/" target="_blank" rel="noreferrer">
+          长亭科技官网
+        </a>
+        {" "}或{" "}
+        <a className="text-[var(--a-accent)] hover:underline" href="https://www.baizhi.cloud/" target="_blank" rel="noreferrer">
+          长亭百智云官网
+        </a>
+        。
+      </>
+    ),
   },
-]
+];
 
 export default function PrivacyPolicyPage() {
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(27,92,255,0.18),transparent_34%),radial-gradient(circle_at_top_right,rgba(4,203,156,0.16),transparent_26%),linear-gradient(180deg,#eef4ff_0%,#f7f9fc_45%,#eef2f7_100%)]">
-        <Header />
-        <main className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 px-4 pt-24 pb-12 sm:px-6 lg:px-8">
-          <section className="overflow-hidden rounded-[32px] border border-white/35 bg-[linear-gradient(135deg,rgba(10,31,67,0.96),rgba(27,92,255,0.92))] p-8 text-white shadow-[0_24px_80px_rgba(21,42,84,0.14)] sm:p-10">
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm">
-              <img src="/logo.png" alt="MonkeyCode Logo" className="size-6" />
-              <span>MonkeyCode 智能开发平台</span>
-            </div>
-            <h1 className="mt-6 text-4xl font-bold leading-tight sm:text-5xl">隐私政策</h1>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-white/80 sm:text-[15px]">
-              我们重视您的个人信息与数据安全。本页面用于说明 MonkeyCode 智能开发平台在提供产品与服务过程中，如何收集、使用、存储、共享和保护与您相关的信息，以及您可以如何管理这些信息。
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3 text-xs text-white/85 sm:text-sm">
-              <span className="rounded-full bg-white/10 px-4 py-2">适用于官网与控制台服务</span>
-              <span className="rounded-full bg-white/10 px-4 py-2">最近更新：2026-03-24</span>
-              <span className="rounded-full bg-white/10 px-4 py-2">建议定期查看更新内容</span>
-            </div>
-          </section>
-
-          <section className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="h-fit rounded-[28px] border border-slate-900/10 bg-white/85 p-6 shadow-[0_24px_80px_rgba(21,42,84,0.14)] backdrop-blur lg:sticky lg:top-6">
-              <h2 className="text-lg font-semibold text-slate-900">目录</h2>
-              <nav className="mt-4 flex flex-col gap-1 text-sm">
-                {sections.map((section, index) => (
-                  <a
-                    key={section.id}
-                    href={`#${section.id}`}
-                    className="rounded-xl px-3 py-2 text-slate-500 transition hover:bg-blue-50 hover:text-blue-600"
-                  >
-                    {index + 1}. {section.title}
-                  </a>
-                ))}
-              </nav>
-            </aside>
-
-            <article className="rounded-[28px] border border-slate-900/10 bg-white/85 p-7 shadow-[0_24px_80px_rgba(21,42,84,0.14)] backdrop-blur sm:p-8">
-              {sections.map((section, index) => (
-                <section
-                  id={section.id}
-                  key={section.id}
-                  className={index === 0 ? "" : "mt-8 border-t border-slate-900/10 pt-8"}
-                >
-                  <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold tracking-[0.04em] text-blue-600">
-                    Section {index + 1}
-                  </span>
-                  <h2 className="mt-4 text-2xl font-semibold text-slate-900">{section.title}</h2>
-                  {section.content?.map((paragraph) => (
-                    <p key={paragraph} className="mt-3 text-[15px] leading-7 text-slate-500">
-                      {paragraph}
-                    </p>
-                  ))}
-                  {section.items ? (
-                    <ul className="mt-4 list-disc space-y-2 pl-5 text-[15px] leading-7 text-slate-500">
-                      {section.items.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {section.note ? (
-                    <div className="mt-5 rounded-2xl border border-blue-100 bg-gradient-to-b from-white to-slate-50 px-5 py-4 text-[15px] leading-7 text-slate-500">
-                      {section.note}
-                    </div>
-                  ) : null}
-                  {section.id === "contact" ? (
-                    <p className="mt-4 text-[15px] leading-7 text-slate-500">
-                      官方渠道：
-                      <a className="text-blue-600 hover:underline" href="https://www.chaitin.cn/" target="_blank" rel="noreferrer">
-                        长亭科技官网
-                      </a>
-                      {' '}或{' '}
-                      <a className="text-blue-600 hover:underline" href="https://www.baizhi.cloud/" target="_blank" rel="noreferrer">
-                        长亭百智云官网
-                      </a>
-                      。
-                    </p>
-                  ) : null}
-                </section>
-              ))}
-            </article>
-          </section>
-        </main>
-        <Footer />
-      </div>
+      <LegalTerminalPage
+        eyebrow="PRIVACY POLICY"
+        title="隐私政策"
+        subtitle="我们重视您的个人信息与数据安全。本页面用于说明 MonkeyCode 在提供产品与服务过程中，如何收集、使用、存储、共享和保护与您相关的信息，以及您可以如何管理这些信息。"
+        lastUpdated="2026-03-24"
+        tags={["适用于官网与控制台服务", "建议定期查看更新内容"]}
+        sections={sections}
+      />
     </AuthProvider>
-  )
+  );
 }

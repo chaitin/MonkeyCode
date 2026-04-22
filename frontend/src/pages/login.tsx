@@ -9,6 +9,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   Tabs,
@@ -39,9 +40,16 @@ export default function LoginPage({
   const [showUserPassword, setShowUserPassword] = React.useState(false)
   const [showManagerPassword, setShowManagerPassword] = React.useState(false)
   const [userLoginView, setUserLoginView] = React.useState<'choices' | 'password'>('choices')
+  const [agreedToTerms, setAgreedToTerms] = React.useState(true)
   const navigate = useNavigate()
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
   const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
+
+  const ensureTermsAccepted = React.useCallback(() => {
+    if (agreedToTerms) return true
+    toast.error('请先阅读并同意用户协议')
+    return false
+  }, [agreedToTerms])
 
   React.useEffect(() => {
     try {
@@ -63,6 +71,8 @@ export default function LoginPage({
   }, [])
 
   const handleUserLogin = async () => {
+    if (!ensureTermsAccepted()) return
+
     if (userEmail.trim() === '' || userPassword.trim() === '') {
       toast.error('请输入账号和密码')
       return
@@ -91,6 +101,8 @@ export default function LoginPage({
   }
 
   const handleTeamManagerLogin = async () => {
+    if (!ensureTermsAccepted()) return
+
     if (teamManagerEmail.trim() === '' || teamManagerPassword.trim() === '') {
       toast.error('请输入账号和密码')
       return
@@ -140,7 +152,16 @@ export default function LoginPage({
                     <div className="mt-1 flex flex-col gap-4">
                       <div className="text-sm font-medium">选择登录方式</div>
                       <Button size="lg" className="w-full" asChild>
-                        <a href={userLoginHref}>百智云登录 - 推荐</a>
+                        <a
+                          href={userLoginHref}
+                          onClick={(e) => {
+                            if (!ensureTermsAccepted()) {
+                              e.preventDefault()
+                            }
+                          }}
+                        >
+                          百智云登录 - 推荐
+                        </a>
                       </Button>
                       <Button
                         type="button"
@@ -152,7 +173,16 @@ export default function LoginPage({
                         账号密码登录
                       </Button>
                       <Button size="lg" variant="secondary" className="w-full" asChild>
-                        <a href={userLoginHref}>快速注册</a>
+                        <a
+                          href={userLoginHref}
+                          onClick={(e) => {
+                            if (!ensureTermsAccepted()) {
+                              e.preventDefault()
+                            }
+                          }}
+                        >
+                          快速注册
+                        </a>
                       </Button>
                     </div>
                   ) : (
@@ -207,7 +237,7 @@ export default function LoginPage({
                             </div>
                           </Field>
                           <Field>
-                            <Button type="submit" disabled={logging} className="w-full">
+                            <Button type="submit" disabled={logging || !agreedToTerms} className="w-full">
                               {logging && <Spinner className="mr-2" />}
                               登录
                             </Button>
@@ -256,7 +286,7 @@ export default function LoginPage({
                         </div>
                       </Field>
                       <Field>
-                        <Button type="submit" disabled={logging}>
+                        <Button type="submit" disabled={logging || !agreedToTerms}>
                         {logging && <Spinner />}
                         登录
                       </Button>
@@ -265,6 +295,21 @@ export default function LoginPage({
                   </form>
                 </TabsContent>
               </Tabs>
+              <div className="mt-5 flex items-start gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
+                <Checkbox
+                  id="login-user-agreement"
+                  checked={agreedToTerms}
+                  onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="login-user-agreement" className="text-sm leading-6 text-muted-foreground">
+                  我已阅读并同意
+                  {" "}
+                  <Link to="/user-agreement" target="_blank" rel="noreferrer" className="text-foreground hover:underline">
+                    《用户协议》
+                  </Link>
+                </label>
+              </div>
             </CardContent>
           </Card>
         </div>

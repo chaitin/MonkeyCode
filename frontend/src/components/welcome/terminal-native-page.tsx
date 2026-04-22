@@ -2,17 +2,13 @@ import { useAuth } from "@/components/auth-provider";
 import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { IconArrowRight, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconMenu2, IconPointFilled, IconSend } from "@tabler/icons-react";
+import { IconArrowRight, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconSend } from "@tabler/icons-react";
 import React from "react";
 import { Link } from "react-router-dom";
+import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
 
-const DOCS_LINK = "https://monkeycode.docs.baizhi.cloud/";
 const GITHUB_LINK = "https://github.com/chaitin/MonkeyCode/";
-const FORUM_LINK = "https://bbs.baizhi.cloud/";
-const MODEL_SQUARE_LINK = "https://baizhi.cloud/landing/model-square";
 const CONSULT_LINK = "https://baizhi.cloud/consult";
-const CHAITIN_LINK = "https://www.chaitin.cn/";
-const BAIZHI_LINK = "https://www.baizhi.cloud/";
 
 const themeVars = {
   "--a-bg": "#0a0d0a",
@@ -31,14 +27,6 @@ const themeVars = {
   "--a-magenta": "#ff6b9d",
   "--a-purple": "#c39bff",
 } as React.CSSProperties;
-
-const pageNav = [
-  { label: "介绍", href: "#hero" },
-  { label: "特色", href: "#features" },
-  { label: "场景", href: "#usecases" },
-  { label: "套餐", href: "#pricing" },
-  { label: "文档", href: DOCS_LINK, external: true },
-];
 
 const featureItems = [
   {
@@ -248,26 +236,6 @@ const faqItems = [
   },
 ];
 
-const resourceLinks = [
-  { title: "产品文档", href: DOCS_LINK },
-  { title: "技术论坛", href: FORUM_LINK },
-  { title: "开源仓库", href: GITHUB_LINK },
-  { title: "模型广场", href: MODEL_SQUARE_LINK },
-];
-
-const aboutLinks = [
-  { title: "长亭科技", href: CHAITIN_LINK },
-  { title: "长亭百智云", href: BAIZHI_LINK },
-  { title: "隐私政策", href: "/privacy-policy" },
-  { title: "用户协议", href: "/user-agreement" },
-];
-
-const communityCards = [
-  { label: "微信群", src: "/wechat.png", alt: "微信二维码" },
-  { label: "飞书群", src: "/feishu.png", alt: "飞书群二维码" },
-  { label: "钉钉群", src: "/dingtalk.png", alt: "钉钉群二维码" },
-];
-
 type HeroFileTreeItem = {
   name: string;
   type: "folder" | "file";
@@ -292,38 +260,6 @@ const heroFileTree: HeroFileTreeItem[] = [
   { name: "package.json", type: "file" },
   { name: "README.md", type: "file" },
 ];
-
-function LogoMark({
-  size = 28,
-  color = "currentColor",
-  accent = "currentColor",
-}: {
-  size?: number;
-  color?: string;
-  accent?: string;
-}) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <rect x="2" y="4" width="28" height="24" rx="6" stroke={color} strokeWidth="2" fill="none" />
-      <circle cx="7" cy="7" r="2.5" fill={color} />
-      <circle cx="25" cy="7" r="2.5" fill={color} />
-      <path d="M10 14 Q 8 16 10 18" stroke={accent} strokeWidth="2" strokeLinecap="round" fill="none" />
-      <path d="M22 14 Q 24 16 22 18" stroke={accent} strokeWidth="2" strokeLinecap="round" fill="none" />
-      <path d="M13 22 L 19 22" stroke={color} strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function LogoWordmark() {
-  return (
-    <div className="flex items-center gap-3 text-[15px] font-semibold tracking-[-0.02em] text-[var(--a-fg)]">
-      <LogoMark size={24} color="var(--a-fg)" accent="var(--a-accent)" />
-      <span>
-        Monkey<span className="text-[var(--a-accent)]">Code</span>
-      </span>
-    </div>
-  );
-}
 
 function SectionShell({
   id,
@@ -419,36 +355,9 @@ function HeaderAction({
   );
 }
 
-function FooterLinkItem({ title, href }: { title: string; href: string }) {
-  if (href.startsWith("/")) {
-    return (
-      <Link to={href} className="block py-1.5 text-sm text-[var(--a-fg-dim)] transition-colors hover:text-[var(--a-fg)]">
-        {title}
-      </Link>
-    );
-  }
-
-  return (
-    <a href={href} target="_blank" rel="noreferrer" className="block py-1.5 text-sm text-[var(--a-fg-dim)] transition-colors hover:text-[var(--a-fg)]">
-      {title}
-    </a>
-  );
-}
-
 export default function TerminalNativePage() {
   const { isLoggedIn } = useAuth();
-  const [isScrolled, setIsScrolled] = React.useState(false);
-  const [menuOpen, setMenuOpen] = React.useState(false);
   const [openFaq, setOpenFaq] = React.useState(0);
-  const inviterId = typeof window !== "undefined" ? localStorage.getItem("ic") || "" : "";
-  const signUpLink = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`;
-
-  React.useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 4);
-    handleScroll();
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   return (
     <div
@@ -489,116 +398,7 @@ export default function TerminalNativePage() {
         />
       </div>
 
-      <header
-        className={cn(
-          "fixed inset-x-0 top-0 z-50 border-b border-[var(--a-line)] backdrop-blur-xl transition-colors",
-          isScrolled ? "bg-[rgba(10,13,10,0.94)]" : "bg-[rgba(10,13,10,0.85)]"
-        )}
-      >
-        <div className="mx-auto flex max-w-[1280px] items-center gap-5 px-4 py-3 sm:px-8">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((value) => !value)}
-              className="inline-flex size-10 items-center justify-center rounded-[4px] border border-[var(--a-line-2)] bg-[var(--a-panel)] text-[var(--a-fg)] transition-colors hover:bg-[#162019] md:hidden"
-              aria-label="切换导航菜单"
-            >
-              <IconMenu2 className="size-5" />
-            </button>
-
-            <a href="#hero" className="shrink-0">
-              <LogoWordmark />
-            </a>
-          </div>
-
-          <nav className="hidden items-center gap-1 md:flex">
-            {pageNav.map((item) =>
-              item.external ? (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2.5 py-1.5 text-[13px] text-[var(--a-fg-dim)] transition-colors hover:text-white"
-                >
-                  {item.label}
-                </a>
-              ) : (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  className="px-2.5 py-1.5 text-[13px] text-[var(--a-fg-dim)] transition-colors hover:text-white"
-                >
-                  {item.label}
-                </a>
-              )
-            )}
-          </nav>
-
-          <div className="ml-auto hidden items-center gap-2 md:flex">
-            {!isLoggedIn ? (
-              <>
-                <HeaderAction href={signUpLink}>注册</HeaderAction>
-                <HeaderAction to="/login" primary>
-                  登录
-                </HeaderAction>
-              </>
-            ) : (
-              <HeaderAction to="/console" primary>
-                进入控制台 →
-              </HeaderAction>
-            )}
-          </div>
-
-          {menuOpen ? (
-            <div className="mt-4 space-y-4 border-t border-[var(--a-line)] pt-4 md:hidden">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[var(--a-fg-dim)]">
-                <IconPointFilled className="size-3 text-[var(--a-accent)]" />
-                System Online
-              </div>
-              <div className="grid gap-2">
-                {pageNav.map((item) =>
-                  item.external ? (
-                    <a
-                      key={item.label}
-                      href={item.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => setMenuOpen(false)}
-                      className="rounded-[4px] border border-[var(--a-line)] px-4 py-3 text-sm text-[var(--a-fg)] transition-colors hover:bg-[#162019]"
-                    >
-                      {item.label}
-                    </a>
-                  ) : (
-                    <a
-                      key={item.label}
-                      href={item.href}
-                      onClick={() => setMenuOpen(false)}
-                      className="rounded-[4px] border border-[var(--a-line)] px-4 py-3 text-sm text-[var(--a-fg)] transition-colors hover:bg-[#162019]"
-                    >
-                      {item.label}
-                    </a>
-                  )
-                )}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {!isLoggedIn ? (
-                  <>
-                    <HeaderAction href={signUpLink}>注册</HeaderAction>
-                    <HeaderAction to="/login" primary>
-                      登录
-                    </HeaderAction>
-                  </>
-                ) : (
-                  <HeaderAction to="/console" primary>
-                    进入控制台 →
-                  </HeaderAction>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <TerminalHeader />
 
       <main className="relative z-10 pt-[88px] sm:pt-[92px]">
         <section id="hero" className="mx-auto max-w-[1280px] px-5 pb-10 pt-8 sm:px-8 sm:pt-12 sm:pb-16">
@@ -983,51 +783,7 @@ export default function TerminalNativePage() {
         </section>
       </main>
 
-      <footer id="community" className="relative z-10 mt-10 border-t border-[var(--a-line)] px-5 pb-8 pt-14 sm:px-8">
-        <div className="mx-auto max-w-[1280px]">
-          <div className="grid gap-10 xl:grid-cols-[1.3fr_0.8fr_0.8fr_1.5fr]">
-            <div>
-              <LogoWordmark />
-              <p className="mt-5 max-w-[320px] text-sm leading-7 text-[var(--a-fg-dim)]">
-                免费使用，无需安装，内置云端开发环境，并支持业内最全的顶尖大模型。无论是开发项目、做调研、写文档，还是分析数据、处理任务，打开浏览器就能随时开始，让 AI 持续帮你推进工作。
-              </p>
-            </div>
-
-            <div>
-              <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># 资源</div>
-              {resourceLinks.map((item) => (
-                <FooterLinkItem key={item.title} title={item.title} href={item.href} />
-              ))}
-            </div>
-
-            <div>
-              <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># 关于我们</div>
-              {aboutLinks.map((item) => (
-                <FooterLinkItem key={item.title} title={item.title} href={item.href} />
-              ))}
-            </div>
-
-            <div>
-              <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># 技术交流群</div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                {communityCards.map((item) => (
-                  <div key={item.label} className="text-center">
-                    <img src={item.src} alt={item.alt} className="mx-auto aspect-square w-full rounded-sm object-cover" />
-                    <div className="mt-2 text-[11px] tracking-[0.04em] text-[var(--a-fg-dim)]">{item.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-10 flex flex-col gap-3 border-t border-dashed border-[var(--a-line-2)] pt-5 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)] sm:flex-row sm:items-center sm:justify-between">
-            <span>© 2026 MonkeyCode · 版权所有：北京长亭科技有限公司 · 本应用由 MonkeyCode 开发</span>
-            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--a-fg)]">
-              京ICP备2024055124号-12
-            </a>
-          </div>
-        </div>
-      </footer>
+      <TerminalFooter />
     </div>
   );
 }
