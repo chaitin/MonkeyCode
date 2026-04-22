@@ -74,7 +74,7 @@ const PlaygroundContent = () => {
               <ItemHeader className="bg-muted/50">
                 <Link to={`/playground/detail?id=${post.id}`} className="w-full">
                   <ItemMedia className="w-full">
-                    <img src={post.task_post?.images?.[0] || post.normal_post?.images?.[0] || "/logo-colored.png"} className="max-w-full h-[140px]" />
+                    <img src={post.task_post?.images?.[0] || post.normal_post?.images?.[0] || "/logo-light.png"} className="max-w-full h-[140px]" />
                   </ItemMedia>
                 </Link>
               </ItemHeader>
@@ -93,7 +93,7 @@ const PlaygroundContent = () => {
                 <div className="flex flex-row items-center gap-2 justify-between w-full">
                   <div className="flex flex-row items-center gap-2">
                     <Avatar className="size-4">
-                      <AvatarImage src={post.user?.avatar_url || "/logo-colored.png"} />
+                      <AvatarImage src={post.user?.avatar_url || "/logo-light.png"} />
                       <AvatarFallback>{(post.user?.name || "-").charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     {post.user?.name}
@@ -134,5 +134,4 @@ const PlaygroundPage = () => {
 }
 
 export default PlaygroundPage
-
 

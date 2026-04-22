@@ -147,7 +147,7 @@ export default function EditGitBotPermissionDialog({
                           onClick={(e) => e.stopPropagation()}
                         />
                         <img 
-                          src={member.avatar_url || "/logo-colored.png"} 
+                          src={member.avatar_url || "/logo-light.png"} 
                           alt={member.name || ''} 
                           className="w-5 h-5 rounded-full object-cover"
                         />
@@ -173,4 +173,3 @@ export default function EditGitBotPermissionDialog({
     </Dialog>
   )
 }
-

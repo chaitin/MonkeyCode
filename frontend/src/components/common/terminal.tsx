@@ -219,7 +219,7 @@ export default function Terminal({
         xtermInstance.current?.write(decodedData);
       } else if (data.type === 'connected') {
         const connectData = JSON.parse(data.data);
-        onUserNameChanged?.(connectData.username, connectData.avatar_url || "/logo-colored.png");
+        onUserNameChanged?.(connectData.username, connectData.avatar_url || "/logo-light.png");
         toast.success('终端连接成功');
         setConnecting(false);
         setConnected(true);

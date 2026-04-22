@@ -448,7 +448,7 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 <Avatar className="size-6">
-                                  <AvatarImage src={member.user?.avatar_url || "/logo-colored.png"} />
+                                  <AvatarImage src={member.user?.avatar_url || "/logo-light.png"} />
                                   <AvatarFallback>
                                     <IconUser className="size-4" />
                                   </AvatarFallback>
@@ -514,4 +514,3 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
     </>
   )
 }
-

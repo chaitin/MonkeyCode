@@ -80,7 +80,7 @@ const Banner = () => {
           <div className="pixel-panel pixel-grid border-slate-900 bg-[#fffdf8] p-3 sm:p-4">
             <div className="flex items-center justify-between border-2 border-slate-900 bg-slate-950 px-4 py-3 text-white">
               <div className="flex items-center gap-3">
-                <img src="/logo-colored.png" className="size-8 border border-white/15 bg-white p-1" alt="MonkeyCode Logo" />
+                <img src="/logo-light.png" className="size-8 border border-white/15 bg-white p-1" alt="MonkeyCode Logo" />
                 <div>
                   <div className="font-pixel text-[10px] text-amber-200">TASK RUNNING</div>
                   <div className="mt-2 text-xs text-slate-300">MonkeyCode Workspace</div>

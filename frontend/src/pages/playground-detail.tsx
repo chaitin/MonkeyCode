@@ -346,7 +346,7 @@ const PlaygroundDetailPage = () => {
             <div className="flex flex-row items-center gap-10 text-sm text-muted-foreground">
               <div className="flex flex-row items-center gap-2 hover:text-primary cursor-pointer">
                 <Avatar className="size-6">
-                  <AvatarImage src={post?.user?.avatar_url || "/logo-colored.png"} />
+                  <AvatarImage src={post?.user?.avatar_url || "/logo-light.png"} />
                   <AvatarFallback>CN</AvatarFallback>
                 </Avatar>
                 {post?.user?.name}

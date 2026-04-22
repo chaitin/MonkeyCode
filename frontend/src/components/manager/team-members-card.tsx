@@ -172,7 +172,7 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
                 <Item variant="default" size="sm">
                   <ItemMedia className="hidden sm:flex">
                     <Avatar>
-                      <AvatarImage src={member.user?.avatar_url || "/logo-colored.png"} />
+                      <AvatarImage src={member.user?.avatar_url || "/logo-light.png"} />
                       <AvatarFallback>
                         <IconUser className="size-4" />
                       </AvatarFallback>
@@ -283,4 +283,3 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
     </>
   )
 }
-

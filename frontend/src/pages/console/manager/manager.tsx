@@ -149,7 +149,7 @@ export default function TeamManagerManager() {
             <Item variant="default" size="sm">
               <ItemMedia className="hidden sm:flex">
                 <Avatar>
-                  <AvatarImage src={manager.user?.avatar_url || "/logo-colored.png"} />
+                  <AvatarImage src={manager.user?.avatar_url || "/logo-light.png"} />
                   <AvatarFallback>
                     <IconUser className="size-4" />
                   </AvatarFallback>

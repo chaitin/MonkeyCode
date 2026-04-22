@@ -33,7 +33,7 @@ export default function NavUser({ className }: { className?: string }) {
           onClick={handleOpenProfile}
         >
           <Avatar className="h-8 w-8 rounded-lg">
-            <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+            <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || "未知用户"} />
             <AvatarFallback className="rounded-lg">{user?.name?.charAt(0) || "-"}</AvatarFallback>
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">

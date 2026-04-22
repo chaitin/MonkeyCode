@@ -690,7 +690,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const triggerContent = triggerMode === "account" ? (
     <div className="flex w-full min-w-0 items-center gap-2">
       <Avatar className="size-8 rounded-lg">
-        <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+        <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || "未知用户"} />
         <AvatarFallback className="rounded-lg">{user?.name?.charAt(0) || "-"}</AvatarFallback>
       </Avatar>
       <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
@@ -752,7 +752,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
                 disabled={uploadingAvatar}
               >
                 <Avatar className="size-14 rounded-xl">
-                  <AvatarImage src={user?.avatar_url || "/logo-colored.png"} alt={user?.name || "未知用户"} />
+                  <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || "未知用户"} />
                   <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
                 </Avatar>
                 <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">

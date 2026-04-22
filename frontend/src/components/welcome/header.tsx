@@ -67,7 +67,7 @@ const Header = () => {
                 <DrawerHeader className="border-b border-[#1d2a22] text-left">
                   <DrawerTitle className="flex items-center gap-3 text-sm font-medium tracking-[0.18em] text-[#7cf29c]">
                     <img
-                      src="/logo-colored.png"
+                      src="/logo-light.png"
                       className="size-9 rounded-xl border border-[#243329] bg-[#111814] p-1.5"
                       alt="MonkeyCode Logo"
                     />
@@ -137,7 +137,7 @@ const Header = () => {
 
             <Link to="/" className="flex min-w-0 items-center gap-3">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-[#243329] bg-[#111814] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <img src="/logo-colored.png" className="size-7" alt="MonkeyCode Logo" />
+                <img src="/logo-light.png" className="size-7" alt="MonkeyCode Logo" />
               </div>
               <div className="min-w-0">
                 <div className="truncate text-[11px] uppercase tracking-[0.26em] text-[#7cf29c]">Terminal Native</div>
@@ -260,13 +260,13 @@ const Header = () => {
             </DrawerContent>
           </Drawer>
           <Link to="/" className={cn("mr-6 flex flex-row items-center gap-3 text-base font-semibold cursor-pointer", isPixelPage && "text-slate-950")}>
-            <img src="/logo-colored.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
+            <img src="/logo-light.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
             <span className={cn(isPixelPage ? "font-pixel text-sm tracking-normal sm:text-base" : "text-base")}>MonkeyCode</span>
           </Link>
         </div>
         <div className="hidden md:flex flex-row items-center gap-2">
           <Link to="/" className={cn("mr-6 flex flex-row items-center gap-3 text-base font-semibold cursor-pointer", isPixelPage && "text-slate-950")}>
-            <img src="/logo-colored.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
+            <img src="/logo-light.png" className={cn("size-8", isPixelPage && "border-2 border-slate-900 bg-white p-1")} alt="MonkeyCode Logo" />
             <span className={cn(isPixelPage ? "font-pixel text-sm tracking-normal sm:text-base" : "text-base")}>MonkeyCode</span>
           </Link>
           <Button variant={"link"} className={cn(
