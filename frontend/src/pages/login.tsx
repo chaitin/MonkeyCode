@@ -295,14 +295,14 @@ export default function LoginPage({
                   </form>
                 </TabsContent>
               </Tabs>
-              <div className="mt-5 flex items-start gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-3">
+              <div className="mt-5 flex items-start gap-2.5 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
                 <Checkbox
                   id="login-user-agreement"
                   checked={agreedToTerms}
                   onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
-                  className="mt-0.5"
+                  className="mt-px size-3.5 rounded-[3px] [&_[data-slot=checkbox-indicator]>svg]:size-3"
                 />
-                <label htmlFor="login-user-agreement" className="text-sm leading-6 text-muted-foreground">
+                <label htmlFor="login-user-agreement" className="text-[13px] leading-[18px] text-muted-foreground">
                   我已阅读并同意
                   {" "}
                   <Link to="/user-agreement" target="_blank" rel="noreferrer" className="text-foreground hover:underline">
