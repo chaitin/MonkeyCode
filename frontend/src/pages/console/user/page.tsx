@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { DataProvider } from "@/components/console/data-provider"
+import FreeModelUsageIndicator from "@/components/console/nav/free-model-usage-indicator"
 
 const SettingsDialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
 export const useSettingsDialog = () => {
@@ -126,6 +127,7 @@ function UserConsoleContent() {
               </Breadcrumb>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-2 px-4">
+              <FreeModelUsageIndicator />
               <Button
                 variant="ghost"
                 size="sm"
