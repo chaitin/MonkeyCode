@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -38,6 +39,7 @@ type HostUsecase struct {
 	taskflow         taskflow.Clienter
 	logger           *slog.Logger
 	repo             domain.HostRepo
+	taskRepo         domain.TaskRepo
 	userRepo         domain.UserRepo
 	girepo           domain.GitIdentityRepo
 	vmexpireQueue    *delayqueue.VMExpireQueue
@@ -52,6 +54,7 @@ func NewHostUsecase(i *do.Injector) (domain.HostUsecase, error) {
 		taskflow:      do.MustInvoke[taskflow.Clienter](i),
 		logger:        do.MustInvoke[*slog.Logger](i).With("module", "HostUsecase"),
 		repo:          do.MustInvoke[domain.HostRepo](i),
+		taskRepo:      do.MustInvoke[domain.TaskRepo](i),
 		userRepo:      do.MustInvoke[domain.UserRepo](i),
 		girepo:        do.MustInvoke[domain.GitIdentityRepo](i),
 		vmexpireQueue: do.MustInvoke[*delayqueue.VMExpireQueue](i),
@@ -129,6 +132,11 @@ func (h *HostUsecase) vmexpireConsumer() {
 				return err
 			}
 
+			if err := h.markRecycledTasksFinished(ctx, vm); err != nil {
+				innerLogger.ErrorContext(ctx, "failed to finish recycled tasks", "error", err)
+				return err
+			}
+
 			return nil
 		})
 
@@ -136,6 +144,27 @@ func (h *HostUsecase) vmexpireConsumer() {
 		index++
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func (h *HostUsecase) markRecycledTasksFinished(ctx context.Context, vm *db.VirtualMachine) error {
+	var errs []error
+	for _, tk := range vm.Edges.Tasks {
+		if tk == nil {
+			continue
+		}
+		if tk.Status == consts.TaskStatusFinished || tk.Status == consts.TaskStatusError {
+			continue
+		}
+		err := h.taskRepo.Update(ctx, nil, tk.ID, func(up *db.TaskUpdateOne) error {
+			up.SetStatus(consts.TaskStatusFinished)
+			up.SetCompletedAt(time.Now())
+			return nil
+		})
+		if err != nil {
+			errs = append(errs, fmt.Errorf("update task %s: %w", tk.ID, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // GetInstallCommand implements domain.HostUsecase.

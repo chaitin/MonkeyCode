@@ -38,6 +38,8 @@ func (h *VMTaskHook) OnStateChange(ctx context.Context, _ string, _ VMState, to 
 		target = consts.TaskStatusProcessing
 	case VMStateFailed:
 		target = consts.TaskStatusError
+	case VMStateRecycled:
+		target = consts.TaskStatusFinished
 	default:
 		return nil
 	}
