@@ -126,14 +126,15 @@ export type ModelPricingItem = {
 }
 
 export const modelPricingList: readonly ModelPricingItem[] = [
-  { model: "minimax-m2.7", credits: 0, score: 637, tags: ["免费"] },
-  { model: "qwen3.5-plus", credits: 0, score: 538, tags: ["免费"] },
+  { model: "minimax-m2.7", credits: 200, score: 637, tags: ["免费"] },
+  { model: "qwen3.5-plus", credits: 120, score: 538, tags: ["免费"] },
   { model: "gpt-5.4", credits: 600, score: 922, tags: ["能力强"] },
   { model: "gpt-5.2", credits: 400, score: 887, tags: [] },
   { model: "gpt-5.3-codex", credits: 400, score: 918, tags: ["能力强", "性价比"] },
   { model: "glm-5.1", credits: 600, score: 904, tags: [] },
   { model: "glm-5", credits: 400, score: 847, tags: [] },
   { model: "glm-4.7", credits: 200, score: 709, tags: ["性价比"] },
+  { model: "kimi-k2.6", credits: 700, score: 912, tags: ["新", "能力强"] },
   { model: "qwen3-max", credits: 400, score: 840, tags: [] },
   { model: "qwen3.6-plus", credits: 200, score: 751, tags: ["性价比"] },
   { model: "kimi-k2.5", credits: 400, score: 889, tags: [] },
