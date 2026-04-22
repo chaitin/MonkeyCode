@@ -146,7 +146,10 @@ export default function TaskDetailPage() {
   }, [queuedReplyIdSet, streamConnectionState, submittingReplyIdSet])
   const historyMessages = React.useMemo(() => decorateMessages(rawHistoryMessages, "history"), [decorateMessages, rawHistoryMessages])
   const liveMessages = React.useMemo(() => decorateMessages(rawLiveMessages, "live"), [decorateMessages, rawLiveMessages])
-  const messages = React.useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
+  const handleReloadSession = React.useCallback(async () => {
+    const success = await taskControlClientRef.current?.restart(true)
+    return !!success
+  }, [])
   const runningMessagesSignature = React.useMemo(() => JSON.stringify(
     liveMessages
       .filter((message) => (
@@ -217,105 +220,120 @@ export default function TaskDetailPage() {
   }, [])
 
   const connectStreamClient = React.useCallback((mode: "attach" | "new", userInput?: string) => {
-    if (!taskId) return
+    if (!taskId) return Promise.resolve(false)
 
-    const previousState = disconnectStreamClient()
-    const previousMessages = previousState?.messages ?? rawLiveMessages
-    if (mode === "new" && previousMessages.length > 0) {
-      setRawHistoryMessages((prev) => [...prev, ...previousMessages])
-      setRawLiveMessages([])
-    }
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (result: boolean) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
 
-    setAvailableCommands(null)
-    setPlan({
-      entries: [],
-      version: 0,
-    })
-    setStreamStatus("inited")
-    setStreamConnectionState("connecting")
-    setQueuedReplyIds([])
-    setSubmittingReplyIds([])
-    setSending(mode === "new")
-    setTimeCost(0)
+      const previousState = disconnectStreamClient()
+      const previousMessages = previousState?.messages ?? rawLiveMessages
+      if (mode === "new" && previousMessages.length > 0) {
+        setRawHistoryMessages((prev) => [...prev, ...previousMessages])
+        setRawLiveMessages([])
+      }
 
-    const client = mode === "attach"
-      ? TaskStreamClient.attach({
-        taskId,
-        onStateChange: (state: TaskStreamClientState) => {
-          if (streamClientRef.current !== client || cancelledRef.current) return
-          setStreamStatus(state.status)
-          setRawLiveMessages(state.messages)
-          setAvailableCommands(state.availableCommands)
-          setPlan(state.plan)
-          setContextUsage((prev) => ({
-            size: state.contextUsage.size ?? prev.size,
-            used: state.contextUsage.used ?? prev.used,
-          }))
-          setTimeCost(state.executionTimeMs)
-          setStreamConnectionState(state.connectionState)
-          setQueuedReplyIds(state.queuedReplyIds)
-          setSubmittingReplyIds(state.submittingReplyIds)
-          if (!historyLoadedRef.current && state.historyCursor.ready) {
-            setHistoryCursorReady(true)
-            setHistoryCursor(state.historyCursor.cursor)
-            setHistoryHasMore(state.historyCursor.hasMore)
-          }
-        },
-        onOpen: () => {
-          if (streamClientRef.current !== client || cancelledRef.current) return
-          setSending(false)
-        },
-        onClose: () => {
-          if (streamClientRef.current === client) {
-            streamClientRef.current = null
-          }
-          if (!cancelledRef.current) {
-            setSending(false)
-          }
-        },
-        onError: () => {
-          if (streamClientRef.current !== client || cancelledRef.current) return
-          setSending(false)
-        },
+      setAvailableCommands(null)
+      setPlan({
+        entries: [],
+        version: 0,
       })
-      : TaskStreamClient.new({
-      taskId,
-      onStateChange: (state: TaskStreamClientState) => {
-        if (streamClientRef.current !== client || cancelledRef.current) return
-        setStreamStatus(state.status)
-        setRawLiveMessages(state.messages)
-        setAvailableCommands(state.availableCommands)
-        setPlan(state.plan)
-        setContextUsage((prev) => ({
-          size: state.contextUsage.size ?? prev.size,
-          used: state.contextUsage.used ?? prev.used,
-        }))
-        setTimeCost(state.executionTimeMs)
-        setStreamConnectionState(state.connectionState)
-        setQueuedReplyIds(state.queuedReplyIds)
-        setSubmittingReplyIds(state.submittingReplyIds)
-      },
-      onOpen: () => {
-        if (streamClientRef.current !== client || cancelledRef.current) return
-        setSending(false)
-      },
-      onClose: () => {
-        if (streamClientRef.current === client) {
-          streamClientRef.current = null
-        }
-        if (!cancelledRef.current) {
-          setSending(false)
-        }
-      },
-      onError: () => {
-        if (streamClientRef.current !== client || cancelledRef.current) return
-        setSending(false)
-      },
-      userInput: userInput ?? "",
-    })
+      setStreamStatus("inited")
+      setStreamConnectionState("connecting")
+      setQueuedReplyIds([])
+      setSubmittingReplyIds([])
+      setSending(mode === "new")
+      setTimeCost(0)
 
-    streamClientRef.current = client
-    client.connect()
+      const client = mode === "attach"
+        ? TaskStreamClient.attach({
+          taskId,
+          onStateChange: (state: TaskStreamClientState) => {
+            if (streamClientRef.current !== client || cancelledRef.current) return
+            setStreamStatus(state.status)
+            setRawLiveMessages(state.messages)
+            setAvailableCommands(state.availableCommands)
+            setPlan(state.plan)
+            setContextUsage((prev) => ({
+              size: state.contextUsage.size ?? prev.size,
+              used: state.contextUsage.used ?? prev.used,
+            }))
+            setTimeCost(state.executionTimeMs)
+            setStreamConnectionState(state.connectionState)
+            setQueuedReplyIds(state.queuedReplyIds)
+            setSubmittingReplyIds(state.submittingReplyIds)
+            if (!historyLoadedRef.current && state.historyCursor.ready) {
+              setHistoryCursorReady(true)
+              setHistoryCursor(state.historyCursor.cursor)
+              setHistoryHasMore(state.historyCursor.hasMore)
+            }
+          },
+          onOpen: () => {
+            if (streamClientRef.current !== client || cancelledRef.current) return
+            setSending(false)
+            finish(true)
+          },
+          onClose: () => {
+            if (streamClientRef.current === client) {
+              streamClientRef.current = null
+            }
+            if (!cancelledRef.current) {
+              setSending(false)
+            }
+            finish(false)
+          },
+          onError: () => {
+            if (streamClientRef.current !== client || cancelledRef.current) return
+            setSending(false)
+            finish(false)
+          },
+        })
+        : TaskStreamClient.new({
+          taskId,
+          onStateChange: (state: TaskStreamClientState) => {
+            if (streamClientRef.current !== client || cancelledRef.current) return
+            setStreamStatus(state.status)
+            setRawLiveMessages(state.messages)
+            setAvailableCommands(state.availableCommands)
+            setPlan(state.plan)
+            setContextUsage((prev) => ({
+              size: state.contextUsage.size ?? prev.size,
+              used: state.contextUsage.used ?? prev.used,
+            }))
+            setTimeCost(state.executionTimeMs)
+            setStreamConnectionState(state.connectionState)
+            setQueuedReplyIds(state.queuedReplyIds)
+            setSubmittingReplyIds(state.submittingReplyIds)
+          },
+          onOpen: () => {
+            if (streamClientRef.current !== client || cancelledRef.current) return
+            setSending(false)
+            finish(true)
+          },
+          onClose: () => {
+            if (streamClientRef.current === client) {
+              streamClientRef.current = null
+            }
+            if (!cancelledRef.current) {
+              setSending(false)
+            }
+            finish(false)
+          },
+          onError: () => {
+            if (streamClientRef.current !== client || cancelledRef.current) return
+            setSending(false)
+            finish(false)
+          },
+          userInput: userInput ?? "",
+        })
+
+      streamClientRef.current = client
+      client.connect()
+    })
   }, [disconnectStreamClient, rawLiveMessages, taskId])
 
   // taskId 变化时重置状态
@@ -530,9 +548,24 @@ export default function TaskDetailPage() {
   }, [fetchPortForwards, previewDialogOpen, taskInteractive])
 
   const handleSend = React.useCallback((content: string) => {
-    if (!taskId) return
-    connectStreamClient("new", content)
+    if (!taskId) return Promise.resolve(false)
+    return connectStreamClient("new", content)
   }, [connectStreamClient, taskId])
+  const messages = React.useMemo(() => {
+    const enhanceErrorMessage = (message: MessageType) => {
+      if (message.type !== "error_message") {
+        return message
+      }
+
+      return {
+        ...message,
+        onReloadSession: handleReloadSession,
+        onUserInput: handleSend,
+      }
+    }
+
+    return [...historyMessages, ...liveMessages].map(enhanceErrorMessage)
+  }, [handleReloadSession, handleSend, historyMessages, liveMessages])
 
   const handleCompactContext = React.useCallback(() => {
     if (!canInput) return

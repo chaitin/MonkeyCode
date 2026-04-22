@@ -59,8 +59,8 @@ interface MessageType {
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onResponseAskUserQuestion?: (askId: string, answers: any) => "sent" | "queued" | "rejected"
-  onReloadSession?: () => void
-  onUserInput?: (content: string) => void
+  onReloadSession?: () => Promise<boolean> | boolean
+  onUserInput?: (content: string) => Promise<boolean> | boolean
 }
 
 const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType, cli?: ConstsCliName, isLatest?: boolean }) => {

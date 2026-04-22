@@ -5,9 +5,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
 
 export const ErrorMessageItem = ({ message }: { message: MessageType }) => {
   const [open, setOpen] = useState(false)
+  const [repairing, setRepairing] = useState(false)
 
   return (
     <HoverCard open={open} onOpenChange={setOpen} openDelay={100} closeDelay={200}>
@@ -32,20 +34,38 @@ export const ErrorMessageItem = ({ message }: { message: MessageType }) => {
             variant="default"
             size="sm"
             className="cursor-pointer"
+            disabled={repairing}
             onClick={async () => {
-              setOpen(false)
-              const result = await message.onReloadSession?.()
-              if (result) {
-                message.onUserInput?.('继续执行刚才的工作')
+              if (repairing) return
+
+              setRepairing(true)
+
+              try {
+                const reloaded = await message.onReloadSession?.()
+                if (!reloaded) {
+                  toast.error("修复失败")
+                  return
+                }
+
+                const sent = await message.onUserInput?.("继续执行刚才的任务")
+                if (!sent) {
+                  toast.error("修复失败")
+                  return
+                }
+
+                setOpen(false)
+              } catch {
+                toast.error("修复失败")
+              } finally {
+                setRepairing(false)
               }
             }}
           >
-            <IconReload className="size-3 mr-1" />
-            尝试修复
+            <IconReload className={repairing ? "size-3 mr-1 animate-spin" : "size-3 mr-1"} />
+            {repairing ? "正在修复" : "尝试修复"}
           </Button>
         </div>
       </HoverCardContent>
     </HoverCard>
   )
 }
-
