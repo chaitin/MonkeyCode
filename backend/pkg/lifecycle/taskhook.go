@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -51,6 +52,8 @@ func (h *TaskHook) OnStateChange(ctx context.Context, id uuid.UUID, from, to con
 		return h.handleProcessing(ctx, id, metadata)
 	case consts.TaskStatusError:
 		return h.handleError(ctx, id, metadata.UserID)
+	case consts.TaskStatusFinished:
+		return h.handleFinished(ctx, id, metadata.UserID)
 	}
 
 	return nil
@@ -73,6 +76,15 @@ func (h *TaskHook) handleError(ctx context.Context, id, uid uuid.UUID) error {
 	u := domain.User{ID: uid}
 	return h.repo.Update(ctx, &u, id, func(up *db.TaskUpdateOne) error {
 		up.SetStatus(consts.TaskStatusError)
+		return nil
+	})
+}
+
+func (h *TaskHook) handleFinished(ctx context.Context, id, uid uuid.UUID) error {
+	u := domain.User{ID: uid}
+	return h.repo.Update(ctx, &u, id, func(up *db.TaskUpdateOne) error {
+		up.SetStatus(consts.TaskStatusFinished)
+		up.SetCompletedAt(time.Now())
 		return nil
 	})
 }
