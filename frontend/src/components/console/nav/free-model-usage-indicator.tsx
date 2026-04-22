@@ -9,12 +9,12 @@ const DAILY_FREE_MODEL_TOTAL_TOKENS = 50_000_000_000
 function formatTokenNumber(value: number) {
   if (value >= 100_000_000) {
     const amount = value / 100_000_000
-    return `${amount >= 100 ? amount.toFixed(0) : amount.toFixed(1)}亿`
+    return `${amount >= 100 ? amount.toFixed(0) : amount.toFixed(1)} 亿`
   }
 
   if (value >= 10_000) {
     const amount = value / 10_000
-    return `${amount >= 100 ? amount.toFixed(0) : amount.toFixed(1)}万`
+    return `${amount >= 100 ? amount.toFixed(0) : amount.toFixed(1)} 万`
   }
 
   return value.toLocaleString("zh-CN")
@@ -90,7 +90,8 @@ export default function FreeModelUsageIndicator() {
         <button
           type="button"
           className={cn(
-            "hidden h-8 min-w-[248px] items-center gap-2 rounded-md px-3 text-left transition-colors md:inline-flex",
+            "hidden h-8 items-center gap-2 rounded-md px-3 text-left transition-colors md:inline-flex",
+            !exhausted && "min-w-[248px]",
             exhausted
               ? "bg-amber-500/8 text-amber-600 hover:bg-amber-500/12"
               : "bg-muted/50 hover:bg-accent"
@@ -106,7 +107,7 @@ export default function FreeModelUsageIndicator() {
           </div>
           {exhausted ? (
             <div className="min-w-0 flex-1 truncate text-sm font-medium">
-              今日免费额度已经用完了
+              今日免费模型已用尽
             </div>
           ) : (
             <>
@@ -142,7 +143,7 @@ export default function FreeModelUsageIndicator() {
           <div className="rounded-lg border bg-muted/20 p-3">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-muted-foreground">今日免费额度</span>
-              <span className="font-medium">500亿 tokens</span>
+              <span className="font-medium">500 亿 tokens</span>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3 text-sm">
               <span className="text-muted-foreground">目前已使用</span>
@@ -151,28 +152,19 @@ export default function FreeModelUsageIndicator() {
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">参与活动的人数</span>
+              <span className="font-medium">{usedUserCount.toLocaleString("zh-CN")} 人</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-sm">
               <span className="text-muted-foreground">使用进度</span>
               <span className={cn("font-medium", exhausted && "text-amber-600")}>
-                {exhausted ? "已用完" : `${progress.toFixed(1)}%`}
+                {exhausted ? "已用尽" : `${progress.toFixed(1)}%`}
               </span>
             </div>
             <Progress
               value={Math.min(progress, 100)}
               className="mt-3 h-2 bg-muted"
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg border bg-background p-3">
-              <div className="text-xs text-muted-foreground">使用人数</div>
-              <div className="mt-1 text-base font-medium">{usedUserCount.toLocaleString("zh-CN")} 人</div>
-            </div>
-            <div className="rounded-lg border bg-background p-3">
-              <div className="text-xs text-muted-foreground">剩余额度</div>
-              <div className="mt-1 text-base font-medium">
-                {formatTokenNumber(Math.max(totalTokens - usedTokens, 0))} tokens
-              </div>
-            </div>
           </div>
         </div>
       </HoverCardContent>
