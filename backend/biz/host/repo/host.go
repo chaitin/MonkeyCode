@@ -285,12 +285,19 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 	var res *domain.VirtualMachine
 	err := entx.WithTx2(ctx, h.db, func(tx *db.Tx) error {
 		dbHost, err := tx.Host.Query().
+			WithUser().
 			WithGroups().
 			Where(hostWithUserPredicate(u.ID)).
 			Where(host.ID(req.HostID)).
 			First(ctx)
 		if err != nil {
 			return errcode.ErrPermision.Wrap(err)
+		}
+
+		if u := dbHost.Edges.User; u != nil && u.Role == consts.UserRoleAdmin {
+			if req.Life > 3*60*60 || req.Life <= 0 {
+				return errcode.ErrPublicHostBeyondLimit
+			}
 		}
 
 		if len(dbHost.Edges.Groups) > 0 && (req.Life <= 0 || req.Life > 7*24*60*60) {
