@@ -27,7 +27,7 @@ export default function UserSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <a href="/">
-                <img src="/logo-colored.png" alt="MonkeyCode AI" className="size-8" />
+                <img src="/logo-light.png" alt="MonkeyCode AI" className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">MonkeyCode</span>
                   <span className="truncate text-xs text-foreground/60">长亭百智云</span>

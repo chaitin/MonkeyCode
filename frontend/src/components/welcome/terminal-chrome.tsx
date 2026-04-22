@@ -34,7 +34,7 @@ const communityCards = [
 function LogoWordmark({ href }: { href: string }) {
   return (
     <a href={href} className="inline-flex items-center gap-3">
-      <img src="/logo-colored.png" alt="MonkeyCode" className="size-8" />
+      <img src="/logo-dark.png" alt="MonkeyCode" className="size-10" />
       <span className="text-[17px] font-semibold tracking-[-0.02em] text-white">
         Monkey<span className="text-[var(--a-accent)]">Code</span>
       </span>

@@ -1,7 +1,4 @@
 import * as React from "react"
-import {
-  Command,
-} from "lucide-react"
 
 import NavManager from "@/components/manager/nav-manager"
 import {
@@ -25,11 +22,9 @@ export default function ManagerSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <a href="/">
-                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <Command className="size-4" />
-                </div>
+                <img src="/logo-light.png" alt="MonkeyCode AI" className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">MonkeyCode AI</span>
+                  <span className="truncate font-medium">MonkeyCode</span>
                   <span className="truncate text-xs">智能开发平台</span>
                 </div>
               </a>
