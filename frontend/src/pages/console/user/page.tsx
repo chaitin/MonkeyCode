@@ -18,9 +18,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { RefreshCw } from "lucide-react"
+import CommunityDialog from "@/components/console/nav/community-dialog"
+import NavBalance from "@/components/console/nav/nav-balance"
+import { HandCoins, RefreshCw } from "lucide-react"
 import { DataProvider } from "@/components/console/data-provider"
 import FreeModelUsageIndicator from "@/components/console/nav/free-model-usage-indicator"
+import GetCreditsDialog from "@/components/console/nav/get-credits-dialog"
 
 const SettingsDialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
 export const useSettingsDialog = () => {
@@ -69,6 +72,9 @@ function UserConsoleContent() {
       : [{ label: "用户控制台" }])
 
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [getCreditsOpen, setGetCreditsOpen] = useState(false)
+  const [communityOpen, setCommunityOpen] = useState(false)
+  const [balanceOpen, setBalanceOpen] = useState(false)
 
   return (
     <DataProvider>
@@ -129,6 +135,16 @@ function UserConsoleContent() {
             <div className="ml-auto flex shrink-0 items-center gap-2 px-4">
               <FreeModelUsageIndicator />
               <Button
+                className="hidden lg:inline-flex"
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => setGetCreditsOpen(true)}
+              >
+                <HandCoins className="h-[1.2rem] w-[1.2rem]" />
+                获取积分
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => window.location.reload()}
@@ -146,6 +162,25 @@ function UserConsoleContent() {
             </div>
           </div>
         </SidebarInset>
+        <GetCreditsDialog
+          open={getCreditsOpen}
+          onOpenChange={setGetCreditsOpen}
+          onOpenCommunity={() => {
+            setGetCreditsOpen(false)
+            setCommunityOpen(true)
+          }}
+          onOpenEarn={() => {
+            setGetCreditsOpen(false)
+            setBalanceOpen(true)
+          }}
+        />
+        <CommunityDialog open={communityOpen} onOpenChange={setCommunityOpen} />
+        <NavBalance
+          hideTrigger
+          open={balanceOpen}
+          onOpenChange={setBalanceOpen}
+          initialSection="earn"
+        />
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </SidebarProvider>
       </SettingsDialogContext.Provider>

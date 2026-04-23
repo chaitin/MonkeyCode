@@ -51,6 +51,9 @@ interface NavBalanceProps {
   variant?: "sidebar" | "header";
   hideTrigger?: boolean;
   triggerMode?: "wallet" | "account";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  initialSection?: WalletSectionId;
 }
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
@@ -74,7 +77,14 @@ const TOP_MODEL_COUNT = 3
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
 type WalletSectionId = BalanceSectionId | "profile" | "plan" | "balance"
 
-export default function NavBalance({ variant = "sidebar", hideTrigger = false, triggerMode = "wallet" }: NavBalanceProps) {
+export default function NavBalance({
+  variant = "sidebar",
+  hideTrigger = false,
+  triggerMode = "wallet",
+  open,
+  onOpenChange,
+  initialSection = "account",
+}: NavBalanceProps) {
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([]);
   const [invitations, setInvitations] = useState<DomainInvitationItem[]>([]);
   const [invitationCount, setInvitationCount] = useState(0);
@@ -86,7 +96,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const [isProLoading, setIsProLoading] = useState(false);
   const [isFlagshipLoading, setIsFlagshipLoading] = useState(false);
   const [isAutoRenewLoading, setIsAutoRenewLoading] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpenInternal, setDialogOpenInternal] = useState(false);
   const [activeSection, setActiveSection] = useState<BalanceSectionId>("account");
   const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null);
   const [rechargingCredits, setRechargingCredits] = useState<number | null>(null);
@@ -112,6 +122,7 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const previousDialogOpenRef = useRef(false);
   const navigate = useNavigate()
   const {
     balance,
@@ -482,6 +493,32 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     return section
   }, [])
 
+  const dialogOpen = open ?? dialogOpenInternal
+  const setDialogOpen = useCallback((nextOpen: boolean) => {
+    if (open === undefined) {
+      setDialogOpenInternal(nextOpen)
+    }
+    onOpenChange?.(nextOpen)
+  }, [onOpenChange, open])
+
+  const initializeDialog = useCallback((section: WalletSectionId = "account") => {
+    setActiveSection(normalizeSection(section))
+    setIsInvitationListExpanded(false)
+    reloadWallet();
+    reloadSubscription();
+    setPage(1);
+    setTranscations([]);
+    setHasNextPage(false);
+    fetchTranscations(1, true);
+    fetchInvitations();
+    reloadCheckinStatus();
+  }, [fetchInvitations, fetchTranscations, normalizeSection, reloadCheckinStatus, reloadSubscription, reloadWallet])
+
+  const openDialog = useCallback((section: WalletSectionId = "account") => {
+    initializeDialog(section)
+    setDialogOpen(true)
+  }, [initializeDialog, setDialogOpen])
+
   const handleExchange = async () => {
     if (!exchangeCode.trim()) {
       toast.error("请输入兑换码");
@@ -645,23 +682,13 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     };
   }, [activeSection, dialogOpen, hasNextPage, loadMore, transcations.length]);
 
-  const openDialog = useCallback((section: WalletSectionId = "account") => {
-    setActiveSection(normalizeSection(section))
-    setDialogOpen(true)
-    setIsInvitationListExpanded(false)
-    reloadWallet();
-    reloadSubscription();
-    setPage(1);
-    setTranscations([]);
-    setHasNextPage(false);
-    fetchTranscations(1, true);
-    fetchInvitations();
-    reloadCheckinStatus();
-  }, [fetchInvitations, fetchTranscations, normalizeSection, reloadCheckinStatus, reloadSubscription, reloadWallet])
-
-  const handleOpenChange = (open: boolean) => {
-    if (open) {
-      openDialog("account")
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      if (open === undefined || !hideTrigger) {
+        openDialog(initialSection)
+      } else {
+        setDialogOpen(true)
+      }
     } else {
       setDialogOpen(false)
       setIsInvitationListExpanded(false)
@@ -670,6 +697,10 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
   };
 
   useEffect(() => {
+    if (open !== undefined || hideTrigger) {
+      return
+    }
+
     const handleOpenWallet = (event: Event) => {
       const customEvent = event as CustomEvent<{ section?: WalletSectionId }>
       openDialog(customEvent.detail?.section || "account")
@@ -679,7 +710,20 @@ export default function NavBalance({ variant = "sidebar", hideTrigger = false, t
     return () => {
       window.removeEventListener(OPEN_WALLET_DIALOG_EVENT, handleOpenWallet as EventListener)
     }
-  }, [openDialog])
+  }, [hideTrigger, open, openDialog])
+
+  useEffect(() => {
+    if (dialogOpen && !previousDialogOpenRef.current && (open !== undefined || hideTrigger)) {
+      initializeDialog(initialSection)
+    }
+
+    if (!dialogOpen && previousDialogOpenRef.current) {
+      setIsInvitationListExpanded(false)
+      setPage(1)
+    }
+
+    previousDialogOpenRef.current = dialogOpen
+  }, [dialogOpen, initialSection, initializeDialog])
 
 
   const handleCopyInvitationLink = () => {
