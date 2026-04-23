@@ -31,6 +31,26 @@ func (_u *MCPToolUpdate) Where(ps ...predicate.MCPTool) *MCPToolUpdate {
 	return _u
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *MCPToolUpdate) SetDeletedAt(v time.Time) *MCPToolUpdate {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *MCPToolUpdate) SetNillableDeletedAt(v *time.Time) *MCPToolUpdate {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *MCPToolUpdate) ClearDeletedAt() *MCPToolUpdate {
+	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
 // SetUpstreamID sets the "upstream_id" field.
 func (_u *MCPToolUpdate) SetUpstreamID(v uuid.UUID) *MCPToolUpdate {
 	_u.mutation.SetUpstreamID(v)
@@ -214,26 +234,6 @@ func (_u *MCPToolUpdate) ClearSyncedAt() *MCPToolUpdate {
 	return _u
 }
 
-// SetDeletedAt sets the "deleted_at" field.
-func (_u *MCPToolUpdate) SetDeletedAt(v time.Time) *MCPToolUpdate {
-	_u.mutation.SetDeletedAt(v)
-	return _u
-}
-
-// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_u *MCPToolUpdate) SetNillableDeletedAt(v *time.Time) *MCPToolUpdate {
-	if v != nil {
-		_u.SetDeletedAt(*v)
-	}
-	return _u
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (_u *MCPToolUpdate) ClearDeletedAt() *MCPToolUpdate {
-	_u.mutation.ClearDeletedAt()
-	return _u
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_u *MCPToolUpdate) SetCreatedAt(v time.Time) *MCPToolUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -272,7 +272,9 @@ func (_u *MCPToolUpdate) ClearUpstream() *MCPToolUpdate {
 
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *MCPToolUpdate) Save(ctx context.Context) (int, error) {
-	_u.defaults()
+	if err := _u.defaults(); err != nil {
+		return 0, err
+	}
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -299,11 +301,15 @@ func (_u *MCPToolUpdate) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_u *MCPToolUpdate) defaults() {
+func (_u *MCPToolUpdate) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		if mcptool.UpdateDefaultUpdatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcptool.UpdateDefaultUpdatedAt (forgotten import db/runtime?)")
+		}
 		v := mcptool.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -352,6 +358,12 @@ func (_u *MCPToolUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			}
 		}
 	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(mcptool.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(mcptool.FieldDeletedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(mcptool.FieldName, field.TypeString, value)
 	}
@@ -399,12 +411,6 @@ func (_u *MCPToolUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SyncedAtCleared() {
 		_spec.ClearField(mcptool.FieldSyncedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.DeletedAt(); ok {
-		_spec.SetField(mcptool.FieldDeletedAt, field.TypeTime, value)
-	}
-	if _u.mutation.DeletedAtCleared() {
-		_spec.ClearField(mcptool.FieldDeletedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(mcptool.FieldCreatedAt, field.TypeTime, value)
@@ -461,6 +467,26 @@ type MCPToolUpdateOne struct {
 	hooks     []Hook
 	mutation  *MCPToolMutation
 	modifiers []func(*sql.UpdateBuilder)
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *MCPToolUpdateOne) SetDeletedAt(v time.Time) *MCPToolUpdateOne {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *MCPToolUpdateOne) SetNillableDeletedAt(v *time.Time) *MCPToolUpdateOne {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *MCPToolUpdateOne) ClearDeletedAt() *MCPToolUpdateOne {
+	_u.mutation.ClearDeletedAt()
+	return _u
 }
 
 // SetUpstreamID sets the "upstream_id" field.
@@ -646,26 +672,6 @@ func (_u *MCPToolUpdateOne) ClearSyncedAt() *MCPToolUpdateOne {
 	return _u
 }
 
-// SetDeletedAt sets the "deleted_at" field.
-func (_u *MCPToolUpdateOne) SetDeletedAt(v time.Time) *MCPToolUpdateOne {
-	_u.mutation.SetDeletedAt(v)
-	return _u
-}
-
-// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_u *MCPToolUpdateOne) SetNillableDeletedAt(v *time.Time) *MCPToolUpdateOne {
-	if v != nil {
-		_u.SetDeletedAt(*v)
-	}
-	return _u
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (_u *MCPToolUpdateOne) ClearDeletedAt() *MCPToolUpdateOne {
-	_u.mutation.ClearDeletedAt()
-	return _u
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_u *MCPToolUpdateOne) SetCreatedAt(v time.Time) *MCPToolUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -717,7 +723,9 @@ func (_u *MCPToolUpdateOne) Select(field string, fields ...string) *MCPToolUpdat
 
 // Save executes the query and returns the updated MCPTool entity.
 func (_u *MCPToolUpdateOne) Save(ctx context.Context) (*MCPTool, error) {
-	_u.defaults()
+	if err := _u.defaults(); err != nil {
+		return nil, err
+	}
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
@@ -744,11 +752,15 @@ func (_u *MCPToolUpdateOne) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_u *MCPToolUpdateOne) defaults() {
+func (_u *MCPToolUpdateOne) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		if mcptool.UpdateDefaultUpdatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcptool.UpdateDefaultUpdatedAt (forgotten import db/runtime?)")
+		}
 		v := mcptool.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -814,6 +826,12 @@ func (_u *MCPToolUpdateOne) sqlSave(ctx context.Context) (_node *MCPTool, err er
 			}
 		}
 	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(mcptool.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(mcptool.FieldDeletedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(mcptool.FieldName, field.TypeString, value)
 	}
@@ -861,12 +879,6 @@ func (_u *MCPToolUpdateOne) sqlSave(ctx context.Context) (_node *MCPTool, err er
 	}
 	if _u.mutation.SyncedAtCleared() {
 		_spec.ClearField(mcptool.FieldSyncedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.DeletedAt(); ok {
-		_spec.SetField(mcptool.FieldDeletedAt, field.TypeTime, value)
-	}
-	if _u.mutation.DeletedAtCleared() {
-		_spec.ClearField(mcptool.FieldDeletedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(mcptool.FieldCreatedAt, field.TypeTime, value)

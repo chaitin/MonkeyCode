@@ -56,6 +56,11 @@ func IDLTE(id uuid.UUID) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldLTE(FieldID, id))
 }
 
+// DeletedAt applies equality check predicate on the "deleted_at" field. It's identical to DeletedAtEQ.
+func DeletedAt(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldEQ(FieldDeletedAt, v))
+}
+
 // UpstreamID applies equality check predicate on the "upstream_id" field. It's identical to UpstreamIDEQ.
 func UpstreamID(v uuid.UUID) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldEQ(FieldUpstreamID, v))
@@ -101,11 +106,6 @@ func SyncedAt(v time.Time) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldEQ(FieldSyncedAt, v))
 }
 
-// DeletedAt applies equality check predicate on the "deleted_at" field. It's identical to DeletedAtEQ.
-func DeletedAt(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldEQ(FieldDeletedAt, v))
-}
-
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldEQ(FieldCreatedAt, v))
@@ -114,6 +114,56 @@ func CreatedAt(v time.Time) predicate.MCPTool {
 // UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
 func UpdatedAt(v time.Time) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldEQ(FieldUpdatedAt, v))
+}
+
+// DeletedAtEQ applies the EQ predicate on the "deleted_at" field.
+func DeletedAtEQ(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldEQ(FieldDeletedAt, v))
+}
+
+// DeletedAtNEQ applies the NEQ predicate on the "deleted_at" field.
+func DeletedAtNEQ(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldNEQ(FieldDeletedAt, v))
+}
+
+// DeletedAtIn applies the In predicate on the "deleted_at" field.
+func DeletedAtIn(vs ...time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldIn(FieldDeletedAt, vs...))
+}
+
+// DeletedAtNotIn applies the NotIn predicate on the "deleted_at" field.
+func DeletedAtNotIn(vs ...time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldNotIn(FieldDeletedAt, vs...))
+}
+
+// DeletedAtGT applies the GT predicate on the "deleted_at" field.
+func DeletedAtGT(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldGT(FieldDeletedAt, v))
+}
+
+// DeletedAtGTE applies the GTE predicate on the "deleted_at" field.
+func DeletedAtGTE(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldGTE(FieldDeletedAt, v))
+}
+
+// DeletedAtLT applies the LT predicate on the "deleted_at" field.
+func DeletedAtLT(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldLT(FieldDeletedAt, v))
+}
+
+// DeletedAtLTE applies the LTE predicate on the "deleted_at" field.
+func DeletedAtLTE(v time.Time) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldLTE(FieldDeletedAt, v))
+}
+
+// DeletedAtIsNil applies the IsNil predicate on the "deleted_at" field.
+func DeletedAtIsNil() predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldIsNull(FieldDeletedAt))
+}
+
+// DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
+func DeletedAtNotNil() predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldNotNull(FieldDeletedAt))
 }
 
 // UpstreamIDEQ applies the EQ predicate on the "upstream_id" field.
@@ -594,56 +644,6 @@ func SyncedAtIsNil() predicate.MCPTool {
 // SyncedAtNotNil applies the NotNil predicate on the "synced_at" field.
 func SyncedAtNotNil() predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldNotNull(FieldSyncedAt))
-}
-
-// DeletedAtEQ applies the EQ predicate on the "deleted_at" field.
-func DeletedAtEQ(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldEQ(FieldDeletedAt, v))
-}
-
-// DeletedAtNEQ applies the NEQ predicate on the "deleted_at" field.
-func DeletedAtNEQ(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldNEQ(FieldDeletedAt, v))
-}
-
-// DeletedAtIn applies the In predicate on the "deleted_at" field.
-func DeletedAtIn(vs ...time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldIn(FieldDeletedAt, vs...))
-}
-
-// DeletedAtNotIn applies the NotIn predicate on the "deleted_at" field.
-func DeletedAtNotIn(vs ...time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldNotIn(FieldDeletedAt, vs...))
-}
-
-// DeletedAtGT applies the GT predicate on the "deleted_at" field.
-func DeletedAtGT(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldGT(FieldDeletedAt, v))
-}
-
-// DeletedAtGTE applies the GTE predicate on the "deleted_at" field.
-func DeletedAtGTE(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldGTE(FieldDeletedAt, v))
-}
-
-// DeletedAtLT applies the LT predicate on the "deleted_at" field.
-func DeletedAtLT(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldLT(FieldDeletedAt, v))
-}
-
-// DeletedAtLTE applies the LTE predicate on the "deleted_at" field.
-func DeletedAtLTE(v time.Time) predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldLTE(FieldDeletedAt, v))
-}
-
-// DeletedAtIsNil applies the IsNil predicate on the "deleted_at" field.
-func DeletedAtIsNil() predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldIsNull(FieldDeletedAt))
-}
-
-// DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
-func DeletedAtNotNil() predicate.MCPTool {
-	return predicate.MCPTool(sql.FieldNotNull(FieldDeletedAt))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

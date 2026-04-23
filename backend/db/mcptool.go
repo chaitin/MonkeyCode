@@ -20,6 +20,8 @@ type MCPTool struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
+	// DeletedAt holds the value of the "deleted_at" field.
+	DeletedAt time.Time `json:"deleted_at,omitempty"`
 	// UpstreamID holds the value of the "upstream_id" field.
 	UpstreamID uuid.UUID `json:"upstream_id,omitempty"`
 	// Name holds the value of the "name" field.
@@ -42,8 +44,6 @@ type MCPTool struct {
 	VersionHash string `json:"version_hash,omitempty"`
 	// SyncedAt holds the value of the "synced_at" field.
 	SyncedAt *time.Time `json:"synced_at,omitempty"`
-	// DeletedAt holds the value of the "deleted_at" field.
-	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -89,7 +89,7 @@ func (*MCPTool) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case mcptool.FieldName, mcptool.FieldNamespacedName, mcptool.FieldScope, mcptool.FieldDescription, mcptool.FieldVersionHash:
 			values[i] = new(sql.NullString)
-		case mcptool.FieldSyncedAt, mcptool.FieldDeletedAt, mcptool.FieldCreatedAt, mcptool.FieldUpdatedAt:
+		case mcptool.FieldDeletedAt, mcptool.FieldSyncedAt, mcptool.FieldCreatedAt, mcptool.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case mcptool.FieldID, mcptool.FieldUpstreamID:
 			values[i] = new(uuid.UUID)
@@ -113,6 +113,12 @@ func (_m *MCPTool) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
 				_m.ID = *value
+			}
+		case mcptool.FieldDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
+			} else if value.Valid {
+				_m.DeletedAt = value.Time
 			}
 		case mcptool.FieldUpstreamID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
@@ -184,13 +190,6 @@ func (_m *MCPTool) assignValues(columns []string, values []any) error {
 				_m.SyncedAt = new(time.Time)
 				*_m.SyncedAt = value.Time
 			}
-		case mcptool.FieldDeletedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
-			} else if value.Valid {
-				_m.DeletedAt = new(time.Time)
-				*_m.DeletedAt = value.Time
-			}
 		case mcptool.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -244,6 +243,9 @@ func (_m *MCPTool) String() string {
 	var builder strings.Builder
 	builder.WriteString("MCPTool(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
+	builder.WriteString("deleted_at=")
+	builder.WriteString(_m.DeletedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
 	builder.WriteString("upstream_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UpstreamID))
 	builder.WriteString(", ")
@@ -278,11 +280,6 @@ func (_m *MCPTool) String() string {
 	builder.WriteString(", ")
 	if v := _m.SyncedAt; v != nil {
 		builder.WriteString("synced_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
-	builder.WriteString(", ")
-	if v := _m.DeletedAt; v != nil {
-		builder.WriteString("deleted_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

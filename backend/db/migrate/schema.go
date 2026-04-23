@@ -213,6 +213,7 @@ var (
 	// McpToolsColumns holds the columns for the "mcp_tools" table.
 	McpToolsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString, Size: 256},
 		{Name: "namespaced_name", Type: field.TypeString, Size: 320},
 		{Name: "scope", Type: field.TypeEnum, Enums: []string{"user", "platform"}},
@@ -223,7 +224,6 @@ var (
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "version_hash", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "synced_at", Type: field.TypeTime, Nullable: true},
-		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "upstream_id", Type: field.TypeUUID},
@@ -245,7 +245,7 @@ var (
 			{
 				Name:    "mcptool_scope_user_id_namespaced_name",
 				Unique:  true,
-				Columns: []*schema.Column{McpToolsColumns[3], McpToolsColumns[4], McpToolsColumns[2]},
+				Columns: []*schema.Column{McpToolsColumns[4], McpToolsColumns[5], McpToolsColumns[3]},
 			},
 		},
 	}
