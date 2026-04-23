@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
+import type { Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
@@ -21,7 +22,7 @@ interface MermaidProps {
   chart: string
 }
 
-function Mermaid({ chart }: MermaidProps) {
+const Mermaid = memo(function Mermaid({ chart }: MermaidProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [svg, setSvg] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
@@ -61,6 +62,38 @@ function Mermaid({ chart }: MermaidProps) {
       className="mermaid-container flex justify-center my-4"
       dangerouslySetInnerHTML={{ __html: svg }} 
     />
+  )
+})
+
+const MarkdownParagraph: NonNullable<Components["p"]> = ({ children, ...props }) => {
+  if (typeof children === "string") {
+    return (children as string).split("\n").map((line: string, index: number) => (
+      <p key={index} {...props}>{line}</p>
+    ))
+  }
+
+  return <p {...props}>{children}</p>
+}
+
+const MarkdownCodeBlock: NonNullable<Components["pre"]> = ({ children }) => {
+  const childElement = children as React.ReactElement | undefined
+  const props = childElement?.props as { children?: string; className?: string } | undefined
+  const code = props?.children ?? ""
+  const language = props?.className?.replace("language-", "").trim() || "text"
+
+  if (language === "mermaid") {
+    return <Mermaid chart={String(code).trim()} />
+  }
+
+  return (
+    <SyntaxHighlighter
+      language={language}
+      PreTag="pre"
+      wrapLines={true}
+      codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap" } }}
+    >
+      {code}
+    </SyntaxHighlighter>
   )
 }
 
@@ -116,63 +149,35 @@ function resolveRelativePath(href: string, currentPath: string): string {
   }
 }
 
-export function Markdown({ children, allowHtml = false, allowInternalLink = true, className }: MarkdownProps) {
+export const Markdown = memo(function Markdown({ children, allowHtml = false, allowInternalLink = true, className }: MarkdownProps) {
   const location = useLocation()
   const markdownSource = typeof children === "string" ? children : ""
+  const components = useMemo<Components>(() => ({
+    a({ href, children, ...props }) {
+      if (isInternalLink(href)) {
+        const absolutePath = resolveRelativePath(href as string, location.pathname)
+        return <Link to={allowInternalLink ? absolutePath : ""} {...props}>{children}</Link>
+      }
+
+      return (
+        <a href={href} target="_blank" {...props}>
+          {children}
+        </a>
+      )
+    },
+    p: MarkdownParagraph,
+    pre: MarkdownCodeBlock,
+  }), [allowInternalLink, location.pathname])
 
   return (
     <div className={cn("markdown-body pb-2", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={allowHtml ? [rehypeRaw, rehypeSanitize] : []}
-        components={{
-          a({ href, children, ...props }) {
-            if (isInternalLink(href)) {
-              const absolutePath = resolveRelativePath(href as string, location.pathname)
-              return <Link to={allowInternalLink ? absolutePath : ""} {...props}>{children}</Link>
-            } else {
-              return (
-                <a href={href} target="_blank" {...props}>
-                  {children}
-                </a>
-              )
-            }
-          },
-          p({children, ...props}) {
-            if (typeof children === 'string') {
-              return (children as string).split('\n').map((line: string, index: number) => (
-                <p key={index} {...props}>{line}</p>
-              ))
-            } else {
-              return <p {...props}>{children}</p>
-            }
-          },
-          pre({children}) {
-            const childElement = children as React.ReactElement | undefined
-            const props = childElement?.props as { children?: string; className?: string } | undefined
-            const code = props?.children ?? ''
-            const language = props?.className?.replace('language-', '').trim() || 'text'
-            
-            // 检测是否是 mermaid 代码块
-            if (language === 'mermaid') {
-              return <Mermaid chart={String(code).trim()} />
-            }
-            
-            return (
-              <SyntaxHighlighter
-                language={language}
-                PreTag="pre"
-                wrapLines={true}
-                codeTagProps={{ style: { wordBreak: 'break-all', whiteSpace: 'pre-wrap' } }}
-              >
-                {code}
-              </SyntaxHighlighter>
-            )
-          }
-        }}
+        components={components}
       >
         {markdownSource}
       </ReactMarkdown>
     </div>
   )
-}
+})
