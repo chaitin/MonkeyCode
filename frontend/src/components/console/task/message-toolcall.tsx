@@ -35,7 +35,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
       message.data.kind === "other"
-      && message.data.title === "monkeycode-ai_MonkeyCode__websearch"
+      && message.data.title === "monkeycode-ai_MonkeyCode__websearch_search"
     ),
     renderTitle: internalWebsearchRender.renderTitle,
     renderDetail: internalWebsearchRender.renderDetail,
