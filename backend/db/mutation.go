@@ -7774,6 +7774,7 @@ type MCPToolMutation struct {
 	op              Op
 	typ             string
 	id              *uuid.UUID
+	deleted_at      *time.Time
 	name            *string
 	namespaced_name *string
 	scope           *mcptool.Scope
@@ -7785,7 +7786,6 @@ type MCPToolMutation struct {
 	enabled         *bool
 	version_hash    *string
 	synced_at       *time.Time
-	deleted_at      *time.Time
 	created_at      *time.Time
 	updated_at      *time.Time
 	clearedFields   map[string]struct{}
@@ -7898,6 +7898,55 @@ func (m *MCPToolMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *MCPToolMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *MCPToolMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the MCPTool entity.
+// If the MCPTool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MCPToolMutation) OldDeletedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *MCPToolMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[mcptool.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *MCPToolMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[mcptool.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *MCPToolMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, mcptool.FieldDeletedAt)
 }
 
 // SetUpstreamID sets the "upstream_id" field.
@@ -8381,55 +8430,6 @@ func (m *MCPToolMutation) ResetSyncedAt() {
 	delete(m.clearedFields, mcptool.FieldSyncedAt)
 }
 
-// SetDeletedAt sets the "deleted_at" field.
-func (m *MCPToolMutation) SetDeletedAt(t time.Time) {
-	m.deleted_at = &t
-}
-
-// DeletedAt returns the value of the "deleted_at" field in the mutation.
-func (m *MCPToolMutation) DeletedAt() (r time.Time, exists bool) {
-	v := m.deleted_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDeletedAt returns the old "deleted_at" field's value of the MCPTool entity.
-// If the MCPTool object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *MCPToolMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
-	}
-	return oldValue.DeletedAt, nil
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (m *MCPToolMutation) ClearDeletedAt() {
-	m.deleted_at = nil
-	m.clearedFields[mcptool.FieldDeletedAt] = struct{}{}
-}
-
-// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
-func (m *MCPToolMutation) DeletedAtCleared() bool {
-	_, ok := m.clearedFields[mcptool.FieldDeletedAt]
-	return ok
-}
-
-// ResetDeletedAt resets all changes to the "deleted_at" field.
-func (m *MCPToolMutation) ResetDeletedAt() {
-	m.deleted_at = nil
-	delete(m.clearedFields, mcptool.FieldDeletedAt)
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (m *MCPToolMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -8564,6 +8564,9 @@ func (m *MCPToolMutation) Type() string {
 // AddedFields().
 func (m *MCPToolMutation) Fields() []string {
 	fields := make([]string, 0, 14)
+	if m.deleted_at != nil {
+		fields = append(fields, mcptool.FieldDeletedAt)
+	}
 	if m.upstream != nil {
 		fields = append(fields, mcptool.FieldUpstreamID)
 	}
@@ -8597,9 +8600,6 @@ func (m *MCPToolMutation) Fields() []string {
 	if m.synced_at != nil {
 		fields = append(fields, mcptool.FieldSyncedAt)
 	}
-	if m.deleted_at != nil {
-		fields = append(fields, mcptool.FieldDeletedAt)
-	}
 	if m.created_at != nil {
 		fields = append(fields, mcptool.FieldCreatedAt)
 	}
@@ -8614,6 +8614,8 @@ func (m *MCPToolMutation) Fields() []string {
 // schema.
 func (m *MCPToolMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case mcptool.FieldDeletedAt:
+		return m.DeletedAt()
 	case mcptool.FieldUpstreamID:
 		return m.UpstreamID()
 	case mcptool.FieldName:
@@ -8636,8 +8638,6 @@ func (m *MCPToolMutation) Field(name string) (ent.Value, bool) {
 		return m.VersionHash()
 	case mcptool.FieldSyncedAt:
 		return m.SyncedAt()
-	case mcptool.FieldDeletedAt:
-		return m.DeletedAt()
 	case mcptool.FieldCreatedAt:
 		return m.CreatedAt()
 	case mcptool.FieldUpdatedAt:
@@ -8651,6 +8651,8 @@ func (m *MCPToolMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *MCPToolMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case mcptool.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
 	case mcptool.FieldUpstreamID:
 		return m.OldUpstreamID(ctx)
 	case mcptool.FieldName:
@@ -8673,8 +8675,6 @@ func (m *MCPToolMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldVersionHash(ctx)
 	case mcptool.FieldSyncedAt:
 		return m.OldSyncedAt(ctx)
-	case mcptool.FieldDeletedAt:
-		return m.OldDeletedAt(ctx)
 	case mcptool.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case mcptool.FieldUpdatedAt:
@@ -8688,6 +8688,13 @@ func (m *MCPToolMutation) OldField(ctx context.Context, name string) (ent.Value,
 // type.
 func (m *MCPToolMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case mcptool.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
 	case mcptool.FieldUpstreamID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
@@ -8765,13 +8772,6 @@ func (m *MCPToolMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSyncedAt(v)
 		return nil
-	case mcptool.FieldDeletedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDeletedAt(v)
-		return nil
 	case mcptool.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -8831,6 +8831,9 @@ func (m *MCPToolMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *MCPToolMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(mcptool.FieldDeletedAt) {
+		fields = append(fields, mcptool.FieldDeletedAt)
+	}
 	if m.FieldCleared(mcptool.FieldUserID) {
 		fields = append(fields, mcptool.FieldUserID)
 	}
@@ -8846,9 +8849,6 @@ func (m *MCPToolMutation) ClearedFields() []string {
 	if m.FieldCleared(mcptool.FieldSyncedAt) {
 		fields = append(fields, mcptool.FieldSyncedAt)
 	}
-	if m.FieldCleared(mcptool.FieldDeletedAt) {
-		fields = append(fields, mcptool.FieldDeletedAt)
-	}
 	return fields
 }
 
@@ -8863,6 +8863,9 @@ func (m *MCPToolMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *MCPToolMutation) ClearField(name string) error {
 	switch name {
+	case mcptool.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
 	case mcptool.FieldUserID:
 		m.ClearUserID()
 		return nil
@@ -8878,9 +8881,6 @@ func (m *MCPToolMutation) ClearField(name string) error {
 	case mcptool.FieldSyncedAt:
 		m.ClearSyncedAt()
 		return nil
-	case mcptool.FieldDeletedAt:
-		m.ClearDeletedAt()
-		return nil
 	}
 	return fmt.Errorf("unknown MCPTool nullable field %s", name)
 }
@@ -8889,6 +8889,9 @@ func (m *MCPToolMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *MCPToolMutation) ResetField(name string) error {
 	switch name {
+	case mcptool.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
 	case mcptool.FieldUpstreamID:
 		m.ResetUpstreamID()
 		return nil
@@ -8921,9 +8924,6 @@ func (m *MCPToolMutation) ResetField(name string) error {
 		return nil
 	case mcptool.FieldSyncedAt:
 		m.ResetSyncedAt()
-		return nil
-	case mcptool.FieldDeletedAt:
-		m.ResetDeletedAt()
 		return nil
 	case mcptool.FieldCreatedAt:
 		m.ResetCreatedAt()

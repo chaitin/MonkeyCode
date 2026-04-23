@@ -25,6 +25,20 @@ type MCPToolCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_c *MCPToolCreate) SetDeletedAt(v time.Time) *MCPToolCreate {
+	_c.mutation.SetDeletedAt(v)
+	return _c
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_c *MCPToolCreate) SetNillableDeletedAt(v *time.Time) *MCPToolCreate {
+	if v != nil {
+		_c.SetDeletedAt(*v)
+	}
+	return _c
+}
+
 // SetUpstreamID sets the "upstream_id" field.
 func (_c *MCPToolCreate) SetUpstreamID(v uuid.UUID) *MCPToolCreate {
 	_c.mutation.SetUpstreamID(v)
@@ -139,20 +153,6 @@ func (_c *MCPToolCreate) SetNillableSyncedAt(v *time.Time) *MCPToolCreate {
 	return _c
 }
 
-// SetDeletedAt sets the "deleted_at" field.
-func (_c *MCPToolCreate) SetDeletedAt(v time.Time) *MCPToolCreate {
-	_c.mutation.SetDeletedAt(v)
-	return _c
-}
-
-// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_c *MCPToolCreate) SetNillableDeletedAt(v *time.Time) *MCPToolCreate {
-	if v != nil {
-		_c.SetDeletedAt(*v)
-	}
-	return _c
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_c *MCPToolCreate) SetCreatedAt(v time.Time) *MCPToolCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -199,7 +199,9 @@ func (_c *MCPToolCreate) Mutation() *MCPToolMutation {
 
 // Save creates the MCPTool in the database.
 func (_c *MCPToolCreate) Save(ctx context.Context) (*MCPTool, error) {
-	_c.defaults()
+	if err := _c.defaults(); err != nil {
+		return nil, err
+	}
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
@@ -226,7 +228,7 @@ func (_c *MCPToolCreate) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_c *MCPToolCreate) defaults() {
+func (_c *MCPToolCreate) defaults() error {
 	if _, ok := _c.mutation.Price(); !ok {
 		v := mcptool.DefaultPrice
 		_c.mutation.SetPrice(v)
@@ -236,13 +238,20 @@ func (_c *MCPToolCreate) defaults() {
 		_c.mutation.SetEnabled(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
+		if mcptool.DefaultCreatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcptool.DefaultCreatedAt (forgotten import db/runtime?)")
+		}
 		v := mcptool.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		if mcptool.DefaultUpdatedAt == nil {
+			return fmt.Errorf("db: uninitialized mcptool.DefaultUpdatedAt (forgotten import db/runtime?)")
+		}
 		v := mcptool.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -330,6 +339,10 @@ func (_c *MCPToolCreate) createSpec() (*MCPTool, *sqlgraph.CreateSpec) {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
+	if value, ok := _c.mutation.DeletedAt(); ok {
+		_spec.SetField(mcptool.FieldDeletedAt, field.TypeTime, value)
+		_node.DeletedAt = value
+	}
 	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(mcptool.FieldName, field.TypeString, value)
 		_node.Name = value
@@ -370,10 +383,6 @@ func (_c *MCPToolCreate) createSpec() (*MCPTool, *sqlgraph.CreateSpec) {
 		_spec.SetField(mcptool.FieldSyncedAt, field.TypeTime, value)
 		_node.SyncedAt = &value
 	}
-	if value, ok := _c.mutation.DeletedAt(); ok {
-		_spec.SetField(mcptool.FieldDeletedAt, field.TypeTime, value)
-		_node.DeletedAt = &value
-	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(mcptool.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -406,7 +415,7 @@ func (_c *MCPToolCreate) createSpec() (*MCPTool, *sqlgraph.CreateSpec) {
 // of the `INSERT` statement. For example:
 //
 //	client.MCPTool.Create().
-//		SetUpstreamID(v).
+//		SetDeletedAt(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -415,7 +424,7 @@ func (_c *MCPToolCreate) createSpec() (*MCPTool, *sqlgraph.CreateSpec) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.MCPToolUpsert) {
-//			SetUpstreamID(v+v).
+//			SetDeletedAt(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *MCPToolCreate) OnConflict(opts ...sql.ConflictOption) *MCPToolUpsertOne {
@@ -450,6 +459,24 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MCPToolUpsert) SetDeletedAt(v time.Time) *MCPToolUpsert {
+	u.Set(mcptool.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MCPToolUpsert) UpdateDeletedAt() *MCPToolUpsert {
+	u.SetExcluded(mcptool.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MCPToolUpsert) ClearDeletedAt() *MCPToolUpsert {
+	u.SetNull(mcptool.FieldDeletedAt)
+	return u
+}
 
 // SetUpstreamID sets the "upstream_id" field.
 func (u *MCPToolUpsert) SetUpstreamID(v uuid.UUID) *MCPToolUpsert {
@@ -619,24 +646,6 @@ func (u *MCPToolUpsert) ClearSyncedAt() *MCPToolUpsert {
 	return u
 }
 
-// SetDeletedAt sets the "deleted_at" field.
-func (u *MCPToolUpsert) SetDeletedAt(v time.Time) *MCPToolUpsert {
-	u.Set(mcptool.FieldDeletedAt, v)
-	return u
-}
-
-// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
-func (u *MCPToolUpsert) UpdateDeletedAt() *MCPToolUpsert {
-	u.SetExcluded(mcptool.FieldDeletedAt)
-	return u
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (u *MCPToolUpsert) ClearDeletedAt() *MCPToolUpsert {
-	u.SetNull(mcptool.FieldDeletedAt)
-	return u
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (u *MCPToolUpsert) SetCreatedAt(v time.Time) *MCPToolUpsert {
 	u.Set(mcptool.FieldCreatedAt, v)
@@ -707,6 +716,27 @@ func (u *MCPToolUpsertOne) Update(set func(*MCPToolUpsert)) *MCPToolUpsertOne {
 		set(&MCPToolUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MCPToolUpsertOne) SetDeletedAt(v time.Time) *MCPToolUpsertOne {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MCPToolUpsertOne) UpdateDeletedAt() *MCPToolUpsertOne {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MCPToolUpsertOne) ClearDeletedAt() *MCPToolUpsertOne {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.ClearDeletedAt()
+	})
 }
 
 // SetUpstreamID sets the "upstream_id" field.
@@ -905,27 +935,6 @@ func (u *MCPToolUpsertOne) ClearSyncedAt() *MCPToolUpsertOne {
 	})
 }
 
-// SetDeletedAt sets the "deleted_at" field.
-func (u *MCPToolUpsertOne) SetDeletedAt(v time.Time) *MCPToolUpsertOne {
-	return u.Update(func(s *MCPToolUpsert) {
-		s.SetDeletedAt(v)
-	})
-}
-
-// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
-func (u *MCPToolUpsertOne) UpdateDeletedAt() *MCPToolUpsertOne {
-	return u.Update(func(s *MCPToolUpsert) {
-		s.UpdateDeletedAt()
-	})
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (u *MCPToolUpsertOne) ClearDeletedAt() *MCPToolUpsertOne {
-	return u.Update(func(s *MCPToolUpsert) {
-		s.ClearDeletedAt()
-	})
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (u *MCPToolUpsertOne) SetCreatedAt(v time.Time) *MCPToolUpsertOne {
 	return u.Update(func(s *MCPToolUpsert) {
@@ -1090,7 +1099,7 @@ func (_c *MCPToolCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.MCPToolUpsert) {
-//			SetUpstreamID(v+v).
+//			SetDeletedAt(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *MCPToolCreateBulk) OnConflict(opts ...sql.ConflictOption) *MCPToolUpsertBulk {
@@ -1167,6 +1176,27 @@ func (u *MCPToolUpsertBulk) Update(set func(*MCPToolUpsert)) *MCPToolUpsertBulk 
 		set(&MCPToolUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MCPToolUpsertBulk) SetDeletedAt(v time.Time) *MCPToolUpsertBulk {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MCPToolUpsertBulk) UpdateDeletedAt() *MCPToolUpsertBulk {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MCPToolUpsertBulk) ClearDeletedAt() *MCPToolUpsertBulk {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.ClearDeletedAt()
+	})
 }
 
 // SetUpstreamID sets the "upstream_id" field.
@@ -1362,27 +1392,6 @@ func (u *MCPToolUpsertBulk) UpdateSyncedAt() *MCPToolUpsertBulk {
 func (u *MCPToolUpsertBulk) ClearSyncedAt() *MCPToolUpsertBulk {
 	return u.Update(func(s *MCPToolUpsert) {
 		s.ClearSyncedAt()
-	})
-}
-
-// SetDeletedAt sets the "deleted_at" field.
-func (u *MCPToolUpsertBulk) SetDeletedAt(v time.Time) *MCPToolUpsertBulk {
-	return u.Update(func(s *MCPToolUpsert) {
-		s.SetDeletedAt(v)
-	})
-}
-
-// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
-func (u *MCPToolUpsertBulk) UpdateDeletedAt() *MCPToolUpsertBulk {
-	return u.Update(func(s *MCPToolUpsert) {
-		s.UpdateDeletedAt()
-	})
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (u *MCPToolUpsertBulk) ClearDeletedAt() *MCPToolUpsertBulk {
-	return u.Update(func(s *MCPToolUpsert) {
-		s.ClearDeletedAt()
 	})
 }
 

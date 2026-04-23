@@ -10,6 +10,8 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 	"github.com/google/uuid"
+
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 type MCPTool struct {
@@ -19,6 +21,12 @@ type MCPTool struct {
 func (MCPTool) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Table("mcp_tools"),
+	}
+}
+
+func (MCPTool) Mixin() []ent.Mixin {
+	return []ent.Mixin{
+		entx.SoftDeleteMixin2{},
 	}
 }
 
@@ -36,7 +44,6 @@ func (MCPTool) Fields() []ent.Field {
 		field.Bool("enabled").Default(true),
 		field.String("version_hash").Optional().MaxLen(64),
 		field.Time("synced_at").Optional().Nillable(),
-		field.Time("deleted_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

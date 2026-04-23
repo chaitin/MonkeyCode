@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 )
@@ -15,6 +16,8 @@ const (
 	Label = "mcp_tool"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
+	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
+	FieldDeletedAt = "deleted_at"
 	// FieldUpstreamID holds the string denoting the upstream_id field in the database.
 	FieldUpstreamID = "upstream_id"
 	// FieldName holds the string denoting the name field in the database.
@@ -37,8 +40,6 @@ const (
 	FieldVersionHash = "version_hash"
 	// FieldSyncedAt holds the string denoting the synced_at field in the database.
 	FieldSyncedAt = "synced_at"
-	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
-	FieldDeletedAt = "deleted_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -59,6 +60,7 @@ const (
 // Columns holds all SQL columns for mcptool fields.
 var Columns = []string{
 	FieldID,
+	FieldDeletedAt,
 	FieldUpstreamID,
 	FieldName,
 	FieldNamespacedName,
@@ -70,7 +72,6 @@ var Columns = []string{
 	FieldEnabled,
 	FieldVersionHash,
 	FieldSyncedAt,
-	FieldDeletedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -85,7 +86,14 @@ func ValidColumn(column string) bool {
 	return false
 }
 
+// Note that the variables below are initialized by the runtime
+// package on the initialization of the application. Therefore,
+// it should be imported in the main as follows:
+//
+//	import _ "github.com/chaitin/MonkeyCode/backend/db/runtime"
 var (
+	Hooks        [1]ent.Hook
+	Interceptors [1]ent.Interceptor
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
 	// NamespacedNameValidator is a validator for the "namespaced_name" field. It is called by the builders before save.
@@ -133,6 +141,11 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByDeletedAt orders the results by the deleted_at field.
+func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
 }
 
 // ByUpstreamID orders the results by the upstream_id field.
@@ -183,11 +196,6 @@ func ByVersionHash(opts ...sql.OrderTermOption) OrderOption {
 // BySyncedAt orders the results by the synced_at field.
 func BySyncedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSyncedAt, opts...).ToFunc()
-}
-
-// ByDeletedAt orders the results by the deleted_at field.
-func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

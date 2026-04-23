@@ -302,12 +302,12 @@ func (_q *MCPToolQuery) WithUpstream(opts ...func(*MCPUpstreamQuery)) *MCPToolQu
 // Example:
 //
 //	var v []struct {
-//		UpstreamID uuid.UUID `json:"upstream_id,omitempty"`
+//		DeletedAt time.Time `json:"deleted_at,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.MCPTool.Query().
-//		GroupBy(mcptool.FieldUpstreamID).
+//		GroupBy(mcptool.FieldDeletedAt).
 //		Aggregate(db.Count()).
 //		Scan(ctx, &v)
 func (_q *MCPToolQuery) GroupBy(field string, fields ...string) *MCPToolGroupBy {
@@ -325,11 +325,11 @@ func (_q *MCPToolQuery) GroupBy(field string, fields ...string) *MCPToolGroupBy 
 // Example:
 //
 //	var v []struct {
-//		UpstreamID uuid.UUID `json:"upstream_id,omitempty"`
+//		DeletedAt time.Time `json:"deleted_at,omitempty"`
 //	}
 //
 //	client.MCPTool.Query().
-//		Select(mcptool.FieldUpstreamID).
+//		Select(mcptool.FieldDeletedAt).
 //		Scan(ctx, &v)
 func (_q *MCPToolQuery) Select(fields ...string) *MCPToolSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)

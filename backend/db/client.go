@@ -2015,12 +2015,14 @@ func (c *MCPToolClient) QueryUpstream(_m *MCPTool) *MCPUpstreamQuery {
 
 // Hooks returns the client hooks.
 func (c *MCPToolClient) Hooks() []Hook {
-	return c.hooks.MCPTool
+	hooks := c.hooks.MCPTool
+	return append(hooks[:len(hooks):len(hooks)], mcptool.Hooks[:]...)
 }
 
 // Interceptors returns the client interceptors.
 func (c *MCPToolClient) Interceptors() []Interceptor {
-	return c.inters.MCPTool
+	inters := c.inters.MCPTool
+	return append(inters[:len(inters):len(inters)], mcptool.Interceptors[:]...)
 }
 
 func (c *MCPToolClient) mutate(ctx context.Context, m *MCPToolMutation) (Value, error) {

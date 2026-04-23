@@ -148,6 +148,11 @@ func init() {
 	image.DefaultUpdatedAt = imageDescUpdatedAt.Default.(func() time.Time)
 	// image.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	image.UpdateDefaultUpdatedAt = imageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	mcptoolMixin := schema.MCPTool{}.Mixin()
+	mcptoolMixinHooks0 := mcptoolMixin[0].Hooks()
+	mcptool.Hooks[0] = mcptoolMixinHooks0[0]
+	mcptoolMixinInters0 := mcptoolMixin[0].Interceptors()
+	mcptool.Interceptors[0] = mcptoolMixinInters0[0]
 	mcptoolFields := schema.MCPTool{}.Fields()
 	_ = mcptoolFields
 	// mcptoolDescName is the schema descriptor for name field.
@@ -199,11 +204,11 @@ func init() {
 	// mcptool.VersionHashValidator is a validator for the "version_hash" field. It is called by the builders before save.
 	mcptool.VersionHashValidator = mcptoolDescVersionHash.Validators[0].(func(string) error)
 	// mcptoolDescCreatedAt is the schema descriptor for created_at field.
-	mcptoolDescCreatedAt := mcptoolFields[13].Descriptor()
+	mcptoolDescCreatedAt := mcptoolFields[12].Descriptor()
 	// mcptool.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mcptool.DefaultCreatedAt = mcptoolDescCreatedAt.Default.(func() time.Time)
 	// mcptoolDescUpdatedAt is the schema descriptor for updated_at field.
-	mcptoolDescUpdatedAt := mcptoolFields[14].Descriptor()
+	mcptoolDescUpdatedAt := mcptoolFields[13].Descriptor()
 	// mcptool.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	mcptool.DefaultUpdatedAt = mcptoolDescUpdatedAt.Default.(func() time.Time)
 	// mcptool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
