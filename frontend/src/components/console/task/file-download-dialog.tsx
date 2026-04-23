@@ -175,7 +175,7 @@ export function FileDownloadDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <style>{INDETERMINATE_PROGRESS_ANIMATION}</style>
       <DialogContent
-        className="sm:max-w-md"
+        className="min-w-0 sm:max-w-md"
         showCloseButton={!isDownloading}
         onEscapeKeyDown={(e) => {
           if (isDownloading) {
@@ -188,8 +188,8 @@ export function FileDownloadDialog({
           }
         }}
       >
-        <DialogHeader>
-          <DialogTitle>
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="min-w-0 pr-8">
             {status === "completed"
               ? "下载完成"
               : status === "failed"
@@ -198,7 +198,7 @@ export function FileDownloadDialog({
                   ? "下载已取消"
                   : "正在下载"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="min-w-0 break-all">
             {status === "failed"
               ? "下载过程中出现错误，请查看详细信息。"
               : status === "canceled"
@@ -207,8 +207,8 @@ export function FileDownloadDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+        <div className="min-w-0 space-y-4">
+          <div className="min-w-0 flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-background text-primary">
               {status === "downloading" ? (
                 <Spinner className="size-5" />
@@ -217,8 +217,8 @@ export function FileDownloadDialog({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{downloadFilename}</div>
-              <div className="truncate text-xs text-muted-foreground">{displayPath}</div>
+              <div className="max-w-full truncate text-sm font-medium">{downloadFilename}</div>
+              <div className="max-w-full truncate text-xs text-muted-foreground">{displayPath}</div>
             </div>
           </div>
 
