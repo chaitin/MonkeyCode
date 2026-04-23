@@ -9,7 +9,7 @@ import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands, TaskPlan, TaskStreamStatus } from "@/components/console/task/task-shared"
-import { TaskStreamClient, type TaskStreamClientState, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
+import { TaskStreamClient, type TaskStreamClientState, type TaskStreamCloseReason, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import {
   AlertDialog,
@@ -61,6 +61,7 @@ export default function TaskDetailPage() {
   const [rawHistoryMessages, setRawHistoryMessages] = React.useState<MessageType[]>([])
   const [rawLiveMessages, setRawLiveMessages] = React.useState<MessageType[]>([])
   const [streamConnectionState, setStreamConnectionState] = React.useState<TaskStreamConnectionState>("closed")
+  const [streamCloseReason, setStreamCloseReason] = React.useState<TaskStreamCloseReason | null>(null)
   const [queuedReplyIds, setQueuedReplyIds] = React.useState<string[]>([])
   const [submittingReplyIds, setSubmittingReplyIds] = React.useState<string[]>([])
   const [fileChangesCount, setFileChangesCount] = React.useState(0)
@@ -85,6 +86,11 @@ export default function TaskDetailPage() {
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const autoScrollFrameRef = React.useRef<number | null>(null)
+  const autoScrollLockTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoScrollIntentLockedRef = React.useRef(false)
+  const shouldAutoScrollChatRef = React.useRef(true)
+  const previousLiveUserInputIdRef = React.useRef<string | null>(null)
+  const previousLiveEndedCycleIdRef = React.useRef<string | null>(null)
   const previousRunningMessagesSignatureRef = React.useRef<string | null>(null)
   const activeSidePanelRef = React.useRef<SidePanelType | null>(null)
   const previewDialogOpenRef = React.useRef(false)
@@ -169,6 +175,24 @@ export default function TaskDetailPage() {
         questions: message.data.questions ?? null,
       })),
   ), [liveMessages])
+  const latestLiveUserInputId = React.useMemo(() => {
+    for (let index = liveMessages.length - 1; index >= 0; index -= 1) {
+      const message = liveMessages[index]
+      if (message.type === "user_input") {
+        return message.id
+      }
+    }
+    return null
+  }, [liveMessages])
+  const latestCompletedLiveCycleId = React.useMemo(() => {
+    if (!latestLiveUserInputId) {
+      return null
+    }
+    if (streamStatus === "finished" || streamCloseReason === "task_ended") {
+      return latestLiveUserInputId
+    }
+    return null
+  }, [latestLiveUserInputId, streamCloseReason, streamStatus])
   const [timeCost, setTimeCost] = React.useState(0)
   const previewPortCount = (previewPorts ?? []).length
   const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
@@ -244,6 +268,7 @@ export default function TaskDetailPage() {
       })
       setStreamStatus("inited")
       setStreamConnectionState("connecting")
+      setStreamCloseReason(null)
       setQueuedReplyIds([])
       setSubmittingReplyIds([])
       setSending(mode === "new")
@@ -264,6 +289,7 @@ export default function TaskDetailPage() {
             }))
             setTimeCost(state.executionTimeMs)
             setStreamConnectionState(state.connectionState)
+            setStreamCloseReason(state.closeReason)
             setQueuedReplyIds(state.queuedReplyIds)
             setSubmittingReplyIds(state.submittingReplyIds)
             if (!historyLoadedRef.current && state.historyCursor.ready) {
@@ -306,6 +332,7 @@ export default function TaskDetailPage() {
             }))
             setTimeCost(state.executionTimeMs)
             setStreamConnectionState(state.connectionState)
+            setStreamCloseReason(state.closeReason)
             setQueuedReplyIds(state.queuedReplyIds)
             setSubmittingReplyIds(state.submittingReplyIds)
           },
@@ -610,16 +637,27 @@ export default function TaskDetailPage() {
     return container
   }, [])
 
-  const updateChatScrollState = React.useCallback(() => {
+  const updateChatScrollState = React.useCallback((options?: { syncAutoScroll?: boolean }) => {
     const container = getChatScrollContainer()
     if (!container) return
 
     const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
     const hasOverflow = maxScrollTop > 4
+    const isAtTop = !hasOverflow || container.scrollTop <= 8
+    const isAtBottom = !hasOverflow || maxScrollTop - container.scrollTop <= 24
 
     setChatHasOverflow(hasOverflow)
-    setChatAtTop(!hasOverflow || container.scrollTop <= 8)
-    setChatAtBottom(!hasOverflow || maxScrollTop - container.scrollTop <= 8)
+    setChatAtTop(isAtTop)
+    setChatAtBottom(isAtBottom)
+
+    if (!hasOverflow) {
+      shouldAutoScrollChatRef.current = true
+      return
+    }
+
+    if (options?.syncAutoScroll && !autoScrollIntentLockedRef.current) {
+      shouldAutoScrollChatRef.current = isAtBottom
+    }
   }, [getChatScrollContainer])
 
   React.useEffect(() => {
@@ -627,7 +665,7 @@ export default function TaskDetailPage() {
     const content = chatContentRef.current
     if (!container) return
 
-    const handleScroll = () => updateChatScrollState()
+    const handleScroll = () => updateChatScrollState({ syncAutoScroll: true })
     container.addEventListener("scroll", handleScroll, { passive: true })
 
     const resizeObserver = new ResizeObserver(() => {
@@ -638,7 +676,7 @@ export default function TaskDetailPage() {
       resizeObserver.observe(content)
     }
 
-    updateChatScrollState()
+    updateChatScrollState({ syncAutoScroll: true })
 
     return () => {
       container.removeEventListener("scroll", handleScroll)
@@ -654,20 +692,29 @@ export default function TaskDetailPage() {
   }, [messages, hasSidePanel, hasBottomTerminal, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
 
   const scrollChatToTop = React.useCallback(() => {
+    shouldAutoScrollChatRef.current = false
     getChatScrollContainer()?.scrollTo({ top: 0, behavior: "smooth" })
   }, [getChatScrollContainer])
 
-  const scrollChatToBottom = React.useCallback(() => {
+  const scheduleChatScrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth", options?: { forceAutoScroll?: boolean }) => {
     const container = getChatScrollContainer()
     if (!container) return
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
-  }, [getChatScrollContainer])
 
-  React.useEffect(() => {
-    if (historyLoading) return
-    if (previousRunningMessagesSignatureRef.current === runningMessagesSignature) return
+    if (options?.forceAutoScroll) {
+      shouldAutoScrollChatRef.current = true
+    }
 
-    previousRunningMessagesSignatureRef.current = runningMessagesSignature
+    if (behavior === "smooth") {
+      autoScrollIntentLockedRef.current = true
+      if (autoScrollLockTimeoutRef.current !== null) {
+        clearTimeout(autoScrollLockTimeoutRef.current)
+      }
+      autoScrollLockTimeoutRef.current = setTimeout(() => {
+        autoScrollIntentLockedRef.current = false
+        autoScrollLockTimeoutRef.current = null
+        updateChatScrollState()
+      }, 450)
+    }
 
     if (autoScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(autoScrollFrameRef.current)
@@ -675,18 +722,55 @@ export default function TaskDetailPage() {
 
     autoScrollFrameRef.current = window.requestAnimationFrame(() => {
       autoScrollFrameRef.current = null
-      const container = getChatScrollContainer()
-      if (!container) return
-      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" })
+      const nextContainer = getChatScrollContainer()
+      if (!nextContainer) return
+      nextContainer.scrollTo({ top: nextContainer.scrollHeight, behavior })
     })
+  }, [getChatScrollContainer, updateChatScrollState])
 
+  const scrollChatToBottom = React.useCallback(() => {
+    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+  }, [scheduleChatScrollToBottom])
+
+  React.useEffect(() => {
     return () => {
       if (autoScrollFrameRef.current !== null) {
         window.cancelAnimationFrame(autoScrollFrameRef.current)
         autoScrollFrameRef.current = null
       }
+      if (autoScrollLockTimeoutRef.current !== null) {
+        clearTimeout(autoScrollLockTimeoutRef.current)
+        autoScrollLockTimeoutRef.current = null
+      }
+      autoScrollIntentLockedRef.current = false
     }
-  }, [getChatScrollContainer, historyLoading, runningMessagesSignature])
+  }, [getChatScrollContainer])
+
+  React.useEffect(() => {
+    if (!latestLiveUserInputId) return
+    if (previousLiveUserInputIdRef.current === latestLiveUserInputId) return
+
+    previousLiveUserInputIdRef.current = latestLiveUserInputId
+    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+  }, [latestLiveUserInputId, scheduleChatScrollToBottom])
+
+  React.useEffect(() => {
+    if (!latestCompletedLiveCycleId) return
+    if (previousLiveEndedCycleIdRef.current === latestCompletedLiveCycleId) return
+
+    previousLiveEndedCycleIdRef.current = latestCompletedLiveCycleId
+    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+  }, [latestCompletedLiveCycleId, scheduleChatScrollToBottom])
+
+  React.useEffect(() => {
+    if (historyLoading) return
+    if (previousRunningMessagesSignatureRef.current === runningMessagesSignature) return
+
+    previousRunningMessagesSignatureRef.current = runningMessagesSignature
+    if (!shouldAutoScrollChatRef.current) return
+
+    scheduleChatScrollToBottom("smooth")
+  }, [historyLoading, runningMessagesSignature, scheduleChatScrollToBottom])
 
   const detailHeader = (
     <div className="shrink-0">
