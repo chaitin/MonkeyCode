@@ -23,42 +23,47 @@ interface MermaidProps {
 }
 
 const Mermaid = memo(function Mermaid({ chart }: MermaidProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const [svg, setSvg] = useState<string>("")
-  const [error, setError] = useState<string | null>(null)
+  const [hasError, setHasError] = useState(false)
+  const renderVersionRef = useRef(0)
 
   useEffect(() => {
+    const currentRenderVersion = ++renderVersionRef.current
+
     const renderChart = async () => {
-      if (!containerRef.current) return
-      
       try {
         // 使用唯一 ID 避免冲突
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`
         const { svg } = await mermaid.render(id, chart)
+        if (renderVersionRef.current !== currentRenderVersion) return
         setSvg(svg)
-        setError(null)
+        setHasError(false)
       } catch (err) {
+        if (renderVersionRef.current !== currentRenderVersion) return
         console.error("Mermaid render error:", err)
-        setError(err instanceof Error ? err.message : "Failed to render diagram")
+        setSvg("")
+        setHasError(true)
       }
     }
 
     renderChart()
   }, [chart])
 
-  if (error) {
+  if (hasError) {
     return (
-      <div className="p-4 border border-red-300 bg-red-50 rounded-md text-red-700">
-        <p className="font-semibold">Mermaid 渲染错误</p>
-        <pre className="text-sm mt-2 whitespace-pre-wrap">{error}</pre>
-        <pre className="text-sm mt-2 p-2 bg-red-100 rounded overflow-x-auto">{chart}</pre>
-      </div>
+      <SyntaxHighlighter
+        language="mermaid"
+        PreTag="pre"
+        wrapLines={true}
+        codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap" } }}
+      >
+        {chart}
+      </SyntaxHighlighter>
     )
   }
 
   return (
     <div 
-      ref={containerRef} 
       className="mermaid-container flex justify-center my-4"
       dangerouslySetInnerHTML={{ __html: svg }} 
     />
