@@ -398,12 +398,21 @@ export default function CreateDefaultTaskDialog({
     }))
   }
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
+  const showRepoAdvancedOptions = Boolean(selectedRepo && !selectedRepoDisplayName.endsWith(".zip"))
+  const showEnvironmentAdvancedOptions = user.role === ConstsUserRole.UserRoleSubAccount
+  const showAdvancedOptions = showRepoAdvancedOptions || showEnvironmentAdvancedOptions
 
   useEffect(() => {
     if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
       setSelectedHostId("public_host")
     }
   }, [selectedPublicModel, selectedHostId])
+
+  useEffect(() => {
+    if (!showAdvancedOptions) {
+      setAdvancedOptionsOpen(false)
+    }
+  }, [showAdvancedOptions])
 
   const handleConfirmExecute = () => {
     void executeTask()
@@ -1016,138 +1025,141 @@ export default function CreateDefaultTaskDialog({
             </div>
           </div>
 
-          <Separator />
-
-          <div className="space-y-4">
-            <Collapsible
-              open={advancedOptionsOpen}
-              onOpenChange={setAdvancedOptionsOpen}
-              className="rounded-lg border"
-            >
-              <CollapsibleTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
+          {showAdvancedOptions && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <Collapsible
+                  open={advancedOptionsOpen}
+                  onOpenChange={setAdvancedOptionsOpen}
+                  className="rounded-lg border"
                 >
-                  <span className="font-medium">高级选项</span>
-                  <IconChevronDown
-                    className={cn(
-                      "size-4 text-muted-foreground transition-transform",
-                      advancedOptionsOpen && "rotate-180"
-                    )}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 border-t px-3 py-3">
-                {selectedRepo && !selectedRepoDisplayName.endsWith(".zip") && (
-                  <>
-                    <Field>
-                      <FieldLabel>仓库分支</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          value={branch}
-                          onChange={(e) => setBranch(e.target.value)}
-                          placeholder="不填则为主分支"
-                          className="text-sm"
-                        />
-                      </FieldContent>
-                    </Field>
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
+                    >
+                      <span className="font-medium">高级选项</span>
+                      <IconChevronDown
+                        className={cn(
+                          "size-4 text-muted-foreground transition-transform",
+                          advancedOptionsOpen && "rotate-180"
+                        )}
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+                    {showRepoAdvancedOptions && (
+                      <>
+                        <Field>
+                          <FieldLabel>仓库分支</FieldLabel>
+                          <FieldContent>
+                            <Input
+                              value={branch}
+                              onChange={(e) => setBranch(e.target.value)}
+                              placeholder="不填则为主分支"
+                              className="text-sm"
+                            />
+                          </FieldContent>
+                        </Field>
 
-                    {!selectedRepoFromMyRepos && (
+                        {!selectedRepoFromMyRepos && (
+                          <Field>
+                            <FieldLabel>仓库身份凭证</FieldLabel>
+                            <FieldContent>
+                              <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="选择身份" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">匿名</SelectItem>
+                                  {identities.filter((identity) => selectedRepo.startsWith(identity.base_url || "")).length > 0 ? (
+                                    identities
+                                      .filter((identity) => selectedRepo.startsWith(identity.base_url || ""))
+                                      .map((identity) => (
+                                        <SelectItem key={identity.id} value={identity.id as string}>
+                                          {getGitPlatformIcon(identity.platform || "")}
+                                          {identity.remark || identity.username}
+                                        </SelectItem>
+                                      ))
+                                  ) : (
+                                    <SelectItem value="unknown" disabled>该仓库未配置身份凭证</SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </FieldContent>
+                          </Field>
+                        )}
+                      </>
+                    )}
+
+                    {user.role === ConstsUserRole.UserRoleSubAccount && (
                       <Field>
-                        <FieldLabel>仓库身份凭证</FieldLabel>
+                        <FieldLabel>宿主机</FieldLabel>
                         <FieldContent>
-                          <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
+                          <Select value={selectedHostId} onValueChange={setSelectedHostId}>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="选择身份" />
+                              <SelectValue placeholder="选择开发工具" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="none">匿名</SelectItem>
-                              {identities.filter((identity) => selectedRepo.startsWith(identity.base_url || "")).length > 0 ? (
-                                identities
-                                  .filter((identity) => selectedRepo.startsWith(identity.base_url || ""))
-                                  .map((identity) => (
-                                    <SelectItem key={identity.id} value={identity.id as string}>
-                                      {getGitPlatformIcon(identity.platform || "")}
-                                      {identity.remark || identity.username}
-                                    </SelectItem>
-                                  ))
-                              ) : (
-                                <SelectItem value="unknown" disabled>该仓库未配置身份凭证</SelectItem>
-                              )}
+                              <SelectItem value="public_host">
+                                <div className="flex items-center gap-2">
+                                  <span>MonkeyCode</span>
+                                  <Badge className="!text-primary-foreground">免费</Badge>
+                                </div>
+                              </SelectItem>
+                              {hosts.map((host) => (
+                                <SelectItem
+                                  key={host.id}
+                                  value={host.id!}
+                                  disabled={host.status !== ConstsHostStatus.HostStatusOnline || selectedPublicModel}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
+                                    {getHostBadges(host)}
+                                  </div>
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </FieldContent>
                       </Field>
                     )}
-                  </>
-                )}
 
-                {user.role === ConstsUserRole.UserRoleSubAccount && (
-                  <Field>
-                    <FieldLabel>宿主机</FieldLabel>
-                    <FieldContent>
-                      <Select value={selectedHostId} onValueChange={setSelectedHostId}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="选择开发工具" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="public_host">
-                            <div className="flex items-center gap-2">
-                              <span>MonkeyCode</span>
-                              <Badge className="!text-primary-foreground">免费</Badge>
-                            </div>
-                          </SelectItem>
-                          {hosts.map((host) => (
-                            <SelectItem
-                              key={host.id}
-                              value={host.id!}
-                              disabled={host.status !== ConstsHostStatus.HostStatusOnline || selectedPublicModel}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
-                                {getHostBadges(host)}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FieldContent>
-                  </Field>
-                )}
-
-                {user.role === ConstsUserRole.UserRoleSubAccount && (
-                  <Field>
-                    <FieldLabel>系统镜像</FieldLabel>
-                    <FieldContent>
-                      <Select value={selectedImageId} onValueChange={setSelectedImageId}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="选择开发工具" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {images.filter((image) => image.id).map((image) => (
-                            <SelectItem key={image.id} value={image.id!}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-2">
-                                    <Icon name={getOSFromImageName(image.name || "")} className="h-4 w-4" />
-                                    <span>{image.remark || getImageShortName(image.name || "")}</span>
-                                    {getOwnerTypeBadge(image.owner)}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="right">{image.name}</TooltipContent>
-                              </Tooltip>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FieldContent>
-                  </Field>
-                )}
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
+                    {user.role === ConstsUserRole.UserRoleSubAccount && (
+                      <Field>
+                        <FieldLabel>系统镜像</FieldLabel>
+                        <FieldContent>
+                          <Select value={selectedImageId} onValueChange={setSelectedImageId}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="选择开发工具" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {images.filter((image) => image.id).map((image) => (
+                                <SelectItem key={image.id} value={image.id!}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-2">
+                                        <Icon name={getOSFromImageName(image.name || "")} className="h-4 w-4" />
+                                        <span>{image.remark || getImageShortName(image.name || "")}</span>
+                                        {getOwnerTypeBadge(image.owner)}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right">{image.name}</TooltipContent>
+                                  </Tooltip>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FieldContent>
+                      </Field>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
