@@ -443,16 +443,7 @@ func (r *ProjectRepo) DeleteIssue(ctx context.Context, uid uuid.UUID, req *domai
 		}
 		return errcode.ErrDatabaseOperation.Wrap(err)
 	}
-	collaborator, err := r.db.ProjectCollaborator.Query().
-		Where(projectcollaborator.ProjectIDEQ(req.ID), projectcollaborator.UserIDEQ(uid)).
-		First(ctx)
-	if err != nil {
-		if db.IsNotFound(err) {
-			return errcode.ErrForbidden
-		}
-		return errcode.ErrDatabaseOperation.Wrap(err)
-	}
-	if collaborator.Role != consts.ProjectCollaboratorRoleReadWrite {
+	if !r.HasReadWritePerm(ctx, uid, req.ID) {
 		return errcode.ErrForbidden
 	}
 
