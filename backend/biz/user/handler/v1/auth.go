@@ -215,7 +215,7 @@ func (h *AuthHandler) SendResetPasswordEmail(c *web.Context, req domain.ResetUse
 	err := h.usecase.SendResetPasswordEmail(ctx, &req)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "send reset password email failed", "error", err)
-		return errcode.ErrInternalServer
+		return err
 	}
 
 	return c.Success(nil)
