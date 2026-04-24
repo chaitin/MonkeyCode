@@ -327,19 +327,17 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			return err
 		}
 
-		var mak *db.ModelApiKey
-		if p := m.Edges.Pricing; p != nil {
-			apikey := uuid.NewString()
-			mak, err = tx.ModelApiKey.Create().
-				SetAPIKey(apikey).
-				SetUserID(u.ID).
-				SetModelID(m.ID).
-				Save(ctx)
-			if err != nil {
-				return err
-			}
-			m.Edges.Apikeys = append(m.Edges.Apikeys, mak)
+		apikey := uuid.NewString()
+		mak, err := tx.ModelApiKey.Create().
+			SetID(uuid.New()).
+			SetAPIKey(apikey).
+			SetUserID(u.ID).
+			SetModelID(m.ID).
+			Save(ctx)
+		if err != nil {
+			return err
 		}
+		m.Edges.Apikeys = append(m.Edges.Apikeys, mak)
 
 		img, err := tx.Image.Query().Where(image.ID(req.ImageID)).First(ctx)
 		if err != nil {
@@ -364,6 +362,7 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 		}
 
 		crt := tx.ProjectTask.Create().
+			SetID(uuid.New()).
 			SetImageID(img.ID).
 			SetModelID(m.ID).
 			SetTaskID(tk.ID).
@@ -418,18 +417,17 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 		}
 
 		tvm := tx.TaskVirtualMachine.Create().
+			SetID(uuid.New()).
 			SetTaskID(tk.ID).
 			SetVirtualmachineID(vm.ID)
 		if err := tvm.Exec(ctx); err != nil {
 			return err
 		}
 
-		if mak != nil {
-			if err := tx.ModelApiKey.UpdateOneID(mak.ID).
-				SetVirtualmachineID(vm.ID).
-				Exec(ctx); err != nil {
-				return err
-			}
+		if err := tx.ModelApiKey.UpdateOneID(mak.ID).
+			SetVirtualmachineID(vm.ID).
+			Exec(ctx); err != nil {
+			return err
 		}
 
 		return nil
