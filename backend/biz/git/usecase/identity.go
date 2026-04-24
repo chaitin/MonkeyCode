@@ -73,6 +73,24 @@ func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitCli
 	return gitpkg.NewCachedGitClient(inner, u.repoCache, identity.UserID.String()+":"+identity.ID.String())
 }
 
+// fetchRepositories 拉取 identity 关联的仓库列表
+func (u *GitIdentityUsecase) fetchRepositories(ctx context.Context, identity *db.GitIdentity, flush bool) ([]domain.AuthRepository, error) {
+	client := u.gitClienter(identity)
+	if client == nil {
+		return nil, nil
+	}
+	token, err := u.tokenProvider.GetToken(ctx, identity.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get token: %w", err)
+	}
+	return client.Repositories(ctx, &domain.RepositoryOptions{
+		Token:     token,
+		InstallID: identity.InstallationID,
+		IsOAuth:   identity.OauthRefreshToken != "",
+		Flush:     flush,
+	})
+}
+
 // Get 获取单个 Git 身份认证（仅限当前用户）
 func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUID, flush bool) (*domain.GitIdentity, error) {
 	identity, err := u.repo.GetByUserID(ctx, uid, id)
@@ -85,24 +103,12 @@ func (u *GitIdentityUsecase) Get(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	}
 	gi := cvt.From(identity, &domain.GitIdentity{})
 
-	if client := u.gitClienter(identity); client != nil {
-		token, err := u.tokenProvider.GetToken(ctx, identity.ID)
-		if err != nil {
-			u.logger.WarnContext(ctx, "failed to get token", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
-			return gi, nil
-		}
-		repos, err := client.Repositories(ctx, &domain.RepositoryOptions{
-			Token:     token,
-			InstallID: identity.InstallationID,
-			IsOAuth:   identity.OauthRefreshToken != "",
-			Flush:     flush,
-		})
-		if err != nil {
-			u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
-			return gi, nil
-		}
-		gi.AuthorizedRepositories = repos
+	repos, err := u.fetchRepositories(ctx, identity, flush)
+	if err != nil {
+		u.logger.WarnContext(ctx, "failed to get authorized repositories", "error", err, "platform", identity.Platform, "identity_id", identity.ID)
+		return gi, nil
 	}
+	gi.AuthorizedRepositories = repos
 
 	return gi, nil
 }
@@ -114,6 +120,13 @@ func (u *GitIdentityUsecase) Add(ctx context.Context, uid uuid.UUID, req *domain
 		u.logger.ErrorContext(ctx, "failed to create git identity", "error", err, "user_id", uid)
 		return nil, err
 	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if _, err := u.fetchRepositories(ctx, identity, false); err != nil {
+			u.logger.Warn("prefetch: failed to fetch repositories", "error", err, "identity_id", identity.ID)
+		}
+	}()
 	return cvt.From(identity, &domain.GitIdentity{}), nil
 }
 
