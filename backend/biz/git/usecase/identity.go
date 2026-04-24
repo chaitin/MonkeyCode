@@ -81,7 +81,7 @@ func (u *GitIdentityUsecase) prefetchRepositories(identity *db.GitIdentity) {
 				u.logger.Warn("prefetch: panic recovered", "error", r, "identity_id", identity.ID)
 			}
 		}()
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second*5)
 		defer cancel()
 		if _, err := u.fetchRepositories(ctx, identity, false); err != nil {
 			u.logger.WarnContext(ctx, "prefetch: failed to fetch repositories", "error", err, "identity_id", identity.ID)
