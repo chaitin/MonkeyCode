@@ -11,9 +11,7 @@
 
 <p align="center">
   <a href="https://monkeycode-ai.com/">🚀 立即在线使用</a> ·
-  <a href="https://baizhi.cloud/consult">🏢 企业离线部署咨询</a> ·
-  <a href="https://monkeycode.docs.baizhi.cloud/">📖 使用文档</a> ·
-  <a href="https://github.com/chaitin/MonkeyCode/releases">⬇️ 客户端下载</a>
+  <a href="https://baizhi.cloud/consult">🏢 企业离线部署咨询</a>
 </p>
 
 > MonkeyCode 是在线 AI 开发平台。无需安装，无需连接本地开发机，打开浏览器即可让 AI 在云端开发环境中帮你写代码、跑命令、改文件、做审查，并把结果接回真实 Git 协作流程。
