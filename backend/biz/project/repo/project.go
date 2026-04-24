@@ -434,6 +434,38 @@ func (r *ProjectRepo) UpdateIssue(ctx context.Context, uid uuid.UUID, req *domai
 	return r.db.ProjectIssue.Get(ctx, req.IssueID)
 }
 
+// DeleteIssue 删除问题
+func (r *ProjectRepo) DeleteIssue(ctx context.Context, uid uuid.UUID, req *domain.DeleteIssueReq) error {
+	_, err := r.db.ProjectIssue.Query().
+		Where(
+			projectissue.IDEQ(req.IssueID),
+			projectissue.HasProjectWith(project.IDEQ(req.ID), r.getProjectQuery(uid)),
+		).
+		First(ctx)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return errcode.ErrNotFound
+		}
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+	if !r.HasReadWritePerm(ctx, uid, req.ID) {
+		return errcode.ErrForbidden
+	}
+	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+		_, err := tx.ProjectIssueComment.Delete().
+			Where(projectissuecomment.IssueID(req.IssueID)).
+			Exec(ctx)
+		if err != nil {
+			return errcode.ErrDatabaseOperation.Wrap(err)
+		}
+		err = tx.ProjectIssue.DeleteOneID(req.IssueID).Exec(ctx)
+		if err != nil {
+			return errcode.ErrDatabaseOperation.Wrap(err)
+		}
+		return tx.Project.UpdateOneID(req.ID).SetUpdatedAt(time.Now()).Exec(ctx)
+	})
+}
+
 // UpdateIssueDoc 更新问题文档
 func (r *ProjectRepo) UpdateIssueDoc(ctx context.Context, req *domain.UpdateIssueDocReq) (*db.ProjectIssue, error) {
 	upt := r.db.ProjectIssue.UpdateOneID(req.IssueID)
