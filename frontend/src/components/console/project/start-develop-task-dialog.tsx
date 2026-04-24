@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getModelPricingItem, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconChevronDown, IconHelpCircle, IconSparkles } from "@tabler/icons-react"
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
@@ -42,10 +42,23 @@ export default function StartDevelopTaskDialog({
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const { images, models, hosts, subscription } = useCommonData()
+  const branchRequestIdRef = useRef(0)
+  const branchTouchedRef = useRef(false)
+  const prevOpenRef = useRef(false)
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
   )
+  const branchSourceKey = useMemo(() => {
+    if (!project?.id) return ""
+    return [
+      project.id,
+      project.platform,
+      project.git_identity_id || "",
+      project.full_name || "",
+      project.repo_url || "",
+    ].join(":")
+  }, [project?.id, project?.platform, project?.git_identity_id, project?.full_name, project?.repo_url])
 
   const handleOpenModelPricing = () => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
@@ -53,8 +66,19 @@ export default function StartDevelopTaskDialog({
     }))
   }
 
-  const fetchBranches = async () => {
+  const selectBranch = (branch: string) => {
+    branchTouchedRef.current = true
+    setSelectedBranch(branch)
+  }
+
+  const fetchBranches = useCallback(async () => {
+    const requestId = ++branchRequestIdRef.current
+    branchTouchedRef.current = false
+
     if (!project?.git_identity_id || !project?.repo_url) {
+      setBranches([])
+      setBranchFetchFailed(false)
+      setLoadingBranches(false)
       return
     }
 
@@ -76,8 +100,10 @@ export default function StartDevelopTaskDialog({
       const escapedRepoFullName = project?.full_name || ''
       
       if (!escapedRepoFullName) {
-        setBranchFetchFailed(true)
-        setLoadingBranches(false)
+        if (requestId === branchRequestIdRef.current) {
+          setBranchFetchFailed(true)
+          setLoadingBranches(false)
+        }
         return
       }
 
@@ -85,41 +111,54 @@ export default function StartDevelopTaskDialog({
       const encodedRepoName = encodeURIComponent(escapedRepoFullName)
 
       await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, encodedRepoName], (resp) => {
+        if (requestId !== branchRequestIdRef.current) return
+
         if (resp.code === 0 && resp.data) {
           const branchList = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
           setBranches(branchList)
 
           if (branchList.length === 0) {
             setBranchFetchFailed(true)
-            setSelectedBranch('main')
+            if (!branchTouchedRef.current) {
+              setSelectedBranch('main')
+            }
             return
           }
           
-          // 优先选择 main 或 master，否则选择第一个
-          if (branchList.includes('main')) {
-            setSelectedBranch('main')
-          } else if (branchList.includes('master')) {
-            setSelectedBranch('master')
-          } else if (branchList.length > 0) {
-            setSelectedBranch(branchList[0])
+          if (!branchTouchedRef.current) {
+            // 优先选择 main 或 master，否则选择第一个
+            if (branchList.includes('main')) {
+              setSelectedBranch('main')
+            } else if (branchList.includes('master')) {
+              setSelectedBranch('master')
+            } else if (branchList.length > 0) {
+              setSelectedBranch(branchList[0])
+            }
           }
         } else {
           setBranchFetchFailed(true)
-          setSelectedBranch('main')
+          if (!branchTouchedRef.current) {
+            setSelectedBranch('main')
+          }
           toast.error('获取分支列表失败: ' + resp.message)
         }
       })
     } catch (error) {
       console.error('Fetch branches error:', error)
-      setBranchFetchFailed(true)
-      setSelectedBranch('main')
-      toast.error('获取分支列表失败')
+      if (requestId === branchRequestIdRef.current) {
+        setBranchFetchFailed(true)
+        if (!branchTouchedRef.current) {
+          setSelectedBranch('main')
+        }
+        toast.error('获取分支列表失败')
+      }
     } finally {
-      setLoadingBranches(false)
+      if (requestId === branchRequestIdRef.current) {
+        setLoadingBranches(false)
+      }
     }
-  }
+  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name])
 
-  const prevOpenRef = useRef(false)
   useEffect(() => {
     if (open) {
       const justOpened = !prevOpenRef.current
@@ -136,11 +175,16 @@ export default function StartDevelopTaskDialog({
         )
         setSelectedBranch('main')
       }
-      fetchBranches()
     } else {
       prevOpenRef.current = false
+      branchRequestIdRef.current += 1
     }
-  }, [open, project, models, subscription])
+  }, [open, models, subscription])
+
+  useEffect(() => {
+    if (!open || !branchSourceKey) return
+    fetchBranches()
+  }, [open, branchSourceKey, fetchBranches])
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {
@@ -233,12 +277,12 @@ export default function StartDevelopTaskDialog({
               ) : branchFetchFailed || branches.length === 0 ? (
                 <Input
                   value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  onChange={(e) => selectBranch(e.target.value)}
                   placeholder="请输入分支名称"
                   required
                 />
               ) : (
-                <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                <Select value={selectedBranch} onValueChange={selectBranch}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="请选择分支" />
                   </SelectTrigger>
