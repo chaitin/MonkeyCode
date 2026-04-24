@@ -321,13 +321,14 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     
     await apiRequest('v1UsersProjectsTreeBlobDetail', {
       path: entry.path || '',
+      ref: selectedBranch || undefined,
     }, [project?.id], (resp) => {
       if (resp.code === 0 && resp.data?.content) {
         setFileContent(b64decode(resp.data?.content))
       }
     })
     setFileLoading(false)
-  }, [project?.id])
+  }, [project?.id, selectedBranch])
 
   // 处理文件点击
   const handleFileClick = useCallback((entry: TreeEntry) => {
