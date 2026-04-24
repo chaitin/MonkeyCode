@@ -14,10 +14,9 @@ interface IssueCardProps {
   project?: DomainProject
   onViewIssue: (issue: DomainProjectIssue) => void
   onTaskCreated?: () => void
-  onIssueDeleted?: () => void
 }
 
-export default function IssueCard({ issue, projectId, project, onViewIssue, onTaskCreated, onIssueDeleted }: IssueCardProps) {
+export default function IssueCard({ issue, projectId, project, onViewIssue, onTaskCreated }: IssueCardProps) {
 
   const priority = useMemo(() => {
     switch (issue.priority) {
@@ -62,7 +61,7 @@ export default function IssueCard({ issue, projectId, project, onViewIssue, onTa
         >
           {issue.title}
         </div>
-        <IssueMenu issue={issue} projectId={projectId} project={project} onTaskCreated={onTaskCreated} onIssueDeleted={onIssueDeleted} />
+        <IssueMenu issue={issue} projectId={projectId} project={project} onTaskCreated={onTaskCreated} />
       </div>
       <div className="text-xs text-muted-foreground line-clamp-2 break-all">{issue.summary}</div>
       <Separator className="my-2" />
