@@ -50,7 +50,7 @@ func NewVMRecycleHook(i *do.Injector) *VMRecycleHook {
 }
 
 func (h *VMRecycleHook) Name() string  { return "vm-recycle-hook" }
-func (h *VMRecycleHook) Priority() int { return 100 }
+func (h *VMRecycleHook) Priority() int { return 110 }
 func (h *VMRecycleHook) Async() bool   { return false }
 
 func (h *VMRecycleHook) OnStateChange(ctx context.Context, vmID string, from, to VMState, metadata VMMetadata) error {

@@ -477,7 +477,7 @@ func (h *HostUsecase) DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID 
 		// 清理 TTL 过期队列中的残留任务
 		_ = h.vmexpireQueue.Remove(ctx, VM_EXPIRE_QUEUE_KEY, vm.ID)
 
-		return nil
+		return h.markRecycledTasksFinished(ctx, vm)
 	})
 }
 

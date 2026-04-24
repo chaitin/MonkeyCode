@@ -40,6 +40,7 @@ type InternalHostHandler struct {
 	skipSoftDelete func(context.Context) context.Context
 	cache          *cache.Cache
 	taskLifecycle  *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
+	vmLifecycle    *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 	hostUsecase    domain.HostUsecase
 	taskConns      *ws.TaskConn
 	projectUsecase domain.ProjectUsecase
@@ -62,6 +63,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		skipSoftDelete: entx.SkipSoftDelete,
 		cache:          cache.New(15*time.Minute, 10*time.Minute),
 		taskLifecycle:  do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
+		vmLifecycle:    do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
 		hostUsecase:    do.MustInvoke[domain.HostUsecase](i),
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
@@ -342,15 +344,27 @@ func (h *InternalHostHandler) VmReady(c *web.Context, req taskflow.VirtualMachin
 
 	for _, t := range vm.Edges.Tasks {
 		h.logger.With("task", t).DebugContext(c.Request().Context(), "vm-ready")
+		var taskID *uuid.UUID
 		if t.Status == consts.TaskStatusProcessing {
+			if h.vmLifecycle != nil {
+				if err := h.vmLifecycle.Transition(c.Request().Context(), vm.ID, lifecycle.VMStateRunning, lifecycle.VMMetadata{
+					VMID:   vm.ID,
+					TaskID: taskID,
+					UserID: t.UserID,
+				}); err != nil {
+					h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition vm to running")
+				}
+			}
 			continue
 		}
+		taskID = &t.ID
 
-		if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusProcessing, lifecycle.TaskMetadata{
-			TaskID: t.ID,
+		if err := h.vmLifecycle.Transition(c.Request().Context(), vm.ID, lifecycle.VMStateRunning, lifecycle.VMMetadata{
+			VMID:   vm.ID,
+			TaskID: taskID,
 			UserID: t.UserID,
 		}); err != nil {
-			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
+			h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition vm to running")
 		}
 	}
 
@@ -380,11 +394,12 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 		t := ts[0]
 		for _, cond := range req.Conditions {
 			if cond.Type == string(etypes.ConditionTypeFailed) {
-				if err := h.taskLifecycle.Transition(c.Request().Context(), t.ID, consts.TaskStatusError, lifecycle.TaskMetadata{
-					TaskID: t.ID,
+				if err := h.vmLifecycle.Transition(c.Request().Context(), vm.ID, lifecycle.VMStateFailed, lifecycle.VMMetadata{
+					VMID:   vm.ID,
+					TaskID: &t.ID,
 					UserID: t.UserID,
 				}); err != nil {
-					h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition task to processing")
+					h.logger.With("task", t, "error", err).ErrorContext(c.Request().Context(), "failed to transition vm to failed")
 				}
 				break
 			}

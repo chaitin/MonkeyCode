@@ -2,18 +2,22 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
@@ -107,6 +111,45 @@ func TestHostUsecase_markRecycledTasksFinished(t *testing.T) {
 	}
 }
 
+func TestHostUsecase_DeleteVMMarksLinkedTasksFinished(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	taskID := uuid.New()
+	vm := &db.VirtualMachine{
+		ID:            "vm-delete",
+		HostID:        "host-delete",
+		EnvironmentID: "env-delete",
+		UserID:        userID,
+		Edges: db.VirtualMachineEdges{Tasks: []*db.Task{{
+			ID:     taskID,
+			UserID: userID,
+			Status: consts.TaskStatusProcessing,
+		}}},
+	}
+	taskRepo := &hostTaskRepoStub{}
+	repo := &hostRepoDeleteStub{vm: vm}
+	rdb := newHostTestRedis(t)
+	u := &HostUsecase{
+		repo:             repo,
+		taskRepo:         taskRepo,
+		taskflow:         &hostTaskflowStub{vm: &hostVMDeleterStub{}},
+		vmexpireQueue:    delayqueue.NewVMExpireQueue(rdb, slog.New(slog.NewTextHandler(io.Discard, nil))),
+		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		privilegeChecker: nil,
+	}
+
+	if err := u.DeleteVM(ctx, userID, vm.HostID, vm.ID); err != nil {
+		t.Fatalf("DeleteVM() error = %v", err)
+	}
+
+	if !repo.deleted {
+		t.Fatal("expected vm to be deleted")
+	}
+	if len(taskRepo.updatedIDs) != 1 || taskRepo.updatedIDs[0] != taskID {
+		t.Fatalf("updated task ids = %v, want %s", taskRepo.updatedIDs, taskID)
+	}
+}
+
 type hostTaskRepoStub struct {
 	client     *db.Client
 	updatedIDs []uuid.UUID
@@ -138,6 +181,9 @@ func (s *hostTaskRepoStub) Create(context.Context, *domain.User, domain.CreateTa
 
 func (s *hostTaskRepoStub) Update(ctx context.Context, _ *domain.User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error {
 	s.updatedIDs = append(s.updatedIDs, id)
+	if s.client == nil {
+		return nil
+	}
 	up := s.client.Task.UpdateOneID(id)
 	if err := fn(up); err != nil {
 		return err
@@ -155,4 +201,120 @@ func (s *hostTaskRepoStub) Stop(context.Context, *domain.User, uuid.UUID, func(*
 
 func (s *hostTaskRepoStub) Delete(context.Context, *domain.User, uuid.UUID) error {
 	panic("unexpected call to Delete")
+}
+
+type hostRepoDeleteStub struct {
+	vm      *db.VirtualMachine
+	deleted bool
+}
+
+func (s *hostRepoDeleteStub) DeleteVirtualMachine(_ context.Context, _ uuid.UUID, _, _ string, fn func(*db.VirtualMachine) error) error {
+	if err := fn(s.vm); err != nil {
+		return err
+	}
+	s.deleted = true
+	return nil
+}
+
+func (s *hostRepoDeleteStub) List(context.Context, uuid.UUID) ([]*db.Host, error) { return nil, nil }
+func (s *hostRepoDeleteStub) GetHost(context.Context, uuid.UUID, string) (*domain.Host, error) {
+	return nil, nil
+}
+func (s *hostRepoDeleteStub) GetByID(context.Context, string) (*db.Host, error) { return nil, nil }
+func (s *hostRepoDeleteStub) GetVirtualMachine(context.Context, string) (*db.VirtualMachine, error) {
+	return s.vm, nil
+}
+func (s *hostRepoDeleteStub) GetVirtualMachineByEnvID(context.Context, string) (*db.VirtualMachine, error) {
+	return s.vm, nil
+}
+func (s *hostRepoDeleteStub) GetVirtualMachineWithUser(context.Context, uuid.UUID, string) (*db.VirtualMachine, error) {
+	return s.vm, nil
+}
+func (s *hostRepoDeleteStub) CreateVirtualMachine(context.Context, *domain.User, *domain.CreateVMReq, func(context.Context) (string, error), func(*db.Model, *db.Image) (*domain.VirtualMachine, error)) (*domain.VirtualMachine, error) {
+	return nil, nil
+}
+func (s *hostRepoDeleteStub) PastHourVirtualMachine(context.Context) ([]*db.VirtualMachine, error) {
+	return nil, nil
+}
+func (s *hostRepoDeleteStub) AllCountDownVirtualMachine(context.Context) ([]*db.VirtualMachine, error) {
+	return nil, nil
+}
+func (s *hostRepoDeleteStub) UpsertVirtualMachine(context.Context, *taskflow.VirtualMachine) error {
+	return nil
+}
+func (s *hostRepoDeleteStub) UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error {
+	return nil
+}
+func (s *hostRepoDeleteStub) UpsertHost(context.Context, *taskflow.Host) error    { return nil }
+func (s *hostRepoDeleteStub) DeleteHost(context.Context, uuid.UUID, string) error { return nil }
+func (s *hostRepoDeleteStub) UpdateHost(context.Context, uuid.UUID, *domain.UpdateHostReq) error {
+	return nil
+}
+func (s *hostRepoDeleteStub) UpdateVM(context.Context, domain.UpdateVMReq, func(*db.VirtualMachine) error) (*db.VirtualMachine, int64, error) {
+	return nil, 0, nil
+}
+func (s *hostRepoDeleteStub) GetGitCredentialByTask(context.Context, string) (*domain.GitCredentialInfo, error) {
+	return nil, nil
+}
+
+type hostTaskflowStub struct {
+	vm taskflow.VirtualMachiner
+}
+
+func (s *hostTaskflowStub) VirtualMachiner() taskflow.VirtualMachiner      { return s.vm }
+func (s *hostTaskflowStub) Host() taskflow.Hoster                          { return nil }
+func (s *hostTaskflowStub) FileManager() taskflow.FileManager              { return nil }
+func (s *hostTaskflowStub) TaskManager() taskflow.TaskManager              { return nil }
+func (s *hostTaskflowStub) PortForwarder() taskflow.PortForwarder          { return nil }
+func (s *hostTaskflowStub) Stats(context.Context) (*taskflow.Stats, error) { return nil, nil }
+func (s *hostTaskflowStub) TaskLive(context.Context, string, bool, func(*taskflow.TaskChunk) error) error {
+	return nil
+}
+
+type hostVMDeleterStub struct{}
+
+func (s *hostVMDeleterStub) Delete(context.Context, *taskflow.DeleteVirtualMachineReq) error {
+	return nil
+}
+func (s *hostVMDeleterStub) Create(context.Context, *taskflow.CreateVirtualMachineReq) (*taskflow.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) Hibernate(context.Context, *taskflow.HibernateVirtualMachineReq) error {
+	return errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) Resume(context.Context, *taskflow.ResumeVirtualMachineReq) error {
+	return errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) List(context.Context, string) ([]*taskflow.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) Info(context.Context, taskflow.VirtualMachineInfoReq) (*taskflow.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) Terminal(context.Context, *taskflow.TerminalReq) (taskflow.Sheller, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) Reports(context.Context, taskflow.ReportSubscribeReq) (taskflow.Reporter, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) TerminalList(context.Context, string) ([]*taskflow.Terminal, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) CloseTerminal(context.Context, *taskflow.CloseTerminalReq) error {
+	return errors.New("not implemented")
+}
+func (s *hostVMDeleterStub) IsOnline(context.Context, *taskflow.IsOnlineReq[string]) (*taskflow.IsOnlineResp, error) {
+	return nil, errors.New("not implemented")
+}
+
+func newHostTestRedis(t *testing.T) *redis.Client {
+	t.Helper()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run() error = %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	return rdb
 }

@@ -171,7 +171,10 @@ func (s *internalHostRepoStub) GetByID(context.Context, string) (*db.Host, error
 	return nil, errors.New("host not found")
 }
 
-func (s *internalHostRepoStub) GetVirtualMachineByEnvID(context.Context, string) (*db.VirtualMachine, error) {
+func (s *internalHostRepoStub) GetVirtualMachineByEnvID(_ context.Context, envID string) (*db.VirtualMachine, error) {
+	if s.vm != nil && s.vm.EnvironmentID == envID {
+		return s.vm, nil
+	}
 	return nil, errors.New("vm not found")
 }
 

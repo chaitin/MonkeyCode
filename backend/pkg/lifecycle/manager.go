@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -105,19 +106,20 @@ func (m *Manager[I, S, M]) Transition(ctx context.Context, id I, to S, metadata 
 	hooks := m.hooks
 	m.mu.RUnlock()
 
+	var errs []error
 	for _, hook := range hooks {
 		if hook.Async() {
 			go m.execHook(ctx, hook, id, from, to, metadata)
 		} else {
 			if err := m.execHook(ctx, hook, id, from, to, metadata); err != nil {
 				m.logger.Error("hook failed", "hook", hook.Name(), "error", err)
-				return fmt.Errorf("hook %s failed: %w", hook.Name(), err)
+				errs = append(errs, fmt.Errorf("hook %s failed: %w", hook.Name(), err))
 			}
 		}
 	}
 
 	m.logger.Info("state transitioned", "id", id, "from", from, "to", to)
-	return nil
+	return errors.Join(errs...)
 }
 
 // GetState 获取当前状态
@@ -169,8 +171,8 @@ func (m *Manager[I, S, M]) isValidTransition(from, to S) bool {
 // TaskTransitions 任务的默认状态转换规则
 func TaskTransitions() map[consts.TaskStatus][]consts.TaskStatus {
 	return map[consts.TaskStatus][]consts.TaskStatus{
-		"":                          {consts.TaskStatusPending},
-		consts.TaskStatusPending:    {consts.TaskStatusProcessing, consts.TaskStatusError},
+		"":                          {consts.TaskStatusPending, consts.TaskStatusFinished},
+		consts.TaskStatusPending:    {consts.TaskStatusProcessing, consts.TaskStatusFinished, consts.TaskStatusError},
 		consts.TaskStatusProcessing: {consts.TaskStatusFinished, consts.TaskStatusError},
 		consts.TaskStatusError:      {consts.TaskStatusProcessing},
 	}
@@ -179,7 +181,7 @@ func TaskTransitions() map[consts.TaskStatus][]consts.TaskStatus {
 // VMTransitions VM 的默认状态转换规则
 func VMTransitions() map[VMState][]VMState {
 	return map[VMState][]VMState{
-		"":               {VMStatePending, VMStateCreating, VMStateRecycled},
+		"":               {VMStatePending, VMStateCreating, VMStateRunning, VMStateFailed, VMStateRecycled},
 		VMStatePending:   {VMStateCreating, VMStateFailed, VMStateRecycled},
 		VMStateCreating:  {VMStateRunning, VMStateFailed, VMStateRecycled},
 		VMStateRunning:   {VMStateSucceeded, VMStateFailed, VMStateRecycled},
