@@ -132,7 +132,7 @@ func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID, isPri
 	q := t.db.Task.Query().
 		WithProjectTasks(func(ptq *db.ProjectTaskQuery) {
 			ptq.
-				WithModel().
+				WithModel(func(mq *db.ModelQuery) { mq.WithUser() }).
 				WithImage().
 				WithTask(func(tq *db.TaskQuery) {
 					tq.WithVms(func(vmq *db.VirtualMachineQuery) {

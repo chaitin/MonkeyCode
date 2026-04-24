@@ -102,6 +102,7 @@ func (m *Model) From(src *db.Model) *Model {
 			Name: consts.MonkeyCodeAITeamName,
 		}
 		m.APIKey = ""
+		m.BaseURL = ""
 		return m
 	}
 	return m
