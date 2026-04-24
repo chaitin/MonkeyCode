@@ -62,6 +62,8 @@ func (g *Gitlab) listProjects(ctx context.Context, client *gitlab.Client) ([]dom
 	opt := &gitlab.ListProjectsOptions{
 		ListOptions: gitlab.ListOptions{PerPage: 100},
 		Membership:  ptr(true),
+		OrderBy:     ptr("updated_at"),
+		Sort:        ptr("desc"),
 	}
 	var all []*gitlab.Project
 	for {
