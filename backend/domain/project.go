@@ -432,6 +432,12 @@ type UpdateIssueDocReq struct {
 	DesignDocument      string    `json:"design_document,omitempty"`
 }
 
+// DeleteIssueReq 删除问题请求
+type DeleteIssueReq struct {
+	ID      uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	IssueID uuid.UUID `param:"issue_id" validate:"required" json:"-" swaggerignore:"true"`
+}
+
 // UpdateIssueReq 更新问题请求
 type UpdateIssueReq struct {
 	ID                  uuid.UUID                   `param:"id" validate:"required" json:"-" swaggerignore:"true"`
