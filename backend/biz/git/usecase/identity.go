@@ -73,6 +73,22 @@ func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitCli
 	return gitpkg.NewCachedGitClient(inner, u.repoCache, identity.UserID.String()+":"+identity.ID.String())
 }
 
+// prefetchRepositories 异步预拉取仓库列表以预热缓存
+func (u *GitIdentityUsecase) prefetchRepositories(identity *db.GitIdentity) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				u.logger.Warn("prefetch: panic recovered", "error", r, "identity_id", identity.ID)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if _, err := u.fetchRepositories(ctx, identity, false); err != nil {
+			u.logger.WarnContext(ctx, "prefetch: failed to fetch repositories", "error", err, "identity_id", identity.ID)
+		}
+	}()
+}
+
 // fetchRepositories 拉取 identity 关联的仓库列表
 func (u *GitIdentityUsecase) fetchRepositories(ctx context.Context, identity *db.GitIdentity, flush bool) ([]domain.AuthRepository, error) {
 	client := u.gitClienter(identity)
@@ -120,13 +136,7 @@ func (u *GitIdentityUsecase) Add(ctx context.Context, uid uuid.UUID, req *domain
 		u.logger.ErrorContext(ctx, "failed to create git identity", "error", err, "user_id", uid)
 		return nil, err
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		if _, err := u.fetchRepositories(ctx, identity, false); err != nil {
-			u.logger.Warn("prefetch: failed to fetch repositories", "error", err, "identity_id", identity.ID)
-		}
-	}()
+	u.prefetchRepositories(identity)
 	return cvt.From(identity, &domain.GitIdentity{}), nil
 }
 
@@ -138,6 +148,9 @@ func (u *GitIdentityUsecase) Update(ctx context.Context, uid uuid.UUID, req *dom
 	}
 	u.tokenProvider.ClearCache(req.ID)
 	u.repoCache.Delete(uid.String() + ":" + req.ID.String())
+	if identity, err := u.repo.Get(ctx, req.ID); err == nil {
+		u.prefetchRepositories(identity)
+	}
 	return nil
 }
 
