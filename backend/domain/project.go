@@ -21,6 +21,7 @@ type ProjectUsecase interface {
 	ListIssues(ctx context.Context, uid uuid.UUID, req *ListIssuesReq) (*ListIssuesResp, error)
 	CreateIssue(ctx context.Context, uid uuid.UUID, req *CreateIssueReq) (*ProjectIssue, error)
 	UpdateIssue(ctx context.Context, uid uuid.UUID, req *UpdateIssueReq) (*ProjectIssue, error)
+	DeleteIssue(ctx context.Context, uid uuid.UUID, req *DeleteIssueReq) error
 	UpdateIssueDoc(ctx context.Context, req *UpdateIssueDocReq) (*ProjectIssue, error)
 	ListCollaborators(ctx context.Context, uid uuid.UUID, req *ListCollaboratorsReq) (*ListCollaboratorsResp, error)
 	ListIssueComments(ctx context.Context, uid uuid.UUID, req *ListIssueCommentsReq) (*ListIssueCommentsResp, error)
@@ -45,6 +46,7 @@ type ProjectRepo interface {
 	ListIssues(ctx context.Context, uid uuid.UUID, req *ListIssuesReq) ([]*db.ProjectIssue, *db.Cursor, error)
 	CreateIssue(ctx context.Context, uid uuid.UUID, req *CreateIssueReq) (*db.ProjectIssue, error)
 	UpdateIssue(ctx context.Context, uid uuid.UUID, req *UpdateIssueReq) (*db.ProjectIssue, error)
+	DeleteIssue(ctx context.Context, uid uuid.UUID, req *DeleteIssueReq) error
 	UpdateIssueDoc(ctx context.Context, req *UpdateIssueDocReq) (*db.ProjectIssue, error)
 	GetIssue(ctx context.Context, uid uuid.UUID, projectID, issueID uuid.UUID) (*db.ProjectIssue, error)
 	UpdateIssueSummary(ctx context.Context, issueID uuid.UUID, summary string) error
@@ -440,6 +442,12 @@ type UpdateIssueReq struct {
 	Status              consts.ProjectIssueStatus   `json:"status,omitempty"`
 	AssigneeID          *uuid.UUID                  `json:"assignee_id,omitempty"`
 	Priority            consts.ProjectIssuePriority `json:"priority,omitempty"`
+}
+
+// DeleteIssueReq 删除问题请求
+type DeleteIssueReq struct {
+	ID      uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	IssueID uuid.UUID `param:"issue_id" validate:"required" json:"-" swaggerignore:"true"`
 }
 
 // ListCollaboratorsReq 协作者列表请求

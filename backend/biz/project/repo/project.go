@@ -434,6 +434,60 @@ func (r *ProjectRepo) UpdateIssue(ctx context.Context, uid uuid.UUID, req *domai
 	return r.db.ProjectIssue.Get(ctx, req.IssueID)
 }
 
+// DeleteIssue 删除问题
+func (r *ProjectRepo) DeleteIssue(ctx context.Context, uid uuid.UUID, req *domain.DeleteIssueReq) error {
+	p, err := r.Get(ctx, uid, req.ID)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return errcode.ErrNotFound
+		}
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+	collaborator, err := r.db.ProjectCollaborator.Query().
+		Where(projectcollaborator.ProjectIDEQ(req.ID), projectcollaborator.UserIDEQ(uid)).
+		First(ctx)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return errcode.ErrForbidden
+		}
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+	if collaborator.Role != consts.ProjectCollaboratorRoleReadWrite {
+		return errcode.ErrForbidden
+	}
+
+	err = entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+		_, err := tx.ProjectIssueComment.Delete().
+			Where(projectissuecomment.IssueIDEQ(req.IssueID)).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ProjectTask.Update().
+			Where(projecttask.IssueIDEQ(req.IssueID)).
+			ClearIssueID().
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		err = tx.ProjectIssue.DeleteOneID(req.IssueID).
+			Where(projectissue.ProjectIDEQ(p.ID)).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		return tx.Project.UpdateOneID(p.ID).SetUpdatedAt(time.Now()).Exec(ctx)
+	})
+	if err != nil {
+		if db.IsNotFound(err) {
+			return errcode.ErrNotFound
+		}
+		r.logger.ErrorContext(ctx, "failed to delete project issue", "error", err)
+		return errcode.ErrDatabaseOperation.Wrap(err)
+	}
+	return nil
+}
+
 // UpdateIssueDoc 更新问题文档
 func (r *ProjectRepo) UpdateIssueDoc(ctx context.Context, req *domain.UpdateIssueDocReq) (*db.ProjectIssue, error) {
 	upt := r.db.ProjectIssue.UpdateOneID(req.IssueID)

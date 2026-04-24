@@ -43,6 +43,7 @@ func NewProjectHandler(i *do.Injector) (*ProjectHandler, error) {
 	gi.GET("", web.BindHandler(h.ListIssues))
 	gi.POST("", web.BindHandler(h.CreateIssue))
 	gi.PUT("/:issue_id", web.BindHandler(h.UpdateIssue))
+	gi.DELETE("/:issue_id", web.BindHandler(h.DeleteIssue))
 
 	gic := w.Group("/api/v1/users/projects/:id/issues/:issue_id/comments")
 	gic.Use(auth.Auth(), targetActive.TargetActive())
@@ -247,6 +248,28 @@ func (h *ProjectHandler) UpdateIssue(c *web.Context, req domain.UpdateIssueReq) 
 		return err
 	}
 	return c.Success(resp)
+}
+
+// DeleteIssue 删除问题
+//
+//	@Summary		删除问题
+//	@Description	删除问题
+//	@Tags			【用户】项目管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id			path		string		true	"项目ID"
+//	@Param			issue_id	path		string		true	"问题ID"
+//	@Success		200			{object}	web.Resp{}	"成功"
+//	@Failure		401			{object}	web.Resp	"未授权"
+//	@Failure		500			{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/users/projects/{id}/issues/{issue_id} [delete]
+func (h *ProjectHandler) DeleteIssue(c *web.Context, req domain.DeleteIssueReq) error {
+	user := middleware.GetUser(c)
+	if err := h.usecase.DeleteIssue(c.Request().Context(), user.ID, &req); err != nil {
+		return err
+	}
+	return c.Success(nil)
 }
 
 // ListIssueComments 问题评论列表

@@ -165,6 +165,11 @@ func (u *ProjectUsecase) UpdateIssue(ctx context.Context, uid uuid.UUID, req *do
 	return cvt.From(issue, &domain.ProjectIssue{}), nil
 }
 
+// DeleteIssue 删除问题
+func (u *ProjectUsecase) DeleteIssue(ctx context.Context, uid uuid.UUID, req *domain.DeleteIssueReq) error {
+	return u.repo.DeleteIssue(ctx, uid, req)
+}
+
 // UpdateIssueDoc 更新问题文档
 func (u *ProjectUsecase) UpdateIssueDoc(ctx context.Context, req *domain.UpdateIssueDocReq) (*domain.ProjectIssue, error) {
 	issue, err := u.repo.UpdateIssueDoc(ctx, req)
