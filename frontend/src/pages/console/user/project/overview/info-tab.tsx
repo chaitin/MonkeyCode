@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { ProjectFileManager } from "@/components/console/project/files"
 import { Markdown } from "@/components/common/markdown"
-import { type DomainProject } from "@/api/Api"
+import { type DomainBranch, type DomainProject } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { b64decode } from "@/utils/common"
 import {
@@ -25,7 +25,58 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
 
   const [readmeContent, setReadmeContent] = useState<string>("")
   const [readmePath, setReadmePath] = useState<string>("")
+  const [readmeRef, setReadmeRef] = useState<string>("")
+  const [readmeRefProjectId, setReadmeRefProjectId] = useState<string>("")
+  const [readmeRefResolved, setReadmeRefResolved] = useState(false)
   const [readmeLoaded, setReadmeLoaded] = useState(false)
+  const readmeRefValueRef = useRef(readmeRef)
+  readmeRefValueRef.current = readmeRef
+
+  useEffect(() => {
+    if (!project?.id || !project?.git_identity_id || !project?.full_name) {
+      setReadmeRef("")
+      setReadmeRefProjectId(project?.id || "")
+      setReadmeRefResolved(true)
+      return
+    }
+
+    const requestedProjectId = project.id
+    const encodedRepoName = encodeURIComponent(project.full_name)
+    setReadmeRefProjectId("")
+    setReadmeRefResolved(false)
+
+    apiRequest(
+      "v1UsersGitIdentitiesBranchesDetail",
+      {},
+      [project.git_identity_id, encodedRepoName],
+      (resp) => {
+        if (projectIdRef.current !== requestedProjectId) return
+        if (resp.code !== 0 || !resp.data?.length) {
+          setReadmeRef("")
+          setReadmeRefProjectId(requestedProjectId)
+          setReadmeRefResolved(true)
+          return
+        }
+
+        const branchNames = resp.data.map((b: DomainBranch) => b.name || "").filter(Boolean)
+        if (branchNames.includes("main")) {
+          setReadmeRef("main")
+        } else if (branchNames.includes("master")) {
+          setReadmeRef("master")
+        } else {
+          setReadmeRef(branchNames.sort()[0] || "")
+        }
+        setReadmeRefProjectId(requestedProjectId)
+        setReadmeRefResolved(true)
+      },
+      () => {
+        if (projectIdRef.current !== requestedProjectId) return
+        setReadmeRef("")
+        setReadmeRefProjectId(requestedProjectId)
+        setReadmeRefResolved(true)
+      },
+    )
+  }, [project?.git_identity_id, project?.full_name, project?.id])
 
   useEffect(() => {
     if (!project?.id) {
@@ -34,10 +85,16 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
       setReadmeLoaded(true)
       return
     }
+    if (!readmeRefResolved) return
+    if (readmeRefProjectId !== project.id) return
+
     const requestedProjectId = project.id
+    const requestedReadmeRef = readmeRef
     setReadmeLoaded(false)
-    apiRequest("v1UsersProjectsTreeDetail", { recursive: false, path: "" }, [project.id], (resp) => {
+    const query = { recursive: false, path: "", ref: readmeRef || undefined }
+    apiRequest("v1UsersProjectsTreeDetail", query, [project.id], (resp) => {
       if (projectIdRef.current !== requestedProjectId) return
+      if (readmeRefValueRef.current !== requestedReadmeRef) return
       if (resp.code !== 0 || !resp.data) {
         setReadmeLoaded(true)
         return
@@ -52,8 +109,9 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
         setReadmeLoaded(true)
         return
       }
-      apiRequest("v1UsersProjectsTreeBlobDetail", { path: readmePathVal }, [project.id as string], (r) => {
+      apiRequest("v1UsersProjectsTreeBlobDetail", { path: readmePathVal, ref: readmeRef || undefined }, [project.id as string], (r) => {
         if (projectIdRef.current !== requestedProjectId) return
+        if (readmeRefValueRef.current !== requestedReadmeRef) return
         if (r.code === 0 && r.data?.content) {
           setReadmeContent(b64decode(r.data.content))
           setReadmePath(readmePathVal)
@@ -62,7 +120,7 @@ export default function ProjectOverviewInfoTab({ projectId, project }: ProjectOv
         setReadmeLoaded(true)
       })
     })
-  }, [project?.id])
+  }, [project?.id, project?.git_identity_id, project?.full_name, readmeRef, readmeRefProjectId, readmeRefResolved])
 
   const ReadmeHeader = (
     <div className="px-4 py-2 flex items-center border-b bg-muted/50">
