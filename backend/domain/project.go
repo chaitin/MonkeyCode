@@ -450,12 +450,6 @@ type UpdateIssueReq struct {
 	Priority            consts.ProjectIssuePriority `json:"priority,omitempty"`
 }
 
-// DeleteIssueReq 删除问题请求
-type DeleteIssueReq struct {
-	ID      uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
-	IssueID uuid.UUID `param:"issue_id" validate:"required" json:"-" swaggerignore:"true"`
-}
-
 // ListCollaboratorsReq 协作者列表请求
 type ListCollaboratorsReq struct {
 	ID uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
