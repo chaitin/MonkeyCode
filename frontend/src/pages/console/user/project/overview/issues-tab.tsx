@@ -125,6 +125,7 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
           project={project}
           onViewIssue={handleViewIssue}
           onTaskCreated={onTaskCreated}
+          onIssueDeleted={fetchProjectIssues}
         />
       </div>
       <CreateIssueDialog

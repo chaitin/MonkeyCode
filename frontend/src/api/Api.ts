@@ -546,12 +546,8 @@ export interface DomainFileSaveReq {
 }
 
 export interface DomainFreePoolUsageResp {
-  daily_token_limit?: number;
   date?: string;
-  enabled?: boolean;
-  remaining_tokens?: number;
   usage_percent?: number;
-  used_tokens?: number;
   used_user_count?: number;
 }
 
@@ -1363,7 +1359,7 @@ export interface DomainTaskRepoReq {
 export interface DomainTaskRoundsResp {
   chunks?: DomainTaskChunkEntry[];
   has_more?: boolean;
-  /** 下一页游标（最早条目的时间戳 ns） */
+  /** 下一页游标 */
   next_cursor?: string;
 }
 
@@ -1740,6 +1736,7 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
+/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -5650,6 +5647,25 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 删除问题
+     *
+     * @tags 【用户】项目管理
+     * @name V1UsersProjectsIssuesDelete
+     * @summary 删除问题
+     * @request DELETE:/api/v1/users/projects/{id}/issues/{issue_id}
+     * @secure
+     */
+    v1UsersProjectsIssuesDelete: (id: string, issueId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/projects/${id}/issues/${issueId}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 问题评论列表
      *
      * @tags 【用户】项目管理
@@ -6056,11 +6072,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 根据 cursor 向前翻页查询任务的历史论次。limit 为论次数（非条目数）， limit=2 表示返回 2 论的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+     * @description 根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数）， limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksRoundsList
-     * @summary 查询任务历史论次
+     * @summary 查询任务历史轮次
      * @request GET:/api/v1/users/tasks/rounds
      * @secure
      */
@@ -6068,9 +6084,9 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       query: {
         /** 任务 ID */
         id: string;
-        /** 游标（时间戳 Unix ns） */
+        /** 分页游标 */
         cursor?: string;
-        /** 论次数（默认 2，上限 10） */
+        /** 轮次数（默认 2，上限 10） */
         limit?: number;
       },
       params: RequestParams = {},
@@ -6131,7 +6147,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` type 字段说明： - task-started: 本轮任务启动 - task-ended: 本轮任务结束 - task-error: 本轮任务发生错误 - task-running: 任务正在运行 - task-event: 任务临时事件, 不持久化 - file-change: 文件变动事件 - permission-resp: 用户的权限响应 - auto-approve: 开启自动批准 - disable-auto-approve: 关闭自动批准 - user-input: 用户输入 - user-cancel: 取消当前操作，不会终止任务 - reply-question: 回复 AI 的提问 - cursor: 历史游标，用于通过 /rounds 接口加载更早的论次 cursor 消息结构： ```json { "type": "cursor", "data": { "cursor": "<lastTaskStartedTS_ns>", "has_more": true }, "timestamp": 0 } ``` - cursor: 当前论次 task-started 的时间戳（Unix 纳秒），作为 GET /rounds 接口的 cursor 参数向前翻页 - has_more: 是否存在更早的论次。为 false 时表示当前论次即为第一论次，无需再翻页
+     * @description 功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` type 字段说明： - task-started: 本轮任务启动 - task-ended: 本轮任务结束 - task-error: 本轮任务发生错误 - task-running: 任务正在运行 - task-event: 任务临时事件, 不持久化 - file-change: 文件变动事件 - permission-resp: 用户的权限响应 - auto-approve: 开启自动批准 - disable-auto-approve: 关闭自动批准 - user-input: 用户输入 - user-cancel: 取消当前操作，不会终止任务 - reply-question: 回复 AI 的提问 - cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次 cursor 消息结构： ```json { "type": "cursor", "data": { "cursor": "<nextCursor>", "has_more": true }, "timestamp": 0 } ``` - cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页 - has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksStreamList
@@ -6143,7 +6159,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       query: {
         /** 任务 ID */
         id: string;
-        /** 模式：new(等待用户输入)|attach(仅拉取当前论次)，默认 new */
+        /** 模式：new(等待用户输入)|attach(仅拉取当前轮次)，默认 new */
         mode?: string;
       },
       params: RequestParams = {},
