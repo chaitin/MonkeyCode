@@ -1,7 +1,7 @@
 import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { PlanStepsBlock } from "@/components/console/task/chat-panel"
-import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
+import { TaskChatInputBox, type QueuedUserInput } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
 import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import { MessageItem, type MessageType } from "@/components/console/task/message"
@@ -58,6 +58,7 @@ export default function TaskDetailPage() {
     used: null,
   })
   const [sending, setSending] = React.useState(false)
+  const [queuedUserInputs, setQueuedUserInputs] = React.useState<QueuedUserInput[]>([])
   const [rawHistoryMessages, setRawHistoryMessages] = React.useState<MessageType[]>([])
   const [rawLiveMessages, setRawLiveMessages] = React.useState<MessageType[]>([])
   const [streamConnectionState, setStreamConnectionState] = React.useState<TaskStreamConnectionState>("closed")
@@ -198,6 +199,7 @@ export default function TaskDetailPage() {
   const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
   const hasContextUsage = contextUsage.size !== null || contextUsage.used !== null
   const canInput = taskInteractive && !sending && streamStatus !== "connected" && streamStatus !== "inited"
+  const conversationBusy = sending || streamStatus === "connected" || streamStatus === "inited" || streamConnectionState === "connecting" || streamConnectionState === "reconnecting"
   const planStreamStatus: TaskStreamStatus = streamStatus === "connected" ? "executing" : streamStatus
   const contextProgress = contextUsage.size && contextUsage.size > 0
     ? Math.min(Math.max((contextUsage.used ?? 0) / contextUsage.size, 0), 1)
@@ -379,6 +381,7 @@ export default function TaskDetailPage() {
       version: 0,
     })
     setSending(false)
+    setQueuedUserInputs([])
     setRawHistoryMessages([])
     setRawLiveMessages([])
     setStreamConnectionState("closed")
@@ -574,10 +577,61 @@ export default function TaskDetailPage() {
     fetchPortForwards()
   }, [fetchPortForwards, previewDialogOpen, taskInteractive])
 
-  const handleSend = React.useCallback((content: string) => {
+  const sendUserInputNow = React.useCallback((content: string) => {
     if (!taskId) return Promise.resolve(false)
     return connectStreamClient("new", content)
   }, [connectStreamClient, taskId])
+
+  const enqueueUserInput = React.useCallback((content: string) => {
+    const trimmedContent = content.trim()
+    if (!trimmedContent) return
+
+    setQueuedUserInputs((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        content,
+      },
+    ])
+  }, [])
+
+  const handleSend = React.useCallback((content: string) => {
+    if (!taskId) return Promise.resolve(false)
+    if (conversationBusy || queuedUserInputs.length > 0) {
+      enqueueUserInput(content)
+      return Promise.resolve(true)
+    }
+
+    return sendUserInputNow(content)
+  }, [conversationBusy, enqueueUserInput, queuedUserInputs.length, sendUserInputNow, taskId])
+
+  const moveQueuedUserInput = React.useCallback((id: string, direction: "up" | "down") => {
+    setQueuedUserInputs((prev) => {
+      const index = prev.findIndex((message) => message.id === id)
+      if (index === -1) return prev
+
+      const nextIndex = direction === "up" ? index - 1 : index + 1
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev
+
+      const next = [...prev]
+      const current = next[index]
+      next[index] = next[nextIndex]
+      next[nextIndex] = current
+      return next
+    })
+  }, [])
+
+  const removeQueuedUserInput = React.useCallback((id: string) => {
+    setQueuedUserInputs((prev) => prev.filter((message) => message.id !== id))
+  }, [])
+
+  React.useEffect(() => {
+    if (!taskInteractive || conversationBusy || queuedUserInputs.length === 0) return
+
+    const [nextMessage] = queuedUserInputs
+    setQueuedUserInputs((prev) => prev.slice(1))
+    void sendUserInputNow(nextMessage.content)
+  }, [conversationBusy, queuedUserInputs, sendUserInputNow, taskInteractive])
   const messages = React.useMemo(() => {
     const enhanceErrorMessage = (message: MessageType) => {
       if (message.type !== "error_message") {
@@ -1042,7 +1096,10 @@ export default function TaskDetailPage() {
                         onSend={handleSend}
                         onCancel={handleCancel}
                         sending={sending}
-                        queueSize={0}
+                        queueSize={queuedUserInputs.length}
+                        queuedMessages={queuedUserInputs}
+                        onMoveQueuedMessage={moveQueuedUserInput}
+                        onRemoveQueuedMessage={removeQueuedUserInput}
                         executionTimeMs={timeCost}
                       />
                     ) : (
