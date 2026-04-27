@@ -157,10 +157,10 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
             <ItemFooter className="flex flex-row gap-2 justify-between border-t pt-3 text-xs text-muted-foreground">
               <div className="flex flex-row gap-2">
                 <Badge variant="outline">
-                  {task.status === "finished" && <><IconCircleCheck />任务完成</>}
-                  {task.status === "error" && <><IconAlertTriangle />执行失败</>}
-                  {task.status === "pending" && <><Spinner />等待执行</>}
-                  {task.status === "processing" && <><Spinner />正在执行</>}
+                  {task.status === "finished" && <><IconCircleCheck />已关机</>}
+                  {task.status === "error" && <><IconAlertTriangle />启动失败</>}
+                  {task.status === "pending" && <><Spinner />正在启动</>}
+                  {task.status === "processing" && <><Spinner />运行中</>}
                 </Badge>
                 <Badge variant="outline">
                   {getGitPlatformIcon(task.bot?.platform)}

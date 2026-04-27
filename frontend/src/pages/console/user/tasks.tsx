@@ -227,10 +227,10 @@ export default function TasksPage() {
           <ItemFooter className="flex flex-row gap-2 justify-between border-t pt-3 text-xs text-muted-foreground">
             <div className="flex flex-row gap-2">
               <Badge variant="outline" className={cn(task.status === "processing" || task.status === "pending" ? "" : "text-muted-foreground")} >
-                {task.status === "finished" && <><IconCircleCheck />任务完成</>}
-                {task.status === "error" && <><IconAlertTriangle />执行失败</>}
-                {task.status === "pending" && <><Spinner />等待执行</>}
-                {task.status === "processing" && <><Spinner />正在执行</>}
+                {task.status === "finished" && <><IconCircleCheck />已关机</>}
+                {task.status === "error" && <><IconAlertTriangle />启动失败</>}
+                {task.status === "pending" && <><Spinner />正在启动</>}
+                {task.status === "processing" && <><Spinner />运行中</>}
               </Badge>
               {task.stats?.total_tokens ? (
                 <Badge variant="outline" className="text-muted-foreground">

@@ -226,25 +226,25 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                   {task.status === "finished" && (
                     <>
                       <IconCircleCheck />
-                      任务完成
+                      已关机
                     </>
                   )}
                   {task.status === "error" && (
                     <>
                       <IconAlertTriangle />
-                      执行失败
+                      启动失败
                     </>
                   )}
                   {task.status === "pending" && (
                     <>
                       <Spinner />
-                      等待执行
+                      正在启动
                     </>
                   )}
                   {task.status === "processing" && (
                     <>
                       <Spinner />
-                      正在执行
+                      运行中
                     </>
                   )}
                 </Badge>
