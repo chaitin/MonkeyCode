@@ -37,6 +37,7 @@ type UserRepo interface {
 
 // UserActiveRepo 用户活跃记录仓储接口
 type UserActiveRepo interface {
+	RecordActiveIP(ctx context.Context, key string, ip string) error
 	RecordActiveRecord(ctx context.Context, key consts.RedisKey, field string, score time.Time) error
 	GetActiveRecord(ctx context.Context, key consts.RedisKey, userID string) (time.Time, error)
 }
