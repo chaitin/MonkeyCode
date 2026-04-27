@@ -30,7 +30,6 @@ function normalizeUsagePercent(value?: number) {
 
 export default function FreeModelUsageIndicator() {
   const [usagePercent, setUsagePercent] = React.useState(0)
-  const [usedUserCount, setUsedUserCount] = React.useState(0)
 
   React.useEffect(() => {
     let cancelled = false
@@ -49,7 +48,6 @@ export default function FreeModelUsageIndicator() {
           code?: number
           data?: {
             usage_percent?: number
-            used_user_count?: number
           }
         }
 
@@ -58,7 +56,6 @@ export default function FreeModelUsageIndicator() {
         }
 
         setUsagePercent(normalizeUsagePercent(resp.data?.usage_percent))
-        setUsedUserCount(resp.data?.used_user_count || 0)
       } catch {
         return
       }
@@ -126,7 +123,7 @@ export default function FreeModelUsageIndicator() {
           <div className="space-y-1">
             <div className="text-sm font-medium">免费模型大放送</div>
             <div className="text-xs leading-5 text-muted-foreground">
-              MonkeyCode 每天都会送出 500 亿 Token 免费额度，供所有用户共享使用。
+              MonkeyCode 每天早上 10 点送出 500 亿 Token 免费额度，供所有用户共享使用。
             </div>
             <div className="text-xs leading-5 text-muted-foreground">
               选择带有“免费”标记的模型，即可直接使用这部分免费额度。
@@ -146,10 +143,6 @@ export default function FreeModelUsageIndicator() {
               <span className="font-medium">
                 {formatTokenNumber(usedTokens)} tokens
               </span>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted-foreground">参与活动的人数</span>
-              <span className="font-medium">{usedUserCount.toLocaleString("zh-CN")} 人</span>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3 text-sm">
               <span className="text-muted-foreground">使用进度</span>
