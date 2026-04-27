@@ -14,6 +14,7 @@ import * as opencodeFetchRender from "./toolcalls/opencode_fetch"
 import * as opencodeLoadSkillRender from "./toolcalls/opencode_load_skill"
 import * as internalReportUserAbuseRender from "./toolcalls/internal_report_user_abuse"
 import * as internalWebsearchRender from "./toolcalls/internal_websearch"
+import * as internalImgsearchRender from "./toolcalls/internal_imgsearch"
 
 type ToolCallRenderer = {
   match: (message: MessageType, cli?: ConstsCliName) => boolean
@@ -35,10 +36,38 @@ const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
       message.data.kind === "other"
+      && message.data.title === "mcaiBuiltin_request_preview"
+    ),
+    renderTitle: (message) => {
+      const port = message.data.rawInput?.port
+      return `请求预览${port !== undefined && port !== null ? ` ${port} 端口` : "端口"}`
+    },
+    renderDetail: fallbackRender.renderDetail,
+    expandable: false,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "monkeycode-ai_MonkeyCode__websearch_aisearch"
+    ),
+    renderTitle: internalWebsearchRender.renderTitle,
+    renderDetail: internalWebsearchRender.renderDetail,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
       && message.data.title === "monkeycode-ai_MonkeyCode__websearch_search"
     ),
     renderTitle: internalWebsearchRender.renderTitle,
     renderDetail: internalWebsearchRender.renderDetail,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "monkeycode-ai_MonkeyCode__imgsearch_search"
+    ),
+    renderTitle: internalImgsearchRender.renderTitle,
+    renderDetail: internalImgsearchRender.renderDetail,
   },
   {
     match: (message, cli) => cli === ConstsCliName.CliNameOpencode && message.data.kind === "search",

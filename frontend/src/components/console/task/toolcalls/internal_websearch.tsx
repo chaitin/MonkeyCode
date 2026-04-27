@@ -8,6 +8,7 @@ type WebsearchResultItem = {
 }
 
 type WebsearchPayload = {
+  summary_text?: string
   results?: WebsearchResultItem[]
 }
 
@@ -44,8 +45,9 @@ export const renderTitle = (message: MessageType) => {
 export const renderDetail = (message: MessageType) => {
   const payload = parsePayload(message)
   const results = payload?.results ?? []
+  const summaryText = typeof payload?.summary_text === "string" ? payload.summary_text.trim() : ""
 
-  if (results.length === 0) {
+  if (!summaryText && results.length === 0) {
     return (
       <Empty className="min-h-32 gap-2 p-6">
         <EmptyHeader className="gap-2">
@@ -59,27 +61,38 @@ export const renderDetail = (message: MessageType) => {
   }
 
   return (
-    <div className="divide-y divide-border/70 p-2">
-      {results.map((result, index) => (
-        <div
-          key={`${result.url ?? result.title ?? "result"}-${index}`}
-          className="rounded-md px-3 py-2.5"
-        >
-          <div className="min-w-0">
-            <div className="line-clamp-2 text-xs font-medium text-foreground">
-              {result.title || "未命名结果"}
-            </div>
-            <a
-              href={result.url || "#"}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 block text-[11px] text-muted-foreground transition-colors hover:text-primary"
-            >
-              <span className="truncate">{result.url || "无链接"}</span>
-            </a>
+    <div className="p-2">
+      {summaryText && (
+        <div className="rounded-md border border-border/70 bg-background/70 px-3 py-2.5">
+          <div className="whitespace-pre-wrap text-xs leading-5 text-foreground">
+            {summaryText}
           </div>
         </div>
-      ))}
+      )}
+      {results.length > 0 && (
+        <div className={summaryText ? "mt-2 divide-y divide-border/70" : "divide-y divide-border/70"}>
+          {results.map((result, index) => (
+            <div
+              key={`${result.url ?? result.title ?? "result"}-${index}`}
+              className="rounded-md px-3 py-2.5"
+            >
+              <div className="min-w-0">
+                <div className="line-clamp-2 text-xs font-medium text-foreground">
+                  {result.title || "未命名结果"}
+                </div>
+                <a
+                  href={result.url || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 block text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                >
+                  <span className="truncate">{result.url || "无链接"}</span>
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
