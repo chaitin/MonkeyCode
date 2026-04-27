@@ -1,17 +1,15 @@
-import { type DomainProjectIssue, type DomainProject, ConstsCliName, ConstsGitPlatform, ConstsTaskSubType, ConstsTaskType, type DomainBranch } from "@/api/Api"
+import { type DomainProjectIssue, type DomainProject, ConstsCliName, ConstsGitPlatform, ConstsTaskSubType, ConstsTaskType } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import { selectHost, selectImage } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
+import { IssueTaskModelSelect, IssueTaskProjectFields, useIssueTaskModelSelection, useProjectBranchSelection } from "./issue-task-dialog-shared"
 import { toast } from "sonner"
 
 interface IssueDesignDialogProps {
@@ -34,59 +32,9 @@ export default function IssueDesignDialog({
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
-  const [branches, setBranches] = useState<string[]>([])
-  const [selectedBranch, setSelectedBranch] = useState<string>('')
-  const [loadingBranches, setLoadingBranches] = useState<boolean>(false)
   const { images, models, hosts, reloadProjects, reloadUnlinkedTasks, subscription } = useCommonData()
-
-  const fetchBranches = async () => {
-    if (!project?.git_identity_id || !project?.repo_url) {
-      return
-    }
-
-    if (project.platform === ConstsGitPlatform.GitPlatformInternal) {
-      setSelectedBranch('')
-      setBranches([])
-      return
-    }
-
-    setLoadingBranches(true)
-    try {
-      const escapedRepoFullName = project?.full_name || ''
-      if (!escapedRepoFullName) {
-        toast.error('无法获取仓库信息')
-        setLoadingBranches(false)
-        return
-      }
-      const encodedRepoName = encodeURIComponent(escapedRepoFullName)
-      await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, encodedRepoName], (resp) => {
-        if (resp.code === 0 && resp.data) {
-          const branchList = resp.data.map((b: DomainBranch) => b.name || '').filter(Boolean)
-          setBranches(branchList)
-          if (branchList.includes('main')) {
-            setSelectedBranch('main')
-          } else if (branchList.includes('master')) {
-            setSelectedBranch('master')
-          } else if (branchList.length > 0) {
-            setSelectedBranch(branchList[0])
-          }
-        } else {
-          toast.error('获取分支列表失败: ' + resp.message)
-        }
-      })
-    } catch (error) {
-      console.error('Fetch branches error:', error)
-      toast.error('获取分支列表失败')
-    } finally {
-      setLoadingBranches(false)
-    }
-  }
-
-  useEffect(() => {
-    if (open) {
-      fetchBranches()
-    }
-  }, [open, project])
+  const { branches, loadingBranches, selectedBranch, selectBranch } = useProjectBranchSelection(open, project)
+  const { selectedModel, selectedModelId, setSelectedModelId, persistSelectedModel } = useIssueTaskModelSelection(open, models, subscription)
 
   const handleOpenChange = (open: boolean) => {
     onOpenChange(open)
@@ -114,11 +62,12 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
       return
     }
 
-    const preferredModelId = selectPreferredTaskModel(models, subscription)
-    if (!preferredModelId) {
-      toast.error('未找到可用的大模型')
+    if (!selectedModelId) {
+      toast.error('请选择大模型')
       return
     }
+
+    persistSelectedModel()
 
     setSubmitting(true)
   
@@ -126,7 +75,7 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
     await apiRequest('v1UsersTasksCreate', {
       content: renderPrompt,
       cli_name: ConstsCliName.CliNameOpencode,
-      model_id: preferredModelId,
+      model_id: selectedModelId,
       image_id: selectImage(images, false),
       host_id: selectHost(hosts, false),
       repo: {
@@ -171,42 +120,19 @@ ${issue?.requirement_document?.replaceAll("`", "\\`")}
             AI 将根据需求自动生成技术方案
           </DialogDescription>
         </DialogHeader>
-        {project && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>项目</Label>
-              <Input value={project?.name || '-'} readOnly className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>仓库地址</Label>
-              <Input value={project?.repo_url || '-'} readOnly className="bg-muted" />
-            </div>
-          </div>
-        )}
-        {project && project.platform !== ConstsGitPlatform.GitPlatformInternal && (
-          <div className="space-y-2">
-            <Label>选择分支</Label>
-            <Select value={selectedBranch} onValueChange={setSelectedBranch} disabled={loadingBranches || branches.length === 0}>
-              <SelectTrigger className="w-full">
-                {loadingBranches ? (
-                  <div className="flex items-center gap-2">
-                    <Spinner className="size-4" />
-                    <span>加载中...</span>
-                  </div>
-                ) : (
-                  <SelectValue placeholder="请选择分支" />
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((branch) => (
-                  <SelectItem key={branch} value={branch}>
-                    {branch}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        <IssueTaskProjectFields
+          branches={branches}
+          loadingBranches={loadingBranches}
+          project={project}
+          selectedBranch={selectedBranch}
+          selectBranch={selectBranch}
+        />
+        <IssueTaskModelSelect
+          models={models}
+          selectedModel={selectedModel}
+          selectedModelId={selectedModelId}
+          setSelectedModelId={setSelectedModelId}
+        />
         <DialogFooter>
           <Button onClick={handleConfirm} disabled={submitting}>
             {submitting ? <Spinner /> : <IconSparkles className="size-4" />}
