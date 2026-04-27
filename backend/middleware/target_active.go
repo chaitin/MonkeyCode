@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -39,6 +40,10 @@ func (t *TargetActiveMiddleware) TargetActive() echo.MiddlewareFunc {
 					time.Now(),
 				); err != nil {
 					t.logger.WarnContext(ctx, "failed to record user active time", "error", err, "user_id", user.ID)
+				}
+
+				if err := t.activeRepo.RecordActiveIP(ctx, fmt.Sprintf("mcai:user:active:ip:%s", user.ID.String()), c.RealIP()); err != nil {
+					t.logger.With("error", err, "user_id", user.ID).WarnContext(ctx, "failed to record active ip")
 				}
 			}
 			return next(c)

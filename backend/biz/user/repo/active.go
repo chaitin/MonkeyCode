@@ -39,6 +39,11 @@ func (r *UserActiveRepo) RecordActiveRecord(ctx context.Context, key consts.Redi
 	return nil
 }
 
+// RecordActiveIP implements [domain.UserActiveRepo].
+func (r *UserActiveRepo) RecordActiveIP(ctx context.Context, key string, ip string) error {
+	return r.redis.Set(ctx, key, ip, time.Hour*24*15).Err()
+}
+
 // GetActiveRecord 获取用户最后活跃时间
 func (r *UserActiveRepo) GetActiveRecord(ctx context.Context, key consts.RedisKey, userID string) (time.Time, error) {
 	score, err := r.redis.ZScore(ctx, string(key), userID).Result()
