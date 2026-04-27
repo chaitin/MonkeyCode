@@ -43,7 +43,7 @@ function parsePayload(message: MessageType): ImgsearchPayload | null {
 
 export const renderTitle = (message: MessageType) => {
   const query = message.data.rawInput?.query
-  return `图片搜索 - ${query ? `“${query}”` : "搜索结果"}`
+  return query ? `图片搜索 “${query}”` : "图片搜索 搜索结果"
 }
 
 export const renderDetail = (message: MessageType) => {

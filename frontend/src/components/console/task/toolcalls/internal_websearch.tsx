@@ -39,7 +39,7 @@ function parsePayload(message: MessageType): WebsearchPayload | null {
 
 export const renderTitle = (message: MessageType) => {
   const query = message.data.rawInput?.query
-  return `联网搜索 - ${query ? `“${query}”` : "搜索结果"}`
+  return query ? `联网搜索 “${query}”` : "联网搜索 搜索结果"
 }
 
 export const renderDetail = (message: MessageType) => {

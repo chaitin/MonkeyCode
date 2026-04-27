@@ -48,6 +48,32 @@ const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
       message.data.kind === "other"
+      && message.data.title === "mcaiBuiltin_background_terminal_list"
+    ),
+    renderTitle: () => "查看后台任务列表",
+    renderDetail: fallbackRender.renderDetail,
+    expandable: false,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "mcaiBuiltin_background_terminal_create"
+    ),
+    renderTitle: () => "创建后台任务",
+    renderDetail: fallbackRender.renderDetail,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "mcaiBuiltin_background_terminal_output_path"
+    ),
+    renderTitle: () => "查看后台任务的运行日志",
+    renderDetail: fallbackRender.renderDetail,
+    expandable: false,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
       && message.data.title === "monkeycode-ai_MonkeyCode__websearch_aisearch"
     ),
     renderTitle: internalWebsearchRender.renderTitle,
