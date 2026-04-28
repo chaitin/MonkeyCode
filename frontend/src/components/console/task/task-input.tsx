@@ -71,12 +71,10 @@ interface RepoOption {
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
-/** 支持从仓库列表选择的身份（GitHub App、Gitee、Gitea、GitLab OAuth） */
+/** 支持从仓库列表选择的身份（GitHub、Gitee、Gitea、GitLab） */
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
-  if (identity.platform === ConstsGitPlatform.GitPlatformGithub) {
-    return identity.is_installation_app === true;
-  }
   return [
+    ConstsGitPlatform.GitPlatformGithub,
     ConstsGitPlatform.GitPlatformGitee,
     ConstsGitPlatform.GitPlatformGitea,
     ConstsGitPlatform.GitPlatformGitLab,

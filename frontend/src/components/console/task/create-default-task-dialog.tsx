@@ -131,11 +131,8 @@ function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
 }
 
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
-  if (identity.platform === ConstsGitPlatform.GitPlatformGithub) {
-    return identity.is_installation_app === true
-  }
-
   return [
+    ConstsGitPlatform.GitPlatformGithub,
     ConstsGitPlatform.GitPlatformGitee,
     ConstsGitPlatform.GitPlatformGitea,
     ConstsGitPlatform.GitPlatformGitLab,
