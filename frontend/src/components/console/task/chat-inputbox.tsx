@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconPlayerStopFilled, IconSend, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconCommand, IconLoader, IconPlayerStopFilled, IconSend, IconTerminal2, IconTrash } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -10,21 +10,29 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { cn } from "@/lib/utils"
 
 
+export interface QueuedUserInput {
+  id: string
+  content: string
+}
+
 interface TaskChatInputBoxProps {
   streamStatus: TaskStreamStatus | TaskMessageHandlerStatus
   availableCommands: AvailableCommands | null
   onSend: (content: string) => void
   sending: boolean
   queueSize: number
+  queuedMessages?: QueuedUserInput[]
+  onMoveQueuedMessage?: (id: string, direction: "up" | "down") => void
+  onRemoveQueuedMessage?: (id: string) => void
   executionTimeMs?: number
   onCancel?: () => void
 }
 
-export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
+export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, queuedMessages = [], onMoveQueuedMessage, onRemoveQueuedMessage, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
   const [content, setContent] = useState('')
   const [isComposing, setIsComposing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
+  const isExecuting = (streamStatus === 'connected' || streamStatus === 'executing' || streamStatus === 'inited')
 
   const handleSend = () => {
     if (content.trim() === '') {
@@ -40,9 +48,6 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (isExecuting) {
-      return
-    }
     // 如果正在输入法组合过程中，不触发提交
     if (isComposing) {
       return
@@ -63,35 +68,68 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     setIsComposing(false)
   }
 
-  const canInput = React.useMemo(() => {
-    return !sending && !isExecuting && queueSize === 0
-  }, [sending, isExecuting, queueSize])
-
-  const inputDisabled = React.useMemo(() => {
-    return !canInput
-  }, [canInput])
-
   const controlsDisabled = React.useMemo(() => {
-    return !canInput
-  }, [canInput])
+    return sending || isExecuting || queueSize > 0
+  }, [sending, isExecuting, queueSize])
 
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
 
   return (
-    <div className="relative w-full">
+    <div className="relative flex w-full flex-col gap-2">
+      {queuedMessages.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-2">
+          <div className="text-xs text-muted-foreground">待发送队列，从上往下依次发送</div>
+          {queuedMessages.map((message, index) => (
+            <div key={message.id} className="flex items-center gap-2 rounded border bg-background px-2 py-1.5 text-sm">
+              <div className="min-w-0 flex-1 truncate">{message.content}</div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 shrink-0"
+                disabled={index === 0 || !onMoveQueuedMessage}
+                onClick={() => onMoveQueuedMessage?.(message.id, "up")}
+                aria-label="上移排队消息"
+              >
+                <IconArrowUp className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 shrink-0"
+                disabled={index === queuedMessages.length - 1 || !onMoveQueuedMessage}
+                onClick={() => onMoveQueuedMessage?.(message.id, "down")}
+                aria-label="下移排队消息"
+              >
+                <IconArrowDown className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 shrink-0"
+                disabled={!onRemoveQueuedMessage}
+                onClick={() => onRemoveQueuedMessage?.(message.id)}
+                aria-label="移除排队消息"
+              >
+                <IconTrash className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       <InputGroup>
-        {!isExecuting && (
-          <InputGroupTextarea
-            ref={textareaRef}
-            className="min-h-8 max-h-48 text-sm break-all"
-            placeholder="描述你的需求，Shift+Enter 换行，Enter 发送。"
-            value={content}
-            onChange={(e) => setContent(e.target.value)} 
-            onKeyDown={handleKeyDown}
-            onCompositionStart={handleCompositionStart}
-            onCompositionEnd={handleCompositionEnd} />
-        )}
+        <InputGroupTextarea
+          ref={textareaRef}
+          className="min-h-8 max-h-48 text-sm break-all"
+          placeholder={isExecuting || sending ? "正在执行，输入内容将加入待发送队列。" : "描述你的需求，Shift+Enter 换行，Enter 发送。"}
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd} />
         <InputGroupAddon align="block-end" className="pb-1.5">
           <div className="flex flex-row justify-between w-full">
             <div className="flex flex-row gap-2 items-center min-w-0">
@@ -134,15 +172,26 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                   disabled={controlsDisabled}
                 />
               )}
-              <InputGroupButton 
-                className={cn("flex flex-row gap-2 items-center", isExecuting && "rounded-full")}
-                variant={isExecuting ? "destructive" : "default"}
-                size={isExecuting ? "icon-sm" : "sm"} 
-                onClick={isExecuting ? onCancel : handleSend}
-                disabled={isExecuting ? !onCancel : content.trim() === '' || inputDisabled}
+              {isExecuting && onCancel && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon-sm"
+                  className="rounded-full"
+                  onClick={onCancel}
+                >
+                  <IconPlayerStopFilled />
+                </Button>
+              )}
+              <InputGroupButton
+                className={cn("flex flex-row gap-2 items-center", (isExecuting || sending) && "rounded-full")}
+                variant="default"
+                size="sm"
+                onClick={handleSend}
+                disabled={content.trim() === ''}
               >
-                {isExecuting ? <IconPlayerStopFilled /> : <IconSend />}
-                {!isExecuting && "发送"}
+                <IconSend />
+                {isExecuting || sending || queueSize > 0 ? "排队" : "发送"}
               </InputGroupButton>
             </div>
           </div>
