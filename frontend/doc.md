@@ -36,6 +36,7 @@
 - 广场详情：`/playground/detail?id=...`
 - 隐私政策：`/privacy-policy`
 - 用户协议：`/user-agreement`
+- 产品介绍 PPT：`/ppt/` 或 `/ppt/index.html`
 - 公开任务跳转入口：`/tasks/public?id=...`
 - 普通用户控制台：`/console`
 - 新任务页：`/console/tasks`
@@ -133,6 +134,29 @@
 - `/user-agreement`：用户协议，最后更新时间为 `2026-03-24`
 
 法律页面顶部导航会切换为 `隐私政策` 和 `用户协议` 两个入口。
+
+### 8. 产品介绍 PPT
+
+`frontend/public/ppt/index.html` 是一个基于 Reveal.js 的静态产品介绍 PPT。
+
+部署后可通过以下路径访问：
+
+- `/ppt/`
+- `/ppt/index.html`
+
+内容主题包括：
+
+- MonkeyCode AI 产品定位
+- 需求、设计、编码、审查闭环
+- 智能任务、项目协作和自动 Review
+- 多模型、自定义镜像、自有宿主机和消息通知
+- 企业管理后台、开发者广场和开源社区
+
+说明：
+
+- 该 PPT 使用 CDN 加载 Reveal.js、主题样式和字体
+- 这是静态介绍页，不经过 React 路由
+- 当前文件不是 `.pptx`，而是 HTML 演示文稿
 
 ---
 
