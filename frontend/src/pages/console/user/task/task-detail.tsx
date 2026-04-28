@@ -49,6 +49,7 @@ import { toast } from "sonner"
 type SidePanelType = "files"
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
 type MessageSource = "live" | "history"
+const MODEL_SWITCH_MIN_CREATED_AT = 1777381200 // 2026-04-28 21:00:00 +08:00
 
 export default function TaskDetailPage() {
   const { taskId } = useParams()
@@ -212,6 +213,7 @@ export default function TaskDetailPage() {
   const totalTokens = task?.stats?.total_tokens ?? ((task?.stats?.input_tokens ?? 0) + (task?.stats?.output_tokens ?? 0))
   const hasContextUsage = contextUsage.size !== null || contextUsage.used !== null
   const canInput = taskInteractive && !sending && streamStatus !== "connected" && streamStatus !== "inited"
+  const canSwitchModel = canInput && (task?.created_at ? task.created_at >= MODEL_SWITCH_MIN_CREATED_AT : true)
   const planStreamStatus: TaskStreamStatus = streamStatus === "connected" ? "executing" : streamStatus
   const contextProgress = contextUsage.size && contextUsage.size > 0
     ? Math.min(Math.max((contextUsage.used ?? 0) / contextUsage.size, 0), 1)
@@ -849,7 +851,7 @@ export default function TaskDetailPage() {
                 variant="outline"
                 size="sm"
                 className="h-7 max-w-[220px] shrink-0 gap-1 px-2 text-xs font-normal"
-                disabled={!canInput}
+                disabled={!canSwitchModel}
               >
                 <span className="truncate">{currentModelName || "未知模型"}</span>
                 <IconChevronDown className="size-3.5 text-muted-foreground" />
