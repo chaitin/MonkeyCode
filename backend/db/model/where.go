@@ -106,6 +106,21 @@ func Weight(v int) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldWeight, v))
 }
 
+// ThinkingEnabled applies equality check predicate on the "thinking_enabled" field. It's identical to ThinkingEnabledEQ.
+func ThinkingEnabled(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldThinkingEnabled, v))
+}
+
+// ContextLimit applies equality check predicate on the "context_limit" field. It's identical to ContextLimitEQ.
+func ContextLimit(v int) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldContextLimit, v))
+}
+
+// OutputLimit applies equality check predicate on the "output_limit" field. It's identical to OutputLimitEQ.
+func OutputLimit(v int) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldOutputLimit, v))
+}
+
 // LastCheckAt applies equality check predicate on the "last_check_at" field. It's identical to LastCheckAtEQ.
 func LastCheckAt(v time.Time) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldLastCheckAt, v))
@@ -701,6 +716,96 @@ func WeightLTE(v int) predicate.Model {
 	return predicate.Model(sql.FieldLTE(FieldWeight, v))
 }
 
+// ThinkingEnabledEQ applies the EQ predicate on the "thinking_enabled" field.
+func ThinkingEnabledEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldThinkingEnabled, v))
+}
+
+// ThinkingEnabledNEQ applies the NEQ predicate on the "thinking_enabled" field.
+func ThinkingEnabledNEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldNEQ(FieldThinkingEnabled, v))
+}
+
+// ContextLimitEQ applies the EQ predicate on the "context_limit" field.
+func ContextLimitEQ(v int) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldContextLimit, v))
+}
+
+// ContextLimitNEQ applies the NEQ predicate on the "context_limit" field.
+func ContextLimitNEQ(v int) predicate.Model {
+	return predicate.Model(sql.FieldNEQ(FieldContextLimit, v))
+}
+
+// ContextLimitIn applies the In predicate on the "context_limit" field.
+func ContextLimitIn(vs ...int) predicate.Model {
+	return predicate.Model(sql.FieldIn(FieldContextLimit, vs...))
+}
+
+// ContextLimitNotIn applies the NotIn predicate on the "context_limit" field.
+func ContextLimitNotIn(vs ...int) predicate.Model {
+	return predicate.Model(sql.FieldNotIn(FieldContextLimit, vs...))
+}
+
+// ContextLimitGT applies the GT predicate on the "context_limit" field.
+func ContextLimitGT(v int) predicate.Model {
+	return predicate.Model(sql.FieldGT(FieldContextLimit, v))
+}
+
+// ContextLimitGTE applies the GTE predicate on the "context_limit" field.
+func ContextLimitGTE(v int) predicate.Model {
+	return predicate.Model(sql.FieldGTE(FieldContextLimit, v))
+}
+
+// ContextLimitLT applies the LT predicate on the "context_limit" field.
+func ContextLimitLT(v int) predicate.Model {
+	return predicate.Model(sql.FieldLT(FieldContextLimit, v))
+}
+
+// ContextLimitLTE applies the LTE predicate on the "context_limit" field.
+func ContextLimitLTE(v int) predicate.Model {
+	return predicate.Model(sql.FieldLTE(FieldContextLimit, v))
+}
+
+// OutputLimitEQ applies the EQ predicate on the "output_limit" field.
+func OutputLimitEQ(v int) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldOutputLimit, v))
+}
+
+// OutputLimitNEQ applies the NEQ predicate on the "output_limit" field.
+func OutputLimitNEQ(v int) predicate.Model {
+	return predicate.Model(sql.FieldNEQ(FieldOutputLimit, v))
+}
+
+// OutputLimitIn applies the In predicate on the "output_limit" field.
+func OutputLimitIn(vs ...int) predicate.Model {
+	return predicate.Model(sql.FieldIn(FieldOutputLimit, vs...))
+}
+
+// OutputLimitNotIn applies the NotIn predicate on the "output_limit" field.
+func OutputLimitNotIn(vs ...int) predicate.Model {
+	return predicate.Model(sql.FieldNotIn(FieldOutputLimit, vs...))
+}
+
+// OutputLimitGT applies the GT predicate on the "output_limit" field.
+func OutputLimitGT(v int) predicate.Model {
+	return predicate.Model(sql.FieldGT(FieldOutputLimit, v))
+}
+
+// OutputLimitGTE applies the GTE predicate on the "output_limit" field.
+func OutputLimitGTE(v int) predicate.Model {
+	return predicate.Model(sql.FieldGTE(FieldOutputLimit, v))
+}
+
+// OutputLimitLT applies the LT predicate on the "output_limit" field.
+func OutputLimitLT(v int) predicate.Model {
+	return predicate.Model(sql.FieldLT(FieldOutputLimit, v))
+}
+
+// OutputLimitLTE applies the LTE predicate on the "output_limit" field.
+func OutputLimitLTE(v int) predicate.Model {
+	return predicate.Model(sql.FieldLTE(FieldOutputLimit, v))
+}
+
 // LastCheckAtEQ applies the EQ predicate on the "last_check_at" field.
 func LastCheckAtEQ(v time.Time) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldLastCheckAt, v))
@@ -1079,6 +1184,52 @@ func HasApikeys() predicate.Model {
 func HasApikeysWith(preds ...predicate.ModelApiKey) predicate.Model {
 	return predicate.Model(func(s *sql.Selector) {
 		step := newApikeysStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasSwitchesFrom applies the HasEdge predicate on the "switches_from" edge.
+func HasSwitchesFrom() predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SwitchesFromTable, SwitchesFromColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSwitchesFromWith applies the HasEdge predicate on the "switches_from" edge with a given conditions (other predicates).
+func HasSwitchesFromWith(preds ...predicate.TaskModelSwitch) predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := newSwitchesFromStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasSwitchesTo applies the HasEdge predicate on the "switches_to" edge.
+func HasSwitchesTo() predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SwitchesToTable, SwitchesToColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSwitchesToWith applies the HasEdge predicate on the "switches_to" edge with a given conditions (other predicates).
+func HasSwitchesToWith(preds ...predicate.TaskModelSwitch) predicate.Model {
+	return predicate.Model(func(s *sql.Selector) {
+		step := newSwitchesToStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

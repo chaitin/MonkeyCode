@@ -327,6 +327,9 @@ var (
 		{Name: "temperature", Type: field.TypeFloat64, Nullable: true},
 		{Name: "interface_type", Type: field.TypeString, Nullable: true},
 		{Name: "weight", Type: field.TypeInt, Default: 1},
+		{Name: "thinking_enabled", Type: field.TypeBool, Default: true},
+		{Name: "context_limit", Type: field.TypeInt, Default: 200000},
+		{Name: "output_limit", Type: field.TypeInt, Default: 32000},
 		{Name: "last_check_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_check_success", Type: field.TypeBool, Nullable: true},
 		{Name: "last_check_error", Type: field.TypeString, Nullable: true},
@@ -342,7 +345,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "models_users_models",
-				Columns:    []*schema.Column{ModelsColumns[15]},
+				Columns:    []*schema.Column{ModelsColumns[18]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -757,6 +760,65 @@ var (
 				Columns:    []*schema.Column{TasksColumns[12]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
+			},
+		},
+	}
+	// TaskModelSwitchesColumns holds the columns for the "task_model_switches" table.
+	TaskModelSwitchesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "request_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "load_session", Type: field.TypeBool, Default: true},
+		{Name: "success", Type: field.TypeBool, Nullable: true},
+		{Name: "message", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "session_id", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "from_model_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "to_model_id", Type: field.TypeUUID},
+		{Name: "task_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// TaskModelSwitchesTable holds the schema information for the "task_model_switches" table.
+	TaskModelSwitchesTable = &schema.Table{
+		Name:       "task_model_switches",
+		Columns:    TaskModelSwitchesColumns,
+		PrimaryKey: []*schema.Column{TaskModelSwitchesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "task_model_switches_models_switches_from",
+				Columns:    []*schema.Column{TaskModelSwitchesColumns[8]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "task_model_switches_models_switches_to",
+				Columns:    []*schema.Column{TaskModelSwitchesColumns[9]},
+				RefColumns: []*schema.Column{ModelsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "task_model_switches_tasks_model_switches",
+				Columns:    []*schema.Column{TaskModelSwitchesColumns[10]},
+				RefColumns: []*schema.Column{TasksColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "task_model_switches_users_task_model_switches",
+				Columns:    []*schema.Column{TaskModelSwitchesColumns[11]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_task_model_switches_task_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{TaskModelSwitchesColumns[10], TaskModelSwitchesColumns[6]},
+			},
+			{
+				Name:    "idx_task_model_switches_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{TaskModelSwitchesColumns[11], TaskModelSwitchesColumns[6]},
 			},
 		},
 	}
@@ -1261,6 +1323,7 @@ var (
 		ProjectIssueCommentsTable,
 		ProjectTasksTable,
 		TasksTable,
+		TaskModelSwitchesTable,
 		TaskUsageStatsTable,
 		TaskVirtualmachinesTable,
 		TeamsTable,
@@ -1383,6 +1446,13 @@ func init() {
 	TasksTable.ForeignKeys[0].RefTable = UsersTable
 	TasksTable.Annotation = &entsql.Annotation{
 		Table: "tasks",
+	}
+	TaskModelSwitchesTable.ForeignKeys[0].RefTable = ModelsTable
+	TaskModelSwitchesTable.ForeignKeys[1].RefTable = ModelsTable
+	TaskModelSwitchesTable.ForeignKeys[2].RefTable = TasksTable
+	TaskModelSwitchesTable.ForeignKeys[3].RefTable = UsersTable
+	TaskModelSwitchesTable.Annotation = &entsql.Annotation{
+		Table: "task_model_switches",
 	}
 	TaskUsageStatsTable.Annotation = &entsql.Annotation{
 		Table: "task_usage_stats",

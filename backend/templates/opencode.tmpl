@@ -7,22 +7,23 @@
   },
   "provider": {
     "monkeycode-ai": {
-      "npm": "@ai-sdk/openai-compatible",
+      "npm": "{{.npm_package}}",
       "name": "monkeycode-ai",
       "options": {
         "baseURL": "{{.base_url}}"
       },
       "models": {
         "{{.model}}": {
-{{- if .disable_thinking }}
+{{- if not .thinking_enabled }}
           "options": {"thinking": {"type":"disabled"}},
 {{- end }}
           "name": "{{.model}}",
-          "limit": {"context": 200000, "output": 32000}
+          "limit": {"context": {{.context_limit}}, "output": {{.output_limit}}}
         }
       }
     }
   },
   "model": "monkeycode-ai/{{.model}}",
+  "disabled_providers": ["openai", "opencode"],
   "instructions": ["/tmp/codingmatrix-project-tpl/.ai-ready/rules/*.md"]
 }

@@ -156,3 +156,19 @@ func (s *hostTaskRepoStub) Stop(context.Context, *domain.User, uuid.UUID, func(*
 func (s *hostTaskRepoStub) Delete(context.Context, *domain.User, uuid.UUID) error {
 	panic("unexpected call to Delete")
 }
+
+func (s *hostTaskRepoStub) UpdateProjectTaskModel(context.Context, uuid.UUID, uuid.UUID) error {
+	panic("unexpected call to UpdateProjectTaskModel")
+}
+
+func (s *hostTaskRepoStub) CreateModelSwitch(context.Context, *domain.TaskModelSwitch) error {
+	panic("unexpected call to CreateModelSwitch")
+}
+
+func (s *hostTaskRepoStub) FinishModelSwitch(context.Context, uuid.UUID, bool, string, string) error {
+	panic("unexpected call to FinishModelSwitch")
+}
+
+func (s *hostTaskRepoStub) CompleteModelSwitch(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, bool, string, string) error {
+	panic("unexpected call to CompleteModelSwitch")
+}

@@ -60,11 +60,13 @@ type TaskEdges struct {
 	Vms []*VirtualMachine `json:"vms,omitempty"`
 	// GitBotTasks holds the value of the git_bot_tasks edge.
 	GitBotTasks []*GitBotTask `json:"git_bot_tasks,omitempty"`
+	// ModelSwitches holds the value of the model_switches edge.
+	ModelSwitches []*TaskModelSwitch `json:"model_switches,omitempty"`
 	// TaskVms holds the value of the task_vms edge.
 	TaskVms []*TaskVirtualMachine `json:"task_vms,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [5]bool
+	loadedTypes [6]bool
 }
 
 // ProjectTasksOrErr returns the ProjectTasks value or an error if the edge
@@ -105,10 +107,19 @@ func (e TaskEdges) GitBotTasksOrErr() ([]*GitBotTask, error) {
 	return nil, &NotLoadedError{edge: "git_bot_tasks"}
 }
 
+// ModelSwitchesOrErr returns the ModelSwitches value or an error if the edge
+// was not loaded in eager-loading.
+func (e TaskEdges) ModelSwitchesOrErr() ([]*TaskModelSwitch, error) {
+	if e.loadedTypes[4] {
+		return e.ModelSwitches, nil
+	}
+	return nil, &NotLoadedError{edge: "model_switches"}
+}
+
 // TaskVmsOrErr returns the TaskVms value or an error if the edge
 // was not loaded in eager-loading.
 func (e TaskEdges) TaskVmsOrErr() ([]*TaskVirtualMachine, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.TaskVms, nil
 	}
 	return nil, &NotLoadedError{edge: "task_vms"}
@@ -249,6 +260,11 @@ func (_m *Task) QueryVms() *VirtualMachineQuery {
 // QueryGitBotTasks queries the "git_bot_tasks" edge of the Task entity.
 func (_m *Task) QueryGitBotTasks() *GitBotTaskQuery {
 	return NewTaskClient(_m.config).QueryGitBotTasks(_m)
+}
+
+// QueryModelSwitches queries the "model_switches" edge of the Task entity.
+func (_m *Task) QueryModelSwitches() *TaskModelSwitchQuery {
+	return NewTaskClient(_m.config).QueryModelSwitches(_m)
 }
 
 // QueryTaskVms queries the "task_vms" edge of the Task entity.

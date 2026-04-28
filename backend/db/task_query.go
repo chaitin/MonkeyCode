@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -26,16 +27,17 @@ import (
 // TaskQuery is the builder for querying Task entities.
 type TaskQuery struct {
 	config
-	ctx              *QueryContext
-	order            []task.OrderOption
-	inters           []Interceptor
-	predicates       []predicate.Task
-	withProjectTasks *ProjectTaskQuery
-	withUser         *UserQuery
-	withVms          *VirtualMachineQuery
-	withGitBotTasks  *GitBotTaskQuery
-	withTaskVms      *TaskVirtualMachineQuery
-	modifiers        []func(*sql.Selector)
+	ctx               *QueryContext
+	order             []task.OrderOption
+	inters            []Interceptor
+	predicates        []predicate.Task
+	withProjectTasks  *ProjectTaskQuery
+	withUser          *UserQuery
+	withVms           *VirtualMachineQuery
+	withGitBotTasks   *GitBotTaskQuery
+	withModelSwitches *TaskModelSwitchQuery
+	withTaskVms       *TaskVirtualMachineQuery
+	modifiers         []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -153,6 +155,28 @@ func (_q *TaskQuery) QueryGitBotTasks() *GitBotTaskQuery {
 			sqlgraph.From(task.Table, task.FieldID, selector),
 			sqlgraph.To(gitbottask.Table, gitbottask.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, task.GitBotTasksTable, task.GitBotTasksColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryModelSwitches chains the current query on the "model_switches" edge.
+func (_q *TaskQuery) QueryModelSwitches() *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(task.Table, task.FieldID, selector),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, task.ModelSwitchesTable, task.ModelSwitchesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -369,16 +393,17 @@ func (_q *TaskQuery) Clone() *TaskQuery {
 		return nil
 	}
 	return &TaskQuery{
-		config:           _q.config,
-		ctx:              _q.ctx.Clone(),
-		order:            append([]task.OrderOption{}, _q.order...),
-		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.Task{}, _q.predicates...),
-		withProjectTasks: _q.withProjectTasks.Clone(),
-		withUser:         _q.withUser.Clone(),
-		withVms:          _q.withVms.Clone(),
-		withGitBotTasks:  _q.withGitBotTasks.Clone(),
-		withTaskVms:      _q.withTaskVms.Clone(),
+		config:            _q.config,
+		ctx:               _q.ctx.Clone(),
+		order:             append([]task.OrderOption{}, _q.order...),
+		inters:            append([]Interceptor{}, _q.inters...),
+		predicates:        append([]predicate.Task{}, _q.predicates...),
+		withProjectTasks:  _q.withProjectTasks.Clone(),
+		withUser:          _q.withUser.Clone(),
+		withVms:           _q.withVms.Clone(),
+		withGitBotTasks:   _q.withGitBotTasks.Clone(),
+		withModelSwitches: _q.withModelSwitches.Clone(),
+		withTaskVms:       _q.withTaskVms.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -427,6 +452,17 @@ func (_q *TaskQuery) WithGitBotTasks(opts ...func(*GitBotTaskQuery)) *TaskQuery 
 		opt(query)
 	}
 	_q.withGitBotTasks = query
+	return _q
+}
+
+// WithModelSwitches tells the query-builder to eager-load the nodes that are connected to
+// the "model_switches" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TaskQuery) WithModelSwitches(opts ...func(*TaskModelSwitchQuery)) *TaskQuery {
+	query := (&TaskModelSwitchClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withModelSwitches = query
 	return _q
 }
 
@@ -519,11 +555,12 @@ func (_q *TaskQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Task, e
 	var (
 		nodes       = []*Task{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [6]bool{
 			_q.withProjectTasks != nil,
 			_q.withUser != nil,
 			_q.withVms != nil,
 			_q.withGitBotTasks != nil,
+			_q.withModelSwitches != nil,
 			_q.withTaskVms != nil,
 		}
 	)
@@ -572,6 +609,13 @@ func (_q *TaskQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Task, e
 		if err := _q.loadGitBotTasks(ctx, query, nodes,
 			func(n *Task) { n.Edges.GitBotTasks = []*GitBotTask{} },
 			func(n *Task, e *GitBotTask) { n.Edges.GitBotTasks = append(n.Edges.GitBotTasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withModelSwitches; query != nil {
+		if err := _q.loadModelSwitches(ctx, query, nodes,
+			func(n *Task) { n.Edges.ModelSwitches = []*TaskModelSwitch{} },
+			func(n *Task, e *TaskModelSwitch) { n.Edges.ModelSwitches = append(n.Edges.ModelSwitches, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -720,6 +764,36 @@ func (_q *TaskQuery) loadGitBotTasks(ctx context.Context, query *GitBotTaskQuery
 	}
 	query.Where(predicate.GitBotTask(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(task.GitBotTasksColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TaskID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "task_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *TaskQuery) loadModelSwitches(ctx context.Context, query *TaskModelSwitchQuery, nodes []*Task, init func(*Task), assign func(*Task, *TaskModelSwitch)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Task)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(taskmodelswitch.FieldTaskID)
+	}
+	query.Where(predicate.TaskModelSwitch(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(task.ModelSwitchesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

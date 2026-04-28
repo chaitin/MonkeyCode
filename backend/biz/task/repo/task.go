@@ -279,6 +279,68 @@ func (t *TaskRepo) Delete(ctx context.Context, user *domain.User, id uuid.UUID) 
 	return err
 }
 
+// UpdateProjectTaskModel 更新项目任务当前模型
+func (t *TaskRepo) UpdateProjectTaskModel(ctx context.Context, taskID, modelID uuid.UUID) error {
+	count, err := t.db.ProjectTask.Update().
+		Where(projecttask.TaskID(taskID)).
+		SetModelID(modelID).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("updated project task count = %d, want 1", count)
+	}
+	return nil
+}
+
+// CreateModelSwitch 创建任务模型切换记录
+func (t *TaskRepo) CreateModelSwitch(ctx context.Context, item *domain.TaskModelSwitch) error {
+	create := t.db.TaskModelSwitch.Create().
+		SetID(item.ID).
+		SetTaskID(item.TaskID).
+		SetUserID(item.UserID).
+		SetToModelID(item.ToModelID).
+		SetRequestID(item.RequestID).
+		SetLoadSession(item.LoadSession)
+	if item.FromModelID != nil {
+		create.SetFromModelID(*item.FromModelID)
+	}
+	return create.Exec(ctx)
+}
+
+// FinishModelSwitch 完成任务模型切换记录
+func (t *TaskRepo) FinishModelSwitch(ctx context.Context, id uuid.UUID, success bool, message, sessionID string) error {
+	return t.db.TaskModelSwitch.UpdateOneID(id).
+		SetSuccess(success).
+		SetMessage(message).
+		SetSessionID(sessionID).
+		Exec(ctx)
+}
+
+func (t *TaskRepo) CompleteModelSwitch(ctx context.Context, id, taskID, modelID uuid.UUID, success bool, message, sessionID string) error {
+	return entx.WithTx2(ctx, t.db, func(tx *db.Tx) error {
+		if success {
+			count, err := tx.ProjectTask.Update().
+				Where(projecttask.TaskID(taskID)).
+				SetModelID(modelID).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
+			if count != 1 {
+				return fmt.Errorf("updated project task count = %d, want 1", count)
+			}
+		}
+
+		return tx.TaskModelSwitch.UpdateOneID(id).
+			SetSuccess(success).
+			SetMessage(message).
+			SetSessionID(sessionID).
+			Exec(ctx)
+	})
+}
+
 // Create implements domain.TaskRepo.
 func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error) {
 	resource := req.Resource

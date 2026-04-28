@@ -55,6 +55,8 @@ const (
 	EdgeVms = "vms"
 	// EdgeTasks holds the string denoting the tasks edge name in mutations.
 	EdgeTasks = "tasks"
+	// EdgeTaskModelSwitches holds the string denoting the task_model_switches edge name in mutations.
+	EdgeTaskModelSwitches = "task_model_switches"
 	// EdgeGitIdentities holds the string denoting the git_identities edge name in mutations.
 	EdgeGitIdentities = "git_identities"
 	// EdgeProjects holds the string denoting the projects edge name in mutations.
@@ -138,6 +140,13 @@ const (
 	TasksInverseTable = "tasks"
 	// TasksColumn is the table column denoting the tasks relation/edge.
 	TasksColumn = "user_id"
+	// TaskModelSwitchesTable is the table that holds the task_model_switches relation/edge.
+	TaskModelSwitchesTable = "task_model_switches"
+	// TaskModelSwitchesInverseTable is the table name for the TaskModelSwitch entity.
+	// It exists in this package in order to avoid circular dependency with the "taskmodelswitch" package.
+	TaskModelSwitchesInverseTable = "task_model_switches"
+	// TaskModelSwitchesColumn is the table column denoting the task_model_switches relation/edge.
+	TaskModelSwitchesColumn = "user_id"
 	// GitIdentitiesTable is the table that holds the git_identities relation/edge.
 	GitIdentitiesTable = "git_identities"
 	// GitIdentitiesInverseTable is the table name for the GitIdentity entity.
@@ -457,6 +466,20 @@ func ByTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByTaskModelSwitchesCount orders the results by task_model_switches count.
+func ByTaskModelSwitchesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTaskModelSwitchesStep(), opts...)
+	}
+}
+
+// ByTaskModelSwitches orders the results by task_model_switches terms.
+func ByTaskModelSwitches(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTaskModelSwitchesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByGitIdentitiesCount orders the results by git_identities count.
 func ByGitIdentitiesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -671,6 +694,13 @@ func newTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, TasksTable, TasksColumn),
+	)
+}
+func newTaskModelSwitchesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TaskModelSwitchesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, TaskModelSwitchesTable, TaskModelSwitchesColumn),
 	)
 }
 func newGitIdentitiesStep() *sqlgraph.Step {

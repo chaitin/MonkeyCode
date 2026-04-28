@@ -36,6 +36,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -87,6 +88,7 @@ const (
 	TypeProjectIssueComment = "ProjectIssueComment"
 	TypeProjectTask         = "ProjectTask"
 	TypeTask                = "Task"
+	TypeTaskModelSwitch     = "TaskModelSwitch"
 	TypeTaskUsageStat       = "TaskUsageStat"
 	TypeTaskVirtualMachine  = "TaskVirtualMachine"
 	TypeTeam                = "Team"
@@ -10972,6 +10974,11 @@ type ModelMutation struct {
 	interface_type           *string
 	weight                   *int
 	addweight                *int
+	thinking_enabled         *bool
+	context_limit            *int
+	addcontext_limit         *int
+	output_limit             *int
+	addoutput_limit          *int
 	last_check_at            *time.Time
 	last_check_success       *bool
 	last_check_error         *string
@@ -10997,6 +11004,12 @@ type ModelMutation struct {
 	apikeys                  map[uuid.UUID]struct{}
 	removedapikeys           map[uuid.UUID]struct{}
 	clearedapikeys           bool
+	switches_from            map[uuid.UUID]struct{}
+	removedswitches_from     map[uuid.UUID]struct{}
+	clearedswitches_from     bool
+	switches_to              map[uuid.UUID]struct{}
+	removedswitches_to       map[uuid.UUID]struct{}
+	clearedswitches_to       bool
 	team_models              map[uuid.UUID]struct{}
 	removedteam_models       map[uuid.UUID]struct{}
 	clearedteam_models       bool
@@ -11565,6 +11578,154 @@ func (m *ModelMutation) ResetWeight() {
 	m.addweight = nil
 }
 
+// SetThinkingEnabled sets the "thinking_enabled" field.
+func (m *ModelMutation) SetThinkingEnabled(b bool) {
+	m.thinking_enabled = &b
+}
+
+// ThinkingEnabled returns the value of the "thinking_enabled" field in the mutation.
+func (m *ModelMutation) ThinkingEnabled() (r bool, exists bool) {
+	v := m.thinking_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldThinkingEnabled returns the old "thinking_enabled" field's value of the Model entity.
+// If the Model object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelMutation) OldThinkingEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldThinkingEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldThinkingEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldThinkingEnabled: %w", err)
+	}
+	return oldValue.ThinkingEnabled, nil
+}
+
+// ResetThinkingEnabled resets all changes to the "thinking_enabled" field.
+func (m *ModelMutation) ResetThinkingEnabled() {
+	m.thinking_enabled = nil
+}
+
+// SetContextLimit sets the "context_limit" field.
+func (m *ModelMutation) SetContextLimit(i int) {
+	m.context_limit = &i
+	m.addcontext_limit = nil
+}
+
+// ContextLimit returns the value of the "context_limit" field in the mutation.
+func (m *ModelMutation) ContextLimit() (r int, exists bool) {
+	v := m.context_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContextLimit returns the old "context_limit" field's value of the Model entity.
+// If the Model object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelMutation) OldContextLimit(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContextLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContextLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContextLimit: %w", err)
+	}
+	return oldValue.ContextLimit, nil
+}
+
+// AddContextLimit adds i to the "context_limit" field.
+func (m *ModelMutation) AddContextLimit(i int) {
+	if m.addcontext_limit != nil {
+		*m.addcontext_limit += i
+	} else {
+		m.addcontext_limit = &i
+	}
+}
+
+// AddedContextLimit returns the value that was added to the "context_limit" field in this mutation.
+func (m *ModelMutation) AddedContextLimit() (r int, exists bool) {
+	v := m.addcontext_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetContextLimit resets all changes to the "context_limit" field.
+func (m *ModelMutation) ResetContextLimit() {
+	m.context_limit = nil
+	m.addcontext_limit = nil
+}
+
+// SetOutputLimit sets the "output_limit" field.
+func (m *ModelMutation) SetOutputLimit(i int) {
+	m.output_limit = &i
+	m.addoutput_limit = nil
+}
+
+// OutputLimit returns the value of the "output_limit" field in the mutation.
+func (m *ModelMutation) OutputLimit() (r int, exists bool) {
+	v := m.output_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutputLimit returns the old "output_limit" field's value of the Model entity.
+// If the Model object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelMutation) OldOutputLimit(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutputLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutputLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutputLimit: %w", err)
+	}
+	return oldValue.OutputLimit, nil
+}
+
+// AddOutputLimit adds i to the "output_limit" field.
+func (m *ModelMutation) AddOutputLimit(i int) {
+	if m.addoutput_limit != nil {
+		*m.addoutput_limit += i
+	} else {
+		m.addoutput_limit = &i
+	}
+}
+
+// AddedOutputLimit returns the value that was added to the "output_limit" field in this mutation.
+func (m *ModelMutation) AddedOutputLimit() (r int, exists bool) {
+	v := m.addoutput_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOutputLimit resets all changes to the "output_limit" field.
+func (m *ModelMutation) ResetOutputLimit() {
+	m.output_limit = nil
+	m.addoutput_limit = nil
+}
+
 // SetLastCheckAt sets the "last_check_at" field.
 func (m *ModelMutation) SetLastCheckAt(t time.Time) {
 	m.last_check_at = &t
@@ -12120,6 +12281,114 @@ func (m *ModelMutation) ResetApikeys() {
 	m.removedapikeys = nil
 }
 
+// AddSwitchesFromIDs adds the "switches_from" edge to the TaskModelSwitch entity by ids.
+func (m *ModelMutation) AddSwitchesFromIDs(ids ...uuid.UUID) {
+	if m.switches_from == nil {
+		m.switches_from = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.switches_from[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSwitchesFrom clears the "switches_from" edge to the TaskModelSwitch entity.
+func (m *ModelMutation) ClearSwitchesFrom() {
+	m.clearedswitches_from = true
+}
+
+// SwitchesFromCleared reports if the "switches_from" edge to the TaskModelSwitch entity was cleared.
+func (m *ModelMutation) SwitchesFromCleared() bool {
+	return m.clearedswitches_from
+}
+
+// RemoveSwitchesFromIDs removes the "switches_from" edge to the TaskModelSwitch entity by IDs.
+func (m *ModelMutation) RemoveSwitchesFromIDs(ids ...uuid.UUID) {
+	if m.removedswitches_from == nil {
+		m.removedswitches_from = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.switches_from, ids[i])
+		m.removedswitches_from[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSwitchesFrom returns the removed IDs of the "switches_from" edge to the TaskModelSwitch entity.
+func (m *ModelMutation) RemovedSwitchesFromIDs() (ids []uuid.UUID) {
+	for id := range m.removedswitches_from {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SwitchesFromIDs returns the "switches_from" edge IDs in the mutation.
+func (m *ModelMutation) SwitchesFromIDs() (ids []uuid.UUID) {
+	for id := range m.switches_from {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSwitchesFrom resets all changes to the "switches_from" edge.
+func (m *ModelMutation) ResetSwitchesFrom() {
+	m.switches_from = nil
+	m.clearedswitches_from = false
+	m.removedswitches_from = nil
+}
+
+// AddSwitchesToIDs adds the "switches_to" edge to the TaskModelSwitch entity by ids.
+func (m *ModelMutation) AddSwitchesToIDs(ids ...uuid.UUID) {
+	if m.switches_to == nil {
+		m.switches_to = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.switches_to[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSwitchesTo clears the "switches_to" edge to the TaskModelSwitch entity.
+func (m *ModelMutation) ClearSwitchesTo() {
+	m.clearedswitches_to = true
+}
+
+// SwitchesToCleared reports if the "switches_to" edge to the TaskModelSwitch entity was cleared.
+func (m *ModelMutation) SwitchesToCleared() bool {
+	return m.clearedswitches_to
+}
+
+// RemoveSwitchesToIDs removes the "switches_to" edge to the TaskModelSwitch entity by IDs.
+func (m *ModelMutation) RemoveSwitchesToIDs(ids ...uuid.UUID) {
+	if m.removedswitches_to == nil {
+		m.removedswitches_to = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.switches_to, ids[i])
+		m.removedswitches_to[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSwitchesTo returns the removed IDs of the "switches_to" edge to the TaskModelSwitch entity.
+func (m *ModelMutation) RemovedSwitchesToIDs() (ids []uuid.UUID) {
+	for id := range m.removedswitches_to {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SwitchesToIDs returns the "switches_to" edge IDs in the mutation.
+func (m *ModelMutation) SwitchesToIDs() (ids []uuid.UUID) {
+	for id := range m.switches_to {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSwitchesTo resets all changes to the "switches_to" edge.
+func (m *ModelMutation) ResetSwitchesTo() {
+	m.switches_to = nil
+	m.clearedswitches_to = false
+	m.removedswitches_to = nil
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by ids.
 func (m *ModelMutation) AddTeamModelIDs(ids ...uuid.UUID) {
 	if m.team_models == nil {
@@ -12262,7 +12531,7 @@ func (m *ModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 18)
 	if m.deleted_at != nil {
 		fields = append(fields, model.FieldDeletedAt)
 	}
@@ -12292,6 +12561,15 @@ func (m *ModelMutation) Fields() []string {
 	}
 	if m.weight != nil {
 		fields = append(fields, model.FieldWeight)
+	}
+	if m.thinking_enabled != nil {
+		fields = append(fields, model.FieldThinkingEnabled)
+	}
+	if m.context_limit != nil {
+		fields = append(fields, model.FieldContextLimit)
+	}
+	if m.output_limit != nil {
+		fields = append(fields, model.FieldOutputLimit)
 	}
 	if m.last_check_at != nil {
 		fields = append(fields, model.FieldLastCheckAt)
@@ -12336,6 +12614,12 @@ func (m *ModelMutation) Field(name string) (ent.Value, bool) {
 		return m.InterfaceType()
 	case model.FieldWeight:
 		return m.Weight()
+	case model.FieldThinkingEnabled:
+		return m.ThinkingEnabled()
+	case model.FieldContextLimit:
+		return m.ContextLimit()
+	case model.FieldOutputLimit:
+		return m.OutputLimit()
 	case model.FieldLastCheckAt:
 		return m.LastCheckAt()
 	case model.FieldLastCheckSuccess:
@@ -12375,6 +12659,12 @@ func (m *ModelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldInterfaceType(ctx)
 	case model.FieldWeight:
 		return m.OldWeight(ctx)
+	case model.FieldThinkingEnabled:
+		return m.OldThinkingEnabled(ctx)
+	case model.FieldContextLimit:
+		return m.OldContextLimit(ctx)
+	case model.FieldOutputLimit:
+		return m.OldOutputLimit(ctx)
 	case model.FieldLastCheckAt:
 		return m.OldLastCheckAt(ctx)
 	case model.FieldLastCheckSuccess:
@@ -12464,6 +12754,27 @@ func (m *ModelMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetWeight(v)
 		return nil
+	case model.FieldThinkingEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetThinkingEnabled(v)
+		return nil
+	case model.FieldContextLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContextLimit(v)
+		return nil
+	case model.FieldOutputLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutputLimit(v)
+		return nil
 	case model.FieldLastCheckAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -12513,6 +12824,12 @@ func (m *ModelMutation) AddedFields() []string {
 	if m.addweight != nil {
 		fields = append(fields, model.FieldWeight)
 	}
+	if m.addcontext_limit != nil {
+		fields = append(fields, model.FieldContextLimit)
+	}
+	if m.addoutput_limit != nil {
+		fields = append(fields, model.FieldOutputLimit)
+	}
 	return fields
 }
 
@@ -12525,6 +12842,10 @@ func (m *ModelMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTemperature()
 	case model.FieldWeight:
 		return m.AddedWeight()
+	case model.FieldContextLimit:
+		return m.AddedContextLimit()
+	case model.FieldOutputLimit:
+		return m.AddedOutputLimit()
 	}
 	return nil, false
 }
@@ -12547,6 +12868,20 @@ func (m *ModelMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddWeight(v)
+		return nil
+	case model.FieldContextLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContextLimit(v)
+		return nil
+	case model.FieldOutputLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOutputLimit(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Model numeric field %s", name)
@@ -12650,6 +12985,15 @@ func (m *ModelMutation) ResetField(name string) error {
 	case model.FieldWeight:
 		m.ResetWeight()
 		return nil
+	case model.FieldThinkingEnabled:
+		m.ResetThinkingEnabled()
+		return nil
+	case model.FieldContextLimit:
+		m.ResetContextLimit()
+		return nil
+	case model.FieldOutputLimit:
+		m.ResetOutputLimit()
+		return nil
 	case model.FieldLastCheckAt:
 		m.ResetLastCheckAt()
 		return nil
@@ -12671,7 +13015,7 @@ func (m *ModelMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ModelMutation) AddedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 11)
 	if m.user != nil {
 		edges = append(edges, model.EdgeUser)
 	}
@@ -12692,6 +13036,12 @@ func (m *ModelMutation) AddedEdges() []string {
 	}
 	if m.apikeys != nil {
 		edges = append(edges, model.EdgeApikeys)
+	}
+	if m.switches_from != nil {
+		edges = append(edges, model.EdgeSwitchesFrom)
+	}
+	if m.switches_to != nil {
+		edges = append(edges, model.EdgeSwitchesTo)
 	}
 	if m.team_models != nil {
 		edges = append(edges, model.EdgeTeamModels)
@@ -12744,6 +13094,18 @@ func (m *ModelMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case model.EdgeSwitchesFrom:
+		ids := make([]ent.Value, 0, len(m.switches_from))
+		for id := range m.switches_from {
+			ids = append(ids, id)
+		}
+		return ids
+	case model.EdgeSwitchesTo:
+		ids := make([]ent.Value, 0, len(m.switches_to))
+		for id := range m.switches_to {
+			ids = append(ids, id)
+		}
+		return ids
 	case model.EdgeTeamModels:
 		ids := make([]ent.Value, 0, len(m.team_models))
 		for id := range m.team_models {
@@ -12762,7 +13124,7 @@ func (m *ModelMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ModelMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 11)
 	if m.removedteams != nil {
 		edges = append(edges, model.EdgeTeams)
 	}
@@ -12777,6 +13139,12 @@ func (m *ModelMutation) RemovedEdges() []string {
 	}
 	if m.removedapikeys != nil {
 		edges = append(edges, model.EdgeApikeys)
+	}
+	if m.removedswitches_from != nil {
+		edges = append(edges, model.EdgeSwitchesFrom)
+	}
+	if m.removedswitches_to != nil {
+		edges = append(edges, model.EdgeSwitchesTo)
 	}
 	if m.removedteam_models != nil {
 		edges = append(edges, model.EdgeTeamModels)
@@ -12821,6 +13189,18 @@ func (m *ModelMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case model.EdgeSwitchesFrom:
+		ids := make([]ent.Value, 0, len(m.removedswitches_from))
+		for id := range m.removedswitches_from {
+			ids = append(ids, id)
+		}
+		return ids
+	case model.EdgeSwitchesTo:
+		ids := make([]ent.Value, 0, len(m.removedswitches_to))
+		for id := range m.removedswitches_to {
+			ids = append(ids, id)
+		}
+		return ids
 	case model.EdgeTeamModels:
 		ids := make([]ent.Value, 0, len(m.removedteam_models))
 		for id := range m.removedteam_models {
@@ -12839,7 +13219,7 @@ func (m *ModelMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ModelMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 11)
 	if m.cleareduser {
 		edges = append(edges, model.EdgeUser)
 	}
@@ -12860,6 +13240,12 @@ func (m *ModelMutation) ClearedEdges() []string {
 	}
 	if m.clearedapikeys {
 		edges = append(edges, model.EdgeApikeys)
+	}
+	if m.clearedswitches_from {
+		edges = append(edges, model.EdgeSwitchesFrom)
+	}
+	if m.clearedswitches_to {
+		edges = append(edges, model.EdgeSwitchesTo)
 	}
 	if m.clearedteam_models {
 		edges = append(edges, model.EdgeTeamModels)
@@ -12888,6 +13274,10 @@ func (m *ModelMutation) EdgeCleared(name string) bool {
 		return m.clearedpricing
 	case model.EdgeApikeys:
 		return m.clearedapikeys
+	case model.EdgeSwitchesFrom:
+		return m.clearedswitches_from
+	case model.EdgeSwitchesTo:
+		return m.clearedswitches_to
 	case model.EdgeTeamModels:
 		return m.clearedteam_models
 	case model.EdgeTeamGroupModels:
@@ -12934,6 +13324,12 @@ func (m *ModelMutation) ResetEdge(name string) error {
 		return nil
 	case model.EdgeApikeys:
 		m.ResetApikeys()
+		return nil
+	case model.EdgeSwitchesFrom:
+		m.ResetSwitchesFrom()
+		return nil
+	case model.EdgeSwitchesTo:
+		m.ResetSwitchesTo()
 		return nil
 	case model.EdgeTeamModels:
 		m.ResetTeamModels()
@@ -23358,38 +23754,41 @@ func (m *ProjectTaskMutation) ResetEdge(name string) error {
 // TaskMutation represents an operation that mutates the Task nodes in the graph.
 type TaskMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *uuid.UUID
-	deleted_at           *time.Time
-	kind                 *consts.TaskType
-	sub_type             *consts.TaskSubType
-	content              *string
-	title                *string
-	summary              *string
-	status               *consts.TaskStatus
-	created_at           *time.Time
-	last_active_at       *time.Time
-	updated_at           *time.Time
-	completed_at         *time.Time
-	clearedFields        map[string]struct{}
-	project_tasks        map[uuid.UUID]struct{}
-	removedproject_tasks map[uuid.UUID]struct{}
-	clearedproject_tasks bool
-	user                 *uuid.UUID
-	cleareduser          bool
-	vms                  map[string]struct{}
-	removedvms           map[string]struct{}
-	clearedvms           bool
-	git_bot_tasks        map[uuid.UUID]struct{}
-	removedgit_bot_tasks map[uuid.UUID]struct{}
-	clearedgit_bot_tasks bool
-	task_vms             map[uuid.UUID]struct{}
-	removedtask_vms      map[uuid.UUID]struct{}
-	clearedtask_vms      bool
-	done                 bool
-	oldValue             func(context.Context) (*Task, error)
-	predicates           []predicate.Task
+	op                    Op
+	typ                   string
+	id                    *uuid.UUID
+	deleted_at            *time.Time
+	kind                  *consts.TaskType
+	sub_type              *consts.TaskSubType
+	content               *string
+	title                 *string
+	summary               *string
+	status                *consts.TaskStatus
+	created_at            *time.Time
+	last_active_at        *time.Time
+	updated_at            *time.Time
+	completed_at          *time.Time
+	clearedFields         map[string]struct{}
+	project_tasks         map[uuid.UUID]struct{}
+	removedproject_tasks  map[uuid.UUID]struct{}
+	clearedproject_tasks  bool
+	user                  *uuid.UUID
+	cleareduser           bool
+	vms                   map[string]struct{}
+	removedvms            map[string]struct{}
+	clearedvms            bool
+	git_bot_tasks         map[uuid.UUID]struct{}
+	removedgit_bot_tasks  map[uuid.UUID]struct{}
+	clearedgit_bot_tasks  bool
+	model_switches        map[uuid.UUID]struct{}
+	removedmodel_switches map[uuid.UUID]struct{}
+	clearedmodel_switches bool
+	task_vms              map[uuid.UUID]struct{}
+	removedtask_vms       map[uuid.UUID]struct{}
+	clearedtask_vms       bool
+	done                  bool
+	oldValue              func(context.Context) (*Task, error)
+	predicates            []predicate.Task
 }
 
 var _ ent.Mutation = (*TaskMutation)(nil)
@@ -24182,6 +24581,60 @@ func (m *TaskMutation) ResetGitBotTasks() {
 	m.removedgit_bot_tasks = nil
 }
 
+// AddModelSwitchIDs adds the "model_switches" edge to the TaskModelSwitch entity by ids.
+func (m *TaskMutation) AddModelSwitchIDs(ids ...uuid.UUID) {
+	if m.model_switches == nil {
+		m.model_switches = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.model_switches[ids[i]] = struct{}{}
+	}
+}
+
+// ClearModelSwitches clears the "model_switches" edge to the TaskModelSwitch entity.
+func (m *TaskMutation) ClearModelSwitches() {
+	m.clearedmodel_switches = true
+}
+
+// ModelSwitchesCleared reports if the "model_switches" edge to the TaskModelSwitch entity was cleared.
+func (m *TaskMutation) ModelSwitchesCleared() bool {
+	return m.clearedmodel_switches
+}
+
+// RemoveModelSwitchIDs removes the "model_switches" edge to the TaskModelSwitch entity by IDs.
+func (m *TaskMutation) RemoveModelSwitchIDs(ids ...uuid.UUID) {
+	if m.removedmodel_switches == nil {
+		m.removedmodel_switches = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.model_switches, ids[i])
+		m.removedmodel_switches[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedModelSwitches returns the removed IDs of the "model_switches" edge to the TaskModelSwitch entity.
+func (m *TaskMutation) RemovedModelSwitchesIDs() (ids []uuid.UUID) {
+	for id := range m.removedmodel_switches {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ModelSwitchesIDs returns the "model_switches" edge IDs in the mutation.
+func (m *TaskMutation) ModelSwitchesIDs() (ids []uuid.UUID) {
+	for id := range m.model_switches {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetModelSwitches resets all changes to the "model_switches" edge.
+func (m *TaskMutation) ResetModelSwitches() {
+	m.model_switches = nil
+	m.clearedmodel_switches = false
+	m.removedmodel_switches = nil
+}
+
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by ids.
 func (m *TaskMutation) AddTaskVMIDs(ids ...uuid.UUID) {
 	if m.task_vms == nil {
@@ -24589,7 +25042,7 @@ func (m *TaskMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TaskMutation) AddedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.project_tasks != nil {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
@@ -24601,6 +25054,9 @@ func (m *TaskMutation) AddedEdges() []string {
 	}
 	if m.git_bot_tasks != nil {
 		edges = append(edges, task.EdgeGitBotTasks)
+	}
+	if m.model_switches != nil {
+		edges = append(edges, task.EdgeModelSwitches)
 	}
 	if m.task_vms != nil {
 		edges = append(edges, task.EdgeTaskVms)
@@ -24634,6 +25090,12 @@ func (m *TaskMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case task.EdgeModelSwitches:
+		ids := make([]ent.Value, 0, len(m.model_switches))
+		for id := range m.model_switches {
+			ids = append(ids, id)
+		}
+		return ids
 	case task.EdgeTaskVms:
 		ids := make([]ent.Value, 0, len(m.task_vms))
 		for id := range m.task_vms {
@@ -24646,7 +25108,7 @@ func (m *TaskMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TaskMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.removedproject_tasks != nil {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
@@ -24655,6 +25117,9 @@ func (m *TaskMutation) RemovedEdges() []string {
 	}
 	if m.removedgit_bot_tasks != nil {
 		edges = append(edges, task.EdgeGitBotTasks)
+	}
+	if m.removedmodel_switches != nil {
+		edges = append(edges, task.EdgeModelSwitches)
 	}
 	if m.removedtask_vms != nil {
 		edges = append(edges, task.EdgeTaskVms)
@@ -24684,6 +25149,12 @@ func (m *TaskMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case task.EdgeModelSwitches:
+		ids := make([]ent.Value, 0, len(m.removedmodel_switches))
+		for id := range m.removedmodel_switches {
+			ids = append(ids, id)
+		}
+		return ids
 	case task.EdgeTaskVms:
 		ids := make([]ent.Value, 0, len(m.removedtask_vms))
 		for id := range m.removedtask_vms {
@@ -24696,7 +25167,7 @@ func (m *TaskMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TaskMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 5)
+	edges := make([]string, 0, 6)
 	if m.clearedproject_tasks {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
@@ -24708,6 +25179,9 @@ func (m *TaskMutation) ClearedEdges() []string {
 	}
 	if m.clearedgit_bot_tasks {
 		edges = append(edges, task.EdgeGitBotTasks)
+	}
+	if m.clearedmodel_switches {
+		edges = append(edges, task.EdgeModelSwitches)
 	}
 	if m.clearedtask_vms {
 		edges = append(edges, task.EdgeTaskVms)
@@ -24727,6 +25201,8 @@ func (m *TaskMutation) EdgeCleared(name string) bool {
 		return m.clearedvms
 	case task.EdgeGitBotTasks:
 		return m.clearedgit_bot_tasks
+	case task.EdgeModelSwitches:
+		return m.clearedmodel_switches
 	case task.EdgeTaskVms:
 		return m.clearedtask_vms
 	}
@@ -24760,11 +25236,1119 @@ func (m *TaskMutation) ResetEdge(name string) error {
 	case task.EdgeGitBotTasks:
 		m.ResetGitBotTasks()
 		return nil
+	case task.EdgeModelSwitches:
+		m.ResetModelSwitches()
+		return nil
 	case task.EdgeTaskVms:
 		m.ResetTaskVms()
 		return nil
 	}
 	return fmt.Errorf("unknown Task edge %s", name)
+}
+
+// TaskModelSwitchMutation represents an operation that mutates the TaskModelSwitch nodes in the graph.
+type TaskModelSwitchMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	request_id        *string
+	load_session      *bool
+	success           *bool
+	message           *string
+	session_id        *string
+	created_at        *time.Time
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	task              *uuid.UUID
+	clearedtask       bool
+	user              *uuid.UUID
+	cleareduser       bool
+	from_model        *uuid.UUID
+	clearedfrom_model bool
+	to_model          *uuid.UUID
+	clearedto_model   bool
+	done              bool
+	oldValue          func(context.Context) (*TaskModelSwitch, error)
+	predicates        []predicate.TaskModelSwitch
+}
+
+var _ ent.Mutation = (*TaskModelSwitchMutation)(nil)
+
+// taskmodelswitchOption allows management of the mutation configuration using functional options.
+type taskmodelswitchOption func(*TaskModelSwitchMutation)
+
+// newTaskModelSwitchMutation creates new mutation for the TaskModelSwitch entity.
+func newTaskModelSwitchMutation(c config, op Op, opts ...taskmodelswitchOption) *TaskModelSwitchMutation {
+	m := &TaskModelSwitchMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTaskModelSwitch,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTaskModelSwitchID sets the ID field of the mutation.
+func withTaskModelSwitchID(id uuid.UUID) taskmodelswitchOption {
+	return func(m *TaskModelSwitchMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TaskModelSwitch
+		)
+		m.oldValue = func(ctx context.Context) (*TaskModelSwitch, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TaskModelSwitch.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTaskModelSwitch sets the old TaskModelSwitch of the mutation.
+func withTaskModelSwitch(node *TaskModelSwitch) taskmodelswitchOption {
+	return func(m *TaskModelSwitchMutation) {
+		m.oldValue = func(context.Context) (*TaskModelSwitch, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TaskModelSwitchMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TaskModelSwitchMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TaskModelSwitch entities.
+func (m *TaskModelSwitchMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TaskModelSwitchMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TaskModelSwitchMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TaskModelSwitch.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *TaskModelSwitchMutation) SetTaskID(u uuid.UUID) {
+	m.task = &u
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *TaskModelSwitchMutation) TaskID() (r uuid.UUID, exists bool) {
+	v := m.task
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldTaskID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *TaskModelSwitchMutation) ResetTaskID() {
+	m.task = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *TaskModelSwitchMutation) SetUserID(u uuid.UUID) {
+	m.user = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *TaskModelSwitchMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *TaskModelSwitchMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetFromModelID sets the "from_model_id" field.
+func (m *TaskModelSwitchMutation) SetFromModelID(u uuid.UUID) {
+	m.from_model = &u
+}
+
+// FromModelID returns the value of the "from_model_id" field in the mutation.
+func (m *TaskModelSwitchMutation) FromModelID() (r uuid.UUID, exists bool) {
+	v := m.from_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFromModelID returns the old "from_model_id" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldFromModelID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFromModelID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFromModelID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFromModelID: %w", err)
+	}
+	return oldValue.FromModelID, nil
+}
+
+// ClearFromModelID clears the value of the "from_model_id" field.
+func (m *TaskModelSwitchMutation) ClearFromModelID() {
+	m.from_model = nil
+	m.clearedFields[taskmodelswitch.FieldFromModelID] = struct{}{}
+}
+
+// FromModelIDCleared returns if the "from_model_id" field was cleared in this mutation.
+func (m *TaskModelSwitchMutation) FromModelIDCleared() bool {
+	_, ok := m.clearedFields[taskmodelswitch.FieldFromModelID]
+	return ok
+}
+
+// ResetFromModelID resets all changes to the "from_model_id" field.
+func (m *TaskModelSwitchMutation) ResetFromModelID() {
+	m.from_model = nil
+	delete(m.clearedFields, taskmodelswitch.FieldFromModelID)
+}
+
+// SetToModelID sets the "to_model_id" field.
+func (m *TaskModelSwitchMutation) SetToModelID(u uuid.UUID) {
+	m.to_model = &u
+}
+
+// ToModelID returns the value of the "to_model_id" field in the mutation.
+func (m *TaskModelSwitchMutation) ToModelID() (r uuid.UUID, exists bool) {
+	v := m.to_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToModelID returns the old "to_model_id" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldToModelID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToModelID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToModelID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToModelID: %w", err)
+	}
+	return oldValue.ToModelID, nil
+}
+
+// ResetToModelID resets all changes to the "to_model_id" field.
+func (m *TaskModelSwitchMutation) ResetToModelID() {
+	m.to_model = nil
+}
+
+// SetRequestID sets the "request_id" field.
+func (m *TaskModelSwitchMutation) SetRequestID(s string) {
+	m.request_id = &s
+}
+
+// RequestID returns the value of the "request_id" field in the mutation.
+func (m *TaskModelSwitchMutation) RequestID() (r string, exists bool) {
+	v := m.request_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestID returns the old "request_id" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldRequestID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestID: %w", err)
+	}
+	return oldValue.RequestID, nil
+}
+
+// ResetRequestID resets all changes to the "request_id" field.
+func (m *TaskModelSwitchMutation) ResetRequestID() {
+	m.request_id = nil
+}
+
+// SetLoadSession sets the "load_session" field.
+func (m *TaskModelSwitchMutation) SetLoadSession(b bool) {
+	m.load_session = &b
+}
+
+// LoadSession returns the value of the "load_session" field in the mutation.
+func (m *TaskModelSwitchMutation) LoadSession() (r bool, exists bool) {
+	v := m.load_session
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLoadSession returns the old "load_session" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldLoadSession(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLoadSession is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLoadSession requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLoadSession: %w", err)
+	}
+	return oldValue.LoadSession, nil
+}
+
+// ResetLoadSession resets all changes to the "load_session" field.
+func (m *TaskModelSwitchMutation) ResetLoadSession() {
+	m.load_session = nil
+}
+
+// SetSuccess sets the "success" field.
+func (m *TaskModelSwitchMutation) SetSuccess(b bool) {
+	m.success = &b
+}
+
+// Success returns the value of the "success" field in the mutation.
+func (m *TaskModelSwitchMutation) Success() (r bool, exists bool) {
+	v := m.success
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSuccess returns the old "success" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldSuccess(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSuccess is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSuccess requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSuccess: %w", err)
+	}
+	return oldValue.Success, nil
+}
+
+// ClearSuccess clears the value of the "success" field.
+func (m *TaskModelSwitchMutation) ClearSuccess() {
+	m.success = nil
+	m.clearedFields[taskmodelswitch.FieldSuccess] = struct{}{}
+}
+
+// SuccessCleared returns if the "success" field was cleared in this mutation.
+func (m *TaskModelSwitchMutation) SuccessCleared() bool {
+	_, ok := m.clearedFields[taskmodelswitch.FieldSuccess]
+	return ok
+}
+
+// ResetSuccess resets all changes to the "success" field.
+func (m *TaskModelSwitchMutation) ResetSuccess() {
+	m.success = nil
+	delete(m.clearedFields, taskmodelswitch.FieldSuccess)
+}
+
+// SetMessage sets the "message" field.
+func (m *TaskModelSwitchMutation) SetMessage(s string) {
+	m.message = &s
+}
+
+// Message returns the value of the "message" field in the mutation.
+func (m *TaskModelSwitchMutation) Message() (r string, exists bool) {
+	v := m.message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMessage returns the old "message" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMessage: %w", err)
+	}
+	return oldValue.Message, nil
+}
+
+// ResetMessage resets all changes to the "message" field.
+func (m *TaskModelSwitchMutation) ResetMessage() {
+	m.message = nil
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *TaskModelSwitchMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *TaskModelSwitchMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *TaskModelSwitchMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TaskModelSwitchMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TaskModelSwitchMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TaskModelSwitchMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TaskModelSwitchMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TaskModelSwitchMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TaskModelSwitch entity.
+// If the TaskModelSwitch object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskModelSwitchMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TaskModelSwitchMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearTask clears the "task" edge to the Task entity.
+func (m *TaskModelSwitchMutation) ClearTask() {
+	m.clearedtask = true
+	m.clearedFields[taskmodelswitch.FieldTaskID] = struct{}{}
+}
+
+// TaskCleared reports if the "task" edge to the Task entity was cleared.
+func (m *TaskModelSwitchMutation) TaskCleared() bool {
+	return m.clearedtask
+}
+
+// TaskIDs returns the "task" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TaskID instead. It exists only for internal usage by the builders.
+func (m *TaskModelSwitchMutation) TaskIDs() (ids []uuid.UUID) {
+	if id := m.task; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTask resets all changes to the "task" edge.
+func (m *TaskModelSwitchMutation) ResetTask() {
+	m.task = nil
+	m.clearedtask = false
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *TaskModelSwitchMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[taskmodelswitch.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *TaskModelSwitchMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *TaskModelSwitchMutation) UserIDs() (ids []uuid.UUID) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *TaskModelSwitchMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// ClearFromModel clears the "from_model" edge to the Model entity.
+func (m *TaskModelSwitchMutation) ClearFromModel() {
+	m.clearedfrom_model = true
+	m.clearedFields[taskmodelswitch.FieldFromModelID] = struct{}{}
+}
+
+// FromModelCleared reports if the "from_model" edge to the Model entity was cleared.
+func (m *TaskModelSwitchMutation) FromModelCleared() bool {
+	return m.FromModelIDCleared() || m.clearedfrom_model
+}
+
+// FromModelIDs returns the "from_model" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// FromModelID instead. It exists only for internal usage by the builders.
+func (m *TaskModelSwitchMutation) FromModelIDs() (ids []uuid.UUID) {
+	if id := m.from_model; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetFromModel resets all changes to the "from_model" edge.
+func (m *TaskModelSwitchMutation) ResetFromModel() {
+	m.from_model = nil
+	m.clearedfrom_model = false
+}
+
+// ClearToModel clears the "to_model" edge to the Model entity.
+func (m *TaskModelSwitchMutation) ClearToModel() {
+	m.clearedto_model = true
+	m.clearedFields[taskmodelswitch.FieldToModelID] = struct{}{}
+}
+
+// ToModelCleared reports if the "to_model" edge to the Model entity was cleared.
+func (m *TaskModelSwitchMutation) ToModelCleared() bool {
+	return m.clearedto_model
+}
+
+// ToModelIDs returns the "to_model" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ToModelID instead. It exists only for internal usage by the builders.
+func (m *TaskModelSwitchMutation) ToModelIDs() (ids []uuid.UUID) {
+	if id := m.to_model; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetToModel resets all changes to the "to_model" edge.
+func (m *TaskModelSwitchMutation) ResetToModel() {
+	m.to_model = nil
+	m.clearedto_model = false
+}
+
+// Where appends a list predicates to the TaskModelSwitchMutation builder.
+func (m *TaskModelSwitchMutation) Where(ps ...predicate.TaskModelSwitch) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TaskModelSwitchMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TaskModelSwitchMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TaskModelSwitch, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TaskModelSwitchMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TaskModelSwitchMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TaskModelSwitch).
+func (m *TaskModelSwitchMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TaskModelSwitchMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.task != nil {
+		fields = append(fields, taskmodelswitch.FieldTaskID)
+	}
+	if m.user != nil {
+		fields = append(fields, taskmodelswitch.FieldUserID)
+	}
+	if m.from_model != nil {
+		fields = append(fields, taskmodelswitch.FieldFromModelID)
+	}
+	if m.to_model != nil {
+		fields = append(fields, taskmodelswitch.FieldToModelID)
+	}
+	if m.request_id != nil {
+		fields = append(fields, taskmodelswitch.FieldRequestID)
+	}
+	if m.load_session != nil {
+		fields = append(fields, taskmodelswitch.FieldLoadSession)
+	}
+	if m.success != nil {
+		fields = append(fields, taskmodelswitch.FieldSuccess)
+	}
+	if m.message != nil {
+		fields = append(fields, taskmodelswitch.FieldMessage)
+	}
+	if m.session_id != nil {
+		fields = append(fields, taskmodelswitch.FieldSessionID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, taskmodelswitch.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, taskmodelswitch.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TaskModelSwitchMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case taskmodelswitch.FieldTaskID:
+		return m.TaskID()
+	case taskmodelswitch.FieldUserID:
+		return m.UserID()
+	case taskmodelswitch.FieldFromModelID:
+		return m.FromModelID()
+	case taskmodelswitch.FieldToModelID:
+		return m.ToModelID()
+	case taskmodelswitch.FieldRequestID:
+		return m.RequestID()
+	case taskmodelswitch.FieldLoadSession:
+		return m.LoadSession()
+	case taskmodelswitch.FieldSuccess:
+		return m.Success()
+	case taskmodelswitch.FieldMessage:
+		return m.Message()
+	case taskmodelswitch.FieldSessionID:
+		return m.SessionID()
+	case taskmodelswitch.FieldCreatedAt:
+		return m.CreatedAt()
+	case taskmodelswitch.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TaskModelSwitchMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case taskmodelswitch.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case taskmodelswitch.FieldUserID:
+		return m.OldUserID(ctx)
+	case taskmodelswitch.FieldFromModelID:
+		return m.OldFromModelID(ctx)
+	case taskmodelswitch.FieldToModelID:
+		return m.OldToModelID(ctx)
+	case taskmodelswitch.FieldRequestID:
+		return m.OldRequestID(ctx)
+	case taskmodelswitch.FieldLoadSession:
+		return m.OldLoadSession(ctx)
+	case taskmodelswitch.FieldSuccess:
+		return m.OldSuccess(ctx)
+	case taskmodelswitch.FieldMessage:
+		return m.OldMessage(ctx)
+	case taskmodelswitch.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case taskmodelswitch.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case taskmodelswitch.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TaskModelSwitch field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TaskModelSwitchMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case taskmodelswitch.FieldTaskID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case taskmodelswitch.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case taskmodelswitch.FieldFromModelID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFromModelID(v)
+		return nil
+	case taskmodelswitch.FieldToModelID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToModelID(v)
+		return nil
+	case taskmodelswitch.FieldRequestID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestID(v)
+		return nil
+	case taskmodelswitch.FieldLoadSession:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLoadSession(v)
+		return nil
+	case taskmodelswitch.FieldSuccess:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSuccess(v)
+		return nil
+	case taskmodelswitch.FieldMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMessage(v)
+		return nil
+	case taskmodelswitch.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case taskmodelswitch.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case taskmodelswitch.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TaskModelSwitch field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TaskModelSwitchMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TaskModelSwitchMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TaskModelSwitchMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TaskModelSwitch numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TaskModelSwitchMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(taskmodelswitch.FieldFromModelID) {
+		fields = append(fields, taskmodelswitch.FieldFromModelID)
+	}
+	if m.FieldCleared(taskmodelswitch.FieldSuccess) {
+		fields = append(fields, taskmodelswitch.FieldSuccess)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TaskModelSwitchMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TaskModelSwitchMutation) ClearField(name string) error {
+	switch name {
+	case taskmodelswitch.FieldFromModelID:
+		m.ClearFromModelID()
+		return nil
+	case taskmodelswitch.FieldSuccess:
+		m.ClearSuccess()
+		return nil
+	}
+	return fmt.Errorf("unknown TaskModelSwitch nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TaskModelSwitchMutation) ResetField(name string) error {
+	switch name {
+	case taskmodelswitch.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case taskmodelswitch.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case taskmodelswitch.FieldFromModelID:
+		m.ResetFromModelID()
+		return nil
+	case taskmodelswitch.FieldToModelID:
+		m.ResetToModelID()
+		return nil
+	case taskmodelswitch.FieldRequestID:
+		m.ResetRequestID()
+		return nil
+	case taskmodelswitch.FieldLoadSession:
+		m.ResetLoadSession()
+		return nil
+	case taskmodelswitch.FieldSuccess:
+		m.ResetSuccess()
+		return nil
+	case taskmodelswitch.FieldMessage:
+		m.ResetMessage()
+		return nil
+	case taskmodelswitch.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case taskmodelswitch.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case taskmodelswitch.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TaskModelSwitch field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TaskModelSwitchMutation) AddedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.task != nil {
+		edges = append(edges, taskmodelswitch.EdgeTask)
+	}
+	if m.user != nil {
+		edges = append(edges, taskmodelswitch.EdgeUser)
+	}
+	if m.from_model != nil {
+		edges = append(edges, taskmodelswitch.EdgeFromModel)
+	}
+	if m.to_model != nil {
+		edges = append(edges, taskmodelswitch.EdgeToModel)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TaskModelSwitchMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case taskmodelswitch.EdgeTask:
+		if id := m.task; id != nil {
+			return []ent.Value{*id}
+		}
+	case taskmodelswitch.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	case taskmodelswitch.EdgeFromModel:
+		if id := m.from_model; id != nil {
+			return []ent.Value{*id}
+		}
+	case taskmodelswitch.EdgeToModel:
+		if id := m.to_model; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TaskModelSwitchMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 4)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TaskModelSwitchMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TaskModelSwitchMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.clearedtask {
+		edges = append(edges, taskmodelswitch.EdgeTask)
+	}
+	if m.cleareduser {
+		edges = append(edges, taskmodelswitch.EdgeUser)
+	}
+	if m.clearedfrom_model {
+		edges = append(edges, taskmodelswitch.EdgeFromModel)
+	}
+	if m.clearedto_model {
+		edges = append(edges, taskmodelswitch.EdgeToModel)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TaskModelSwitchMutation) EdgeCleared(name string) bool {
+	switch name {
+	case taskmodelswitch.EdgeTask:
+		return m.clearedtask
+	case taskmodelswitch.EdgeUser:
+		return m.cleareduser
+	case taskmodelswitch.EdgeFromModel:
+		return m.clearedfrom_model
+	case taskmodelswitch.EdgeToModel:
+		return m.clearedto_model
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TaskModelSwitchMutation) ClearEdge(name string) error {
+	switch name {
+	case taskmodelswitch.EdgeTask:
+		m.ClearTask()
+		return nil
+	case taskmodelswitch.EdgeUser:
+		m.ClearUser()
+		return nil
+	case taskmodelswitch.EdgeFromModel:
+		m.ClearFromModel()
+		return nil
+	case taskmodelswitch.EdgeToModel:
+		m.ClearToModel()
+		return nil
+	}
+	return fmt.Errorf("unknown TaskModelSwitch unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TaskModelSwitchMutation) ResetEdge(name string) error {
+	switch name {
+	case taskmodelswitch.EdgeTask:
+		m.ResetTask()
+		return nil
+	case taskmodelswitch.EdgeUser:
+		m.ResetUser()
+		return nil
+	case taskmodelswitch.EdgeFromModel:
+		m.ResetFromModel()
+		return nil
+	case taskmodelswitch.EdgeToModel:
+		m.ResetToModel()
+		return nil
+	}
+	return fmt.Errorf("unknown TaskModelSwitch edge %s", name)
 }
 
 // TaskUsageStatMutation represents an operation that mutates the TaskUsageStat nodes in the graph.
@@ -32971,6 +34555,9 @@ type UserMutation struct {
 	tasks                         map[uuid.UUID]struct{}
 	removedtasks                  map[uuid.UUID]struct{}
 	clearedtasks                  bool
+	task_model_switches           map[uuid.UUID]struct{}
+	removedtask_model_switches    map[uuid.UUID]struct{}
+	clearedtask_model_switches    bool
 	git_identities                map[uuid.UUID]struct{}
 	removedgit_identities         map[uuid.UUID]struct{}
 	clearedgit_identities         bool
@@ -34060,6 +35647,60 @@ func (m *UserMutation) ResetTasks() {
 	m.removedtasks = nil
 }
 
+// AddTaskModelSwitchIDs adds the "task_model_switches" edge to the TaskModelSwitch entity by ids.
+func (m *UserMutation) AddTaskModelSwitchIDs(ids ...uuid.UUID) {
+	if m.task_model_switches == nil {
+		m.task_model_switches = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.task_model_switches[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTaskModelSwitches clears the "task_model_switches" edge to the TaskModelSwitch entity.
+func (m *UserMutation) ClearTaskModelSwitches() {
+	m.clearedtask_model_switches = true
+}
+
+// TaskModelSwitchesCleared reports if the "task_model_switches" edge to the TaskModelSwitch entity was cleared.
+func (m *UserMutation) TaskModelSwitchesCleared() bool {
+	return m.clearedtask_model_switches
+}
+
+// RemoveTaskModelSwitchIDs removes the "task_model_switches" edge to the TaskModelSwitch entity by IDs.
+func (m *UserMutation) RemoveTaskModelSwitchIDs(ids ...uuid.UUID) {
+	if m.removedtask_model_switches == nil {
+		m.removedtask_model_switches = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.task_model_switches, ids[i])
+		m.removedtask_model_switches[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTaskModelSwitches returns the removed IDs of the "task_model_switches" edge to the TaskModelSwitch entity.
+func (m *UserMutation) RemovedTaskModelSwitchesIDs() (ids []uuid.UUID) {
+	for id := range m.removedtask_model_switches {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TaskModelSwitchesIDs returns the "task_model_switches" edge IDs in the mutation.
+func (m *UserMutation) TaskModelSwitchesIDs() (ids []uuid.UUID) {
+	for id := range m.task_model_switches {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTaskModelSwitches resets all changes to the "task_model_switches" edge.
+func (m *UserMutation) ResetTaskModelSwitches() {
+	m.task_model_switches = nil
+	m.clearedtask_model_switches = false
+	m.removedtask_model_switches = nil
+}
+
 // AddGitIdentityIDs adds the "git_identities" edge to the GitIdentity entity by ids.
 func (m *UserMutation) AddGitIdentityIDs(ids ...uuid.UUID) {
 	if m.git_identities == nil {
@@ -34990,7 +36631,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 20)
+	edges := make([]string, 0, 21)
 	if m.identities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -35017,6 +36658,9 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.tasks != nil {
 		edges = append(edges, user.EdgeTasks)
+	}
+	if m.task_model_switches != nil {
+		edges = append(edges, user.EdgeTaskModelSwitches)
 	}
 	if m.git_identities != nil {
 		edges = append(edges, user.EdgeGitIdentities)
@@ -35112,6 +36756,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeTaskModelSwitches:
+		ids := make([]ent.Value, 0, len(m.task_model_switches))
+		for id := range m.task_model_switches {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeGitIdentities:
 		ids := make([]ent.Value, 0, len(m.git_identities))
 		for id := range m.git_identities {
@@ -35184,7 +36834,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 20)
+	edges := make([]string, 0, 21)
 	if m.removedidentities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -35211,6 +36861,9 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedtasks != nil {
 		edges = append(edges, user.EdgeTasks)
+	}
+	if m.removedtask_model_switches != nil {
+		edges = append(edges, user.EdgeTaskModelSwitches)
 	}
 	if m.removedgit_identities != nil {
 		edges = append(edges, user.EdgeGitIdentities)
@@ -35306,6 +36959,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeTaskModelSwitches:
+		ids := make([]ent.Value, 0, len(m.removedtask_model_switches))
+		for id := range m.removedtask_model_switches {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgeGitIdentities:
 		ids := make([]ent.Value, 0, len(m.removedgit_identities))
 		for id := range m.removedgit_identities {
@@ -35378,7 +37037,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 20)
+	edges := make([]string, 0, 21)
 	if m.clearedidentities {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -35405,6 +37064,9 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedtasks {
 		edges = append(edges, user.EdgeTasks)
+	}
+	if m.clearedtask_model_switches {
+		edges = append(edges, user.EdgeTaskModelSwitches)
 	}
 	if m.clearedgit_identities {
 		edges = append(edges, user.EdgeGitIdentities)
@@ -35464,6 +37126,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedvms
 	case user.EdgeTasks:
 		return m.clearedtasks
+	case user.EdgeTaskModelSwitches:
+		return m.clearedtask_model_switches
 	case user.EdgeGitIdentities:
 		return m.clearedgit_identities
 	case user.EdgeProjects:
@@ -35528,6 +37192,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeTasks:
 		m.ResetTasks()
+		return nil
+	case user.EdgeTaskModelSwitches:
+		m.ResetTaskModelSwitches()
 		return nil
 	case user.EdgeGitIdentities:
 		m.ResetGitIdentities()

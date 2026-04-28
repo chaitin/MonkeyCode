@@ -40,6 +40,12 @@ type Model struct {
 	InterfaceType string `json:"interface_type,omitempty"`
 	// Weight holds the value of the "weight" field.
 	Weight int `json:"weight,omitempty"`
+	// ThinkingEnabled holds the value of the "thinking_enabled" field.
+	ThinkingEnabled bool `json:"thinking_enabled,omitempty"`
+	// ContextLimit holds the value of the "context_limit" field.
+	ContextLimit int `json:"context_limit,omitempty"`
+	// OutputLimit holds the value of the "output_limit" field.
+	OutputLimit int `json:"output_limit,omitempty"`
 	// LastCheckAt holds the value of the "last_check_at" field.
 	LastCheckAt time.Time `json:"last_check_at,omitempty"`
 	// LastCheckSuccess holds the value of the "last_check_success" field.
@@ -72,13 +78,17 @@ type ModelEdges struct {
 	Pricing *ModelPricing `json:"pricing,omitempty"`
 	// Apikeys holds the value of the apikeys edge.
 	Apikeys []*ModelApiKey `json:"apikeys,omitempty"`
+	// SwitchesFrom holds the value of the switches_from edge.
+	SwitchesFrom []*TaskModelSwitch `json:"switches_from,omitempty"`
+	// SwitchesTo holds the value of the switches_to edge.
+	SwitchesTo []*TaskModelSwitch `json:"switches_to,omitempty"`
 	// TeamModels holds the value of the team_models edge.
 	TeamModels []*TeamModel `json:"team_models,omitempty"`
 	// TeamGroupModels holds the value of the team_group_models edge.
 	TeamGroupModels []*TeamGroupModel `json:"team_group_models,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [9]bool
+	loadedTypes [11]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -148,10 +158,28 @@ func (e ModelEdges) ApikeysOrErr() ([]*ModelApiKey, error) {
 	return nil, &NotLoadedError{edge: "apikeys"}
 }
 
+// SwitchesFromOrErr returns the SwitchesFrom value or an error if the edge
+// was not loaded in eager-loading.
+func (e ModelEdges) SwitchesFromOrErr() ([]*TaskModelSwitch, error) {
+	if e.loadedTypes[7] {
+		return e.SwitchesFrom, nil
+	}
+	return nil, &NotLoadedError{edge: "switches_from"}
+}
+
+// SwitchesToOrErr returns the SwitchesTo value or an error if the edge
+// was not loaded in eager-loading.
+func (e ModelEdges) SwitchesToOrErr() ([]*TaskModelSwitch, error) {
+	if e.loadedTypes[8] {
+		return e.SwitchesTo, nil
+	}
+	return nil, &NotLoadedError{edge: "switches_to"}
+}
+
 // TeamModelsOrErr returns the TeamModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e ModelEdges) TeamModelsOrErr() ([]*TeamModel, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[9] {
 		return e.TeamModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_models"}
@@ -160,7 +188,7 @@ func (e ModelEdges) TeamModelsOrErr() ([]*TeamModel, error) {
 // TeamGroupModelsOrErr returns the TeamGroupModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e ModelEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[10] {
 		return e.TeamGroupModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_models"}
@@ -171,11 +199,11 @@ func (*Model) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case model.FieldLastCheckSuccess:
+		case model.FieldThinkingEnabled, model.FieldLastCheckSuccess:
 			values[i] = new(sql.NullBool)
 		case model.FieldTemperature:
 			values[i] = new(sql.NullFloat64)
-		case model.FieldWeight:
+		case model.FieldWeight, model.FieldContextLimit, model.FieldOutputLimit:
 			values[i] = new(sql.NullInt64)
 		case model.FieldProvider, model.FieldAPIKey, model.FieldBaseURL, model.FieldModel, model.FieldRemark, model.FieldInterfaceType, model.FieldLastCheckError:
 			values[i] = new(sql.NullString)
@@ -264,6 +292,24 @@ func (_m *Model) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Weight = int(value.Int64)
 			}
+		case model.FieldThinkingEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field thinking_enabled", values[i])
+			} else if value.Valid {
+				_m.ThinkingEnabled = value.Bool
+			}
+		case model.FieldContextLimit:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field context_limit", values[i])
+			} else if value.Valid {
+				_m.ContextLimit = int(value.Int64)
+			}
+		case model.FieldOutputLimit:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field output_limit", values[i])
+			} else if value.Valid {
+				_m.OutputLimit = int(value.Int64)
+			}
 		case model.FieldLastCheckAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field last_check_at", values[i])
@@ -342,6 +388,16 @@ func (_m *Model) QueryApikeys() *ModelApiKeyQuery {
 	return NewModelClient(_m.config).QueryApikeys(_m)
 }
 
+// QuerySwitchesFrom queries the "switches_from" edge of the Model entity.
+func (_m *Model) QuerySwitchesFrom() *TaskModelSwitchQuery {
+	return NewModelClient(_m.config).QuerySwitchesFrom(_m)
+}
+
+// QuerySwitchesTo queries the "switches_to" edge of the Model entity.
+func (_m *Model) QuerySwitchesTo() *TaskModelSwitchQuery {
+	return NewModelClient(_m.config).QuerySwitchesTo(_m)
+}
+
 // QueryTeamModels queries the "team_models" edge of the Model entity.
 func (_m *Model) QueryTeamModels() *TeamModelQuery {
 	return NewModelClient(_m.config).QueryTeamModels(_m)
@@ -404,6 +460,15 @@ func (_m *Model) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("weight=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Weight))
+	builder.WriteString(", ")
+	builder.WriteString("thinking_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ThinkingEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("context_limit=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ContextLimit))
+	builder.WriteString(", ")
+	builder.WriteString("output_limit=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OutputLimit))
 	builder.WriteString(", ")
 	builder.WriteString("last_check_at=")
 	builder.WriteString(_m.LastCheckAt.Format(time.ANSIC))

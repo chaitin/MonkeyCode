@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -220,6 +221,21 @@ func (_c *TaskCreate) AddGitBotTasks(v ...*GitBotTask) *TaskCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddGitBotTaskIDs(ids...)
+}
+
+// AddModelSwitchIDs adds the "model_switches" edge to the TaskModelSwitch entity by IDs.
+func (_c *TaskCreate) AddModelSwitchIDs(ids ...uuid.UUID) *TaskCreate {
+	_c.mutation.AddModelSwitchIDs(ids...)
+	return _c
+}
+
+// AddModelSwitches adds the "model_switches" edges to the TaskModelSwitch entity.
+func (_c *TaskCreate) AddModelSwitches(v ...*TaskModelSwitch) *TaskCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddModelSwitchIDs(ids...)
 }
 
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
@@ -471,6 +487,22 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ModelSwitchesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

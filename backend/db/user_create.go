@@ -26,6 +26,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
@@ -305,6 +306,21 @@ func (_c *UserCreate) AddTasks(v ...*Task) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddTaskIDs(ids...)
+}
+
+// AddTaskModelSwitchIDs adds the "task_model_switches" edge to the TaskModelSwitch entity by IDs.
+func (_c *UserCreate) AddTaskModelSwitchIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddTaskModelSwitchIDs(ids...)
+	return _c
+}
+
+// AddTaskModelSwitches adds the "task_model_switches" edges to the TaskModelSwitch entity.
+func (_c *UserCreate) AddTaskModelSwitches(v ...*TaskModelSwitch) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTaskModelSwitchIDs(ids...)
 }
 
 // AddGitIdentityIDs adds the "git_identities" edge to the GitIdentity entity by IDs.
@@ -780,6 +796,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(task.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TaskModelSwitchesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TaskModelSwitchesTable,
+			Columns: []string{user.TaskModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

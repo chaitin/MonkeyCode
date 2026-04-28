@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -217,6 +218,62 @@ func (_u *ModelUpdate) AddWeight(v int) *ModelUpdate {
 	return _u
 }
 
+// SetThinkingEnabled sets the "thinking_enabled" field.
+func (_u *ModelUpdate) SetThinkingEnabled(v bool) *ModelUpdate {
+	_u.mutation.SetThinkingEnabled(v)
+	return _u
+}
+
+// SetNillableThinkingEnabled sets the "thinking_enabled" field if the given value is not nil.
+func (_u *ModelUpdate) SetNillableThinkingEnabled(v *bool) *ModelUpdate {
+	if v != nil {
+		_u.SetThinkingEnabled(*v)
+	}
+	return _u
+}
+
+// SetContextLimit sets the "context_limit" field.
+func (_u *ModelUpdate) SetContextLimit(v int) *ModelUpdate {
+	_u.mutation.ResetContextLimit()
+	_u.mutation.SetContextLimit(v)
+	return _u
+}
+
+// SetNillableContextLimit sets the "context_limit" field if the given value is not nil.
+func (_u *ModelUpdate) SetNillableContextLimit(v *int) *ModelUpdate {
+	if v != nil {
+		_u.SetContextLimit(*v)
+	}
+	return _u
+}
+
+// AddContextLimit adds value to the "context_limit" field.
+func (_u *ModelUpdate) AddContextLimit(v int) *ModelUpdate {
+	_u.mutation.AddContextLimit(v)
+	return _u
+}
+
+// SetOutputLimit sets the "output_limit" field.
+func (_u *ModelUpdate) SetOutputLimit(v int) *ModelUpdate {
+	_u.mutation.ResetOutputLimit()
+	_u.mutation.SetOutputLimit(v)
+	return _u
+}
+
+// SetNillableOutputLimit sets the "output_limit" field if the given value is not nil.
+func (_u *ModelUpdate) SetNillableOutputLimit(v *int) *ModelUpdate {
+	if v != nil {
+		_u.SetOutputLimit(*v)
+	}
+	return _u
+}
+
+// AddOutputLimit adds value to the "output_limit" field.
+func (_u *ModelUpdate) AddOutputLimit(v int) *ModelUpdate {
+	_u.mutation.AddOutputLimit(v)
+	return _u
+}
+
 // SetLastCheckAt sets the "last_check_at" field.
 func (_u *ModelUpdate) SetLastCheckAt(v time.Time) *ModelUpdate {
 	_u.mutation.SetLastCheckAt(v)
@@ -396,6 +453,36 @@ func (_u *ModelUpdate) AddApikeys(v ...*ModelApiKey) *ModelUpdate {
 	return _u.AddApikeyIDs(ids...)
 }
 
+// AddSwitchesFromIDs adds the "switches_from" edge to the TaskModelSwitch entity by IDs.
+func (_u *ModelUpdate) AddSwitchesFromIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.AddSwitchesFromIDs(ids...)
+	return _u
+}
+
+// AddSwitchesFrom adds the "switches_from" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdate) AddSwitchesFrom(v ...*TaskModelSwitch) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSwitchesFromIDs(ids...)
+}
+
+// AddSwitchesToIDs adds the "switches_to" edge to the TaskModelSwitch entity by IDs.
+func (_u *ModelUpdate) AddSwitchesToIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.AddSwitchesToIDs(ids...)
+	return _u
+}
+
+// AddSwitchesTo adds the "switches_to" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdate) AddSwitchesTo(v ...*TaskModelSwitch) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSwitchesToIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdate) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdate {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -546,6 +633,48 @@ func (_u *ModelUpdate) RemoveApikeys(v ...*ModelApiKey) *ModelUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveApikeyIDs(ids...)
+}
+
+// ClearSwitchesFrom clears all "switches_from" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdate) ClearSwitchesFrom() *ModelUpdate {
+	_u.mutation.ClearSwitchesFrom()
+	return _u
+}
+
+// RemoveSwitchesFromIDs removes the "switches_from" edge to TaskModelSwitch entities by IDs.
+func (_u *ModelUpdate) RemoveSwitchesFromIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.RemoveSwitchesFromIDs(ids...)
+	return _u
+}
+
+// RemoveSwitchesFrom removes "switches_from" edges to TaskModelSwitch entities.
+func (_u *ModelUpdate) RemoveSwitchesFrom(v ...*TaskModelSwitch) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSwitchesFromIDs(ids...)
+}
+
+// ClearSwitchesTo clears all "switches_to" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdate) ClearSwitchesTo() *ModelUpdate {
+	_u.mutation.ClearSwitchesTo()
+	return _u
+}
+
+// RemoveSwitchesToIDs removes the "switches_to" edge to TaskModelSwitch entities by IDs.
+func (_u *ModelUpdate) RemoveSwitchesToIDs(ids ...uuid.UUID) *ModelUpdate {
+	_u.mutation.RemoveSwitchesToIDs(ids...)
+	return _u
+}
+
+// RemoveSwitchesTo removes "switches_to" edges to TaskModelSwitch entities.
+func (_u *ModelUpdate) RemoveSwitchesTo(v ...*TaskModelSwitch) *ModelUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSwitchesToIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -722,6 +851,21 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedWeight(); ok {
 		_spec.AddField(model.FieldWeight, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ThinkingEnabled(); ok {
+		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ContextLimit(); ok {
+		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContextLimit(); ok {
+		_spec.AddField(model.FieldContextLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.OutputLimit(); ok {
+		_spec.SetField(model.FieldOutputLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedOutputLimit(); ok {
+		_spec.AddField(model.FieldOutputLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.LastCheckAt(); ok {
 		_spec.SetField(model.FieldLastCheckAt, field.TypeTime, value)
@@ -1047,6 +1191,96 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SwitchesFromCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesFromTable,
+			Columns: []string{model.SwitchesFromColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSwitchesFromIDs(); len(nodes) > 0 && !_u.mutation.SwitchesFromCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesFromTable,
+			Columns: []string{model.SwitchesFromColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SwitchesFromIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesFromTable,
+			Columns: []string{model.SwitchesFromColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SwitchesToCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesToTable,
+			Columns: []string{model.SwitchesToColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSwitchesToIDs(); len(nodes) > 0 && !_u.mutation.SwitchesToCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesToTable,
+			Columns: []string{model.SwitchesToColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SwitchesToIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesToTable,
+			Columns: []string{model.SwitchesToColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1344,6 +1578,62 @@ func (_u *ModelUpdateOne) AddWeight(v int) *ModelUpdateOne {
 	return _u
 }
 
+// SetThinkingEnabled sets the "thinking_enabled" field.
+func (_u *ModelUpdateOne) SetThinkingEnabled(v bool) *ModelUpdateOne {
+	_u.mutation.SetThinkingEnabled(v)
+	return _u
+}
+
+// SetNillableThinkingEnabled sets the "thinking_enabled" field if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillableThinkingEnabled(v *bool) *ModelUpdateOne {
+	if v != nil {
+		_u.SetThinkingEnabled(*v)
+	}
+	return _u
+}
+
+// SetContextLimit sets the "context_limit" field.
+func (_u *ModelUpdateOne) SetContextLimit(v int) *ModelUpdateOne {
+	_u.mutation.ResetContextLimit()
+	_u.mutation.SetContextLimit(v)
+	return _u
+}
+
+// SetNillableContextLimit sets the "context_limit" field if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillableContextLimit(v *int) *ModelUpdateOne {
+	if v != nil {
+		_u.SetContextLimit(*v)
+	}
+	return _u
+}
+
+// AddContextLimit adds value to the "context_limit" field.
+func (_u *ModelUpdateOne) AddContextLimit(v int) *ModelUpdateOne {
+	_u.mutation.AddContextLimit(v)
+	return _u
+}
+
+// SetOutputLimit sets the "output_limit" field.
+func (_u *ModelUpdateOne) SetOutputLimit(v int) *ModelUpdateOne {
+	_u.mutation.ResetOutputLimit()
+	_u.mutation.SetOutputLimit(v)
+	return _u
+}
+
+// SetNillableOutputLimit sets the "output_limit" field if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillableOutputLimit(v *int) *ModelUpdateOne {
+	if v != nil {
+		_u.SetOutputLimit(*v)
+	}
+	return _u
+}
+
+// AddOutputLimit adds value to the "output_limit" field.
+func (_u *ModelUpdateOne) AddOutputLimit(v int) *ModelUpdateOne {
+	_u.mutation.AddOutputLimit(v)
+	return _u
+}
+
 // SetLastCheckAt sets the "last_check_at" field.
 func (_u *ModelUpdateOne) SetLastCheckAt(v time.Time) *ModelUpdateOne {
 	_u.mutation.SetLastCheckAt(v)
@@ -1523,6 +1813,36 @@ func (_u *ModelUpdateOne) AddApikeys(v ...*ModelApiKey) *ModelUpdateOne {
 	return _u.AddApikeyIDs(ids...)
 }
 
+// AddSwitchesFromIDs adds the "switches_from" edge to the TaskModelSwitch entity by IDs.
+func (_u *ModelUpdateOne) AddSwitchesFromIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.AddSwitchesFromIDs(ids...)
+	return _u
+}
+
+// AddSwitchesFrom adds the "switches_from" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdateOne) AddSwitchesFrom(v ...*TaskModelSwitch) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSwitchesFromIDs(ids...)
+}
+
+// AddSwitchesToIDs adds the "switches_to" edge to the TaskModelSwitch entity by IDs.
+func (_u *ModelUpdateOne) AddSwitchesToIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.AddSwitchesToIDs(ids...)
+	return _u
+}
+
+// AddSwitchesTo adds the "switches_to" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdateOne) AddSwitchesTo(v ...*TaskModelSwitch) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSwitchesToIDs(ids...)
+}
+
 // AddTeamModelIDs adds the "team_models" edge to the TeamModel entity by IDs.
 func (_u *ModelUpdateOne) AddTeamModelIDs(ids ...uuid.UUID) *ModelUpdateOne {
 	_u.mutation.AddTeamModelIDs(ids...)
@@ -1673,6 +1993,48 @@ func (_u *ModelUpdateOne) RemoveApikeys(v ...*ModelApiKey) *ModelUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveApikeyIDs(ids...)
+}
+
+// ClearSwitchesFrom clears all "switches_from" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdateOne) ClearSwitchesFrom() *ModelUpdateOne {
+	_u.mutation.ClearSwitchesFrom()
+	return _u
+}
+
+// RemoveSwitchesFromIDs removes the "switches_from" edge to TaskModelSwitch entities by IDs.
+func (_u *ModelUpdateOne) RemoveSwitchesFromIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.RemoveSwitchesFromIDs(ids...)
+	return _u
+}
+
+// RemoveSwitchesFrom removes "switches_from" edges to TaskModelSwitch entities.
+func (_u *ModelUpdateOne) RemoveSwitchesFrom(v ...*TaskModelSwitch) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSwitchesFromIDs(ids...)
+}
+
+// ClearSwitchesTo clears all "switches_to" edges to the TaskModelSwitch entity.
+func (_u *ModelUpdateOne) ClearSwitchesTo() *ModelUpdateOne {
+	_u.mutation.ClearSwitchesTo()
+	return _u
+}
+
+// RemoveSwitchesToIDs removes the "switches_to" edge to TaskModelSwitch entities by IDs.
+func (_u *ModelUpdateOne) RemoveSwitchesToIDs(ids ...uuid.UUID) *ModelUpdateOne {
+	_u.mutation.RemoveSwitchesToIDs(ids...)
+	return _u
+}
+
+// RemoveSwitchesTo removes "switches_to" edges to TaskModelSwitch entities.
+func (_u *ModelUpdateOne) RemoveSwitchesTo(v ...*TaskModelSwitch) *ModelUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSwitchesToIDs(ids...)
 }
 
 // ClearTeamModels clears all "team_models" edges to the TeamModel entity.
@@ -1879,6 +2241,21 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 	}
 	if value, ok := _u.mutation.AddedWeight(); ok {
 		_spec.AddField(model.FieldWeight, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ThinkingEnabled(); ok {
+		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ContextLimit(); ok {
+		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContextLimit(); ok {
+		_spec.AddField(model.FieldContextLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.OutputLimit(); ok {
+		_spec.SetField(model.FieldOutputLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedOutputLimit(); ok {
+		_spec.AddField(model.FieldOutputLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.LastCheckAt(); ok {
 		_spec.SetField(model.FieldLastCheckAt, field.TypeTime, value)
@@ -2204,6 +2581,96 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(modelapikey.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SwitchesFromCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesFromTable,
+			Columns: []string{model.SwitchesFromColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSwitchesFromIDs(); len(nodes) > 0 && !_u.mutation.SwitchesFromCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesFromTable,
+			Columns: []string{model.SwitchesFromColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SwitchesFromIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesFromTable,
+			Columns: []string{model.SwitchesFromColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.SwitchesToCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesToTable,
+			Columns: []string{model.SwitchesToColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSwitchesToIDs(); len(nodes) > 0 && !_u.mutation.SwitchesToCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesToTable,
+			Columns: []string{model.SwitchesToColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SwitchesToIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   model.SwitchesToTable,
+			Columns: []string{model.SwitchesToColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

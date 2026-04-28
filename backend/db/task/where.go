@@ -929,6 +929,29 @@ func HasGitBotTasksWith(preds ...predicate.GitBotTask) predicate.Task {
 	})
 }
 
+// HasModelSwitches applies the HasEdge predicate on the "model_switches" edge.
+func HasModelSwitches() predicate.Task {
+	return predicate.Task(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ModelSwitchesTable, ModelSwitchesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasModelSwitchesWith applies the HasEdge predicate on the "model_switches" edge with a given conditions (other predicates).
+func HasModelSwitchesWith(preds ...predicate.TaskModelSwitch) predicate.Task {
+	return predicate.Task(func(s *sql.Selector) {
+		step := newModelSwitchesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTaskVms applies the HasEdge predicate on the "task_vms" edge.
 func HasTaskVms() predicate.Task {
 	return predicate.Task(func(s *sql.Selector) {

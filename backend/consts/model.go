@@ -1,5 +1,13 @@
 package consts
 
+const (
+	ModelApiKeyPrefix = "public:model:"
+)
+
+func PublicModelKey(key string) string {
+	return ModelApiKeyPrefix + key
+}
+
 type ModelProvider string
 
 const (

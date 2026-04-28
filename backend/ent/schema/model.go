@@ -44,6 +44,9 @@ func (Model) Fields() []ent.Field {
 		field.Float("temperature").Optional(),
 		field.String("interface_type").Optional(),
 		field.Int("weight").Default(1),
+		field.Bool("thinking_enabled").Default(true),
+		field.Int("context_limit").Default(200000),
+		field.Int("output_limit").Default(32000),
 		field.Time("last_check_at").Optional(),
 		field.Bool("last_check_success").Optional(),
 		field.String("last_check_error").Optional(),
@@ -62,5 +65,7 @@ func (Model) Edges() []ent.Edge {
 		edge.To("project_tasks", ProjectTask.Type),
 		edge.To("pricing", ModelPricing.Type).Unique(),
 		edge.To("apikeys", ModelApiKey.Type),
+		edge.To("switches_from", TaskModelSwitch.Type),
+		edge.To("switches_to", TaskModelSwitch.Type),
 	}
 }

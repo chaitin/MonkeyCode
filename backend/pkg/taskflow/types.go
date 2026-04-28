@@ -490,9 +490,10 @@ type RepoFileDiff struct {
 
 // RestartTaskReq 重启任务请求
 type RestartTaskReq struct {
-	ID          uuid.UUID `json:"id"`
-	RequestId   string    `json:"request_id,omitempty"`
-	LoadSession bool      `json:"load_session"`
+	ID              uuid.UUID            `json:"id"`
+	RequestId       string               `json:"request_id,omitempty"`
+	LoadSession     bool                 `json:"load_session"`
+	ExecutionConfig *TaskExecutionConfig `json:"execution_config,omitempty"`
 }
 
 // RestartTaskResp 重启任务响应
@@ -546,8 +547,16 @@ type LLM struct {
 
 // ConfigFile 配置文件
 type ConfigFile struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
+	Path    string  `json:"path"`
+	Content string  `json:"content"`
+	Mode    *uint32 `json:"mode,omitempty"`
+}
+
+// TaskExecutionConfig 任务运行配置
+type TaskExecutionConfig struct {
+	Envs        map[string]string `json:"envs,omitempty"`
+	ConfigFiles []ConfigFile      `json:"config_files,omitempty"`
+	McpServers  []McpServerConfig `json:"mcp_servers,omitempty"`
 }
 
 // McpHttpHeader MCP HTTP 头

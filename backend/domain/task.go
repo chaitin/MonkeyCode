@@ -25,6 +25,7 @@ type TaskUsecase interface {
 	Stop(ctx context.Context, user *User, id uuid.UUID) error
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error
+	SwitchModel(ctx context.Context, user *User, taskID uuid.UUID, req SwitchTaskModelReq) (*SwitchTaskModelResp, error)
 	GitTask(ctx context.Context, id uuid.UUID) (*GitTask, error)
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
 	Update(ctx context.Context, user *User, req UpdateTaskReq) error
@@ -43,6 +44,10 @@ type TaskRepo interface {
 	RefreshLastActiveAt(ctx context.Context, id uuid.UUID, at time.Time, minInterval time.Duration) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
 	Delete(ctx context.Context, user *User, id uuid.UUID) error
+	UpdateProjectTaskModel(ctx context.Context, taskID, modelID uuid.UUID) error
+	CreateModelSwitch(ctx context.Context, item *TaskModelSwitch) error
+	FinishModelSwitch(ctx context.Context, id uuid.UUID, success bool, message, sessionID string) error
+	CompleteModelSwitch(ctx context.Context, id, taskID, modelID uuid.UUID, success bool, message, sessionID string) error
 }
 
 // repoFullName 从 repo_url 中提取 full_name
@@ -107,6 +112,34 @@ func (r *CreateTaskReq) Validate() error {
 type UpdateTaskReq struct {
 	ID    uuid.UUID `param:"id" validate:"required" json:"-" swaggerignore:"true"`
 	Title *string   `json:"title"`
+}
+
+// SwitchTaskModelReq 切换任务运行模型请求
+type SwitchTaskModelReq struct {
+	RequestID   string    `json:"request_id"`
+	ModelID     uuid.UUID `json:"model_id" validate:"required"`
+	LoadSession bool      `json:"load_session"`
+}
+
+// SwitchTaskModelResp 切换任务运行模型响应
+type SwitchTaskModelResp struct {
+	ID        uuid.UUID `json:"id"`
+	RequestID string    `json:"request_id,omitempty"`
+	Success   bool      `json:"success"`
+	Message   string    `json:"message"`
+	SessionID string    `json:"session_id"`
+	Model     *Model    `json:"model,omitempty"`
+}
+
+// TaskModelSwitch 任务模型切换记录
+type TaskModelSwitch struct {
+	ID          uuid.UUID
+	TaskID      uuid.UUID
+	UserID      uuid.UUID
+	FromModelID *uuid.UUID
+	ToModelID   uuid.UUID
+	RequestID   string
+	LoadSession bool
 }
 
 // ListTaskResp 任务列表响应

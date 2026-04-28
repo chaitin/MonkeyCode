@@ -93,6 +93,16 @@ import (
 //	@Description	{"id":"uuid","request_id":"string?","success":true,"message":"string","session_id":"string"}
 //	@Description	```
 //	@Description
+//	@Description	### Type=call, Kind=switch_model — 切换运行中任务模型
+//	@Description	请求 Data:
+//	@Description	```json
+//	@Description	{"request_id":"string","model_id":"uuid","load_session":true}
+//	@Description	```
+//	@Description	响应 Data:
+//	@Description	```json
+//	@Description	{"id":"uuid","request_id":"string?","success":true,"message":"string","session_id":"string","model":{}}
+//	@Description	```
+//	@Description
 //	@Description	### Type=sync-my-ip — 同步 Web 客户端真实 IP
 //	@Description	请求 Data:
 //	@Description	```json
@@ -177,7 +187,7 @@ func (h *TaskHandler) Control(c *web.Context, req domain.TaskControlReq) error {
 	})
 
 	g.Go(func() error {
-		return h.controlReadMessages(ctx, wsConn, logger, task)
+		return h.controlReadMessages(ctx, wsConn, logger, user, task)
 	})
 
 	g.Go(func() error {
@@ -245,7 +255,7 @@ func (h *TaskHandler) controlKeepAlive(ctx context.Context, taskID uuid.UUID, vm
 }
 
 // controlReadMessages 读取客户端消息并分发处理
-func (h *TaskHandler) controlReadMessages(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task) error {
+func (h *TaskHandler) controlReadMessages(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -267,7 +277,7 @@ func (h *TaskHandler) controlReadMessages(ctx context.Context, wsConn *ws.Websoc
 
 		switch m.Type {
 		case consts.TaskStreamTypeCall:
-			h.handleControlCall(ctx, wsConn, logger, task, m)
+			h.handleControlCall(ctx, wsConn, logger, user, task, m)
 		case consts.TaskStreamTypeSyncWebClientIP:
 			h.handleSyncClientIP(ctx, wsConn, logger, m.Data)
 		}
@@ -275,7 +285,7 @@ func (h *TaskHandler) controlReadMessages(ctx context.Context, wsConn *ws.Websoc
 }
 
 // handleControlCall 处理 call 消息，调用 taskflow HTTP 接口并写回响应
-func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, task *domain.Task, m domain.TaskStream) {
+func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.WebsocketManager, logger *slog.Logger, user *domain.User, task *domain.Task, m domain.TaskStream) {
 	taskID := task.ID.String()
 
 	var result any
@@ -340,8 +350,18 @@ func (h *TaskHandler) handleControlCall(ctx context.Context, wsConn *ws.Websocke
 			return
 		}
 		req.ID = task.ID
+		req.ExecutionConfig = nil
 		requestID = req.RequestId
 		result, err = h.taskflow.TaskManager().Restart(ctx, req)
+
+	case "switch_model":
+		var req domain.SwitchTaskModelReq
+		if err := json.Unmarshal(m.Data, &req); err != nil {
+			logger.WarnContext(ctx, "failed to unmarshal switch model", "error", err)
+			return
+		}
+		requestID = req.RequestID
+		result, err = h.usecase.SwitchModel(ctx, user, task.ID, req)
 
 	default:
 		return

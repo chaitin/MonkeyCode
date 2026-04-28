@@ -47,6 +47,8 @@ const (
 	EdgeVms = "vms"
 	// EdgeGitBotTasks holds the string denoting the git_bot_tasks edge name in mutations.
 	EdgeGitBotTasks = "git_bot_tasks"
+	// EdgeModelSwitches holds the string denoting the model_switches edge name in mutations.
+	EdgeModelSwitches = "model_switches"
 	// EdgeTaskVms holds the string denoting the task_vms edge name in mutations.
 	EdgeTaskVms = "task_vms"
 	// Table holds the table name of the task in the database.
@@ -77,6 +79,13 @@ const (
 	GitBotTasksInverseTable = "git_bot_tasks"
 	// GitBotTasksColumn is the table column denoting the git_bot_tasks relation/edge.
 	GitBotTasksColumn = "task_id"
+	// ModelSwitchesTable is the table that holds the model_switches relation/edge.
+	ModelSwitchesTable = "task_model_switches"
+	// ModelSwitchesInverseTable is the table name for the TaskModelSwitch entity.
+	// It exists in this package in order to avoid circular dependency with the "taskmodelswitch" package.
+	ModelSwitchesInverseTable = "task_model_switches"
+	// ModelSwitchesColumn is the table column denoting the model_switches relation/edge.
+	ModelSwitchesColumn = "task_id"
 	// TaskVmsTable is the table that holds the task_vms relation/edge.
 	TaskVmsTable = "task_virtualmachines"
 	// TaskVmsInverseTable is the table name for the TaskVirtualMachine entity.
@@ -256,6 +265,20 @@ func ByGitBotTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByModelSwitchesCount orders the results by model_switches count.
+func ByModelSwitchesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newModelSwitchesStep(), opts...)
+	}
+}
+
+// ByModelSwitches orders the results by model_switches terms.
+func ByModelSwitches(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newModelSwitchesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTaskVmsCount orders the results by task_vms count.
 func ByTaskVmsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -295,6 +318,13 @@ func newGitBotTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GitBotTasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, GitBotTasksTable, GitBotTasksColumn),
+	)
+}
+func newModelSwitchesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ModelSwitchesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ModelSwitchesTable, ModelSwitchesColumn),
 	)
 }
 func newTaskVmsStep() *sqlgraph.Step {
