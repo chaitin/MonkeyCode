@@ -1,5 +1,6 @@
-import { ConstsTaskStatus, type DomainProjectTask, type DomainVMPort } from "@/api/Api"
+import { ConstsOwnerType, ConstsTaskStatus, type DomainModel, type DomainProjectTask, type DomainVMPort } from "@/api/Api"
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
+import { useCommonData } from "@/components/console/data-provider"
 import { PlanStepsBlock } from "@/components/console/task/chat-panel"
 import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
@@ -24,14 +25,23 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CircularProgress } from "@/components/ui/circular-progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
+import Icon from "@/components/common/Icon"
 import { cn } from "@/lib/utils"
-import { formatTokens, getTaskDisplayName } from "@/utils/common"
+import { formatTokens, getBrandFromModelName, getModelPricingItem, getOwnerTypeBadge, getTaskDisplayName } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconArrowDown, IconArrowUp, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -43,6 +53,7 @@ type MessageSource = "live" | "history"
 export default function TaskDetailPage() {
   const { taskId } = useParams()
   const { setTaskName } = useBreadcrumbTask() ?? {}
+  const { models, loadingModels } = useCommonData()
   const [task, setTask] = React.useState<DomainProjectTask | null>(null)
   const [activeSidePanel, setActiveSidePanel] = React.useState<SidePanelType | null>(null)
   const [terminalPanelOpen, setTerminalPanelOpen] = React.useState(false)
@@ -75,6 +86,9 @@ export default function TaskDetailPage() {
   const [contextUsagePopoverOpen, setContextUsagePopoverOpen] = React.useState(false)
   const [resetContextDialogOpen, setResetContextDialogOpen] = React.useState(false)
   const [resetContextSubmitting, setResetContextSubmitting] = React.useState(false)
+  const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
+  const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
+  const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
   const [chatHasOverflow, setChatHasOverflow] = React.useState(false)
   const [chatAtTop, setChatAtTop] = React.useState(true)
   const [chatAtBottom, setChatAtBottom] = React.useState(true)
@@ -211,6 +225,17 @@ export default function TaskDetailPage() {
 
   const hasSidePanel = activeSidePanel !== null
   const hasBottomTerminal = terminalPanelOpen
+  const currentModelId = task?.model?.id ?? ""
+  const currentModelName = task?.model?.model ?? ""
+  const supportedModels = React.useMemo(
+    () => models.filter((model) => model.id || model.model),
+    [models]
+  )
+  const selectedModelValue = React.useMemo(() => {
+    if (currentModelId) return currentModelId
+
+    return supportedModels.find((model) => model.model === currentModelName)?.id ?? ""
+  }, [currentModelId, currentModelName, supportedModels])
 
   const toggleSidePanel = (panel: SidePanelType) => {
     setActiveSidePanel((prev) => (prev === panel ? null : panel))
@@ -600,6 +625,47 @@ export default function TaskDetailPage() {
     handleSend("/compact")
   }, [canInput, handleSend])
 
+  const handleRequestModelSwitch = React.useCallback((model: DomainModel) => {
+    if (!model.id) {
+      toast.error("模型信息无效，无法切换")
+      return
+    }
+
+    if (model.id === currentModelId || (!currentModelId && model.model === currentModelName)) {
+      return
+    }
+
+    setPendingSwitchModel(model)
+    setModelSwitchDialogOpen(true)
+  }, [currentModelId, currentModelName])
+
+  const handleConfirmModelSwitch = React.useCallback(async () => {
+    const modelId = pendingSwitchModel?.id
+    if (!modelId || !pendingSwitchModel || modelSwitchSubmitting) return
+
+    const nextModel = pendingSwitchModel
+    setModelSwitchSubmitting(true)
+    const response = await taskControlClientRef.current?.switchModel(modelId, true)
+    setModelSwitchSubmitting(false)
+
+    if (!response) {
+      toast.error("切换模型超时，请稍后重试")
+      return
+    }
+
+    if (response.success) {
+      setTask((prev) => prev ? { ...prev, model: nextModel } : prev)
+      setModelSwitchDialogOpen(false)
+      setPendingSwitchModel(null)
+      toast.success(response.message || "模型已切换")
+      return
+    }
+
+    setModelSwitchDialogOpen(false)
+    setPendingSwitchModel(null)
+    toast.error(response.message || "切换模型失败")
+  }, [modelSwitchSubmitting, pendingSwitchModel])
+
   const handleCancel = React.useCallback(() => {
     streamClientRef.current?.sendCancel()
   }, [])
@@ -776,9 +842,72 @@ export default function TaskDetailPage() {
     <div className="shrink-0">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Badge variant="outline" className="shrink-0">{task?.model?.model}</Badge>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 max-w-[220px] shrink-0 gap-1 px-2 text-xs font-normal"
+                disabled={!canInput}
+              >
+                <span className="truncate">{currentModelName || "未知模型"}</span>
+                <IconChevronDown className="size-3.5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-[360px] min-w-[320px] overflow-y-auto">
+              {loadingModels ? (
+                <DropdownMenuItem disabled>加载中...</DropdownMenuItem>
+              ) : supportedModels.length === 0 ? (
+                <DropdownMenuItem disabled>暂无可用模型</DropdownMenuItem>
+              ) : (
+                <DropdownMenuRadioGroup
+                  value={selectedModelValue}
+                  onValueChange={(nextModelId) => {
+                    const nextModel = supportedModels.find((model) => model.id === nextModelId)
+                    if (nextModel) {
+                      handleRequestModelSwitch(nextModel)
+                    }
+                  }}
+                >
+                  {supportedModels.map((model) => {
+                    const modelName = model.model || "未知模型"
+                    const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                    const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                    const pricingTags = pricing?.tags ?? []
+
+                    return (
+                      <DropdownMenuRadioItem
+                        key={model.id || modelName}
+                        value={model.id || ""}
+                        disabled={!model.id}
+                        className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <Icon name={getBrandFromModelName(modelName)} className="size-4" />
+                          <span className="truncate">{modelName}</span>
+                        </div>
+                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                          {showPricingSummary && pricingTags.map((tag) => (
+                            <Badge
+                              key={`${model.id}-${tag}`}
+                              variant="default"
+                              className="shrink-0 !bg-primary !text-primary-foreground"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                          {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+                        </div>
+                      </DropdownMenuRadioItem>
+                    )
+                  })}
+                </DropdownMenuRadioGroup>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {hasContextUsage && (
+            {taskInteractive && hasContextUsage && (
               <HoverCard
                 open={contextUsagePopoverOpen}
                 onOpenChange={setContextUsagePopoverOpen}
@@ -794,8 +923,8 @@ export default function TaskDetailPage() {
                     <CircularProgress
                       value={contextUsage.used ?? 0}
                       max={contextUsage.size ?? 0}
-                      size={16}
-                      strokeWidth={2.5}
+                      size={20}
+                      strokeWidth={3}
                       indicatorClassName={contextProgressClassName}
                     />
                   </button>
@@ -920,6 +1049,38 @@ export default function TaskDetailPage() {
   return (
     <div className="flex flex-col h-full min-h-0 gap-2">
       {detailHeader}
+      <AlertDialog
+        open={modelSwitchDialogOpen}
+        onOpenChange={(open) => {
+          if (modelSwitchSubmitting) return
+          setModelSwitchDialogOpen(open)
+          if (!open) {
+            setPendingSwitchModel(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>切换模型</AlertDialogTitle>
+            <AlertDialogDescription>
+              即将把当前任务模型切换为 {pendingSwitchModel?.model || "所选模型"}。请确认是否继续。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={modelSwitchSubmitting}>取消</AlertDialogCancel>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleConfirmModelSwitch()
+              }}
+              disabled={modelSwitchSubmitting}
+            >
+              {modelSwitchSubmitting && <Spinner className="mr-2 size-4" />}
+              确认切换
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={resetContextDialogOpen}
         onOpenChange={(open) => {

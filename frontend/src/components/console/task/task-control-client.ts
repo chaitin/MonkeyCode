@@ -73,6 +73,13 @@ interface RestartTaskResponse extends TaskControlCallResponse {
   session_id?: string
 }
 
+interface SwitchModelResponse extends TaskControlCallResponse {
+  id?: string
+  message?: string
+  session_id?: string
+  model?: unknown
+}
+
 export class TaskControlClient implements TaskRepositoryClient {
   private static readonly CONNECT_TIMEOUT_MS = 10000
   private static readonly DEFAULT_CALL_TIMEOUT_MS = 5000
@@ -275,6 +282,13 @@ export class TaskControlClient implements TaskRepositoryClient {
     }, TaskControlClient.RESTART_TIMEOUT_MS).then((response) => !!response?.success)
   }
 
+  switchModel(modelId: string, loadSession = true) {
+    return this.call<SwitchModelResponse>("switch_model", {
+      model_id: modelId,
+      load_session: loadSession,
+    }, TaskControlClient.RESTART_TIMEOUT_MS)
+  }
+
   private handleSocketMessage(rawData: string) {
     const message = JSON.parse(rawData) as TaskControlStreamMessage
 
@@ -316,11 +330,6 @@ export class TaskControlClient implements TaskRepositoryClient {
 
     clearTimeout(pendingCall.timeoutId)
     this.pendingCalls.delete(pendingCall.requestId)
-
-    if (responseObject?.success === false) {
-      pendingCall.resolve(null)
-      return
-    }
 
     pendingCall.resolve(response)
   }
