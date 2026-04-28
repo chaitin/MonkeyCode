@@ -35,6 +35,12 @@ const (
 	FieldInterfaceType = "interface_type"
 	// FieldWeight holds the string denoting the weight field in the database.
 	FieldWeight = "weight"
+	// FieldThinkingEnabled holds the string denoting the thinking_enabled field in the database.
+	FieldThinkingEnabled = "thinking_enabled"
+	// FieldContextLimit holds the string denoting the context_limit field in the database.
+	FieldContextLimit = "context_limit"
+	// FieldOutputLimit holds the string denoting the output_limit field in the database.
+	FieldOutputLimit = "output_limit"
 	// FieldLastCheckAt holds the string denoting the last_check_at field in the database.
 	FieldLastCheckAt = "last_check_at"
 	// FieldLastCheckSuccess holds the string denoting the last_check_success field in the database.
@@ -59,6 +65,10 @@ const (
 	EdgePricing = "pricing"
 	// EdgeApikeys holds the string denoting the apikeys edge name in mutations.
 	EdgeApikeys = "apikeys"
+	// EdgeSwitchesFrom holds the string denoting the switches_from edge name in mutations.
+	EdgeSwitchesFrom = "switches_from"
+	// EdgeSwitchesTo holds the string denoting the switches_to edge name in mutations.
+	EdgeSwitchesTo = "switches_to"
 	// EdgeTeamModels holds the string denoting the team_models edge name in mutations.
 	EdgeTeamModels = "team_models"
 	// EdgeTeamGroupModels holds the string denoting the team_group_models edge name in mutations.
@@ -110,6 +120,20 @@ const (
 	ApikeysInverseTable = "model_api_keys"
 	// ApikeysColumn is the table column denoting the apikeys relation/edge.
 	ApikeysColumn = "model_id"
+	// SwitchesFromTable is the table that holds the switches_from relation/edge.
+	SwitchesFromTable = "task_model_switches"
+	// SwitchesFromInverseTable is the table name for the TaskModelSwitch entity.
+	// It exists in this package in order to avoid circular dependency with the "taskmodelswitch" package.
+	SwitchesFromInverseTable = "task_model_switches"
+	// SwitchesFromColumn is the table column denoting the switches_from relation/edge.
+	SwitchesFromColumn = "from_model_id"
+	// SwitchesToTable is the table that holds the switches_to relation/edge.
+	SwitchesToTable = "task_model_switches"
+	// SwitchesToInverseTable is the table name for the TaskModelSwitch entity.
+	// It exists in this package in order to avoid circular dependency with the "taskmodelswitch" package.
+	SwitchesToInverseTable = "task_model_switches"
+	// SwitchesToColumn is the table column denoting the switches_to relation/edge.
+	SwitchesToColumn = "to_model_id"
 	// TeamModelsTable is the table that holds the team_models relation/edge.
 	TeamModelsTable = "team_models"
 	// TeamModelsInverseTable is the table name for the TeamModel entity.
@@ -139,6 +163,9 @@ var Columns = []string{
 	FieldTemperature,
 	FieldInterfaceType,
 	FieldWeight,
+	FieldThinkingEnabled,
+	FieldContextLimit,
+	FieldOutputLimit,
 	FieldLastCheckAt,
 	FieldLastCheckSuccess,
 	FieldLastCheckError,
@@ -183,6 +210,12 @@ var (
 	ModelValidator func(string) error
 	// DefaultWeight holds the default value on creation for the "weight" field.
 	DefaultWeight int
+	// DefaultThinkingEnabled holds the default value on creation for the "thinking_enabled" field.
+	DefaultThinkingEnabled bool
+	// DefaultContextLimit holds the default value on creation for the "context_limit" field.
+	DefaultContextLimit int
+	// DefaultOutputLimit holds the default value on creation for the "output_limit" field.
+	DefaultOutputLimit int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -247,6 +280,21 @@ func ByInterfaceType(opts ...sql.OrderTermOption) OrderOption {
 // ByWeight orders the results by the weight field.
 func ByWeight(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWeight, opts...).ToFunc()
+}
+
+// ByThinkingEnabled orders the results by the thinking_enabled field.
+func ByThinkingEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldThinkingEnabled, opts...).ToFunc()
+}
+
+// ByContextLimit orders the results by the context_limit field.
+func ByContextLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContextLimit, opts...).ToFunc()
+}
+
+// ByOutputLimit orders the results by the output_limit field.
+func ByOutputLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOutputLimit, opts...).ToFunc()
 }
 
 // ByLastCheckAt orders the results by the last_check_at field.
@@ -358,6 +406,34 @@ func ByApikeys(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// BySwitchesFromCount orders the results by switches_from count.
+func BySwitchesFromCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSwitchesFromStep(), opts...)
+	}
+}
+
+// BySwitchesFrom orders the results by switches_from terms.
+func BySwitchesFrom(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSwitchesFromStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// BySwitchesToCount orders the results by switches_to count.
+func BySwitchesToCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSwitchesToStep(), opts...)
+	}
+}
+
+// BySwitchesTo orders the results by switches_to terms.
+func BySwitchesTo(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSwitchesToStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamModelsCount orders the results by team_models count.
 func ByTeamModelsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -432,6 +508,20 @@ func newApikeysStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ApikeysInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ApikeysTable, ApikeysColumn),
+	)
+}
+func newSwitchesFromStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SwitchesFromInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SwitchesFromTable, SwitchesFromColumn),
+	)
+}
+func newSwitchesToStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SwitchesToInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SwitchesToTable, SwitchesToColumn),
 	)
 }
 func newTeamModelsStep() *sqlgraph.Step {

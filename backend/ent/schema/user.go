@@ -60,6 +60,7 @@ func (User) Edges() []ent.Edge {
 		edge.To("hosts", Host.Type),
 		edge.To("vms", VirtualMachine.Type),
 		edge.To("tasks", Task.Type),
+		edge.To("task_model_switches", TaskModelSwitch.Type),
 		edge.To("git_identities", GitIdentity.Type),
 		edge.To("projects", Project.Type),
 		edge.To("project_issues", ProjectIssue.Type),

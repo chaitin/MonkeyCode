@@ -68,6 +68,8 @@ type UserEdges struct {
 	Vms []*VirtualMachine `json:"vms,omitempty"`
 	// Tasks holds the value of the tasks edge.
 	Tasks []*Task `json:"tasks,omitempty"`
+	// TaskModelSwitches holds the value of the task_model_switches edge.
+	TaskModelSwitches []*TaskModelSwitch `json:"task_model_switches,omitempty"`
 	// GitIdentities holds the value of the git_identities edge.
 	GitIdentities []*GitIdentity `json:"git_identities,omitempty"`
 	// Projects holds the value of the projects edge.
@@ -92,7 +94,7 @@ type UserEdges struct {
 	GitBotUsers []*GitBotUser `json:"git_bot_users,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [20]bool
+	loadedTypes [21]bool
 }
 
 // IdentitiesOrErr returns the Identities value or an error if the edge
@@ -176,10 +178,19 @@ func (e UserEdges) TasksOrErr() ([]*Task, error) {
 	return nil, &NotLoadedError{edge: "tasks"}
 }
 
+// TaskModelSwitchesOrErr returns the TaskModelSwitches value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) TaskModelSwitchesOrErr() ([]*TaskModelSwitch, error) {
+	if e.loadedTypes[9] {
+		return e.TaskModelSwitches, nil
+	}
+	return nil, &NotLoadedError{edge: "task_model_switches"}
+}
+
 // GitIdentitiesOrErr returns the GitIdentities value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) GitIdentitiesOrErr() ([]*GitIdentity, error) {
-	if e.loadedTypes[9] {
+	if e.loadedTypes[10] {
 		return e.GitIdentities, nil
 	}
 	return nil, &NotLoadedError{edge: "git_identities"}
@@ -188,7 +199,7 @@ func (e UserEdges) GitIdentitiesOrErr() ([]*GitIdentity, error) {
 // ProjectsOrErr returns the Projects value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) ProjectsOrErr() ([]*Project, error) {
-	if e.loadedTypes[10] {
+	if e.loadedTypes[11] {
 		return e.Projects, nil
 	}
 	return nil, &NotLoadedError{edge: "projects"}
@@ -197,7 +208,7 @@ func (e UserEdges) ProjectsOrErr() ([]*Project, error) {
 // ProjectIssuesOrErr returns the ProjectIssues value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) ProjectIssuesOrErr() ([]*ProjectIssue, error) {
-	if e.loadedTypes[11] {
+	if e.loadedTypes[12] {
 		return e.ProjectIssues, nil
 	}
 	return nil, &NotLoadedError{edge: "project_issues"}
@@ -206,7 +217,7 @@ func (e UserEdges) ProjectIssuesOrErr() ([]*ProjectIssue, error) {
 // AssignedIssuesOrErr returns the AssignedIssues value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) AssignedIssuesOrErr() ([]*ProjectIssue, error) {
-	if e.loadedTypes[12] {
+	if e.loadedTypes[13] {
 		return e.AssignedIssues, nil
 	}
 	return nil, &NotLoadedError{edge: "assigned_issues"}
@@ -215,7 +226,7 @@ func (e UserEdges) AssignedIssuesOrErr() ([]*ProjectIssue, error) {
 // ProjectCollaboratorsOrErr returns the ProjectCollaborators value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) ProjectCollaboratorsOrErr() ([]*ProjectCollaborator, error) {
-	if e.loadedTypes[13] {
+	if e.loadedTypes[14] {
 		return e.ProjectCollaborators, nil
 	}
 	return nil, &NotLoadedError{edge: "project_collaborators"}
@@ -224,7 +235,7 @@ func (e UserEdges) ProjectCollaboratorsOrErr() ([]*ProjectCollaborator, error) {
 // ProjectIssueCommentsOrErr returns the ProjectIssueComments value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) ProjectIssueCommentsOrErr() ([]*ProjectIssueComment, error) {
-	if e.loadedTypes[14] {
+	if e.loadedTypes[15] {
 		return e.ProjectIssueComments, nil
 	}
 	return nil, &NotLoadedError{edge: "project_issue_comments"}
@@ -233,7 +244,7 @@ func (e UserEdges) ProjectIssueCommentsOrErr() ([]*ProjectIssueComment, error) {
 // GitBotsOrErr returns the GitBots value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) GitBotsOrErr() ([]*GitBot, error) {
-	if e.loadedTypes[15] {
+	if e.loadedTypes[16] {
 		return e.GitBots, nil
 	}
 	return nil, &NotLoadedError{edge: "git_bots"}
@@ -242,7 +253,7 @@ func (e UserEdges) GitBotsOrErr() ([]*GitBot, error) {
 // McpUpstreamsOrErr returns the McpUpstreams value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) McpUpstreamsOrErr() ([]*MCPUpstream, error) {
-	if e.loadedTypes[16] {
+	if e.loadedTypes[17] {
 		return e.McpUpstreams, nil
 	}
 	return nil, &NotLoadedError{edge: "mcp_upstreams"}
@@ -251,7 +262,7 @@ func (e UserEdges) McpUpstreamsOrErr() ([]*MCPUpstream, error) {
 // TeamMembersOrErr returns the TeamMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) TeamMembersOrErr() ([]*TeamMember, error) {
-	if e.loadedTypes[17] {
+	if e.loadedTypes[18] {
 		return e.TeamMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_members"}
@@ -260,7 +271,7 @@ func (e UserEdges) TeamMembersOrErr() ([]*TeamMember, error) {
 // TeamGroupMembersOrErr returns the TeamGroupMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
-	if e.loadedTypes[18] {
+	if e.loadedTypes[19] {
 		return e.TeamGroupMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_members"}
@@ -269,7 +280,7 @@ func (e UserEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
 // GitBotUsersOrErr returns the GitBotUsers value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) GitBotUsersOrErr() ([]*GitBotUser, error) {
-	if e.loadedTypes[19] {
+	if e.loadedTypes[20] {
 		return e.GitBotUsers, nil
 	}
 	return nil, &NotLoadedError{edge: "git_bot_users"}
@@ -435,6 +446,11 @@ func (_m *User) QueryVms() *VirtualMachineQuery {
 // QueryTasks queries the "tasks" edge of the User entity.
 func (_m *User) QueryTasks() *TaskQuery {
 	return NewUserClient(_m.config).QueryTasks(_m)
+}
+
+// QueryTaskModelSwitches queries the "task_model_switches" edge of the User entity.
+func (_m *User) QueryTaskModelSwitches() *TaskModelSwitchQuery {
+	return NewUserClient(_m.config).QueryTaskModelSwitches(_m)
 }
 
 // QueryGitIdentities queries the "git_identities" edge of the User entity.

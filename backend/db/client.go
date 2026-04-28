@@ -39,6 +39,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -109,6 +110,8 @@ type Client struct {
 	ProjectTask *ProjectTaskClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
+	// TaskModelSwitch is the client for interacting with the TaskModelSwitch builders.
+	TaskModelSwitch *TaskModelSwitchClient
 	// TaskUsageStat is the client for interacting with the TaskUsageStat builders.
 	TaskUsageStat *TaskUsageStatClient
 	// TaskVirtualMachine is the client for interacting with the TaskVirtualMachine builders.
@@ -173,6 +176,7 @@ func (c *Client) init() {
 	c.ProjectIssueComment = NewProjectIssueCommentClient(c.config)
 	c.ProjectTask = NewProjectTaskClient(c.config)
 	c.Task = NewTaskClient(c.config)
+	c.TaskModelSwitch = NewTaskModelSwitchClient(c.config)
 	c.TaskUsageStat = NewTaskUsageStatClient(c.config)
 	c.TaskVirtualMachine = NewTaskVirtualMachineClient(c.config)
 	c.Team = NewTeamClient(c.config)
@@ -303,6 +307,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
 		Task:                NewTaskClient(cfg),
+		TaskModelSwitch:     NewTaskModelSwitchClient(cfg),
 		TaskUsageStat:       NewTaskUsageStatClient(cfg),
 		TaskVirtualMachine:  NewTaskVirtualMachineClient(cfg),
 		Team:                NewTeamClient(cfg),
@@ -360,6 +365,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
 		Task:                NewTaskClient(cfg),
+		TaskModelSwitch:     NewTaskModelSwitchClient(cfg),
 		TaskUsageStat:       NewTaskUsageStatClient(cfg),
 		TaskVirtualMachine:  NewTaskVirtualMachineClient(cfg),
 		Team:                NewTeamClient(cfg),
@@ -408,10 +414,10 @@ func (c *Client) Use(hooks ...Hook) {
 		c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
 		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
 		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
-		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
-		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
-		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
+		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
+		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost,
+		c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage,
+		c.TeamMember, c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -425,10 +431,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
 		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
 		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
-		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskUsageStat,
-		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
-		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
-		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
+		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
+		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost,
+		c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage,
+		c.TeamMember, c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -483,6 +489,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ProjectTask.mutate(ctx, m)
 	case *TaskMutation:
 		return c.Task.mutate(ctx, m)
+	case *TaskModelSwitchMutation:
+		return c.TaskModelSwitch.mutate(ctx, m)
 	case *TaskUsageStatMutation:
 		return c.TaskUsageStat.mutate(ctx, m)
 	case *TaskVirtualMachineMutation:
@@ -2553,6 +2561,38 @@ func (c *ModelClient) QueryApikeys(_m *Model) *ModelApiKeyQuery {
 			sqlgraph.From(model.Table, model.FieldID, id),
 			sqlgraph.To(modelapikey.Table, modelapikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, model.ApikeysTable, model.ApikeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySwitchesFrom queries the switches_from edge of a Model.
+func (c *ModelClient) QuerySwitchesFrom(_m *Model) *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, id),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.SwitchesFromTable, model.SwitchesFromColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySwitchesTo queries the switches_to edge of a Model.
+func (c *ModelClient) QuerySwitchesTo(_m *Model) *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, id),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.SwitchesToTable, model.SwitchesToColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -4764,6 +4804,22 @@ func (c *TaskClient) QueryGitBotTasks(_m *Task) *GitBotTaskQuery {
 	return query
 }
 
+// QueryModelSwitches queries the model_switches edge of a Task.
+func (c *TaskClient) QueryModelSwitches(_m *Task) *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(task.Table, task.FieldID, id),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, task.ModelSwitchesTable, task.ModelSwitchesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTaskVms queries the task_vms edge of a Task.
 func (c *TaskClient) QueryTaskVms(_m *Task) *TaskVirtualMachineQuery {
 	query := (&TaskVirtualMachineClient{config: c.config}).Query()
@@ -4804,6 +4860,203 @@ func (c *TaskClient) mutate(ctx context.Context, m *TaskMutation) (Value, error)
 		return (&TaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Task mutation op: %q", m.Op())
+	}
+}
+
+// TaskModelSwitchClient is a client for the TaskModelSwitch schema.
+type TaskModelSwitchClient struct {
+	config
+}
+
+// NewTaskModelSwitchClient returns a client for the TaskModelSwitch from the given config.
+func NewTaskModelSwitchClient(c config) *TaskModelSwitchClient {
+	return &TaskModelSwitchClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `taskmodelswitch.Hooks(f(g(h())))`.
+func (c *TaskModelSwitchClient) Use(hooks ...Hook) {
+	c.hooks.TaskModelSwitch = append(c.hooks.TaskModelSwitch, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `taskmodelswitch.Intercept(f(g(h())))`.
+func (c *TaskModelSwitchClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TaskModelSwitch = append(c.inters.TaskModelSwitch, interceptors...)
+}
+
+// Create returns a builder for creating a TaskModelSwitch entity.
+func (c *TaskModelSwitchClient) Create() *TaskModelSwitchCreate {
+	mutation := newTaskModelSwitchMutation(c.config, OpCreate)
+	return &TaskModelSwitchCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TaskModelSwitch entities.
+func (c *TaskModelSwitchClient) CreateBulk(builders ...*TaskModelSwitchCreate) *TaskModelSwitchCreateBulk {
+	return &TaskModelSwitchCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TaskModelSwitchClient) MapCreateBulk(slice any, setFunc func(*TaskModelSwitchCreate, int)) *TaskModelSwitchCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TaskModelSwitchCreateBulk{err: fmt.Errorf("calling to TaskModelSwitchClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TaskModelSwitchCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TaskModelSwitchCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TaskModelSwitch.
+func (c *TaskModelSwitchClient) Update() *TaskModelSwitchUpdate {
+	mutation := newTaskModelSwitchMutation(c.config, OpUpdate)
+	return &TaskModelSwitchUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TaskModelSwitchClient) UpdateOne(_m *TaskModelSwitch) *TaskModelSwitchUpdateOne {
+	mutation := newTaskModelSwitchMutation(c.config, OpUpdateOne, withTaskModelSwitch(_m))
+	return &TaskModelSwitchUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TaskModelSwitchClient) UpdateOneID(id uuid.UUID) *TaskModelSwitchUpdateOne {
+	mutation := newTaskModelSwitchMutation(c.config, OpUpdateOne, withTaskModelSwitchID(id))
+	return &TaskModelSwitchUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TaskModelSwitch.
+func (c *TaskModelSwitchClient) Delete() *TaskModelSwitchDelete {
+	mutation := newTaskModelSwitchMutation(c.config, OpDelete)
+	return &TaskModelSwitchDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TaskModelSwitchClient) DeleteOne(_m *TaskModelSwitch) *TaskModelSwitchDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TaskModelSwitchClient) DeleteOneID(id uuid.UUID) *TaskModelSwitchDeleteOne {
+	builder := c.Delete().Where(taskmodelswitch.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TaskModelSwitchDeleteOne{builder}
+}
+
+// Query returns a query builder for TaskModelSwitch.
+func (c *TaskModelSwitchClient) Query() *TaskModelSwitchQuery {
+	return &TaskModelSwitchQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTaskModelSwitch},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TaskModelSwitch entity by its id.
+func (c *TaskModelSwitchClient) Get(ctx context.Context, id uuid.UUID) (*TaskModelSwitch, error) {
+	return c.Query().Where(taskmodelswitch.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TaskModelSwitchClient) GetX(ctx context.Context, id uuid.UUID) *TaskModelSwitch {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTask queries the task edge of a TaskModelSwitch.
+func (c *TaskModelSwitchClient) QueryTask(_m *TaskModelSwitch) *TaskQuery {
+	query := (&TaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(taskmodelswitch.Table, taskmodelswitch.FieldID, id),
+			sqlgraph.To(task.Table, task.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, taskmodelswitch.TaskTable, taskmodelswitch.TaskColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUser queries the user edge of a TaskModelSwitch.
+func (c *TaskModelSwitchClient) QueryUser(_m *TaskModelSwitch) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(taskmodelswitch.Table, taskmodelswitch.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, taskmodelswitch.UserTable, taskmodelswitch.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryFromModel queries the from_model edge of a TaskModelSwitch.
+func (c *TaskModelSwitchClient) QueryFromModel(_m *TaskModelSwitch) *ModelQuery {
+	query := (&ModelClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(taskmodelswitch.Table, taskmodelswitch.FieldID, id),
+			sqlgraph.To(model.Table, model.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, taskmodelswitch.FromModelTable, taskmodelswitch.FromModelColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryToModel queries the to_model edge of a TaskModelSwitch.
+func (c *TaskModelSwitchClient) QueryToModel(_m *TaskModelSwitch) *ModelQuery {
+	query := (&ModelClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(taskmodelswitch.Table, taskmodelswitch.FieldID, id),
+			sqlgraph.To(model.Table, model.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, taskmodelswitch.ToModelTable, taskmodelswitch.ToModelColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TaskModelSwitchClient) Hooks() []Hook {
+	return c.hooks.TaskModelSwitch
+}
+
+// Interceptors returns the client interceptors.
+func (c *TaskModelSwitchClient) Interceptors() []Interceptor {
+	return c.inters.TaskModelSwitch
+}
+
+func (c *TaskModelSwitchClient) mutate(ctx context.Context, m *TaskModelSwitchMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TaskModelSwitchCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TaskModelSwitchUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TaskModelSwitchUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TaskModelSwitchDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TaskModelSwitch mutation op: %q", m.Op())
 	}
 }
 
@@ -7203,6 +7456,22 @@ func (c *UserClient) QueryTasks(_m *User) *TaskQuery {
 	return query
 }
 
+// QueryTaskModelSwitches queries the task_model_switches edge of a User.
+func (c *UserClient) QueryTaskModelSwitches(_m *User) *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.TaskModelSwitchesTable, user.TaskModelSwitchesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryGitIdentities queries the git_identities edge of a User.
 func (c *UserClient) QueryGitIdentities(_m *User) *GitIdentityQuery {
 	query := (&GitIdentityClient{config: c.config}).Query()
@@ -7795,18 +8064,19 @@ type (
 		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
-		TaskUsageStat, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
-		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
+		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
+		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
+		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, MCPTool,
 		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
-		TaskUsageStat, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
-		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
-		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Interceptor
+		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
+		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
+		TeamImage, TeamMember, TeamModel, User, UserIdentity,
+		VirtualMachine []ent.Interceptor
 	}
 )
 

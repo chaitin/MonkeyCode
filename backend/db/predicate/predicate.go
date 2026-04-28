@@ -75,6 +75,9 @@ type ProjectTask func(*sql.Selector)
 // Task is the predicate function for task builders.
 type Task func(*sql.Selector)
 
+// TaskModelSwitch is the predicate function for taskmodelswitch builders.
+type TaskModelSwitch func(*sql.Selector)
+
 // TaskUsageStat is the predicate function for taskusagestat builders.
 type TaskUsageStat func(*sql.Selector)
 

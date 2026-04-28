@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -276,6 +277,21 @@ func (_u *TaskUpdate) AddGitBotTasks(v ...*GitBotTask) *TaskUpdate {
 	return _u.AddGitBotTaskIDs(ids...)
 }
 
+// AddModelSwitchIDs adds the "model_switches" edge to the TaskModelSwitch entity by IDs.
+func (_u *TaskUpdate) AddModelSwitchIDs(ids ...uuid.UUID) *TaskUpdate {
+	_u.mutation.AddModelSwitchIDs(ids...)
+	return _u
+}
+
+// AddModelSwitches adds the "model_switches" edges to the TaskModelSwitch entity.
+func (_u *TaskUpdate) AddModelSwitches(v ...*TaskModelSwitch) *TaskUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddModelSwitchIDs(ids...)
+}
+
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
 func (_u *TaskUpdate) AddTaskVMIDs(ids ...uuid.UUID) *TaskUpdate {
 	_u.mutation.AddTaskVMIDs(ids...)
@@ -363,6 +379,27 @@ func (_u *TaskUpdate) RemoveGitBotTasks(v ...*GitBotTask) *TaskUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGitBotTaskIDs(ids...)
+}
+
+// ClearModelSwitches clears all "model_switches" edges to the TaskModelSwitch entity.
+func (_u *TaskUpdate) ClearModelSwitches() *TaskUpdate {
+	_u.mutation.ClearModelSwitches()
+	return _u
+}
+
+// RemoveModelSwitchIDs removes the "model_switches" edge to TaskModelSwitch entities by IDs.
+func (_u *TaskUpdate) RemoveModelSwitchIDs(ids ...uuid.UUID) *TaskUpdate {
+	_u.mutation.RemoveModelSwitchIDs(ids...)
+	return _u
+}
+
+// RemoveModelSwitches removes "model_switches" edges to TaskModelSwitch entities.
+func (_u *TaskUpdate) RemoveModelSwitches(v ...*TaskModelSwitch) *TaskUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveModelSwitchIDs(ids...)
 }
 
 // ClearTaskVms clears all "task_vms" edges to the TaskVirtualMachine entity.
@@ -683,6 +720,51 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ModelSwitchesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedModelSwitchesIDs(); len(nodes) > 0 && !_u.mutation.ModelSwitchesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ModelSwitchesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TaskVmsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -990,6 +1072,21 @@ func (_u *TaskUpdateOne) AddGitBotTasks(v ...*GitBotTask) *TaskUpdateOne {
 	return _u.AddGitBotTaskIDs(ids...)
 }
 
+// AddModelSwitchIDs adds the "model_switches" edge to the TaskModelSwitch entity by IDs.
+func (_u *TaskUpdateOne) AddModelSwitchIDs(ids ...uuid.UUID) *TaskUpdateOne {
+	_u.mutation.AddModelSwitchIDs(ids...)
+	return _u
+}
+
+// AddModelSwitches adds the "model_switches" edges to the TaskModelSwitch entity.
+func (_u *TaskUpdateOne) AddModelSwitches(v ...*TaskModelSwitch) *TaskUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddModelSwitchIDs(ids...)
+}
+
 // AddTaskVMIDs adds the "task_vms" edge to the TaskVirtualMachine entity by IDs.
 func (_u *TaskUpdateOne) AddTaskVMIDs(ids ...uuid.UUID) *TaskUpdateOne {
 	_u.mutation.AddTaskVMIDs(ids...)
@@ -1077,6 +1174,27 @@ func (_u *TaskUpdateOne) RemoveGitBotTasks(v ...*GitBotTask) *TaskUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveGitBotTaskIDs(ids...)
+}
+
+// ClearModelSwitches clears all "model_switches" edges to the TaskModelSwitch entity.
+func (_u *TaskUpdateOne) ClearModelSwitches() *TaskUpdateOne {
+	_u.mutation.ClearModelSwitches()
+	return _u
+}
+
+// RemoveModelSwitchIDs removes the "model_switches" edge to TaskModelSwitch entities by IDs.
+func (_u *TaskUpdateOne) RemoveModelSwitchIDs(ids ...uuid.UUID) *TaskUpdateOne {
+	_u.mutation.RemoveModelSwitchIDs(ids...)
+	return _u
+}
+
+// RemoveModelSwitches removes "model_switches" edges to TaskModelSwitch entities.
+func (_u *TaskUpdateOne) RemoveModelSwitches(v ...*TaskModelSwitch) *TaskUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveModelSwitchIDs(ids...)
 }
 
 // ClearTaskVms clears all "task_vms" edges to the TaskVirtualMachine entity.
@@ -1420,6 +1538,51 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(gitbottask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ModelSwitchesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedModelSwitchesIDs(); len(nodes) > 0 && !_u.mutation.ModelSwitchesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ModelSwitchesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   task.ModelSwitchesTable,
+			Columns: []string{task.ModelSwitchesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(taskmodelswitch.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

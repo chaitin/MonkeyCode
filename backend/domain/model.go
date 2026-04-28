@@ -23,6 +23,7 @@ type ModelUsecase interface {
 // ModelRepo 模型配置数据仓库接口
 type ModelRepo interface {
 	Get(ctx context.Context, uid, id uuid.UUID) (*db.Model, error)
+	CreateRuntimeAPIKey(ctx context.Context, uid, modelID uuid.UUID, vmID string) (string, error)
 	List(ctx context.Context, uid uuid.UUID, cursor CursorReq) ([]*db.Model, *db.Cursor, error)
 	Create(ctx context.Context, uid uuid.UUID, req *CreateModelReq) (*db.Model, error)
 	Delete(ctx context.Context, uid, id uuid.UUID) error
@@ -49,6 +50,9 @@ type Model struct {
 	LastCheckAt      int64                `json:"last_check_at"`
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
+	ThinkingEnabled  bool                 `json:"thinking_enabled"`
+	ContextLimit     int                  `json:"context_limit"`
+	OutputLimit      int                  `json:"output_limit"`
 }
 
 func (m *Model) From(src *db.Model) *Model {
@@ -66,6 +70,9 @@ func (m *Model) From(src *db.Model) *Model {
 	m.Weight = src.Weight
 	m.LastCheckSuccess = src.LastCheckSuccess
 	m.LastCheckError = src.LastCheckError
+	m.ThinkingEnabled = src.ThinkingEnabled
+	m.ContextLimit = src.ContextLimit
+	m.OutputLimit = src.OutputLimit
 	m.CreatedAt = src.CreatedAt.Unix()
 	m.UpdatedAt = src.UpdatedAt.Unix()
 	m.LastCheckAt = src.LastCheckAt.Unix()
@@ -125,13 +132,16 @@ type ListModelResp struct {
 
 // CreateModelReq 创建模型配置请求
 type CreateModelReq struct {
-	Provider      string               `json:"provider" validate:"required"`
-	APIKey        string               `json:"api_key" validate:"required"`
-	BaseURL       string               `json:"base_url" validate:"required"`
-	Model         string               `json:"model" validate:"required"`
-	Temperature   float32              `json:"temperature"`
-	IsDefault     bool                 `json:"is_default"`
-	InterfaceType consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
+	Provider        string               `json:"provider" validate:"required"`
+	APIKey          string               `json:"api_key" validate:"required"`
+	BaseURL         string               `json:"base_url" validate:"required"`
+	Model           string               `json:"model" validate:"required"`
+	Temperature     float32              `json:"temperature"`
+	IsDefault       bool                 `json:"is_default"`
+	InterfaceType   consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
+	ThinkingEnabled bool                 `json:"thinking_enabled"`
+	ContextLimit    int                  `json:"context_limit"`
+	OutputLimit     int                  `json:"output_limit"`
 }
 
 // CreateModelResp 创建模型配置响应
@@ -166,14 +176,17 @@ type CheckModelResp struct {
 
 // UpdateModelReq 更新模型配置请求
 type UpdateModelReq struct {
-	ID            uuid.UUID             `param:"id" validate:"required" json:"-" swaggerignore:"true"`
-	Provider      *string               `json:"provider,omitempty"`
-	APIKey        *string               `json:"api_key,omitempty"`
-	BaseURL       *string               `json:"base_url,omitempty"`
-	Model         *string               `json:"model,omitempty"`
-	Temperature   *float32              `json:"temperature,omitempty"`
-	IsDefault     *bool                 `json:"is_default,omitempty"`
-	InterfaceType *consts.InterfaceType `json:"interface_type,omitempty" validate:"omitempty,oneof=openai_chat openai_responses anthropic"`
+	ID              uuid.UUID             `param:"id" validate:"required" json:"-" swaggerignore:"true"`
+	Provider        *string               `json:"provider,omitempty"`
+	APIKey          *string               `json:"api_key,omitempty"`
+	BaseURL         *string               `json:"base_url,omitempty"`
+	Model           *string               `json:"model,omitempty"`
+	Temperature     *float32              `json:"temperature,omitempty"`
+	IsDefault       *bool                 `json:"is_default,omitempty"`
+	InterfaceType   *consts.InterfaceType `json:"interface_type,omitempty" validate:"omitempty,oneof=openai_chat openai_responses anthropic"`
+	ThinkingEnabled *bool                 `json:"thinking_enabled,omitempty"`
+	ContextLimit    *int                  `json:"context_limit,omitempty"`
+	OutputLimit     *int                  `json:"output_limit,omitempty"`
 }
 
 type GetProviderModelListReq struct {

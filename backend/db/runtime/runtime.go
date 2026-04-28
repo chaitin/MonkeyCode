@@ -29,6 +29,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -377,12 +378,24 @@ func init() {
 	modelDescWeight := modelFields[9].Descriptor()
 	// model.DefaultWeight holds the default value on creation for the weight field.
 	model.DefaultWeight = modelDescWeight.Default.(int)
+	// modelDescThinkingEnabled is the schema descriptor for thinking_enabled field.
+	modelDescThinkingEnabled := modelFields[10].Descriptor()
+	// model.DefaultThinkingEnabled holds the default value on creation for the thinking_enabled field.
+	model.DefaultThinkingEnabled = modelDescThinkingEnabled.Default.(bool)
+	// modelDescContextLimit is the schema descriptor for context_limit field.
+	modelDescContextLimit := modelFields[11].Descriptor()
+	// model.DefaultContextLimit holds the default value on creation for the context_limit field.
+	model.DefaultContextLimit = modelDescContextLimit.Default.(int)
+	// modelDescOutputLimit is the schema descriptor for output_limit field.
+	modelDescOutputLimit := modelFields[12].Descriptor()
+	// model.DefaultOutputLimit holds the default value on creation for the output_limit field.
+	model.DefaultOutputLimit = modelDescOutputLimit.Default.(int)
 	// modelDescCreatedAt is the schema descriptor for created_at field.
-	modelDescCreatedAt := modelFields[13].Descriptor()
+	modelDescCreatedAt := modelFields[16].Descriptor()
 	// model.DefaultCreatedAt holds the default value on creation for the created_at field.
 	model.DefaultCreatedAt = modelDescCreatedAt.Default.(func() time.Time)
 	// modelDescUpdatedAt is the schema descriptor for updated_at field.
-	modelDescUpdatedAt := modelFields[14].Descriptor()
+	modelDescUpdatedAt := modelFields[17].Descriptor()
 	// model.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	model.DefaultUpdatedAt = modelDescUpdatedAt.Default.(func() time.Time)
 	// model.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -649,6 +662,38 @@ func init() {
 	task.DefaultUpdatedAt = taskDescUpdatedAt.Default.(func() time.Time)
 	// task.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	task.UpdateDefaultUpdatedAt = taskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	taskmodelswitchFields := schema.TaskModelSwitch{}.Fields()
+	_ = taskmodelswitchFields
+	// taskmodelswitchDescRequestID is the schema descriptor for request_id field.
+	taskmodelswitchDescRequestID := taskmodelswitchFields[5].Descriptor()
+	// taskmodelswitch.DefaultRequestID holds the default value on creation for the request_id field.
+	taskmodelswitch.DefaultRequestID = taskmodelswitchDescRequestID.Default.(string)
+	// taskmodelswitchDescLoadSession is the schema descriptor for load_session field.
+	taskmodelswitchDescLoadSession := taskmodelswitchFields[6].Descriptor()
+	// taskmodelswitch.DefaultLoadSession holds the default value on creation for the load_session field.
+	taskmodelswitch.DefaultLoadSession = taskmodelswitchDescLoadSession.Default.(bool)
+	// taskmodelswitchDescMessage is the schema descriptor for message field.
+	taskmodelswitchDescMessage := taskmodelswitchFields[8].Descriptor()
+	// taskmodelswitch.DefaultMessage holds the default value on creation for the message field.
+	taskmodelswitch.DefaultMessage = taskmodelswitchDescMessage.Default.(string)
+	// taskmodelswitchDescSessionID is the schema descriptor for session_id field.
+	taskmodelswitchDescSessionID := taskmodelswitchFields[9].Descriptor()
+	// taskmodelswitch.DefaultSessionID holds the default value on creation for the session_id field.
+	taskmodelswitch.DefaultSessionID = taskmodelswitchDescSessionID.Default.(string)
+	// taskmodelswitchDescCreatedAt is the schema descriptor for created_at field.
+	taskmodelswitchDescCreatedAt := taskmodelswitchFields[10].Descriptor()
+	// taskmodelswitch.DefaultCreatedAt holds the default value on creation for the created_at field.
+	taskmodelswitch.DefaultCreatedAt = taskmodelswitchDescCreatedAt.Default.(func() time.Time)
+	// taskmodelswitchDescUpdatedAt is the schema descriptor for updated_at field.
+	taskmodelswitchDescUpdatedAt := taskmodelswitchFields[11].Descriptor()
+	// taskmodelswitch.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	taskmodelswitch.DefaultUpdatedAt = taskmodelswitchDescUpdatedAt.Default.(func() time.Time)
+	// taskmodelswitch.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	taskmodelswitch.UpdateDefaultUpdatedAt = taskmodelswitchDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// taskmodelswitchDescID is the schema descriptor for id field.
+	taskmodelswitchDescID := taskmodelswitchFields[0].Descriptor()
+	// taskmodelswitch.DefaultID holds the default value on creation for the id field.
+	taskmodelswitch.DefaultID = taskmodelswitchDescID.Default.(func() uuid.UUID)
 	taskusagestatFields := schema.TaskUsageStat{}.Fields()
 	_ = taskusagestatFields
 	// taskusagestatDescModel is the schema descriptor for model field.

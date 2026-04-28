@@ -117,6 +117,133 @@ func (a *TaskUsecase) AutoApprove(ctx context.Context, _ *domain.User, id uuid.U
 	})
 }
 
+// SwitchModel 切换运行中任务使用的模型
+func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID uuid.UUID, req domain.SwitchTaskModelReq) (*domain.SwitchTaskModelResp, error) {
+	t, owner, err := a.Info(ctx, user, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if !owner && !a.isPrivileged(ctx, user.ID) {
+		return nil, errcode.ErrForbidden
+	}
+	if t.Status != consts.TaskStatusProcessing {
+		return nil, fmt.Errorf("task is not processing")
+	}
+	if t.VirtualMachine == nil {
+		return nil, fmt.Errorf("task virtual machine is nil")
+	}
+
+	if a.modelHook != nil {
+		if err := a.modelHook.ValidateAccess(ctx, user.ID, req.ModelID.String()); err != nil {
+			return nil, err
+		}
+	}
+	model, err := a.modelRepo.Get(ctx, user.ID, req.ModelID)
+	if err != nil {
+		return nil, err
+	}
+	runtimeKey, err := a.modelRepo.CreateRuntimeAPIKey(ctx, user.ID, req.ModelID, t.VirtualMachine.ID)
+	if err != nil {
+		return nil, err
+	}
+	if runtimeKey != "" {
+		model.APIKey = runtimeKey
+		if a.cfg != nil {
+			model.BaseURL = a.cfg.LLMProxy.BaseURL + "/v1"
+		}
+
+		if a.redis != nil {
+			if err := a.redis.Del(ctx, consts.PublicModelKey(runtimeKey)).Err(); err != nil {
+				return nil, fmt.Errorf("delete model cache: %w", err)
+			}
+		}
+	}
+
+	coding, configs, err := a.getCodingConfigs(t.CliName, model, nil)
+	if err != nil {
+		return nil, err
+	}
+	if coding != taskflow.CodingAgentOpenCode {
+		return nil, fmt.Errorf("switch model only supports opencode runtime")
+	}
+
+	envs := map[string]string{
+		"OPENAI_API_KEY":                   model.APIKey,
+		"OPEN_CODE_API_KEY":                model.APIKey,
+		"OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
+		"OPENCODE_DISABLE_LSP_DOWNLOAD":    "true",
+	}
+	if model.InterfaceType != "" {
+		envs["MCAI_MODEL_PROVIDER_TYPE"] = model.InterfaceType
+	}
+
+	var fromModelID *uuid.UUID
+	if t.Model != nil && t.Model.ID != uuid.Nil {
+		id := t.Model.ID
+		fromModelID = &id
+	}
+	item := &domain.TaskModelSwitch{
+		ID:          uuid.New(),
+		TaskID:      taskID,
+		UserID:      user.ID,
+		FromModelID: fromModelID,
+		ToModelID:   req.ModelID,
+		RequestID:   req.RequestID,
+		LoadSession: req.LoadSession,
+	}
+	if err := a.repo.CreateModelSwitch(ctx, item); err != nil {
+		return nil, err
+	}
+
+	resp, err := a.taskflow.TaskManager().Restart(ctx, taskflow.RestartTaskReq{
+		ID:          taskID,
+		RequestId:   req.RequestID,
+		LoadSession: req.LoadSession,
+		ExecutionConfig: &taskflow.TaskExecutionConfig{
+			Envs:        envs,
+			ConfigFiles: configs,
+		},
+	})
+	if err != nil {
+		if finishErr := a.repo.FinishModelSwitch(ctx, item.ID, false, err.Error(), ""); finishErr != nil {
+			a.logger.WarnContext(ctx, "failed to finish model switch after restart error", "error", finishErr, "switch_id", item.ID)
+		}
+		return nil, err
+	}
+	if resp == nil {
+		resp = &taskflow.RestartTaskResp{
+			RequestId: req.RequestID,
+			Success:   false,
+			Message:   "taskflow restart response is nil",
+		}
+	}
+
+	if err := a.repo.CompleteModelSwitch(ctx, item.ID, taskID, req.ModelID, resp.Success, resp.Message, resp.SessionID); err != nil {
+		a.logger.ErrorContext(ctx, "failed to persist model switch after restart", "error", err, "switch_id", item.ID, "task_id", taskID)
+		if resp.Success {
+			resp.Message = strings.TrimSpace(resp.Message + "; persist model switch failed: " + err.Error())
+			if finishErr := a.repo.FinishModelSwitch(ctx, item.ID, true, resp.Message, resp.SessionID); finishErr != nil {
+				a.logger.WarnContext(ctx, "failed to finish model switch after persistence error", "error", finishErr, "switch_id", item.ID)
+			}
+		} else {
+			if finishErr := a.repo.FinishModelSwitch(ctx, item.ID, false, resp.Message, resp.SessionID); finishErr != nil {
+				a.logger.WarnContext(ctx, "failed to finish failed model switch", "error", finishErr, "switch_id", item.ID)
+			}
+		}
+	}
+
+	respModel := cvt.From(model, &domain.Model{})
+	respModel.APIKey = ""
+	return &domain.SwitchTaskModelResp{
+		ID:        item.ID,
+		RequestID: resp.RequestId,
+		Success:   resp.Success,
+		Message:   resp.Message,
+		SessionID: resp.SessionID,
+		Model:     respModel,
+	}, nil
+}
+
 // Info implements domain.TaskUsecase.
 func (a *TaskUsecase) Info(ctx context.Context, user *domain.User, id uuid.UUID) (*domain.Task, bool, error) {
 	ctx = entx.SkipSoftDelete(ctx)
@@ -515,10 +642,40 @@ func (a *TaskUsecase) buildMCPConfigs(taskID uuid.UUID, token string) []taskflow
 	return mcps
 }
 
+func opencodeNpmPackage(interfaceType string) (string, error) {
+	switch consts.InterfaceType(interfaceType) {
+	case consts.InterfaceTypeOpenAIChat:
+		return "@ai-sdk/openai-compatible", nil
+	case consts.InterfaceTypeOpenAIResponse:
+		return "@ai-sdk/openai", nil
+	case consts.InterfaceTypeAnthropic:
+		return "@ai-sdk/anthropic", nil
+	default:
+		return "", fmt.Errorf("unsupported interface type: %s, supported types: %s, %s, %s",
+			interfaceType,
+			consts.InterfaceTypeOpenAIChat,
+			consts.InterfaceTypeOpenAIResponse,
+			consts.InterfaceTypeAnthropic,
+		)
+	}
+}
+
+func modelRuntimeDefaults(m *db.Model) (thinking bool, contextLimit int, outputLimit int) {
+	thinking = m.ThinkingEnabled
+	contextLimit = cmp.Or(m.ContextLimit, 200000)
+	outputLimit = cmp.Or(m.OutputLimit, 32000)
+	return thinking, contextLimit, outputLimit
+}
+
 func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs []string) (taskflow.CodingAgent, []taskflow.ConfigFile, error) {
 	var tmp string
 	var path string
 	var coding taskflow.CodingAgent
+	if m == nil {
+		return coding, nil, fmt.Errorf("model is nil")
+	}
+	npmPackage := "@ai-sdk/openai-compatible"
+	thinkingEnabled, contextLimit, outputLimit := modelRuntimeDefaults(m)
 	cfs := make([]taskflow.ConfigFile, 0)
 	switch cli {
 	case consts.CliNameClaude:
@@ -537,6 +694,12 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		path = "~/.config/opencode/opencode.json"
 		coding = taskflow.CodingAgentOpenCode
 
+		var err error
+		npmPackage, err = opencodeNpmPackage(m.InterfaceType)
+		if err != nil {
+			return coding, nil, err
+		}
+
 		authtemp, err := template.New("auth").Parse(string(templates.OpenCodeAuth))
 		if err != nil {
 			return coding, nil, err
@@ -548,9 +711,11 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		}); err != nil {
 			return coding, nil, err
 		}
+		authMode := uint32(0o600)
 		cfs = append(cfs, taskflow.ConfigFile{
 			Path:    "~/.local/share/opencode/auth.json",
 			Content: authBuf.String(),
+			Mode:    &authMode,
 		})
 
 	default:
@@ -561,17 +726,16 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 	if err != nil {
 		return coding, nil, err
 	}
-	disableThinking := false
-	if strings.Contains(m.Model, "kimi") {
-		disableThinking = true
-	}
 
 	var buf bytes.Buffer
 	if err := temp.Execute(&buf, map[string]any{
 		"model":            m.Model,
 		"base_url":         m.BaseURL,
 		"api_key":          m.APIKey,
-		"disable_thinking": disableThinking,
+		"npm_package":      npmPackage,
+		"thinking_enabled": thinkingEnabled,
+		"context_limit":    contextLimit,
+		"output_limit":     outputLimit,
 	}); err != nil {
 		return coding, nil, err
 	}

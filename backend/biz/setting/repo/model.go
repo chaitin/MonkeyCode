@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
@@ -33,6 +35,14 @@ func modelWithUserPredicate(uid uuid.UUID) predicate.Model {
 	return model.Or(
 		model.UserID(uid),
 		model.HasGroupsWith(teamgroup.HasMembersWith(user.ID(uid))),
+		model.HasUserWith(user.Role(consts.UserRoleAdmin)),
+	)
+}
+
+func modelListWithUserPredicate(uid uuid.UUID) predicate.Model {
+	return model.Or(
+		model.UserID(uid),
+		model.HasGroupsWith(teamgroup.HasMembersWith(user.ID(uid))),
 	)
 }
 
@@ -44,6 +54,59 @@ func (r *modelRepo) Get(ctx context.Context, uid, id uuid.UUID) (*db.Model, erro
 		First(ctx)
 }
 
+func (r *modelRepo) CreateRuntimeAPIKey(ctx context.Context, uid, modelID uuid.UUID, vmID string) (string, error) {
+	var runtimeKey string
+	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+		_, err := tx.Model.Query().
+			Where(modelWithUserPredicate(uid)).
+			Where(model.ID(modelID)).
+			First(ctx)
+		if err != nil {
+			return err
+		}
+
+		if vmID != "" {
+			key, err := tx.ModelApiKey.Query().
+				Where(modelapikey.UserID(uid), modelapikey.VirtualmachineID(vmID)).
+				Order(modelapikey.ByCreatedAt(sql.OrderDesc()), modelapikey.ByID(sql.OrderDesc())).
+				First(ctx)
+			if err != nil && !db.IsNotFound(err) {
+				return err
+			}
+			if err == nil {
+				if key.ModelID != modelID {
+					if err := tx.ModelApiKey.UpdateOneID(key.ID).
+						SetModelID(modelID).
+						Exec(ctx); err != nil {
+						return err
+					}
+				}
+				runtimeKey = key.APIKey
+				return nil
+			}
+		}
+
+		apiKey := uuid.NewString()
+		create := tx.ModelApiKey.Create().
+			SetID(uuid.New()).
+			SetUserID(uid).
+			SetModelID(modelID).
+			SetAPIKey(apiKey)
+		if vmID != "" {
+			create.SetVirtualmachineID(vmID)
+		}
+		if _, err := create.Save(ctx); err != nil {
+			return err
+		}
+		runtimeKey = apiKey
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return runtimeKey, nil
+}
+
 func (r *modelRepo) List(ctx context.Context, uid uuid.UUID, cursor domain.CursorReq) ([]*db.Model, *db.Cursor, error) {
 	var (
 		models []*db.Model
@@ -51,7 +114,7 @@ func (r *modelRepo) List(ctx context.Context, uid uuid.UUID, cursor domain.Curso
 	)
 	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
 		ms, p, err := tx.Model.Query().
-			Where(modelWithUserPredicate(uid)).
+			Where(modelListWithUserPredicate(uid)).
 			WithUser(func(q *db.UserQuery) { q.WithTeams() }).
 			After(ctx, cursor.Cursor, cursor.Limit)
 		if err != nil {

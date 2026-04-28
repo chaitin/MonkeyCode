@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/modelpricing"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
@@ -41,6 +42,8 @@ type ModelQuery struct {
 	withProjectTasks    *ProjectTaskQuery
 	withPricing         *ModelPricingQuery
 	withApikeys         *ModelApiKeyQuery
+	withSwitchesFrom    *TaskModelSwitchQuery
+	withSwitchesTo      *TaskModelSwitchQuery
 	withTeamModels      *TeamModelQuery
 	withTeamGroupModels *TeamGroupModelQuery
 	modifiers           []func(*sql.Selector)
@@ -227,6 +230,50 @@ func (_q *ModelQuery) QueryApikeys() *ModelApiKeyQuery {
 			sqlgraph.From(model.Table, model.FieldID, selector),
 			sqlgraph.To(modelapikey.Table, modelapikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, model.ApikeysTable, model.ApikeysColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySwitchesFrom chains the current query on the "switches_from" edge.
+func (_q *ModelQuery) QuerySwitchesFrom() *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, selector),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.SwitchesFromTable, model.SwitchesFromColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySwitchesTo chains the current query on the "switches_to" edge.
+func (_q *ModelQuery) QuerySwitchesTo() *TaskModelSwitchQuery {
+	query := (&TaskModelSwitchClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(model.Table, model.FieldID, selector),
+			sqlgraph.To(taskmodelswitch.Table, taskmodelswitch.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, model.SwitchesToTable, model.SwitchesToColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -477,6 +524,8 @@ func (_q *ModelQuery) Clone() *ModelQuery {
 		withProjectTasks:    _q.withProjectTasks.Clone(),
 		withPricing:         _q.withPricing.Clone(),
 		withApikeys:         _q.withApikeys.Clone(),
+		withSwitchesFrom:    _q.withSwitchesFrom.Clone(),
+		withSwitchesTo:      _q.withSwitchesTo.Clone(),
 		withTeamModels:      _q.withTeamModels.Clone(),
 		withTeamGroupModels: _q.withTeamGroupModels.Clone(),
 		// clone intermediate query.
@@ -560,6 +609,28 @@ func (_q *ModelQuery) WithApikeys(opts ...func(*ModelApiKeyQuery)) *ModelQuery {
 		opt(query)
 	}
 	_q.withApikeys = query
+	return _q
+}
+
+// WithSwitchesFrom tells the query-builder to eager-load the nodes that are connected to
+// the "switches_from" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ModelQuery) WithSwitchesFrom(opts ...func(*TaskModelSwitchQuery)) *ModelQuery {
+	query := (&TaskModelSwitchClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withSwitchesFrom = query
+	return _q
+}
+
+// WithSwitchesTo tells the query-builder to eager-load the nodes that are connected to
+// the "switches_to" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ModelQuery) WithSwitchesTo(opts ...func(*TaskModelSwitchQuery)) *ModelQuery {
+	query := (&TaskModelSwitchClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withSwitchesTo = query
 	return _q
 }
 
@@ -663,7 +734,7 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 	var (
 		nodes       = []*Model{}
 		_spec       = _q.querySpec()
-		loadedTypes = [9]bool{
+		loadedTypes = [11]bool{
 			_q.withUser != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
@@ -671,6 +742,8 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 			_q.withProjectTasks != nil,
 			_q.withPricing != nil,
 			_q.withApikeys != nil,
+			_q.withSwitchesFrom != nil,
+			_q.withSwitchesTo != nil,
 			_q.withTeamModels != nil,
 			_q.withTeamGroupModels != nil,
 		}
@@ -740,6 +813,20 @@ func (_q *ModelQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Model,
 		if err := _q.loadApikeys(ctx, query, nodes,
 			func(n *Model) { n.Edges.Apikeys = []*ModelApiKey{} },
 			func(n *Model, e *ModelApiKey) { n.Edges.Apikeys = append(n.Edges.Apikeys, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withSwitchesFrom; query != nil {
+		if err := _q.loadSwitchesFrom(ctx, query, nodes,
+			func(n *Model) { n.Edges.SwitchesFrom = []*TaskModelSwitch{} },
+			func(n *Model, e *TaskModelSwitch) { n.Edges.SwitchesFrom = append(n.Edges.SwitchesFrom, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withSwitchesTo; query != nil {
+		if err := _q.loadSwitchesTo(ctx, query, nodes,
+			func(n *Model) { n.Edges.SwitchesTo = []*TaskModelSwitch{} },
+			func(n *Model, e *TaskModelSwitch) { n.Edges.SwitchesTo = append(n.Edges.SwitchesTo, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1023,6 +1110,69 @@ func (_q *ModelQuery) loadApikeys(ctx context.Context, query *ModelApiKeyQuery, 
 		node, ok := nodeids[fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "model_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ModelQuery) loadSwitchesFrom(ctx context.Context, query *TaskModelSwitchQuery, nodes []*Model, init func(*Model), assign func(*Model, *TaskModelSwitch)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Model)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(taskmodelswitch.FieldFromModelID)
+	}
+	query.Where(predicate.TaskModelSwitch(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(model.SwitchesFromColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.FromModelID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "from_model_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "from_model_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ModelQuery) loadSwitchesTo(ctx context.Context, query *TaskModelSwitchQuery, nodes []*Model, init func(*Model), assign func(*Model, *TaskModelSwitch)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Model)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(taskmodelswitch.FieldToModelID)
+	}
+	query.Where(predicate.TaskModelSwitch(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(model.SwitchesToColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ToModelID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "to_model_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}
