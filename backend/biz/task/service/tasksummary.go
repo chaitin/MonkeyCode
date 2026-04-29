@@ -420,8 +420,8 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 
 func userInputContent(decoded []byte) string {
 	var payload userInputPayload
-	if err := json.Unmarshal(decoded, &payload); err == nil && payload.Content != "" {
-		return payload.Content
+	if err := json.Unmarshal(decoded, &payload); err == nil && len(payload.Content) > 0 {
+		return string(payload.Content)
 	}
 	return string(decoded)
 }
