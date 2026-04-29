@@ -352,7 +352,7 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 
 // Continue implements domain.TaskUsecase.
 func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.UUID, req domain.ContinueTaskReq) error {
-	if strings.TrimSpace(req.Content) == "" {
+	if strings.TrimSpace(string(req.Content)) == "" {
 		return errcode.ErrBadRequest
 	}
 	if err := validateAttachmentURLs(req.AttachmentURLs, a.cfg.Attachment); err != nil {
@@ -371,7 +371,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 		},
 		Task: &taskflow.Task{
 			ID:             id,
-			Text:           req.Content,
+			Text:           string(req.Content),
 			AttachmentURLs: req.AttachmentURLs,
 			LogStore:       string(tk.LogStore),
 		},
@@ -380,7 +380,7 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 	}
 
 	// 缓存最近一次 user-input，供通知推送使用
-	a.redis.Set(ctx, fmt.Sprintf("mcai:task:%s:last_input", id.String()), req.Content, 24*time.Hour)
+	a.redis.Set(ctx, fmt.Sprintf("mcai:task:%s:last_input", id.String()), string(req.Content), 24*time.Hour)
 
 	return nil
 }

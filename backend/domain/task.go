@@ -99,7 +99,7 @@ type CreateTaskReq struct {
 }
 
 type ContinueTaskReq struct {
-	Content        string   `json:"content"`
+	Content        []byte   `json:"content"`
 	AttachmentURLs []string `json:"attachment_urls"`
 }
 
@@ -306,7 +306,7 @@ type TaskStream struct {
 
 // TaskUserInputPayload user-input 事件 data 字段的 JSON 结构
 type TaskUserInputPayload struct {
-	Content        string   `json:"content"`         // 用户输入文本
+	Content        []byte   `json:"content"`         // 用户输入文本，JSON 中按 base64 字符串传输
 	AttachmentURLs []string `json:"attachment_urls"` // 附件访问 URL 列表，缺省或空数组表示无附件
 }
 

@@ -76,7 +76,7 @@ func TestNormalizeSummaryLogStoreEmptyMeansLoki(t *testing.T) {
 
 func TestBuildSummaryConversationUsesUserInputPayloadContent(t *testing.T) {
 	taskID := uuid.New()
-	payload := []byte(`{"content":"请继续实现","attachment_urls":["https://oss.example.com/temp/a.txt"]}`)
+	payload := []byte(`{"content":"6K+357un57ut5a6e546w","attachment_urls":["https://oss.example.com/temp/a.txt"]}`)
 	messages, err := buildSummaryConversation(
 		context.Background(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
