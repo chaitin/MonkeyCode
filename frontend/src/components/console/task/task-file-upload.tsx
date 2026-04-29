@@ -188,7 +188,6 @@ export function TaskUploadedFileItem({ file, onRemove, className }: TaskUploaded
         <IconFile className="size-4 shrink-0 text-muted-foreground" />
       )}
       <span className="min-w-0 flex-1 truncate">{file.name}</span>
-      <span className="shrink-0 text-muted-foreground">{formatFileSize(file.size)}</span>
       <button
         type="button"
         className="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
