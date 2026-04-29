@@ -165,7 +165,6 @@ export enum ConstsTransactionKind {
   TransactionKindMCPToolConsumption = "mcp_tool_consumption",
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
-  TransactionKindViolationFine = "violation_fine",
 }
 
 export enum ConstsUserPlatform {
@@ -457,27 +456,19 @@ export interface DomainCreateProjectReq {
 }
 
 export interface DomainCreateTaskReq {
-  /** 客户端名称 codex | claude | opencode */
+  /** 附件列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀 */
+  attachments?: DomainTaskAttachment[];
   cli_name?: ConstsCliName;
-  /** 任务内容 */
   content: string;
-  /** 额外参数 */
   extra?: DomainTaskExtraConfig;
-  /** Git 身份ID */
   git_identity_id?: string;
-  /** 宿主机 id, 当 host_id 为 public_host 时使用公共宿主机 */
   host_id: string;
-  /** 镜像ID */
   image_id: string;
-  /** 模型ID economy: 指定用便宜的模型 */
   model_id: string;
-  /** 仓库信息 */
   repo: DomainTaskRepoReq;
-  /** 资源配置 */
   resource: DomainVMResource;
   sub_type?: ConstsTaskSubType;
   system_prompt?: string;
-  /** 任务类型 */
   task_type?: ConstsTaskType;
 }
 
@@ -833,6 +824,26 @@ export interface DomainModel {
   weight?: number;
 }
 
+export interface DomainModelBrief {
+  access_level?: string;
+  context_limit?: number;
+  created_at?: number;
+  id?: string;
+  interface_type?: ConstsInterfaceType;
+  is_free?: boolean;
+  last_check_at?: number;
+  last_check_error?: string;
+  last_check_success?: boolean;
+  model?: string;
+  output_limit?: number;
+  owner?: DomainOwner;
+  provider?: string;
+  temperature?: number;
+  thinking_enabled?: boolean;
+  updated_at?: number;
+  weight?: number;
+}
+
 export interface DomainNotifyChannel {
   created_at?: number;
   enabled?: boolean;
@@ -939,7 +950,7 @@ export interface DomainPlaygroundTaskPost {
 }
 
 export interface DomainPresignReq {
-  /** 文件名 */
+  /** 文件名，服务端会保留扩展名并生成临时文件 object key */
   filename: string;
 }
 
@@ -1075,7 +1086,7 @@ export interface DomainProjectTask {
   id: string;
   identity?: DomainGitIdentity;
   image?: DomainImage;
-  model?: DomainModel;
+  model?: DomainModelBrief;
   repo_filename?: string;
   repo_url?: string;
   /** 统计数据 */
@@ -1313,7 +1324,7 @@ export interface DomainTask {
   id?: string;
   identity?: DomainGitIdentity;
   image?: DomainImage;
-  model?: DomainModel;
+  model?: DomainModelBrief;
   repo_filename?: string;
   repo_url?: string;
   /** 统计数据 */
@@ -1330,6 +1341,11 @@ export interface DomainTask {
   type?: ConstsTaskType;
   /** 虚拟机 */
   virtualmachine?: DomainVirtualMachine;
+}
+
+export interface DomainTaskAttachment {
+  filename?: string;
+  url?: string;
 }
 
 export interface DomainTaskChunkEntry {
@@ -3434,6 +3450,8 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UploaderCreate: (
       data: {
+        /** 上传用途，可选值: avatar(头像), spec(规格), repo(仓库) */
+        usage: string;
         /**
          * 要上传的文件
          * @format binary
@@ -3458,11 +3476,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取预签名上传URL，客户端可以使用该URL直接上传文件到OSS（使用PUT方法）
+     * @description 获取临时文件上传 URL，客户端使用 `upload_url` 通过 PUT 直传 OSS，上传完成后将 `access_url` 作为任务创建或 user-input 的 `attachment_urls` 使用。 请求只需要 `filename`；旧客户端多传 `usage` 会被忽略。预签名 URL 固定 10 分钟过期，过期只影响 URL 可用性，不代表 OSS 对象自动删除。
      *
      * @tags 【上传】上传
      * @name V1UploaderPresignCreate
-     * @summary 获取预签名上传URL
+     * @summary 获取临时文件预签名上传URL
      * @request POST:/api/v1/uploader/presign
      * @secure
      */
@@ -5996,7 +6014,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 创建任务
+     * @description 创建任务 `attachments` 为可选附件列表，最多 10 个；每项包含 `url` 和 `filename`，URL 需要匹配后端配置的附件白名单前缀。创建任务后，首轮 user-input 日志会按 `{ "content": "base64文本", "attachments": [] }` 结构返回。
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksCreate
@@ -6073,7 +6091,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数）， limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+     * @description 根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数）， limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。 返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"57un57ut5aSE55CG","attachments":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksRoundsList
@@ -6148,7 +6166,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` type 字段说明： - task-started: 本轮任务启动 - task-ended: 本轮任务结束 - task-error: 本轮任务发生错误 - task-running: 任务正在运行 - task-event: 任务临时事件, 不持久化 - file-change: 文件变动事件 - permission-resp: 用户的权限响应 - auto-approve: 开启自动批准 - disable-auto-approve: 关闭自动批准 - user-input: 用户输入 - user-cancel: 取消当前操作，不会终止任务 - reply-question: 回复 AI 的提问 - cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次 cursor 消息结构： ```json { "type": "cursor", "data": { "cursor": "<nextCursor>", "has_more": true }, "timestamp": 0 } ``` - cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页 - has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页
+     * @description 功能定位：该接口通过 WebSocket 转发任务运行数据。任务对话继续输入使用 `type=user-input`。 数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）： ```json { "type": "string", "data": "string", "kind": "string", "timestamp": 0 } ``` user-input 上行新格式： ```json { "type": "user-input", "data": "{\"content\":\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\",\"attachments\":[{\"url\":\"https://example-bucket.oss-cn-hangzhou.aliyuncs.com/temp/a.txt\",\"filename\":\"a.txt\"}]}" } ``` user-input 上行旧格式仍兼容： ```json { "type": "user-input", "data": "继续处理这个问题" } ``` user-input 下行和历史返回统一使用新 JSON payload 字符串： ```json { "type": "user-input", "data": "{\"content\":\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\",\"attachments\":[]}", "timestamp": 0 } ``` `attachments` 为可选附件列表，最多 10 个；每项包含 `url` 和 `filename`，URL 需要匹配后端配置的附件白名单前缀。 type 字段说明： - task-started: 本轮任务启动 - task-ended: 本轮任务结束 - task-error: 本轮任务发生错误 - task-running: 任务正在运行 - task-event: 任务临时事件, 不持久化 - file-change: 文件变动事件 - permission-resp: 用户的权限响应 - auto-approve: 开启自动批准 - disable-auto-approve: 关闭自动批准 - user-input: 用户输入 - user-cancel: 取消当前操作，不会终止任务 - reply-question: 回复 AI 的提问 - cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次 cursor 消息结构： ```json { "type": "cursor", "data": { "cursor": "<nextCursor>", "has_more": true }, "timestamp": 0 } ``` - cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页 - has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页
      *
      * @tags 【用户】任务管理
      * @name V1UsersTasksStreamList

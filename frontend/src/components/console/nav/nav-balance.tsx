@@ -158,10 +158,10 @@ export default function NavBalance({
     ConstsTransactionKind.TransactionKindProAutoRenew,
     ConstsTransactionKind.TransactionKindUltraSubscription,
     ConstsTransactionKind.TransactionKindUltraAutoRenew,
-    ConstsTransactionKind.TransactionKindViolationFine,
+    "violation_fine",
   ])
 
-  const getTransactionDirection = (kind?: ConstsTransactionKind) => {
+  const getTransactionDirection = (kind?: ConstsTransactionKind | string) => {
     const kindKey = kind || ""
     if (positiveKinds.has(kindKey)) {
       return 1
@@ -240,7 +240,7 @@ export default function NavBalance({
     { credits: 300000, price: 1000, originalPrice: 1500, discountLabel: "6.7 折" },
   ]
 
-  const getTransactionLabel = (kind?: ConstsTransactionKind) => {
+  const getTransactionLabel = (kind?: ConstsTransactionKind | string) => {
     switch (kind) {
       case ConstsTransactionKind.TransactionKindSignupBonus:
         return "新用户注册奖励"
@@ -270,14 +270,14 @@ export default function NavBalance({
         return "充值积分"
       case ConstsTransactionKind.TransactionKindCheckin:
         return "每日签到奖励"
-      case ConstsTransactionKind.TransactionKindViolationFine:
+      case "violation_fine":
         return "违规罚扣"
       default:
         return "交易记录"
     }
   }
 
-  const formatSignedAmount = (rawValue?: number, kind?: ConstsTransactionKind) => {
+  const formatSignedAmount = (rawValue?: number, kind?: ConstsTransactionKind | string) => {
     if (!rawValue) {
       return null
     }
@@ -401,6 +401,7 @@ export default function NavBalance({
     try {
       const api = new Api()
       const uploadResp = await api.api.v1UploaderCreate({
+        usage: "avatar",
         file,
       })
 
