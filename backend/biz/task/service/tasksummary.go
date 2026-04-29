@@ -295,13 +295,20 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 	if maxRounds <= 0 {
 		maxRounds = 3
 	}
+	logRounds := maxRounds
+	if strings.TrimSpace(initialContent) != "" {
+		logRounds--
+	}
+	if logRounds < 0 {
+		logRounds = 0
+	}
 	const pageSize = 20
 
 	var chunks []*tasklog.TurnChunk
 	userRoundCount := 0
 	cursor := ""
 
-	for {
+	for logRounds > 0 {
 		resp, err := r.gateway.QueryTurns(ctx, taskID, createdAt, cursor, pageSize, store)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch task log history: %w", err)
@@ -315,7 +322,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 			if chunk == nil {
 				continue
 			}
-			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= maxRounds {
+			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= logRounds {
 				stopPaging = true
 				break
 			}
@@ -325,7 +332,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 			}
 		}
 
-		if stopPaging || userRoundCount >= maxRounds || !resp.HasMore || resp.NextCursor == "" {
+		if stopPaging || userRoundCount >= logRounds || !resp.HasMore || resp.NextCursor == "" {
 			break
 		}
 		cursor = resp.NextCursor
@@ -348,7 +355,7 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 	})
 
 	var messages []llm.Message
-	if userRoundCount < maxRounds && initialContent != "" {
+	if initialContent != "" {
 		messages = append(messages, llm.Message{Role: "user", Content: initialContent})
 	}
 
@@ -448,6 +455,8 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 - 不超过%d字
 - 不要标点结尾
 - 只输出标题，不要解释
+- 第一条用户消息是任务原始需求，必须优先依据它生成标题
+- 后续对话只作为补充上下文，不要把上下文交接、压缩摘要或运行状态总结当成任务标题
 - 重点关注用户想要完成什么目标，而不是 AI 问了什么问题
 - 标题要具体，让人一看就知道用户想做什么
   - 如果是开发任务：说明做的是什么应用/功能（如"开发五子棋游戏"）
