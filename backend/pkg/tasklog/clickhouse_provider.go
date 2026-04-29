@@ -33,8 +33,7 @@ func (p *ClickHouseProvider) QueryLatestTurn(ctx context.Context, taskID uuid.UU
 	qTurn := fmt.Sprintf(`
 		SELECT max(turn_seq)
 		FROM %s
-		WHERE task_id = ? AND ts >= ? AND ts <= ?
-		SETTINGS max_threads = 1`, table)
+		WHERE task_id = ? AND ts >= ? AND ts <= ?`, table)
 
 	var latestTurn sql.NullInt64
 	if err := p.client.QueryRowContext(ctx, qTurn, taskID, taskCreatedAt, end).Scan(&latestTurn); err != nil {
@@ -99,7 +98,7 @@ WHERE task_id = ? AND turn_seq IN (
 	LIMIT ?
 )
 ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
-SETTINGS max_threads = 1`, table, cursorFilter)
+`, table, cursorFilter)
 
 	rows, err := p.client.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -170,8 +169,7 @@ SELECT turn_seq
 		WHERE task_id = ? AND turn_seq < ?
 		GROUP BY turn_seq
 		ORDER BY turn_seq DESC
-		LIMIT ?
-		SETTINGS max_threads = 1`, table)
+		LIMIT ?`, table)
 
 	rows, err := p.client.QueryContext(ctx, q, taskID, turnSeq, 1)
 	if err != nil {
@@ -188,8 +186,7 @@ func (p *ClickHouseProvider) queryEntriesByTurn(ctx context.Context, taskID uuid
 SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end
 		FROM %s
 		WHERE task_id = ? AND turn_seq = ? AND ts >= ? AND ts <= ?
-		ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC
-		SETTINGS max_threads = 1`, table)
+		ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC`, table)
 
 	rows, err := p.client.QueryContext(ctx, q, taskID, turnSeq, start, end)
 	if err != nil {
