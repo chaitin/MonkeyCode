@@ -20,7 +20,7 @@ type TaskUsecase interface {
 	GetPublic(ctx context.Context, user *User, id uuid.UUID) (*Task, error)
 	Info(ctx context.Context, user *User, id uuid.UUID) (*Task, bool, error)
 	List(ctx context.Context, user *User, req TaskListReq) (*ListTaskResp, error)
-	Continue(ctx context.Context, user *User, id uuid.UUID, content string) error
+	Continue(ctx context.Context, user *User, id uuid.UUID, req ContinueTaskReq) error
 	Create(ctx context.Context, user *User, req CreateTaskReq) (*ProjectTask, error)
 	Stop(ctx context.Context, user *User, id uuid.UUID) error
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
@@ -93,8 +93,19 @@ type CreateTaskReq struct {
 	SystemPrompt  string             `json:"system_prompt"`
 	Type          consts.TaskType    `json:"task_type"`
 	SubType       consts.TaskSubType `json:"sub_type"`
+	Attachments   []TaskAttachment   `json:"attachments" validate:"omitempty"` // 附件列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀
 	Now           time.Time          `json:"-"`
 	UsePublicHost bool               `json:"-"`
+}
+
+type ContinueTaskReq struct {
+	Content     []byte           `json:"content"`
+	Attachments []TaskAttachment `json:"attachments"`
+}
+
+type TaskAttachment struct {
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
 }
 
 // Validate 验证请求参数
@@ -293,9 +304,15 @@ type TaskSession struct {
 // TaskStream 任务 WebSocket 流消息
 type TaskStream struct {
 	Type      consts.TaskStreamType `json:"type"`
-	Data      []byte                `json:"data"`
+	Data      []byte                `json:"data"` // user-input 事件使用 TaskUserInputPayload 的 JSON 字符串
 	Kind      string                `json:"kind"`
 	Timestamp int64                 `json:"timestamp"`
+}
+
+// TaskUserInputPayload user-input 事件 data 字段的 JSON 结构
+type TaskUserInputPayload struct {
+	Content     []byte           `json:"content"`     // 用户输入文本，JSON 中按 base64 字符串传输
+	Attachments []TaskAttachment `json:"attachments"` // 附件列表，缺省或空数组表示无附件
 }
 
 // TaskStreamReq 任务数据流请求

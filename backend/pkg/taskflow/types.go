@@ -530,10 +530,16 @@ type TaskReq struct {
 
 // Task 任务信息
 type Task struct {
-	ID       uuid.UUID `json:"id"`
-	Text     string    `json:"text"`
-	Image    string    `json:"image"`
-	LogStore string    `json:"log_store,omitempty"`
+	ID          uuid.UUID    `json:"id"`
+	Text        string       `json:"text"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	Image       string       `json:"image"`
+	LogStore    string       `json:"log_store,omitempty"`
+}
+
+type Attachment struct {
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
 }
 
 // ==================== CreateTask 类型 ====================
@@ -594,6 +600,7 @@ type CreateTaskReq struct {
 	VMID         string            `json:"vm_id"`
 	SystemPrompt string            `json:"system_prompt,omitempty"`
 	Text         string            `json:"text,omitempty"`
+	Attachments  []Attachment      `json:"attachments,omitempty"`
 	LLM          LLM               `json:"llm,omitzero"`
 	CodingAgent  CodingAgent       `json:"coding_agent,omitempty"`
 	Configs      []ConfigFile      `json:"configs,omitzero"`

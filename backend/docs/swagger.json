@@ -6531,6 +6531,60 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "删除问题",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】项目管理"
+                ],
+                "summary": "删除问题",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "项目ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "问题ID",
+                        "name": "issue_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/users/projects/{id}/issues/{issue_id}/comments": {
@@ -7116,7 +7170,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "创建任务",
+                "description": "创建任务\n`attachments` 为可选附件列表，最多 10 个；每项包含 `url` 和 `filename`，URL 需要匹配后端配置的附件白名单前缀。创建任务后，首轮 user-input 日志会按 `{ \"content\": \"base64文本\", \"attachments\": [] }` 结构返回。",
                 "consumes": [
                     "application/json"
                 ],
@@ -7173,7 +7227,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\n独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。\ntask 结束后连接不断开，仍可用于文件操作。\n支持同一 taskID 多 tab 并发连接。\n\n## 上行消息\n\n### Type=call, Kind=repo_file_diff — 获取文件 diff\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"unified\":true,\"context_lines\":3}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"diff\":\"string\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_list — 列出目录文件\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"glob_pattern\":\"string?\",\"include_hidden\":false}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"files\":[{\"name\":\"string\",\"path\":\"string\",\"entry_mode\":0,\"size\":0,\"modified_at\":0}],\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_read_file — 读取文件内容\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"offset\":0,\"length\":0}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"content\":\"bytes\",\"total_size\":0,\"offset\":0,\"length\":0,\"is_truncated\":false,\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_changes — 查询变更文件列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"changes\":[{\"path\":\"string\",\"status\":\"string\",\"additions\":0,\"deletions\":0,\"old_path\":\"string?\"}],\"branch\":\"string?\",\"commit_hash\":\"string?\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=port_forward_list — 获取端口转发列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"ports\":[{\"port\":0,\"status\":\"string\",\"process\":\"string\",\"forward_id\":\"string?\",\"access_url\":\"string?\",\"label\":\"string?\",\"error_message\":\"string?\",\"whitelist_ips\":[\"string\"]}]}\n```\n\n### Type=call, Kind=restart — 重启任务\n请求 Data:\n```json\n{\"request_id\":\"string\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\"}\n```\n\n### Type=sync-my-ip — 同步 Web 客户端真实 IP\n请求 Data:\n```json\n{\"client_ip\":\"string\"}\n```\n\n## 下行消息\n\n- Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为:\n```json\n{\"request_id\":\"string\",\"success\":false,\"error\":\"string\"}\n```\n- Type=task-event: 任务事件（从 TaskLive 订阅转发）\n- Type=ping: 心跳（无 Data）",
+                "description": "数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\n独立于 stream 的长生命周期 WebSocket 连接，用于处理 call/call-response（文件浏览、diff 查看等同步请求）。\ntask 结束后连接不断开，仍可用于文件操作。\n支持同一 taskID 多 tab 并发连接。\n\n## 上行消息\n\n### Type=call, Kind=repo_file_diff — 获取文件 diff\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"unified\":true,\"context_lines\":3}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"diff\":\"string\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_list — 列出目录文件\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"glob_pattern\":\"string?\",\"include_hidden\":false}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"files\":[{\"name\":\"string\",\"path\":\"string\",\"entry_mode\":0,\"size\":0,\"modified_at\":0}],\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_read_file — 读取文件内容\n请求 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"offset\":0,\"length\":0}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"path\":\"string\",\"content\":\"bytes\",\"total_size\":0,\"offset\":0,\"length\":0,\"is_truncated\":false,\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=repo_file_changes — 查询变更文件列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"changes\":[{\"path\":\"string\",\"status\":\"string\",\"additions\":0,\"deletions\":0,\"old_path\":\"string?\"}],\"branch\":\"string?\",\"commit_hash\":\"string?\",\"success\":true,\"error\":\"string?\"}\n```\n\n### Type=call, Kind=port_forward_list — 获取端口转发列表\n请求 Data:\n```json\n{\"request_id\":\"string\"}\n```\n响应 Data:\n```json\n{\"request_id\":\"string\",\"ports\":[{\"port\":0,\"status\":\"string\",\"process\":\"string\",\"forward_id\":\"string?\",\"access_url\":\"string?\",\"label\":\"string?\",\"error_message\":\"string?\",\"whitelist_ips\":[\"string\"]}]}\n```\n\n### Type=call, Kind=restart — 重启任务\n请求 Data:\n```json\n{\"request_id\":\"string\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\"}\n```\n\n### Type=call, Kind=switch_model — 切换运行中任务模型\n请求 Data:\n```json\n{\"request_id\":\"string\",\"model_id\":\"uuid\",\"load_session\":true}\n```\n响应 Data:\n```json\n{\"id\":\"uuid\",\"request_id\":\"string?\",\"success\":true,\"message\":\"string\",\"session_id\":\"string\",\"model\":{}}\n```\n\n### Type=sync-my-ip — 同步 Web 客户端真实 IP\n请求 Data:\n```json\n{\"client_ip\":\"string\"}\n```\n\n## 下行消息\n\n- Type=call-response: 同步请求响应（Kind 与请求一致）。失败时 Data 为:\n```json\n{\"request_id\":\"string\",\"success\":false,\"error\":\"string\"}\n```\n- Type=task-event: 任务事件（从 TaskLive 订阅转发）\n- Type=ping: 心跳（无 Data）",
                 "consumes": [
                     "application/json"
                 ],
@@ -7259,7 +7313,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），\nlimit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。",
+                "description": "根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），\nlimit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。\n返回的 user-input.data 统一为 JSON payload 字符串，例如 `{\"content\":\"57un57ut5aSE55CG\",\"attachments\":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。",
                 "consumes": [
                     "application/json"
                 ],
@@ -7405,7 +7459,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。\n数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\ntype 字段说明：\n- task-started: 本轮任务启动\n- task-ended: 本轮任务结束\n- task-error: 本轮任务发生错误\n- task-running: 任务正在运行\n- task-event: 任务临时事件, 不持久化\n- file-change: 文件变动事件\n- permission-resp: 用户的权限响应\n- auto-approve: 开启自动批准\n- disable-auto-approve: 关闭自动批准\n- user-input: 用户输入\n- user-cancel: 取消当前操作，不会终止任务\n- reply-question: 回复 AI 的提问\n- cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次\n\ncursor 消息结构：\n```json\n{ \"type\": \"cursor\", \"data\": { \"cursor\": \"\u003cnextCursor\u003e\", \"has_more\": true }, \"timestamp\": 0 }\n```\n- cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页\n- has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页",
+                "description": "功能定位：该接口通过 WebSocket 转发任务运行数据。任务对话继续输入使用 `type=user-input`。\n数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\nuser-input 上行新格式：\n```json\n{ \"type\": \"user-input\", \"data\": \"{\\\"content\\\":\\\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\\\",\\\"attachments\\\":[{\\\"url\\\":\\\"https://example-bucket.oss-cn-hangzhou.aliyuncs.com/temp/a.txt\\\",\\\"filename\\\":\\\"a.txt\\\"}]}\" }\n```\nuser-input 上行旧格式仍兼容：\n```json\n{ \"type\": \"user-input\", \"data\": \"继续处理这个问题\" }\n```\nuser-input 下行和历史返回统一使用新 JSON payload 字符串：\n```json\n{ \"type\": \"user-input\", \"data\": \"{\\\"content\\\":\\\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\\\",\\\"attachments\\\":[]}\", \"timestamp\": 0 }\n```\n`attachments` 为可选附件列表，最多 10 个；每项包含 `url` 和 `filename`，URL 需要匹配后端配置的附件白名单前缀。\ntype 字段说明：\n- task-started: 本轮任务启动\n- task-ended: 本轮任务结束\n- task-error: 本轮任务发生错误\n- task-running: 任务正在运行\n- task-event: 任务临时事件, 不持久化\n- file-change: 文件变动事件\n- permission-resp: 用户的权限响应\n- auto-approve: 开启自动批准\n- disable-auto-approve: 关闭自动批准\n- user-input: 用户输入\n- user-cancel: 取消当前操作，不会终止任务\n- reply-question: 回复 AI 的提问\n- cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次\n\ncursor 消息结构：\n```json\n{ \"type\": \"cursor\", \"data\": { \"cursor\": \"\u003cnextCursor\u003e\", \"has_more\": true }, \"timestamp\": 0 }\n```\n- cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页\n- has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页",
                 "consumes": [
                     "application/json"
                 ],
@@ -8390,6 +8444,9 @@
                 "base_url": {
                     "type": "string"
                 },
+                "context_limit": {
+                    "type": "integer"
+                },
                 "interface_type": {
                     "enum": [
                         "openai_chat",
@@ -8408,11 +8465,17 @@
                 "model": {
                     "type": "string"
                 },
+                "output_limit": {
+                    "type": "integer"
+                },
                 "provider": {
                     "type": "string"
                 },
                 "temperature": {
                     "type": "number"
+                },
+                "thinking_enabled": {
+                    "type": "boolean"
                 }
             }
         },
@@ -8501,6 +8564,13 @@
                 "resource"
             ],
             "properties": {
+                "attachments": {
+                    "description": "附件列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TaskAttachment"
+                    }
+                },
                 "cli_name": {
                     "$ref": "#/definitions/consts.CliName"
                 },
@@ -9236,6 +9306,9 @@
                 "base_url": {
                     "type": "string"
                 },
+                "context_limit": {
+                    "type": "integer"
+                },
                 "created_at": {
                     "type": "integer"
                 },
@@ -9263,6 +9336,9 @@
                 "model": {
                     "type": "string"
                 },
+                "output_limit": {
+                    "type": "integer"
+                },
                 "owner": {
                     "$ref": "#/definitions/domain.Owner"
                 },
@@ -9271,6 +9347,9 @@
                 },
                 "temperature": {
                     "type": "number"
+                },
+                "thinking_enabled": {
+                    "type": "boolean"
                 },
                 "updated_at": {
                     "type": "integer"
@@ -9908,6 +9987,17 @@
                 }
             }
         },
+        "domain.TaskAttachment": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.TaskChunkEntry": {
             "type": "object",
             "properties": {
@@ -10314,6 +10404,9 @@
                 "base_url": {
                     "type": "string"
                 },
+                "context_limit": {
+                    "type": "integer"
+                },
                 "interface_type": {
                     "enum": [
                         "openai_chat",
@@ -10332,11 +10425,17 @@
                 "model": {
                     "type": "string"
                 },
+                "output_limit": {
+                    "type": "integer"
+                },
                 "provider": {
                     "type": "string"
                 },
                 "temperature": {
                     "type": "number"
+                },
+                "thinking_enabled": {
+                    "type": "boolean"
                 }
             }
         },
