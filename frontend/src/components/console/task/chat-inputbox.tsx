@@ -12,6 +12,7 @@ import { TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } fro
 import { toast } from "sonner"
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
+const MAX_UPLOADED_FILES = 3
 
 interface TaskChatInputBoxProps {
   streamStatus: TaskStreamStatus | TaskMessageHandlerStatus
@@ -60,6 +61,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   const handleSelectFile = () => {
     if (!canInput) return
+    if (uploadedFiles.length >= MAX_UPLOADED_FILES) return
     fileInputRef.current?.click()
   }
 
@@ -91,7 +93,12 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   }
 
   const handleUploaded = (file: TaskUploadedFile) => {
-    setUploadedFiles((prev) => [...prev, file])
+    setUploadedFiles((prev) => {
+      if (prev.length >= MAX_UPLOADED_FILES) {
+        return prev
+      }
+      return [...prev, file]
+    })
     setSelectedUploadFile(null)
   }
 
@@ -135,6 +142,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
   const canSend = content.trim() !== ''
+  const canUploadMoreFiles = uploadedFiles.length < MAX_UPLOADED_FILES
 
   return (
     <div className="relative w-full">
@@ -186,17 +194,19 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
               </DropdownMenu>
               {!isExecuting && (
                 <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon-sm"
-                    className="rounded-full"
-                    disabled={controlsDisabled}
-                    aria-label="上传文件"
-                    onClick={handleSelectFile}
-                  >
-                    <IconUpload />
-                  </Button>
+                  {canUploadMoreFiles && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      className="rounded-full"
+                      disabled={controlsDisabled}
+                      aria-label="上传文件"
+                      onClick={handleSelectFile}
+                    >
+                      <IconUpload />
+                    </Button>
+                  )}
                   {uploadedFiles.map((uploadedFile) => (
                     <TaskUploadedFileItem
                       key={uploadedFile.accessUrl}
