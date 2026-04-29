@@ -295,13 +295,20 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 	if maxRounds <= 0 {
 		maxRounds = 3
 	}
+	logRounds := maxRounds
+	if strings.TrimSpace(initialContent) != "" {
+		logRounds--
+	}
+	if logRounds < 0 {
+		logRounds = 0
+	}
 	const pageSize = 20
 
 	var chunks []*tasklog.TurnChunk
 	userRoundCount := 0
 	cursor := ""
 
-	for {
+	for logRounds > 0 {
 		resp, err := r.gateway.QueryTurns(ctx, taskID, createdAt, cursor, pageSize, store)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch task log history: %w", err)
@@ -315,7 +322,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 			if chunk == nil {
 				continue
 			}
-			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= maxRounds {
+			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= logRounds {
 				stopPaging = true
 				break
 			}
@@ -325,7 +332,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 			}
 		}
 
-		if stopPaging || userRoundCount >= maxRounds || !resp.HasMore || resp.NextCursor == "" {
+		if stopPaging || userRoundCount >= logRounds || !resp.HasMore || resp.NextCursor == "" {
 			break
 		}
 		cursor = resp.NextCursor
@@ -348,7 +355,7 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 	})
 
 	var messages []llm.Message
-	if userRoundCount < maxRounds && initialContent != "" {
+	if initialContent != "" {
 		messages = append(messages, llm.Message{Role: "user", Content: initialContent})
 	}
 
@@ -416,12 +423,15 @@ func normalizeSummaryLogStore(store *consts.LogStore) consts.LogStore {
 
 // generateSummary 调用 LLM 生成摘要
 func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation []llm.Message) (string, error) {
-	systemPrompt := `你是一个对话标题生成器，专门为用户与 AI 助手的对话生成简短、具体的标题。你只输出标题本身，不做任何解释。`
-
 	maxChars := s.cfg.TaskSummary.MaxChars
 	if maxChars <= 0 {
 		maxChars = 300
 	}
+	if summary, ok := fallbackSummaryFromConversation(conversation, maxChars); ok {
+		return summary, nil
+	}
+
+	systemPrompt := `你是一个对话标题生成器，专门为用户与 AI 助手的对话生成简短、具体的标题。你只输出标题本身，不做任何解释。`
 
 	userPrompt := fmt.Sprintf(`请根据以上对话，总结用户的核心意图，生成一个简短标题。
 
@@ -429,6 +439,8 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 - 不超过%d字
 - 不要标点结尾
 - 只输出标题，不要解释
+- 第一条用户消息是任务原始需求，必须优先依据它生成标题
+- 后续对话只作为补充上下文，不要把上下文交接、压缩摘要或运行状态总结当成任务标题
 - 重点关注用户想要完成什么目标，而不是 AI 问了什么问题
 - 标题要具体，让人一看就知道用户想做什么
   - 如果是开发任务：说明做的是什么应用/功能（如"开发五子棋游戏"）
@@ -453,4 +465,47 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 	}
 
 	return strings.TrimSpace(resp.Content), nil
+}
+
+func fallbackSummaryFromConversation(conversation []llm.Message, maxChars int) (string, bool) {
+	userInputs := make([]string, 0, len(conversation))
+	hasAssistant := false
+	for _, msg := range conversation {
+		switch msg.Role {
+		case "user":
+			content := strings.TrimSpace(msg.Content)
+			if content != "" {
+				userInputs = append(userInputs, content)
+			}
+		case "assistant":
+			if strings.TrimSpace(msg.Content) != "" {
+				hasAssistant = true
+			}
+		}
+	}
+	if hasAssistant || len(userInputs) != 1 || !isLowInformationInput(userInputs[0]) {
+		return "", false
+	}
+	return truncateSummary(userInputs[0], maxChars), true
+}
+
+func isLowInformationInput(input string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(input))
+	normalized = strings.Trim(normalized, " \t\r\n.!?。！？~～,，")
+	switch normalized {
+	case "hi", "hello", "hey", "你好", "您好", "嗨", "哈喽", "hello there", "ok", "okay", "嗯", "嗯嗯", "额":
+		return true
+	}
+	return false
+}
+
+func truncateSummary(s string, maxChars int) string {
+	if maxChars <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	return string(runes[:maxChars])
 }
