@@ -165,6 +165,7 @@ export enum ConstsTransactionKind {
   TransactionKindMCPToolConsumption = "mcp_tool_consumption",
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
+  TransactionKindViolationFine = "violation_fine",
 }
 
 export enum ConstsUserPlatform {
@@ -456,19 +457,27 @@ export interface DomainCreateProjectReq {
 }
 
 export interface DomainCreateTaskReq {
-  /** 附件列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀 */
-  attachments?: DomainTaskAttachment[];
+  /** 客户端名称 codex | claude | opencode */
   cli_name?: ConstsCliName;
+  /** 任务内容 */
   content: string;
+  /** 额外参数 */
   extra?: DomainTaskExtraConfig;
+  /** Git 身份ID */
   git_identity_id?: string;
+  /** 宿主机 id, 当 host_id 为 public_host 时使用公共宿主机 */
   host_id: string;
+  /** 镜像ID */
   image_id: string;
+  /** 模型ID economy: 指定用便宜的模型 */
   model_id: string;
+  /** 仓库信息 */
   repo: DomainTaskRepoReq;
+  /** 资源配置 */
   resource: DomainVMResource;
   sub_type?: ConstsTaskSubType;
   system_prompt?: string;
+  /** 任务类型 */
   task_type?: ConstsTaskType;
 }
 
@@ -1343,11 +1352,6 @@ export interface DomainTask {
   virtualmachine?: DomainVirtualMachine;
 }
 
-export interface DomainTaskAttachment {
-  filename?: string;
-  url?: string;
-}
-
 export interface DomainTaskChunkEntry {
   data?: number[];
   event?: string;
@@ -1756,6 +1760,7 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
+/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
