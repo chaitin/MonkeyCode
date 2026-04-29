@@ -81,6 +81,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return
     }
 
+    if (!/\.[^./\\]+$/.test(file.name)) {
+      toast.error("不支持上传没有后缀的文件")
+      return
+    }
+
     setSelectedUploadFile(file)
     setUploadDialogOpen(true)
   }
