@@ -177,7 +177,7 @@ export function TaskUploadedFileItem({ file, onRemove, className }: TaskUploaded
   return (
     <div
       className={cn(
-        "group flex h-8 min-w-0 max-w-48 items-center gap-2 rounded-full border bg-background px-2 text-xs text-foreground shadow-xs",
+        "group flex h-8 min-w-0 max-w-32 items-center gap-2 rounded-full border bg-background px-2 text-xs text-foreground shadow-xs",
         className
       )}
       title={file.name}
