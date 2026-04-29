@@ -35,6 +35,7 @@ type TaskUsecase interface {
 // TaskRepo 任务数据访问接口
 type TaskRepo interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error)
+	GetLogStore(ctx context.Context, id uuid.UUID) (consts.LogStore, error)
 	Stat(ctx context.Context, id uuid.UUID) (*TaskStats, error)
 	StatByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*TaskStats, error)
 	Info(ctx context.Context, user *User, id uuid.UUID, isPrivileged bool) (*db.Task, error)
@@ -211,6 +212,7 @@ type Task struct {
 	Title          string             `json:"title"`
 	Summary        string             `json:"summary"`
 	Status         consts.TaskStatus  `json:"status"`
+	LogStore       consts.LogStore    `json:"log_store"`
 	VirtualMachine *VirtualMachine    `json:"virtualmachine"`
 	CreatedAt      int64              `json:"created_at"`
 	LastActiveAt   int64              `json:"last_active_at"`
@@ -248,6 +250,12 @@ func (t *Task) From(src *db.Task) *Task {
 	t.Title = src.Title
 	t.Summary = src.Summary
 	t.Status = src.Status
+	if src.LogStore != nil {
+		t.LogStore = *src.LogStore
+	}
+	if t.LogStore == "" {
+		t.LogStore = consts.LogStoreLoki
+	}
 	t.CreatedAt = src.CreatedAt.Unix()
 	t.LastActiveAt = src.LastActiveAt.Unix()
 	t.CompletedAt = src.CompletedAt.Unix()
@@ -301,17 +309,17 @@ type TaskControlReq struct {
 	ID uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 id
 }
 
-// TaskRoundsReq 查询任务历史论次请求（向前翻页）
+// TaskRoundsReq 查询任务历史轮次请求（向前翻页）
 type TaskRoundsReq struct {
 	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
-	Cursor string    `json:"cursor" query:"cursor"`             // 游标（时间戳 Unix ns，从此时间点往前查询）
-	Limit  int       `json:"limit" query:"limit"`               // 返回的论次数（默认 2，上限 10）
+	Cursor string    `json:"cursor" query:"cursor"`             // 分页游标
+	Limit  int       `json:"limit" query:"limit"`               // 返回的轮次数（默认 2，上限 10）
 }
 
-// TaskRoundsResp 查询任务历史论次响应
+// TaskRoundsResp 查询任务历史轮次响应
 type TaskRoundsResp struct {
 	Chunks     []*TaskChunkEntry `json:"chunks"`
-	NextCursor string            `json:"next_cursor,omitempty"` // 下一页游标（最早条目的时间戳 ns）
+	NextCursor string            `json:"next_cursor,omitempty"` // 下一页游标
 	HasMore    bool              `json:"has_more"`
 }
 

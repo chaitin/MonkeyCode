@@ -36,6 +36,8 @@ type Task struct {
 	Summary string `json:"summary,omitempty"`
 	// Status holds the value of the "status" field.
 	Status consts.TaskStatus `json:"status,omitempty"`
+	// LogStore holds the value of the "log_store" field.
+	LogStore *consts.LogStore `json:"log_store,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// LastActiveAt holds the value of the "last_active_at" field.
@@ -130,7 +132,7 @@ func (*Task) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case task.FieldKind, task.FieldSubType, task.FieldContent, task.FieldTitle, task.FieldSummary, task.FieldStatus:
+		case task.FieldKind, task.FieldSubType, task.FieldContent, task.FieldTitle, task.FieldSummary, task.FieldStatus, task.FieldLogStore:
 			values[i] = new(sql.NullString)
 		case task.FieldDeletedAt, task.FieldCreatedAt, task.FieldLastActiveAt, task.FieldUpdatedAt, task.FieldCompletedAt:
 			values[i] = new(sql.NullTime)
@@ -204,6 +206,13 @@ func (_m *Task) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = consts.TaskStatus(value.String)
+			}
+		case task.FieldLogStore:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field log_store", values[i])
+			} else if value.Valid {
+				_m.LogStore = new(consts.LogStore)
+				*_m.LogStore = consts.LogStore(value.String)
 			}
 		case task.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -318,6 +327,11 @@ func (_m *Task) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	if v := _m.LogStore; v != nil {
+		builder.WriteString("log_store=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

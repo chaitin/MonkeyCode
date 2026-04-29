@@ -4529,58 +4529,6 @@
                 }
             }
         },
-        "/api/v1/users/mcp/tools": {
-            "get": {
-                "security": [
-                    {
-                        "MonkeyCodeAIAuth": []
-                    }
-                ],
-                "description": "获取当前登录用户可使用的 MCP Tool 列表及其启用状态",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "【用户】MCP 配置"
-                ],
-                "summary": "获取当前用户可见的 MCP Tool 列表",
-                "responses": {
-                    "200": {
-                        "description": "成功",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/web.Resp"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/domain.ListUserMCPToolsResp"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "$ref": "#/definitions/web.Resp"
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "$ref": "#/definitions/web.Resp"
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/users/mcp/tools/{id}": {
             "put": {
                 "security": [
@@ -7311,7 +7259,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "根据 cursor 向前翻页查询任务的历史论次。limit 为论次数（非条目数），\nlimit=2 表示返回 2 论的完整消息。返回的 chunks 按时间倒序排列（最新在前）。",
+                "description": "根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），\nlimit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -7321,7 +7269,7 @@
                 "tags": [
                     "【用户】任务管理"
                 ],
-                "summary": "查询任务历史论次",
+                "summary": "查询任务历史轮次",
                 "parameters": [
                     {
                         "type": "string",
@@ -7332,13 +7280,13 @@
                     },
                     {
                         "type": "string",
-                        "description": "游标（时间戳 Unix ns）",
+                        "description": "分页游标",
                         "name": "cursor",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "论次数（默认 2，上限 10）",
+                        "description": "轮次数（默认 2，上限 10）",
                         "name": "limit",
                         "in": "query"
                     }
@@ -7457,7 +7405,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。\n数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\ntype 字段说明：\n- task-started: 本轮任务启动\n- task-ended: 本轮任务结束\n- task-error: 本轮任务发生错误\n- task-running: 任务正在运行\n- task-event: 任务临时事件, 不持久化\n- file-change: 文件变动事件\n- permission-resp: 用户的权限响应\n- auto-approve: 开启自动批准\n- disable-auto-approve: 关闭自动批准\n- user-input: 用户输入\n- user-cancel: 取消当前操作，不会终止任务\n- reply-question: 回复 AI 的提问\n- cursor: 历史游标，用于通过 /rounds 接口加载更早的论次\n\ncursor 消息结构：\n```json\n{ \"type\": \"cursor\", \"data\": { \"cursor\": \"\u003clastTaskStartedTS_ns\u003e\", \"has_more\": true }, \"timestamp\": 0 }\n```\n- cursor: 当前论次 task-started 的时间戳（Unix 纳秒），作为 GET /rounds 接口的 cursor 参数向前翻页\n- has_more: 是否存在更早的论次。为 false 时表示当前论次即为第一论次，无需再翻页",
+                "description": "功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。\n数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：\n```json\n{ \"type\": \"string\", \"data\": \"string\", \"kind\": \"string\", \"timestamp\": 0 }\n```\ntype 字段说明：\n- task-started: 本轮任务启动\n- task-ended: 本轮任务结束\n- task-error: 本轮任务发生错误\n- task-running: 任务正在运行\n- task-event: 任务临时事件, 不持久化\n- file-change: 文件变动事件\n- permission-resp: 用户的权限响应\n- auto-approve: 开启自动批准\n- disable-auto-approve: 关闭自动批准\n- user-input: 用户输入\n- user-cancel: 取消当前操作，不会终止任务\n- reply-question: 回复 AI 的提问\n- cursor: 历史游标，用于通过 /rounds 接口加载更早的轮次\n\ncursor 消息结构：\n```json\n{ \"type\": \"cursor\", \"data\": { \"cursor\": \"\u003cnextCursor\u003e\", \"has_more\": true }, \"timestamp\": 0 }\n```\n- cursor: 当前分页游标，作为 GET /rounds 接口的 cursor 参数向前翻页\n- has_more: 是否存在更早的轮次。为 false 时表示当前轮次即为第一轮，无需再翻页",
                 "consumes": [
                     "application/json"
                 ],
@@ -7478,7 +7426,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "模式：new(等待用户输入)|attach(仅拉取当前论次)，默认 new",
+                        "description": "模式：new(等待用户输入)|attach(仅拉取当前轮次)，默认 new",
                         "name": "mode",
                         "in": "query"
                     }
@@ -7697,6 +7645,17 @@
                 "InterfaceTypeOpenAIChat",
                 "InterfaceTypeOpenAIResponse",
                 "InterfaceTypeAnthropic"
+            ]
+        },
+        "consts.LogStore": {
+            "type": "string",
+            "enum": [
+                "loki",
+                "clickhouse"
+            ],
+            "x-enum-varnames": [
+                "LogStoreLoki",
+                "LogStoreClickHouse"
             ]
         },
         "consts.ModelProvider": {
@@ -7959,11 +7918,13 @@
             "type": "string",
             "enum": [
                 "active",
-                "inactive"
+                "inactive",
+                "banded"
             ],
             "x-enum-varnames": [
                 "UserStatusActive",
-                "UserStatusInactive"
+                "UserStatusInactive",
+                "UserStatusBanded"
             ]
         },
         "db.Cursor": {
@@ -9134,17 +9095,6 @@
                 }
             }
         },
-        "domain.ListUserMCPToolsResp": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/domain.MCPTool"
-                    }
-                }
-            }
-        },
         "domain.ListUserMCPUpstreamsResp": {
             "type": "object",
             "properties": {
@@ -9196,7 +9146,7 @@
                     "type": "integer"
                 },
                 "scope": {
-                    "type": "string"
+                    "$ref": "#/definitions/mcptool.Scope"
                 }
             }
         },
@@ -9234,7 +9184,7 @@
                     "type": "string"
                 },
                 "scope": {
-                    "type": "string"
+                    "$ref": "#/definitions/mcpupstream.Scope"
                 },
                 "slug": {
                     "type": "string"
@@ -9323,6 +9273,9 @@
                     "type": "number"
                 },
                 "updated_at": {
+                    "type": "integer"
+                },
+                "weight": {
                     "type": "integer"
                 }
             }
@@ -9630,6 +9583,12 @@
                 "image": {
                     "$ref": "#/definitions/domain.Image"
                 },
+                "last_active_at": {
+                    "type": "integer"
+                },
+                "log_store": {
+                    "$ref": "#/definitions/consts.LogStore"
+                },
                 "model": {
                     "$ref": "#/definitions/domain.Model"
                 },
@@ -9908,6 +9867,12 @@
                 "image": {
                     "$ref": "#/definitions/domain.Image"
                 },
+                "last_active_at": {
+                    "type": "integer"
+                },
+                "log_store": {
+                    "$ref": "#/definitions/consts.LogStore"
+                },
                 "model": {
                     "$ref": "#/definitions/domain.Model"
                 },
@@ -10016,7 +9981,7 @@
                     "type": "boolean"
                 },
                 "next_cursor": {
-                    "description": "下一页游标（最早条目的时间戳 ns）",
+                    "description": "下一页游标",
                     "type": "string"
                 }
             }
@@ -10801,6 +10766,28 @@
                     "type": "string"
                 }
             }
+        },
+        "mcptool.Scope": {
+            "type": "string",
+            "enum": [
+                "user",
+                "platform"
+            ],
+            "x-enum-varnames": [
+                "ScopeUser",
+                "ScopePlatform"
+            ]
+        },
+        "mcpupstream.Scope": {
+            "type": "string",
+            "enum": [
+                "user",
+                "platform"
+            ],
+            "x-enum-varnames": [
+                "ScopeUser",
+                "ScopePlatform"
+            ]
         },
         "taskflow.File": {
             "type": "object",

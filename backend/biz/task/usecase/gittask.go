@@ -80,8 +80,9 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 				BaseURL:  m.BaseURL,
 				Model:    m.Model,
 			},
-			Cores:  fmt.Sprintf("%d", g.cfg.Task.Core),
-			Memory: g.cfg.Task.Memory,
+			Cores:    fmt.Sprintf("%d", g.cfg.Task.Core),
+			Memory:   g.cfg.Task.Memory,
+			LogStore: normalizeTaskLogStore(t.LogStore),
 		})
 		if err != nil {
 			return nil, err
@@ -114,7 +115,8 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 				BaseURL: m.BaseURL,
 				Model:   m.Model,
 			},
-			Env: req.Env,
+			Env:      req.Env,
+			LogStore: normalizeTaskLogStore(t.LogStore),
 		}
 		b, err := json.Marshal(createTaskReq)
 		if err != nil {

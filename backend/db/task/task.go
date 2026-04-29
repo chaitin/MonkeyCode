@@ -31,6 +31,8 @@ const (
 	FieldSummary = "summary"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldLogStore holds the string denoting the log_store field in the database.
+	FieldLogStore = "log_store"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldLastActiveAt holds the string denoting the last_active_at field in the database.
@@ -106,6 +108,7 @@ var Columns = []string{
 	FieldTitle,
 	FieldSummary,
 	FieldStatus,
+	FieldLogStore,
 	FieldCreatedAt,
 	FieldLastActiveAt,
 	FieldUpdatedAt,
@@ -194,6 +197,11 @@ func BySummary(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByLogStore orders the results by the log_store field.
+func ByLogStore(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLogStore, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

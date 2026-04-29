@@ -199,6 +199,7 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 		ID:          taskID,
 		RequestId:   req.RequestID,
 		LoadSession: req.LoadSession,
+		LogStore:    string(t.LogStore),
 		ExecutionConfig: &taskflow.TaskExecutionConfig{
 			Envs:        envs,
 			ConfigFiles: configs,
@@ -340,7 +341,8 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
-			ID: id,
+			ID:       id,
+			LogStore: string(tk.LogStore),
 		},
 	}); err != nil {
 		return err
@@ -363,8 +365,9 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
-			ID:   id,
-			Text: content,
+			ID:       id,
+			Text:     content,
+			LogStore: string(tk.LogStore),
 		},
 	}); err != nil {
 		return err
@@ -514,9 +517,10 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				BaseURL:  m.BaseURL,
 				Model:    m.Model,
 			},
-			Cores:  "2",
-			Memory: 8 << 30,
-			Envs:   env,
+			Cores:    "2",
+			Memory:   8 << 30,
+			Envs:     env,
+			LogStore: normalizeTaskLogStore(t.LogStore),
 		})
 		if err != nil {
 			return nil, err
@@ -544,6 +548,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			},
 			Configs:    configs,
 			McpConfigs: mcps,
+			LogStore:   normalizeTaskLogStore(t.LogStore),
 		}
 		b, err := json.Marshal(createTaskReq)
 		if err != nil {

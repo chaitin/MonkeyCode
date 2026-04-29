@@ -100,6 +100,12 @@ func Status(v consts.TaskStatus) predicate.Task {
 	return predicate.Task(sql.FieldEQ(FieldStatus, vc))
 }
 
+// LogStore applies equality check predicate on the "log_store" field. It's identical to LogStoreEQ.
+func LogStore(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldEQ(FieldLogStore, vc))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Task {
 	return predicate.Task(sql.FieldEQ(FieldCreatedAt, v))
@@ -665,6 +671,100 @@ func StatusEqualFold(v consts.TaskStatus) predicate.Task {
 func StatusContainsFold(v consts.TaskStatus) predicate.Task {
 	vc := string(v)
 	return predicate.Task(sql.FieldContainsFold(FieldStatus, vc))
+}
+
+// LogStoreEQ applies the EQ predicate on the "log_store" field.
+func LogStoreEQ(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldEQ(FieldLogStore, vc))
+}
+
+// LogStoreNEQ applies the NEQ predicate on the "log_store" field.
+func LogStoreNEQ(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldNEQ(FieldLogStore, vc))
+}
+
+// LogStoreIn applies the In predicate on the "log_store" field.
+func LogStoreIn(vs ...consts.LogStore) predicate.Task {
+	v := make([]any, len(vs))
+	for i := range v {
+		v[i] = string(vs[i])
+	}
+	return predicate.Task(sql.FieldIn(FieldLogStore, v...))
+}
+
+// LogStoreNotIn applies the NotIn predicate on the "log_store" field.
+func LogStoreNotIn(vs ...consts.LogStore) predicate.Task {
+	v := make([]any, len(vs))
+	for i := range v {
+		v[i] = string(vs[i])
+	}
+	return predicate.Task(sql.FieldNotIn(FieldLogStore, v...))
+}
+
+// LogStoreGT applies the GT predicate on the "log_store" field.
+func LogStoreGT(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldGT(FieldLogStore, vc))
+}
+
+// LogStoreGTE applies the GTE predicate on the "log_store" field.
+func LogStoreGTE(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldGTE(FieldLogStore, vc))
+}
+
+// LogStoreLT applies the LT predicate on the "log_store" field.
+func LogStoreLT(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldLT(FieldLogStore, vc))
+}
+
+// LogStoreLTE applies the LTE predicate on the "log_store" field.
+func LogStoreLTE(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldLTE(FieldLogStore, vc))
+}
+
+// LogStoreContains applies the Contains predicate on the "log_store" field.
+func LogStoreContains(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldContains(FieldLogStore, vc))
+}
+
+// LogStoreHasPrefix applies the HasPrefix predicate on the "log_store" field.
+func LogStoreHasPrefix(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldHasPrefix(FieldLogStore, vc))
+}
+
+// LogStoreHasSuffix applies the HasSuffix predicate on the "log_store" field.
+func LogStoreHasSuffix(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldHasSuffix(FieldLogStore, vc))
+}
+
+// LogStoreIsNil applies the IsNil predicate on the "log_store" field.
+func LogStoreIsNil() predicate.Task {
+	return predicate.Task(sql.FieldIsNull(FieldLogStore))
+}
+
+// LogStoreNotNil applies the NotNil predicate on the "log_store" field.
+func LogStoreNotNil() predicate.Task {
+	return predicate.Task(sql.FieldNotNull(FieldLogStore))
+}
+
+// LogStoreEqualFold applies the EqualFold predicate on the "log_store" field.
+func LogStoreEqualFold(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldEqualFold(FieldLogStore, vc))
+}
+
+// LogStoreContainsFold applies the ContainsFold predicate on the "log_store" field.
+func LogStoreContainsFold(v consts.LogStore) predicate.Task {
+	vc := string(v)
+	return predicate.Task(sql.FieldContainsFold(FieldLogStore, vc))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

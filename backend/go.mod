@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	entgo.io/ent v0.14.5
+	github.com/ClickHouse/clickhouse-go/v2 v2.45.0
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/GoYoko/web v1.6.0
 	github.com/ackcoder/go-cap v1.1.3
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -32,8 +34,10 @@ require (
 require (
 	ariga.io/atlas v0.32.1-0.20250325101103-175b25e1c1b9 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/ClickHouse/ch-go v0.71.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/aliyun/alibaba-cloud-sdk-go v1.61.1376 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0 // indirect
@@ -41,6 +45,8 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
+	github.com/go-faster/city v1.0.1 // indirect
+	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
@@ -62,6 +68,7 @@ require (
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.18.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -70,12 +77,16 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.6.1 // indirect
+	github.com/paulmach/orb v0.12.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
+	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/shurcooL/githubv4 v0.0.0-20260209031235-2402fdf4a9ed // indirect
 	github.com/shurcooL/graphql v0.0.0-20240915155400-7ee5256398cf // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect

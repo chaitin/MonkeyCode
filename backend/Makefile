@@ -4,7 +4,6 @@ OUTPUT=type=docker,dest=$(HOME)/tmp/mcai_server.tar
 GOCACHE=/root/.cache/go-build
 GOMODCACHE?=/go/pkg/mod
 REGISTRY=chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode
-
 # make server PLATFORM= TAG= OUTPUT_SERVER= GOCACHE=
 image:
 	docker buildx build \

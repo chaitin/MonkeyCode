@@ -27,12 +27,14 @@ func TestSwitchModelRestartsWithExecutionConfigAndUpdatesModel(t *testing.T) {
 	toModelID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
 	switchID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
 	restartTaskID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
+	logStore := consts.LogStoreClickHouse
 
 	repo := &switchModelTaskRepo{
 		task: &db.Task{
 			ID:           taskID,
 			UserID:       userID,
 			Status:       consts.TaskStatusProcessing,
+			LogStore:     &logStore,
 			CreatedAt:    time.Now(),
 			LastActiveAt: time.Now(),
 			Edges: db.TaskEdges{
@@ -133,6 +135,9 @@ func TestSwitchModelRestartsWithExecutionConfigAndUpdatesModel(t *testing.T) {
 
 	if taskMgr.restartReq.ID != taskID {
 		t.Fatalf("restart task id = %s, want %s", taskMgr.restartReq.ID, taskID)
+	}
+	if taskMgr.restartReq.LogStore != string(consts.LogStoreClickHouse) {
+		t.Fatalf("restart log_store = %q, want %q", taskMgr.restartReq.LogStore, consts.LogStoreClickHouse)
 	}
 	if taskMgr.restartReq.ExecutionConfig == nil {
 		t.Fatal("restart execution_config is nil")
@@ -280,6 +285,12 @@ type switchModelTaskRepo struct {
 
 func (r *switchModelTaskRepo) GetByID(context.Context, uuid.UUID) (*db.Task, error) {
 	return nil, errors.New("unused")
+}
+func (r *switchModelTaskRepo) GetLogStore(context.Context, uuid.UUID) (consts.LogStore, error) {
+	if r.task.LogStore == nil {
+		return consts.LogStoreLoki, nil
+	}
+	return *r.task.LogStore, nil
 }
 func (r *switchModelTaskRepo) Stat(context.Context, uuid.UUID) (*domain.TaskStats, error) {
 	return nil, nil

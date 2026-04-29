@@ -130,7 +130,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 type internalHostRepoStub struct {
 	vm               *db.VirtualMachine
 	assertSkipMarker bool
-	skipMarkerKey    interface{}
+	skipMarkerKey    any
 	skipMarkerValue  string
 }
 
