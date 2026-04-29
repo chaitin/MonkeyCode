@@ -78,7 +78,14 @@ export function PlanStepsBlock({ plan, streamStatus }: PlanStepsBlockProps) {
           {planOpened ? <ChevronsDownUp className="size-4" /> : <ChevronsUpDown className="size-4" />}
         </Button>
       </div>
-      <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">{renderPlan()}</div>
+      <div
+        className={cn(
+          "flex flex-col gap-2",
+          planOpened ? "max-h-48 overflow-y-auto overscroll-contain" : "overflow-hidden"
+        )}
+      >
+        {renderPlan()}
+      </div>
     </div>
   )
 }
