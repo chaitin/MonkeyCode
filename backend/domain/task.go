@@ -81,26 +81,31 @@ type TaskExtraConfig struct {
 
 // CreateTaskReq 创建任务请求
 type CreateTaskReq struct {
-	Content        string             `json:"content" validate:"required"`
-	HostID         string             `json:"host_id" validate:"required"`
-	ImageID        uuid.UUID          `json:"image_id" validate:"required"`
-	ModelID        string             `json:"model_id" validate:"required"`
-	GitIdentityID  uuid.UUID          `json:"git_identity_id" validate:"omitempty"`
-	RepoReq        TaskRepoReq        `json:"repo" validate:"required"`
-	CliName        consts.CliName     `json:"cli_name"`
-	Resource       *VMResource        `json:"resource" validate:"required"`
-	Extra          TaskExtraConfig    `json:"extra" validate:"omitempty"`
-	SystemPrompt   string             `json:"system_prompt"`
-	Type           consts.TaskType    `json:"task_type"`
-	SubType        consts.TaskSubType `json:"sub_type"`
-	AttachmentURLs []string           `json:"attachment_urls" validate:"omitempty"` // 附件访问 URL 列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀
-	Now            time.Time          `json:"-"`
-	UsePublicHost  bool               `json:"-"`
+	Content       string             `json:"content" validate:"required"`
+	HostID        string             `json:"host_id" validate:"required"`
+	ImageID       uuid.UUID          `json:"image_id" validate:"required"`
+	ModelID       string             `json:"model_id" validate:"required"`
+	GitIdentityID uuid.UUID          `json:"git_identity_id" validate:"omitempty"`
+	RepoReq       TaskRepoReq        `json:"repo" validate:"required"`
+	CliName       consts.CliName     `json:"cli_name"`
+	Resource      *VMResource        `json:"resource" validate:"required"`
+	Extra         TaskExtraConfig    `json:"extra" validate:"omitempty"`
+	SystemPrompt  string             `json:"system_prompt"`
+	Type          consts.TaskType    `json:"task_type"`
+	SubType       consts.TaskSubType `json:"sub_type"`
+	Attachments   []TaskAttachment   `json:"attachments" validate:"omitempty"` // 附件列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀
+	Now           time.Time          `json:"-"`
+	UsePublicHost bool               `json:"-"`
 }
 
 type ContinueTaskReq struct {
-	Content        []byte   `json:"content"`
-	AttachmentURLs []string `json:"attachment_urls"`
+	Content     []byte           `json:"content"`
+	Attachments []TaskAttachment `json:"attachments"`
+}
+
+type TaskAttachment struct {
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
 }
 
 // Validate 验证请求参数
@@ -306,8 +311,8 @@ type TaskStream struct {
 
 // TaskUserInputPayload user-input 事件 data 字段的 JSON 结构
 type TaskUserInputPayload struct {
-	Content        []byte   `json:"content"`         // 用户输入文本，JSON 中按 base64 字符串传输
-	AttachmentURLs []string `json:"attachment_urls"` // 附件访问 URL 列表，缺省或空数组表示无附件
+	Content     []byte           `json:"content"`     // 用户输入文本，JSON 中按 base64 字符串传输
+	Attachments []TaskAttachment `json:"attachments"` // 附件列表，缺省或空数组表示无附件
 }
 
 // TaskStreamReq 任务数据流请求

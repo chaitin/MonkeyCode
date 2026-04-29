@@ -12,8 +12,13 @@ type userReply struct {
 }
 
 type userInputPayload struct {
-	Content        []byte   `json:"content"`
-	AttachmentURLs []string `json:"attachment_urls"`
+	Content     []byte           `json:"content"`
+	Attachments []taskAttachment `json:"attachments"`
+}
+
+type taskAttachment struct {
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
 }
 
 // agentMsgChunk agent 消息块

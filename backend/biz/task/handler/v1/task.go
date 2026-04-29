@@ -236,7 +236,7 @@ func (h *TaskHandler) Info(c *web.Context, req domain.IDReq[uuid.UUID]) error {
 //
 //	@Summary		创建任务
 //	@Description	创建任务
-//	@Description	`attachment_urls` 为可选附件访问 URL 列表，最多 10 个；URL 需要匹配后端配置的附件白名单前缀。创建任务后，首轮 user-input 日志会按 `{ "content": "base64文本", "attachment_urls": [] }` 结构返回。
+//	@Description	`attachments` 为可选附件列表，最多 10 个；每项包含 `url` 和 `filename`，URL 需要匹配后端配置的附件白名单前缀。创建任务后，首轮 user-input 日志会按 `{ "content": "base64文本", "attachments": [] }` 结构返回。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
@@ -325,7 +325,7 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	```
 //	@Description	user-input 上行新格式：
 //	@Description	```json
-//	@Description	{ "type": "user-input", "data": "{\"content\":\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\",\"attachment_urls\":[\"https://example-bucket.oss-cn-hangzhou.aliyuncs.com/temp/a.txt\"]}" }
+//	@Description	{ "type": "user-input", "data": "{\"content\":\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\",\"attachments\":[{\"url\":\"https://example-bucket.oss-cn-hangzhou.aliyuncs.com/temp/a.txt\",\"filename\":\"a.txt\"}]}" }
 //	@Description	```
 //	@Description	user-input 上行旧格式仍兼容：
 //	@Description	```json
@@ -333,9 +333,9 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 //	@Description	```
 //	@Description	user-input 下行和历史返回统一使用新 JSON payload 字符串：
 //	@Description	```json
-//	@Description	{ "type": "user-input", "data": "{\"content\":\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\",\"attachment_urls\":[]}", "timestamp": 0 }
+//	@Description	{ "type": "user-input", "data": "{\"content\":\"57un57ut5aSE55CG6L+Z5Liq6Zeu6aKY\",\"attachments\":[]}", "timestamp": 0 }
 //	@Description	```
-//	@Description	`attachment_urls` 为可选附件访问 URL 列表，最多 10 个；URL 需要匹配后端配置的附件白名单前缀。
+//	@Description	`attachments` 为可选附件列表，最多 10 个；每项包含 `url` 和 `filename`，URL 需要匹配后端配置的附件白名单前缀。
 //	@Description	type 字段说明：
 //	@Description	- task-started: 本轮任务启动
 //	@Description	- task-ended: 本轮任务结束
@@ -480,8 +480,8 @@ func parseUserInputData(data []byte) domain.ContinueTaskReq {
 	var payload domain.TaskUserInputPayload
 	if err := json.Unmarshal(data, &payload); err == nil && strings.TrimSpace(string(payload.Content)) != "" {
 		return domain.ContinueTaskReq{
-			Content:        payload.Content,
-			AttachmentURLs: payload.AttachmentURLs,
+			Content:     payload.Content,
+			Attachments: payload.Attachments,
 		}
 	}
 	return domain.ContinueTaskReq{Content: data}
@@ -490,11 +490,11 @@ func parseUserInputData(data []byte) domain.ContinueTaskReq {
 func normalizeUserInputData(data []byte) []byte {
 	req := parseUserInputData(data)
 	payload := domain.TaskUserInputPayload{
-		Content:        req.Content,
-		AttachmentURLs: req.AttachmentURLs,
+		Content:     req.Content,
+		Attachments: req.Attachments,
 	}
-	if payload.AttachmentURLs == nil {
-		payload.AttachmentURLs = []string{}
+	if payload.Attachments == nil {
+		payload.Attachments = []domain.TaskAttachment{}
 	}
 	out, _ := json.Marshal(payload)
 	return out
@@ -720,7 +720,7 @@ func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, ha
 //	@Summary		查询任务历史轮次
 //	@Description	根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），
 //	@Description	limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
-//	@Description	返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"57un57ut5aSE55CG","attachment_urls":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。
+//	@Description	返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"57un57ut5aSE55CG","attachments":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
