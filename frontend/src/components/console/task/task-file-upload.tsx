@@ -190,7 +190,7 @@ export function TaskUploadedFileItem({ file, onRemove, className }: TaskUploaded
       <span className="min-w-0 flex-1 truncate">{file.name}</span>
       <button
         type="button"
-        className="flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+        className="hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
         onClick={onRemove}
         aria-label="删除已上传文件"
       >
