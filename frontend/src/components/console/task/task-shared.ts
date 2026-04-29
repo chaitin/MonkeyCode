@@ -94,35 +94,20 @@ export function normalizeTaskUserInput(input: TaskUserInput): TaskUserInputPaylo
 }
 
 export function parseTaskUserInputPayload(decoded: string): TaskUserInputPayload {
-  try {
-    const parsed = JSON.parse(decoded) as unknown
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const maybePayload = parsed as Partial<TaskUserInputPayload>
-      if (typeof maybePayload.content === "string" && Array.isArray(maybePayload.attachments)) {
-        try {
-          return normalizeTaskUserInput({
-            content: b64decode(maybePayload.content),
-            attachments: maybePayload.attachments,
-          })
-        } catch {
-          return normalizeTaskUserInput({
-            content: decoded,
-            attachments: [],
-          })
-        }
-      }
-      if (typeof maybePayload.content === "string") {
-        return normalizeTaskUserInput({
-          content: decoded,
-          attachments: [],
-        })
-      }
-    }
-  } catch {
-    // 旧协议是纯文本，不是 JSON。
+  const parsed = JSON.parse(decoded) as unknown
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid user-input payload")
   }
 
-  return normalizeTaskUserInput(decoded)
+  const maybePayload = parsed as Partial<TaskUserInputPayload>
+  if (typeof maybePayload.content !== "string" || !Array.isArray(maybePayload.attachments)) {
+    throw new Error("Invalid user-input payload")
+  }
+
+  return normalizeTaskUserInput({
+    content: b64decode(maybePayload.content),
+    attachments: maybePayload.attachments,
+  })
 }
 
 export enum RepoFileEntryMode {

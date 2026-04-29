@@ -408,7 +408,11 @@ export class TaskMessageHandler {
     switch (chunk.event) {
       case "user-input":
         if (typeof chunk.data !== "string") return
-        this.applyUserInput(parseTaskUserInputPayload(b64decode(chunk.data)), timestamp)
+        try {
+          this.applyUserInput(parseTaskUserInputPayload(b64decode(chunk.data)), timestamp)
+        } catch (error) {
+          console.error("TaskMessageHandler: invalid user-input payload", error)
+        }
         break
       case "user-cancel":
         this.applyUserCancel(timestamp)
