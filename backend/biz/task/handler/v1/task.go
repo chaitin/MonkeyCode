@@ -236,6 +236,7 @@ func (h *TaskHandler) Info(c *web.Context, req domain.IDReq[uuid.UUID]) error {
 //
 //	@Summary		创建任务
 //	@Description	创建任务
+//	@Description	`attachment_urls` 为可选附件访问 URL 列表，最多 10 个；URL 需要匹配后端配置的附件白名单前缀。创建任务后，首轮 user-input 日志会按 `{ "content": "...", "attachment_urls": [] }` 结构返回。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
@@ -317,11 +318,24 @@ func (h *TaskHandler) PublicStream(c *web.Context, req domain.IDReq[uuid.UUID]) 
 // Stream 任务数据流 WebSocket
 //
 //	@Summary		任务数据流 WebSocket
-//	@Description	功能定位：该接口通过 WebSocket 仅做 Agent ↔ 前端 的数据代理与转发，不进行任何包体解析或改写。所有数据以原始格式透传并存储。
+//	@Description	功能定位：该接口通过 WebSocket 转发任务运行数据。任务对话继续输入使用 `type=user-input`。
 //	@Description	数据格式约定：当前仅支持文本帧透传。服务端将 Agent 的原始文本数据包装为如下结构返回给前端（对应 domain.TaskStream）：
 //	@Description	```json
 //	@Description	{ "type": "string", "data": "string", "kind": "string", "timestamp": 0 }
 //	@Description	```
+//	@Description	user-input 上行新格式：
+//	@Description	```json
+//	@Description	{ "type": "user-input", "data": "{\"content\":\"继续处理这个问题\",\"attachment_urls\":[\"https://example-bucket.oss-cn-hangzhou.aliyuncs.com/temp/a.txt\"]}" }
+//	@Description	```
+//	@Description	user-input 上行旧格式仍兼容：
+//	@Description	```json
+//	@Description	{ "type": "user-input", "data": "继续处理这个问题" }
+//	@Description	```
+//	@Description	user-input 下行和历史返回统一使用新 JSON payload 字符串：
+//	@Description	```json
+//	@Description	{ "type": "user-input", "data": "{\"content\":\"继续处理这个问题\",\"attachment_urls\":[]}", "timestamp": 0 }
+//	@Description	```
+//	@Description	`attachment_urls` 为可选附件访问 URL 列表，最多 10 个；URL 需要匹配后端配置的附件白名单前缀。
 //	@Description	type 字段说明：
 //	@Description	- task-started: 本轮任务启动
 //	@Description	- task-ended: 本轮任务结束
@@ -675,6 +689,7 @@ func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, ha
 //	@Summary		查询任务历史轮次
 //	@Description	根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），
 //	@Description	limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+//	@Description	返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"继续处理","attachment_urls":[]}`；旧历史裸文本也会按该结构包装返回。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json

@@ -81,20 +81,21 @@ type TaskExtraConfig struct {
 
 // CreateTaskReq 创建任务请求
 type CreateTaskReq struct {
-	Content       string             `json:"content" validate:"required"`
-	HostID        string             `json:"host_id" validate:"required"`
-	ImageID       uuid.UUID          `json:"image_id" validate:"required"`
-	ModelID       string             `json:"model_id" validate:"required"`
-	GitIdentityID uuid.UUID          `json:"git_identity_id" validate:"omitempty"`
-	RepoReq       TaskRepoReq        `json:"repo" validate:"required"`
-	CliName       consts.CliName     `json:"cli_name"`
-	Resource      *VMResource        `json:"resource" validate:"required"`
-	Extra         TaskExtraConfig    `json:"extra" validate:"omitempty"`
-	SystemPrompt  string             `json:"system_prompt"`
-	Type          consts.TaskType    `json:"task_type"`
-	SubType       consts.TaskSubType `json:"sub_type"`
-	Now           time.Time          `json:"-"`
-	UsePublicHost bool               `json:"-"`
+	Content        string             `json:"content" validate:"required"`
+	HostID         string             `json:"host_id" validate:"required"`
+	ImageID        uuid.UUID          `json:"image_id" validate:"required"`
+	ModelID        string             `json:"model_id" validate:"required"`
+	GitIdentityID  uuid.UUID          `json:"git_identity_id" validate:"omitempty"`
+	RepoReq        TaskRepoReq        `json:"repo" validate:"required"`
+	CliName        consts.CliName     `json:"cli_name"`
+	Resource       *VMResource        `json:"resource" validate:"required"`
+	Extra          TaskExtraConfig    `json:"extra" validate:"omitempty"`
+	SystemPrompt   string             `json:"system_prompt"`
+	Type           consts.TaskType    `json:"task_type"`
+	SubType        consts.TaskSubType `json:"sub_type"`
+	AttachmentURLs []string           `json:"attachment_urls" validate:"omitempty"` // 附件访问 URL 列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀
+	Now            time.Time          `json:"-"`
+	UsePublicHost  bool               `json:"-"`
 }
 
 // Validate 验证请求参数
@@ -293,9 +294,15 @@ type TaskSession struct {
 // TaskStream 任务 WebSocket 流消息
 type TaskStream struct {
 	Type      consts.TaskStreamType `json:"type"`
-	Data      []byte                `json:"data"`
+	Data      []byte                `json:"data"` // user-input 事件使用 TaskUserInputPayload 的 JSON 字符串
 	Kind      string                `json:"kind"`
 	Timestamp int64                 `json:"timestamp"`
+}
+
+// TaskUserInputPayload user-input 事件 data 字段的 JSON 结构
+type TaskUserInputPayload struct {
+	Content        string   `json:"content"`         // 用户输入文本
+	AttachmentURLs []string `json:"attachment_urls"` // 附件访问 URL 列表，缺省或空数组表示无附件
 }
 
 // TaskStreamReq 任务数据流请求
