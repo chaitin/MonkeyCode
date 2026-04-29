@@ -75,6 +75,7 @@ func (u *modelUsecase) List(ctx context.Context, uid uuid.UUID, cursor domain.Cu
 	models := cvt.Iter(ms, func(_ int, m *db.Model) *domain.Model {
 		j := cvt.From(m, &domain.Model{})
 		j.IsDefault = j.GetIsDefault(user)
+		j.HideSharedCredentials()
 		return j
 	})
 
@@ -83,6 +84,9 @@ func (u *modelUsecase) List(ctx context.Context, uid uuid.UUID, cursor domain.Cu
 		if err != nil {
 			u.logger.ErrorContext(ctx, "failed to list additional models from hook", "error", err, "user_id", uid)
 			return nil, fmt.Errorf("failed to list additional models: %w", err)
+		}
+		for _, model := range additionalModels {
+			model.HideSharedCredentials()
 		}
 		models = append(models, additionalModels...)
 	}

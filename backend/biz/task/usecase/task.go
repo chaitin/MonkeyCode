@@ -233,8 +233,7 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 		}
 	}
 
-	respModel := cvt.From(model, &domain.Model{})
-	respModel.APIKey = ""
+	respModel := cvt.From(model, &domain.ModelBrief{})
 	return &domain.SwitchTaskModelResp{
 		ID:        item.ID,
 		RequestID: resp.RequestId,

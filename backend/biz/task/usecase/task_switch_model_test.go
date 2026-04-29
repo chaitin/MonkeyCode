@@ -116,9 +116,6 @@ func TestSwitchModelRestartsWithExecutionConfigAndUpdatesModel(t *testing.T) {
 	if resp.Model == nil || resp.Model.ID != toModelID {
 		t.Fatalf("resp.Model = %+v, want target model", resp.Model)
 	}
-	if resp.Model.APIKey != "" {
-		t.Fatalf("resp.Model.APIKey = %q, want empty response api key", resp.Model.APIKey)
-	}
 
 	if repo.created == nil {
 		t.Fatal("CreateModelSwitch was not called")

@@ -124,12 +124,12 @@ type SwitchTaskModelReq struct {
 
 // SwitchTaskModelResp 切换任务运行模型响应
 type SwitchTaskModelResp struct {
-	ID        uuid.UUID `json:"id"`
-	RequestID string    `json:"request_id,omitempty"`
-	Success   bool      `json:"success"`
-	Message   string    `json:"message"`
-	SessionID string    `json:"session_id"`
-	Model     *Model    `json:"model,omitempty"`
+	ID        uuid.UUID   `json:"id"`
+	RequestID string      `json:"request_id,omitempty"`
+	Success   bool        `json:"success"`
+	Message   string      `json:"message"`
+	SessionID string      `json:"session_id"`
+	Model     *ModelBrief `json:"model,omitempty"`
 }
 
 // TaskModelSwitch 任务模型切换记录
@@ -160,7 +160,7 @@ type TaskListReq struct {
 // ProjectTask 项目任务
 type ProjectTask struct {
 	ID           uuid.UUID        `json:"id" validate:"required"`
-	Model        *Model           `json:"model,omitempty"`
+	Model        *ModelBrief      `json:"model,omitempty"`
 	Image        *Image           `json:"image,omitempty"`
 	Branch       string           `json:"branch,omitempty"`
 	CliName      consts.CliName   `json:"cli_name,omitempty"`
@@ -180,7 +180,7 @@ func (pt *ProjectTask) From(src *db.ProjectTask) *ProjectTask {
 	if src.Edges.Task != nil {
 		pt.ID = src.Edges.Task.ID
 	}
-	pt.Model = cvt.From(src.Edges.Model, &Model{})
+	pt.Model = cvt.From(src.Edges.Model, &ModelBrief{})
 	pt.Task = cvt.From(src.Edges.Task, &Task{})
 	pt.CliName = src.CliName
 	pt.RepoURL = src.RepoURL
@@ -217,7 +217,7 @@ type Task struct {
 	CreatedAt      int64              `json:"created_at"`
 	LastActiveAt   int64              `json:"last_active_at"`
 	CompletedAt    int64              `json:"completed_at"`
-	Model          *Model             `json:"model,omitempty"`
+	Model          *ModelBrief        `json:"model,omitempty"`
 	Image          *Image             `json:"image,omitempty"`
 	Branch         string             `json:"branch,omitempty"`
 	CliName        consts.CliName     `json:"cli_name,omitempty"`
@@ -264,7 +264,7 @@ func (t *Task) From(src *db.Task) *Task {
 	}
 	if pts := src.Edges.ProjectTasks; len(pts) > 0 {
 		pt := pts[0]
-		t.Model = cvt.From(pt.Edges.Model, &Model{})
+		t.Model = cvt.From(pt.Edges.Model, &ModelBrief{})
 		t.Image = cvt.From(pt.Edges.Image, &Image{})
 		t.Branch = pt.Branch
 		t.RepoURL = pt.RepoURL
