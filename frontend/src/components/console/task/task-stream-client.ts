@@ -4,6 +4,7 @@ import {
   type TaskMessageHandlerState,
   type TaskMessageRawChunk,
 } from "./task-message-handler"
+import { normalizeTaskUserInput, type TaskUserInput, type TaskUserInputPayload } from "./task-shared"
 
 const normalizeTimestampToMilliseconds = (timestamp: number) => {
   if (!Number.isFinite(timestamp)) return timestamp
@@ -38,7 +39,7 @@ interface TaskStreamClientBaseOptions {
 export type TaskStreamClientAttachOptions = TaskStreamClientBaseOptions
 
 export interface TaskStreamClientNewOptions extends TaskStreamClientBaseOptions {
-  userInput: string
+  userInput: TaskUserInput
 }
 
 interface TaskStreamServerChunk {
@@ -64,7 +65,7 @@ export class TaskStreamClient {
   private mode: TaskStreamClientMode
   private messageHandler: TaskMessageHandler
   private socket: WebSocket | null = null
-  private initialUserInput: string | null = null
+  private initialUserInput: TaskUserInputPayload | null = null
   private manuallyDisconnected = false
   private executionStartedAt: number | null = null
   private executionTimer: ReturnType<typeof setInterval> | null = null
@@ -102,7 +103,7 @@ export class TaskStreamClient {
 
   static new({ userInput, ...options }: TaskStreamClientNewOptions) {
     const client = new TaskStreamClient({ ...options, mode: "new" })
-    client.initialUserInput = userInput
+    client.initialUserInput = normalizeTaskUserInput(userInput)
     return client
   }
 
@@ -233,10 +234,10 @@ export class TaskStreamClient {
     return true
   }
 
-  private sendInitialUserInput(content: string) {
+  private sendInitialUserInput(payload: TaskUserInputPayload) {
     this.sendMessage({
       type: "user-input",
-      data: b64encode(content),
+      data: b64encode(JSON.stringify(payload)),
     })
   }
 

@@ -23,6 +23,99 @@ export interface AvailableCommands {
 
 export type TaskStreamStatus = "inited" | "executing" | "waiting" | "finished" | "error"
 
+export interface TaskUserInputAttachment {
+  url: string
+  filename: string
+}
+
+export interface TaskUserInputPayload {
+  content: string
+  attachments: TaskUserInputAttachment[]
+}
+
+export type TaskUserInput = string | TaskUserInputPayload
+
+function fallbackFilenameFromUrl(url: string, index: number) {
+  const fallbackName = `附件 ${index + 1}`
+  try {
+    const parsedUrl = new URL(url)
+    const name = parsedUrl.pathname.split("/").filter(Boolean).pop()
+    return name ? decodeURIComponent(name) : fallbackName
+  } catch {
+    try {
+      const name = url.split("?")[0]?.split("/").filter(Boolean).pop()
+      return name ? decodeURIComponent(name) : fallbackName
+    } catch {
+      return fallbackName
+    }
+  }
+}
+
+function normalizeAttachments(attachments: unknown): TaskUserInputAttachment[] {
+  if (!Array.isArray(attachments)) {
+    return []
+  }
+
+  return attachments
+    .map((attachment, index) => {
+      if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) {
+        return null
+      }
+
+      const maybeAttachment = attachment as Partial<TaskUserInputAttachment>
+      const url = typeof maybeAttachment.url === "string" ? maybeAttachment.url.trim() : ""
+      if (!url) {
+        return null
+      }
+
+      const filename = typeof maybeAttachment.filename === "string" && maybeAttachment.filename.trim() !== ""
+        ? maybeAttachment.filename
+        : fallbackFilenameFromUrl(url, index)
+
+      return { url, filename }
+    })
+    .filter((attachment): attachment is TaskUserInputAttachment => attachment !== null)
+}
+
+export function normalizeTaskUserInput(input: TaskUserInput): TaskUserInputPayload {
+  if (typeof input === "string") {
+    return {
+      content: input,
+      attachments: [],
+    }
+  }
+
+  return {
+    content: typeof input.content === "string" ? input.content : "",
+    attachments: normalizeAttachments(input.attachments),
+  }
+}
+
+export function parseTaskUserInputPayload(decoded: string): TaskUserInputPayload {
+  try {
+    const parsed = JSON.parse(decoded) as unknown
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const maybePayload = parsed as Partial<TaskUserInputPayload>
+      if (typeof maybePayload.content === "string" && Array.isArray(maybePayload.attachments)) {
+        return normalizeTaskUserInput({
+          content: maybePayload.content,
+          attachments: maybePayload.attachments,
+        })
+      }
+      if (typeof maybePayload.content === "string") {
+        return normalizeTaskUserInput({
+          content: decoded,
+          attachments: [],
+        })
+      }
+    }
+  } catch {
+    // 旧协议是纯文本，不是 JSON。
+  }
+
+  return normalizeTaskUserInput(decoded)
+}
+
 export enum RepoFileEntryMode {
   RepoEntryModeUnspecified = 0,
   RepoEntryModeFile = 1,

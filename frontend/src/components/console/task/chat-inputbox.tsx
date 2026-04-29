@@ -1,19 +1,22 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconPlayerStopFilled, IconSend, IconTerminal2 } from "@tabler/icons-react"
+import { IconCommand, IconLoader, IconPlayerStopFilled, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
-import type { AvailableCommand, AvailableCommands, TaskStreamStatus } from "./task-shared"
+import type { AvailableCommand, AvailableCommands, TaskStreamStatus, TaskUserInput, TaskUserInputPayload } from "./task-shared"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } from "./task-file-upload"
+import { toast } from "sonner"
 
+const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 
 interface TaskChatInputBoxProps {
   streamStatus: TaskStreamStatus | TaskMessageHandlerStatus
   availableCommands: AvailableCommands | null
-  onSend: (content: string) => void
+  onSend: (input: TaskUserInput) => Promise<boolean> | boolean | void
   sending: boolean
   queueSize: number
   executionTimeMs?: number
@@ -23,19 +26,68 @@ interface TaskChatInputBoxProps {
 export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
   const [content, setContent] = useState('')
   const [isComposing, setIsComposing] = useState(false)
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<TaskUploadedFile[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
 
-  const handleSend = () => {
-    if (content.trim() === '') {
+  const handleSend = async () => {
+    if (content.trim() === '' && uploadedFiles.length === 0) {
       return
     }
-    onSend(content)
+
+    const payload: TaskUserInputPayload = {
+      content,
+      attachments: uploadedFiles.map((file) => ({
+        url: file.accessUrl,
+        filename: file.name,
+      })),
+    }
+    const result = await onSend(payload)
+    if (result === false) {
+      return
+    }
+
     setContent('')
+    setUploadedFiles([])
   }
 
   const handleTextRecognized = (text: string) => {
     setContent(text)
+  }
+
+  const handleSelectFile = () => {
+    if (!canInput) return
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+
+    if (!file) {
+      return
+    }
+
+    if (file.size === 0) {
+      toast.error("不能上传空文件")
+      return
+    }
+
+    if (file.size > MAX_UPLOAD_FILE_SIZE) {
+      toast.error("文件大小不能超过 2MB")
+      return
+    }
+
+    setSelectedUploadFile(file)
+    setUploadDialogOpen(true)
+  }
+
+  const handleUploaded = (file: TaskUploadedFile) => {
+    setUploadedFiles((prev) => [...prev, file])
+    setSelectedUploadFile(null)
   }
 
   // 处理键盘事件
@@ -49,7 +101,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
@@ -77,9 +129,16 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
+  const canSend = content.trim() !== '' || uploadedFiles.length > 0
 
   return (
     <div className="relative w-full">
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileChange}
+      />
       <InputGroup>
         {!isExecuting && (
           <InputGroupTextarea
@@ -120,6 +179,30 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              {!isExecuting && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="rounded-full"
+                    disabled={controlsDisabled}
+                    aria-label="上传文件"
+                    onClick={handleSelectFile}
+                  >
+                    <IconUpload />
+                  </Button>
+                  {uploadedFiles.map((uploadedFile) => (
+                    <TaskUploadedFileItem
+                      key={uploadedFile.accessUrl}
+                      file={uploadedFile}
+                      onRemove={() => {
+                        setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
+                      }}
+                    />
+                  ))}
+                </>
+              )}
             </div>
             <div className="flex flex-row gap-2 items-center min-w-0">
               {isExecuting && (
@@ -138,8 +221,8 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 className={cn("flex flex-row gap-2 items-center", isExecuting && "rounded-full")}
                 variant={isExecuting ? "destructive" : "default"}
                 size={isExecuting ? "icon-sm" : "sm"} 
-                onClick={isExecuting ? onCancel : handleSend}
-                disabled={isExecuting ? !onCancel : content.trim() === '' || inputDisabled}
+                onClick={isExecuting ? onCancel : () => void handleSend()}
+                disabled={isExecuting ? !onCancel : !canSend || inputDisabled}
               >
                 {isExecuting ? <IconPlayerStopFilled /> : <IconSend />}
                 {!isExecuting && "发送"}
@@ -148,6 +231,17 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           </div>
         </InputGroupAddon>
       </InputGroup>
+      <TaskFileUploadDialog
+        open={uploadDialogOpen}
+        file={selectedUploadFile}
+        onOpenChange={(open) => {
+          setUploadDialogOpen(open)
+          if (!open) {
+            setSelectedUploadFile(null)
+          }
+        }}
+        onUploaded={handleUploaded}
+      />
     </div>
   )
 }

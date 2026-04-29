@@ -14,6 +14,7 @@ import type {
   PlanEntry,
   TaskPlan,
   TaskStreamStatus,
+  TaskUserInput,
 } from "./task-shared"
 
 export interface PlanStepsBlockProps {
@@ -92,7 +93,7 @@ interface TaskChatPanelProps {
   availableCommands: AvailableCommands | null
   sending: boolean
   queueSize: number
-  sendUserInput: (content: string) => void
+  sendUserInput: (input: TaskUserInput) => Promise<boolean> | boolean | void
   sendCancelCommand: () => void
 }
 

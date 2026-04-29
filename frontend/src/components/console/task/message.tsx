@@ -9,6 +9,7 @@ import { UserInputMessageItem } from "./message-userinput"
 import { SystemMessageItem } from "./message-system"
 import type { ConstsCliName } from "@/api/Api"
 import { RestartSessionMessageItem } from "./message-restart-session"
+import type { TaskUserInput, TaskUserInputAttachment } from "./task-shared"
 
 const normalizeTimestampToSeconds = (timestamp: number) => {
   if (!Number.isFinite(timestamp)) return timestamp
@@ -44,6 +45,7 @@ interface MessageType {
       priority: string
       status: string
     }[]
+    attachments?: TaskUserInputAttachment[]
     askId?: string
     questions?: {
       custom: boolean
@@ -60,7 +62,7 @@ interface MessageType {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onResponseAskUserQuestion?: (askId: string, answers: any) => "sent" | "queued" | "rejected"
   onReloadSession?: () => Promise<boolean> | boolean
-  onUserInput?: (content: string) => Promise<boolean> | boolean
+  onUserInput?: (content: TaskUserInput) => Promise<boolean> | boolean
 }
 
 const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType, cli?: ConstsCliName, isLatest?: boolean }) => {

@@ -4,6 +4,7 @@ import type {
   AvailableCommands,
   TaskPlan,
 } from "./task-shared"
+import { parseTaskUserInputPayload, type TaskUserInputPayload } from "./task-shared"
 
 export type TaskMessageHandlerStatus = "inited" | "connected" | "finished" | "error"
 
@@ -151,12 +152,15 @@ export class TaskMessageHandler {
     return JSON.parse(b64decode(data))
   }
 
-  private applyUserInput(data: any, timestamp: number) {
+  private applyUserInput(data: TaskUserInputPayload, timestamp: number) {
     const newMessage: MessageType = {
       id: this.createMessageId(),
       time: timestamp,
       role: "user",
-      data: { content: data },
+      data: {
+        content: data.content,
+        attachments: data.attachments,
+      },
       type: "user_input",
     }
     this.state.messages.push(newMessage)
@@ -404,7 +408,7 @@ export class TaskMessageHandler {
     switch (chunk.event) {
       case "user-input":
         if (typeof chunk.data !== "string") return
-        this.applyUserInput(b64decode(chunk.data), timestamp)
+        this.applyUserInput(parseTaskUserInputPayload(b64decode(chunk.data)), timestamp)
         break
       case "user-cancel":
         this.applyUserCancel(timestamp)

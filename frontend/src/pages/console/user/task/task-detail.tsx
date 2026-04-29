@@ -9,7 +9,7 @@ import { MessageItem, type MessageType } from "@/components/console/task/message
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
-import type { AvailableCommands, TaskPlan, TaskStreamStatus } from "@/components/console/task/task-shared"
+import type { AvailableCommands, TaskPlan, TaskStreamStatus, TaskUserInput } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamCloseReason, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
 import {
@@ -270,7 +270,7 @@ export default function TaskDetailPage() {
     taskControlClientRef.current = null
   }, [])
 
-  const connectStreamClient = React.useCallback((mode: "attach" | "new", userInput?: string) => {
+  const connectStreamClient = React.useCallback((mode: "attach" | "new", userInput?: TaskUserInput) => {
     if (!taskId) return Promise.resolve(false)
 
     return new Promise<boolean>((resolve) => {
@@ -601,7 +601,7 @@ export default function TaskDetailPage() {
     fetchPortForwards()
   }, [fetchPortForwards, previewDialogOpen, taskInteractive])
 
-  const handleSend = React.useCallback((content: string) => {
+  const handleSend = React.useCallback((content: TaskUserInput) => {
     if (!taskId) return Promise.resolve(false)
     return connectStreamClient("new", content)
   }, [connectStreamClient, taskId])
