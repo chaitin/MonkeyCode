@@ -46,7 +46,6 @@ export default function MarkdownEditor({
         try {
           const api = new Api()
           const response = await api.api.v1UploaderCreate({
-            usage: 'spec',
             file: file,
           })
 

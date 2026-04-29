@@ -563,8 +563,6 @@ export async function packAndUploadFilesAsZip(
   const presignResult = await new Promise<{ upload_url: string; access_url: string }>((resolve, reject) => {
     apiRequest('v1UploaderPresignCreate', {
       filename: zipFile.name,
-      usage: 'repo',
-      expires: 600,
     }, [], (resp) => {
       if (resp.code === 0 && resp.data?.upload_url && resp.data?.access_url) {
         resolve({ upload_url: resp.data.upload_url, access_url: resp.data.access_url })

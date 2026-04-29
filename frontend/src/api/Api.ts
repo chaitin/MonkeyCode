@@ -167,12 +167,6 @@ export enum ConstsTransactionKind {
   TransactionKindCheckin = "checkin",
 }
 
-export enum ConstsUploadUsage {
-  UploadUsageAvatar = "avatar",
-  UploadUsageSpec = "spec",
-  UploadUsageRepo = "repo",
-}
-
 export enum ConstsUserPlatform {
   UserPlatformBaizhi = "baizhi",
   UserPlatformGithub = "github",
@@ -418,11 +412,16 @@ export interface DomainCreateIssueReq {
 export interface DomainCreateModelReq {
   api_key: string;
   base_url: string;
+  /** @min 1 */
+  context_limit?: number;
   interface_type: "openai_chat" | "openai_responses" | "anthropic";
   is_default?: boolean;
   model: string;
+  /** @min 1 */
+  output_limit?: number;
   provider: string;
   temperature?: number;
+  thinking_enabled?: boolean;
 }
 
 export interface DomainCreateNotifyChannelReq {
@@ -814,6 +813,7 @@ export interface DomainModel {
   access_level?: string;
   api_key?: string;
   base_url?: string;
+  context_limit?: number;
   created_at?: number;
   id?: string;
   interface_type?: ConstsInterfaceType;
@@ -823,9 +823,11 @@ export interface DomainModel {
   last_check_error?: string;
   last_check_success?: boolean;
   model?: string;
+  output_limit?: number;
   owner?: DomainOwner;
   provider?: string;
   temperature?: number;
+  thinking_enabled?: boolean;
   updated_at?: number;
   weight?: number;
 }
@@ -936,12 +938,8 @@ export interface DomainPlaygroundTaskPost {
 }
 
 export interface DomainPresignReq {
-  /** 预签名URL过期时间(秒)，默认600秒(10分钟)，最大604800秒(7天) */
-  expires?: number;
   /** 文件名 */
   filename: string;
-  /** 上传用途枚举: avatar(头像), spec(规格), repo(仓库) */
-  usage: "avatar" | "spec" | "repo";
 }
 
 export interface DomainPresignResp {
@@ -1535,11 +1533,16 @@ export interface DomainUpdateIssueReq {
 export interface DomainUpdateModelReq {
   api_key?: string;
   base_url?: string;
+  /** @min 1 */
+  context_limit?: number;
   interface_type?: "openai_chat" | "openai_responses" | "anthropic";
   is_default?: boolean;
   model?: string;
+  /** @min 1 */
+  output_limit?: number;
   provider?: string;
   temperature?: number;
+  thinking_enabled?: boolean;
 }
 
 export interface DomainUpdateNotifyChannelReq {
@@ -3430,8 +3433,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UploaderCreate: (
       data: {
-        /** 上传用途，可选值: avatar(头像), spec(规格), repo(仓库) */
-        usage: string;
         /**
          * 要上传的文件
          * @format binary

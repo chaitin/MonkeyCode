@@ -449,8 +449,6 @@ export default function CreateDefaultTaskDialog({
         const api = new Api()
         const presignResponse = await api.api.v1UploaderPresignCreate({
           filename: selectedZipFile.name,
-          usage: "repo",
-          expires: 600,
         })
 
         if (presignResponse.data?.code !== 0 || !presignResponse.data?.data) {

@@ -9,7 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Api, ConstsTransactionKind, ConstsUploadUsage, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
+import { Api, ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import Icon from "@/components/common/Icon";
 import dayjs from "dayjs";
@@ -398,7 +398,6 @@ export default function NavBalance({
     try {
       const api = new Api()
       const uploadResp = await api.api.v1UploaderCreate({
-        usage: ConstsUploadUsage.UploadUsageAvatar,
         file,
       })
 
