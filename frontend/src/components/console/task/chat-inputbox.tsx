@@ -34,7 +34,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
 
   const handleSend = async () => {
-    if (content.trim() === '' && uploadedFiles.length === 0) {
+    if (content.trim() === '') {
       return
     }
 
@@ -129,7 +129,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
-  const canSend = content.trim() !== '' || uploadedFiles.length > 0
+  const canSend = content.trim() !== ''
 
   return (
     <div className="relative w-full">
