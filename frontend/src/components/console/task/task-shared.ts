@@ -37,6 +37,23 @@ export interface TaskUserInputPayload {
 
 export type TaskUserInput = string | TaskUserInputPayload
 
+const TASK_IMAGE_ATTACHMENT_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "jpep",
+  "gif",
+  "webp",
+  "bmp",
+  "svg",
+  "avif",
+])
+
+export function isTaskImageAttachment(filename: string) {
+  const match = filename.toLowerCase().match(/\.([^./\\]+)$/)
+  return !!match && TASK_IMAGE_ATTACHMENT_EXTENSIONS.has(match[1])
+}
+
 function fallbackFilenameFromUrl(url: string, index: number) {
   const fallbackName = `附件 ${index + 1}`
   try {

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { IconFile, IconTrash, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { toast } from "sonner"
+import { isTaskImageAttachment } from "./task-shared"
 
 export interface TaskUploadedFile {
   name: string
@@ -46,12 +47,24 @@ function formatFileSize(size: number) {
 
 export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: TaskFileUploadDialogProps) {
   const [uploading, setUploading] = React.useState(false)
+  const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!open) {
       setUploading(false)
     }
   }, [open])
+
+  React.useEffect(() => {
+    if (!open || !file || !isTaskImageAttachment(file.name)) {
+      setFilePreviewUrl(null)
+      return
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(file)
+    setFilePreviewUrl(nextPreviewUrl)
+    return () => URL.revokeObjectURL(nextPreviewUrl)
+  }, [file, open])
 
   const handleUpload = React.useCallback(async () => {
     if (!file || uploading) return
@@ -120,8 +133,12 @@ export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: T
 
         {file && (
           <div className="flex items-start gap-3 rounded-md border bg-muted/25 p-3">
-            <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
-              <IconFile className="size-5" />
+            <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background text-muted-foreground">
+              {filePreviewUrl ? (
+                <img src={filePreviewUrl} alt={file.name} className="size-full object-cover" />
+              ) : (
+                <IconFile className="size-5" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{file.name}</div>
@@ -165,7 +182,11 @@ export function TaskUploadedFileItem({ file, onRemove, className }: TaskUploaded
       )}
       title={file.name}
     >
-      <IconFile className="size-4 shrink-0 text-muted-foreground" />
+      {isTaskImageAttachment(file.name) ? (
+        <img src={file.accessUrl} alt={file.name} className="size-4 shrink-0 rounded-full border object-cover" />
+      ) : (
+        <IconFile className="size-4 shrink-0 text-muted-foreground" />
+      )}
       <span className="min-w-0 flex-1 truncate">{file.name}</span>
       <span className="shrink-0 text-muted-foreground">{formatFileSize(file.size)}</span>
       <button
