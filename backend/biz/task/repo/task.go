@@ -127,6 +127,22 @@ func (t *TaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.Task, error) 
 		First(ctx)
 }
 
+func (t *TaskRepo) GetLogStore(ctx context.Context, id uuid.UUID) (consts.LogStore, error) {
+	var rows []struct {
+		LogStore *string `json:"log_store"`
+	}
+	if err := t.db.Task.Query().
+		Where(task.ID(id)).
+		Select(task.FieldLogStore).
+		Scan(ctx, &rows); err != nil {
+		return "", err
+	}
+	if len(rows) == 0 || rows[0].LogStore == nil {
+		return "", nil
+	}
+	return consts.LogStore(*rows[0].LogStore), nil
+}
+
 // Info implements domain.TaskRepo.
 func (t *TaskRepo) Info(ctx context.Context, u *domain.User, id uuid.UUID, isPrivileged bool) (*db.Task, error) {
 	q := t.db.Task.Query().
@@ -414,6 +430,7 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetContent(req.Content).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
+			SetLogStore(consts.LogStoreClickHouse).
 			Save(ctx)
 		if err != nil {
 			return err

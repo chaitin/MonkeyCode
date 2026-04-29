@@ -133,6 +133,7 @@ type CreateVirtualMachineReq struct {
 	Memory              uint64         `json:"memory"`
 	InstallCodingAgents bool           `json:"install_coding_agents"`
 	Envs                []string       `json:"envs,omitempty"`
+	LogStore            string         `json:"log_store,omitempty"`
 }
 
 // Git 仓库信息
@@ -278,6 +279,14 @@ type CheckTokenReq struct {
 	MachineID string `json:"machine_id"`
 }
 
+type GetTaskLogStoreReq struct {
+	TaskID uuid.UUID `json:"task_id" validate:"required"`
+}
+
+type GetTaskLogStoreResp struct {
+	LogStore string `json:"log_store"`
+}
+
 // TokenUser token 中的用户信息
 type TokenUser struct {
 	ID        string     `json:"id"`
@@ -359,6 +368,7 @@ type AskUserQuestionResponse struct {
 	RequestId   string `json:"request_id,omitempty"`
 	AnswersJson string `json:"answers_json,omitempty"`
 	Cancelled   bool   `json:"cancelled,omitempty"`
+	LogStore    string `json:"log_store,omitempty"`
 }
 
 // ApplyWebClientIPReq 同步 Web 客户端 IP 请求
@@ -494,6 +504,7 @@ type RestartTaskReq struct {
 	RequestId       string               `json:"request_id,omitempty"`
 	LoadSession     bool                 `json:"load_session"`
 	ExecutionConfig *TaskExecutionConfig `json:"execution_config,omitempty"`
+	LogStore        string               `json:"log_store,omitempty"`
 }
 
 // RestartTaskResp 重启任务响应
@@ -519,9 +530,10 @@ type TaskReq struct {
 
 // Task 任务信息
 type Task struct {
-	ID    uuid.UUID `json:"id"`
-	Text  string    `json:"text"`
-	Image string    `json:"image"`
+	ID       uuid.UUID `json:"id"`
+	Text     string    `json:"text"`
+	Image    string    `json:"image"`
+	LogStore string    `json:"log_store,omitempty"`
 }
 
 // ==================== CreateTask 类型 ====================
@@ -587,6 +599,7 @@ type CreateTaskReq struct {
 	Configs      []ConfigFile      `json:"configs,omitzero"`
 	McpConfigs   []McpServerConfig `json:"mcp_configs,omitzero"`
 	Env          map[string]string `json:"env,omitempty"`
+	LogStore     string            `json:"log_store,omitempty"`
 }
 
 // ==================== VirtualMachine 查询类型 ====================

@@ -87,6 +87,17 @@ func (s *taskHookRepoStub) GetByID(ctx context.Context, id uuid.UUID) (*db.Task,
 	return s.client.Task.Get(ctx, id)
 }
 
+func (s *taskHookRepoStub) GetLogStore(ctx context.Context, id uuid.UUID) (consts.LogStore, error) {
+	tk, err := s.client.Task.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if tk.LogStore == nil {
+		return "", nil
+	}
+	return *tk.LogStore, nil
+}
+
 func (s *taskHookRepoStub) Stat(context.Context, uuid.UUID) (*domain.TaskStats, error) {
 	panic("unexpected call to Stat")
 }

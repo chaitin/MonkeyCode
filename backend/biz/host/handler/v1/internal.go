@@ -32,6 +32,7 @@ import (
 type InternalHostHandler struct {
 	logger         *slog.Logger
 	repo           domain.HostRepo
+	taskRepo       taskLogStoreRepo
 	teamRepo       domain.TeamHostRepo
 	redis          *redis.Client
 	getAgentToken  agentTokenGetter
@@ -46,6 +47,10 @@ type InternalHostHandler struct {
 	tokenProvider  *gituc.TokenProvider
 }
 
+type taskLogStoreRepo interface {
+	GetLogStore(ctx context.Context, id uuid.UUID) (consts.LogStore, error)
+}
+
 func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	tf := do.MustInvoke[taskflow.Clienter](i)
@@ -54,6 +59,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	h := &InternalHostHandler{
 		logger:         do.MustInvoke[*slog.Logger](i).With("module", "InternalHostHandler"),
 		repo:           do.MustInvoke[domain.HostRepo](i),
+		taskRepo:       do.MustInvoke[domain.TaskRepo](i),
 		teamRepo:       do.MustInvoke[domain.TeamHostRepo](i),
 		redis:          rdb,
 		getAgentToken:  defaultAgentTokenGetter(rdb),
@@ -78,6 +84,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	g.POST("/coding-config", web.BindHandler(h.GetCodingConfig))
 	g.POST("/git-credential", web.BindHandler(h.GitCredential))
 	g.GET("/vm/list", web.BaseHandler(h.VMList))
+	g.POST("/task-log-store", web.BindHandler(h.GetTaskLogStore))
 	g.POST("/task-stream-ips", web.BindHandler(h.GetTaskStreamIPs))
 
 	return h, nil
@@ -184,6 +191,19 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 	logger.With("token", tk).DebugContext(c.Request().Context(), "check token success")
 
 	return c.Success(tk)
+}
+
+func (h *InternalHostHandler) GetTaskLogStore(c *web.Context, req taskflow.GetTaskLogStoreReq) error {
+	store, err := h.taskRepo.GetLogStore(c.Request().Context(), req.TaskID)
+	if err != nil {
+		return err
+	}
+	if store == "" {
+		store = consts.LogStoreLoki
+	}
+	return c.Success(taskflow.GetTaskLogStoreResp{
+		LogStore: string(store),
+	})
 }
 
 func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) (*taskflow.Token, error) {

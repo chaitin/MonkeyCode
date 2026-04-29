@@ -111,6 +111,20 @@ func (_c *TaskCreate) SetStatus(v consts.TaskStatus) *TaskCreate {
 	return _c
 }
 
+// SetLogStore sets the "log_store" field.
+func (_c *TaskCreate) SetLogStore(v consts.LogStore) *TaskCreate {
+	_c.mutation.SetLogStore(v)
+	return _c
+}
+
+// SetNillableLogStore sets the "log_store" field if the given value is not nil.
+func (_c *TaskCreate) SetNillableLogStore(v *consts.LogStore) *TaskCreate {
+	if v != nil {
+		_c.SetLogStore(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TaskCreate) SetCreatedAt(v time.Time) *TaskCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -409,6 +423,10 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 		_spec.SetField(task.FieldStatus, field.TypeString, value)
 		_node.Status = value
 	}
+	if value, ok := _c.mutation.LogStore(); ok {
+		_spec.SetField(task.FieldLogStore, field.TypeString, value)
+		_node.LogStore = &value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -698,6 +716,24 @@ func (u *TaskUpsert) UpdateStatus() *TaskUpsert {
 	return u
 }
 
+// SetLogStore sets the "log_store" field.
+func (u *TaskUpsert) SetLogStore(v consts.LogStore) *TaskUpsert {
+	u.Set(task.FieldLogStore, v)
+	return u
+}
+
+// UpdateLogStore sets the "log_store" field to the value that was provided on create.
+func (u *TaskUpsert) UpdateLogStore() *TaskUpsert {
+	u.SetExcluded(task.FieldLogStore)
+	return u
+}
+
+// ClearLogStore clears the value of the "log_store" field.
+func (u *TaskUpsert) ClearLogStore() *TaskUpsert {
+	u.SetNull(task.FieldLogStore)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *TaskUpsert) SetCreatedAt(v time.Time) *TaskUpsert {
 	u.Set(task.FieldCreatedAt, v)
@@ -937,6 +973,27 @@ func (u *TaskUpsertOne) SetStatus(v consts.TaskStatus) *TaskUpsertOne {
 func (u *TaskUpsertOne) UpdateStatus() *TaskUpsertOne {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetLogStore sets the "log_store" field.
+func (u *TaskUpsertOne) SetLogStore(v consts.LogStore) *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetLogStore(v)
+	})
+}
+
+// UpdateLogStore sets the "log_store" field to the value that was provided on create.
+func (u *TaskUpsertOne) UpdateLogStore() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateLogStore()
+	})
+}
+
+// ClearLogStore clears the value of the "log_store" field.
+func (u *TaskUpsertOne) ClearLogStore() *TaskUpsertOne {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearLogStore()
 	})
 }
 
@@ -1355,6 +1412,27 @@ func (u *TaskUpsertBulk) SetStatus(v consts.TaskStatus) *TaskUpsertBulk {
 func (u *TaskUpsertBulk) UpdateStatus() *TaskUpsertBulk {
 	return u.Update(func(s *TaskUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetLogStore sets the "log_store" field.
+func (u *TaskUpsertBulk) SetLogStore(v consts.LogStore) *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.SetLogStore(v)
+	})
+}
+
+// UpdateLogStore sets the "log_store" field to the value that was provided on create.
+func (u *TaskUpsertBulk) UpdateLogStore() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.UpdateLogStore()
+	})
+}
+
+// ClearLogStore clears the value of the "log_store" field.
+func (u *TaskUpsertBulk) ClearLogStore() *TaskUpsertBulk {
+	return u.Update(func(s *TaskUpsert) {
+		s.ClearLogStore()
 	})
 }
 
