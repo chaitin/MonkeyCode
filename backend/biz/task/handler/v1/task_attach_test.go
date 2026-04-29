@@ -44,3 +44,17 @@ func TestBuildTaskStreamsFromLogEntriesKeepsStreamingWhenNotEnded(t *testing.T) 
 		t.Fatalf("len(streams) = %d, want 2", len(streams))
 	}
 }
+
+func TestNormalizeUserInputDataWrapsLegacyText(t *testing.T) {
+	got := normalizeUserInputData([]byte("旧输入"))
+	if string(got) != `{"content":"旧输入","attachment_urls":[]}` {
+		t.Fatalf("normalized = %s", got)
+	}
+}
+
+func TestNormalizeUserInputDataKeepsPayloadShape(t *testing.T) {
+	got := normalizeUserInputData([]byte(`{"content":"新输入","attachment_urls":["https://oss.example.com/temp/a.txt"]}`))
+	if string(got) != `{"content":"新输入","attachment_urls":["https://oss.example.com/temp/a.txt"]}` {
+		t.Fatalf("normalized = %s", got)
+	}
+}

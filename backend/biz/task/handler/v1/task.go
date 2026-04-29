@@ -464,7 +464,7 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 	for _, entry := range entries {
 		streams = append(streams, domain.TaskStream{
 			Type:      consts.TaskStreamType(entry.Event),
-			Data:      []byte(entry.Data),
+			Data:      normalizeTaskStreamData(entry.Event, []byte(entry.Data)),
 			Kind:      entry.Kind,
 			Timestamp: entry.TS.UnixMilli(),
 		})
@@ -474,6 +474,37 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 	}
 
 	return streams, ended
+}
+
+func parseUserInputData(data []byte) domain.ContinueTaskReq {
+	var payload domain.TaskUserInputPayload
+	if err := json.Unmarshal(data, &payload); err == nil && strings.TrimSpace(payload.Content) != "" {
+		return domain.ContinueTaskReq{
+			Content:        payload.Content,
+			AttachmentURLs: payload.AttachmentURLs,
+		}
+	}
+	return domain.ContinueTaskReq{Content: string(data)}
+}
+
+func normalizeUserInputData(data []byte) []byte {
+	req := parseUserInputData(data)
+	payload := domain.TaskUserInputPayload{
+		Content:        req.Content,
+		AttachmentURLs: req.AttachmentURLs,
+	}
+	if payload.AttachmentURLs == nil {
+		payload.AttachmentURLs = []string{}
+	}
+	out, _ := json.Marshal(payload)
+	return out
+}
+
+func normalizeTaskStreamData(event string, data []byte) []byte {
+	if event == string(consts.TaskStreamTypeUserInput) {
+		return normalizeUserInputData(data)
+	}
+	return data
 }
 
 func (h *TaskHandler) replayLatestTurnHistory(wsConn *ws.WebsocketManager, entries []tasklog.Entry) (bool, error) {
@@ -504,7 +535,7 @@ func (h *TaskHandler) consumeLiveStream(ctx context.Context, cancel context.Canc
 			}
 			if err := wsConn.WriteJSON(domain.TaskStream{
 				Type:      consts.TaskStreamType(chunk.Event),
-				Data:      chunk.Data,
+				Data:      normalizeTaskStreamData(chunk.Event, chunk.Data),
 				Kind:      chunk.Kind,
 				Timestamp: chunk.Timestamp / 1e6,
 			}); err != nil {
@@ -522,7 +553,7 @@ func (h *TaskHandler) subscribeRealtimeStream(ctx context.Context, cancel contex
 	err := h.taskflow.TaskLive(ctx, taskID, false, func(chunk *taskflow.TaskChunk) error {
 		if err := wsConn.WriteJSON(domain.TaskStream{
 			Type:      consts.TaskStreamType(chunk.Event),
-			Data:      chunk.Data,
+			Data:      normalizeTaskStreamData(chunk.Event, chunk.Data),
 			Kind:      chunk.Kind,
 			Timestamp: chunk.Timestamp / 1e6,
 		}); err != nil {
@@ -574,7 +605,7 @@ func (h *TaskHandler) readClientMessages(ctx context.Context, wsConn *ws.Websock
 
 			if err := wsConn.WriteJSON(domain.TaskStream{
 				Type:      consts.TaskStreamTypeUserInput,
-				Data:      m.Data,
+				Data:      normalizeTaskStreamData(string(m.Type), m.Data),
 				Kind:      m.Kind,
 				Timestamp: time.Now().UnixMilli(),
 			}); err != nil {
@@ -595,7 +626,7 @@ func (h *TaskHandler) handleClientMessage(ctx context.Context, logger *slog.Logg
 
 	switch m.Type {
 	case consts.TaskStreamTypeUserInput:
-		if err := h.usecase.Continue(ctx, user, task.ID, string(m.Data)); err != nil {
+		if err := h.usecase.Continue(ctx, user, task.ID, parseUserInputData(m.Data)); err != nil {
 			logger.With("error", err).WarnContext(ctx, "failed to push task content")
 		}
 		if err := h.usecase.IncrUserInputCount(ctx, user.ID, task.ID); err != nil {
@@ -721,7 +752,7 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 	chunks := make([]*domain.TaskChunkEntry, 0, len(result.Chunks)+1)
 	for _, c := range result.Chunks {
 		chunks = append(chunks, &domain.TaskChunkEntry{
-			Data:      c.Data,
+			Data:      normalizeTaskStreamData(c.Event, c.Data),
 			Event:     c.Event,
 			Kind:      c.Kind,
 			Timestamp: c.Timestamp,
@@ -731,7 +762,7 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 
 	// 兼容逻辑：当拉到最老的数据且第一条不是 user-input 时，从 db content 补充
 	if !result.HasMore && len(chunks) > 0 && chunks[0].Event != "user-input" {
-		contentData, _ := json.Marshal(task.Content)
+		contentData := normalizeUserInputData([]byte(task.Content))
 		chunks = append([]*domain.TaskChunkEntry{{
 			Data:      contentData,
 			Event:     "user-input",

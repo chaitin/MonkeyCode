@@ -11,6 +11,11 @@ type userReply struct {
 	AnswersJSON string `json:"answers_json"`
 }
 
+type userInputPayload struct {
+	Content        string   `json:"content"`
+	AttachmentURLs []string `json:"attachment_urls"`
+}
+
 // agentMsgChunk agent 消息块
 type agentMsgChunk struct {
 	Content wsContent `json:"content"`

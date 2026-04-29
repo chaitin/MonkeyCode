@@ -364,7 +364,18 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 		}
 
 		switch chunk.Event {
-		case "user-input", "reply-question":
+		case "user-input":
+			userInputText := userInputContent(decoded)
+
+			if len(agentMsg) > 0 {
+				agentContent := strings.Join(agentMsg, "")
+				messages = append(messages, llm.Message{Role: "assistant", Content: agentContent})
+				agentMsg = []string{}
+			}
+
+			messages = append(messages, llm.Message{Role: "user", Content: userInputText})
+
+		case "reply-question":
 			var userInputText string
 			var ur userReply
 			if err := json.Unmarshal(decoded, &ur); err != nil {
@@ -405,6 +416,14 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 		logger.DebugContext(ctx, "conversation", "task_id", taskID, "messages_count", len(messages), "messages", messages)
 	}
 	return messages, nil
+}
+
+func userInputContent(decoded []byte) string {
+	var payload userInputPayload
+	if err := json.Unmarshal(decoded, &payload); err == nil && payload.Content != "" {
+		return payload.Content
+	}
+	return string(decoded)
 }
 
 func normalizeSummaryLogStore(store *consts.LogStore) consts.LogStore {
