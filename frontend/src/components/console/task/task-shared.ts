@@ -1,3 +1,5 @@
+import { b64decode } from "@/utils/common"
+
 export interface AvailableCommand {
   name: string
   description: string
@@ -97,10 +99,17 @@ export function parseTaskUserInputPayload(decoded: string): TaskUserInputPayload
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const maybePayload = parsed as Partial<TaskUserInputPayload>
       if (typeof maybePayload.content === "string" && Array.isArray(maybePayload.attachments)) {
-        return normalizeTaskUserInput({
-          content: maybePayload.content,
-          attachments: maybePayload.attachments,
-        })
+        try {
+          return normalizeTaskUserInput({
+            content: b64decode(maybePayload.content),
+            attachments: maybePayload.attachments,
+          })
+        } catch {
+          return normalizeTaskUserInput({
+            content: decoded,
+            attachments: [],
+          })
+        }
       }
       if (typeof maybePayload.content === "string") {
         return normalizeTaskUserInput({

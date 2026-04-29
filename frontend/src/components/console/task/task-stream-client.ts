@@ -237,7 +237,10 @@ export class TaskStreamClient {
   private sendInitialUserInput(payload: TaskUserInputPayload) {
     this.sendMessage({
       type: "user-input",
-      data: b64encode(JSON.stringify(payload)),
+      data: b64encode(JSON.stringify({
+        ...payload,
+        content: b64encode(payload.content),
+      })),
     })
   }
 
