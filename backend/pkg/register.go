@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
+	"github.com/chaitin/MonkeyCode/backend/pkg/clickhouse"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/email"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
@@ -28,6 +29,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/store"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasker"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
+	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -124,6 +126,22 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	do.Provide(i, func(i *do.Injector) (*loki.Client, error) {
 		cfg := do.MustInvoke[*config.Config](i)
 		return loki.NewClient(cfg.Loki.Addr), nil
+	})
+
+	do.Provide(i, func(i *do.Injector) (*clickhouse.Client, error) {
+		cfg := do.MustInvoke[*config.Config](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		return clickhouse.New(cfg.ClickHouse, l)
+	})
+
+	do.Provide(i, func(i *do.Injector) (*tasklog.Gateway, error) {
+		lokiClient := do.MustInvoke[*loki.Client](i)
+		clickhouseClient := do.MustInvoke[*clickhouse.Client](i)
+
+		return &tasklog.Gateway{
+			Loki:       tasklog.NewLokiProvider(lokiClient),
+			ClickHouse: tasklog.NewClickHouseProvider(clickhouseClient),
+		}, nil
 	})
 
 	// TaskSummary Queue
