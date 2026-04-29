@@ -165,6 +165,7 @@ export enum ConstsTransactionKind {
   TransactionKindMCPToolConsumption = "mcp_tool_consumption",
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
+  TransactionKindViolationFine = "violation_fine",
 }
 
 export enum ConstsUserPlatform {

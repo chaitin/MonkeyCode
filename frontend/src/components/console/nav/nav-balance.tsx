@@ -158,6 +158,7 @@ export default function NavBalance({
     ConstsTransactionKind.TransactionKindProAutoRenew,
     ConstsTransactionKind.TransactionKindUltraSubscription,
     ConstsTransactionKind.TransactionKindUltraAutoRenew,
+    ConstsTransactionKind.TransactionKindViolationFine,
   ])
 
   const getTransactionDirection = (kind?: ConstsTransactionKind) => {
@@ -269,6 +270,8 @@ export default function NavBalance({
         return "充值积分"
       case ConstsTransactionKind.TransactionKindCheckin:
         return "每日签到奖励"
+      case ConstsTransactionKind.TransactionKindViolationFine:
+        return "违规罚扣"
       default:
         return "交易记录"
     }
