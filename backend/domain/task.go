@@ -20,7 +20,7 @@ type TaskUsecase interface {
 	GetPublic(ctx context.Context, user *User, id uuid.UUID) (*Task, error)
 	Info(ctx context.Context, user *User, id uuid.UUID) (*Task, bool, error)
 	List(ctx context.Context, user *User, req TaskListReq) (*ListTaskResp, error)
-	Continue(ctx context.Context, user *User, id uuid.UUID, content string) error
+	Continue(ctx context.Context, user *User, id uuid.UUID, req ContinueTaskReq) error
 	Create(ctx context.Context, user *User, req CreateTaskReq) (*ProjectTask, error)
 	Stop(ctx context.Context, user *User, id uuid.UUID) error
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
@@ -96,6 +96,11 @@ type CreateTaskReq struct {
 	AttachmentURLs []string           `json:"attachment_urls" validate:"omitempty"` // 附件访问 URL 列表，最多 10 个；URL 必须匹配后端配置的附件白名单前缀
 	Now            time.Time          `json:"-"`
 	UsePublicHost  bool               `json:"-"`
+}
+
+type ContinueTaskReq struct {
+	Content        []byte   `json:"content"`
+	AttachmentURLs []string `json:"attachment_urls"`
 }
 
 // Validate 验证请求参数
@@ -301,7 +306,7 @@ type TaskStream struct {
 
 // TaskUserInputPayload user-input 事件 data 字段的 JSON 结构
 type TaskUserInputPayload struct {
-	Content        string   `json:"content"`         // 用户输入文本
+	Content        []byte   `json:"content"`         // 用户输入文本，JSON 中按 base64 字符串传输
 	AttachmentURLs []string `json:"attachment_urls"` // 附件访问 URL 列表，缺省或空数组表示无附件
 }
 

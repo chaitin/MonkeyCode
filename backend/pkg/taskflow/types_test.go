@@ -130,3 +130,18 @@ func TestTaskReqIncludesLogStore(t *testing.T) {
 		t.Fatalf("marshaled request missing log_store: %s", string(b))
 	}
 }
+
+func TestTaskAttachmentURLsSerialize(t *testing.T) {
+	req := TaskReq{
+		Task: &Task{
+			AttachmentURLs: []string{"https://oss.example.com/temp/a.txt"},
+		},
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if !strings.Contains(string(b), `"attachment_urls":["https://oss.example.com/temp/a.txt"]`) {
+		t.Fatalf("json = %s", b)
+	}
+}

@@ -74,6 +74,26 @@ func TestNormalizeSummaryLogStoreEmptyMeansLoki(t *testing.T) {
 	}
 }
 
+func TestBuildSummaryConversationUsesUserInputPayloadContent(t *testing.T) {
+	taskID := uuid.New()
+	payload := []byte(`{"content":"6K+357un57ut5a6e546w","attachment_urls":["https://oss.example.com/temp/a.txt"]}`)
+	messages, err := buildSummaryConversation(
+		context.Background(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		taskID,
+		[]*tasklog.TurnChunk{{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString(payload)), Timestamp: 1}},
+		1,
+		3,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("buildSummaryConversation() error = %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "请继续实现" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
 func TestTasklogConversationReaderStopsWhenMaxRoundsReached(t *testing.T) {
 	runningData := mustJSON(t, wsData{Update: wsUpdate{SessionUpdate: "agent_message_chunk", Content: wsContent{Text: "助手回复"}}})
 	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{
