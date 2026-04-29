@@ -132,7 +132,7 @@ export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: T
         </DialogHeader>
 
         {file && (
-          <div className="flex items-start gap-3 rounded-md border bg-muted/25 p-3">
+          <div className="flex min-w-0 items-start gap-3 rounded-md border bg-muted/25 p-3">
             <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background text-muted-foreground">
               {filePreviewUrl ? (
                 <img src={filePreviewUrl} alt={file.name} className="size-full object-cover" />
@@ -140,9 +140,9 @@ export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: T
                 <IconFile className="size-5" />
               )}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{file.name}</div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <div className="w-0 min-w-0 flex-1">
+              <div className="max-w-full truncate text-sm font-medium" title={file.name}>{file.name}</div>
+              <div className="mt-1 flex max-w-full flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatFileSize(file.size)}</span>
                 <span>{file.type || "未知类型"}</span>
               </div>
