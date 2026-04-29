@@ -15,6 +15,7 @@ import * as opencodeLoadSkillRender from "./toolcalls/opencode_load_skill"
 import * as internalReportUserAbuseRender from "./toolcalls/internal_report_user_abuse"
 import * as internalWebsearchRender from "./toolcalls/internal_websearch"
 import * as internalImgsearchRender from "./toolcalls/internal_imgsearch"
+import * as internalImageAnalysisRender from "./toolcalls/internal_image_analysis"
 
 type ToolCallRenderer = {
   match: (message: MessageType, cli?: ConstsCliName) => boolean
@@ -94,6 +95,22 @@ const toolCallRenderers: ToolCallRenderer[] = [
     ),
     renderTitle: internalImgsearchRender.renderTitle,
     renderDetail: internalImgsearchRender.renderDetail,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "monkeycode-ai_shitu__image_analysis_create_task"
+    ),
+    renderTitle: internalImageAnalysisRender.renderTitle,
+    renderDetail: internalImageAnalysisRender.renderDetail,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "monkeycode-ai_shitu__image_analysis_get_result"
+    ),
+    renderTitle: internalImageAnalysisRender.renderResultTitle,
+    renderDetail: internalImageAnalysisRender.renderResultDetail,
   },
   {
     match: (message, cli) => cli === ConstsCliName.CliNameOpencode && message.data.kind === "search",
