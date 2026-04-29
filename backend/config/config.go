@@ -53,6 +53,7 @@ type Config struct {
 	LLM         LLM         `mapstructure:"llm"`
 	Notify      Notify      `mapstructure:"notify"`
 	VMIdle      VMIdle      `mapstructure:"vm_idle"`
+	Attachment  Attachment  `mapstructure:"attachment"`
 
 	// Context7 API 配置
 	Context7ApiKey string `mapstructure:"context7_api_key"`
@@ -98,6 +99,10 @@ type MCPHub struct {
 type PublicHost struct {
 	CountLimit int   `mapstructure:"count_limit"` // 每用户公共主机 VM 数量限制，0 表示不限制
 	TTLLimit   int64 `mapstructure:"ttl_limit"`   // 公共主机 VM 续期上限（秒），0 表示不限制
+}
+
+type Attachment struct {
+	AllowedURLPrefixes []string `mapstructure:"allowed_url_prefixes"`
 }
 
 // Task 任务相关配置
@@ -228,6 +233,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("mcp_hub.enabled", false)
 	v.SetDefault("mcp_hub.url", "")
 	v.SetDefault("mcp_hub.token", "")
+	v.SetDefault("attachment.allowed_url_prefixes", []string{})
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
