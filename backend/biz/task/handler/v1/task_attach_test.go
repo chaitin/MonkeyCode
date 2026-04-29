@@ -6,16 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
+	"github.com/google/uuid"
+
+	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 )
 
-func TestBuildTaskStreamsFromHistoryEntriesStopsWhenEnded(t *testing.T) {
+func TestBuildTaskStreamsFromLogEntriesStopsWhenEnded(t *testing.T) {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	streams, ended := buildTaskStreamsFromHistoryEntries([]loki.LogEntry{
-		{Timestamp: base, Line: `{"event":"task-started","kind":"acp_event"}`},
-		{Timestamp: base.Add(time.Second), Line: `{"event":"task-ended","kind":"acp_event"}`},
+	streams, ended := buildTaskStreamsFromLogEntries([]tasklog.Entry{
+		{TaskID: uuid.Nil, TS: base, Event: "task-started", Kind: "acp_event"},
+		{TaskID: uuid.Nil, TS: base.Add(time.Second), Event: "task-ended", Kind: "acp_event"},
 	}, logger)
 
 	if !ended {
@@ -26,13 +28,13 @@ func TestBuildTaskStreamsFromHistoryEntriesStopsWhenEnded(t *testing.T) {
 	}
 }
 
-func TestBuildTaskStreamsFromHistoryEntriesKeepsStreamingWhenNotEnded(t *testing.T) {
+func TestBuildTaskStreamsFromLogEntriesKeepsStreamingWhenNotEnded(t *testing.T) {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	streams, ended := buildTaskStreamsFromHistoryEntries([]loki.LogEntry{
-		{Timestamp: base, Line: `{"event":"task-started","kind":"acp_event"}`},
-		{Timestamp: base.Add(time.Second), Line: `{"event":"task-running","kind":"agent_message_chunk"}`},
+	streams, ended := buildTaskStreamsFromLogEntries([]tasklog.Entry{
+		{TaskID: uuid.Nil, TS: base, Event: "task-started", Kind: "acp_event"},
+		{TaskID: uuid.Nil, TS: base.Add(time.Second), Event: "task-running", Kind: "agent_message_chunk"},
 	}, logger)
 
 	if ended {

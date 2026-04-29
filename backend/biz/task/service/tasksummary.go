@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,10 +19,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
-	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
-	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
+	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 )
 
 var (
@@ -31,27 +30,43 @@ var (
 
 // TaskSummaryService 任务摘要生成服务
 type TaskSummaryService struct {
-	cfg          *config.Config
-	db           *db.Client
-	loki         *loki.Client
-	llm          *llm.Client
-	summaryQueue *delayqueue.TaskSummaryQueue
-	logger       *slog.Logger
-	taskRepo     domain.TaskRepo
+	cfg                *config.Config
+	db                 *db.Client
+	llm                *llm.Client
+	summaryQueue       *delayqueue.TaskSummaryQueue
+	logger             *slog.Logger
+	conversationReader ConversationReader
 
 	// 生命周期管理
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
+type tasklogGateway interface {
+	QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int, store consts.LogStore) (*tasklog.QueryTurnsResp, error)
+}
+
+type ConversationReader interface {
+	Fetch(ctx context.Context, taskID uuid.UUID, createdAt time.Time, store consts.LogStore, initialContent string, maxRounds int) ([]llm.Message, error)
+}
+
+type tasklogConversationReader struct {
+	gateway tasklogGateway
+	logger  *slog.Logger
+}
+
+func newTasklogConversationReader(gateway tasklogGateway, logger *slog.Logger) *tasklogConversationReader {
+	return &tasklogConversationReader{gateway: gateway, logger: logger}
+}
+
 // NewTaskSummaryService 创建任务摘要生成服务
 func NewTaskSummaryService(i *do.Injector) (*TaskSummaryService, error) {
 	cfg := do.MustInvoke[*config.Config](i)
 	d := do.MustInvoke[*db.Client](i)
-	lok := do.MustInvoke[*loki.Client](i)
+	tlg := do.MustInvoke[*tasklog.Gateway](i)
 	sq := do.MustInvoke[*delayqueue.TaskSummaryQueue](i)
 	l := do.MustInvoke[*slog.Logger](i)
-	tr := do.MustInvoke[domain.TaskRepo](i)
+	logger := l.With("module", "TaskSummaryService")
 
 	// 使用 task_summary 自己的 LLM 配置，不依赖全局 LLM Client
 	llmClient := llm.NewClient(llm.Config{
@@ -62,13 +77,12 @@ func NewTaskSummaryService(i *do.Injector) (*TaskSummaryService, error) {
 	})
 
 	s := &TaskSummaryService{
-		cfg:          cfg,
-		db:           d,
-		loki:         lok,
-		llm:          llmClient,
-		summaryQueue: sq,
-		logger:       l.With("module", "TaskSummaryService"),
-		taskRepo:     tr,
+		cfg:                cfg,
+		db:                 d,
+		llm:                llmClient,
+		summaryQueue:       sq,
+		logger:             logger,
+		conversationReader: newTasklogConversationReader(tlg, logger),
 	}
 
 	// 启动消费者
@@ -146,7 +160,7 @@ func (s *TaskSummaryService) GenerateSummaryNow(ctx context.Context, taskID stri
 		return "", fmt.Errorf("failed to get task: %w", err)
 	}
 
-	conversation, err := s.fetchConversation(ctx, taskID, t.CreatedAt)
+	conversation, err := s.fetchConversation(ctx, taskUUID, t.CreatedAt, normalizeSummaryLogStore(t.LogStore), t.Content)
 	if err != nil {
 		if errors.Is(err, errNoConversation) {
 			return "", nil
@@ -234,9 +248,9 @@ func (s *TaskSummaryService) handleJob(ctx context.Context, job *delayqueue.Job[
 	}
 
 	createdAt := t.CreatedAt
-	logger.DebugContext(ctx, "fetching conversation from loki", "created_at", createdAt)
+	logger.DebugContext(ctx, "fetching conversation", "created_at", createdAt)
 
-	conversation, err := s.fetchConversation(ctx, taskID, createdAt)
+	conversation, err := s.fetchConversation(ctx, taskUUID, createdAt, normalizeSummaryLogStore(t.LogStore), t.Content)
 	if err != nil {
 		if errors.Is(err, errNoConversation) {
 			logger.InfoContext(ctx, "no conversation found, skip")
@@ -262,99 +276,94 @@ func (s *TaskSummaryService) handleJob(ctx context.Context, job *delayqueue.Job[
 	return nil
 }
 
-// fetchConversation 从 Loki 获取历史对话，只保留最近 N 轮对话（user-input / reply-question 及其对应的 agent 回复）。
-// 使用倒序查询，从最新的日志往前查，收集到足够轮用户消息后立即停止，避免遍历全部历史。
-func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID string, createdAt time.Time) ([]llm.Message, error) {
+func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID uuid.UUID, createdAt time.Time, store consts.LogStore, initialContent string) ([]llm.Message, error) {
+	if s.conversationReader == nil {
+		return nil, errors.New("task summary conversation reader is nil")
+	}
 	maxRounds := s.cfg.TaskSummary.MaxRounds
 	if maxRounds <= 0 {
 		maxRounds = 3
 	}
-	const pageSize = 200
 
-	taskUUID, err := uuid.Parse(taskID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse task id: %w", err)
+	return s.conversationReader.Fetch(ctx, taskID, createdAt, store, initialContent, maxRounds)
+}
+
+func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID, createdAt time.Time, store consts.LogStore, initialContent string, maxRounds int) ([]llm.Message, error) {
+	if r.gateway == nil {
+		return nil, errors.New("tasklog gateway is nil")
 	}
-
-	t, err := s.taskRepo.GetByID(ctx, taskUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get task: %w", err)
+	if maxRounds <= 0 {
+		maxRounds = 3
 	}
+	const pageSize = 20
 
-	// 从后往前分页查 Loki，收集到足够的用户轮次后停止
-	start := createdAt
-	end := time.Now()
-	var tailEntries []loki.LogEntry
+	var chunks []*tasklog.TurnChunk
 	userRoundCount := 0
+	cursor := ""
 
 	for {
-		entries, err := s.loki.QueryByTaskID(ctx, taskID, start, end, pageSize, "backward")
+		resp, err := r.gateway.QueryTurns(ctx, taskID, createdAt, cursor, pageSize, store)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch loki history: %w", err)
+			return nil, fmt.Errorf("failed to fetch task log history: %w", err)
 		}
-
-		done := false
-		for _, entry := range entries {
-			tailEntries = append(tailEntries, entry)
-
-			if entry.Line == "" {
-				continue
-			}
-			var lokiEnt lokiEntry
-			if err := json.Unmarshal([]byte(entry.Line), &lokiEnt); err != nil {
-				continue
-			}
-			if lokiEnt.Event == "user-input" || lokiEnt.Event == "reply-question" {
-				userRoundCount++
-				if userRoundCount >= maxRounds {
-					done = true
-					break
-				}
-			}
-		}
-
-		if done || len(entries) < pageSize {
+		if resp == nil {
 			break
 		}
-		// 向更早的时间翻页
-		end = entries[len(entries)-1].Timestamp.Add(-time.Nanosecond)
+
+		stopPaging := false
+		for _, chunk := range resp.Chunks {
+			if chunk == nil {
+				continue
+			}
+			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= maxRounds {
+				stopPaging = true
+				break
+			}
+			chunks = append(chunks, chunk)
+			if chunk.Event == "user-input" || chunk.Event == "reply-question" {
+				userRoundCount++
+			}
+		}
+
+		if stopPaging || userRoundCount >= maxRounds || !resp.HasMore || resp.NextCursor == "" {
+			break
+		}
+		cursor = resp.NextCursor
 	}
 
-	// 反转为时间正序
-	slices.Reverse(tailEntries)
+	return buildSummaryConversation(ctx, r.logger, taskID, chunks, userRoundCount, maxRounds, initialContent)
+}
 
-	// 按正序解析为 messages
+func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID uuid.UUID, chunks []*tasklog.TurnChunk, userRoundCount, maxRounds int, initialContent string) ([]llm.Message, error) {
+	sort.Slice(chunks, func(i, j int) bool {
+		a := chunks[i]
+		b := chunks[j]
+		if a == nil {
+			return b != nil
+		}
+		if b == nil {
+			return false
+		}
+		return a.Timestamp < b.Timestamp
+	})
+
 	var messages []llm.Message
-	// 如果 Loki 中用户轮次不足 3 轮，补上初始任务内容
-	if userRoundCount < maxRounds {
-		messages = append(messages, llm.Message{Role: "user", Content: t.Content})
+	if userRoundCount < maxRounds && initialContent != "" {
+		messages = append(messages, llm.Message{Role: "user", Content: initialContent})
 	}
 
 	agentMsg := []string{}
-	for _, entry := range tailEntries {
-		if entry.Line == "" {
+	for _, chunk := range chunks {
+		if chunk == nil || len(chunk.Data) == 0 {
 			continue
 		}
 
-		s.logger.DebugContext(ctx, "loki entry", "entry", entry.Line)
-
-		var lokiEnt lokiEntry
-		if err := json.Unmarshal([]byte(entry.Line), &lokiEnt); err != nil {
-			s.logger.ErrorContext(ctx, "failed to unmarshal loki entry", "task_id", taskID, "error", err)
-			continue
-		}
-
-		if lokiEnt.Data == "" {
-			continue
-		}
-
-		decoded, err := base64.StdEncoding.DecodeString(lokiEnt.Data)
+		decoded, err := base64.StdEncoding.DecodeString(string(chunk.Data))
 		if err != nil {
-			s.logger.ErrorContext(ctx, "failed to decode base64 data", "task_id", taskID, "error", err)
-			continue
+			decoded = chunk.Data
 		}
 
-		switch lokiEnt.Event {
+		switch chunk.Event {
 		case "user-input", "reply-question":
 			var userInputText string
 			var ur userReply
@@ -392,8 +401,17 @@ func (s *TaskSummaryService) fetchConversation(ctx context.Context, taskID strin
 		messages = append(messages, llm.Message{Role: "assistant", Content: agentContent})
 	}
 
-	s.logger.DebugContext(ctx, "conversation", "messages_count", len(messages), "messages", messages)
+	if logger != nil {
+		logger.DebugContext(ctx, "conversation", "task_id", taskID, "messages_count", len(messages), "messages", messages)
+	}
 	return messages, nil
+}
+
+func normalizeSummaryLogStore(store *consts.LogStore) consts.LogStore {
+	if store == nil || strings.TrimSpace(string(*store)) == "" {
+		return consts.LogStoreLoki
+	}
+	return *store
 }
 
 // generateSummary 调用 LLM 生成摘要
