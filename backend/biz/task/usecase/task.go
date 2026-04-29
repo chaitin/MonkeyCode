@@ -351,7 +351,13 @@ func (a *TaskUsecase) Cancel(ctx context.Context, user *domain.User, id uuid.UUI
 }
 
 // Continue implements domain.TaskUsecase.
-func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.UUID, content string) error {
+func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.UUID, req domain.ContinueTaskReq) error {
+	if strings.TrimSpace(req.Content) == "" {
+		return errcode.ErrBadRequest
+	}
+	if err := validateAttachmentURLs(req.AttachmentURLs, a.cfg.Attachment); err != nil {
+		return err
+	}
 	t, err := a.repo.Info(ctx, user, id, false)
 	if err != nil {
 		return err
@@ -364,16 +370,17 @@ func (a *TaskUsecase) Continue(ctx context.Context, user *domain.User, id uuid.U
 			EnvironmentID: tk.VirtualMachine.EnvironmentID,
 		},
 		Task: &taskflow.Task{
-			ID:       id,
-			Text:     content,
-			LogStore: string(tk.LogStore),
+			ID:             id,
+			Text:           req.Content,
+			AttachmentURLs: req.AttachmentURLs,
+			LogStore:       string(tk.LogStore),
 		},
 	}); err != nil {
 		return err
 	}
 
 	// 缓存最近一次 user-input，供通知推送使用
-	a.redis.Set(ctx, fmt.Sprintf("mcai:task:%s:last_input", id.String()), content, 24*time.Hour)
+	a.redis.Set(ctx, fmt.Sprintf("mcai:task:%s:last_input", id.String()), req.Content, 24*time.Hour)
 
 	return nil
 }
@@ -397,6 +404,10 @@ func (a *TaskUsecase) IncrUserInputCount(ctx context.Context, userID, taskID uui
 
 // Create implements domain.TaskUsecase.
 func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
+	if err := validateAttachmentURLs(req.AttachmentURLs, a.cfg.Attachment); err != nil {
+		return nil, err
+	}
+
 	r, err := a.taskflow.Host().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
 		IDs: []string{req.HostID},
 	})
@@ -534,11 +545,12 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 
 		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
 		createTaskReq := &taskflow.CreateTaskReq{
-			ID:           t.ID,
-			VMID:         vm.ID,
-			Text:         req.Content,
-			SystemPrompt: req.SystemPrompt,
-			CodingAgent:  coding,
+			ID:             t.ID,
+			VMID:           vm.ID,
+			Text:           req.Content,
+			AttachmentURLs: req.AttachmentURLs,
+			SystemPrompt:   req.SystemPrompt,
+			CodingAgent:    coding,
 			LLM: taskflow.LLM{
 				ApiKey:  m.APIKey,
 				BaseURL: m.BaseURL,
