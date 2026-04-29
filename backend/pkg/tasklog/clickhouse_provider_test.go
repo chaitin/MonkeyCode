@@ -23,7 +23,7 @@ func TestClickHouseProviderQueryLatestTurnUsesTurnSeqCursor(t *testing.T) {
 	start := time.Unix(1_710_000_000, 0).UTC()
 	end := start.Add(time.Minute)
 
-	mock.ExpectQuery("SELECT max\\(turn_seq\\)").
+	mock.ExpectQuery("SELECT max\\(turn_seq\\)[\\s\\S]*WHERE task_id = \\? AND ts >= \\? AND ts <= \\?\\s*$").
 		WithArgs(taskID, start, end).
 		WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(2))
 
@@ -31,11 +31,11 @@ func TestClickHouseProviderQueryLatestTurnUsesTurnSeqCursor(t *testing.T) {
 		AddRow(taskID.String(), start.Add(10*time.Second), "user-input", "", 2, "hello", uint64(0), uint64(0)).
 		AddRow(taskID.String(), start.Add(11*time.Second), "task-running", "acp_event", 2, `{"text":"world"}`, uint64(2), uint64(4))
 
-	mock.ExpectQuery("SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC").
+	mock.ExpectQuery("SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, 2, start, end).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery("SELECT turn_seq[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?").
+	mock.ExpectQuery("SELECT turn_seq[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?\\s*$").
 		WithArgs(taskID, uint32(2), 1).
 		WillReturnRows(sqlmock.NewRows([]string{"turn_seq"}).AddRow(1))
 
@@ -75,18 +75,18 @@ func TestClickHouseProviderQueryLatestTurnHandlesSparseTurnsWithoutMore(t *testi
 	start := time.Unix(1_710_000_000, 0).UTC()
 	end := start.Add(time.Minute)
 
-	mock.ExpectQuery("SELECT max\\(turn_seq\\)").
+	mock.ExpectQuery("SELECT max\\(turn_seq\\)[\\s\\S]*WHERE task_id = \\? AND ts >= \\? AND ts <= \\?\\s*$").
 		WithArgs(taskID, start, end).
 		WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(5))
 
 	rows := sqlmock.NewRows([]string{"task_id", "ts", "event", "kind", "turn_seq", "data", "msg_seq_start", "msg_seq_end"}).
 		AddRow(taskID.String(), start.Add(10*time.Second), "user-input", "", 5, "hello", uint64(0), uint64(0))
 
-	mock.ExpectQuery("SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC").
+	mock.ExpectQuery("SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, 5, start, end).
 		WillReturnRows(rows)
 
-	mock.ExpectQuery("SELECT turn_seq[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?").
+	mock.ExpectQuery("SELECT turn_seq[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?\\s*$").
 		WithArgs(taskID, uint32(5), 1).
 		WillReturnRows(sqlmock.NewRows([]string{"turn_seq"}))
 
@@ -117,7 +117,7 @@ func TestClickHouseProviderQueryTurnsUsesSparseTurnCursor(t *testing.T) {
 	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq"}).
 		AddRow(time.Unix(1_710_000_010, 0).UTC(), "user-input", "", "latest", uint32(1))
 
-	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?[\\s\\S]*SETTINGS max_threads = 1").
+	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, uint32(2), 2).
 		WillReturnRows(chunkRows)
 
@@ -153,7 +153,7 @@ func TestClickHouseProviderQueryTurnsSkipsExtraTurnFromLimitPlusOne(t *testing.T
 		AddRow(now, "task-running", "acp_event", "turn-3", uint32(3)).
 		AddRow(now.Add(time.Second), "task-running", "acp_event", "turn-2", uint32(2))
 
-	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*SETTINGS max_threads = 1").
+	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*ORDER BY turn_seq DESC[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, 2).
 		WillReturnRows(chunkRows)
 
