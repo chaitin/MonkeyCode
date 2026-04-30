@@ -110,14 +110,17 @@ func (h *HostRepo) UpsertVirtualMachine(ctx context.Context, vm *taskflow.Virtua
 			ForUpdate().
 			Where(virtualmachine.ID(vm.ID)).
 			First(ctx); err == nil {
-			if err := tx.VirtualMachine.UpdateOneID(vm.ID).
+			up := tx.VirtualMachine.UpdateOneID(vm.ID).
 				SetArch(vm.Arch).
 				SetCores(int(vm.Cores)).
 				SetHostname(vm.Hostname).
 				SetOs(vm.OS).
 				SetMemory(int64(vm.Memory)).
-				SetVersion(vm.Version).
-				Exec(ctx); err != nil {
+				SetVersion(vm.Version)
+			if vm.AccessToken != "" {
+				up.SetAccessToken(vm.AccessToken)
+			}
+			if err := up.Exec(ctx); err != nil {
 				return err
 			}
 			vm.EnvironmentID = oldVm.EnvironmentID
@@ -246,6 +249,18 @@ func (h *HostRepo) GetVirtualMachine(ctx context.Context, id string) (*db.Virtua
 	}
 
 	return vm, nil
+}
+
+func (h *HostRepo) GetVirtualMachineByAccessToken(ctx context.Context, accessToken string) (*db.VirtualMachine, error) {
+	return h.db.VirtualMachine.Query().
+		ForUpdate().
+		WithHost().
+		WithModel().
+		WithTasks().
+		WithUser().
+		WithGitIdentity().
+		Where(virtualmachine.AccessToken(accessToken)).
+		First(ctx)
 }
 
 // GetByID implements domain.HostRepo.
@@ -409,6 +424,9 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 			SetRepoFilename(repoFilename).
 			SetBranch(branch).
 			SetCreatedAt(req.Now)
+		if vm.AccessToken != "" {
+			crt.SetAccessToken(vm.AccessToken)
+		}
 
 		if len(req.ModelID) > 0 {
 			crt.SetModelID(m.ID)

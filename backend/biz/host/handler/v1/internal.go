@@ -142,13 +142,20 @@ func (h *InternalHostHandler) GetCodingConfig(c *web.Context, req taskflow.GetCo
 // VMList 根据 ID 获取虚拟机信息
 func (h *InternalHostHandler) VMList(c *web.Context) error {
 	id := c.Request().URL.Query().Get("id")
-	if id == "" {
-		return fmt.Errorf("id parameter is required")
+	envID := c.Request().URL.Query().Get("env_id")
+	if id == "" && envID == "" {
+		return fmt.Errorf("id or env_id parameter is required")
 	}
 
-	vm, err := h.repo.GetVirtualMachine(c.Request().Context(), id)
+	var vm *db.VirtualMachine
+	var err error
+	if envID != "" {
+		vm, err = h.repo.GetVirtualMachineByEnvID(c.Request().Context(), envID)
+	} else {
+		vm, err = h.repo.GetVirtualMachine(c.Request().Context(), id)
+	}
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "get virtual machine failed", "id", id, "error", err)
+		h.logger.ErrorContext(c.Request().Context(), "get virtual machine failed", "id", id, "env_id", envID, "error", err)
 		return err
 	}
 
@@ -174,7 +181,7 @@ func (h *InternalHostHandler) VMList(c *web.Context) error {
 
 // CheckToken 认证 token
 func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckTokenReq) error {
-	logger := h.logger.With("fn", "CheckToken", "req", req)
+	logger := h.logger.With("fn", "CheckToken")
 	var tk *taskflow.Token
 	var err error
 	if strings.HasPrefix(req.Token, "agent_") {
@@ -188,7 +195,7 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 		return err
 	}
 
-	logger.With("token", tk).DebugContext(c.Request().Context(), "check token success")
+	logger.With("kind", tk.Kind, "vm_id", tk.Token).DebugContext(c.Request().Context(), "check token success")
 
 	return c.Success(tk)
 }
@@ -210,31 +217,38 @@ func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) 
 	// 1) 优先从 Redis 读取一次性 agent token，并清除
 	key := fmt.Sprintf("agent:token:%s", token)
 	res, err := h.getAgentToken(ctx, key)
-	h.logger.With("mid", mid, "key", key, "hit", err == nil, "error", err).DebugContext(ctx, "agent auth...")
+	h.logger.With("mid", mid, "hit", err == nil).DebugContext(ctx, "agent auth...")
 	if err == nil {
 		var t taskflow.Token
 		if uerr := json.Unmarshal([]byte(res), &t); uerr != nil {
-			h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal token from redis")
+			h.logger.With("error", uerr).ErrorContext(ctx, "failed to unmarshal token from redis")
 			return nil, uerr
+		}
+		// Redis 缓存的 token 可能未包含 access_token（旧数据），用实际认证凭证回填
+		if t.AccessToken == "" && t.Token != token {
+			t.AccessToken = token
 		}
 
 		if mid != "" {
-			if err := h.repo.UpdateVirtualMachine(ctx, token, func(up *db.VirtualMachineUpdateOne) error {
+			if err := h.repo.UpdateVirtualMachine(ctx, t.Token, func(up *db.VirtualMachineUpdateOne) error {
 				up.SetMachineID(mid)
 				return nil
 			}); err != nil {
-				h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to update virtual machine machine id")
+				h.logger.With("error", err, "vm_id", t.Token).ErrorContext(ctx, "failed to update virtual machine machine id")
 				return nil, err
 			}
 		}
 
 		return &t, nil
 	} else if !errors.Is(err, redis.Nil) {
-		h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to get redis token via lua, fallback to db")
+		h.logger.With("error", err).ErrorContext(ctx, "failed to get redis token via lua, fallback to db")
 	}
 
-	// 2) Redis 没值时根据数据库校验 token
-	vm, err := h.repo.GetVirtualMachine(h.skipSoftDelete(ctx), token)
+	// 2) Redis 没值时根据数据库校验 token。新 VM 按 access_token 查，旧 VM 按 id 查。
+	vm, err := h.repo.GetVirtualMachineByAccessToken(h.skipSoftDelete(ctx), token)
+	if db.IsNotFound(err) {
+		vm, err = h.repo.GetVirtualMachine(h.skipSoftDelete(ctx), token)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -265,9 +279,19 @@ func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) 
 			ID: vm.UserID.String(),
 		},
 		ParentToken: vm.HostID,
-		Token:       token,
+		Token:       vm.ID,
+		AccessToken: firstNonEmpty(vm.AccessToken, token),
 		TaskID:      taskID,
 	}, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (h *InternalHostHandler) hostAuth(ctx context.Context, token, mid string) (*taskflow.Token, error) {
@@ -286,10 +310,10 @@ return nil
 		if b, ok := res.(string); ok && b != "" {
 			var u domain.User
 			if uerr := json.Unmarshal([]byte(b), &u); uerr != nil {
-				h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal user from redis token")
+				h.logger.With("error", uerr).ErrorContext(ctx, "failed to unmarshal user from redis token")
 				return nil, uerr
 			}
-			h.logger.With("cache result", b, "user", u).DebugContext(ctx, "get result from redis by lua")
+			h.logger.With("user_id", u.ID).DebugContext(ctx, "get result from redis by lua")
 
 			typeUser := &taskflow.TokenUser{
 				ID:        u.ID.String(),
@@ -330,7 +354,7 @@ return nil
 			return tk, nil
 		}
 	} else if !errors.Is(err, redis.Nil) {
-		h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to get redis host token via lua, fallback to db")
+		h.logger.With("error", err).ErrorContext(ctx, "failed to get redis host token via lua, fallback to db")
 	}
 
 	// 2) Redis 无值则回退到数据库校验
@@ -417,7 +441,7 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 		vmuo.SetConditions(conds)
 		return nil
 	}); err != nil {
-		h.logger.With("vm", vm, "error", err).ErrorContext(c.Request().Context(), "update vm conditions failed")
+		h.logger.With("vm_id", vm.ID, "environment_id", vm.EnvironmentID, "error", err).ErrorContext(c.Request().Context(), "update vm conditions failed")
 		return err
 	}
 

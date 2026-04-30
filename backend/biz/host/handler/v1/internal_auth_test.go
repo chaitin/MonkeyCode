@@ -129,6 +129,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 
 type internalHostRepoStub struct {
 	vm               *db.VirtualMachine
+	accessTokenVM    *db.VirtualMachine
 	assertSkipMarker bool
 	skipMarkerKey    any
 	skipMarkerValue  string
@@ -161,6 +162,19 @@ func (s *internalHostRepoStub) GetVirtualMachine(ctx context.Context, _ string) 
 		return nil, errors.New("vm not found")
 	}
 	return s.vm, nil
+}
+
+func (s *internalHostRepoStub) GetVirtualMachineByAccessToken(ctx context.Context, _ string) (*db.VirtualMachine, error) {
+	if s.assertSkipMarker {
+		v, ok := ctx.Value(s.skipMarkerKey).(string)
+		if !ok || v != s.skipMarkerValue {
+			return nil, errors.New("skip soft delete context marker missing")
+		}
+	}
+	if s.accessTokenVM == nil {
+		return nil, &db.NotFoundError{}
+	}
+	return s.accessTokenVM, nil
 }
 
 func (s *internalHostRepoStub) UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error {

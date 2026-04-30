@@ -72,6 +72,7 @@ type TTL struct {
 // VirtualMachine 虚拟机信息
 type VirtualMachine struct {
 	ID            string               `json:"id"`
+	AccessToken   string               `json:"access_token,omitempty"`
 	EnvironmentID string               `json:"environment_id"`
 	HostID        string               `json:"host_id"`
 	Hostname      string               `json:"hostname"`
@@ -308,6 +309,7 @@ type Token struct {
 	User        *TokenUser `json:"user"`
 	ParentToken string     `json:"parent_token"`
 	Token       string     `json:"token"`
+	AccessToken string     `json:"access_token,omitempty"`
 	TaskID      uuid.UUID  `json:"task_id"`
 	SessionID   string     `json:"session_id"`
 	RemoteIP    string     `json:"remote_ip"`
