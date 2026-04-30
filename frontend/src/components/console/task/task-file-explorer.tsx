@@ -102,18 +102,56 @@ const getLanguageMode = (fileName: string): string => {
   return modeMap[ext || ''] || 'text'
 }
 
-const MAX_FILE_SIZE = 100 * 1024 // 100KB
+const MAX_FILE_SIZE = 500 * 1024 // 500KB
+
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
 
 const BINARY_EXTENSIONS = [
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico',
+  ...IMAGE_EXTENSIONS,
   '.mp4', '.webm', '.ogv', '.mov', '.avi', '.mkv', '.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a', '.wma',
   '.pdf', '.zip', '.tar', '.gz', '.rar', '.7z', '.exe', '.dll', '.so', '.dylib',
   '.woff', '.woff2', '.ttf', '.otf', '.eot',
 ]
 
+function getPathExtension(path: string): string {
+  const lastDotIndex = path.lastIndexOf('.')
+  return lastDotIndex >= 0 ? path.substring(lastDotIndex).toLowerCase() : ''
+}
+
 function isBinaryExtension(path: string): boolean {
-  const ext = path.substring(path.lastIndexOf('.')).toLowerCase()
-  return BINARY_EXTENSIONS.includes(ext)
+  return BINARY_EXTENSIONS.includes(getPathExtension(path))
+}
+
+function isImageExtension(path: string): boolean {
+  return IMAGE_EXTENSIONS.includes(getPathExtension(path))
+}
+
+function getImageMimeType(path: string): string {
+  const mimeMap: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon',
+  }
+  return mimeMap[getPathExtension(path)] || 'application/octet-stream'
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+  return btoa(binary)
+}
+
+function createImageDataUrl(path: string, bytes: Uint8Array): string {
+  return `data:${getImageMimeType(path)};base64,${bytesToBase64(bytes)}`
 }
 
 function tryDecodeAsText(bytes: Uint8Array): { text: string; isText: boolean } {
@@ -132,6 +170,8 @@ interface FileItem {
   content: string | null
   isBinary: boolean
   isTooLarge: boolean
+  isImage: boolean
+  imageDataUrl: string | null
 }
 
 type FilePanelMode = "tree" | "changes"
@@ -485,9 +525,11 @@ export const TaskFileExplorer = ({
     const bytes = await fetchFileContent(path)
     if (!bytes) return null
     const isBinaryByExt = isBinaryExtension(path)
+    const isImage = isImageExtension(path)
     const isTooLarge = bytes.length > MAX_FILE_SIZE
     const { text, isText } = isBinaryByExt ? { text: '', isText: false } : tryDecodeAsText(bytes)
     const isBinary = isBinaryByExt || !isText
+    const imageDataUrl = isImage ? createImageDataUrl(path, bytes) : null
     const file: FileItem = {
       name: path.split('/').pop() || path,
       path,
@@ -495,6 +537,8 @@ export const TaskFileExplorer = ({
       content: isText ? text : null,
       isBinary,
       isTooLarge,
+      isImage,
+      imageDataUrl,
     }
     setDiffContent("")
     setDiffLoading(false)
@@ -533,6 +577,8 @@ export const TaskFileExplorer = ({
       content: null,
       isBinary: false,
       isTooLarge: false,
+      isImage: false,
+      imageDataUrl: null,
     })
   }, [clearCurrentFile, currentFile?.path])
 
@@ -636,6 +682,17 @@ export const TaskFileExplorer = ({
             <EmptyDescription>文件太大不支持预览</EmptyDescription>
           </EmptyHeader>
         </Empty>
+      )
+    }
+    if (currentFile.isImage && currentFile.imageDataUrl) {
+      return (
+        <div className="flex h-full w-full items-center justify-center overflow-auto bg-muted/20 p-3">
+          <img
+            src={currentFile.imageDataUrl}
+            alt={currentFile.name}
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
       )
     }
     if (currentFile.isBinary) {
