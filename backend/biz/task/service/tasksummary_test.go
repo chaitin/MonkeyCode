@@ -83,7 +83,7 @@ func TestBuildSummaryConversationUsesUserInputPayloadContent(t *testing.T) {
 		taskID,
 		[]*tasklog.TurnChunk{{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString(payload)), Timestamp: 1}},
 		1,
-		3,
+		1,
 		"",
 	)
 	if err != nil {
@@ -149,25 +149,39 @@ func TestTasklogConversationReaderKeepsOnlyRecentMaxRoundsInSinglePage(t *testin
 	assertMessage(t, messages[1], "assistant", "最新助手")
 }
 
-func TestTasklogConversationReaderAnchorsSummaryToInitialContent(t *testing.T) {
-	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{{
-		Chunks: []*tasklog.TurnChunk{
-			{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("不相干的上下文摘要"))), Timestamp: 1},
-		},
-	}}}
+func TestTasklogConversationReaderUsesInitialContentWhenLogRoundsAreInsufficient(t *testing.T) {
+	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{{}}}
 	reader := newTasklogConversationReader(gateway, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	messages, err := reader.Fetch(context.Background(), uuid.New(), time.Now(), consts.LogStoreClickHouse, "修复 ClickHouse 日志查询失败", 1)
+	messages, err := reader.Fetch(context.Background(), uuid.New(), time.Now(), consts.LogStoreClickHouse, "修复 ClickHouse 日志查询失败", 3)
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
 	}
-	if gateway.calls != 0 {
-		t.Fatalf("gateway calls = %d, want 0", gateway.calls)
+	if gateway.calls != 1 {
+		t.Fatalf("gateway calls = %d, want 1", gateway.calls)
 	}
 	if len(messages) != 1 {
 		t.Fatalf("len(messages) = %d, want 1: %#v", len(messages), messages)
 	}
 	assertMessage(t, messages[0], "user", "修复 ClickHouse 日志查询失败")
+}
+
+func TestTasklogConversationReaderDoesNotUseInitialContentWhenLogRoundsAreEnough(t *testing.T) {
+	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{{
+		Chunks: []*tasklog.TurnChunk{
+			{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("实现登录页"))), Timestamp: 1},
+		},
+	}}}
+	reader := newTasklogConversationReader(gateway, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	messages, err := reader.Fetch(context.Background(), uuid.New(), time.Now(), consts.LogStoreClickHouse, "111", 1)
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("len(messages) = %d, want 1: %#v", len(messages), messages)
+	}
+	assertMessage(t, messages[0], "user", "实现登录页")
 }
 
 func TestFallbackSummaryForLowInformationGreeting(t *testing.T) {
@@ -179,6 +193,32 @@ func TestFallbackSummaryForLowInformationGreeting(t *testing.T) {
 	}
 	if summary != "hi" {
 		t.Fatalf("summary = %q, want hi", summary)
+	}
+}
+
+func TestFallbackSummaryForNumericInput(t *testing.T) {
+	summary, ok := fallbackSummaryFromConversation([]llm.Message{
+		{Role: "user", Content: "111"},
+	}, 300)
+	if !ok {
+		t.Fatal("expected fallback summary")
+	}
+	if summary != "111" {
+		t.Fatalf("summary = %q, want 111", summary)
+	}
+}
+
+func TestFallbackSummaryForAllLowInformationInputsUsesLatest(t *testing.T) {
+	summary, ok := fallbackSummaryFromConversation([]llm.Message{
+		{Role: "user", Content: "111"},
+		{Role: "assistant", Content: "请提供更多信息"},
+		{Role: "user", Content: "222"},
+	}, 300)
+	if !ok {
+		t.Fatal("expected fallback summary")
+	}
+	if summary != "222" {
+		t.Fatalf("summary = %q, want 222", summary)
 	}
 }
 
