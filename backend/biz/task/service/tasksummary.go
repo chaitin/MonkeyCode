@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/samber/do"
@@ -295,20 +296,13 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 	if maxRounds <= 0 {
 		maxRounds = 3
 	}
-	logRounds := maxRounds
-	if strings.TrimSpace(initialContent) != "" {
-		logRounds--
-	}
-	if logRounds < 0 {
-		logRounds = 0
-	}
 	const pageSize = 20
 
 	var chunks []*tasklog.TurnChunk
 	userRoundCount := 0
 	cursor := ""
 
-	for logRounds > 0 {
+	for {
 		resp, err := r.gateway.QueryTurns(ctx, taskID, createdAt, cursor, pageSize, store)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch task log history: %w", err)
@@ -322,7 +316,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 			if chunk == nil {
 				continue
 			}
-			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= logRounds {
+			if (chunk.Event == "user-input" || chunk.Event == "reply-question") && userRoundCount >= maxRounds {
 				stopPaging = true
 				break
 			}
@@ -332,7 +326,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 			}
 		}
 
-		if stopPaging || userRoundCount >= logRounds || !resp.HasMore || resp.NextCursor == "" {
+		if stopPaging || userRoundCount >= maxRounds || !resp.HasMore || resp.NextCursor == "" {
 			break
 		}
 		cursor = resp.NextCursor
@@ -355,9 +349,6 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 	})
 
 	var messages []llm.Message
-	if initialContent != "" {
-		messages = append(messages, llm.Message{Role: "user", Content: initialContent})
-	}
 
 	agentMsg := []string{}
 	for _, chunk := range chunks {
@@ -410,19 +401,36 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 		}
 	}
 
-	if len(messages) == 0 {
-		return nil, errNoConversation
-	}
-
 	if len(agentMsg) > 0 {
 		agentContent := strings.Join(agentMsg, "")
 		messages = append(messages, llm.Message{Role: "assistant", Content: agentContent})
 	}
 
+	initialContent = strings.TrimSpace(initialContent)
+	if userRoundCount < maxRounds && initialContent != "" {
+		messages = append([]llm.Message{{Role: "user", Content: initialContent}}, messages...)
+	}
+
+	if len(messages) == 0 {
+		return nil, errNoConversation
+	}
+
 	if logger != nil {
-		logger.DebugContext(ctx, "conversation", "task_id", taskID, "messages_count", len(messages), "messages", messages)
+		logger.DebugContext(ctx, "task summary conversation", "task_id", taskID, "messages_count", len(messages), "conversation", formatSummaryConversation(messages))
 	}
 	return messages, nil
+}
+
+func formatSummaryConversation(messages []llm.Message) []map[string]any {
+	conversation := make([]map[string]any, 0, len(messages))
+	for i, msg := range messages {
+		conversation = append(conversation, map[string]any{
+			"index":   i,
+			"role":    msg.Role,
+			"content": msg.Content,
+		})
+	}
+	return conversation
 }
 
 func userInputContent(decoded []byte) string {
@@ -458,8 +466,8 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 - 不超过%d字
 - 不要标点结尾
 - 只输出标题，不要解释
-- 第一条用户消息是任务原始需求，必须优先依据它生成标题
-- 后续对话只作为补充上下文，不要把上下文交接、压缩摘要或运行状态总结当成任务标题
+- 只根据用户的实质需求生成标题，不要根据示例、助手回复或运行状态编造需求
+- 如果早期输入为空泛或无意义，但后续用户消息补充了明确需求，以后续明确需求为准
 - 重点关注用户想要完成什么目标，而不是 AI 问了什么问题
 - 标题要具体，让人一看就知道用户想做什么
   - 如果是开发任务：说明做的是什么应用/功能（如"开发五子棋游戏"）
@@ -488,24 +496,23 @@ func (s *TaskSummaryService) generateSummary(ctx context.Context, conversation [
 
 func fallbackSummaryFromConversation(conversation []llm.Message, maxChars int) (string, bool) {
 	userInputs := make([]string, 0, len(conversation))
-	hasAssistant := false
 	for _, msg := range conversation {
-		switch msg.Role {
-		case "user":
+		if msg.Role == "user" {
 			content := strings.TrimSpace(msg.Content)
 			if content != "" {
 				userInputs = append(userInputs, content)
 			}
-		case "assistant":
-			if strings.TrimSpace(msg.Content) != "" {
-				hasAssistant = true
-			}
 		}
 	}
-	if hasAssistant || len(userInputs) != 1 || !isLowInformationInput(userInputs[0]) {
+	if len(userInputs) == 0 {
 		return "", false
 	}
-	return truncateSummary(userInputs[0], maxChars), true
+	for _, input := range userInputs {
+		if !isLowInformationInput(input) {
+			return "", false
+		}
+	}
+	return truncateSummary(userInputs[len(userInputs)-1], maxChars), true
 }
 
 func isLowInformationInput(input string) bool {
@@ -515,7 +522,12 @@ func isLowInformationInput(input string) bool {
 	case "hi", "hello", "hey", "你好", "您好", "嗨", "哈喽", "hello there", "ok", "okay", "嗯", "嗯嗯", "额":
 		return true
 	}
-	return false
+	for _, r := range normalized {
+		if unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func truncateSummary(s string, maxChars int) string {
