@@ -311,7 +311,7 @@ type TaskStream struct {
 
 // TaskUserInputPayload user-input 事件 data 字段的 JSON 结构
 type TaskUserInputPayload struct {
-	Content     []byte           `json:"content"`     // 用户输入文本，JSON 中按 base64 字符串传输
+	Content     string           `json:"content"`     // 用户输入文本；旧前端上行为 base64，taskflow 日志可为明文
 	Attachments []TaskAttachment `json:"attachments"` // 附件列表，缺省或空数组表示无附件
 }
 

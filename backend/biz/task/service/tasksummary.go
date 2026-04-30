@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/samber/do"
@@ -427,10 +428,22 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 
 func userInputContent(decoded []byte) string {
 	var payload userInputPayload
-	if err := json.Unmarshal(decoded, &payload); err == nil && len(payload.Content) > 0 {
-		return string(payload.Content)
+	if err := json.Unmarshal(decoded, &payload); err == nil && strings.TrimSpace(payload.Content) != "" {
+		return normalizeLegacyUserInputContent(payload.Content)
 	}
 	return string(decoded)
+}
+
+func normalizeLegacyUserInputContent(content string) string {
+	decoded, err := base64.StdEncoding.DecodeString(content)
+	if err != nil || !utf8.Valid(decoded) {
+		return content
+	}
+	text := string(decoded)
+	if strings.TrimSpace(text) == "" {
+		return content
+	}
+	return text
 }
 
 func normalizeSummaryLogStore(store *consts.LogStore) consts.LogStore {

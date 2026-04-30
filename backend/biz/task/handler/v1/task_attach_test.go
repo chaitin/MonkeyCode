@@ -52,8 +52,25 @@ func TestNormalizeUserInputDataWrapsLegacyText(t *testing.T) {
 	}
 }
 
-func TestNormalizeUserInputDataKeepsPayloadShape(t *testing.T) {
+func TestNormalizeUserInputDataDecodesLegacyPayloadContent(t *testing.T) {
 	got := normalizeUserInputData([]byte(`{"content":"5paw6L6T5YWl","attachments":[{"url":"https://oss.example.com/temp/a.txt","filename":"a.txt"}]}`))
+	if string(got) != `{"content":"5paw6L6T5YWl","attachments":[{"url":"https://oss.example.com/temp/a.txt","filename":"a.txt"}]}` {
+		t.Fatalf("normalized = %s", got)
+	}
+}
+
+func TestParseUserInputDataDecodesFrontendPayloadContent(t *testing.T) {
+	got := parseUserInputData([]byte(`{"content":"5paw6L6T5YWl","attachments":[{"url":"https://oss.example.com/temp/a.txt","filename":"a.txt"}]}`))
+	if string(got.Content) != "新输入" {
+		t.Fatalf("content = %q, want 新输入", string(got.Content))
+	}
+	if len(got.Attachments) != 1 || got.Attachments[0].URL != "https://oss.example.com/temp/a.txt" {
+		t.Fatalf("attachments = %#v", got.Attachments)
+	}
+}
+
+func TestNormalizeUserInputDataEncodesPlainStoredPayloadForFrontend(t *testing.T) {
+	got := normalizeUserInputData([]byte(`{"content":"新输入","attachments":[{"url":"https://oss.example.com/temp/a.txt","filename":"a.txt"}]}`))
 	if string(got) != `{"content":"5paw6L6T5YWl","attachments":[{"url":"https://oss.example.com/temp/a.txt","filename":"a.txt"}]}` {
 		t.Fatalf("normalized = %s", got)
 	}

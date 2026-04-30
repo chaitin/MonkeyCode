@@ -12,7 +12,7 @@ type userReply struct {
 }
 
 type userInputPayload struct {
-	Content     []byte           `json:"content"`
+	Content     string           `json:"content"`
 	Attachments []taskAttachment `json:"attachments"`
 }
 
