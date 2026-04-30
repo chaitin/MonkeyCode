@@ -1,12 +1,12 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconPlayerStopFilled, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconCommand, IconLoader, IconReload, IconTrash, IconPlayerStopFilled, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import type { AvailableCommand, AvailableCommands, TaskStreamStatus, TaskUserInput, TaskUserInputPayload } from "./task-shared"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } from "./task-file-upload"
 import { toast } from "sonner"
@@ -32,9 +32,10 @@ interface TaskChatInputBoxProps {
   queueSize: number
   executionTimeMs?: number
   onCancel?: () => void
+  onRequestRestartAgent?: (clearContext: boolean) => void
 }
 
-export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel }: TaskChatInputBoxProps) => {
+export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent }: TaskChatInputBoxProps) => {
   const [content, setContent] = useState('')
   const [isComposing, setIsComposing] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
@@ -350,6 +351,25 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 <DropdownMenuContent className={showCommandItems ? "w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]" : "w-48 min-w-48"}>
                   {showCommandItems && (
                     <>
+                      <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onSelect={() => onRequestRestartAgent?.(false)}>
+                        <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
+                          <IconReload />
+                          <div className="font-bold text-xs">重启 Agent</div>
+                        </div>
+                        <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
+                          保留当前上下文，重新启动 Agent 会话。
+                        </div>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onSelect={() => onRequestRestartAgent?.(true)}>
+                        <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
+                          <IconTrash />
+                          <div className="font-bold text-xs">重启 Agent 并清空上下文</div>
+                        </div>
+                        <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
+                          清空当前上下文后，重新启动 Agent 会话。
+                        </div>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       {commandItems.map((command: AvailableCommand, index: number) => (
                         <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setContent(`/${command.name}`)}>
                           <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">

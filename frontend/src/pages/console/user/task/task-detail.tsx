@@ -87,6 +87,9 @@ export default function TaskDetailPage() {
   const [contextUsagePopoverOpen, setContextUsagePopoverOpen] = React.useState(false)
   const [resetContextDialogOpen, setResetContextDialogOpen] = React.useState(false)
   const [resetContextSubmitting, setResetContextSubmitting] = React.useState(false)
+  const [restartAgentDialogOpen, setRestartAgentDialogOpen] = React.useState(false)
+  const [restartAgentSubmitting, setRestartAgentSubmitting] = React.useState(false)
+  const [restartAgentClearContext, setRestartAgentClearContext] = React.useState(false)
   const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
   const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
   const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
@@ -693,6 +696,28 @@ export default function TaskDetailPage() {
     toast.error("重置上下文失败")
   }, [handleResetSession, resetContextSubmitting])
 
+  const handleRequestRestartAgent = React.useCallback((clearContext: boolean) => {
+    if (!canInput) return
+    setRestartAgentClearContext(clearContext)
+    setRestartAgentDialogOpen(true)
+  }, [canInput])
+
+  const handleConfirmRestartAgent = React.useCallback(async () => {
+    if (restartAgentSubmitting) return
+
+    setRestartAgentSubmitting(true)
+    const success = await taskControlClientRef.current?.restart(!restartAgentClearContext)
+    setRestartAgentSubmitting(false)
+
+    if (success) {
+      setRestartAgentDialogOpen(false)
+      toast.success(restartAgentClearContext ? "Agent 已重启，上下文已清空" : "Agent 已重启")
+      return
+    }
+
+    toast.error(restartAgentClearContext ? "重启 Agent 并清空上下文失败" : "重启 Agent 失败")
+  }, [restartAgentClearContext, restartAgentSubmitting])
+
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
   const getChatScrollContainer = React.useCallback(() => {
@@ -1112,6 +1137,39 @@ export default function TaskDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog
+        open={restartAgentDialogOpen}
+        onOpenChange={(open) => {
+          if (restartAgentSubmitting) return
+          setRestartAgentDialogOpen(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {restartAgentClearContext ? "重启 Agent 并清空上下文" : "重启 Agent"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {restartAgentClearContext
+                ? "确定要重启 Agent 并清空当前上下文吗？完成后 AI 会失去之前的记忆，后续操作将会基于新的上下文进行。"
+                : "确定要重启 Agent 吗？当前上下文会被保留。"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={restartAgentSubmitting}>取消</AlertDialogCancel>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleConfirmRestartAgent()
+              }}
+              disabled={restartAgentSubmitting}
+            >
+              {restartAgentSubmitting && <Spinner className="mr-2 size-4" />}
+              确认
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {showPreparing ? (
         <TaskPreparingView task={task} />
       ) : (
@@ -1204,6 +1262,7 @@ export default function TaskDetailPage() {
                         availableCommands={availableCommands}
                         onSend={handleSend}
                         onCancel={handleCancel}
+                        onRequestRestartAgent={handleRequestRestartAgent}
                         sending={sending}
                         queueSize={0}
                         executionTimeMs={timeCost}
