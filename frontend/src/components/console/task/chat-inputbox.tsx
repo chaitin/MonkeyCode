@@ -1,15 +1,18 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconReload, IconTrash, IconPlayerStopFilled, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconCommand, IconLoader, IconPalette, IconReload, IconTrash, IconPlayerStopFilled, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import type { AvailableCommand, AvailableCommands, TaskStreamStatus, TaskUserInput, TaskUserInputPayload } from "./task-shared"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } from "./task-file-upload"
 import { toast } from "sonner"
+import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
+import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
@@ -33,15 +36,19 @@ interface TaskChatInputBoxProps {
   executionTimeMs?: number
   onCancel?: () => void
   onRequestRestartAgent?: (clearContext: boolean) => void
+  whiteboardPersistenceKey?: string
 }
 
-export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent }: TaskChatInputBoxProps) => {
+export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }: TaskChatInputBoxProps) => {
   const [content, setContent] = useState('')
   const [isComposing, setIsComposing] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null)
   const [shouldAutoUpload, setShouldAutoUpload] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
+  const [whiteboardDialogOpen, setWhiteboardDialogOpen] = useState(false)
+  const [whiteboardFileIndex, setWhiteboardFileIndex] = useState(1)
+  const [previewFile, setPreviewFile] = useState<TaskUploadedFile | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<TaskUploadedFile[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -70,6 +77,8 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
     setContent('')
     setUploadedFiles([])
+    setPreviewFile(null)
+    setWhiteboardFileIndex(1)
   }
 
   const handleTextRecognized = (text: string) => {
@@ -166,6 +175,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     })
     setSelectedUploadFile(null)
     setShouldAutoUpload(false)
+  }
+
+  const handleWhiteboardUploaded = (file: TaskUploadedFile) => {
+    handleUploaded(file)
+    setWhiteboardFileIndex((prev) => prev + 1)
   }
 
   const hasTransferFile = (dataTransfer: DataTransfer) => {
@@ -312,6 +326,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const showCommandItems = !isExecuting && commandItems.length > 0
   const canSend = content.trim() !== ''
   const canUploadMoreFiles = uploadedFiles.length < MAX_UPLOADED_FILES
+  const whiteboardFileName = `画板-${whiteboardFileIndex}.png`
 
   return (
     <div
@@ -343,11 +358,16 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           <div className="flex flex-row justify-between w-full">
             <div className="flex flex-row gap-2 items-center min-w-0">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled || !showCommandItems}>
-                    <IconTerminal2 />
-                  </Button>
-                </DropdownMenuTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled || !showCommandItems}>
+                        <IconTerminal2 />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>命令选项</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent className={showCommandItems ? "w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]" : "w-48 min-w-48"}>
                   {showCommandItems && (
                     <>
@@ -389,23 +409,48 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
               {!isExecuting && (
                 <>
                   {canUploadMoreFiles && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      className="rounded-full"
-                      disabled={controlsDisabled}
-                      aria-label="上传文件"
-                      onClick={handleSelectFile}
-                    >
-                      <IconUpload />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          className="rounded-full"
+                          disabled={controlsDisabled}
+                          aria-label="上传附件"
+                          onClick={handleSelectFile}
+                        >
+                          <IconUpload />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>上传附件</TooltipContent>
+                    </Tooltip>
                   )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        className="rounded-full"
+                        disabled={controlsDisabled}
+                        aria-label="画板"
+                        onClick={() => setWhiteboardDialogOpen(true)}
+                      >
+                        <IconPalette />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>画板</TooltipContent>
+                  </Tooltip>
                   {uploadedFiles.map((uploadedFile) => (
                     <TaskUploadedFileItem
                       key={uploadedFile.accessUrl}
                       file={uploadedFile}
+                      onPreview={() => setPreviewFile(uploadedFile)}
                       onRemove={() => {
+                        if (previewFile?.accessUrl === uploadedFile.accessUrl) {
+                          setPreviewFile(null)
+                        }
                         setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
                       }}
                     />
@@ -452,6 +497,23 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           }
         }}
         onUploaded={handleUploaded}
+      />
+      <TaskWhiteboardDialog
+        open={whiteboardDialogOpen}
+        canUploadAttachment={canUploadMoreFiles}
+        fileName={whiteboardFileName}
+        onOpenChange={setWhiteboardDialogOpen}
+        onUploaded={handleWhiteboardUploaded}
+        persistenceKey={whiteboardPersistenceKey}
+      />
+      <TaskAttachmentPreviewDialog
+        open={!!previewFile}
+        file={previewFile}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewFile(null)
+          }
+        }}
       />
     </div>
   )

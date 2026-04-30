@@ -1,0 +1,198 @@
+[
+	{
+		"locale": "ar",
+		"label": "عربي"
+	},
+	{
+		"locale": "bn",
+		"label": "বাংলা"
+	},
+	{
+		"locale": "ca",
+		"label": "Català"
+	},
+	{
+		"locale": "cs",
+		"label": "Čeština"
+	},
+	{
+		"locale": "da",
+		"label": "Danish"
+	},
+	{
+		"locale": "de",
+		"label": "Deutsch"
+	},
+	{
+		"locale": "en",
+		"label": "English"
+	},
+	{
+		"locale": "es",
+		"label": "Español"
+	},
+	{
+		"locale": "fa",
+		"label": "فارسی"
+	},
+	{
+		"locale": "fi",
+		"label": "Suomi"
+	},
+	{
+		"locale": "fr",
+		"label": "Français"
+	},
+	{
+		"locale": "el",
+		"label": "Ελληνικά"
+	},
+	{
+		"locale": "gl",
+		"label": "Galego"
+	},
+	{
+		"locale": "gu-in",
+		"label": "ગુજરાતી"
+	},
+	{
+		"locale": "he",
+		"label": "עברית"
+	},
+	{
+		"locale": "hi-in",
+		"label": "हिन्दी"
+	},
+	{
+		"locale": "hr",
+		"label": "Hrvatski"
+	},
+	{
+		"locale": "hu",
+		"label": "Magyar"
+	},
+	{
+		"locale": "id",
+		"label": "Bahasa Indonesia"
+	},
+	{
+		"locale": "it",
+		"label": "Italiano"
+	},
+	{
+		"locale": "ja",
+		"label": "日本語"
+	},
+	{
+		"locale": "kn",
+		"label": "ಕನ್ನಡ"
+	},
+	{
+		"locale": "km-kh",
+		"label": "ភាសាខ្មែរ"
+	},
+	{
+		"locale": "ko-kr",
+		"label": "한국어"
+	},
+	{
+		"locale": "ms",
+		"label": "Bahasa Melayu"
+	},
+	{
+		"locale": "ml",
+		"label": "മലയാളം"
+	},
+	{
+		"locale": "mr",
+		"label": "मराठी"
+	},
+	{
+		"locale": "ne",
+		"label": "नेपाली"
+	},
+	{
+		"locale": "nl",
+		"label": "Nederlands"
+	},
+	{
+		"locale": "no",
+		"label": "Norwegian"
+	},
+	{
+		"locale": "pl",
+		"label": "Polski"
+	},
+	{
+		"locale": "pt-br",
+		"label": "Português - Brasil"
+	},
+	{
+		"locale": "pt-pt",
+		"label": "Português - Europeu"
+	},
+	{
+		"locale": "pa",
+		"label": "ਪੰਜਾਬੀ"
+	},
+	{
+		"locale": "ro",
+		"label": "Română"
+	},
+	{
+		"locale": "ru",
+		"label": "Русский"
+	},
+	{
+		"locale": "sl",
+		"label": "Slovenščina"
+	},
+	{
+		"locale": "so",
+		"label": "Somali"
+	},
+	{
+		"locale": "sv",
+		"label": "Svenska"
+	},
+	{
+		"locale": "ta",
+		"label": "தமிழ்"
+	},
+	{
+		"locale": "te",
+		"label": "తెలుగు"
+	},
+	{
+		"locale": "th",
+		"label": "ภาษาไทย"
+	},
+	{
+		"locale": "tl",
+		"label": "Filipino"
+	},
+	{
+		"locale": "tr",
+		"label": "Türkçe"
+	},
+	{
+		"locale": "uk",
+		"label": "Українська"
+	},
+	{
+		"locale": "ur",
+		"label": "اردو"
+	},
+	{
+		"locale": "vi",
+		"label": "Tiếng Việt"
+	},
+	{
+		"locale": "zh-cn",
+		"label": "简体中文"
+	},
+	{
+		"locale": "zh-tw",
+		"label": "繁體中文 (台灣)"
+	}
+]

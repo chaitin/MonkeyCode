@@ -129,6 +129,16 @@
   html {
     font-family: var(--font-sans);
     }
+
+}
+
+.tl-container {
+  font-family: var(--font-sans) !important;
+  --font-body: var(--font-sans) !important;
+  --tl-font-draw: var(--font-sans) !important;
+  --tl-font-sans: var(--font-sans) !important;
+  --tl-font-serif: var(--font-sans) !important;
+  --tl-font-mono: var(--font-mono) !important;
 }
 
 @font-face {

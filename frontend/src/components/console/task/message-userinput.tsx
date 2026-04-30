@@ -2,10 +2,13 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import "@/utils/plain-text-markdown.css"
 import type { MessageType } from "./message"
-import { IconExternalLink, IconFile } from "@tabler/icons-react"
+import { IconFile } from "@tabler/icons-react"
 import { isTaskImageAttachment, type TaskUserInputAttachment } from "./task-shared"
+import React from "react"
+import { TaskAttachmentPreviewDialog, type TaskAttachmentPreviewFile } from "./task-attachment-preview-dialog"
 
 export const UserInputMessageItem = ({ message }: { message: MessageType }) => {
+  const [previewFile, setPreviewFile] = React.useState<TaskAttachmentPreviewFile | null>(null)
   const attachments = Array.isArray(message.data.attachments)
     ? message.data.attachments.filter((attachment): attachment is TaskUserInputAttachment => (
       !!attachment
@@ -40,24 +43,34 @@ export const UserInputMessageItem = ({ message }: { message: MessageType }) => {
       {attachments.length > 0 && (
         <div className="mt-2 flex flex-col gap-1.5">
           {attachments.map((attachment, index) => (
-            <a
+            <button
+              type="button"
               key={`${attachment.url}-${index}`}
-              href={attachment.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex max-w-full items-center gap-2 rounded-md border bg-background/70 px-2 py-1.5 text-xs text-foreground hover:bg-background"
+              className="group/attachment flex max-w-full cursor-pointer items-center gap-2 rounded-md border bg-background/70 px-2 py-1.5 text-left text-xs text-foreground hover:bg-background"
+              onClick={() => setPreviewFile({
+                name: attachment.filename,
+                accessUrl: attachment.url,
+              })}
             >
               {isTaskImageAttachment(attachment.filename) ? (
                 <img src={attachment.url} alt={attachment.filename} className="size-4 shrink-0 rounded object-cover" />
               ) : (
                 <IconFile className="size-4 shrink-0 text-muted-foreground" />
               )}
-              <span className="min-w-0 flex-1 truncate">{attachment.filename}</span>
-              <IconExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-            </a>
+              <span className="min-w-0 flex-1 truncate group-hover/attachment:text-primary">{attachment.filename}</span>
+            </button>
           ))}
         </div>
       )}
+      <TaskAttachmentPreviewDialog
+        open={!!previewFile}
+        file={previewFile}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewFile(null)
+          }
+        }}
+      />
     </div>
   )
 }

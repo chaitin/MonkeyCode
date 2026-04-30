@@ -22,6 +22,38 @@ export interface TaskUploadedFile {
   accessUrl: string
 }
 
+export async function uploadTaskFile(file: File): Promise<TaskUploadedFile> {
+  const api = new Api()
+  const presignResponse = await api.api.v1UploaderPresignCreate({
+    filename: file.name,
+  })
+
+  if (presignResponse.data?.code !== 0 || !presignResponse.data?.data) {
+    throw new Error("获取上传地址失败: " + (presignResponse.data?.message || "未知错误"))
+  }
+
+  const { upload_url, access_url } = presignResponse.data.data
+  if (!upload_url || !access_url) {
+    throw new Error("获取上传地址失败: 返回数据不完整")
+  }
+
+  const uploadResponse = await fetch(upload_url, {
+    method: "PUT",
+    body: new Blob([file]),
+  })
+
+  if (!uploadResponse.ok) {
+    throw new Error("文件上传失败: " + uploadResponse.statusText)
+  }
+
+  return {
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    accessUrl: access_url,
+  }
+}
+
 interface TaskFileUploadDialogProps {
   open: boolean
   file: File | null
@@ -33,10 +65,11 @@ interface TaskFileUploadDialogProps {
 interface TaskUploadedFileItemProps {
   file: TaskUploadedFile
   onRemove: () => void
+  onPreview?: () => void
   className?: string
 }
 
-function formatFileSize(size: number) {
+export function formatFileSize(size: number) {
   if (size < 1024) {
     return `${size} B`
   }
@@ -74,42 +107,12 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
 
     setUploading(true)
     try {
-      const api = new Api()
-      const presignResponse = await api.api.v1UploaderPresignCreate({
-        filename: file.name,
-      })
-
-      if (presignResponse.data?.code !== 0 || !presignResponse.data?.data) {
-        toast.error("获取上传地址失败: " + (presignResponse.data?.message || "未知错误"))
-        return
-      }
-
-      const { upload_url, access_url } = presignResponse.data.data
-      if (!upload_url || !access_url) {
-        toast.error("获取上传地址失败: 返回数据不完整")
-        return
-      }
-
-      const uploadResponse = await fetch(upload_url, {
-        method: "PUT",
-        body: await file.arrayBuffer(),
-      })
-
-      if (!uploadResponse.ok) {
-        toast.error("文件上传失败: " + uploadResponse.statusText)
-        return
-      }
-
-      onUploaded({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        accessUrl: access_url,
-      })
+      const uploadedFile = await uploadTaskFile(file)
+      onUploaded(uploadedFile)
       toast.success("文件上传成功")
       onOpenChange(false)
     } catch (error) {
-      toast.error("上传失败: " + (error as Error).message)
+      toast.error((error as Error).message)
     } finally {
       setUploading(false)
     }
@@ -182,24 +185,31 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
   )
 }
 
-export function TaskUploadedFileItem({ file, onRemove, className }: TaskUploadedFileItemProps) {
+export function TaskUploadedFileItem({ file, onRemove, onPreview, className }: TaskUploadedFileItemProps) {
   return (
     <div
       className={cn(
-        "group flex h-8 w-32 min-w-0 items-center gap-2 rounded-full border bg-background px-2 text-xs text-foreground shadow-xs",
+        "group/uploaded-file flex h-8 w-32 min-w-0 items-center gap-2 rounded-full border bg-background px-2 text-xs text-foreground shadow-xs",
         className
       )}
       title={file.name}
     >
-      {isTaskImageAttachment(file.name) ? (
-        <img src={file.accessUrl} alt={file.name} className="size-4 shrink-0 rounded-full border object-cover" />
-      ) : (
-        <IconFile className="size-4 shrink-0 text-muted-foreground" />
-      )}
-      <span className="min-w-0 flex-1 truncate">{file.name}</span>
       <button
         type="button"
-        className="hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+        onClick={onPreview}
+        aria-label={`预览附件 ${file.name}`}
+      >
+        {isTaskImageAttachment(file.name) ? (
+          <img src={file.accessUrl} alt={file.name} className="size-4 shrink-0 rounded-full border object-cover" />
+        ) : (
+          <IconFile className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="min-w-0 flex-1 truncate group-hover/uploaded-file:text-primary">{file.name}</span>
+      </button>
+      <button
+        type="button"
+        className="hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover/uploaded-file:flex"
         onClick={onRemove}
         aria-label="删除已上传文件"
       >

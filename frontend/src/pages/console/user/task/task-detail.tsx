@@ -1263,6 +1263,7 @@ export default function TaskDetailPage() {
                         onSend={handleSend}
                         onCancel={handleCancel}
                         onRequestRestartAgent={handleRequestRestartAgent}
+                        whiteboardPersistenceKey={`task-whiteboard-${taskId}`}
                         sending={sending}
                         queueSize={0}
                         executionTimeMs={timeCost}
