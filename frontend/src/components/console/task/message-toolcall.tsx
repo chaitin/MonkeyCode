@@ -24,6 +24,14 @@ type ToolCallRenderer = {
   expandable?: boolean
 }
 
+const imageAnalysisCreateTaskTitles = new Set([
+  "monkeycode-ai_MonkeyCode__image_analysis_create_task",
+])
+
+const imageAnalysisGetResultTitles = new Set([
+  "monkeycode-ai_MonkeyCode__image_analysis_get_result",
+])
+
 const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
@@ -99,7 +107,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
       message.data.kind === "other"
-      && message.data.title === "monkeycode-ai_shitu__image_analysis_create_task"
+      && imageAnalysisCreateTaskTitles.has(message.data.title ?? "")
     ),
     renderTitle: internalImageAnalysisRender.renderTitle,
     renderDetail: internalImageAnalysisRender.renderDetail,
@@ -107,7 +115,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
       message.data.kind === "other"
-      && message.data.title === "monkeycode-ai_shitu__image_analysis_get_result"
+      && imageAnalysisGetResultTitles.has(message.data.title ?? "")
     ),
     renderTitle: internalImageAnalysisRender.renderResultTitle,
     renderDetail: internalImageAnalysisRender.renderResultDetail,

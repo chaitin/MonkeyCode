@@ -25,6 +25,7 @@ export interface TaskUploadedFile {
 interface TaskFileUploadDialogProps {
   open: boolean
   file: File | null
+  autoUpload?: boolean
   onOpenChange: (open: boolean) => void
   onUploaded: (file: TaskUploadedFile) => void
 }
@@ -45,13 +46,15 @@ function formatFileSize(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: TaskFileUploadDialogProps) {
+export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenChange, onUploaded }: TaskFileUploadDialogProps) {
   const [uploading, setUploading] = React.useState(false)
   const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
+  const autoUploadStartedRef = React.useRef(false)
 
   React.useEffect(() => {
     if (!open) {
       setUploading(false)
+      autoUploadStartedRef.current = false
     }
   }, [open])
 
@@ -89,10 +92,7 @@ export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: T
 
       const uploadResponse = await fetch(upload_url, {
         method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
+        body: await file.arrayBuffer(),
       })
 
       if (!uploadResponse.ok) {
@@ -114,6 +114,15 @@ export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: T
       setUploading(false)
     }
   }, [file, onOpenChange, onUploaded, uploading])
+
+  React.useEffect(() => {
+    if (!open || !file || !autoUpload || uploading || autoUploadStartedRef.current) {
+      return
+    }
+
+    autoUploadStartedRef.current = true
+    void handleUpload()
+  }, [autoUpload, file, handleUpload, open, uploading])
 
   return (
     <Dialog

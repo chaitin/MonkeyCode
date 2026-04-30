@@ -616,7 +616,7 @@ export const TaskFileExplorer = ({
     }
     if (fileLoading) {
       return (
-        <Empty className="border border-dashed w-full h-full min-h-0">
+        <Empty className="w-full h-full min-h-0">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <IconLoader className="size-6 animate-spin" />
@@ -628,7 +628,7 @@ export const TaskFileExplorer = ({
     }
     if (currentFile.isTooLarge) {
       return (
-        <Empty className="border border-dashed w-full h-full min-h-0">
+        <Empty className="w-full h-full min-h-0">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <IconFileText className="size-6 opacity-50" />
@@ -640,7 +640,7 @@ export const TaskFileExplorer = ({
     }
     if (currentFile.isBinary) {
       return (
-        <Empty className="border border-dashed w-full h-full min-h-0">
+        <Empty className="w-full h-full min-h-0">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <IconFileText className="size-6 opacity-50" />
@@ -684,7 +684,7 @@ export const TaskFileExplorer = ({
           )}
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
-          <Empty className="border border-dashed w-full flex-1 min-h-0">
+          <Empty className="w-full flex-1 min-h-0">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <IconCloudOff className="size-6" />
