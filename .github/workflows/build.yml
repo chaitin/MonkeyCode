@@ -60,19 +60,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
+          path: frontend/docker/dist
 
       - name: Prepare docker context
         run: |
-          if [ -d dist ]; then
-            cp -r dist frontend/docker/
-          elif [ -d _build/dist ]; then
-            cp -r _build/dist frontend/docker/
-          else
-            mkdir -p frontend/docker/dist
-            for f in index.html assets captcha ppt; do [ -e "$f" ] && cp -r "$f" frontend/docker/dist/; done
-            cp -r *.ttf *.png *.jpg *.svg *.txt *.js *.wasm frontend/docker/dist/ 2>/dev/null || true
-            [ -f frontend/docker/dist/index.html ] || (echo "Artifact structure:" && find . -maxdepth 3 -type d && exit 1)
-          fi
+          [ -f frontend/docker/dist/index.html ] || (echo "Artifact structure:" && find . -maxdepth 4 -type d && exit 1)
           ls -la frontend/docker/dist/ | head -25
 
       - name: Set up Docker Buildx
