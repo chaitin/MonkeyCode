@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/GoYoko/web"
 	"github.com/google/uuid"
@@ -481,24 +479,16 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 func parseUserInputData(data []byte) domain.ContinueTaskReq {
 	var payload domain.TaskUserInputPayload
 	if err := json.Unmarshal(data, &payload); err == nil && strings.TrimSpace(payload.Content) != "" {
+		content, ok := tasklog.DecodeLegacyUserInputContent(payload.Content)
+		if !ok {
+			content = payload.Content
+		}
 		return domain.ContinueTaskReq{
-			Content:     []byte(normalizeLegacyUserInputContent(payload.Content)),
+			Content:     []byte(content),
 			Attachments: payload.Attachments,
 		}
 	}
 	return domain.ContinueTaskReq{Content: data}
-}
-
-func normalizeLegacyUserInputContent(content string) string {
-	decoded, err := base64.StdEncoding.DecodeString(content)
-	if err != nil || !utf8.Valid(decoded) {
-		return content
-	}
-	text := string(decoded)
-	if strings.TrimSpace(text) == "" {
-		return content
-	}
-	return text
 }
 
 func normalizeUserInputData(data []byte) []byte {

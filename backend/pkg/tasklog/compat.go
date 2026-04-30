@@ -22,12 +22,8 @@ func normalizeUserInputLogData(event, data string) string {
 		return data
 	}
 
-	decoded, err := base64.StdEncoding.DecodeString(content)
-	if err != nil || !utf8.Valid(decoded) {
-		return data
-	}
-	text := string(decoded)
-	if strings.TrimSpace(text) == "" {
+	text, ok := DecodeLegacyUserInputContent(content)
+	if !ok {
 		return data
 	}
 
@@ -42,4 +38,16 @@ func normalizeUserInputLogData(event, data string) string {
 		return data
 	}
 	return string(out)
+}
+
+func DecodeLegacyUserInputContent(content string) (string, bool) {
+	decoded, err := base64.StdEncoding.DecodeString(content)
+	if err != nil || !utf8.Valid(decoded) {
+		return content, false
+	}
+	text := string(decoded)
+	if strings.TrimSpace(text) == "" {
+		return content, false
+	}
+	return text, true
 }
