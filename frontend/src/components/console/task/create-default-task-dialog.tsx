@@ -468,9 +468,6 @@ export default function CreateDefaultTaskDialog({
         const uploadResponse = await fetch(upload_url, {
           method: "PUT",
           body: selectedZipFile,
-          headers: {
-            "Content-Type": "application/zip",
-          },
         })
 
         if (!uploadResponse.ok) {

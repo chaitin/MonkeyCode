@@ -90,9 +90,6 @@ export function TaskFileUploadDialog({ open, file, onOpenChange, onUploaded }: T
       const uploadResponse = await fetch(upload_url, {
         method: "PUT",
         body: file,
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
       })
 
       if (!uploadResponse.ok) {

@@ -580,9 +580,6 @@ export async function packAndUploadFilesAsZip(
   const uploadResponse = await fetch(upload_url, {
     method: 'PUT',
     body: zipFile,
-    headers: {
-      'Content-Type': 'application/zip',
-    },
   })
 
   if (!uploadResponse.ok) {

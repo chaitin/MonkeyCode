@@ -400,9 +400,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       const uploadResponse = await fetch(upload_url, {
         method: 'PUT',
         body: selectedZipFile,
-        headers: {
-          'Content-Type': 'application/zip',
-        },
       });
 
       if (!uploadResponse.ok) {
