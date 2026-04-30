@@ -218,6 +218,17 @@ func (r *vmIdleRefresher) recycleConsumer() {
 					return nil
 				}
 
+				if err := r.hostRepo.UpdateVirtualMachine(ctx, vm.ID, func(vmuo *db.VirtualMachineUpdateOne) error {
+					vmuo.SetIsRecycled(true)
+					return nil
+				}); err != nil {
+					return err
+				}
+
+				if err := r.markRecycledTasksFinished(ctx, vm); err != nil {
+					return err
+				}
+
 				if err := r.taskflow.VirtualMachiner().Delete(ctx, &taskflow.DeleteVirtualMachineReq{
 					UserID: vm.UserID.String(),
 					HostID: vm.HostID,
@@ -226,14 +237,7 @@ func (r *vmIdleRefresher) recycleConsumer() {
 					return fmt.Errorf("delete vm %s: %w", vm.ID, err)
 				}
 
-				if err := r.hostRepo.UpdateVirtualMachine(ctx, vm.ID, func(vmuo *db.VirtualMachineUpdateOne) error {
-					vmuo.SetIsRecycled(true)
-					return nil
-				}); err != nil {
-					return err
-				}
-
-				return r.markRecycledTasksFinished(ctx, vm)
+				return nil
 			})
 		logger.Warn("recycle consumer error, retrying...", "error", err)
 		time.Sleep(10 * time.Second)
