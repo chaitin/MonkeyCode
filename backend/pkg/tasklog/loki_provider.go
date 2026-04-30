@@ -44,7 +44,7 @@ func (p *LokiProvider) QueryWindow(ctx context.Context, taskID uuid.UUID, start,
 			TS:     entry.Timestamp.UTC(),
 			Event:  chunk.Event,
 			Kind:   chunk.Kind,
-			Data:   string(chunk.Data),
+			Data:   normalizeUserInputLogData(chunk.Event, string(chunk.Data)),
 			MsgSeq: entry.Labels["msg_seq"],
 			Labels: entry.Labels,
 		})
@@ -99,7 +99,7 @@ func (p *LokiProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCre
 	}
 	for _, chunk := range resp.Chunks {
 		out.Chunks = append(out.Chunks, &TurnChunk{
-			Data:      chunk.Data,
+			Data:      []byte(normalizeUserInputLogData(chunk.Event, string(chunk.Data))),
 			Event:     chunk.Event,
 			Kind:      chunk.Kind,
 			Timestamp: chunk.Timestamp,

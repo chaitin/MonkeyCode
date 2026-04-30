@@ -128,7 +128,7 @@ ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
 			continue
 		}
 		chunks = append(chunks, &TurnChunk{
-			Data:      []byte(data),
+			Data:      []byte(normalizeUserInputLogData(event, data)),
 			Event:     event,
 			Kind:      kind,
 			Timestamp: ts.UTC().UnixNano(),
@@ -219,7 +219,7 @@ SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end
 			Event:   event,
 			Kind:    kind,
 			TurnSeq: seq,
-			Data:    data,
+			Data:    normalizeUserInputLogData(event, data),
 			MsgSeq:  formatMsgSeqRange(msgSeqStart, msgSeqEnd),
 		})
 	}

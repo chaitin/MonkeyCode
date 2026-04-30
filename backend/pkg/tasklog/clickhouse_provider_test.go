@@ -2,6 +2,7 @@ package tasklog_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -64,6 +65,47 @@ func TestClickHouseProviderQueryLatestTurnUsesTurnSeqCursor(t *testing.T) {
 	}
 }
 
+func TestClickHouseProviderNormalizesLegacyUserInputContent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	start := time.Unix(1_710_000_000, 0).UTC()
+	end := start.Add(time.Minute)
+	legacyPayload := `{"content":"5paw6L6T5YWl","attachments":[{"url":"https://oss.example.com/temp/a.txt","filename":"a.txt"}]}`
+
+	mock.ExpectQuery("SELECT max\\(turn_seq\\)[\\s\\S]*WHERE task_id = \\? AND ts >= \\? AND ts <= \\?\\s*$").
+		WithArgs(taskID, start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(2))
+
+	rows := sqlmock.NewRows([]string{"task_id", "ts", "event", "kind", "turn_seq", "data", "msg_seq_start", "msg_seq_end"}).
+		AddRow(taskID.String(), start.Add(10*time.Second), "user-input", "", 2, legacyPayload, uint64(0), uint64(0))
+
+	mock.ExpectQuery("SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end[\\s\\S]*ORDER BY turn_seq ASC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
+		WithArgs(taskID, 2, start, end).
+		WillReturnRows(rows)
+
+	mock.ExpectQuery("SELECT turn_seq[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?\\s*$").
+		WithArgs(taskID, uint32(2), 1).
+		WillReturnRows(sqlmock.NewRows([]string{"turn_seq"}))
+
+	provider := tasklog.NewClickHouseProvider(clickhouse.NewWithDBAndTable(db, "task_logs_test"))
+	resp, err := provider.QueryLatestTurn(context.Background(), taskID, start, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(resp.Entries))
+	}
+	assertUserInputContent(t, []byte(resp.Entries[0].Data), "新输入")
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClickHouseProviderQueryLatestTurnHandlesSparseTurnsWithoutMore(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -106,6 +148,19 @@ func TestClickHouseProviderQueryLatestTurnHandlesSparseTurnsWithoutMore(t *testi
 	}
 }
 
+func assertUserInputContent(t *testing.T, data []byte, want string) {
+	t.Helper()
+	var payload struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal user-input payload: %v, data=%s", err, data)
+	}
+	if payload.Content != want {
+		t.Fatalf("content = %q, want %q, data=%s", payload.Content, want, data)
+	}
+}
+
 func TestClickHouseProviderQueryTurnsUsesSparseTurnCursor(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -114,8 +169,9 @@ func TestClickHouseProviderQueryTurnsUsesSparseTurnCursor(t *testing.T) {
 	defer db.Close()
 
 	taskID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	legacyPayload := `{"content":"5paw6L6T5YWl","attachments":[]}`
 	chunkRows := sqlmock.NewRows([]string{"ts", "event", "kind", "data", "turn_seq"}).
-		AddRow(time.Unix(1_710_000_010, 0).UTC(), "user-input", "", "latest", uint32(1))
+		AddRow(time.Unix(1_710_000_010, 0).UTC(), "user-input", "", legacyPayload, uint32(1))
 
 	mock.ExpectQuery("SELECT ts, event, kind, data, turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq IN \\([\\s\\S]*SELECT DISTINCT turn_seq[\\s\\S]*FROM task_logs_test[\\s\\S]*turn_seq < \\?[\\s\\S]*LIMIT \\?[\\s\\S]*ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC\\s*$").
 		WithArgs(taskID, taskID, uint32(2), 2).
@@ -129,6 +185,7 @@ func TestClickHouseProviderQueryTurnsUsesSparseTurnCursor(t *testing.T) {
 	if len(resp.Chunks) != 1 {
 		t.Fatalf("len(chunks) = %d, want 1", len(resp.Chunks))
 	}
+	assertUserInputContent(t, resp.Chunks[0].Data, "新输入")
 	if resp.HasMore {
 		t.Fatal("expected has_more=false")
 	}
