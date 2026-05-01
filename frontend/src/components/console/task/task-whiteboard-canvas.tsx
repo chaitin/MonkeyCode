@@ -10,6 +10,7 @@ import {
   CloudToolbarItem,
   DefaultQuickActions,
   DefaultStylePanel,
+  DefaultColorStyle,
   DefaultToolbar,
   DiamondToolbarItem,
   DrawToolbarItem,
@@ -30,7 +31,7 @@ import {
   StarToolbarItem,
   StylePanelArrowheadPicker,
   StylePanelArrowKindPicker,
-  StylePanelColorPicker,
+  StylePanelButtonPicker,
   StylePanelDashPicker,
   StylePanelFillPicker,
   StylePanelGeoShapePicker,
@@ -51,8 +52,40 @@ import {
   type TldrawProps,
   useCanRedo,
   useCanUndo,
+  useStylePanelContext,
 } from "tldraw"
 import "tldraw/tldraw.css"
+
+const whiteboardColorItems = [
+  { value: "black", icon: "color" },
+  { value: "grey", icon: "color" },
+  { value: "white", icon: "color" },
+  { value: "light-violet", icon: "color" },
+  { value: "blue", icon: "color" },
+  { value: "light-blue", icon: "color" },
+  { value: "yellow", icon: "color" },
+  { value: "orange", icon: "color" },
+  { value: "green", icon: "color" },
+  { value: "light-green", icon: "color" },
+  { value: "light-red", icon: "color" },
+  { value: "red", icon: "color" },
+] as const
+
+function WhiteboardColorPicker() {
+  const { styles } = useStylePanelContext()
+  const color = styles.get(DefaultColorStyle)
+  if (color === undefined) return null
+
+  return (
+    <StylePanelButtonPicker
+      title="颜色"
+      uiType="color"
+      style={DefaultColorStyle}
+      items={whiteboardColorItems}
+      value={color}
+    />
+  )
+}
 
 function WhiteboardToolbar() {
   return (
@@ -112,7 +145,7 @@ function WhiteboardStylePanel() {
   return (
     <DefaultStylePanel>
       <StylePanelSection>
-        <StylePanelColorPicker />
+        <WhiteboardColorPicker />
         <StylePanelOpacityPicker />
       </StylePanelSection>
       <StylePanelSection>
