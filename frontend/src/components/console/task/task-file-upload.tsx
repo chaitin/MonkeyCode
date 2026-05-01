@@ -1,4 +1,3 @@
-import { Api } from "@/api/Api"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -10,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import { uploadFileWithPresignedUrl } from "@/utils/common"
 import { IconFile, IconTrash, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { toast } from "sonner"
@@ -23,34 +23,13 @@ export interface TaskUploadedFile {
 }
 
 export async function uploadTaskFile(file: File): Promise<TaskUploadedFile> {
-  const api = new Api()
-  const presignResponse = await api.api.v1UploaderPresignCreate({
-    filename: file.name,
-  })
-
-  if (presignResponse.data?.code !== 0 || !presignResponse.data?.data) {
-    throw new Error("获取上传地址失败: " + (presignResponse.data?.message || "未知错误"))
-  }
-
-  const { upload_url, access_url } = presignResponse.data.data
-  if (!upload_url || !access_url) {
-    throw new Error("获取上传地址失败: 返回数据不完整")
-  }
-
-  const uploadResponse = await fetch(upload_url, {
-    method: "PUT",
-    body: new Blob([file]),
-  })
-
-  if (!uploadResponse.ok) {
-    throw new Error("文件上传失败: " + uploadResponse.statusText)
-  }
+  const uploadedFile = await uploadFileWithPresignedUrl(file)
 
   return {
     name: file.name,
     size: file.size,
     type: file.type,
-    accessUrl: access_url,
+    accessUrl: uploadedFile.accessUrl,
   }
 }
 

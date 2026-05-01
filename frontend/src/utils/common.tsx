@@ -548,21 +548,16 @@ export async function packFilesAsZip(
 }
 
 /**
- * 将文件列表打包成 zip 并上传
- * @param files 文件列表
- * @param zipFilename 打包后的 zip 文件名，默认为 'project-files.zip'
+ * 使用后端返回的预签名地址上传文件
+ * @param file 要上传的文件
  * @returns 上传成功后的访问地址和文件名，失败时抛出错误
  */
-export async function packAndUploadFilesAsZip(
-  files: File[],
-  zipFilename: string = 'project-files.zip'
+export async function uploadFileWithPresignedUrl(
+  file: File
 ): Promise<{ accessUrl: string; filename: string }> {
-  const zipFile = await packFilesAsZip(files, zipFilename)
-
-  // 获取预签名上传地址
   const presignResult = await new Promise<{ upload_url: string; access_url: string }>((resolve, reject) => {
     apiRequest('v1UploaderPresignCreate', {
-      filename: zipFile.name,
+      filename: file.name,
     }, [], (resp) => {
       if (resp.code === 0 && resp.data?.upload_url && resp.data?.access_url) {
         resolve({ upload_url: resp.data.upload_url, access_url: resp.data.access_url })
@@ -574,15 +569,9 @@ export async function packAndUploadFilesAsZip(
     })
   })
 
-  const { upload_url, access_url } = presignResult
-
-  // 上传文件
-  const uploadResponse = await fetch(upload_url, {
+  const uploadResponse = await fetch(presignResult.upload_url, {
     method: 'PUT',
-    body: zipFile,
-    headers: {
-      'Content-Type': 'application/zip',
-    },
+    body: new Blob([file]),
   })
 
   if (!uploadResponse.ok) {
@@ -590,9 +579,23 @@ export async function packAndUploadFilesAsZip(
   }
 
   return {
-    accessUrl: access_url,
-    filename: zipFile.name,
+    accessUrl: presignResult.access_url,
+    filename: file.name,
   }
+}
+
+/**
+ * 将文件列表打包成 zip 并上传
+ * @param files 文件列表
+ * @param zipFilename 打包后的 zip 文件名，默认为 'project-files.zip'
+ * @returns 上传成功后的访问地址和文件名，失败时抛出错误
+ */
+export async function packAndUploadFilesAsZip(
+  files: File[],
+  zipFilename: string = 'project-files.zip'
+): Promise<{ accessUrl: string; filename: string }> {
+  const zipFile = await packFilesAsZip(files, zipFilename)
+  return uploadFileWithPresignedUrl(zipFile)
 }
 
 /**

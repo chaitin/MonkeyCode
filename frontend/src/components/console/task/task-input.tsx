@@ -1,4 +1,4 @@
-import { Api, ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskSubType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkill } from "@/api/Api";
+import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskSubType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkill } from "@/api/Api";
 import Icon from "@/components/common/Icon";
 import { useCommonData } from "@/components/console/data-provider";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelPricingItem, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common";
+import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelPricingItem, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconBug, IconChevronDown, IconHelpCircle, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -380,37 +380,9 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
     setUploadingZip(true);
     try {
-      const api = new Api();
-      const presignResponse = await api.api.v1UploaderPresignCreate({
-        filename: selectedZipFile.name,
-      });
+      const uploadedFile = await uploadFileWithPresignedUrl(selectedZipFile);
 
-      if (presignResponse.data?.code !== 0 || !presignResponse.data?.data) {
-        toast.error('获取上传地址失败: ' + (presignResponse.data?.message || '未知错误'));
-        return;
-      }
-
-      const { upload_url, access_url } = presignResponse.data.data;
-
-      if (!upload_url || !access_url) {
-        toast.error('获取上传地址失败: 返回数据不完整');
-        return;
-      }
-
-      const uploadResponse = await fetch(upload_url, {
-        method: 'PUT',
-        body: selectedZipFile,
-        headers: {
-          'Content-Type': 'application/zip',
-        },
-      });
-
-      if (!uploadResponse.ok) {
-        toast.error('文件上传失败: ' + uploadResponse.statusText);
-        return;
-      }
-
-      setSelectedRepo(access_url);
+      setSelectedRepo(uploadedFile.accessUrl);
       setSelectedRepoDisplayName(selectedZipFile.name);
       setSelectedRepoFromMyRepos(false);
       setUploadDialogOpen(false);

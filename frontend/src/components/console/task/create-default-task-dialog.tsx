@@ -1,5 +1,4 @@
 import {
-  Api,
   ConstsCliName,
   ConstsGitPlatform,
   ConstsHostStatus,
@@ -66,6 +65,7 @@ import {
   selectHost,
   selectImage,
   selectPreferredTaskModel,
+  uploadFileWithPresignedUrl,
 } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage"
@@ -446,40 +446,8 @@ export default function CreateDefaultTaskDialog({
     if (selectedZipFile) {
       setCreatingTask(true)
       try {
-        const api = new Api()
-        const presignResponse = await api.api.v1UploaderPresignCreate({
-          filename: selectedZipFile.name,
-        })
-
-        if (presignResponse.data?.code !== 0 || !presignResponse.data?.data) {
-          toast.error("获取上传地址失败: " + (presignResponse.data?.message || "未知错误"))
-          setCreatingTask(false)
-          return
-        }
-
-        const { upload_url, access_url } = presignResponse.data.data
-
-        if (!upload_url || !access_url) {
-          toast.error("获取上传地址失败: 返回数据不完整")
-          setCreatingTask(false)
-          return
-        }
-
-        const uploadResponse = await fetch(upload_url, {
-          method: "PUT",
-          body: selectedZipFile,
-          headers: {
-            "Content-Type": "application/zip",
-          },
-        })
-
-        if (!uploadResponse.ok) {
-          toast.error("文件上传失败: " + uploadResponse.statusText)
-          setCreatingTask(false)
-          return
-        }
-
-        zipUrl = access_url
+        const uploadedFile = await uploadFileWithPresignedUrl(selectedZipFile)
+        zipUrl = uploadedFile.accessUrl
       } catch (error) {
         toast.error("上传失败: " + (error as Error).message)
         setCreatingTask(false)
