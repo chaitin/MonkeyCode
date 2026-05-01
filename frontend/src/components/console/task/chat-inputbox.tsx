@@ -6,6 +6,7 @@ import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import type { AvailableCommand, AvailableCommands, TaskStreamStatus, TaskUserInput, TaskUserInputPayload } from "./task-shared"
 import { Button } from "@/components/ui/button"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
@@ -50,6 +51,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const [whiteboardFileIndex, setWhiteboardFileIndex] = useState(1)
   const [previewFile, setPreviewFile] = useState<TaskUploadedFile | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<TaskUploadedFile[]>([])
+  const [slashCommandConfirmOpen, setSlashCommandConfirmOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
@@ -58,7 +60,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     return !sending && !isExecuting && queueSize === 0
   }, [sending, isExecuting, queueSize])
 
-  const handleSend = async () => {
+  const sendCurrentInput = async () => {
     if (content.trim() === '') {
       return
     }
@@ -79,6 +81,19 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     setUploadedFiles([])
     setPreviewFile(null)
     setWhiteboardFileIndex(1)
+  }
+
+  const handleSend = () => {
+    if (content.trim() === '') {
+      return
+    }
+
+    if (content.startsWith('/')) {
+      setSlashCommandConfirmOpen(true)
+      return
+    }
+
+    void sendCurrentInput()
   }
 
   const handleTextRecognized = (text: string) => {
@@ -300,7 +315,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      void handleSend()
+      handleSend()
     }
   }
 
@@ -475,7 +490,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 className={cn("flex flex-row gap-2 items-center", isExecuting && "rounded-full")}
                 variant={isExecuting ? "destructive" : "default"}
                 size={isExecuting ? "icon-sm" : "sm"} 
-                onClick={isExecuting ? onCancel : () => void handleSend()}
+                onClick={isExecuting ? onCancel : handleSend}
                 disabled={isExecuting ? !onCancel : !canSend || inputDisabled}
               >
                 {isExecuting ? <IconPlayerStopFilled /> : <IconSend />}
@@ -515,6 +530,22 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           }
         }}
       />
+      <AlertDialog open={slashCommandConfirmOpen} onOpenChange={setSlashCommandConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>内部指令</AlertDialogTitle>
+            <AlertDialogDescription>
+              消息以 / 开头，会被系统识别成内部指令。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void sendCurrentInput()}>
+              确认发送
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
