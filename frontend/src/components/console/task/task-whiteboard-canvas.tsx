@@ -1,10 +1,145 @@
 import { getAssetUrls } from "@tldraw/assets/selfHosted"
-import { Tldraw, type TLComponents, type TldrawProps } from "tldraw"
+import {
+  ArrowDownToolbarItem,
+  ArrowLeftToolbarItem,
+  ArrowRightToolbarItem,
+  ArrowToolbarItem,
+  ArrowUpToolbarItem,
+  AssetToolbarItem,
+  CheckBoxToolbarItem,
+  CloudToolbarItem,
+  DefaultQuickActions,
+  DefaultStylePanel,
+  DefaultToolbar,
+  DiamondToolbarItem,
+  DrawToolbarItem,
+  EllipseToolbarItem,
+  EraserToolbarItem,
+  FrameToolbarItem,
+  HandToolbarItem,
+  HeartToolbarItem,
+  HexagonToolbarItem,
+  HighlightToolbarItem,
+  LaserToolbarItem,
+  LineToolbarItem,
+  NoteToolbarItem,
+  OvalToolbarItem,
+  RectangleToolbarItem,
+  RhombusToolbarItem,
+  SelectToolbarItem,
+  StarToolbarItem,
+  StylePanelArrowheadPicker,
+  StylePanelArrowKindPicker,
+  StylePanelColorPicker,
+  StylePanelDashPicker,
+  StylePanelFillPicker,
+  StylePanelGeoShapePicker,
+  StylePanelLabelAlignPicker,
+  StylePanelOpacityPicker,
+  StylePanelSection,
+  StylePanelSizePicker,
+  StylePanelSplinePicker,
+  StylePanelTextAlignPicker,
+  TextToolbarItem,
+  Tldraw,
+  TldrawUiMenuActionItem,
+  TldrawUiMenuToolItem,
+  TriangleToolbarItem,
+  TrapezoidToolbarItem,
+  XBoxToolbarItem,
+  type TLComponents,
+  type TldrawProps,
+  useCanRedo,
+  useCanUndo,
+} from "tldraw"
 import "tldraw/tldraw.css"
+
+function WhiteboardToolbar() {
+  return (
+    <DefaultToolbar>
+      <SelectToolbarItem />
+      <HandToolbarItem />
+      <TextToolbarItem />
+      <LineToolbarItem />
+      <RectangleToolbarItem />
+      <ArrowToolbarItem />
+      <AssetToolbarItem />
+      <FrameToolbarItem />
+
+      <EllipseToolbarItem />
+      <TriangleToolbarItem />
+      <DiamondToolbarItem />
+      <TrapezoidToolbarItem />
+      <TldrawUiMenuToolItem toolId="pentagon" />
+
+      <HexagonToolbarItem />
+      <OvalToolbarItem />
+      <RhombusToolbarItem />
+      <StarToolbarItem />
+
+      <CloudToolbarItem />
+      <HeartToolbarItem />
+      <XBoxToolbarItem />
+      <CheckBoxToolbarItem />
+
+      <ArrowLeftToolbarItem />
+      <ArrowUpToolbarItem />
+      <ArrowDownToolbarItem />
+      <ArrowRightToolbarItem />
+
+      <HighlightToolbarItem />
+      <LaserToolbarItem />
+      <DrawToolbarItem />
+      <EraserToolbarItem />
+      <NoteToolbarItem />
+    </DefaultToolbar>
+  )
+}
+
+function WhiteboardQuickActions() {
+  const canUndo = useCanUndo()
+  const canRedo = useCanRedo()
+
+  return (
+    <DefaultQuickActions>
+      <TldrawUiMenuActionItem actionId="undo" disabled={!canUndo} />
+      <TldrawUiMenuActionItem actionId="redo" disabled={!canRedo} />
+    </DefaultQuickActions>
+  )
+}
+
+function WhiteboardStylePanel() {
+  return (
+    <DefaultStylePanel>
+      <StylePanelSection>
+        <StylePanelColorPicker />
+        <StylePanelOpacityPicker />
+      </StylePanelSection>
+      <StylePanelSection>
+        <StylePanelFillPicker />
+        <StylePanelDashPicker />
+        <StylePanelSizePicker />
+      </StylePanelSection>
+      <StylePanelSection>
+        <StylePanelTextAlignPicker />
+        <StylePanelLabelAlignPicker />
+      </StylePanelSection>
+      <StylePanelSection>
+        <StylePanelGeoShapePicker />
+        <StylePanelArrowKindPicker />
+        <StylePanelArrowheadPicker />
+        <StylePanelSplinePicker />
+      </StylePanelSection>
+    </DefaultStylePanel>
+  )
+}
 
 const whiteboardComponents: TLComponents = {
   MainMenu: null,
   PageMenu: null,
+  QuickActions: WhiteboardQuickActions,
+  StylePanel: WhiteboardStylePanel,
+  Toolbar: WhiteboardToolbar,
 }
 
 const whiteboardOptions: TldrawProps["options"] = {
