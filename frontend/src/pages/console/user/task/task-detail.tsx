@@ -852,7 +852,9 @@ export default function TaskDetailPage() {
     if (previousLiveEndedCycleIdRef.current === latestCompletedLiveCycleId) return
 
     previousLiveEndedCycleIdRef.current = latestCompletedLiveCycleId
-    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+    if (!shouldAutoScrollChatRef.current) return
+
+    scheduleChatScrollToBottom("smooth")
   }, [latestCompletedLiveCycleId, scheduleChatScrollToBottom])
 
   React.useEffect(() => {
@@ -862,7 +864,7 @@ export default function TaskDetailPage() {
     previousRunningMessagesSignatureRef.current = runningMessagesSignature
     if (!shouldAutoScrollChatRef.current) return
 
-    scheduleChatScrollToBottom("smooth")
+    scheduleChatScrollToBottom("auto")
   }, [historyLoading, runningMessagesSignature, scheduleChatScrollToBottom])
 
   const detailHeader = (
