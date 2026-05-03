@@ -21,7 +21,7 @@ type ToolCallRenderer = {
   match: (message: MessageType, cli?: ConstsCliName) => boolean
   renderTitle: (message: MessageType) => ReactNode
   renderDetail: (message: MessageType) => ReactNode
-  expandable?: boolean
+  expandable?: boolean | ((message: MessageType) => boolean)
 }
 
 const imageAnalysisCreateTaskTitles = new Set([
@@ -31,6 +31,24 @@ const imageAnalysisCreateTaskTitles = new Set([
 const imageAnalysisGetResultTitles = new Set([
   "monkeycode-ai_MonkeyCode__image_analysis_get_result",
 ])
+
+const getPatchUpdatedFileLabel = (message: MessageType) => {
+  const files = message.data.rawOutput?.metadata?.files
+  if (Array.isArray(files) && files.length > 0) {
+    return files
+      .map((file) => file?.relativePath || file?.filePath)
+      .filter((filePath): filePath is string => typeof filePath === "string" && filePath.trim().length > 0)
+      .join(", ")
+  }
+
+  const title = message.data.title ?? ""
+  return title
+    .split("\n")
+    .slice(1)
+    .map((line) => line.replace(/^[A-Z]+\s+/, "").trim())
+    .filter(Boolean)
+    .join(", ")
+}
 
 const toolCallRenderers: ToolCallRenderer[] = [
   {
@@ -79,6 +97,34 @@ const toolCallRenderers: ToolCallRenderer[] = [
     renderTitle: () => "查看后台任务的运行日志",
     renderDetail: fallbackRender.renderDetail,
     expandable: false,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "apply_patch"
+    ),
+    renderTitle: (message) => {
+      if (message.data.status === "pending") return "正在修改文件"
+      if (message.data.status === "failed") return "修改文件失败"
+      return message.data.title
+    },
+    renderDetail: fallbackRender.renderDetail,
+    expandable: (message) => message.data.status !== "pending" && message.data.status !== "failed",
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && !!message.data.title?.startsWith("Success. Updated the following files:")
+    ),
+    renderTitle: (message) => {
+      const fileLabel = getPatchUpdatedFileLabel(message)
+      return `修改文件${fileLabel ? ` "${fileLabel}"` : ""}`
+    },
+    renderDetail: (message) => (
+      <pre className="whitespace-pre-wrap break-words p-3 text-xs">
+        {message.data.rawInput?.patchText || "暂无 patch 内容"}
+      </pre>
+    ),
   },
   {
     match: (message) => (
@@ -190,8 +236,11 @@ export const ToolCallMessageItem = ({ message, cli }: { message: MessageType, cl
   }, [message, renderer])
 
   const [open, setOpen] = useState(false)
+  const expandable = typeof renderer.expandable === "function"
+    ? renderer.expandable(message)
+    : renderer.expandable
 
-  if (renderer.expandable === false) {
+  if (expandable === false) {
     return (
       <div className="w-full max-w-[80%]">
         <div className="flex items-center gap-1.5 rounded-md border border-border px-3 py-2">
