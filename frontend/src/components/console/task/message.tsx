@@ -99,7 +99,7 @@ const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType,
   }
 
   return (
-    <div className="flex flex-col w-full group">
+    <div className="flex flex-col w-full group" data-message-id={message.id} data-message-type={message.type}>
       {message.role !== 'system' && <div className={cn("text-[10px] text-transparent group-hover:text-muted-foreground transition-colors px-1", message.role === 'user' ? 'text-right' : 'text-left')}>
         {dayjs.unix(normalizeTimestampToSeconds(message.time)).format('MM-DD HH:mm:ss')}
       </div>}
