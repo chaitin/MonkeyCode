@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, useImper
 import { getFileExtension } from "@/utils/common"
 import { cn } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { IconCloudOff, IconFileCode, IconFileDiff, IconFileSymlink, IconFileText, IconFolder, IconFolderOpen, IconFolderRoot, IconLoader, IconPhoto, IconReload, IconReport, IconX } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -43,6 +42,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { parseDiff, Diff, Hunk } from "react-diff-view"
 import "react-diff-view/style/index.css"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 interface TaskFileExplorerProps {
   className?: string
@@ -107,12 +107,6 @@ const MAX_FILE_SIZE = 500 * 1024 // 500KB
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']
 
-const FILE_EXPLORER_SPLIT_LAYOUT_KEY = 'task-file-explorer-split-layout'
-const DEFAULT_FILE_EXPLORER_SPLIT_LAYOUT: Record<string, number> = {
-  'file-list': 40,
-  'file-preview': 60,
-}
-
 const BINARY_EXTENSIONS = [
   ...IMAGE_EXTENSIONS,
   '.mp4', '.webm', '.ogv', '.mov', '.avi', '.mkv', '.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a', '.wma',
@@ -159,39 +153,6 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 function createImageDataUrl(path: string, bytes: Uint8Array): string {
   return `data:${getImageMimeType(path)};base64,${bytesToBase64(bytes)}`
-}
-
-function getStoredFileExplorerSplitLayout(): Record<string, number> {
-  if (typeof window === 'undefined') {
-    return DEFAULT_FILE_EXPLORER_SPLIT_LAYOUT
-  }
-
-  try {
-    const storedLayout = window.localStorage.getItem(FILE_EXPLORER_SPLIT_LAYOUT_KEY)
-    if (!storedLayout) {
-      return DEFAULT_FILE_EXPLORER_SPLIT_LAYOUT
-    }
-
-    const parsedLayout = JSON.parse(storedLayout)
-    if (
-      typeof parsedLayout?.['file-list'] === 'number'
-      && typeof parsedLayout?.['file-preview'] === 'number'
-    ) {
-      return parsedLayout
-    }
-  } catch {
-    // Ignore corrupted persisted layout and fall back to the default split.
-  }
-
-  return DEFAULT_FILE_EXPLORER_SPLIT_LAYOUT
-}
-
-function storeFileExplorerSplitLayout(layout: Record<string, number>) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(FILE_EXPLORER_SPLIT_LAYOUT_KEY, JSON.stringify(layout))
 }
 
 function tryDecodeAsText(bytes: Uint8Array): { text: string; isText: boolean } {
@@ -452,12 +413,7 @@ export const TaskFileExplorer = ({
   const [diffContent, setDiffContent] = useState("")
   const [diffLoading, setDiffLoading] = useState(false)
   const [changesLoading, setChangesLoading] = useState(false)
-  const defaultSplitLayout = useMemo(() => getStoredFileExplorerSplitLayout(), [])
   const sortedChangedPaths = useMemo(() => [...fileChangesMap.keys()].sort((a, b) => a.localeCompare(b)), [fileChangesMap])
-
-  const handleSplitLayoutChanged = useCallback((layout: Record<string, number>) => {
-    storeFileExplorerSplitLayout(layout)
-  }, [])
 
   const refreshFileTree = useCallback(() => {
     pendingTreeRefreshRef.current = true
@@ -606,18 +562,10 @@ export const TaskFileExplorer = ({
 
   const handleFileSelect = useCallback((path: string, file: RepoFileStatus) => {
     if (file.entry_mode === RepoFileEntryMode.RepoEntryModeTree || file.entry_mode === RepoFileEntryMode.RepoEntryModeSubmodule) return
-    if (currentFile?.path === path) {
-      clearCurrentFile()
-      return
-    }
     openFile(path)
-  }, [clearCurrentFile, currentFile?.path, openFile])
+  }, [openFile])
 
   const handleChangedFileSelect = useCallback((path: string) => {
-    if (currentFile?.path === path) {
-      clearCurrentFile()
-      return
-    }
     setFileLoading(false)
     setDiffContent("")
     setDiffLoading(false)
@@ -631,7 +579,7 @@ export const TaskFileExplorer = ({
       isImage: false,
       imageDataUrl: null,
     })
-  }, [clearCurrentFile, currentFile?.path])
+  }, [])
 
   const switchPanelMode = useCallback((mode: FilePanelMode) => {
     if (mode === panelMode) {
@@ -903,6 +851,10 @@ export const TaskFileExplorer = ({
     </div>
   )
 
+  const dialogTitle = currentFile
+    ? panelMode === "changes" ? `文件变更：${currentFile.name}` : `文件预览：${currentFile.name}`
+    : "文件详情"
+
   return (
     <div className={cn("flex flex-col h-full min-h-0", className)}>
       <div className="flex flex-col min-h-0 flex-1 rounded-lg border overflow-hidden bg-background">
@@ -961,28 +913,20 @@ export const TaskFileExplorer = ({
             )}
           </div>
         </div>
-        <div className="flex flex-1 min-h-0">
-          <ResizablePanelGroup orientation="horizontal" defaultLayout={currentFile ? defaultSplitLayout : undefined} onLayoutChanged={currentFile ? handleSplitLayoutChanged : undefined} className="min-h-0">
-            <ResizablePanel
-              id="file-list"
-              defaultSize={currentFile ? "40%" : "100%"}
-              minSize={currentFile ? "20%" : undefined}
-              maxSize={currentFile ? "80%" : undefined}
-              className="flex h-full min-h-0 min-w-0 flex-col"
-            >
-              {fileListPanel}
-            </ResizablePanel>
-            {currentFile && (
-              <>
-                <ResizableHandle withHandle className="shrink-0" />
-                <ResizablePanel id="file-preview" defaultSize="60%" minSize="20%" maxSize="80%" className="flex h-full min-h-0 min-w-0 flex-col">
-                  {previewPanel}
-                </ResizablePanel>
-              </>
-            )}
-          </ResizablePanelGroup>
+        <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+          {fileListPanel}
         </div>
       </div>
+      <Dialog open={!!currentFile} onOpenChange={(open) => { if (!open) clearCurrentFile() }}>
+        <DialogContent className="flex h-[80vh] max-h-[80vh] max-w-[90vw] flex-col overflow-hidden md:max-w-[70vw]">
+          <DialogHeader>
+            <DialogTitle className="truncate">{dialogTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+            {previewPanel}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

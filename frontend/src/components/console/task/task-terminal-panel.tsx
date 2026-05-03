@@ -170,7 +170,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
                 <div
                   key={sid}
                   className={cn(
-                    "group flex items-center gap-2 rounded-md border px-2 py-1 transition-colors",
+                    "group flex items-center gap-2 rounded-md border px-2 transition-colors",
                     isActive
                       ? "border-transparent bg-muted text-foreground"
                       : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -178,7 +178,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
                 >
                   <button
                     type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
                     onClick={() => handleSelectSession(sid)}
                   >
                     {getTabIcon(sid)}
@@ -187,7 +187,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="size-5 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-primary"
+                    className="hidden size-5 shrink-0 group-hover:flex hover:bg-destructive/10 hover:text-primary"
                     onClick={(e) => handleCloseTab(e, sid)}
                   >
                     <IconX className="size-3.5" />

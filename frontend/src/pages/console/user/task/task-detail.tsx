@@ -784,10 +784,33 @@ export default function TaskDetailPage() {
     return () => window.cancelAnimationFrame(frame)
   }, [messages, hasSidePanel, hasBottomTerminal, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
 
-  const scrollChatToTop = React.useCallback(() => {
+  const getUserInputMessageAnchors = React.useCallback(() => {
+    return Array.from(
+      chatContentRef.current?.querySelectorAll<HTMLElement>('[data-message-type="user_input"]') ?? [],
+    )
+  }, [])
+
+  const scrollChatToPreviousUserInput = React.useCallback(() => {
+    const container = getChatScrollContainer()
+    if (!container) return
+
     shouldAutoScrollChatRef.current = false
-    getChatScrollContainer()?.scrollTo({ top: 0, behavior: "smooth" })
-  }, [getChatScrollContainer])
+
+    const containerTop = container.getBoundingClientRect().top
+    const target = getUserInputMessageAnchors()
+      .filter((anchor) => anchor.getBoundingClientRect().top < containerTop - 8)
+      .at(-1)
+
+    if (!target) {
+      container.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+
+    container.scrollTo({
+      top: container.scrollTop + target.getBoundingClientRect().top - containerTop,
+      behavior: "smooth",
+    })
+  }, [getChatScrollContainer, getUserInputMessageAnchors])
 
   const scheduleChatScrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth", options?: { forceAutoScroll?: boolean }) => {
     const container = getChatScrollContainer()
@@ -821,9 +844,24 @@ export default function TaskDetailPage() {
     })
   }, [getChatScrollContainer, updateChatScrollState])
 
-  const scrollChatToBottom = React.useCallback(() => {
-    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
-  }, [scheduleChatScrollToBottom])
+  const scrollChatToNextUserInput = React.useCallback(() => {
+    const container = getChatScrollContainer()
+    if (!container) return
+
+    const containerTop = container.getBoundingClientRect().top
+    const target = getUserInputMessageAnchors().find((anchor) => anchor.getBoundingClientRect().top > containerTop + 8)
+
+    if (!target) {
+      scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+      return
+    }
+
+    shouldAutoScrollChatRef.current = false
+    container.scrollTo({
+      top: container.scrollTop + target.getBoundingClientRect().top - containerTop,
+      behavior: "smooth",
+    })
+  }, [getChatScrollContainer, getUserInputMessageAnchors, scheduleChatScrollToBottom])
 
   React.useEffect(() => {
     return () => {
@@ -852,7 +890,9 @@ export default function TaskDetailPage() {
     if (previousLiveEndedCycleIdRef.current === latestCompletedLiveCycleId) return
 
     previousLiveEndedCycleIdRef.current = latestCompletedLiveCycleId
-    scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
+    if (!shouldAutoScrollChatRef.current) return
+
+    scheduleChatScrollToBottom("smooth")
   }, [latestCompletedLiveCycleId, scheduleChatScrollToBottom])
 
   React.useEffect(() => {
@@ -862,7 +902,7 @@ export default function TaskDetailPage() {
     previousRunningMessagesSignatureRef.current = runningMessagesSignature
     if (!shouldAutoScrollChatRef.current) return
 
-    scheduleChatScrollToBottom("smooth")
+    scheduleChatScrollToBottom("auto")
   }, [historyLoading, runningMessagesSignature, scheduleChatScrollToBottom])
 
   const detailHeader = (
@@ -1226,8 +1266,8 @@ export default function TaskDetailPage() {
                                 size="icon"
                                 variant="secondary"
                                 className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
-                                onClick={scrollChatToTop}
-                                aria-label="滚动到顶部"
+                                onClick={scrollChatToPreviousUserInput}
+                                aria-label="滚动到上一条用户消息"
                               >
                                 <IconArrowUp className="size-4" />
                               </Button>
@@ -1238,8 +1278,8 @@ export default function TaskDetailPage() {
                                 size="icon"
                                 variant="secondary"
                                 className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
-                                onClick={scrollChatToBottom}
-                                aria-label="滚动到底部"
+                                onClick={scrollChatToNextUserInput}
+                                aria-label="滚动到下一条用户消息"
                               >
                                 <IconArrowDown className="size-4" />
                               </Button>

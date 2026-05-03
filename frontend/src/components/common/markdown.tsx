@@ -7,6 +7,8 @@ import rehypeSanitize from "rehype-sanitize"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import mermaid from "mermaid"
 import { Link, useLocation } from "react-router-dom"
+import { IconCopy } from "@tabler/icons-react"
+import { toast } from "sonner"
 import "@/utils/markdown.css"
 import { cn } from "@/lib/utils"
 
@@ -51,14 +53,7 @@ const Mermaid = memo(function Mermaid({ chart }: MermaidProps) {
 
   if (hasError) {
     return (
-      <SyntaxHighlighter
-        language="mermaid"
-        PreTag="pre"
-        wrapLines={true}
-        codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap" } }}
-      >
-        {chart}
-      </SyntaxHighlighter>
+      <CodeBlock code={chart} language="mermaid" />
     )
   }
 
@@ -80,6 +75,44 @@ const MarkdownParagraph: NonNullable<Components["p"]> = ({ children, ...props })
   return <p {...props}>{children}</p>
 }
 
+interface CodeBlockProps {
+  code: string
+  language: string
+}
+
+const CodeBlock = ({ code, language }: CodeBlockProps) => {
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      toast.success("代码已复制到剪贴板")
+    } catch (error) {
+      toast.error("复制代码失败")
+      console.error("复制代码失败:", error)
+    }
+  }
+
+  return (
+    <div className="group/code relative">
+      <button
+        type="button"
+        className="absolute right-2 top-2 z-10 inline-flex size-7 items-center justify-center rounded-md border bg-background/80 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-background hover:text-foreground group-hover/code:opacity-100"
+        onClick={handleCopy}
+        aria-label="复制代码"
+      >
+        <IconCopy className="size-4" />
+      </button>
+      <SyntaxHighlighter
+        language={language}
+        PreTag="pre"
+        wrapLines={true}
+        codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap" } }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </div>
+  )
+}
+
 const MarkdownCodeBlock: NonNullable<Components["pre"]> = ({ children }) => {
   const childElement = children as React.ReactElement | undefined
   const props = childElement?.props as { children?: string; className?: string } | undefined
@@ -90,16 +123,7 @@ const MarkdownCodeBlock: NonNullable<Components["pre"]> = ({ children }) => {
     return <Mermaid chart={String(code).trim()} />
   }
 
-  return (
-    <SyntaxHighlighter
-      language={language}
-      PreTag="pre"
-      wrapLines={true}
-      codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap" } }}
-    >
-      {code}
-    </SyntaxHighlighter>
-  )
+  return <CodeBlock code={String(code)} language={language} />
 }
 
 interface MarkdownProps {
