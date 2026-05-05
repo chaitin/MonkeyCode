@@ -313,6 +313,19 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     if (isComposing) {
       return
     }
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault()
+      const textarea = e.currentTarget
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const nextContent = `${content.slice(0, start)}\n${content.slice(end)}`
+      setContent(nextContent)
+      requestAnimationFrame(() => {
+        textarea.selectionStart = start + 1
+        textarea.selectionEnd = start + 1
+      })
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -360,7 +373,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
         {!isExecuting && (
           <InputGroupTextarea
             ref={textareaRef}
-            className="min-h-8 max-h-48 text-sm break-all"
+            className="min-h-8 max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content]"
             placeholder="描述你的需求，Shift+Enter 换行，Enter 发送。"
             value={content}
             onChange={(e) => setContent(e.target.value)} 
