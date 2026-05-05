@@ -16,6 +16,7 @@ import * as internalReportUserAbuseRender from "./toolcalls/internal_report_user
 import * as internalWebsearchRender from "./toolcalls/internal_websearch"
 import * as internalImgsearchRender from "./toolcalls/internal_imgsearch"
 import * as internalImageAnalysisRender from "./toolcalls/internal_image_analysis"
+import { UnifiedDiffViewer } from "./unified-diff-viewer"
 
 type ToolCallRenderer = {
   match: (message: MessageType, cli?: ConstsCliName) => boolean
@@ -48,6 +49,26 @@ const getPatchUpdatedFileLabel = (message: MessageType) => {
     .map((line) => line.replace(/^[A-Z]+\s+/, "").trim())
     .filter(Boolean)
     .join(", ")
+}
+
+const getPatchUpdatedDiff = (message: MessageType) => {
+  const diff = message.data.rawOutput?.metadata?.diff
+  if (typeof diff === "string" && diff.trim().length > 0) {
+    return diff
+  }
+
+  const files = message.data.rawOutput?.metadata?.files
+  if (Array.isArray(files)) {
+    const fileDiff = files
+      .map((file) => file?.patch)
+      .filter((patch): patch is string => typeof patch === "string" && patch.trim().length > 0)
+      .join("\n")
+    if (fileDiff.trim().length > 0) {
+      return fileDiff
+    }
+  }
+
+  return ""
 }
 
 const toolCallRenderers: ToolCallRenderer[] = [
@@ -120,11 +141,18 @@ const toolCallRenderers: ToolCallRenderer[] = [
       const fileLabel = getPatchUpdatedFileLabel(message)
       return `修改文件${fileLabel ? ` "${fileLabel}"` : ""}`
     },
-    renderDetail: (message) => (
-      <pre className="whitespace-pre-wrap break-words p-3 text-xs">
-        {message.data.rawInput?.patchText || "暂无 patch 内容"}
-      </pre>
-    ),
+    renderDetail: (message) => {
+      const diff = getPatchUpdatedDiff(message)
+      if (diff) {
+        return <UnifiedDiffViewer diffText={diff} />
+      }
+
+      return (
+        <pre className="whitespace-pre-wrap break-words p-3 text-xs">
+          {message.data.rawInput?.patchText || "暂无 patch 内容"}
+        </pre>
+      )
+    },
   },
   {
     match: (message) => (

@@ -40,9 +40,8 @@ import React from "react"
 import { toast } from "sonner"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { parseDiff, Diff, Hunk } from "react-diff-view"
-import "react-diff-view/style/index.css"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { UnifiedDiffViewer } from "./unified-diff-viewer"
 
 interface TaskFileExplorerProps {
   className?: string
@@ -610,49 +609,7 @@ export const TaskFileExplorer = ({
 
   const renderFileDiff = () => {
     if (!currentFile) return null
-    if (diffLoading) {
-      return (
-        <Empty className="w-full h-full min-h-0">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <IconLoader className="size-6 animate-spin" />
-            </EmptyMedia>
-            <EmptyDescription>加载中...</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )
-    }
-
-    const diffFiles = diffContent ? parseDiff(diffContent) : []
-    if (diffFiles.length > 0 && diffFiles.some((file) => file.hunks?.length)) {
-      return (
-        <div className="h-full overflow-auto" style={{ "--diff-font-family": "var(--font-code)" } as React.CSSProperties}>
-          <style>{`
-            .task-file-preview-diff .diff-line td:nth-child(2) {
-              border-left: 1px var(--border) solid;
-            }
-          `}</style>
-          <div className="text-xs rounded-md overflow-x-auto bg-muted/30">
-            {diffFiles.map((file, index) => (
-              <Diff key={index} viewType="split" diffType={file.type} hunks={file.hunks} gutterType="none" hunkClassName="task-file-preview-diff">
-                {(hunks) => hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)}
-              </Diff>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <Empty className="w-full h-full min-h-0">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <IconReport className="size-6" />
-          </EmptyMedia>
-          <EmptyDescription>当前文件暂无变更</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    )
+    return <UnifiedDiffViewer diffText={diffContent} loading={diffLoading} />
   }
 
   const renderFileContent = () => {
