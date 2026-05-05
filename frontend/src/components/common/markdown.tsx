@@ -105,7 +105,8 @@ const CodeBlock = ({ code, language }: CodeBlockProps) => {
         language={language}
         PreTag="pre"
         wrapLines={true}
-        codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap" } }}
+        customStyle={{ textShadow: "none" }}
+        codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap", textShadow: "none" } }}
       >
         {code}
       </SyntaxHighlighter>

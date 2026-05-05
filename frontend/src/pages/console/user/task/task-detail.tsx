@@ -534,10 +534,6 @@ export default function TaskDetailPage() {
           messageHandler.pushChunks(resp.data?.chunks ?? [])
           const messageState = messageHandler.finalizeCycle()
           setRawHistoryMessages((prev) => [...messageState.messages, ...prev])
-          setContextUsage((prev) => ({
-            size: messageState.contextUsage.size ?? prev.size,
-            used: messageState.contextUsage.used ?? prev.used,
-          }))
           setHistoryCursorReady(true)
           setHistoryCursor(resp.data?.next_cursor ?? null)
           setHistoryHasMore(resp.data?.has_more ?? false)
@@ -689,6 +685,7 @@ export default function TaskDetailPage() {
 
     if (success) {
       setResetContextDialogOpen(false)
+      setContextUsage((prev) => ({ ...prev, used: 0 }))
       toast.success("上下文已重置")
       return
     }
@@ -711,6 +708,9 @@ export default function TaskDetailPage() {
 
     if (success) {
       setRestartAgentDialogOpen(false)
+      if (restartAgentClearContext) {
+        setContextUsage((prev) => ({ ...prev, used: 0 }))
+      }
       toast.success(restartAgentClearContext ? "Agent 已重启，上下文已清空" : "Agent 已重启")
       return
     }
