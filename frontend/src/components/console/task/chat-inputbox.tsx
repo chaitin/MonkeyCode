@@ -460,57 +460,53 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              {!isExecuting && (
-                <>
-                  {canUploadMoreFiles && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          className="rounded-full"
-                          disabled={controlsDisabled}
-                          aria-label="上传附件"
-                          onClick={handleSelectFile}
-                        >
-                          <IconUpload />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>上传附件</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        className="rounded-full"
-                        disabled={controlsDisabled}
-                        aria-label="画板"
-                        onClick={() => setWhiteboardDialogOpen(true)}
-                      >
-                        <IconPalette />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>画板</TooltipContent>
-                  </Tooltip>
-                  {uploadedFiles.map((uploadedFile) => (
-                    <TaskUploadedFileItem
-                      key={uploadedFile.accessUrl}
-                      file={uploadedFile}
-                      onPreview={() => setPreviewFile(uploadedFile)}
-                      onRemove={() => {
-                        if (previewFile?.accessUrl === uploadedFile.accessUrl) {
-                          setPreviewFile(null)
-                        }
-                        setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
-                      }}
-                    />
-                  ))}
-                </>
+              {canUploadMoreFiles && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      className="rounded-full"
+                      disabled={controlsDisabled}
+                      aria-label="上传附件"
+                      onClick={handleSelectFile}
+                    >
+                      <IconUpload />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>上传附件</TooltipContent>
+                </Tooltip>
               )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="rounded-full"
+                    disabled={controlsDisabled}
+                    aria-label="画板"
+                    onClick={() => setWhiteboardDialogOpen(true)}
+                  >
+                    <IconPalette />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>画板</TooltipContent>
+              </Tooltip>
+              {uploadedFiles.map((uploadedFile) => (
+                <TaskUploadedFileItem
+                  key={uploadedFile.accessUrl}
+                  file={uploadedFile}
+                  onPreview={() => setPreviewFile(uploadedFile)}
+                  onRemove={() => {
+                    if (previewFile?.accessUrl === uploadedFile.accessUrl) {
+                      setPreviewFile(null)
+                    }
+                    setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
+                  }}
+                />
+              ))}
             </div>
             <div className="flex flex-row gap-2 items-center min-w-0">
               {isExecuting && (
