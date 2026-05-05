@@ -56,9 +56,25 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
+  const wasExecutingRef = useRef(isExecuting)
+  const restoreSubmittedInputOnIdleRef = useRef(false)
+  const lastSubmittedInputRef = useRef<{ content: string; uploadedFiles: TaskUploadedFile[] } | null>(null)
   const canInput = React.useMemo(() => {
     return !sending && !isExecuting && queueSize === 0
   }, [sending, isExecuting, queueSize])
+
+  React.useEffect(() => {
+    if (wasExecutingRef.current && !isExecuting && restoreSubmittedInputOnIdleRef.current) {
+      const lastSubmittedInput = lastSubmittedInputRef.current
+      if (lastSubmittedInput) {
+        setContent(lastSubmittedInput.content)
+        setUploadedFiles(lastSubmittedInput.uploadedFiles)
+        setPreviewFile(null)
+      }
+      restoreSubmittedInputOnIdleRef.current = false
+    }
+    wasExecutingRef.current = isExecuting
+  }, [isExecuting])
 
   const sendCurrentInput = async () => {
     if (content.trim() === '') {
@@ -77,10 +93,20 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return
     }
 
+    lastSubmittedInputRef.current = {
+      content,
+      uploadedFiles,
+    }
+    restoreSubmittedInputOnIdleRef.current = false
     setContent('')
     setUploadedFiles([])
     setPreviewFile(null)
     setWhiteboardFileIndex(1)
+  }
+
+  const handleCancel = () => {
+    restoreSubmittedInputOnIdleRef.current = true
+    onCancel?.()
   }
 
   const handleSend = () => {
@@ -503,7 +529,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 className={cn("flex flex-row gap-2 items-center", isExecuting && "rounded-full")}
                 variant={isExecuting ? "destructive" : "default"}
                 size={isExecuting ? "icon-sm" : "sm"} 
-                onClick={isExecuting ? onCancel : handleSend}
+                onClick={isExecuting ? handleCancel : handleSend}
                 disabled={isExecuting ? !onCancel : !canSend || inputDisabled}
               >
                 {isExecuting ? <IconPlayerStopFilled /> : <IconSend />}
