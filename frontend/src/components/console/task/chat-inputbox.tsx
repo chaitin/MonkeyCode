@@ -56,9 +56,25 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
+  const wasExecutingRef = useRef(isExecuting)
+  const restoreSubmittedInputOnIdleRef = useRef(false)
+  const lastSubmittedInputRef = useRef<{ content: string; uploadedFiles: TaskUploadedFile[] } | null>(null)
   const canInput = React.useMemo(() => {
     return !sending && !isExecuting && queueSize === 0
   }, [sending, isExecuting, queueSize])
+
+  React.useEffect(() => {
+    if (wasExecutingRef.current && !isExecuting && restoreSubmittedInputOnIdleRef.current) {
+      const lastSubmittedInput = lastSubmittedInputRef.current
+      if (lastSubmittedInput) {
+        setContent(lastSubmittedInput.content)
+        setUploadedFiles(lastSubmittedInput.uploadedFiles)
+        setPreviewFile(null)
+      }
+      restoreSubmittedInputOnIdleRef.current = false
+    }
+    wasExecutingRef.current = isExecuting
+  }, [isExecuting])
 
   const sendCurrentInput = async () => {
     if (content.trim() === '') {
@@ -77,10 +93,20 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return
     }
 
+    lastSubmittedInputRef.current = {
+      content,
+      uploadedFiles,
+    }
+    restoreSubmittedInputOnIdleRef.current = false
     setContent('')
     setUploadedFiles([])
     setPreviewFile(null)
     setWhiteboardFileIndex(1)
+  }
+
+  const handleCancel = () => {
+    restoreSubmittedInputOnIdleRef.current = true
+    onCancel?.()
   }
 
   const handleSend = () => {
@@ -313,6 +339,19 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     if (isComposing) {
       return
     }
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault()
+      const textarea = e.currentTarget
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const nextContent = `${content.slice(0, start)}\n${content.slice(end)}`
+      setContent(nextContent)
+      requestAnimationFrame(() => {
+        textarea.selectionStart = start + 1
+        textarea.selectionEnd = start + 1
+      })
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -360,7 +399,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
         {!isExecuting && (
           <InputGroupTextarea
             ref={textareaRef}
-            className="min-h-8 max-h-48 text-sm break-all"
+            className="min-h-8 max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content]"
             placeholder="描述你的需求，Shift+Enter 换行，Enter 发送。"
             value={content}
             onChange={(e) => setContent(e.target.value)} 
@@ -421,57 +460,53 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              {!isExecuting && (
-                <>
-                  {canUploadMoreFiles && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          className="rounded-full"
-                          disabled={controlsDisabled}
-                          aria-label="上传附件"
-                          onClick={handleSelectFile}
-                        >
-                          <IconUpload />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>上传附件</TooltipContent>
-                    </Tooltip>
-                  )}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon-sm"
-                        className="rounded-full"
-                        disabled={controlsDisabled}
-                        aria-label="画板"
-                        onClick={() => setWhiteboardDialogOpen(true)}
-                      >
-                        <IconPalette />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>画板</TooltipContent>
-                  </Tooltip>
-                  {uploadedFiles.map((uploadedFile) => (
-                    <TaskUploadedFileItem
-                      key={uploadedFile.accessUrl}
-                      file={uploadedFile}
-                      onPreview={() => setPreviewFile(uploadedFile)}
-                      onRemove={() => {
-                        if (previewFile?.accessUrl === uploadedFile.accessUrl) {
-                          setPreviewFile(null)
-                        }
-                        setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
-                      }}
-                    />
-                  ))}
-                </>
+              {canUploadMoreFiles && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      className="rounded-full"
+                      disabled={controlsDisabled}
+                      aria-label="上传附件"
+                      onClick={handleSelectFile}
+                    >
+                      <IconUpload />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>上传附件</TooltipContent>
+                </Tooltip>
               )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    className="rounded-full"
+                    disabled={controlsDisabled}
+                    aria-label="画板"
+                    onClick={() => setWhiteboardDialogOpen(true)}
+                  >
+                    <IconPalette />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>画板</TooltipContent>
+              </Tooltip>
+              {uploadedFiles.map((uploadedFile) => (
+                <TaskUploadedFileItem
+                  key={uploadedFile.accessUrl}
+                  file={uploadedFile}
+                  onPreview={() => setPreviewFile(uploadedFile)}
+                  onRemove={() => {
+                    if (previewFile?.accessUrl === uploadedFile.accessUrl) {
+                      setPreviewFile(null)
+                    }
+                    setUploadedFiles((prev) => prev.filter((file) => file.accessUrl !== uploadedFile.accessUrl))
+                  }}
+                />
+              ))}
             </div>
             <div className="flex flex-row gap-2 items-center min-w-0">
               {isExecuting && (
@@ -490,7 +525,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 className={cn("flex flex-row gap-2 items-center", isExecuting && "rounded-full")}
                 variant={isExecuting ? "destructive" : "default"}
                 size={isExecuting ? "icon-sm" : "sm"} 
-                onClick={isExecuting ? onCancel : handleSend}
+                onClick={isExecuting ? handleCancel : handleSend}
                 disabled={isExecuting ? !onCancel : !canSend || inputDisabled}
               >
                 {isExecuting ? <IconPlayerStopFilled /> : <IconSend />}

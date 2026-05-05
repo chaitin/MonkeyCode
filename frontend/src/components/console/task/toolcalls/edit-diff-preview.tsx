@@ -1,6 +1,5 @@
 import { createPatch } from "diff"
-import { Diff, Hunk, parseDiff } from "react-diff-view"
-import "react-diff-view/style/index.css"
+import { UnifiedDiffViewer, type DiffViewMode } from "../unified-diff-viewer"
 
 const PATCH_OPTIONS = {
   headerOptions: {
@@ -45,11 +44,10 @@ const buildPreview = (filePath: unknown, oldValue: unknown, newValue: unknown) =
 
   try {
     const diffText = createPatch(safePath, oldText, newText, "", "", PATCH_OPTIONS)
-    const files = diffText ? parseDiff(diffText) : []
 
     return {
       error: null,
-      files,
+      diffText,
       oldText,
       newText,
       safePath,
@@ -57,7 +55,7 @@ const buildPreview = (filePath: unknown, oldValue: unknown, newValue: unknown) =
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "diff 解析失败",
-      files: [],
+      diffText: "",
       oldText,
       newText,
       safePath,
@@ -78,8 +76,9 @@ export const EditDiffPreview = ({
   hunkClassName?: string
   padded?: boolean
 }) => {
-  const { error, files, oldText, newText, safePath } = buildPreview(filePath, oldValue, newValue)
+  const { error, diffText, oldText, newText, safePath } = buildPreview(filePath, oldValue, newValue)
   const hasChanges = oldText !== newText
+  const viewMode: DiffViewMode = !oldText ? "unified" : "split"
 
   if (error) {
     return (
@@ -94,7 +93,7 @@ export const EditDiffPreview = ({
     )
   }
 
-  if (files.length === 0 || files.every((file) => file.hunks.length === 0)) {
+  if (!diffText.trim()) {
     return (
       <div className={padded ? "p-3 text-muted-foreground" : "text-muted-foreground"}>
         {hasChanges ? "未生成可展示的 diff" : "未检测到文本差异"}
@@ -103,19 +102,8 @@ export const EditDiffPreview = ({
   }
 
   return (
-    <>
-      {files.map((file, index) => (
-        <Diff
-          key={`${safePath}-${index}`}
-          viewType={!oldText ? "unified" : "split"}
-          diffType={file.type}
-          hunks={file.hunks}
-          gutterType="none"
-          hunkClassName={hunkClassName}
-        >
-          {(hunks) => hunks.map((hunk) => <Hunk key={hunk.content} hunk={hunk} />)}
-        </Diff>
-      ))}
-    </>
+    <div className={padded ? "p-3" : undefined} data-hunk-class-name={hunkClassName}>
+      <UnifiedDiffViewer diffText={diffText} viewMode={viewMode} />
+    </div>
   )
 }
