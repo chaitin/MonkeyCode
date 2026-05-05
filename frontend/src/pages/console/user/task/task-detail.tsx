@@ -1260,30 +1260,28 @@ export default function TaskDetailPage() {
                       <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
                         <div className={cn("relative h-full", hasSidePanel ? "w-full" : "mx-auto max-w-[960px]")}>
                           <div className="pointer-events-auto absolute top-1/2 right-1 flex -translate-y-1/2 flex-col gap-2">
-                            {!chatAtTop && (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="secondary"
-                                className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
-                                onClick={scrollChatToPreviousUserInput}
-                                aria-label="滚动到上一条用户消息"
-                              >
-                                <IconArrowUp className="size-4" />
-                              </Button>
-                            )}
-                            {!chatAtBottom && (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="secondary"
-                                className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer"
-                                onClick={scrollChatToNextUserInput}
-                                aria-label="滚动到下一条用户消息"
-                              >
-                                <IconArrowDown className="size-4" />
-                              </Button>
-                            )}
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-25"
+                              onClick={scrollChatToPreviousUserInput}
+                              disabled={chatAtTop}
+                              aria-label="滚动到上一条用户消息"
+                            >
+                              <IconArrowUp className="size-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-25"
+                              onClick={scrollChatToNextUserInput}
+                              disabled={chatAtBottom}
+                              aria-label="滚动到下一条用户消息"
+                            >
+                              <IconArrowDown className="size-4" />
+                            </Button>
                           </div>
                         </div>
                       </div>
