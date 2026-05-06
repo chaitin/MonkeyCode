@@ -239,6 +239,11 @@ export default function NavBalance({
     { credits: 50000, price: 200, originalPrice: 250, discountLabel: "8 折" },
     { credits: 300000, price: 1000, originalPrice: 1500, discountLabel: "6.7 折" },
   ]
+  const isRenewingCurrentPlan = confirmSubscriptionPlan === "pro"
+    ? isProPlan
+    : confirmSubscriptionPlan === "ultra"
+      ? isFlagshipPlan
+      : false
 
   const getTransactionLabel = (kind?: ConstsTransactionKind) => {
     switch (kind) {
@@ -989,14 +994,14 @@ export default function NavBalance({
                 <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
               </div>
             </div>
-            {isProPlan ? null : isFlagshipPlan ? null : (
+            {isFlagshipPlan ? null : (
                 <Button
                   className="mt-5 w-full"
                   onClick={() => setConfirmSubscriptionPlan("pro")}
                   disabled={isProLoading}
                 >
                   {isProLoading && <Spinner />}
-                开通专业版
+                {isProPlan ? "续一个月" : "开通专业版"}
               </Button>
             )}
           </div>
@@ -1024,16 +1029,14 @@ export default function NavBalance({
                 <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
               </div>
             </div>
-            {isFlagshipPlan ? null : (
-                <Button
-                  className="mt-5 w-full"
-                  onClick={() => setConfirmSubscriptionPlan("ultra")}
-                  disabled={isFlagshipLoading}
-                >
-                  {isFlagshipLoading && <Spinner />}
-                开通旗舰版
-              </Button>
-            )}
+            <Button
+              className="mt-5 w-full"
+              onClick={() => setConfirmSubscriptionPlan("ultra")}
+              disabled={isFlagshipLoading}
+            >
+              {isFlagshipLoading && <Spinner />}
+              {isFlagshipPlan ? "续一个月" : "开通旗舰版"}
+            </Button>
           </div>
       </div>
     </div>
@@ -1424,12 +1427,12 @@ export default function NavBalance({
       <AlertDialog open={confirmSubscriptionPlan !== null} onOpenChange={(open) => !open && setConfirmSubscriptionPlan(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认开通套餐</AlertDialogTitle>
+            <AlertDialogTitle>{isRenewingCurrentPlan ? "确认续费套餐" : "确认开通套餐"}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmSubscriptionPlan === "pro"
-                ? `确认开通专业版，价格为 ${formatPlanPoints(proSubscriptionPrice)}积分/月？`
+                ? `确认${isRenewingCurrentPlan ? "续费" : "开通"}专业版，价格为 ${formatPlanPoints(proSubscriptionPrice)}积分/月？`
                 : confirmSubscriptionPlan === "ultra"
-                  ? `确认开通旗舰版，价格为 ${formatPlanPoints(flagshipSubscriptionPrice)}积分/月？`
+                  ? `确认${isRenewingCurrentPlan ? "续费" : "开通"}旗舰版，价格为 ${formatPlanPoints(flagshipSubscriptionPrice)}积分/月？`
                   : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
