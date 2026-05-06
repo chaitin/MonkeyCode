@@ -2,7 +2,7 @@ import { useAuth } from "@/components/auth-provider";
 import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { IconArrowRight, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconSend } from "@tabler/icons-react";
+import { IconArrowRight, IconCoins, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend } from "@tabler/icons-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
@@ -208,54 +208,116 @@ const testimonialItems: Array<{
   },
 ];
 
-const pricingTiers = [
+type PricingFeature = {
+  label: string;
+  muted?: boolean;
+  tooltip?: string;
+};
+
+const modelFeatureTooltips = {
+  basic: "能力对标国内一线厂商的上一代主力模型，如 qwen3.5-plus，minimax-m2.5, kimi-k2.5, glm-4.7 等",
+  pro: "能力对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等",
+  flagship: "能力对标国际一线厂商的主力模型，如 gpt-5.4, claude-opus-4.6 等",
+};
+
+type PricingTier = {
+  name: string;
+  cmd: string;
+  monthlyPrice: string;
+  monthlyUnit: string;
+  yearlyPrice: string;
+  yearlyUnit: string;
+  yearlyDiscount: string;
+  desc: string;
+  features: PricingFeature[];
+  cta: string;
+  ctaTo: string;
+  featured?: boolean;
+};
+
+const pricingTiers: PricingTier[] = [
   {
     name: "基础版",
     cmd: "monkey account --free",
-    price: "¥0",
-    unit: "永久免费",
-    sub: "永久免费",
-    desc: "可直接免费使用，适合轻度体验。",
-    features: ["1 个并发任务", "云开发环境 1C / 4GB", "支持部分大模型", "注册赠送 5000 积分"],
+    monthlyPrice: "¥0",
+    monthlyUnit: "永久免费",
+    yearlyPrice: "¥0",
+    yearlyUnit: "永久免费",
+    yearlyDiscount: "",
+    desc: "免费可用，适合轻量办公和简单开发任务。",
+    features: [
+      { label: "1 个任务并发" },
+      { label: "云开发环境 1C / 4G" },
+      { label: "基础模型：每天 1000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "专业模型：无额度", muted: true, tooltip: modelFeatureTooltips.pro },
+      { label: "旗舰模型：无额度", muted: true, tooltip: modelFeatureTooltips.flagship },
+      { label: "不赠送积分", muted: true },
+    ],
     cta: "免费开始",
     ctaTo: "/console",
   },
   {
     name: "专业版",
     cmd: "monkey account --pro",
-    price: "10,000",
-    unit: "积分 / 月",
-    sub: "≈ ¥50 / 月",
-    desc: "适合日常开发，能力更强，额度适中。",
-    features: ["3 个并发任务", "云开发环境 2C / 8GB", "每天赠送 2,000 积分（当日有效）", "可使用全部大模型", "AI 响应速度更快", "更多内置 AI 能力"],
+    monthlyPrice: "¥49",
+    monthlyUnit: "/ 月",
+    yearlyPrice: "¥499",
+    yearlyUnit: "/ 年",
+    yearlyDiscount: "8.3 折",
+    desc: "适合日常高频使用。",
+    features: [
+      { label: "3 个任务并发" },
+      { label: "云开发环境 2C / 8G" },
+      { label: "基础模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "专业模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.pro },
+      { label: "旗舰模型：无额度", muted: true, tooltip: modelFeatureTooltips.flagship },
+      { label: "每月赠送 1 万积分" },
+    ],
     cta: "订阅专业版",
     ctaTo: "/console",
-    featured: true,
   },
   {
     name: "旗舰版",
     cmd: "monkey account --ultra",
-    price: "100,000",
-    unit: "积分 / 月",
-    sub: "≈ ¥400 / 月",
-    desc: "适合重度使用，能力更强，额度更高。",
-    features: ["3 个并发任务", "云开发环境 2C / 8GB", "每天赠送 30,000 积分（当日有效）", "可使用全部大模型", "AI 响应速度更快", "更多内置 AI 能力"],
+    monthlyPrice: "¥499",
+    monthlyUnit: "/ 月",
+    yearlyPrice: "¥4999",
+    yearlyUnit: "/ 年",
+    yearlyDiscount: "8.3 折",
+    desc: "面向专业开发者和重度用户。",
+    features: [
+      { label: "3 个任务并发" },
+      { label: "云开发环境 2C / 8G" },
+      { label: "基础模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "专业模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.pro },
+      { label: "旗舰模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.flagship },
+      { label: "每月赠送 10 万积分" },
+    ],
     cta: "订阅旗舰版",
     ctaTo: "/console",
+    featured: true,
   },
 ];
 
+const billingOptions = [
+  { value: "monthly", label: "按月购买" },
+  { value: "yearly", label: "按年购买" },
+] as const;
+
+type BillingPeriod = (typeof billingOptions)[number]["value"];
+
 const earnWays = [
-  { icon: "★", label: "注册即送", value: "5000 积分" },
   { icon: "↗", label: "每邀请 1 位新用户", value: "+5000 积分" },
-  { icon: "✓", label: "每日签到", value: "持续积累" },
-  { icon: "✎", label: "分享使用故事", value: "1 万 - 10 万积分" },
+  { icon: "✓", label: "每日签到", value: "每日 100 积分" },
+  { icon: "✎", label: "征文投稿", value: "1 万 - 10 万积分" },
+  { icon: "#", label: "其他社区活动", value: "加入社区交流群", valueTo: "#community" },
 ];
 
 const rechargeTiers = [
-  { amount: "¥50", points: "1 万积分", extra: "" },
-  { amount: "¥200", points: "5 万积分", extra: "8 折" },
-  { amount: "¥1000", points: "30 万积分", extra: "6.7 折" },
+  { amount: "¥10", points: "2,000 积分", extra: "无折扣" },
+  { amount: "¥50", points: "15,000 积分", extra: "6.7 折" },
+  { amount: "¥250", points: "100,000 积分", extra: "5.0 折" },
+  { amount: "¥1000", points: "500,000 积分", extra: "4.0 折" },
 ];
 
 const faqItems = [
@@ -316,6 +378,7 @@ function SectionShell({
   label,
   title,
   subtitle,
+  action,
   children,
 }: {
   id: string;
@@ -323,6 +386,7 @@ function SectionShell({
   label: string;
   title: string;
   subtitle?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -332,9 +396,12 @@ function SectionShell({
         <span className="text-[11px] tracking-[0.22em] text-[var(--a-fg-mute)]">// {label}</span>
         <div className="h-px flex-1 bg-gradient-to-r from-[var(--a-line-2)] to-transparent" />
       </div>
-      <h2 className="max-w-[820px] text-3xl font-semibold leading-[1.08] tracking-[-0.03em] text-[var(--a-fg)] sm:text-4xl lg:text-[44px]">
-        {title}
-      </h2>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <h2 className="max-w-[820px] text-3xl font-semibold leading-[1.08] tracking-[-0.03em] text-[var(--a-fg)] sm:text-4xl lg:text-[44px]">
+          {title}
+        </h2>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
       {subtitle ? (
         <p className="mt-4 w-full text-sm leading-7 text-[var(--a-fg-dim)] sm:text-[15px] sm:leading-8">
           {subtitle}
@@ -407,6 +474,7 @@ function HeaderAction({
 export default function TerminalNativePage() {
   const { isLoggedIn } = useAuth();
   const [openFaq, setOpenFaq] = React.useState(0);
+  const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
 
   return (
     <div
@@ -647,60 +715,103 @@ export default function TerminalNativePage() {
           index="05"
           label="PRICING"
           title="套餐与费用"
-          subtitle="个人用户可以直接免费使用；需要更高额度或团队能力时，再按积分灵活升级。"
-        >
-          <div className="grid gap-4 xl:grid-cols-3">
-            {pricingTiers.map((tier) => (
-              <div
-                key={tier.name}
-                className={cn(
-                  "relative flex h-full flex-col rounded-md border p-7",
-                  tier.featured
-                    ? "border-[var(--a-accent-dim)] bg-[var(--a-panel)] shadow-[0_0_40px_rgba(124,242,156,0.1)]"
-                    : "border-[var(--a-line)] bg-[var(--a-bg-2)]"
-                )}
-              >
-                {tier.featured ? (
-                  <div className="absolute right-5 top-[-10px] rounded bg-[var(--a-accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.1em] text-[var(--a-bg)]">
-                    推荐
-                  </div>
-                ) : null}
-                <div className="text-[11px] tracking-[0.08em] text-[var(--a-fg-mute)]">$ {tier.cmd}</div>
-                <div className="mt-2 text-[22px] font-semibold text-[var(--a-fg)]">{tier.name}</div>
-                <div className="mt-5 flex items-end gap-2">
-                  <span
-                    className={cn(
-                      "font-semibold leading-none tracking-[-0.04em] text-[var(--a-accent)]",
-                      tier.price.length > 5 ? "text-[32px]" : "text-[40px]"
-                    )}
-                  >
-                    {tier.price}
-                  </span>
-                  <span className="pb-1 text-sm text-[var(--a-fg-dim)]">{tier.unit}</span>
-                </div>
-                {tier.sub ? <div className="mt-1 text-[11px] tracking-[0.04em] text-[var(--a-fg-mute)]">{tier.sub}</div> : null}
-                <p className="mt-4 text-[12.5px] leading-[1.6] text-[var(--a-fg-dim)]">{tier.desc}</p>
-                <div className="mt-5 flex-1 space-y-2">
-                  {tier.features.map((feature) => (
-                    <div key={feature} className="text-[12.5px] text-[var(--a-fg)]">
-                      <span className="mr-2 text-[var(--a-accent)]">✓</span>
-                      {feature}
-                    </div>
-                  ))}
-                </div>
-                <Link
-                  to={tier.ctaTo}
+          subtitle="个人用户可以直接免费使用；需要更高额度或团队能力时，可以按月或按年购买套餐。"
+          action={
+            <div className="inline-flex rounded-md border border-[var(--a-line-2)] bg-[var(--a-bg-2)] p-1">
+              {billingOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setBillingPeriod(option.value)}
                   className={cn(
-                    "mt-6 inline-flex w-full items-center justify-center rounded border px-4 py-3 text-sm font-semibold transition-colors",
-                    tier.featured
-                      ? "border-transparent bg-[var(--a-accent)] text-[var(--a-bg)] hover:bg-[#93f7ae]"
-                      : "border-[var(--a-line-2)] text-[var(--a-fg)] hover:bg-[#162019]"
+                    "rounded px-3 py-2 text-sm font-semibold transition-colors",
+                    billingPeriod === option.value
+                      ? "bg-[var(--a-accent)] text-[var(--a-bg)]"
+                      : "text-[var(--a-fg-dim)] hover:text-[var(--a-fg)]"
                   )}
                 >
-                  {tier.cta} →
-                </Link>
-              </div>
-            ))}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          <div className="grid gap-4 xl:grid-cols-3">
+            {pricingTiers.map((tier) => {
+              const price = billingPeriod === "monthly" ? tier.monthlyPrice : tier.yearlyPrice;
+              const unit = billingPeriod === "monthly" ? tier.monthlyUnit : tier.yearlyUnit;
+              const discount = billingPeriod === "yearly" ? tier.yearlyDiscount : "";
+
+              return (
+                <div
+                  key={tier.name}
+                  className={cn(
+                    "relative flex h-full flex-col rounded-md border p-7",
+                    tier.featured
+                      ? "border-[var(--a-accent-dim)] bg-[var(--a-panel)] shadow-[0_0_40px_rgba(124,242,156,0.1)]"
+                      : "border-[var(--a-line)] bg-[var(--a-bg-2)]"
+                  )}
+                >
+                  {tier.featured ? (
+                    <div className="absolute right-5 top-[-10px] rounded bg-[var(--a-accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.1em] text-[var(--a-bg)]">
+                      推荐
+                    </div>
+                  ) : null}
+                  <div className="text-[11px] tracking-[0.08em] text-[var(--a-fg-mute)]">$ {tier.cmd}</div>
+                  <div className="mt-2 text-[22px] font-semibold text-[var(--a-fg)]">{tier.name}</div>
+                  <div className="mt-5 flex items-end gap-2">
+                    <span
+                      className={cn(
+                        "font-semibold leading-none tracking-[-0.04em] text-[var(--a-accent)]",
+                        price.length > 5 ? "text-[32px]" : "text-[40px]"
+                      )}
+                    >
+                      {price}
+                    </span>
+                    <span className="pb-1 text-sm text-[var(--a-fg-dim)]">{unit}</span>
+                    {discount ? (
+                      <span className="mb-1 rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] font-semibold tracking-[0.04em] text-[var(--a-accent)]">
+                        {discount}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-4 text-[12.5px] leading-[1.6] text-[var(--a-fg-dim)]">{tier.desc}</p>
+                  <div className="mt-5 flex-1 space-y-2">
+                    {tier.features.map((feature) => (
+                      <div key={feature.label} className={cn("text-[12.5px]", feature.muted ? "text-[var(--a-fg-dim)]" : "text-[var(--a-fg)]")}>
+                        <span className={cn("mr-2", feature.muted ? "text-[var(--a-fg-mute)]" : "text-[var(--a-accent)]")}>
+                          {feature.muted ? "-" : "✓"}
+                        </span>
+                        {feature.tooltip ? (
+                          <Tooltip>
+                            <span>{feature.label}</span>
+                            <TooltipTrigger className="ml-1 inline-flex align-[-2px] text-[var(--a-fg-mute)] transition-colors hover:text-[var(--a-accent)]">
+                              <IconHelpCircle className="size-3.5" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-[320px] text-balance leading-6">
+                              {feature.tooltip}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          feature.label
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <Link
+                    to={tier.ctaTo}
+                    className={cn(
+                      "mt-6 inline-flex w-full items-center justify-center rounded border px-4 py-3 text-sm font-semibold transition-colors",
+                      tier.featured
+                        ? "border-transparent bg-[var(--a-accent)] text-[var(--a-bg)] hover:bg-[#93f7ae]"
+                        : "border-[var(--a-line-2)] text-[var(--a-fg)] hover:bg-[#162019]"
+                    )}
+                  >
+                    {tier.cta} →
+                  </Link>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-8 grid gap-4 xl:grid-cols-2">
@@ -719,8 +830,14 @@ export default function TerminalNativePage() {
                     <span className="inline-flex size-6 items-center justify-center rounded bg-[rgba(124,242,156,0.08)] text-[13px] text-[var(--a-accent)]">
                       {item.icon}
                     </span>
-                    <span className="flex-1 text-sm text-[var(--a-fg-dim)]">{item.label}</span>
-                    <span className="text-sm font-medium text-[var(--a-accent)]">{item.value}</span>
+                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{item.label}</span>
+                    {"valueTo" in item ? (
+                      <a href={item.valueTo} className="text-sm font-medium text-[var(--a-accent)] transition-colors hover:text-[var(--a-fg)]">
+                        {item.value}
+                      </a>
+                    ) : (
+                      <span className="text-sm font-medium text-[var(--a-accent)]">{item.value}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -738,13 +855,16 @@ export default function TerminalNativePage() {
                       index > 0 ? "border-t border-[var(--a-line)]" : ""
                     )}
                   >
-                    <span className="w-16 text-base font-semibold text-[var(--a-fg)]">{item.amount}</span>
-                    <span className="flex-1 text-sm text-[var(--a-fg-dim)]">→ {item.points}</span>
+                    <span className="inline-flex size-6 items-center justify-center rounded bg-[rgba(247,185,85,0.08)] text-[13px] text-[var(--a-warn)]">
+                      <IconCoins className="size-4" />
+                    </span>
+                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{item.points}</span>
                     {item.extra ? (
                       <span className="rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] tracking-[0.04em] text-[var(--a-accent)]">
                         {item.extra}
                       </span>
                     ) : null}
+                    <span className="text-base font-semibold text-[var(--a-fg)]">{item.amount}</span>
                   </div>
                 ))}
               </div>
