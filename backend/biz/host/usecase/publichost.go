@@ -45,7 +45,7 @@ func (p *PublicHostUsecase) PickHost(ctx context.Context) (*domain.Host, error) 
 
 	onlines := make([]*db.Host, 0)
 	for _, h := range hs {
-		if resp.OnlineMap[h.ID] {
+		if resp.OnlineMap[h.ID] && h.Weight > 0 {
 			onlines = append(onlines, h)
 		}
 	}
