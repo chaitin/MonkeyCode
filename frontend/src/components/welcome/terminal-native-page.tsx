@@ -759,7 +759,7 @@ export default function TerminalNativePage() {
                   ) : null}
                   <div className="text-[11px] tracking-[0.08em] text-[var(--a-fg-mute)]">$ {tier.cmd}</div>
                   <div className="mt-2 text-[22px] font-semibold text-[var(--a-fg)]">{tier.name}</div>
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-baseline gap-2">
                     <span
                       className={cn(
                         "font-semibold leading-none tracking-[-0.04em] text-[var(--a-accent)]",
@@ -768,9 +768,9 @@ export default function TerminalNativePage() {
                     >
                       {price}
                     </span>
-                    <span className="pb-1 text-sm text-[var(--a-fg-dim)]">{unit}</span>
+                    <span className="text-sm text-[var(--a-fg-dim)]">{unit}</span>
                     {discount ? (
-                      <span className="mb-1 rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] font-semibold tracking-[0.04em] text-[var(--a-accent)]">
+                      <span className="rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] font-semibold tracking-[0.04em] text-[var(--a-accent)]">
                         {discount}
                       </span>
                     ) : null}
