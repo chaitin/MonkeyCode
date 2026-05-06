@@ -356,14 +356,9 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 			continue
 		}
 
-		decoded, err := base64.StdEncoding.DecodeString(string(chunk.Data))
-		if err != nil {
-			decoded = chunk.Data
-		}
-
 		switch chunk.Event {
 		case "user-input":
-			userInputText := userInputContent(decoded)
+			userInputText := userInputContent(chunk.Data)
 
 			if len(agentMsg) > 0 {
 				agentContent := strings.Join(agentMsg, "")
@@ -376,10 +371,10 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 		case "reply-question":
 			var userInputText string
 			var ur userReply
-			if err := json.Unmarshal(decoded, &ur); err != nil {
-				userInputText = string(decoded)
-			} else {
+			if decodeJSONPayload(chunk.Data, &ur) {
 				userInputText = ur.AnswersJSON
+			} else {
+				userInputText = string(chunk.Data)
 			}
 
 			if len(agentMsg) > 0 {
@@ -392,7 +387,7 @@ func buildSummaryConversation(ctx context.Context, logger *slog.Logger, taskID u
 
 		case "task-running":
 			var taskMsg wsData
-			if err := json.Unmarshal(decoded, &taskMsg); err != nil {
+			if !decodeJSONPayload(chunk.Data, &taskMsg) {
 				continue
 			}
 			if taskMsg.Update.SessionUpdate == "agent_message_chunk" {
@@ -433,12 +428,41 @@ func formatSummaryConversation(messages []llm.Message) []map[string]any {
 	return conversation
 }
 
-func userInputContent(decoded []byte) string {
-	var payload userInputPayload
-	if err := json.Unmarshal(decoded, &payload); err == nil && len(payload.Content) > 0 {
-		return string(payload.Content)
+func decodeJSONPayload(data []byte, v any) bool {
+	if err := json.Unmarshal(data, v); err == nil {
+		return true
 	}
-	return string(decoded)
+	decoded, err := base64.StdEncoding.DecodeString(string(data))
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(decoded, v) == nil
+}
+
+func userInputContent(data []byte) string {
+	if content, ok := parseUserInputPayload(data); ok {
+		return content
+	}
+	decoded, err := base64.StdEncoding.DecodeString(string(data))
+	if err == nil {
+		if content, ok := parseUserInputPayload(decoded); ok {
+			return content
+		}
+	}
+	return string(data)
+}
+
+func parseUserInputPayload(data []byte) (string, bool) {
+	var stored userInputStoragePayload
+	if err := json.Unmarshal(data, &stored); err == nil && stored.Encoding == "plaintext" {
+		return stored.Content, true
+	}
+
+	var payload userInputPayload
+	if err := json.Unmarshal(data, &payload); err == nil && (len(payload.Content) > 0 || len(payload.Attachments) > 0) {
+		return string(payload.Content), true
+	}
+	return "", false
 }
 
 func normalizeSummaryLogStore(store *consts.LogStore) consts.LogStore {

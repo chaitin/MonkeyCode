@@ -476,9 +476,23 @@ func buildTaskStreamsFromLogEntries(entries []tasklog.Entry, logger *slog.Logger
 	return streams, ended
 }
 
+type taskUserInputStoragePayload struct {
+	Encoding    string                  `json:"encoding"`
+	Content     string                  `json:"content"`
+	Attachments []domain.TaskAttachment `json:"attachments"`
+}
+
 func parseUserInputData(data []byte) domain.ContinueTaskReq {
+	var stored taskUserInputStoragePayload
+	if err := json.Unmarshal(data, &stored); err == nil && stored.Encoding == "plaintext" {
+		return domain.ContinueTaskReq{
+			Content:     []byte(stored.Content),
+			Attachments: stored.Attachments,
+		}
+	}
+
 	var payload domain.TaskUserInputPayload
-	if err := json.Unmarshal(data, &payload); err == nil && strings.TrimSpace(string(payload.Content)) != "" {
+	if err := json.Unmarshal(data, &payload); err == nil && (len(payload.Content) > 0 || len(payload.Attachments) > 0) {
 		return domain.ContinueTaskReq{
 			Content:     payload.Content,
 			Attachments: payload.Attachments,

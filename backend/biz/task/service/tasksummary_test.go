@@ -40,7 +40,7 @@ func TestTasklogConversationReaderFetchClickHouseChunks(t *testing.T) {
 	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{{
 		Chunks: []*tasklog.TurnChunk{
 			{Event: "task-running", Data: []byte(base64.StdEncoding.EncodeToString(runningData)), Timestamp: 2},
-			{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("请帮我修复测试"))), Timestamp: 1},
+			{Event: "user-input", Data: []byte(`{"encoding":"plaintext","content":"请帮我修复测试"}`), Timestamp: 1},
 		},
 	}}}
 	reader := newTasklogConversationReader(gateway, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -94,19 +94,95 @@ func TestBuildSummaryConversationUsesUserInputPayloadContent(t *testing.T) {
 	}
 }
 
+func TestBuildSummaryConversationKeepsRawBase64LookingUserInput(t *testing.T) {
+	taskID := uuid.New()
+	messages, err := buildSummaryConversation(
+		context.Background(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		taskID,
+		[]*tasklog.TurnChunk{{Event: "user-input", Data: []byte("aGVsbG8="), Timestamp: 1}},
+		1,
+		1,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("buildSummaryConversation() error = %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "aGVsbG8=" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestBuildSummaryConversationUsesPlaintextUserInputPayloadContent(t *testing.T) {
+	taskID := uuid.New()
+	messages, err := buildSummaryConversation(
+		context.Background(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		taskID,
+		[]*tasklog.TurnChunk{{Event: "user-input", Data: []byte(`{"encoding":"plaintext","content":"继续实现"}`), Timestamp: 1}},
+		1,
+		1,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("buildSummaryConversation() error = %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "继续实现" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestBuildSummaryConversationKeepsPlaintextBase64LookingContent(t *testing.T) {
+	taskID := uuid.New()
+	messages, err := buildSummaryConversation(
+		context.Background(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		taskID,
+		[]*tasklog.TurnChunk{{Event: "user-input", Data: []byte(`{"encoding":"plaintext","content":"aGVsbG8="}`), Timestamp: 1}},
+		1,
+		1,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("buildSummaryConversation() error = %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "aGVsbG8=" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+func TestBuildSummaryConversationKeepsEmptyPlaintextUserInputPayloadContent(t *testing.T) {
+	taskID := uuid.New()
+	messages, err := buildSummaryConversation(
+		context.Background(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		taskID,
+		[]*tasklog.TurnChunk{{Event: "user-input", Data: []byte(`{"encoding":"plaintext","content":""}`), Timestamp: 1}},
+		1,
+		1,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("buildSummaryConversation() error = %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
+
 func TestTasklogConversationReaderStopsWhenMaxRoundsReached(t *testing.T) {
 	runningData := mustJSON(t, wsData{Update: wsUpdate{SessionUpdate: "agent_message_chunk", Content: wsContent{Text: "助手回复"}}})
 	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{
 		{
 			Chunks: []*tasklog.TurnChunk{
-				{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("第一轮"))), Timestamp: 1},
+				{Event: "user-input", Data: []byte("第一轮"), Timestamp: 1},
 				{Event: "task-running", Data: []byte(base64.StdEncoding.EncodeToString(runningData)), Timestamp: 2},
 			},
 			HasMore:    true,
 			NextCursor: "next",
 		},
 		{
-			Chunks: []*tasklog.TurnChunk{{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("不应读取"))), Timestamp: 0}},
+			Chunks: []*tasklog.TurnChunk{{Event: "user-input", Data: []byte("不应读取"), Timestamp: 0}},
 		},
 	}}
 	reader := newTasklogConversationReader(gateway, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -130,9 +206,9 @@ func TestTasklogConversationReaderKeepsOnlyRecentMaxRoundsInSinglePage(t *testin
 	olderRunningData := mustJSON(t, wsData{Update: wsUpdate{SessionUpdate: "agent_message_chunk", Content: wsContent{Text: "更旧助手"}}})
 	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{{
 		Chunks: []*tasklog.TurnChunk{
-			{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("最新用户"))), Timestamp: 1},
+			{Event: "user-input", Data: []byte("最新用户"), Timestamp: 1},
 			{Event: "task-running", Data: []byte(base64.StdEncoding.EncodeToString(latestRunningData)), Timestamp: 2},
-			{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("更旧用户"))), Timestamp: 3},
+			{Event: "user-input", Data: []byte("更旧用户"), Timestamp: 3},
 			{Event: "task-running", Data: []byte(base64.StdEncoding.EncodeToString(olderRunningData)), Timestamp: 4},
 		},
 	}}}
@@ -169,7 +245,7 @@ func TestTasklogConversationReaderUsesInitialContentWhenLogRoundsAreInsufficient
 func TestTasklogConversationReaderDoesNotUseInitialContentWhenLogRoundsAreEnough(t *testing.T) {
 	gateway := &fakeTasklogGateway{responses: []*tasklog.QueryTurnsResp{{
 		Chunks: []*tasklog.TurnChunk{
-			{Event: "user-input", Data: []byte(base64.StdEncoding.EncodeToString([]byte("实现登录页"))), Timestamp: 1},
+			{Event: "user-input", Data: []byte("实现登录页"), Timestamp: 1},
 		},
 	}}}
 	reader := newTasklogConversationReader(gateway, slog.New(slog.NewTextHandler(io.Discard, nil)))

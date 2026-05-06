@@ -16,6 +16,12 @@ type userInputPayload struct {
 	Attachments []taskAttachment `json:"attachments"`
 }
 
+type userInputStoragePayload struct {
+	Encoding    string           `json:"encoding"`
+	Content     string           `json:"content"`
+	Attachments []taskAttachment `json:"attachments"`
+}
+
 type taskAttachment struct {
 	URL      string `json:"url"`
 	Filename string `json:"filename"`
