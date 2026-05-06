@@ -753,7 +753,7 @@ export default function TerminalNativePage() {
                   )}
                 >
                   {tier.featured ? (
-                    <div className="absolute right-5 top-[-10px] rounded bg-[var(--a-accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.1em] text-[var(--a-bg)]">
+                    <div className="absolute left-1/2 top-[-10px] -translate-x-1/2 rounded bg-[var(--a-accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.1em] text-[var(--a-bg)]">
                       推荐
                     </div>
                   ) : null}
