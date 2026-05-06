@@ -759,7 +759,7 @@ export default function TerminalNativePage() {
                   ) : null}
                   <div className="text-[11px] tracking-[0.08em] text-[var(--a-fg-mute)]">$ {tier.cmd}</div>
                   <div className="mt-2 text-[22px] font-semibold text-[var(--a-fg)]">{tier.name}</div>
-                  <div className="mt-5 flex items-end gap-2">
+                  <div className="flex items-end gap-2">
                     <span
                       className={cn(
                         "font-semibold leading-none tracking-[-0.04em] text-[var(--a-accent)]",
