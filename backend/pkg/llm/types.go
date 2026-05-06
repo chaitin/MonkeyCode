@@ -3,17 +3,19 @@ package llm
 import (
 	"net/http"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/sashabaranov/go-openai"
 )
 
 // Client LLM 客户端
 type Client struct {
-	openaiClient  *openai.Client
-	httpClient    *http.Client
-	baseURL       string
-	apiKey        string
-	model         string
-	interfaceType InterfaceType
+	openaiClient    *openai.Client
+	anthropicClient *anthropic.Client
+	httpClient      *http.Client
+	baseURL         string
+	apiKey          string
+	model           string
+	interfaceType   InterfaceType
 }
 
 // ClientOption 客户端配置选项
@@ -88,43 +90,4 @@ type openAIResponsesUsage struct {
 type openAIError struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
-}
-
-// ==================== Anthropic API 类型 ====================
-
-type anthropicRequest struct {
-	Model       string             `json:"model"`
-	Messages    []anthropicMessage `json:"messages"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature float32            `json:"temperature,omitempty"`
-	System      string             `json:"system,omitempty"`
-}
-
-type anthropicMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type anthropicResponse struct {
-	ID      string             `json:"id"`
-	Type    string             `json:"type"`
-	Role    string             `json:"role"`
-	Content []anthropicContent `json:"content"`
-	Usage   anthropicUsage     `json:"usage"`
-	Error   *anthropicError    `json:"error,omitempty"`
-}
-
-type anthropicContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type anthropicUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-}
-
-type anthropicError struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
 }

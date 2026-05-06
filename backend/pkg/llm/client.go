@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/sashabaranov/go-openai"
 )
 
@@ -48,6 +50,8 @@ func NewClient(cfg Config, opts ...ClientOption) *Client {
 			openaiConfig.BaseURL = cfg.BaseURL
 		}
 		client.openaiClient = openai.NewClientWithConfig(openaiConfig)
+	} else if client.interfaceType == InterfaceAnthropic && cfg.APIKey != "" {
+		client.anthropicClient = newAnthropicClient(cfg, client.httpClient)
 	}
 
 	return client
@@ -228,78 +232,68 @@ func (c *Client) chatOpenAIResponses(ctx context.Context, req ChatRequest) (*Cha
 }
 
 func (c *Client) chatAnthropic(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	baseURL := c.baseURL
-	if baseURL == "" {
-		baseURL = "https://api.anthropic.com"
-	}
-	baseURL = strings.TrimSuffix(baseURL, "/v1")
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	url := baseURL + "/v1/messages"
-
-	messages := make([]anthropicMessage, len(req.Messages))
-	for i, msg := range req.Messages {
-		messages[i] = anthropicMessage(msg)
+	if c.anthropicClient == nil {
+		c.anthropicClient = newAnthropicClient(Config{
+			BaseURL: c.baseURL,
+			APIKey:  c.apiKey,
+			Model:   c.model,
+		}, c.httpClient)
 	}
 
-	requestBody := anthropicRequest{
-		Model:       req.Model,
-		Messages:    messages,
-		MaxTokens:   req.MaxTokens,
-		Temperature: req.Temperature,
-		System:      req.System,
+	messages := make([]anthropic.MessageParam, 0, len(req.Messages))
+	system := make([]anthropic.TextBlockParam, 0, 1)
+	if req.System != "" {
+		system = append(system, anthropic.TextBlockParam{Text: req.System})
 	}
 
-	bodyBytes, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	for _, msg := range req.Messages {
+		switch msg.Role {
+		case "system":
+			if msg.Content != "" {
+				system = append(system, anthropic.TextBlockParam{Text: msg.Content})
+			}
+		case "user":
+			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(msg.Content)))
+		case "assistant":
+			messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(msg.Content)))
+		default:
+			messages = append(messages, anthropic.MessageParam{
+				Role:    anthropic.MessageParamRole(msg.Role),
+				Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(msg.Content)},
+			})
+		}
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(req.Model),
+		Messages:  messages,
+		MaxTokens: int64(req.MaxTokens),
+	}
+	if req.Temperature != 0 {
+		params.Temperature = anthropic.Float(float64(req.Temperature))
+	}
+	if len(system) > 0 {
+		params.System = system
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.anthropicClient.Messages.New(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic API调用失败: %w", err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anthropic API返回错误: %s, body: %s", resp.Status, string(respBody))
-	}
-
-	var apiResp anthropicResponse
-	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
-	}
-
-	if apiResp.Error != nil {
-		return nil, fmt.Errorf("anthropic API错误: %s", apiResp.Error.Message)
-	}
 
 	var content strings.Builder
-	for _, c := range apiResp.Content {
-		if c.Type == "text" {
-			content.WriteString(c.Text)
+	for _, block := range resp.Content {
+		if block.Type == "text" {
+			content.WriteString(block.Text)
 		}
 	}
 
 	return &ChatResponse{
 		Content: content.String(),
 		Usage: Usage{
-			PromptTokens:     apiResp.Usage.InputTokens,
-			CompletionTokens: apiResp.Usage.OutputTokens,
-			TotalTokens:      apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,
+			PromptTokens:     int(resp.Usage.InputTokens),
+			CompletionTokens: int(resp.Usage.OutputTokens),
+			TotalTokens:      int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
 		},
 	}, nil
 }
@@ -313,4 +307,25 @@ func (c *Client) ChatNoException(ctx context.Context, req ChatRequest) (*ChatRes
 		}, nil
 	}
 	return resp, nil
+}
+
+func newAnthropicClient(cfg Config, httpClient *http.Client) *anthropic.Client {
+	opts := []option.RequestOption{
+		option.WithoutEnvironmentDefaults(),
+		option.WithAPIKey(cfg.APIKey),
+	}
+	if httpClient != nil {
+		opts = append(opts, option.WithHTTPClient(httpClient))
+	}
+	if cfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(normalizeAnthropicBaseURL(cfg.BaseURL)))
+	}
+	client := anthropic.NewClient(opts...)
+	return &client
+}
+
+func normalizeAnthropicBaseURL(baseURL string) string {
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/v1")
+	return strings.TrimSuffix(baseURL, "/")
 }

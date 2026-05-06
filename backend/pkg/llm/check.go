@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
 )
 
 // InterfaceType 定义 API 接口类型
@@ -70,7 +72,7 @@ func healthCheckOpenAIChat(ctx context.Context, cfg Config) error {
 		"max_tokens": 1,
 	}
 
-	respBody, err := doRequest(ctx, baseURL+"/chat/completions", cfg.APIKey, "bearer", body)
+	respBody, err := doRequest(ctx, baseURL+"/chat/completions", cfg.APIKey, body)
 	if err != nil {
 		return err
 	}
@@ -99,7 +101,7 @@ func healthCheckOpenAIResponses(ctx context.Context, cfg Config) error {
 		},
 	}
 
-	respBody, err := doRequest(ctx, baseURL+"/responses", cfg.APIKey, "bearer", body)
+	respBody, err := doRequest(ctx, baseURL+"/responses", cfg.APIKey, body)
 	if err != nil {
 		return err
 	}
@@ -119,37 +121,21 @@ func healthCheckOpenAIResponses(ctx context.Context, cfg Config) error {
 }
 
 func healthCheckAnthropic(ctx context.Context, cfg Config) error {
-	baseURL := strings.TrimSuffix(cfg.BaseURL, "/v1")
-	baseURL = strings.TrimSuffix(baseURL, "/")
-
-	body := map[string]any{
-		"model": cfg.Model,
-		"messages": []map[string]string{
-			{"role": "user", "content": "hi"},
+	client := newAnthropicClient(cfg, &http.Client{Timeout: 30 * time.Second})
+	_, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model(cfg.Model),
+		MaxTokens: 1,
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock("hi")),
 		},
-		"max_tokens": 1,
-	}
-
-	respBody, err := doRequest(ctx, baseURL+"/v1/messages", cfg.APIKey, "x-api-key", body)
+	})
 	if err != nil {
-		return err
-	}
-
-	var resp struct {
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error,omitempty"`
-	}
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return fmt.Errorf("parse response: %w", err)
-	}
-	if resp.Error != nil {
-		return fmt.Errorf("API error: %s", resp.Error.Message)
+		return fmt.Errorf("anthropic API error: %w", err)
 	}
 	return nil
 }
 
-func doRequest(ctx context.Context, url, apiKey, authType string, body any) ([]byte, error) {
+func doRequest(ctx context.Context, url, apiKey string, body any) ([]byte, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -161,12 +147,7 @@ func doRequest(ctx context.Context, url, apiKey, authType string, body any) ([]b
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if authType == "x-api-key" {
-		req.Header.Set("x-api-key", apiKey)
-		req.Header.Set("anthropic-version", "2023-06-01")
-	} else {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
