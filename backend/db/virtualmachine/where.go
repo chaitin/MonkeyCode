@@ -72,6 +72,11 @@ func DeletedAt(v time.Time) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldEQ(FieldDeletedAt, v))
 }
 
+// AccessToken applies equality check predicate on the "access_token" field. It's identical to AccessTokenEQ.
+func AccessToken(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldEQ(FieldAccessToken, v))
+}
+
 // HostID applies equality check predicate on the "host_id" field. It's identical to HostIDEQ.
 func HostID(v string) predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldEQ(FieldHostID, v))
@@ -236,6 +241,81 @@ func DeletedAtIsNil() predicate.VirtualMachine {
 // DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
 func DeletedAtNotNil() predicate.VirtualMachine {
 	return predicate.VirtualMachine(sql.FieldNotNull(FieldDeletedAt))
+}
+
+// AccessTokenEQ applies the EQ predicate on the "access_token" field.
+func AccessTokenEQ(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldEQ(FieldAccessToken, v))
+}
+
+// AccessTokenNEQ applies the NEQ predicate on the "access_token" field.
+func AccessTokenNEQ(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldNEQ(FieldAccessToken, v))
+}
+
+// AccessTokenIn applies the In predicate on the "access_token" field.
+func AccessTokenIn(vs ...string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldIn(FieldAccessToken, vs...))
+}
+
+// AccessTokenNotIn applies the NotIn predicate on the "access_token" field.
+func AccessTokenNotIn(vs ...string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldNotIn(FieldAccessToken, vs...))
+}
+
+// AccessTokenGT applies the GT predicate on the "access_token" field.
+func AccessTokenGT(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldGT(FieldAccessToken, v))
+}
+
+// AccessTokenGTE applies the GTE predicate on the "access_token" field.
+func AccessTokenGTE(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldGTE(FieldAccessToken, v))
+}
+
+// AccessTokenLT applies the LT predicate on the "access_token" field.
+func AccessTokenLT(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldLT(FieldAccessToken, v))
+}
+
+// AccessTokenLTE applies the LTE predicate on the "access_token" field.
+func AccessTokenLTE(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldLTE(FieldAccessToken, v))
+}
+
+// AccessTokenContains applies the Contains predicate on the "access_token" field.
+func AccessTokenContains(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldContains(FieldAccessToken, v))
+}
+
+// AccessTokenHasPrefix applies the HasPrefix predicate on the "access_token" field.
+func AccessTokenHasPrefix(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldHasPrefix(FieldAccessToken, v))
+}
+
+// AccessTokenHasSuffix applies the HasSuffix predicate on the "access_token" field.
+func AccessTokenHasSuffix(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldHasSuffix(FieldAccessToken, v))
+}
+
+// AccessTokenIsNil applies the IsNil predicate on the "access_token" field.
+func AccessTokenIsNil() predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldIsNull(FieldAccessToken))
+}
+
+// AccessTokenNotNil applies the NotNil predicate on the "access_token" field.
+func AccessTokenNotNil() predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldNotNull(FieldAccessToken))
+}
+
+// AccessTokenEqualFold applies the EqualFold predicate on the "access_token" field.
+func AccessTokenEqualFold(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldEqualFold(FieldAccessToken, v))
+}
+
+// AccessTokenContainsFold applies the ContainsFold predicate on the "access_token" field.
+func AccessTokenContainsFold(v string) predicate.VirtualMachine {
+	return predicate.VirtualMachine(sql.FieldContainsFold(FieldAccessToken, v))
 }
 
 // HostIDEQ applies the EQ predicate on the "host_id" field.

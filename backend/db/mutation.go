@@ -38210,6 +38210,7 @@ type VirtualMachineMutation struct {
 	typ                 string
 	id                  *string
 	deleted_at          *time.Time
+	access_token        *string
 	environment_id      *string
 	name                *string
 	hostname            *string
@@ -38404,6 +38405,55 @@ func (m *VirtualMachineMutation) DeletedAtCleared() bool {
 func (m *VirtualMachineMutation) ResetDeletedAt() {
 	m.deleted_at = nil
 	delete(m.clearedFields, virtualmachine.FieldDeletedAt)
+}
+
+// SetAccessToken sets the "access_token" field.
+func (m *VirtualMachineMutation) SetAccessToken(s string) {
+	m.access_token = &s
+}
+
+// AccessToken returns the value of the "access_token" field in the mutation.
+func (m *VirtualMachineMutation) AccessToken() (r string, exists bool) {
+	v := m.access_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccessToken returns the old "access_token" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldAccessToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccessToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccessToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccessToken: %w", err)
+	}
+	return oldValue.AccessToken, nil
+}
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (m *VirtualMachineMutation) ClearAccessToken() {
+	m.access_token = nil
+	m.clearedFields[virtualmachine.FieldAccessToken] = struct{}{}
+}
+
+// AccessTokenCleared returns if the "access_token" field was cleared in this mutation.
+func (m *VirtualMachineMutation) AccessTokenCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldAccessToken]
+	return ok
+}
+
+// ResetAccessToken resets all changes to the "access_token" field.
+func (m *VirtualMachineMutation) ResetAccessToken() {
+	m.access_token = nil
+	delete(m.clearedFields, virtualmachine.FieldAccessToken)
 }
 
 // SetHostID sets the "host_id" field.
@@ -39843,9 +39893,12 @@ func (m *VirtualMachineMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *VirtualMachineMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 26)
 	if m.deleted_at != nil {
 		fields = append(fields, virtualmachine.FieldDeletedAt)
+	}
+	if m.access_token != nil {
+		fields = append(fields, virtualmachine.FieldAccessToken)
 	}
 	if m.host != nil {
 		fields = append(fields, virtualmachine.FieldHostID)
@@ -39929,6 +39982,8 @@ func (m *VirtualMachineMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case virtualmachine.FieldDeletedAt:
 		return m.DeletedAt()
+	case virtualmachine.FieldAccessToken:
+		return m.AccessToken()
 	case virtualmachine.FieldHostID:
 		return m.HostID()
 	case virtualmachine.FieldUserID:
@@ -39988,6 +40043,8 @@ func (m *VirtualMachineMutation) OldField(ctx context.Context, name string) (ent
 	switch name {
 	case virtualmachine.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
+	case virtualmachine.FieldAccessToken:
+		return m.OldAccessToken(ctx)
 	case virtualmachine.FieldHostID:
 		return m.OldHostID(ctx)
 	case virtualmachine.FieldUserID:
@@ -40051,6 +40108,13 @@ func (m *VirtualMachineMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDeletedAt(v)
+		return nil
+	case virtualmachine.FieldAccessToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccessToken(v)
 		return nil
 	case virtualmachine.FieldHostID:
 		v, ok := value.(string)
@@ -40292,6 +40356,9 @@ func (m *VirtualMachineMutation) ClearedFields() []string {
 	if m.FieldCleared(virtualmachine.FieldDeletedAt) {
 		fields = append(fields, virtualmachine.FieldDeletedAt)
 	}
+	if m.FieldCleared(virtualmachine.FieldAccessToken) {
+		fields = append(fields, virtualmachine.FieldAccessToken)
+	}
 	if m.FieldCleared(virtualmachine.FieldUserID) {
 		fields = append(fields, virtualmachine.FieldUserID)
 	}
@@ -40369,6 +40436,9 @@ func (m *VirtualMachineMutation) ClearField(name string) error {
 	case virtualmachine.FieldDeletedAt:
 		m.ClearDeletedAt()
 		return nil
+	case virtualmachine.FieldAccessToken:
+		m.ClearAccessToken()
+		return nil
 	case virtualmachine.FieldUserID:
 		m.ClearUserID()
 		return nil
@@ -40439,6 +40509,9 @@ func (m *VirtualMachineMutation) ResetField(name string) error {
 	switch name {
 	case virtualmachine.FieldDeletedAt:
 		m.ResetDeletedAt()
+		return nil
+	case virtualmachine.FieldAccessToken:
+		m.ResetAccessToken()
 		return nil
 	case virtualmachine.FieldHostID:
 		m.ResetHostID()

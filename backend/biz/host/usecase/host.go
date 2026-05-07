@@ -95,7 +95,7 @@ func (h *HostUsecase) periodicEnqueueVm() {
 				HostID: vm.HostID,
 				EnvID:  vm.EnvironmentID,
 			}, vm.CreatedAt.Add(time.Duration(vm.TTL)*time.Second), vm.ID); err != nil {
-				h.logger.With("error", err, "vm", vm).Error("failed to enqueue vm")
+				h.logger.With("error", err, "vm_id", vm.ID, "environment_id", vm.EnvironmentID).Error("failed to enqueue vm")
 			}
 		}
 	}
@@ -427,7 +427,7 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 			return nil, fmt.Errorf("failed to create vm, vm is nil")
 		}
 
-		h.logger.InfoContext(ctx, "create vm success", "vm", tfvm)
+		h.logger.InfoContext(ctx, "create vm success", "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID)
 
 		// 手动创建的 VM 使用 TTL 过期逻辑，任务创建的 VM 使用空闲检测逻辑
 		// 通过 Life 参数区分：Life > 0 为手动创建的 VM，使用 TTL 过期逻辑
@@ -438,12 +438,13 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 				HostID: req.HostID,
 				EnvID:  tfvm.EnvironmentID,
 			}, time.Now().Add(time.Duration(req.Life)*time.Second), tfvm.ID); err != nil {
-				h.logger.With("error", err, "vm", tfvm).ErrorContext(ctx, "failed to enqueue countdown vm")
+				h.logger.With("error", err, "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID).ErrorContext(ctx, "failed to enqueue countdown vm")
 			}
 		}
 
 		return &domain.VirtualMachine{
 			ID:            tfvm.ID,
+			AccessToken:   tfvm.AccessToken,
 			EnvironmentID: tfvm.EnvironmentID,
 			Name:          req.Name,
 			Host: &domain.Host{
@@ -635,10 +636,10 @@ func (h *HostUsecase) FireExpiredVM(ctx context.Context, fire bool) ([]domain.Fi
 					HostID: vm.HostID,
 					EnvID:  vm.EnvironmentID,
 				}, vm.CreatedAt.Add(time.Duration(vm.TTL)*time.Second), vm.ID); err != nil {
-					h.logger.With("error", err, "vm", vm).Error("failed to enqueue vm")
+					h.logger.With("error", err, "vm_id", vm.ID, "environment_id", vm.EnvironmentID).Error("failed to enqueue vm")
 					item.Message = err.Error()
 				} else {
-					h.logger.With("vm", vm).Info("enqueued vm")
+					h.logger.With("vm_id", vm.ID, "environment_id", vm.EnvironmentID).Info("enqueued vm")
 					item.Message = "enqueued"
 				}
 			}
@@ -668,9 +669,9 @@ func (h *HostUsecase) EnqueueAllCountDownVM(ctx context.Context) ([]string, erro
 			HostID: vm.HostID,
 			EnvID:  vm.EnvironmentID,
 		}, vm.CreatedAt.Add(time.Duration(vm.TTL)*time.Second), vm.ID); err != nil {
-			h.logger.With("error", err, "vm", vm).Error("failed to enqueue vm")
+			h.logger.With("error", err, "vm_id", vm.ID, "environment_id", vm.EnvironmentID).Error("failed to enqueue vm")
 		} else {
-			h.logger.With("vm", vm).Info("enqueued vm")
+			h.logger.With("vm_id", vm.ID, "environment_id", vm.EnvironmentID).Info("enqueued vm")
 			res = append(res, vm.ID)
 		}
 	}
