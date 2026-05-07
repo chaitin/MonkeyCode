@@ -72,6 +72,7 @@ type TTL struct {
 // VirtualMachine 虚拟机信息
 type VirtualMachine struct {
 	ID            string               `json:"id"`
+	AccessToken   string               `json:"access_token,omitempty"`
 	EnvironmentID string               `json:"environment_id"`
 	HostID        string               `json:"host_id"`
 	Hostname      string               `json:"hostname"`
@@ -308,6 +309,7 @@ type Token struct {
 	User        *TokenUser `json:"user"`
 	ParentToken string     `json:"parent_token"`
 	Token       string     `json:"token"`
+	AccessToken string     `json:"access_token,omitempty"`
 	TaskID      uuid.UUID  `json:"task_id"`
 	SessionID   string     `json:"session_id"`
 	RemoteIP    string     `json:"remote_ip"`
@@ -384,6 +386,11 @@ type GetTaskStreamIPsReq struct {
 // GetTaskStreamIPsResp 获取任务 WebSocket 连接 IP 响应
 type GetTaskStreamIPsResp struct {
 	IPs []string `json:"ips"`
+}
+
+// BatchGetVmIDsByEnvIDsReq 批量查询 environmentID -> vmID 映射请求
+type BatchGetVmIDsByEnvIDsReq struct {
+	EnvIDs []string `json:"env_ids" validate:"required,max=100"`
 }
 
 // ==================== Repo 操作类型 ====================

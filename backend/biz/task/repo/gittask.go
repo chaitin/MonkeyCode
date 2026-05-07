@@ -128,7 +128,7 @@ func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, f
 			return fmt.Errorf("created virtual machine is nil")
 		}
 
-		if err := tx.VirtualMachine.Create().
+		crt := tx.VirtualMachine.Create().
 			SetID(vm.ID).
 			SetUserID(u.ID).
 			SetHostID(h.ID).
@@ -141,8 +141,11 @@ func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, f
 			SetBranch(branch).
 			SetCores(g.cfg.Task.Core).
 			SetMemory(int64(g.cfg.Task.Memory)).
-			SetCreatedAt(time.Now()).
-			Exec(ctx); err != nil {
+			SetCreatedAt(time.Now())
+		if vm.AccessToken != "" {
+			crt.SetAccessToken(vm.AccessToken)
+		}
+		if err := crt.Exec(ctx); err != nil {
 			return fmt.Errorf("failed to create virtual machine: %w", err)
 		}
 

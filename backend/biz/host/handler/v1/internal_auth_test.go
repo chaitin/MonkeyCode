@@ -24,8 +24,7 @@ func TestAgentAuthRecycledVMTriggersDeleteOnce(t *testing.T) {
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
 		repo: &internalHostRepoStub{
-			vm: &db.VirtualMachine{
-				ID:            "agent_1",
+			accessTokenVM: &db.VirtualMachine{
 				HostID:        "host_1",
 				EnvironmentID: "env_1",
 				MachineID:     "bound-machine",
@@ -61,7 +60,7 @@ func TestAgentAuthRecycledVMLimitedSkipsDelete(t *testing.T) {
 		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
 		repo: &internalHostRepoStub{
-			vm: &db.VirtualMachine{
+			accessTokenVM: &db.VirtualMachine{
 				ID:            "agent_2",
 				HostID:        "host_2",
 				EnvironmentID: "env_2",
@@ -92,7 +91,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 	markerKey := testSkipMarkerKey{}
 	const markerValue = "skip-soft-delete-visible"
 	repo := &internalHostRepoStub{
-		vm: &db.VirtualMachine{
+		accessTokenVM: &db.VirtualMachine{
 			ID:            "agent_deleted",
 			HostID:        "host_deleted",
 			EnvironmentID: "env_deleted",
@@ -129,6 +128,7 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 
 type internalHostRepoStub struct {
 	vm               *db.VirtualMachine
+	accessTokenVM    *db.VirtualMachine
 	assertSkipMarker bool
 	skipMarkerKey    any
 	skipMarkerValue  string
@@ -163,6 +163,19 @@ func (s *internalHostRepoStub) GetVirtualMachine(ctx context.Context, _ string) 
 	return s.vm, nil
 }
 
+func (s *internalHostRepoStub) GetVirtualMachineByAccessToken(ctx context.Context, _ string) (*db.VirtualMachine, error) {
+	if s.assertSkipMarker {
+		v, ok := ctx.Value(s.skipMarkerKey).(string)
+		if !ok || v != s.skipMarkerValue {
+			return nil, errors.New("skip soft delete context marker missing")
+		}
+	}
+	if s.accessTokenVM == nil {
+		return nil, &db.NotFoundError{}
+	}
+	return s.accessTokenVM, nil
+}
+
 func (s *internalHostRepoStub) UpdateVirtualMachine(context.Context, string, func(*db.VirtualMachineUpdateOne) error) error {
 	return nil
 }
@@ -173,6 +186,10 @@ func (s *internalHostRepoStub) GetByID(context.Context, string) (*db.Host, error
 
 func (s *internalHostRepoStub) GetVirtualMachineByEnvID(context.Context, string) (*db.VirtualMachine, error) {
 	return nil, errors.New("vm not found")
+}
+
+func (s *internalHostRepoStub) BatchGetVmIDsByEnvironmentIDs(context.Context, []string) (map[string]string, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *internalHostRepoStub) GetVirtualMachineWithUser(context.Context, uuid.UUID, string) (*db.VirtualMachine, error) {

@@ -36,6 +36,7 @@ func (VirtualMachine) Mixin() []ent.Mixin {
 func (VirtualMachine) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").Unique(),
+		field.String("access_token").Optional().Unique(),
 		field.String("host_id"),
 		field.UUID("user_id", uuid.UUID{}).Optional(),
 		field.UUID("model_id", uuid.UUID{}).Optional(),
