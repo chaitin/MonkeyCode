@@ -27,6 +27,8 @@ type VirtualMachine struct {
 	ID string `json:"id,omitempty"`
 	// DeletedAt holds the value of the "deleted_at" field.
 	DeletedAt time.Time `json:"deleted_at,omitempty"`
+	// AccessToken holds the value of the "access_token" field.
+	AccessToken string `json:"access_token,omitempty"`
 	// HostID holds the value of the "host_id" field.
 	HostID string `json:"host_id,omitempty"`
 	// UserID holds the value of the "user_id" field.
@@ -173,7 +175,7 @@ func (*VirtualMachine) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case virtualmachine.FieldCores, virtualmachine.FieldMemory, virtualmachine.FieldTTL:
 			values[i] = new(sql.NullInt64)
-		case virtualmachine.FieldID, virtualmachine.FieldHostID, virtualmachine.FieldEnvironmentID, virtualmachine.FieldName, virtualmachine.FieldHostname, virtualmachine.FieldArch, virtualmachine.FieldOs, virtualmachine.FieldExternalIP, virtualmachine.FieldInternalIP, virtualmachine.FieldTTLKind, virtualmachine.FieldVersion, virtualmachine.FieldMachineID, virtualmachine.FieldRepoURL, virtualmachine.FieldRepoFilename, virtualmachine.FieldBranch:
+		case virtualmachine.FieldID, virtualmachine.FieldAccessToken, virtualmachine.FieldHostID, virtualmachine.FieldEnvironmentID, virtualmachine.FieldName, virtualmachine.FieldHostname, virtualmachine.FieldArch, virtualmachine.FieldOs, virtualmachine.FieldExternalIP, virtualmachine.FieldInternalIP, virtualmachine.FieldTTLKind, virtualmachine.FieldVersion, virtualmachine.FieldMachineID, virtualmachine.FieldRepoURL, virtualmachine.FieldRepoFilename, virtualmachine.FieldBranch:
 			values[i] = new(sql.NullString)
 		case virtualmachine.FieldDeletedAt, virtualmachine.FieldCreatedAt, virtualmachine.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -205,6 +207,12 @@ func (_m *VirtualMachine) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
 			} else if value.Valid {
 				_m.DeletedAt = value.Time
+			}
+		case virtualmachine.FieldAccessToken:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field access_token", values[i])
+			} else if value.Valid {
+				_m.AccessToken = value.String
 			}
 		case virtualmachine.FieldHostID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -420,6 +428,9 @@ func (_m *VirtualMachine) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("deleted_at=")
 	builder.WriteString(_m.DeletedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("access_token=")
+	builder.WriteString(_m.AccessToken)
 	builder.WriteString(", ")
 	builder.WriteString("host_id=")
 	builder.WriteString(_m.HostID)

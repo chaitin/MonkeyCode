@@ -58,6 +58,26 @@ func (_u *VirtualMachineUpdate) ClearDeletedAt() *VirtualMachineUpdate {
 	return _u
 }
 
+// SetAccessToken sets the "access_token" field.
+func (_u *VirtualMachineUpdate) SetAccessToken(v string) *VirtualMachineUpdate {
+	_u.mutation.SetAccessToken(v)
+	return _u
+}
+
+// SetNillableAccessToken sets the "access_token" field if the given value is not nil.
+func (_u *VirtualMachineUpdate) SetNillableAccessToken(v *string) *VirtualMachineUpdate {
+	if v != nil {
+		_u.SetAccessToken(*v)
+	}
+	return _u
+}
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (_u *VirtualMachineUpdate) ClearAccessToken() *VirtualMachineUpdate {
+	_u.mutation.ClearAccessToken()
+	return _u
+}
+
 // SetHostID sets the "host_id" field.
 func (_u *VirtualMachineUpdate) SetHostID(v string) *VirtualMachineUpdate {
 	_u.mutation.SetHostID(v)
@@ -707,6 +727,12 @@ func (_u *VirtualMachineUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(virtualmachine.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.AccessToken(); ok {
+		_spec.SetField(virtualmachine.FieldAccessToken, field.TypeString, value)
+	}
+	if _u.mutation.AccessTokenCleared() {
+		_spec.ClearField(virtualmachine.FieldAccessToken, field.TypeString)
+	}
 	if value, ok := _u.mutation.EnvironmentID(); ok {
 		_spec.SetField(virtualmachine.FieldEnvironmentID, field.TypeString, value)
 	}
@@ -1084,6 +1110,26 @@ func (_u *VirtualMachineUpdateOne) SetNillableDeletedAt(v *time.Time) *VirtualMa
 // ClearDeletedAt clears the value of the "deleted_at" field.
 func (_u *VirtualMachineUpdateOne) ClearDeletedAt() *VirtualMachineUpdateOne {
 	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
+// SetAccessToken sets the "access_token" field.
+func (_u *VirtualMachineUpdateOne) SetAccessToken(v string) *VirtualMachineUpdateOne {
+	_u.mutation.SetAccessToken(v)
+	return _u
+}
+
+// SetNillableAccessToken sets the "access_token" field if the given value is not nil.
+func (_u *VirtualMachineUpdateOne) SetNillableAccessToken(v *string) *VirtualMachineUpdateOne {
+	if v != nil {
+		_u.SetAccessToken(*v)
+	}
+	return _u
+}
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (_u *VirtualMachineUpdateOne) ClearAccessToken() *VirtualMachineUpdateOne {
+	_u.mutation.ClearAccessToken()
 	return _u
 }
 
@@ -1765,6 +1811,12 @@ func (_u *VirtualMachineUpdateOne) sqlSave(ctx context.Context) (_node *VirtualM
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(virtualmachine.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AccessToken(); ok {
+		_spec.SetField(virtualmachine.FieldAccessToken, field.TypeString, value)
+	}
+	if _u.mutation.AccessTokenCleared() {
+		_spec.ClearField(virtualmachine.FieldAccessToken, field.TypeString)
 	}
 	if value, ok := _u.mutation.EnvironmentID(); ok {
 		_spec.SetField(virtualmachine.FieldEnvironmentID, field.TypeString, value)

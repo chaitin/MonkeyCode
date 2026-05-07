@@ -110,14 +110,17 @@ func (h *HostRepo) UpsertVirtualMachine(ctx context.Context, vm *taskflow.Virtua
 			ForUpdate().
 			Where(virtualmachine.ID(vm.ID)).
 			First(ctx); err == nil {
-			if err := tx.VirtualMachine.UpdateOneID(vm.ID).
+			up := tx.VirtualMachine.UpdateOneID(vm.ID).
 				SetArch(vm.Arch).
 				SetCores(int(vm.Cores)).
 				SetHostname(vm.Hostname).
 				SetOs(vm.OS).
 				SetMemory(int64(vm.Memory)).
-				SetVersion(vm.Version).
-				Exec(ctx); err != nil {
+				SetVersion(vm.Version)
+			if vm.AccessToken != "" {
+				up.SetAccessToken(vm.AccessToken)
+			}
+			if err := up.Exec(ctx); err != nil {
 				return err
 			}
 			vm.EnvironmentID = oldVm.EnvironmentID
@@ -246,6 +249,18 @@ func (h *HostRepo) GetVirtualMachine(ctx context.Context, id string) (*db.Virtua
 	}
 
 	return vm, nil
+}
+
+func (h *HostRepo) GetVirtualMachineByAccessToken(ctx context.Context, accessToken string) (*db.VirtualMachine, error) {
+	return h.db.VirtualMachine.Query().
+		ForUpdate().
+		WithHost().
+		WithModel().
+		WithTasks().
+		WithUser().
+		WithGitIdentity().
+		Where(virtualmachine.AccessToken(accessToken)).
+		First(ctx)
 }
 
 // GetByID implements domain.HostRepo.
@@ -409,6 +424,9 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 			SetRepoFilename(repoFilename).
 			SetBranch(branch).
 			SetCreatedAt(req.Now)
+		if vm.AccessToken != "" {
+			crt.SetAccessToken(vm.AccessToken)
+		}
 
 		if len(req.ModelID) > 0 {
 			crt.SetModelID(m.ID)
@@ -598,6 +616,22 @@ func (h *HostRepo) GetVirtualMachineByEnvID(ctx context.Context, envID string) (
 		WithTasks().
 		Where(virtualmachine.EnvironmentID(envID)).
 		First(ctx)
+}
+
+// BatchGetVmIDsByEnvironmentIDs 批量查询 environmentID -> vmID 映射
+func (h *HostRepo) BatchGetVmIDsByEnvironmentIDs(ctx context.Context, envIDs []string) (map[string]string, error) {
+	vms, err := h.db.VirtualMachine.Query().
+		Where(virtualmachine.EnvironmentIDIn(envIDs...)).
+		Select(virtualmachine.FieldID, virtualmachine.FieldEnvironmentID).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(vms))
+	for _, vm := range vms {
+		result[vm.EnvironmentID] = vm.ID
+	}
+	return result, nil
 }
 
 // GetGitCredentialByTask 通过 task_id 查询 git 凭证信息

@@ -1242,6 +1242,7 @@ var (
 	VirtualmachinesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "access_token", Type: field.TypeString, Unique: true, Nullable: true},
 		{Name: "environment_id", Type: field.TypeString, Nullable: true},
 		{Name: "name", Type: field.TypeString},
 		{Name: "hostname", Type: field.TypeString, Nullable: true},
@@ -1275,25 +1276,25 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "virtualmachines_git_identities_vms",
-				Columns:    []*schema.Column{VirtualmachinesColumns[22]},
+				Columns:    []*schema.Column{VirtualmachinesColumns[23]},
 				RefColumns: []*schema.Column{GitIdentitiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "virtualmachines_hosts_vms",
-				Columns:    []*schema.Column{VirtualmachinesColumns[23]},
+				Columns:    []*schema.Column{VirtualmachinesColumns[24]},
 				RefColumns: []*schema.Column{HostsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "virtualmachines_models_vms",
-				Columns:    []*schema.Column{VirtualmachinesColumns[24]},
+				Columns:    []*schema.Column{VirtualmachinesColumns[25]},
 				RefColumns: []*schema.Column{ModelsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "virtualmachines_users_vms",
-				Columns:    []*schema.Column{VirtualmachinesColumns[25]},
+				Columns:    []*schema.Column{VirtualmachinesColumns[26]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
