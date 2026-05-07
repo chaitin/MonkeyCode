@@ -46,6 +46,20 @@ func (_c *VirtualMachineCreate) SetNillableDeletedAt(v *time.Time) *VirtualMachi
 	return _c
 }
 
+// SetAccessToken sets the "access_token" field.
+func (_c *VirtualMachineCreate) SetAccessToken(v string) *VirtualMachineCreate {
+	_c.mutation.SetAccessToken(v)
+	return _c
+}
+
+// SetNillableAccessToken sets the "access_token" field if the given value is not nil.
+func (_c *VirtualMachineCreate) SetNillableAccessToken(v *string) *VirtualMachineCreate {
+	if v != nil {
+		_c.SetAccessToken(*v)
+	}
+	return _c
+}
+
 // SetHostID sets the "host_id" field.
 func (_c *VirtualMachineCreate) SetHostID(v string) *VirtualMachineCreate {
 	_c.mutation.SetHostID(v)
@@ -525,6 +539,10 @@ func (_c *VirtualMachineCreate) createSpec() (*VirtualMachine, *sqlgraph.CreateS
 		_spec.SetField(virtualmachine.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = value
 	}
+	if value, ok := _c.mutation.AccessToken(); ok {
+		_spec.SetField(virtualmachine.FieldAccessToken, field.TypeString, value)
+		_node.AccessToken = value
+	}
 	if value, ok := _c.mutation.EnvironmentID(); ok {
 		_spec.SetField(virtualmachine.FieldEnvironmentID, field.TypeString, value)
 		_node.EnvironmentID = value
@@ -776,6 +794,24 @@ func (u *VirtualMachineUpsert) UpdateDeletedAt() *VirtualMachineUpsert {
 // ClearDeletedAt clears the value of the "deleted_at" field.
 func (u *VirtualMachineUpsert) ClearDeletedAt() *VirtualMachineUpsert {
 	u.SetNull(virtualmachine.FieldDeletedAt)
+	return u
+}
+
+// SetAccessToken sets the "access_token" field.
+func (u *VirtualMachineUpsert) SetAccessToken(v string) *VirtualMachineUpsert {
+	u.Set(virtualmachine.FieldAccessToken, v)
+	return u
+}
+
+// UpdateAccessToken sets the "access_token" field to the value that was provided on create.
+func (u *VirtualMachineUpsert) UpdateAccessToken() *VirtualMachineUpsert {
+	u.SetExcluded(virtualmachine.FieldAccessToken)
+	return u
+}
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (u *VirtualMachineUpsert) ClearAccessToken() *VirtualMachineUpsert {
+	u.SetNull(virtualmachine.FieldAccessToken)
 	return u
 }
 
@@ -1271,6 +1307,27 @@ func (u *VirtualMachineUpsertOne) UpdateDeletedAt() *VirtualMachineUpsertOne {
 func (u *VirtualMachineUpsertOne) ClearDeletedAt() *VirtualMachineUpsertOne {
 	return u.Update(func(s *VirtualMachineUpsert) {
 		s.ClearDeletedAt()
+	})
+}
+
+// SetAccessToken sets the "access_token" field.
+func (u *VirtualMachineUpsertOne) SetAccessToken(v string) *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.SetAccessToken(v)
+	})
+}
+
+// UpdateAccessToken sets the "access_token" field to the value that was provided on create.
+func (u *VirtualMachineUpsertOne) UpdateAccessToken() *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.UpdateAccessToken()
+	})
+}
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (u *VirtualMachineUpsertOne) ClearAccessToken() *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.ClearAccessToken()
 	})
 }
 
@@ -2004,6 +2061,27 @@ func (u *VirtualMachineUpsertBulk) UpdateDeletedAt() *VirtualMachineUpsertBulk {
 func (u *VirtualMachineUpsertBulk) ClearDeletedAt() *VirtualMachineUpsertBulk {
 	return u.Update(func(s *VirtualMachineUpsert) {
 		s.ClearDeletedAt()
+	})
+}
+
+// SetAccessToken sets the "access_token" field.
+func (u *VirtualMachineUpsertBulk) SetAccessToken(v string) *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.SetAccessToken(v)
+	})
+}
+
+// UpdateAccessToken sets the "access_token" field to the value that was provided on create.
+func (u *VirtualMachineUpsertBulk) UpdateAccessToken() *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.UpdateAccessToken()
+	})
+}
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (u *VirtualMachineUpsertBulk) ClearAccessToken() *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.ClearAccessToken()
 	})
 }
 

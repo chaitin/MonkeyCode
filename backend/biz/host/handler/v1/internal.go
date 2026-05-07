@@ -84,6 +84,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	g.POST("/coding-config", web.BindHandler(h.GetCodingConfig))
 	g.POST("/git-credential", web.BindHandler(h.GitCredential))
 	g.GET("/vm/list", web.BaseHandler(h.VMList))
+	g.POST("/vm/batch-env-vm", web.BindHandler(h.BatchGetVmIDsByEnvIDs))
 	g.POST("/task-log-store", web.BindHandler(h.GetTaskLogStore))
 	g.POST("/task-stream-ips", web.BindHandler(h.GetTaskStreamIPs))
 
@@ -142,13 +143,20 @@ func (h *InternalHostHandler) GetCodingConfig(c *web.Context, req taskflow.GetCo
 // VMList 根据 ID 获取虚拟机信息
 func (h *InternalHostHandler) VMList(c *web.Context) error {
 	id := c.Request().URL.Query().Get("id")
-	if id == "" {
-		return fmt.Errorf("id parameter is required")
+	envID := c.Request().URL.Query().Get("env_id")
+	if id == "" && envID == "" {
+		return fmt.Errorf("id or env_id parameter is required")
 	}
 
-	vm, err := h.repo.GetVirtualMachine(c.Request().Context(), id)
+	var vm *db.VirtualMachine
+	var err error
+	if envID != "" {
+		vm, err = h.repo.GetVirtualMachineByEnvID(c.Request().Context(), envID)
+	} else {
+		vm, err = h.repo.GetVirtualMachine(c.Request().Context(), id)
+	}
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "get virtual machine failed", "id", id, "error", err)
+		h.logger.ErrorContext(c.Request().Context(), "get virtual machine failed", "id", id, "env_id", envID, "error", err)
 		return err
 	}
 
@@ -172,9 +180,19 @@ func (h *InternalHostHandler) VMList(c *web.Context) error {
 	return c.Success(result)
 }
 
+// BatchGetVmIDsByEnvIDs 批量查询 environmentID -> vmID 映射
+func (h *InternalHostHandler) BatchGetVmIDsByEnvIDs(c *web.Context, req taskflow.BatchGetVmIDsByEnvIDsReq) error {
+	result, err := h.repo.BatchGetVmIDsByEnvironmentIDs(c.Request().Context(), req.EnvIDs)
+	if err != nil {
+		h.logger.ErrorContext(c.Request().Context(), "batch get vm ids by environment ids failed", "error", err)
+		return err
+	}
+	return c.Success(result)
+}
+
 // CheckToken 认证 token
 func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckTokenReq) error {
-	logger := h.logger.With("fn", "CheckToken", "req", req)
+	logger := h.logger.With("fn", "CheckToken")
 	var tk *taskflow.Token
 	var err error
 	if strings.HasPrefix(req.Token, "agent_") {
@@ -188,7 +206,7 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 		return err
 	}
 
-	logger.With("token", tk).DebugContext(c.Request().Context(), "check token success")
+	logger.With("kind", tk.Kind, "vm_id", tk.Token).DebugContext(c.Request().Context(), "check token success")
 
 	return c.Success(tk)
 }
@@ -210,31 +228,30 @@ func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) 
 	// 1) 优先从 Redis 读取一次性 agent token，并清除
 	key := fmt.Sprintf("agent:token:%s", token)
 	res, err := h.getAgentToken(ctx, key)
-	h.logger.With("mid", mid, "key", key, "hit", err == nil, "error", err).DebugContext(ctx, "agent auth...")
+	h.logger.With("mid", mid, "hit", err == nil).DebugContext(ctx, "agent auth...")
 	if err == nil {
 		var t taskflow.Token
 		if uerr := json.Unmarshal([]byte(res), &t); uerr != nil {
-			h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal token from redis")
+			h.logger.With("error", uerr).ErrorContext(ctx, "failed to unmarshal token from redis")
 			return nil, uerr
 		}
-
 		if mid != "" {
-			if err := h.repo.UpdateVirtualMachine(ctx, token, func(up *db.VirtualMachineUpdateOne) error {
+			if err := h.repo.UpdateVirtualMachine(ctx, t.Token, func(up *db.VirtualMachineUpdateOne) error {
 				up.SetMachineID(mid)
 				return nil
 			}); err != nil {
-				h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to update virtual machine machine id")
+				h.logger.With("error", err, "vm_id", t.Token).ErrorContext(ctx, "failed to update virtual machine machine id")
 				return nil, err
 			}
 		}
 
 		return &t, nil
 	} else if !errors.Is(err, redis.Nil) {
-		h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to get redis token via lua, fallback to db")
+		h.logger.With("error", err).ErrorContext(ctx, "failed to get redis token via lua, fallback to db")
 	}
 
 	// 2) Redis 没值时根据数据库校验 token
-	vm, err := h.repo.GetVirtualMachine(h.skipSoftDelete(ctx), token)
+	vm, err := h.repo.GetVirtualMachineByAccessToken(h.skipSoftDelete(ctx), token)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +282,8 @@ func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) 
 			ID: vm.UserID.String(),
 		},
 		ParentToken: vm.HostID,
-		Token:       token,
+		Token:       vm.ID,
+		AccessToken: vm.AccessToken,
 		TaskID:      taskID,
 	}, nil
 }
@@ -286,10 +304,10 @@ return nil
 		if b, ok := res.(string); ok && b != "" {
 			var u domain.User
 			if uerr := json.Unmarshal([]byte(b), &u); uerr != nil {
-				h.logger.With("error", uerr, "token", token).ErrorContext(ctx, "failed to unmarshal user from redis token")
+				h.logger.With("error", uerr).ErrorContext(ctx, "failed to unmarshal user from redis token")
 				return nil, uerr
 			}
-			h.logger.With("cache result", b, "user", u).DebugContext(ctx, "get result from redis by lua")
+			h.logger.With("user_id", u.ID).DebugContext(ctx, "get result from redis by lua")
 
 			typeUser := &taskflow.TokenUser{
 				ID:        u.ID.String(),
@@ -330,7 +348,7 @@ return nil
 			return tk, nil
 		}
 	} else if !errors.Is(err, redis.Nil) {
-		h.logger.With("error", err, "token", token).ErrorContext(ctx, "failed to get redis host token via lua, fallback to db")
+		h.logger.With("error", err).ErrorContext(ctx, "failed to get redis host token via lua, fallback to db")
 	}
 
 	// 2) Redis 无值则回退到数据库校验
@@ -417,7 +435,7 @@ func (h *InternalHostHandler) VmConditions(c *web.Context, req taskflow.VirtualM
 		vmuo.SetConditions(conds)
 		return nil
 	}); err != nil {
-		h.logger.With("vm", vm, "error", err).ErrorContext(c.Request().Context(), "update vm conditions failed")
+		h.logger.With("vm_id", vm.ID, "environment_id", vm.EnvironmentID, "error", err).ErrorContext(c.Request().Context(), "update vm conditions failed")
 		return err
 	}
 
