@@ -2,7 +2,7 @@ import { useAuth } from "@/components/auth-provider";
 import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { IconArrowRight, IconCoins, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend } from "@tabler/icons-react";
+import { IconArrowRight, IconCheck, IconCoins, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend, IconX } from "@tabler/icons-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
@@ -21,7 +21,7 @@ const themeVars = {
   "--a-fg-mute": "#4a5b50",
   "--a-accent": "#7cf29c",
   "--a-accent-dim": "#3ba863",
-  "--a-warn": "#f7b955",
+  "--a-warn": "#d8a84f",
   "--a-danger": "#ff6b6b",
   "--a-info": "#61dafb",
   "--a-magenta": "#ff6b9d",
@@ -210,15 +210,19 @@ const testimonialItems: Array<{
 
 type PricingFeature = {
   label: string;
-  muted?: boolean;
+  status?: "supported" | "partial" | "unsupported";
   tooltip?: string;
 };
 
 const modelFeatureTooltips = {
   basic: "能力对标国内一线厂商的上一代主力模型，如 qwen3.5-plus，minimax-m2.5, kimi-k2.5, glm-4.7 等",
-  pro: "能力对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等",
-  flagship: "能力对标国际一线厂商的主力模型，如 gpt-5.4, claude-opus-4.6 等",
+  pro: "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等",
+  flagship: "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.4, claude-opus-4.6 等",
 };
+
+const creditFeatureTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。";
+const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分";
+const enhancedCapabilitiesTooltip = "图片识别、文档解析、联网搜索等能力，调用时消耗积分";
 
 type PricingTier = {
   name: string;
@@ -237,7 +241,7 @@ type PricingTier = {
 
 const pricingTiers: PricingTier[] = [
   {
-    name: "基础版",
+    name: "基础会员",
     cmd: "monkey account --free",
     monthlyPrice: "¥0",
     monthlyUnit: "永久免费",
@@ -248,36 +252,41 @@ const pricingTiers: PricingTier[] = [
     features: [
       { label: "1 个任务并发" },
       { label: "云开发环境 1C / 4G" },
-      { label: "基础模型：每天 1000 万 Token", tooltip: modelFeatureTooltips.basic },
-      { label: "专业模型：无额度", muted: true, tooltip: modelFeatureTooltips.pro },
-      { label: "旗舰模型：无额度", muted: true, tooltip: modelFeatureTooltips.flagship },
-      { label: "不赠送积分", muted: true },
+      { label: "基础模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "专业模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.pro },
+      { label: "旗舰模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.flagship },
+      { label: "不赠送积分", status: "unsupported", tooltip: creditFeatureTooltip },
+      { label: "更多第三方大模型", status: "partial", tooltip: thirdPartyModelsTooltip },
+      { label: "更多增强能力", status: "partial", tooltip: enhancedCapabilitiesTooltip },
     ],
     cta: "免费开始",
     ctaTo: "/console",
+    featured: true,
   },
   {
-    name: "专业版",
+    name: "专业会员",
     cmd: "monkey account --pro",
-    monthlyPrice: "¥49",
+    monthlyPrice: "¥99",
     monthlyUnit: "/ 月",
-    yearlyPrice: "¥499",
+    yearlyPrice: "¥999",
     yearlyUnit: "/ 年",
     yearlyDiscount: "8.3 折",
     desc: "适合日常高频使用。",
     features: [
       { label: "3 个任务并发" },
       { label: "云开发环境 2C / 8G" },
-      { label: "基础模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.basic },
-      { label: "专业模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.pro },
-      { label: "旗舰模型：无额度", muted: true, tooltip: modelFeatureTooltips.flagship },
-      { label: "每月赠送 1 万积分" },
+      { label: "基础模型：每天 3000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "专业模型：每天 3000 万 Token", tooltip: modelFeatureTooltips.pro },
+      { label: "旗舰模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.flagship },
+      { label: "每月赠送 1 万积分", tooltip: creditFeatureTooltip },
+      { label: "更多第三方大模型", tooltip: thirdPartyModelsTooltip },
+      { label: "更多增强能力", tooltip: enhancedCapabilitiesTooltip },
     ],
-    cta: "订阅专业版",
+    cta: "订阅专业会员",
     ctaTo: "/console",
   },
   {
-    name: "旗舰版",
+    name: "旗舰会员",
     cmd: "monkey account --ultra",
     monthlyPrice: "¥499",
     monthlyUnit: "/ 月",
@@ -288,14 +297,15 @@ const pricingTiers: PricingTier[] = [
     features: [
       { label: "3 个任务并发" },
       { label: "云开发环境 2C / 8G" },
-      { label: "基础模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.basic },
-      { label: "专业模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.pro },
+      { label: "基础模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "专业模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.pro },
       { label: "旗舰模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.flagship },
-      { label: "每月赠送 10 万积分" },
+      { label: "每月赠送 10 万积分", tooltip: creditFeatureTooltip },
+      { label: "更多第三方大模型", tooltip: thirdPartyModelsTooltip },
+      { label: "更多增强能力", tooltip: enhancedCapabilitiesTooltip },
     ],
-    cta: "订阅旗舰版",
+    cta: "订阅旗舰会员",
     ctaTo: "/console",
-    featured: true,
   },
 ];
 
@@ -777,26 +787,40 @@ export default function TerminalNativePage() {
                   </div>
                   <p className="mt-4 text-[12.5px] leading-[1.6] text-[var(--a-fg-dim)]">{tier.desc}</p>
                   <div className="mt-5 flex-1 space-y-2">
-                    {tier.features.map((feature) => (
-                      <div key={feature.label} className={cn("text-[12.5px]", feature.muted ? "text-[var(--a-fg-dim)]" : "text-[var(--a-fg)]")}>
-                        <span className={cn("mr-2", feature.muted ? "text-[var(--a-fg-mute)]" : "text-[var(--a-accent)]")}>
-                          {feature.muted ? "-" : "✓"}
-                        </span>
-                        {feature.tooltip ? (
-                          <Tooltip>
-                            <span>{feature.label}</span>
-                            <TooltipTrigger className="ml-1 inline-flex align-[-2px] text-[var(--a-fg-mute)] transition-colors hover:text-[var(--a-accent)]">
-                              <IconHelpCircle className="size-3.5" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-[320px] text-balance leading-6">
-                              {feature.tooltip}
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          feature.label
-                        )}
-                      </div>
-                    ))}
+                    {tier.features.map((feature) => {
+                      const status = feature.status || "supported";
+                      const FeatureIcon = status === "unsupported" ? IconX : IconCheck;
+
+                      return (
+                        <div key={feature.label} className={cn("flex items-start gap-2 text-[12.5px]", status === "unsupported" ? "text-[var(--a-fg-dim)]" : "text-[var(--a-fg)]")}>
+                          <FeatureIcon
+                            className={cn(
+                              "mt-[2px] size-3.5 shrink-0",
+                              status === "unsupported"
+                                ? "text-[var(--a-fg-mute)]"
+                                : status === "partial"
+                                  ? "text-[var(--a-warn)]"
+                                  : "text-[var(--a-accent)]"
+                            )}
+                          />
+                          <div className="min-w-0">
+                            {feature.tooltip ? (
+                              <Tooltip>
+                                <span>{feature.label}</span>
+                                <TooltipTrigger className="ml-1 inline-flex align-[-2px] text-[var(--a-fg-mute)] transition-colors hover:text-[var(--a-accent)]">
+                                  <IconHelpCircle className="size-3.5" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[320px] text-balance leading-6">
+                                  {feature.tooltip}
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              feature.label
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                   <Link
                     to={tier.ctaTo}

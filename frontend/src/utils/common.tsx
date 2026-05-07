@@ -428,9 +428,9 @@ export function getSubscriptionPlanLabel(plan?: string | null): string {
     case "pro":
       return "专业会员"
     case "basic":
-      return "普通会员"
+      return "基础会员"
     default:
-      return "普通会员"
+      return "基础会员"
   }
 }
 
@@ -438,13 +438,13 @@ export function getSubscriptionPlanShortLabel(plan?: string | null): string {
   switch (plan) {
     case "flagship":
     case "ultra":
-      return "旗舰版"
+      return "旗舰会员"
     case "pro":
-      return "专业版"
+      return "专业会员"
     case "basic":
-      return "基础版"
+      return "基础会员"
     default:
-      return "基础版"
+      return "基础会员"
   }
 }
 

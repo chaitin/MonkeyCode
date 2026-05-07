@@ -107,7 +107,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
               className="text-primary underline-offset-4 hover:underline"
               onClick={handleUpgradePlan}
             >
-              升级专业版或旗舰版，可支持同时运行 3 个任务
+              升级专业会员或旗舰会员，可支持同时运行 3 个任务
             </button>
           </div>
         )}

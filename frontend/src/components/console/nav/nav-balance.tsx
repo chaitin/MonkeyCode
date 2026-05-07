@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Api, ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
@@ -44,8 +43,9 @@ import {
 } from "@/components/ui/sidebar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useCommonData } from "../data-provider";
-import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, hasProSubscription, isValidEmail, modelPricingList } from "@/utils/common";
+import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, isValidEmail, modelPricingList } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
+import SubscriptionPlanDialog from "./subscription-plan-dialog";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
@@ -60,9 +60,8 @@ const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 const BALANCE_NAV = [
   { id: "account", name: "我的账户", icon: IconUserHexagon },
-  { id: "plan", name: "我的套餐", icon: IconCrown },
   { id: "earn", name: "我的积分", icon: IconGift },
-  { id: "usage", name: "积分记录", icon: IconCoin },
+  { id: "usage", name: "积分账单", icon: IconCoin },
   { id: "pricing", name: "模型定价", icon: IconCpu },
 ] as const
 
@@ -93,18 +92,15 @@ export default function NavBalance({
   const [isCheckinSubmitting, setIsCheckinSubmitting] = useState(false);
   const [exchangeCode, setExchangeCode] = useState("");
   const [isExchangeLoading, setIsExchangeLoading] = useState(false);
-  const [isProLoading, setIsProLoading] = useState(false);
-  const [isFlagshipLoading, setIsFlagshipLoading] = useState(false);
-  const [isAutoRenewLoading, setIsAutoRenewLoading] = useState(false);
   const [dialogOpenInternal, setDialogOpenInternal] = useState(false);
   const [activeSection, setActiveSection] = useState<BalanceSectionId>("account");
+  const [showSubscriptionPlanDialog, setShowSubscriptionPlanDialog] = useState(false);
   const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null);
   const [rechargingCredits, setRechargingCredits] = useState<number | null>(null);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
   const [page, setPage] = useState<number>(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [confirmSubscriptionPlan, setConfirmSubscriptionPlan] = useState<"pro" | "ultra" | null>(null);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -127,9 +123,7 @@ export default function NavBalance({
   const {
     balance,
     checkedInToday,
-    dailyBalance,
     loadingCheckinStatus,
-    loadingSubscription,
     reloadCheckinStatus,
     reloadSubscription,
     reloadUser,
@@ -173,18 +167,6 @@ export default function NavBalance({
   }
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
-  const formatPlanPoints = (value: number) => {
-    const normalized = Math.ceil(value)
-    if (normalized >= 10000) {
-      const wan = normalized / 10000
-      return `${Number.isInteger(wan) ? wan : wan.toFixed(1).replace(/\.0$/, "")} 万`
-    }
-    if (normalized >= 1000) {
-      const qian = normalized / 1000
-      return `${Number.isInteger(qian) ? qian : qian.toFixed(1).replace(/\.0$/, "")} 千`
-    }
-    return normalized.toString()
-  }
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
   const pricingSortLabel = pricingSort === "value"
     ? "性价比排序"
@@ -225,25 +207,14 @@ export default function NavBalance({
       return parsed.isValid() ? parsed.format("YYYY-MM-DD") : expiresAt
   }
 
-  const remainingPoints = balance + dailyBalance
+  const remainingPoints = balance
   const triggerPlanLabel = getSubscriptionPlanShortLabel(subscription?.plan)
-  const hasAdvancedPlan = hasProSubscription(subscription)
-  const isProPlan = subscription?.plan === "pro"
-  const isFlagshipPlan = subscription?.plan === "flagship" || subscription?.plan === "ultra"
-  const isTeamUser = !!user?.team?.id
-  const proSubscriptionPrice = 10000
-  const flagshipSubscriptionPrice = 100000
   const invitationLink = `https://monkeycode-ai.com/?ic=${user.id}`
   const rechargeOptions = [
     { credits: 10000, price: 50 },
     { credits: 50000, price: 200, originalPrice: 250, discountLabel: "8 折" },
     { credits: 300000, price: 1000, originalPrice: 1500, discountLabel: "6.7 折" },
   ]
-  const isRenewingCurrentPlan = confirmSubscriptionPlan === "pro"
-    ? isProPlan
-    : confirmSubscriptionPlan === "ultra"
-      ? isFlagshipPlan
-      : false
 
   const getTransactionLabel = (kind?: ConstsTransactionKind) => {
     switch (kind) {
@@ -260,13 +231,13 @@ export default function NavBalance({
       case ConstsTransactionKind.TransactionKindMCPToolConsumption:
         return "MCP 工具消耗"
       case ConstsTransactionKind.TransactionKindProSubscription:
-        return "兑换专业版"
+        return "兑换专业会员"
       case ConstsTransactionKind.TransactionKindProAutoRenew:
-        return "专业版自动续费"
+        return "专业会员自动续费"
       case ConstsTransactionKind.TransactionKindUltraSubscription:
-        return "兑换旗舰版"
+        return "兑换旗舰会员"
       case ConstsTransactionKind.TransactionKindUltraAutoRenew:
-        return "旗舰版自动续费"
+        return "旗舰会员自动续费"
       case ConstsTransactionKind.TransactionKindProUpgradeRefund:
         return "套餐升级退款"
       case ConstsTransactionKind.TransactionKindDailyGrant:
@@ -495,7 +466,7 @@ export default function NavBalance({
   }, [fetchTranscations, hasNextPage, isLoadingMore, page]);
 
   const normalizeSection = useCallback((section: WalletSectionId): BalanceSectionId => {
-    if (section === "profile" || section === "balance") {
+    if (section === "profile" || section === "balance" || section === "plan") {
       return "account"
     }
     return section
@@ -510,6 +481,11 @@ export default function NavBalance({
   }, [onOpenChange, open])
 
   const initializeDialog = useCallback((section: WalletSectionId = "account") => {
+    if (section === "plan") {
+      setShowSubscriptionPlanDialog(true)
+      return
+    }
+
     setActiveSection(normalizeSection(section))
     setIsInvitationListExpanded(false)
     reloadWallet();
@@ -523,6 +499,11 @@ export default function NavBalance({
   }, [fetchInvitations, fetchTranscations, normalizeSection, reloadCheckinStatus, reloadSubscription, reloadWallet])
 
   const openDialog = useCallback((section: WalletSectionId = "account") => {
+    if (section === "plan") {
+      initializeDialog(section)
+      return
+    }
+
     initializeDialog(section)
     setDialogOpen(true)
   }, [initializeDialog, setDialogOpen])
@@ -544,62 +525,6 @@ export default function NavBalance({
       }
     })
     setIsExchangeLoading(false);
-  }
-
-  const handleOpenPro = async () => {
-    setIsProLoading(true);
-    await apiRequest('v1UsersSubscriptionCreate', { plan: "pro" }, [], (resp) => {
-      if (resp.code === 0) {
-        toast.success("开通专业版成功");
-        reloadWallet();
-        reloadSubscription();
-        fetchTranscations(1, true);
-      } else {
-        toast.error(resp.message || "开通专业版失败");
-      }
-    })
-    setIsProLoading(false);
-  }
-
-  const handleOpenFlagship = async () => {
-    setIsFlagshipLoading(true);
-    await apiRequest('v1UsersSubscriptionCreate', { plan: "ultra" }, [], (resp) => {
-      if (resp.code === 0) {
-        toast.success("开通旗舰版成功");
-        reloadWallet();
-        reloadSubscription();
-        fetchTranscations(1, true);
-      } else {
-        toast.error(resp.message || "开通旗舰版失败");
-      }
-    })
-    setIsFlagshipLoading(false);
-  }
-
-  const handleConfirmSubscription = async () => {
-    if (confirmSubscriptionPlan === "pro") {
-      await handleOpenPro()
-    } else if (confirmSubscriptionPlan === "ultra") {
-      await handleOpenFlagship()
-    }
-    setConfirmSubscriptionPlan(null)
-  }
-
-  const handleToggleAutoRenew = async (checked: boolean) => {
-    if (!hasAdvancedPlan) {
-      return;
-    }
-
-    setIsAutoRenewLoading(true);
-    await apiRequest('v1UsersSubscriptionAutoRenewUpdate', { auto_renew: checked }, [], (resp) => {
-      if (resp.code === 0) {
-        toast.success(checked ? "已开启自动续费" : "已关闭自动续费");
-        reloadSubscription();
-      } else {
-        toast.error(resp.message || "自动续费设置失败");
-      }
-    })
-    setIsAutoRenewLoading(false);
   }
 
   const handleRecharge = async () => {
@@ -733,7 +658,6 @@ export default function NavBalance({
     previousDialogOpenRef.current = dialogOpen
   }, [dialogOpen, initialSection, initializeDialog])
 
-
   const handleCopyInvitationLink = () => {
     navigator.clipboard.writeText(invitationLink);
     toast.success("邀请链接已复制到剪贴板");
@@ -771,11 +695,6 @@ export default function NavBalance({
         title: "我的账户",
         description: "查看账户资料、积分余额，并进行账号操作",
       }
-    : activeSection === "plan"
-      ? {
-          title: "我的套餐",
-          description: "查看基础版、专业版与旗舰版权益，以及当前套餐状态",
-      }
     : activeSection === "earn"
       ? {
           title: "我的积分",
@@ -783,7 +702,7 @@ export default function NavBalance({
         }
     : activeSection === "usage"
       ? {
-        title: "积分记录",
+        title: "积分账单",
         description: "查看积分充值、消耗和奖励记录",
       }
     : {
@@ -860,7 +779,7 @@ export default function NavBalance({
                   variant="outline"
                   size="sm"
                   className="h-7 px-2 text-xs"
-                  onClick={() => setActiveSection("plan")}
+                  onClick={() => setShowSubscriptionPlanDialog(true)}
                 >
                   升级套餐
                 </Button>
@@ -885,9 +804,7 @@ export default function NavBalance({
                 </Button>
               </div>
               <div className="mt-2 text-sm font-medium tabular-nums">{formatPoints(remainingPoints)}</div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                长期积分 {formatPoints(balance)}，今日积分 {formatPoints(dailyBalance)}
-              </div>
+              <div className="mt-2 text-xs text-muted-foreground">积分余额</div>
             </div>
           </div>
         </div>
@@ -923,125 +840,6 @@ export default function NavBalance({
     </div>
   )
 
-  const planContent = (
-    <div className="flex flex-1 flex-col gap-4">
-      {!isTeamUser && hasAdvancedPlan ? (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-md border px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>{triggerPlanLabel}</Badge>
-            <span className="text-muted-foreground">
-              {loadingSubscription ? `${triggerPlanLabel}到期时间加载中...` : `${triggerPlanLabel}将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`}
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="font-medium">
-              {loadingSubscription ? "自动续费加载中..." : `自动续费${subscription?.auto_renew ? "已开启" : "已关闭"}`}
-            </span>
-            <Switch
-              checked={!!subscription?.auto_renew}
-              onCheckedChange={(checked) => void handleToggleAutoRenew(checked)}
-              disabled={loadingSubscription || isAutoRenewLoading}
-            />
-          </div>
-        </div>
-      ) : null}
-      <div className="flex-1 grid gap-4 md:grid-cols-3">
-          <div className={cn("flex h-full flex-col rounded-md border p-5", !hasAdvancedPlan && "border-2 border-primary")}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-md font-medium">基础版</div>
-              </div>
-              {!hasAdvancedPlan && (
-                <Badge>当前套餐</Badge>
-              )}
-            </div>
-            <div className="mt-5 flex-1 space-y-3">
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <div className="text-xs text-muted-foreground">价格</div>
-                <div className="mt-1 text-sm font-medium">免费</div>
-              </div>
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <div className="text-xs text-muted-foreground">并发任务限制</div>
-                <div className="mt-1 text-sm font-medium">1 个任务</div>
-              </div>
-              <div className="rounded-md bg-muted/40 px-3 py-2">
-                <div className="text-xs text-muted-foreground">每日积分</div>
-                <div className="mt-1 text-sm font-medium">无</div>
-              </div>
-            </div>
-          </div>
-          <div className={cn("flex h-full flex-col rounded-md border p-5", isProPlan && "border-2 border-primary")}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-md font-medium">专业版</div>
-              </div>
-              {isProPlan ? (
-                <Badge>当前套餐</Badge>
-              ) : null}
-            </div>
-            <div className="mt-5 flex-1 space-y-3">
-              <div className="rounded-md bg-primary/5 px-3 py-2">
-                <div className="text-xs text-muted-foreground">价格</div>
-                <div className="mt-1 text-sm font-medium">{formatPlanPoints(proSubscriptionPrice)}积分/月</div>
-              </div>
-              <div className="rounded-md bg-primary/5 px-3 py-2">
-                <div className="text-xs text-muted-foreground">并发任务限制</div>
-                <div className="mt-1 text-sm font-medium">3 个任务</div>
-              </div>
-              <div className="rounded-md bg-primary/5 px-3 py-2">
-                <div className="text-xs text-muted-foreground">每日积分</div>
-                <div className="mt-1 text-sm font-medium">每日赠送 {formatPlanPoints(2000)}积分</div>
-                <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
-              </div>
-            </div>
-            {isFlagshipPlan ? null : (
-                <Button
-                  className="mt-5 w-full"
-                  onClick={() => setConfirmSubscriptionPlan("pro")}
-                  disabled={isProLoading}
-                >
-                  {isProLoading && <Spinner />}
-                {isProPlan ? "续一个月" : "开通专业版"}
-              </Button>
-            )}
-          </div>
-          <div className={cn("flex h-full flex-col rounded-md border p-5", isFlagshipPlan && "border-2 border-primary")}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-md font-medium">旗舰版</div>
-              </div>
-              {isFlagshipPlan ? (
-                <Badge>当前套餐</Badge>
-              ) : null}
-            </div>
-            <div className="mt-5 flex-1 space-y-3">
-              <div className="rounded-md bg-primary/10 px-3 py-2">
-                <div className="text-xs text-muted-foreground">价格</div>
-                <div className="mt-1 text-sm font-medium">{formatPlanPoints(flagshipSubscriptionPrice)}积分/月</div>
-              </div>
-              <div className="rounded-md bg-primary/10 px-3 py-2">
-                <div className="text-xs text-muted-foreground">并发任务限制</div>
-                <div className="mt-1 text-sm font-medium">3 个任务</div>
-              </div>
-              <div className="rounded-md bg-primary/10 px-3 py-2">
-                <div className="text-xs text-muted-foreground">每日积分</div>
-                <div className="mt-1 text-sm font-medium">每日赠送 {formatPlanPoints(30000)}积分</div>
-                <div className="mt-1 text-xs text-muted-foreground">仅限当日有效，不累计</div>
-              </div>
-            </div>
-            <Button
-              className="mt-5 w-full"
-              onClick={() => setConfirmSubscriptionPlan("ultra")}
-              disabled={isFlagshipLoading}
-            >
-              {isFlagshipLoading && <Spinner />}
-              {isFlagshipPlan ? "续一个月" : "开通旗舰版"}
-            </Button>
-          </div>
-      </div>
-    </div>
-  )
-
   const earnContent = (
     <div className="space-y-4">
       <div className="rounded-md border p-4">
@@ -1059,14 +857,10 @@ export default function NavBalance({
             充值
           </Button>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid gap-3">
           <div className="rounded-md bg-muted/40 px-4 py-3">
-            <div className="text-xs text-muted-foreground">长期积分</div>
+            <div className="text-xs text-muted-foreground">积分余额</div>
             <div className="mt-2 text-lg font-medium tabular-nums">{formatPoints(balance)}</div>
-          </div>
-          <div className="rounded-md bg-muted/40 px-4 py-3">
-            <div className="text-xs text-muted-foreground">今日积分（凌晨自动清零）</div>
-            <div className="mt-2 text-lg font-medium tabular-nums">{formatPoints(dailyBalance)}</div>
           </div>
         </div>
       </div>
@@ -1396,8 +1190,6 @@ export default function NavBalance({
               <div ref={contentScrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
                 {activeSection === "account"
                   ? accountContent
-                  : activeSection === "plan"
-                    ? planContent
                   : activeSection === "earn"
                     ? earnContent
                     : activeSection === "usage"
@@ -1424,33 +1216,7 @@ export default function NavBalance({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={confirmSubscriptionPlan !== null} onOpenChange={(open) => !open && setConfirmSubscriptionPlan(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{isRenewingCurrentPlan ? "确认续费套餐" : "确认开通套餐"}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmSubscriptionPlan === "pro"
-                ? `确认${isRenewingCurrentPlan ? "续费" : "开通"}专业版，价格为 ${formatPlanPoints(proSubscriptionPrice)}积分/月？`
-                : confirmSubscriptionPlan === "ultra"
-                  ? `确认${isRenewingCurrentPlan ? "续费" : "开通"}旗舰版，价格为 ${formatPlanPoints(flagshipSubscriptionPrice)}积分/月？`
-                  : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProLoading || isFlagshipLoading}>取消</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                void handleConfirmSubscription()
-              }}
-              disabled={isProLoading || isFlagshipLoading}
-            >
-              {(isProLoading || isFlagshipLoading) && <Spinner className="mr-2 size-4" />}
-              确认开通
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SubscriptionPlanDialog open={showSubscriptionPlanDialog} onOpenChange={setShowSubscriptionPlanDialog} />
       <Dialog open={showChangeNameDialog} onOpenChange={setShowChangeNameDialog}>
         <DialogContent>
           <DialogHeader>

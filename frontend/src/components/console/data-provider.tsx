@@ -27,8 +27,9 @@ type CommonData = {
   reloadIdentities: () => void;
 
   balance: number;
-  dailyBalance: number;
-  dailyRefreshedAt?: string;
+  dailyBasicTokenBalance: number;
+  dailyProTokenBalance: number;
+  dailyUltraTokenBalance: number;
   checkedInToday: boolean | null;
   loadingCheckinStatus: boolean;
   reloadCheckinStatus: () => void;
@@ -75,8 +76,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loadingIdentities, setLoadingIdentities] = useState(true);
 
   const [balance, setBalance] = useState(0);
-  const [dailyBalance, setDailyBalance] = useState(0);
-  const [dailyRefreshedAt, setDailyRefreshedAt] = useState<string | undefined>(undefined);
+  const [dailyBasicTokenBalance, setDailyBasicTokenBalance] = useState(0);
+  const [dailyProTokenBalance, setDailyProTokenBalance] = useState(0);
+  const [dailyUltraTokenBalance, setDailyUltraTokenBalance] = useState(0);
   const [checkedInToday, setCheckedInToday] = useState<boolean | null>(null);
   const [loadingCheckinStatus, setLoadingCheckinStatus] = useState(true);
   const [subscription, setSubscription] = useState<DomainSubscriptionResp | null>(null);
@@ -251,8 +253,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     apiRequest('v1UsersWalletList', {}, [], (resp) => {
       if (resp.code === 0) {
         setBalance((resp.data?.balance || 0) / 1000);
-        setDailyBalance((resp.data?.daily_balance || 0) / 1000);
-        setDailyRefreshedAt(resp.data?.daily_refreshed_at || undefined);
+        setDailyBasicTokenBalance(resp.data?.daily_basic_token_balance || 0);
+        setDailyProTokenBalance(resp.data?.daily_pro_token_balance || 0);
+        setDailyUltraTokenBalance(resp.data?.daily_ultra_token_balance || 0);
       } else {
         toast.error("获取余额失败: " + resp.message);
       }
@@ -415,8 +418,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reloadIdentities: fetchIdentities,
 
         balance: balance,
-        dailyBalance: dailyBalance,
-        dailyRefreshedAt: dailyRefreshedAt,
+        dailyBasicTokenBalance: dailyBasicTokenBalance,
+        dailyProTokenBalance: dailyProTokenBalance,
+        dailyUltraTokenBalance: dailyUltraTokenBalance,
         checkedInToday: checkedInToday,
         loadingCheckinStatus: loadingCheckinStatus,
         reloadCheckinStatus: () => fetchCheckinStatus(),

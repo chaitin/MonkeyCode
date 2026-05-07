@@ -118,6 +118,12 @@ export enum ConstsProjectIssueStatus {
   ProjectIssueStatusCompleted = "completed",
 }
 
+export enum ConstsSubscriptionPlan {
+  PlanBasic = "basic",
+  PlanPro = "pro",
+  PlanUltra = "ultra",
+}
+
 export enum ConstsTaskStatus {
   TaskStatusPending = "pending",
   TaskStatusProcessing = "processing",
@@ -148,6 +154,11 @@ export enum ConstsTeamMemberRole {
 export enum ConstsTerminalMode {
   TerminalModeReadOnly = "read_only",
   TerminalModeReadWrite = "read_write",
+}
+
+export enum ConstsTransactionInoutType {
+  TransactionInoutTypeIn = "in",
+  TransactionInoutTypeOut = "out",
 }
 
 export enum ConstsTransactionKind {
@@ -1133,8 +1144,14 @@ export interface DomainPullRequest {
 }
 
 export interface DomainRechargeReq {
-  /** 充值积分: 10000 / 50000 / 300000 */
+  /** 充值积分: 2,000 | 15,000 | 100,000 | 500,000 */
   credits?: number;
+  /** 购买数量: x月 | x年 */
+  period_count?: number;
+  /** 购买周期: 月 | 年 */
+  period_unit?: string;
+  /** 订阅版本: pro(专业版) | ultra(旗舰版) */
+  plan?: ConstsSubscriptionPlan;
 }
 
 export interface DomainRechargeResp {
@@ -1493,6 +1510,8 @@ export interface DomainTransactionLog {
   amount_daily?: number;
   /** 交易时间 */
   created_at?: number;
+  /** 收支类型 */
+  inout_type?: ConstsTransactionInoutType;
   /** 交易类型 */
   kind?: ConstsTransactionKind;
   /** 交易简介 */
@@ -1736,12 +1755,14 @@ export interface DomainVirtualMachine {
 }
 
 export interface DomainWallet {
-  /** 主余额 */
+  /** 积分余额 */
   balance?: number;
-  /** 当日钱包余额 */
-  daily_balance?: number;
-  /** 当日钱包刷新时间 */
-  daily_refreshed_at?: string;
+  /** 基础版每日模型剩余 tokens */
+  daily_basic_token_balance?: number;
+  /** 专业版每日模型剩余 tokens */
+  daily_pro_token_balance?: number;
+  /** 旗舰版每日模型剩余 tokens */
+  daily_ultra_token_balance?: number;
   id?: string;
 }
 
@@ -1760,7 +1781,6 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
-/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -6354,11 +6374,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 充值积分
+     * @description 会员订阅 / 积分充值
      *
      * @tags 【用户】钱包
      * @name V1UsersWalletRechargeCreate
-     * @summary 充值积分
+     * @summary 会员订阅 / 积分充值
      * @request POST:/api/v1/users/wallet/recharge
      * @secure
      */
