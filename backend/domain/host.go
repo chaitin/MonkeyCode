@@ -44,7 +44,9 @@ type HostRepo interface {
 	GetHost(ctx context.Context, uid uuid.UUID, id string) (*Host, error)
 	GetByID(ctx context.Context, id string) (*db.Host, error)
 	GetVirtualMachine(ctx context.Context, id string) (*db.VirtualMachine, error)
+	GetVirtualMachineByAccessToken(ctx context.Context, accessToken string) (*db.VirtualMachine, error)
 	GetVirtualMachineByEnvID(ctx context.Context, envID string) (*db.VirtualMachine, error)
+	BatchGetVmIDsByEnvironmentIDs(ctx context.Context, envIDs []string) (map[string]string, error)
 	GetVirtualMachineWithUser(ctx context.Context, uid uuid.UUID, id string) (*db.VirtualMachine, error)
 	CreateVirtualMachine(ctx context.Context, user *User, req *CreateVMReq, getRepoToken func(context.Context) (string, error), fn func(*db.Model, *db.Image) (*VirtualMachine, error)) (*VirtualMachine, error)
 	PastHourVirtualMachine(ctx context.Context) ([]*db.VirtualMachine, error)
@@ -137,6 +139,7 @@ type VMTerminalResizeData struct {
 // VirtualMachine 虚拟机
 type VirtualMachine struct {
 	ID              string                        `json:"id"`
+	AccessToken     string                        `json:"-"`
 	Hostname        string                        `json:"hostname"`
 	OS              string                        `json:"os"`
 	Cores           int32                         `json:"cores"`

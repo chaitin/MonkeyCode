@@ -476,7 +476,7 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			return fmt.Errorf("created virtual machine is nil")
 		}
 
-		if err := tx.VirtualMachine.Create().
+		vmCrt := tx.VirtualMachine.Create().
 			SetID(vm.ID).
 			SetUserID(u.ID).
 			SetName(fmt.Sprintf("task-%s", id.String())).
@@ -490,8 +490,11 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetCreatedAt(req.Now).
 			SetRepoURL(req.RepoReq.RepoURL).
 			SetRepoFilename(req.RepoReq.RepoFilename).
-			SetBranch(req.RepoReq.Branch).
-			Exec(ctx); err != nil {
+			SetBranch(req.RepoReq.Branch)
+		if vm.AccessToken != "" {
+			vmCrt.SetAccessToken(vm.AccessToken)
+		}
+		if err := vmCrt.Exec(ctx); err != nil {
 			return fmt.Errorf("failed to create virtual machine %s", err)
 		}
 
