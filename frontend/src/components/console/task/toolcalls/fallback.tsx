@@ -3,6 +3,15 @@ import type { MessageType } from "../message";
 
 
 export const renderTitle = (message: MessageType) => {
+    const renderEditTitle = (filePath?: string) => {
+      const action = message.data.status === "failed"
+        ? "修改文件失败"
+        : message.data.status === "pending" || message.data.status === "in_progress"
+          ? "正在修改文件"
+          : "修改文件"
+      return `${action}${filePath ? ` "${filePath}"` : ""}`
+    }
+
     // 如果 title 包含中文字符，直接返回
     if (typeof message.data?.title === 'string' && message.data?.title?.length < 20 && /[\u4e00-\u9fa5]/.test(message.data.title ?? "")) {
       return message.data.title;
@@ -32,9 +41,11 @@ export const renderTitle = (message: MessageType) => {
     } else if (message.data.kind === 'read') {
       return `读取内容`
     } else if (message.data.kind === 'edit' && !!message.data.rawInput?.file_path) {
-      return `修改文件 "${message.data.rawInput.file_path}"`
+      return renderEditTitle(message.data.rawInput.file_path)
     }  else if (message.data.kind === 'edit' && !!message.data.rawInput?.filePath) {
-      return `修改文件 "${message.data.rawInput.filePath}"`
+      return renderEditTitle(message.data.rawInput.filePath)
+    } else if (message.data.kind === 'edit') {
+      return renderEditTitle()
     } 
     return message.data.title
   }

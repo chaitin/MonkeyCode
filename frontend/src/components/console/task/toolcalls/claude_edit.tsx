@@ -11,7 +11,12 @@ const formatFilePath = (value: unknown) => {
 
 export const renderTitle = (message: MessageType) => {
   const filePath = formatFilePath(message.data.rawInput?.file_path || message.data._meta?.claudeCode?.toolResponse?.filePath)
-  return `修改文件${filePath ? ` "${filePath}"` : ""}`
+  const action = message.data.status === "failed"
+    ? "修改文件失败"
+    : message.data.status === "pending" || message.data.status === "in_progress"
+      ? "正在修改文件"
+      : "修改文件"
+  return `${action}${filePath ? ` "${filePath}"` : ""}`
 }
 
 export const renderDetail = (message: MessageType) => {

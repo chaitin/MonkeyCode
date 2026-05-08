@@ -264,9 +264,12 @@ export const ToolCallMessageItem = ({ message, cli }: { message: MessageType, cl
   }, [message, renderer])
 
   const [open, setOpen] = useState(false)
-  const expandable = typeof renderer.expandable === "function"
+  const rendererExpandable = typeof renderer.expandable === "function"
     ? renderer.expandable(message)
     : renderer.expandable
+  const expandable = message.data.kind === "edit" && (message.data.status === "pending" || message.data.status === "failed")
+    ? false
+    : rendererExpandable
 
   if (expandable === false) {
     return (

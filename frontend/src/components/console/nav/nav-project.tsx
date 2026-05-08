@@ -277,7 +277,7 @@ export default function NavProject() {
                   </SidebarMenuSubButton>
                   <button
                     type="button"
-                    className="group/history-row flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    className="group/history-row flex h-8 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     onClick={() => setHistoryExpanded((expanded) => !expanded)}
                   >
                     {historyExpanded ? (
