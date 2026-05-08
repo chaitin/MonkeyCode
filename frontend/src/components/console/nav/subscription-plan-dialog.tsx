@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { IconCheck, IconCrown, IconHelpCircle, IconX } from "@tabler/icons-react"
+import { IconBuildingSkyscraper, IconCheck, IconCrown, IconHelpCircle, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { ConstsSubscriptionPeriodUnit, ConstsSubscriptionPlan } from "@/api/Api"
@@ -27,7 +27,8 @@ import { getSubscriptionPlanShortLabel, hasProSubscription } from "@/utils/commo
 import { useCommonData } from "../data-provider"
 import dayjs from "dayjs"
 
-type AccountPlanId = "basic" | "pro" | "ultra"
+type PersonalAccountPlanId = "basic" | "pro" | "ultra"
+type AccountPlanId = PersonalAccountPlanId | "team"
 type SubscriptionBillingPeriod = "monthly" | "yearly"
 
 type AccountPlanFeature = {
@@ -52,7 +53,7 @@ const accountPlanCards: AccountPlanCard[] = [
   {
     id: "basic",
     name: "基础会员",
-    desc: "免费可用，适合轻量办公和简单开发任务。",
+    desc: "适合轻量办公和简单开发任务。",
     monthlyPrice: "¥0",
     monthlyAmount: 0,
     monthlyUnit: "永久免费",
@@ -84,6 +85,17 @@ const accountPlanCards: AccountPlanCard[] = [
     yearlyUnit: "/ 年",
     yearlyDiscount: "8.3 折",
   },
+  {
+    id: "team",
+    name: "团队版",
+    desc: "面向企业级开发团队。",
+    monthlyPrice: "联系销售",
+    monthlyAmount: 0,
+    monthlyUnit: "",
+    yearlyPrice: "联系销售",
+    yearlyAmount: 0,
+    yearlyUnit: "",
+  },
 ]
 
 const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分"
@@ -93,7 +105,7 @@ const proModelsTooltip = "上下文更大，能力更强，对标国内一线厂
 const ultraModelsTooltip = "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.4, claude-opus-4.6 等"
 const monthlyCreditsTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。"
 
-const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<AccountPlanId, AccountPlanFeature> }[] = [
+const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<PersonalAccountPlanId, AccountPlanFeature> }[] = [
   {
     label: "任务并发",
     values: {
@@ -166,6 +178,16 @@ const accountPlanComparisonRows: { label: string; tooltip?: string; values: Reco
   },
 ]
 
+const teamPlanFeatures: AccountPlanFeature[] = [
+  { label: "统一额度池，团队成员共享使用" },
+  { label: "成员管理，支持按团队统一开通" },
+  { label: "用量统计，便于查看团队消耗" },
+  { label: "私有化部署，适配企业内网和合规要求" },
+  { label: "专属方案，按团队规模和模型需求配置" },
+  { label: "咨询留资，销售专人跟进" },
+]
+const TEAM_CONSULT_URL = "https://baizhi.cloud/consult"
+
 const monthlyPeriodCounts = Array.from({ length: 12 }, (_, index) => index + 1)
 const yearlyPeriodCounts = Array.from({ length: 5 }, (_, index) => index + 1)
 
@@ -209,13 +231,17 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       : false
   const confirmingPlanCard = accountPlanCards.find((plan) => plan.id === confirmSubscriptionPlan)
   const selectedAccountPlan = accountPlanCards.find((plan) => plan.id === selectedAccountPlanId) || accountPlanCards[0]
-  const selectedAccountPlanFeatures = accountPlanComparisonRows.map((row) => ({
-    label: row.label,
-    tooltip: row.tooltip,
-    feature: row.values[selectedAccountPlan.id],
-  }))
+  const isSelectedTeamPlan = selectedAccountPlan.id === "team"
+  const SelectedPlanIcon = isSelectedTeamPlan ? IconBuildingSkyscraper : IconCrown
+  const selectedAccountPlanFeatures = isSelectedTeamPlan
+    ? []
+    : accountPlanComparisonRows.map((row) => ({
+      label: row.label,
+      tooltip: row.tooltip,
+      feature: row.values[selectedAccountPlan.id as PersonalAccountPlanId],
+    }))
   const selectedSubscriptionPlan = selectedAccountPlan.id === "pro" || selectedAccountPlan.id === "ultra" ? selectedAccountPlan.id : null
-  const isSelectedCurrentPlan = selectedAccountPlan.id === "basic" ? !hasAdvancedPlan : selectedAccountPlan.id === "pro" ? isProPlan : isFlagshipPlan
+  const isSelectedCurrentPlan = selectedAccountPlan.id === "basic" ? !hasAdvancedPlan : selectedAccountPlan.id === "pro" ? isProPlan : selectedAccountPlan.id === "ultra" ? isFlagshipPlan : false
   const isSelectedPlanLoading = selectedAccountPlan.id === "pro" ? isProLoading : selectedAccountPlan.id === "ultra" ? isFlagshipLoading : false
   const canSubscribeSelectedPlan = selectedSubscriptionPlan === "pro" ? !isFlagshipPlan : selectedSubscriptionPlan === "ultra"
   const selectedPeriodAmount = selectedBillingPeriod === "monthly" ? selectedAccountPlan.monthlyAmount : selectedAccountPlan.yearlyAmount
@@ -318,10 +344,11 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
             ) : null}
             <div className="grid min-h-0 flex-1 grid-rows-[1fr_auto] gap-4">
               <div className="grid min-h-0 gap-4 md:grid-cols-[240px_1fr]">
-                <div className="grid min-h-0 gap-3 md:grid-rows-3">
+                <div className="grid min-h-0 gap-3 overflow-y-auto pr-1 md:grid-rows-4">
                   {accountPlanCards.map((plan) => {
-                    const isCurrentPlan = plan.id === "basic" ? !hasAdvancedPlan : plan.id === "pro" ? isProPlan : isFlagshipPlan
+                    const isCurrentPlan = plan.id === "basic" ? !hasAdvancedPlan : plan.id === "pro" ? isProPlan : plan.id === "ultra" ? isFlagshipPlan : false
                     const isSelected = selectedAccountPlan.id === plan.id
+                    const PlanIcon = plan.id === "team" ? IconBuildingSkyscraper : IconCrown
 
                     return (
                       <button
@@ -335,22 +362,12 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                         >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 font-medium">
-                            <IconCrown className={cn("size-4", isSelected ? "text-primary" : "text-muted-foreground")} />
+                            <PlanIcon className={cn("size-4", isSelected ? "text-primary" : "text-muted-foreground")} />
                             {plan.name}
                           </div>
                           {isCurrentPlan ? <Badge className="shrink-0">当前套餐</Badge> : null}
                         </div>
-                        <div className="mt-3 text-xs leading-5 text-muted-foreground">{plan.desc}</div>
-                        <div className="mt-auto flex flex-wrap items-end gap-x-3 gap-y-1 pt-4">
-                          <div className="flex items-end gap-1">
-                            <span className="text-lg font-semibold leading-none">{plan.monthlyPrice}</span>
-                            <span className="pb-0.5 text-xs font-medium leading-none text-muted-foreground">/ 月</span>
-                          </div>
-                          <div className="flex items-end gap-1">
-                            <span className="text-lg font-semibold leading-none">{plan.yearlyPrice}</span>
-                            <span className="pb-0.5 text-xs font-medium leading-none text-muted-foreground">/ 年</span>
-                          </div>
-                        </div>
+                        <div className="mt-3 text-xs leading-5 text-muted-foreground [@media(max-height:760px)]:hidden">{plan.desc}</div>
                       </button>
                     )
                   })}
@@ -360,7 +377,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   <div className="border-b px-4 py-2">
                     <div>
                       <div className="flex items-center gap-2 text-sm font-medium">
-                        <IconCrown className="size-4 text-primary" />
+                        <SelectedPlanIcon className="size-4 text-primary" />
                         {selectedAccountPlan.name}
                         {isSelectedCurrentPlan ? <Badge>当前套餐</Badge> : null}
                       </div>
@@ -369,58 +386,88 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   </div>
 
                   <div className="min-h-0 flex-1 overflow-auto p-4">
-                    <div className="divide-y">
-                      {selectedAccountPlanFeatures.map(({ label, tooltip, feature }) => {
-                        const status = feature.status || "supported"
-                        const FeatureIcon = status === "unsupported" ? IconX : IconCheck
+                    {isSelectedTeamPlan ? (
+                      <div className="space-y-4">
+                        <div className="rounded-md border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+                          面向企业级开发团队，团队版支持团队内共享额度和私有化部署。
+                        </div>
+                        <div className="divide-y">
+                          {teamPlanFeatures.map((feature) => (
+                            <div key={feature.label} className="flex h-10 items-center gap-3 px-4 text-sm">
+                              <IconCheck className="size-4 shrink-0 text-primary" />
+                              <div className="min-w-0 flex-1 truncate text-foreground">{feature.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="divide-y">
+                        {selectedAccountPlanFeatures.map(({ label, tooltip, feature }) => {
+                          const status = feature.status || "supported"
+                          const FeatureIcon = status === "unsupported" ? IconX : IconCheck
 
-                        return (
-                          <div
-                            key={label}
-                            className={cn(
-                              "flex h-10 items-center gap-3 px-4 text-sm",
-                              status === "unsupported" && "text-muted-foreground",
-                            )}
-                          >
-                            <FeatureIcon
+                          return (
+                            <div
+                              key={label}
                               className={cn(
-                                "size-4 shrink-0",
-                                status === "unsupported"
-                                  ? "text-muted-foreground"
-                                  : status === "partial"
-                                    ? "text-yellow-600"
-                                : "text-primary",
+                                "flex h-10 items-center gap-3 px-4 text-sm",
+                                status === "unsupported" && "text-muted-foreground",
                               )}
-                            />
-                            <div className="flex min-w-0 flex-1 items-center gap-1 text-foreground">
-                              <span className="truncate">{label}</span>
-                              {tooltip ? (
-                                <Tooltip>
-                                  <TooltipTrigger className="inline-flex shrink-0 transition-colors hover:text-primary">
-                                    <IconHelpCircle className="size-3.5" />
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[320px] leading-6">
-                                    {tooltip}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : null}
+                            >
+                              <FeatureIcon
+                                className={cn(
+                                  "size-4 shrink-0",
+                                  status === "unsupported"
+                                    ? "text-muted-foreground"
+                                    : status === "partial"
+                                      ? "text-yellow-600"
+                                  : "text-primary",
+                                )}
+                              />
+                              <div className="flex min-w-0 flex-1 items-center gap-1 text-foreground">
+                                <span className="truncate">{label}</span>
+                                {tooltip ? (
+                                  <Tooltip>
+                                    <TooltipTrigger className="inline-flex shrink-0 transition-colors hover:text-primary">
+                                      <IconHelpCircle className="size-3.5" />
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[320px] leading-6">
+                                      {tooltip}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : null}
+                              </div>
+                              <div className={cn(
+                                "flex max-w-[60%] shrink-0 items-center justify-end text-right font-medium leading-5",
+                                status === "unsupported" ? "text-muted-foreground" : "text-foreground",
+                              )}>
+                                  {feature.label}
+                              </div>
                             </div>
-                            <div className={cn(
-                              "flex max-w-[60%] shrink-0 items-center justify-end text-right font-medium leading-5",
-                              status === "unsupported" ? "text-muted-foreground" : "text-foreground",
-                            )}>
-                                {feature.label}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
+                  {isSelectedTeamPlan ? (
+                    <>
+                      <div className="text-sm text-muted-foreground">
+                        提交联系方式后，我们会根据团队规模和部署需求联系你。
+                      </div>
+                      <Button
+                        className="w-full md:w-40"
+                        onClick={() => window.open(TEAM_CONSULT_URL, "_blank", "noopener,noreferrer")}
+                      >
+                        联系销售
+                      </Button>
+                    </>
+                  ) : (
+                    <>
                   <div className="flex flex-wrap items-center gap-3">
                     <Tabs
                       value={selectedBillingPeriod}
@@ -469,6 +516,8 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       </div>
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
