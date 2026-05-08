@@ -41,7 +41,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
 import Icon from "@/components/common/Icon"
 import { cn } from "@/lib/utils"
-import { formatTokens, getBrandFromModelName, getBuiltinModelName, getModelDisplayName, getModelPricingItem, getTaskDisplayName } from "@/utils/common"
+import { canUseModelBySubscription, formatTokens, getBrandFromModelName, getBuiltinModelName, getModelDisplayName, getModelPricingItem, getTaskDisplayName } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHelpCircle, IconHistory, IconHome, IconReload, IconRobotFace, IconTerminal2, IconTrophy } from "@tabler/icons-react"
 import React from "react"
@@ -64,7 +64,7 @@ const MODEL_SWITCH_MIN_CREATED_AT = 1777381200 // 2026-04-28 21:00:00 +08:00
 export default function TaskDetailPage() {
   const { taskId } = useParams()
   const { setTaskName } = useBreadcrumbTask() ?? {}
-  const { models, loadingModels } = useCommonData()
+  const { models, loadingModels, subscription } = useCommonData()
   const [task, setTask] = React.useState<DomainProjectTask | null>(null)
   const [activeSidePanel, setActiveSidePanel] = React.useState<SidePanelType | null>(null)
   const [terminalPanelOpen, setTerminalPanelOpen] = React.useState(false)
@@ -688,6 +688,12 @@ export default function TaskDetailPage() {
     }))
   }, [])
 
+  const handleOpenSubscriptionPlan = React.useCallback(() => {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+      detail: { section: "plan" },
+    }))
+  }, [])
+
   const handleConfirmModelSwitch = React.useCallback(async () => {
     const modelId = pendingSwitchModel?.id
     if (!modelId || !pendingSwitchModel || modelSwitchSubmitting) return
@@ -982,6 +988,7 @@ export default function TaskDetailPage() {
                     const modelDisplayName = getModelDisplayName(modelName)
                     const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
                     const builtinModelName = getBuiltinModelName(modelName)
+                    const canUseModel = canUseModelBySubscription(model, subscription)
                     const modelIcon = builtinModelName ? BUILTIN_TASK_MODEL_ICONS[builtinModelName] : undefined
                     const BuiltinModelIcon = modelIcon?.icon || IconTrophy
 
@@ -989,7 +996,14 @@ export default function TaskDetailPage() {
                       <DropdownMenuItem
                         key={model.id || modelName}
                         disabled={!model.id}
-                        onClick={() => handleRequestModelSwitch(model)}
+                        onClick={() => {
+                          if (!canUseModel) {
+                            handleOpenSubscriptionPlan()
+                            return
+                          }
+
+                          handleRequestModelSwitch(model)
+                        }}
                         className={cn(
                           "w-full justify-between gap-3",
                           isSelected && "bg-primary/10 text-primary"
@@ -1008,6 +1022,21 @@ export default function TaskDetailPage() {
                             {modelDisplayName}
                           </span>
                         </div>
+                        {!canUseModel ? (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="secondary"
+                            className="h-6 shrink-0 px-2"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              handleOpenSubscriptionPlan()
+                            }}
+                          >
+                            升级套餐
+                          </Button>
+                        ) : null}
                       </DropdownMenuItem>
                     )
                   })}
