@@ -121,6 +121,9 @@ func TestGetCodingConfigsOpenCodeRendersRuntimeConfigEnabled(t *testing.T) {
 
 	renderedModel := opencodeModel(t, provider, "gpt-4.1")
 	assertLimit(t, renderedModel, 128000, 16000)
+	if compat, ok := renderedModel["compat"]; ok {
+		t.Fatalf("compat = %v, want absent", compat)
+	}
 	if options, ok := renderedModel["options"].(map[string]any); ok {
 		if thinking, ok := options["thinking"]; ok {
 			t.Fatalf("model thinking options = %v, want absent", thinking)
@@ -161,6 +164,36 @@ func TestGetCodingConfigsOpenCodeRendersThinkingDisabled(t *testing.T) {
 	}
 	if got := thinking["type"]; got != "disabled" {
 		t.Fatalf("thinking type = %v, want disabled", got)
+	}
+}
+
+func TestGetCodingConfigsOpenCodeRendersUltraForceReasoning(t *testing.T) {
+	uc := &TaskUsecase{}
+	model := &db.Model{
+		BaseURL:         "https://example.com/v1",
+		Model:           "monkeycode-ultra-preview",
+		APIKey:          "sk-test",
+		InterfaceType:   string(consts.InterfaceTypeOpenAIResponse),
+		ThinkingEnabled: true,
+	}
+
+	_, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+
+	config := opencodeConfig(t, cfs)
+	provider := opencodeProvider(t, config)
+	renderedModel := opencodeModel(t, provider, "monkeycode-ultra-preview")
+	if compat, ok := renderedModel["compat"]; ok {
+		t.Fatalf("compat = %v, want absent", compat)
+	}
+	options, ok := renderedModel["options"].(map[string]any)
+	if !ok {
+		t.Fatal("model options is absent")
+	}
+	if got := options["forceReasoning"]; got != true {
+		t.Fatalf("forceReasoning = %v, want true", got)
 	}
 }
 

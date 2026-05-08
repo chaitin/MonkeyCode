@@ -14,8 +14,15 @@
       },
       "models": {
         "{{.model}}": {
+{{- if or (not .thinking_enabled) .force_reasoning }}
+          "options": {
 {{- if not .thinking_enabled }}
-          "options": {"thinking": {"type":"disabled"}},
+            "thinking": {"type":"disabled"}{{if .force_reasoning}},{{end}}
+{{- end }}
+{{- if .force_reasoning }}
+            "forceReasoning": true
+{{- end }}
+          },
 {{- end }}
           "name": "{{.model}}",
           "limit": {"context": {{.context_limit}}, "output": {{.output_limit}}}
