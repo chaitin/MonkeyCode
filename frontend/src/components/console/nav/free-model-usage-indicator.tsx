@@ -34,7 +34,7 @@ function formatTokenNumber(value: number) {
   const amount = value / 1_000_000
 
   if (amount >= 1) {
-    return `${Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1)} M`
+    return `${(Math.floor(amount * 10) / 10).toFixed(1)}M`
   }
 
   return `${value.toLocaleString("zh-CN")}`
@@ -52,6 +52,30 @@ function normalizePlan(plan?: string | null): PlanTokenLimitKey {
 
 function clampTokenBalance(value: number, total: number) {
   return Math.min(Math.max(value, 0), total)
+}
+
+function getQuotaProgressClassName(progress: number) {
+  if (progress > 80) {
+    return "bg-red-500"
+  }
+
+  if (progress >= 50) {
+    return "bg-yellow-500"
+  }
+
+  return "bg-muted-foreground"
+}
+
+function getQuotaCircularProgressClassName(progress: number) {
+  if (progress > 80) {
+    return "text-red-500"
+  }
+
+  if (progress >= 50) {
+    return "text-yellow-500"
+  }
+
+  return "text-muted-foreground"
 }
 
 export default function FreeModelUsageIndicator() {
@@ -88,7 +112,7 @@ export default function FreeModelUsageIndicator() {
   const availableQuotaItems = quotaItems.filter((item) => item.total > 0)
   const totalTokens = availableQuotaItems.reduce((sum, item) => sum + item.total, 0)
   const remainingTokens = availableQuotaItems.reduce((sum, item) => sum + item.remaining, 0)
-  const remainingProgress = totalTokens > 0 ? Math.min((remainingTokens / totalTokens) * 100, 100) : 0
+  const usedProgress = totalTokens > 0 ? Math.min(((totalTokens - remainingTokens) / totalTokens) * 100, 100) : 0
   const planLabel = getSubscriptionPlanLabel(subscription?.plan)
   const balanceLabel = Math.floor(balance).toLocaleString("zh-CN")
   const canUpgradePlan = plan !== "ultra"
@@ -107,10 +131,11 @@ export default function FreeModelUsageIndicator() {
           className="hidden h-8 items-center gap-2 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left transition-colors hover:border-primary/30 hover:bg-background md:inline-flex"
         >
           <CircularProgress
-            value={remainingProgress}
+            value={usedProgress}
             max={100}
             size={16}
             strokeWidth={3}
+            indicatorClassName={getQuotaCircularProgressClassName(usedProgress)}
             aria-hidden="true"
           />
           <span className="shrink-0 text-sm font-medium">{planLabel}</span>
@@ -127,27 +152,28 @@ export default function FreeModelUsageIndicator() {
             <div className="text-sm font-medium">每日模型额度</div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
-            <span className="inline-flex items-center gap-1.5 rounded-sm bg-primary/10 px-2 py-1 font-medium text-primary">
-              <Crown className="size-3.5" />
-              {planLabel}
-            </span>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {canUpgradePlan ? (
-                <Button type="button" size="xs" variant="secondary" onClick={() => openWalletSection("plan")}>
-                  升级
-                </Button>
-              ) : null}
-              {canRenewPlan ? (
-                <Button type="button" size="xs" variant="secondary" onClick={() => openWalletSection("plan")}>
-                  续费
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
           <div className="rounded-lg border bg-muted/20 p-3 text-sm">
             <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-sm bg-primary/10 px-2 py-1 font-medium text-primary">
+                  <Crown className="size-3.5" />
+                  {planLabel}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {canUpgradePlan ? (
+                  <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
+                    升级
+                  </Button>
+                ) : null}
+                {canRenewPlan ? (
+                  <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
+                    续费
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
               <span className="text-muted-foreground">积分</span>
               <span className="font-medium">{balanceLabel}</span>
             </div>
@@ -156,7 +182,7 @@ export default function FreeModelUsageIndicator() {
                 type="button"
                 size="xs"
                 variant="secondary"
-                className="flex-1"
+                className="h-7 flex-1"
                 onClick={() => openWalletSection("earn")}
               >
                 获得积分
@@ -165,7 +191,7 @@ export default function FreeModelUsageIndicator() {
                 type="button"
                 size="xs"
                 variant="secondary"
-                className="flex-1"
+                className="h-7 flex-1"
                 onClick={() => openWalletSection("usage")}
               >
                 积分账单
@@ -185,6 +211,7 @@ export default function FreeModelUsageIndicator() {
                 <Progress
                   value={item.progress}
                   className={cn("mt-3 h-2 bg-muted", item.total === 0 && "opacity-50")}
+                  indicatorClassName={getQuotaProgressClassName(item.progress)}
                 />
               </div>
             ))}
