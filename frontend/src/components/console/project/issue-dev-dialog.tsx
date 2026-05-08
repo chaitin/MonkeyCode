@@ -34,7 +34,7 @@ export default function IssueDevelopDialog({
   const [limitDialogOpen, setLimitDialogOpen] = useState(false)
   const { images, models, hosts, reloadProjects, reloadUnlinkedTasks, subscription } = useCommonData()
   const { branches, loadingBranches, selectedBranch, selectBranch } = useProjectBranchSelection(open, project)
-  const { selectedModel, selectedModelId, setSelectedModelId, persistSelectedModel } = useIssueTaskModelSelection(open, models, subscription)
+  const { selectedModel, selectedModelId, setSelectedModelId } = useIssueTaskModelSelection(open, models, subscription)
 
   const handleOpenChange = (open: boolean) => {
     onOpenChange(open)
@@ -72,8 +72,6 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
       toast.error('请选择大模型')
       return
     }
-
-    persistSelectedModel()
 
     setSubmitting(true)
   
@@ -118,7 +116,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
   return (
     <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex flex-col">
         <DialogHeader>
           <DialogTitle>开发任务 (AI)</DialogTitle>
           <DialogDescription>
@@ -137,6 +135,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
           selectedModel={selectedModel}
           selectedModelId={selectedModelId}
           setSelectedModelId={setSelectedModelId}
+          subscription={subscription}
         />
         <DialogFooter>
           <Button onClick={handleConfirm} disabled={submitting}>

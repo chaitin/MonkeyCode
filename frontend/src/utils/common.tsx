@@ -118,6 +118,23 @@ export function getBrandFromModelName(modelName: string): string {
   return 'openai';
 }
 
+export function getModelDisplayName(modelName?: string | null): string {
+  if (!modelName) {
+    return modelName || '';
+  }
+
+  switch (modelName.trim().toLowerCase()) {
+    case 'monkeycode-basic':
+      return '基础模型';
+    case 'monkeycode-pro':
+      return '专业模型';
+    case 'monkeycode-ultra':
+      return '旗舰模型';
+    default:
+      return modelName;
+  }
+}
+
 export type ModelPricingItem = {
   model: string;
   credits: number;
@@ -126,6 +143,9 @@ export type ModelPricingItem = {
 }
 
 export const modelPricingList: readonly ModelPricingItem[] = [
+  { model: "monkeycode-basic", credits: 150, score: 572, tags: [] },
+  { model: "monkeycode-pro", credits: 400, score: 847, tags: [] },
+  { model: "monkeycode-ultra", credits: 600, score: 922, tags: [] },
   { model: "minimax-m2.7", credits: 200, score: 637, tags: ["免费"] },
   { model: "qwen3.5-plus", credits: 120, score: 538, tags: ["免费"] },
   { model: "gpt-5.5", credits: 1000, score: 967, tags: ["最新", "很强"] },
@@ -412,8 +432,19 @@ export function getOwnerTypeBadge(owner?: DomainOwner): React.ReactNode {
   }
 }
 
-export function canUseModelBySubscription(model?: DomainModel, _subscription?: DomainSubscriptionResp | null): boolean {
-  return Boolean(model)
+export function canUseModelBySubscription(model?: DomainModel, subscription?: DomainSubscriptionResp | null): boolean {
+  if (!model) {
+    return false
+  }
+
+  switch (model.model?.trim().toLowerCase()) {
+    case "monkeycode-pro":
+      return subscription?.plan === "pro" || subscription?.plan === "flagship" || subscription?.plan === "ultra"
+    case "monkeycode-ultra":
+      return subscription?.plan === "flagship" || subscription?.plan === "ultra"
+    default:
+      return true
+  }
 }
 
 export function hasProSubscription(subscription?: DomainSubscriptionResp | null): boolean {
@@ -654,6 +685,21 @@ export function getFileExtension(filename: string): string {
 }
 
 export function selectPreferredTaskModel(models: DomainModel[], subscription?: DomainSubscriptionResp | null): string {
+  const planPreferredModel = subscription?.plan === "pro"
+    ? "monkeycode-pro"
+    : subscription?.plan === "flagship" || subscription?.plan === "ultra"
+      ? "monkeycode-ultra"
+      : "monkeycode-basic"
+  const planModel = models.find((model) => (
+    model.id
+    && model.model?.trim().toLowerCase() === planPreferredModel
+    && canUseModelBySubscription(model, subscription)
+  ))
+
+  if (planModel?.id) {
+    return planModel.id
+  }
+
   const preferredModel = models
     .filter((model) => (
       model.id

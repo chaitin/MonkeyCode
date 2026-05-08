@@ -36,7 +36,7 @@ import { ConstsOwnerType, type DomainModel } from "@/api/Api"
 import AddModel from "../settings/add-model"
 import EditModel from "../settings/edit-model"
 import Icon from "@/components/common/Icon"
-import { getBrandFromModelName, getInterfaceTypeBadge, getOwnerTypeBadge } from "@/utils/common"
+import { getBrandFromModelName, getInterfaceTypeBadge, getModelDisplayName, getOwnerTypeBadge } from "@/utils/common"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
@@ -119,7 +119,7 @@ export default function Models() {
           </ItemMedia>
             <ItemContent>
               <ItemTitle className="break-all">
-              {model.model || '未知模型'}
+              {getModelDisplayName(model.model || '未知模型')}
               {getInterfaceTypeBadge(model.interface_type)}
               {getOwnerTypeBadge(model.owner)}
             </ItemTitle>
@@ -151,7 +151,7 @@ export default function Models() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>确认移除</AlertDialogTitle>
                         <AlertDialogDescription>
-                          确定要移除模型 "{model.model || '未知模型'}" 吗？此操作不可撤销。
+                          确定要移除模型 "{getModelDisplayName(model.model || '未知模型')}" 吗？此操作不可撤销。
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>

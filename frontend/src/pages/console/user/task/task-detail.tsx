@@ -29,8 +29,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
@@ -39,15 +41,23 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
 import Icon from "@/components/common/Icon"
 import { cn } from "@/lib/utils"
-import { formatTokens, getBrandFromModelName, getModelPricingItem, getOwnerTypeBadge, getTaskDisplayName } from "@/utils/common"
+import { formatTokens, getBrandFromModelName, getModelDisplayName, getModelPricingItem, getTaskDisplayName } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHelpCircle, IconHistory, IconHome, IconReload, IconRobotFace, IconTerminal2, IconTrophy } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 type SidePanelType = "files"
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
+
+const BUILTIN_TASK_MODEL_NAMES = ["monkeycode-basic", "monkeycode-pro", "monkeycode-ultra"] as const
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
+const BUILTIN_TASK_MODEL_ICONS = {
+  "monkeycode-basic": { icon: IconTrophy, color: "#b45309" },
+  "monkeycode-pro": { icon: IconTrophy, color: "#94a3b8" },
+  "monkeycode-ultra": { icon: IconTrophy, color: "#eab308" },
+} as const
 type MessageSource = "live" | "history"
 const MODEL_SWITCH_MIN_CREATED_AT = 1777381200 // 2026-04-28 21:00:00 +08:00
 
@@ -236,11 +246,44 @@ export default function TaskDetailPage() {
     () => models.filter((model) => model.id || model.model),
     [models]
   )
-  const selectedModelValue = React.useMemo(() => {
-    if (currentModelId) return currentModelId
+  const modelGroups = React.useMemo(() => {
+    const normalizedBuiltinNames = new Set<string>(BUILTIN_TASK_MODEL_NAMES)
+    const builtinModels = BUILTIN_TASK_MODEL_NAMES
+      .map((modelName) => supportedModels.find((model) => model.model?.trim().toLowerCase() === modelName))
+      .filter((model): model is DomainModel => Boolean(model))
+    const personalModels = supportedModels.filter((model) => (
+      model.owner?.type === ConstsOwnerType.OwnerTypePrivate
+      && !normalizedBuiltinNames.has(model.model?.trim().toLowerCase() || "")
+    ))
+    const teamModels = supportedModels.filter((model) => (
+      model.owner?.type === ConstsOwnerType.OwnerTypeTeam
+      && !normalizedBuiltinNames.has(model.model?.trim().toLowerCase() || "")
+    ))
+    const otherPublicModels = supportedModels.filter((model) => (
+      model.owner?.type === ConstsOwnerType.OwnerTypePublic
+      && !normalizedBuiltinNames.has(model.model?.trim().toLowerCase() || "")
+    ))
 
-    return supportedModels.find((model) => model.model === currentModelName)?.id ?? ""
-  }, [currentModelId, currentModelName, supportedModels])
+    const teamModelGroups = Array.from(
+      teamModels.reduce((groups, model) => {
+        const teamName = model.owner?.name || "团队模型"
+        const teamId = model.owner?.id || teamName
+        const groupKey = `${teamId}:${teamName}`
+        const group = groups.get(groupKey) || { key: groupKey, name: teamName, models: [] as DomainModel[] }
+        group.models.push(model)
+        groups.set(groupKey, group)
+        return groups
+      }, new Map<string, { key: string; name: string; models: DomainModel[] }>())
+      .values()
+    )
+
+    return {
+      builtinModels,
+      personalModels,
+      teamModelGroups,
+      otherPublicModels,
+    }
+  }, [supportedModels])
 
   const toggleSidePanel = (panel: SidePanelType) => {
     setActiveSidePanel((prev) => (prev === panel ? null : panel))
@@ -640,6 +683,12 @@ export default function TaskDetailPage() {
     setModelSwitchDialogOpen(true)
   }, [currentModelId, currentModelName])
 
+  const handleOpenModelPricing = React.useCallback(() => {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+      detail: { section: "pricing" },
+    }))
+  }, [])
+
   const handleConfirmModelSwitch = React.useCallback(async () => {
     const modelId = pendingSwitchModel?.id
     if (!modelId || !pendingSwitchModel || modelSwitchSubmitting) return
@@ -918,58 +967,151 @@ export default function TaskDetailPage() {
                 className="h-7 max-w-[220px] shrink-0 gap-1 px-2 text-xs font-normal"
                 disabled={!canSwitchModel}
               >
-                <span className="truncate">{currentModelName || "未知模型"}</span>
+                <span className="truncate">{getModelDisplayName(currentModelName) || "未知模型"}</span>
                 <IconChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-[360px] min-w-[320px] overflow-y-auto">
+            <DropdownMenuContent align="start" className="max-h-[360px] min-w-[240px] overflow-y-auto">
               {loadingModels ? (
                 <DropdownMenuItem disabled>加载中...</DropdownMenuItem>
               ) : supportedModels.length === 0 ? (
                 <DropdownMenuItem disabled>暂无可用模型</DropdownMenuItem>
               ) : (
-                <DropdownMenuRadioGroup
-                  value={selectedModelValue}
-                  onValueChange={(nextModelId) => {
-                    const nextModel = supportedModels.find((model) => model.id === nextModelId)
-                    if (nextModel) {
-                      handleRequestModelSwitch(nextModel)
-                    }
-                  }}
-                >
-                  {supportedModels.map((model) => {
+                <>
+                  {modelGroups.builtinModels.map((model) => {
                     const modelName = model.model || "未知模型"
-                    const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                    const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                    const pricingTags = pricing?.tags ?? []
+                    const normalizedModelName = modelName.trim().toLowerCase()
+                    const modelDisplayName = getModelDisplayName(modelName)
+                    const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
+                    const modelIcon = BUILTIN_TASK_MODEL_ICONS[normalizedModelName as keyof typeof BUILTIN_TASK_MODEL_ICONS]
+                    const BuiltinModelIcon = modelIcon?.icon || IconTrophy
 
                     return (
-                      <DropdownMenuRadioItem
+                      <DropdownMenuItem
                         key={model.id || modelName}
-                        value={model.id || ""}
                         disabled={!model.id}
-                        className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
+                        onClick={() => handleRequestModelSwitch(model)}
+                        className={cn(
+                          "w-full justify-between gap-3",
+                          isSelected && "bg-primary/10 text-primary"
+                        )}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <BuiltinModelIcon
+                            className="size-4 shrink-0"
+                            color={modelIcon?.color}
+                            style={{ color: modelIcon?.color }}
+                          />
+                          <span
+                            className="truncate"
+                            style={{ color: isSelected ? "var(--primary)" : "var(--foreground)" }}
+                          >
+                            {modelDisplayName}
+                          </span>
+                        </div>
+                      </DropdownMenuItem>
+                    )
+                  })}
+
+                  {modelGroups.personalModels.map((model) => {
+                    const modelName = model.model || "未知模型"
+                    const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
+
+                    return (
+                      <DropdownMenuItem
+                        key={model.id || modelName}
+                        disabled={!model.id}
+                        onClick={() => handleRequestModelSwitch(model)}
+                        className={cn("w-full justify-between gap-3", isSelected && "bg-primary/10 text-primary")}
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-2">
                           <Icon name={getBrandFromModelName(modelName)} className="size-4" />
-                          <span className="truncate">{modelName}</span>
+                          <span className="truncate">{getModelDisplayName(modelName)}</span>
                         </div>
-                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                          {showPricingSummary && pricingTags.map((tag) => (
-                            <Badge
-                              key={`${model.id}-${tag}`}
-                              variant="default"
-                              className="shrink-0 !bg-primary !text-primary-foreground"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                          {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                        </div>
-                      </DropdownMenuRadioItem>
+                      </DropdownMenuItem>
                     )
                   })}
-                </DropdownMenuRadioGroup>
+
+                  {modelGroups.teamModelGroups.map((teamGroup) => (
+                    <DropdownMenuSub key={teamGroup.key}>
+                      <DropdownMenuSubTrigger className="w-full">
+                        <IconHome className="size-4" />
+                        <span className="truncate">{teamGroup.name}</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="max-h-[320px] min-w-[240px] overflow-y-auto">
+                        {teamGroup.models.map((model) => {
+                        const modelName = model.model || "未知模型"
+                        const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
+
+                        return (
+                          <DropdownMenuItem
+                            key={model.id || modelName}
+                            disabled={!model.id}
+                            onClick={() => handleRequestModelSwitch(model)}
+                            className={cn("w-full justify-between gap-3", isSelected && "bg-primary/10 text-primary")}
+                          >
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <Icon name={getBrandFromModelName(modelName)} className="size-4" />
+                              <span className="truncate">{getModelDisplayName(modelName)}</span>
+                            </div>
+                          </DropdownMenuItem>
+                        )
+                      })}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  ))}
+
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="w-full">
+                      <IconRobotFace className="size-4" />
+                      更多大模型
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="max-h-[320px] min-w-[240px] overflow-y-auto">
+                      {modelGroups.otherPublicModels.length === 0 ? (
+                        <DropdownMenuItem disabled>暂无其他大模型</DropdownMenuItem>
+                      ) : modelGroups.otherPublicModels.map((model) => {
+                        const modelName = model.model || "未知模型"
+                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
+                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+                        const pricingTags = pricing?.tags ?? []
+                        const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
+
+                        return (
+                          <DropdownMenuItem
+                            key={model.id || modelName}
+                            disabled={!model.id}
+                            onClick={() => handleRequestModelSwitch(model)}
+                            className={cn("w-full justify-between gap-3", isSelected && "bg-primary/10 text-primary")}
+                          >
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <Icon name={getBrandFromModelName(modelName)} className="size-4" />
+                              <span className="truncate">{getModelDisplayName(modelName)}</span>
+                            </div>
+                            <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                              {pricingTags.map((tag) => (
+                                <Badge
+                                  key={`${model.id}-${tag}`}
+                                  variant="default"
+                                  className="shrink-0 !bg-primary !text-primary-foreground"
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          </DropdownMenuItem>
+                        )
+                      })}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleOpenModelPricing}
+                    className="w-full text-xs text-muted-foreground focus:text-foreground"
+                  >
+                    <IconHelpCircle className="size-3.5" />
+                    如何选择大模型
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1130,7 +1272,7 @@ export default function TaskDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>切换模型</AlertDialogTitle>
             <AlertDialogDescription>
-              即将把当前任务模型切换为 {pendingSwitchModel?.model || "所选模型"}。请确认是否继续。
+              即将把当前任务模型切换为 {getModelDisplayName(pendingSwitchModel?.model) || "所选模型"}。请确认是否继续。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

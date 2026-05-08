@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupTextarea } from "@/components/ui/input-group";
@@ -16,9 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getGitPlatformIcon, getHostBadges, getImageShortName, getModelPricingItem, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
+import { TASK_PROMPT_PLACEHOLDER, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconChevronDown, IconHelpCircle, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -31,6 +31,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { defaultSkills } from "@/utils/config";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
+import ModelSelect from "./model-select";
+import { CircleQuestionMark } from "lucide-react";
+
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog";
 
 
 interface SkillItemProps {
@@ -68,8 +72,6 @@ interface RepoOption {
   username: string;
   repository: DomainAuthRepository;
 }
-
-const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 /** 支持从仓库列表选择的身份（GitHub、Gitee、Gitea、GitLab） */
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
@@ -126,16 +128,16 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const { models, images, hosts, identities, user, subscription } = useCommonData();
   const { setOpen: setSettingsOpen } = useSettingsDialog();
 
-  const handleOpenModelPricing = () => {
-    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "pricing" },
-    }))
-  }
-
   const selectableIdentities = useMemo(
     () => identities.filter(isIdentityWithRepos),
     [identities]
   );
+
+  const handleOpenModelPricing = () => {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+      detail: { section: "pricing" },
+    }));
+  };
 
 
   // 根据选中的仓库自动匹配身份凭证；若用户已显式选择（如从「我的仓库」选中、或选择「匿名」），且该身份仍在匹配列表中，则保留用户选择
@@ -231,16 +233,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
   const setDefaultConfig = () => {
     const storedParams = readStoredTaskDialogParams();
-    const defaultModelId = selectPreferredTaskModel(models, subscription);
-    const nextModelId = (
-      storedParams.modelId
-      && models.some((model) => model.id === storedParams.modelId)
-      && canUseModelBySubscription(models.find((model) => model.id === storedParams.modelId), subscription)
-    )
-      ? storedParams.modelId
-      : defaultModelId;
-
-    setSelectedModelId(nextModelId);
+    setSelectedModelId(selectPreferredTaskModel(models, subscription));
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
       const nextHostId = (
@@ -263,11 +256,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
     setSelectedHostId(selectHost(hosts, false));
     setSelectedImageId(selectImage(images, false));
-  };
-
-  const adaptedModelForTool = (): boolean => {
-    // 固定使用 opencode，支持所有模型
-    return true;
   };
 
   const selectedModel = useMemo(
@@ -302,7 +290,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
     const storedParams = readStoredTaskDialogParams();
     writeStoredTaskDialogParams({
-      modelId: selectedModelId,
       hostId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedHostId : storedParams.hostId,
       imageId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedImageId : storedParams.imageId,
     });
@@ -784,79 +771,27 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
             <DialogTitle>任务参数</DialogTitle>
           </DialogHeader>
           <Field>
-            <FieldLabel>大模型</FieldLabel>
+            <div className="flex items-center justify-between gap-3">
+              <FieldLabel>大模型</FieldLabel>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
+                onClick={handleOpenModelPricing}
+              >
+                <CircleQuestionMark className="size-3" />如何选择大模型
+              </Button>
+            </div>
             <FieldContent>
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="outline" className="w-full justify-between">
-                        {selectedModel ? (
-                          <div className="flex min-w-0 flex-1 items-center gap-2">
-                            <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
-                            <span className="truncate">{selectedModel.model}</span>
-                          </div>
-                        ) : (
-                          <span className="truncate text-muted-foreground">选择大模型</span>
-                        )}
-                        <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-[320px]">
-                      <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
-                        {models.map((model) => (
-                          (() => {
-                            const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                            const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                            const pricingTags = pricing?.tags ?? []
-
-                            return (
-                              <DropdownMenuRadioItem
-                                key={model.id}
-                                value={model.id || ""}
-                                disabled={!adaptedModelForTool()}
-                                className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
-                              >
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                  <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                                  <span className="truncate">{model.model}</span>
-                                </div>
-                                <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                                  {showPricingSummary && pricingTags.map((tag) => (
-                                    <Badge
-                                      key={`${model.id}-${tag}`}
-                                      variant="default"
-                                      className="shrink-0 !bg-primary !text-primary-foreground"
-                                    >
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                  {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                                </div>
-                              </DropdownMenuRadioItem>
-                            )
-                          })()
-                        ))}
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      className="shrink-0"
-                      onClick={handleOpenModelPricing}
-                      aria-label="查看模型定价"
-                    >
-                      <IconHelpCircle className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>查看模型定价</TooltipContent>
-                </Tooltip>
-              </div>
+              <ModelSelect
+                models={models}
+                selectedModel={selectedModel}
+                selectedModelId={selectedModelId}
+                setSelectedModelId={setSelectedModelId}
+                subscription={subscription}
+                showPricingButton={false}
+              />
             </FieldContent>
           </Field>
           {selectedRepo && !selectedRepoDisplayName.endsWith('.zip') && <>

@@ -1,31 +1,19 @@
-import { ConstsGitPlatform, ConstsOwnerType, type DomainBranch, type DomainModel, type DomainProject, type DomainSubscriptionResp } from "@/api/Api"
-import Icon from "@/components/common/Icon"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { ConstsGitPlatform, type DomainBranch, type DomainModel, type DomainProject, type DomainSubscriptionResp } from "@/api/Api"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { canUseModelBySubscription, getBrandFromModelName, getModelPricingItem, getOwnerTypeBadge, selectPreferredTaskModel } from "@/utils/common"
+import ModelSelect from "@/components/console/task/model-select"
+import { selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconChevronDown, IconHelpCircle } from "@tabler/icons-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "@/components/console/task/task-dialog-params-storage"
+import { Button } from "@/components/ui/button"
+import { CircleQuestionMark } from "lucide-react"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 function getDefaultModelId(models: DomainModel[], subscription: DomainSubscriptionResp | null) {
-  const storedParams = readStoredTaskDialogParams()
-  if (
-    storedParams.modelId
-    && models.some((model) => model.id === storedParams.modelId)
-    && canUseModelBySubscription(models.find((model) => model.id === storedParams.modelId), subscription)
-  ) {
-    return storedParams.modelId
-  }
-
   return selectPreferredTaskModel(models, subscription)
 }
 
@@ -70,19 +58,10 @@ export function useIssueTaskModelSelection(
     }
   }, [models, open, selectedModelId, subscription])
 
-  const persistSelectedModel = useCallback(() => {
-    const storedParams = readStoredTaskDialogParams()
-    writeStoredTaskDialogParams({
-      ...storedParams,
-      modelId: selectedModelId,
-    })
-  }, [selectedModelId])
-
   return {
     selectedModel,
     selectedModelId,
     setSelectedModelId,
-    persistSelectedModel,
   }
 }
 
@@ -246,11 +225,13 @@ export function IssueTaskModelSelect({
   selectedModel,
   selectedModelId,
   setSelectedModelId,
+  subscription,
 }: {
   models: DomainModel[]
   selectedModel?: DomainModel
   selectedModelId: string
   setSelectedModelId: (modelId: string) => void
+  subscription?: DomainSubscriptionResp | null
 }) {
   const handleOpenModelPricing = () => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
@@ -260,70 +241,26 @@ export function IssueTaskModelSelect({
 
   return (
     <div className="space-y-2">
-      <Label>大模型</Label>
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" className="w-full justify-between">
-                {selectedModel ? (
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
-                    <span className="truncate">{selectedModel.model}</span>
-                  </div>
-                ) : (
-                  <span className="truncate text-muted-foreground">选择大模型</span>
-                )}
-                <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-[320px]">
-              <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
-                {models.map((model) => {
-                  const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                  const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                  const pricingTags = pricing?.tags ?? []
-
-                  return (
-                    <DropdownMenuRadioItem
-                      key={model.id}
-                      value={model.id || ""}
-                      className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                        <span className="truncate">{model.model}</span>
-                      </div>
-                      <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                        {showPricingSummary && pricingTags.map((tag) => (
-                          <Badge
-                            key={`${model.id}-${tag}`}
-                            variant="default"
-                            className="shrink-0 !bg-primary !text-primary-foreground"
-                          >
-                            {tag}
-                          </Badge>
-                        ))}
-                        {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                      </div>
-                    </DropdownMenuRadioItem>
-                  )
-                })}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <Label>大模型</Label>
         <Button
           type="button"
-          size="icon-sm"
-          variant="outline"
-          className="shrink-0"
+          variant="link"
+          size="sm"
+          className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
           onClick={handleOpenModelPricing}
-          aria-label="查看模型定价"
         >
-          <IconHelpCircle className="size-4" />
+          <CircleQuestionMark className="size-3" />如何选择大模型
         </Button>
       </div>
+      <ModelSelect
+        models={models}
+        selectedModel={selectedModel}
+        selectedModelId={selectedModelId}
+        setSelectedModelId={setSelectedModelId}
+        subscription={subscription}
+        showPricingButton={false}
+      />
     </div>
   )
 }

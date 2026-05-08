@@ -29,8 +29,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -50,12 +48,9 @@ import { cn } from "@/lib/utils"
 import { useSettingsDialog } from "@/pages/console/user/page"
 import { defaultSkills } from "@/utils/config"
 import {
-  canUseModelBySubscription,
-  getBrandFromModelName,
   getGitPlatformIcon,
   getHostBadges,
   getImageShortName,
-  getModelPricingItem,
   getOSFromImageName,
   getOwnerTypeBadge,
   getRepoIcon,
@@ -72,7 +67,6 @@ import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-
 import {
   IconBug,
   IconChevronDown,
-  IconHelpCircle,
   IconLink,
   IconPuzzle,
   IconReload,
@@ -87,6 +81,8 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog"
+import ModelSelect from "./model-select"
+import { CircleQuestionMark } from "lucide-react"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
@@ -351,16 +347,7 @@ export default function CreateDefaultTaskDialog({
 
   const setDefaultConfig = () => {
     const storedParams = readStoredTaskDialogParams()
-    const defaultModelId = selectPreferredTaskModel(models, subscription)
-    const nextModelId = (
-      storedParams.modelId
-      && models.some((model) => model.id === storedParams.modelId)
-      && canUseModelBySubscription(models.find((model) => model.id === storedParams.modelId), subscription)
-    )
-      ? storedParams.modelId
-      : defaultModelId
-
-    setSelectedModelId(nextModelId)
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
       const nextHostId = (
@@ -437,7 +424,6 @@ export default function CreateDefaultTaskDialog({
 
     const storedParams = readStoredTaskDialogParams()
     writeStoredTaskDialogParams({
-      modelId: selectedModelId,
       hostId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedHostId : storedParams.hostId,
       imageId: user.role === ConstsUserRole.UserRoleSubAccount ? selectedImageId : storedParams.imageId,
     })
@@ -527,7 +513,7 @@ export default function CreateDefaultTaskDialog({
 
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>创建任务</DialogTitle>
         </DialogHeader>
@@ -914,78 +900,29 @@ export default function CreateDefaultTaskDialog({
               </PopoverContent>
             </Popover>
 
-            <div className="ml-auto flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="max-w-[220px] rounded-md"
-                  >
-                    {selectedModel ? (
-                      <>
-                        <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
-                        <span className="truncate">{selectedModel.model}</span>
-                      </>
-                    ) : (
-                      <span className="truncate">大模型</span>
-                    )}
-                    <IconChevronDown className="size-3.5 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[320px]">
-                  <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
-                    {models.map((model) => (
-                      (() => {
-                        const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                        const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                        const pricingTags = pricing?.tags ?? []
+          </div>
 
-                        return (
-                      <DropdownMenuRadioItem
-                        key={model.id}
-                        value={model.id || ""}
-                        className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                          <span className="truncate">{model.model}</span>
-                        </div>
-                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                          {showPricingSummary && pricingTags.map((tag) => (
-                            <Badge
-                              key={`${model.id}-${tag}`}
-                              variant="default"
-                              className="shrink-0 !bg-primary !text-primary-foreground"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                          {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                        </div>
-                      </DropdownMenuRadioItem>
-                        )
-                      })()
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="outline"
-                    className="shrink-0 rounded-md"
-                    onClick={handleOpenModelPricing}
-                    aria-label="查看模型定价"
-                  >
-                    <IconHelpCircle className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>查看模型定价</TooltipContent>
-              </Tooltip>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <FieldLabel>大模型</FieldLabel>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
+                onClick={handleOpenModelPricing}
+              >
+                <CircleQuestionMark className="size-3" />如何选择大模型
+              </Button>
             </div>
+            <ModelSelect
+              models={models}
+              selectedModel={selectedModel}
+              selectedModelId={selectedModelId}
+              setSelectedModelId={setSelectedModelId}
+              subscription={subscription}
+              showPricingButton={false}
+            />
           </div>
 
           {showAdvancedOptions && (

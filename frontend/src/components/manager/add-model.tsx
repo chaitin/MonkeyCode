@@ -15,7 +15,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import type { DomainProviderModelListItem, DomainTeamGroup } from "@/api/Api"
 import { ConstsInterfaceType } from "@/api/Api"
-import { getModelUrlDescription, modelProviderList } from "@/utils/common"
+import { getModelDisplayName, getModelUrlDescription, modelProviderList } from "@/utils/common"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -371,7 +371,7 @@ export default function AddModel({
                               <SelectLabel>{groupKey}</SelectLabel>
                               {groups[groupKey].map((item, index) => (
                                 <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
-                                  {item.model}
+                                  {getModelDisplayName(item.model)}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -455,4 +455,3 @@ export default function AddModel({
     </Dialog>
   )
 }
-

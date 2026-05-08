@@ -20,7 +20,7 @@ import Icon from "@/components/common/Icon"
 import { ConstsHostStatus, type DomainCreateVMReq } from "@/api/Api"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
-import { canManageDevEnvironment, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getInterfaceTypeBadge } from "@/utils/common"
+import { canManageDevEnvironment, getOSFromImageName, getImageShortName, getBrandFromModelName, getGitPlatformIcon, getModelDisplayName, getOwnerTypeBadge, getHostBadges, selectImage, selectHost, selectPreferredTaskModel, getInterfaceTypeBadge } from "@/utils/common"
 import { Spinner } from "@/components/ui/spinner"
 import {
   Tooltip,
@@ -385,7 +385,7 @@ export default function VmAddDialog({
                       <SelectItem key={model.id} value={model.id!}>
                         <div className="flex items-center gap-2">
                           <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
-                          <span>{model.model || '未知模型'}</span>
+                          <span>{getModelDisplayName(model.model || '未知模型')}</span>
                           {getOwnerTypeBadge(model.owner)}
                           {getInterfaceTypeBadge(model.interface_type)}
                         </div>

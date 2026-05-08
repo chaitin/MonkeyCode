@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { CircleQuestionMark } from 'lucide-react'
-import { getModelUrlDescription, modelProviderList } from "@/utils/common"
+import { getModelDisplayName, getModelUrlDescription, modelProviderList } from "@/utils/common"
 
 interface AddModelProps {
   open: boolean
@@ -325,7 +325,7 @@ export default function AddModel({
                               <SelectLabel>{groupKey}</SelectLabel>
                               {groups[groupKey].map((item, index) => (
                                 <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
-                                  {item.model}
+                                  {getModelDisplayName(item.model)}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -356,4 +356,3 @@ export default function AddModel({
     </Dialog>
   )
 }
-

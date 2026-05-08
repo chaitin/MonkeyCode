@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { TaskActionsDropdown } from "@/components/console/task/task-actions-dropdown";
 import { cn } from "@/lib/utils";
-import { formatTokens, getTaskDisplayName, renderHoverCardContent } from "@/utils/common";
+import { formatTokens, getModelDisplayName, getTaskDisplayName, renderHoverCardContent } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import dayjs from "dayjs";
@@ -209,7 +209,7 @@ export default function TasksPage() {
                   task.repo_filename ? {title: "代码文件", content: task.repo_filename} : null,
                   task.repo_url ? {title: "仓库分支", content: task.branch || ""} : null,
                   {title: "开发工具", content: task.cli_name || ""},
-                  {title: "大模型", content: task.model?.model || ""},
+                  {title: "大模型", content: getModelDisplayName(task.model?.model)},
                   {title: "创建时间", content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
                 ])}
               </HoverCard>

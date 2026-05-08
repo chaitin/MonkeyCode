@@ -28,7 +28,7 @@ import { TaskActionsDropdown } from "@/components/console/task/task-actions-drop
 import { IconListDetails, IconCircleCheck, IconAlertTriangle } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { useCommonData } from "@/components/console/data-provider"
-import { formatTokens, getRepoNameFromUrl, getTaskDisplayName, renderHoverCardContent } from "@/utils/common"
+import { formatTokens, getModelDisplayName, getRepoNameFromUrl, getTaskDisplayName, renderHoverCardContent } from "@/utils/common"
 import dayjs from "dayjs"
 
 const TASKS_PAGE_SIZE = 24
@@ -196,7 +196,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                     task.repo_filename ? { title: "代码文件", content: task.repo_filename } : null,
                     task.repo_url ? { title: "仓库分支", content: task.branch || "" } : null,
                     { title: "开发工具", content: task.cli_name || "" },
-                    { title: "大模型", content: task.model?.model || "" },
+                    { title: "大模型", content: getModelDisplayName(task.model?.model) },
                     {
                       title: "创建时间",
                       content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss"),

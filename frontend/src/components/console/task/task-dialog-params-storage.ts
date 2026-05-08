@@ -1,7 +1,6 @@
 const TASK_PARAM_STORAGE_KEY = "task_input_dialog_params";
 
 export interface StoredTaskDialogParams {
-  modelId?: string;
   hostId?: string;
   imageId?: string;
 }
@@ -15,7 +14,6 @@ export function readStoredTaskDialogParams(): StoredTaskDialogParams {
 
     const parsed = JSON.parse(raw) as StoredTaskDialogParams;
     return {
-      modelId: typeof parsed.modelId === "string" ? parsed.modelId : undefined,
       hostId: typeof parsed.hostId === "string" ? parsed.hostId : undefined,
       imageId: typeof parsed.imageId === "string" ? parsed.imageId : undefined,
     };

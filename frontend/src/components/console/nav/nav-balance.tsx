@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { IconChevronDown, IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconUserHexagon, IconCpu, IconPencil, IconCamera } from "@tabler/icons-react";
+import { IconCamera, IconChevronDown, IconCoin, IconCrown, IconGift, IconLockCode, IconLogout, IconMail, IconPencil, IconUserHexagon } from "@tabler/icons-react";
 import { useEffect, useState, useRef, useCallback, type ChangeEvent } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Api, ConstsTransactionKind, type DomainInvitationItem, type DomainTransactionLog } from "@/api/Api";
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import Icon from "@/components/common/Icon";
@@ -25,12 +24,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -43,9 +36,10 @@ import {
 } from "@/components/ui/sidebar";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useCommonData } from "../data-provider";
-import { captchaChallenge, getBrandFromModelName, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, isValidEmail, modelPricingList } from "@/utils/common";
+import { captchaChallenge, getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 import SubscriptionPlanDialog from "./subscription-plan-dialog";
+import ModelPricingDialog from "./model-pricing-dialog";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
@@ -62,7 +56,6 @@ const BALANCE_NAV = [
   { id: "account", name: "我的账户", icon: IconUserHexagon },
   { id: "earn", name: "我的积分", icon: IconGift },
   { id: "usage", name: "积分账单", icon: IconCoin },
-  { id: "pricing", name: "模型定价", icon: IconCpu },
 ] as const
 
 const COMMUNITY_GROUPS = [
@@ -71,10 +64,8 @@ const COMMUNITY_GROUPS = [
   { id: "feishu", src: "/feishu.png", alt: "飞书群二维码", label: "飞书群", iconName: "lark" },
 ] as const
 
-const TOP_MODEL_COUNT = 3
-
 type BalanceSectionId = (typeof BALANCE_NAV)[number]["id"]
-type WalletSectionId = BalanceSectionId | "profile" | "plan" | "balance"
+type WalletSectionId = BalanceSectionId | "profile" | "plan" | "balance" | "pricing"
 
 export default function NavBalance({
   variant = "sidebar",
@@ -95,6 +86,7 @@ export default function NavBalance({
   const [dialogOpenInternal, setDialogOpenInternal] = useState(false);
   const [activeSection, setActiveSection] = useState<BalanceSectionId>("account");
   const [showSubscriptionPlanDialog, setShowSubscriptionPlanDialog] = useState(false);
+  const [showModelPricingDialog, setShowModelPricingDialog] = useState(false);
   const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null);
   const [rechargingCredits, setRechargingCredits] = useState<number | null>(null);
   const [showRechargeDialog, setShowRechargeDialog] = useState(false);
@@ -114,7 +106,6 @@ export default function NavBalance({
   const [newName, setNewName] = useState("");
   const [changingName, setChangingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [pricingSort, setPricingSort] = useState<"value" | "score" | "name">("value")
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -168,36 +159,6 @@ export default function NavBalance({
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
-  const pricingSortLabel = pricingSort === "value"
-    ? "性价比排序"
-    : pricingSort === "score"
-      ? "代码能力排序"
-      : "按名字排序"
-  const topScoreModels = [...modelPricingList]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, TOP_MODEL_COUNT)
-  const scoreRankMap = new Map(topScoreModels.map((item, index) => [item.model, index + 1]))
-  const sortedModelPricing = [...modelPricingList].sort((a, b) => {
-    if (pricingSort === "name") {
-      return a.model.localeCompare(b.model)
-    }
-
-    if (pricingSort === "score") {
-      return b.score - a.score
-    }
-
-    if (a.credits === 0 && b.credits === 0) {
-      return b.score - a.score
-    }
-    if (a.credits === 0) {
-      return -1
-    }
-    if (b.credits === 0) {
-      return 1
-    }
-    return (b.score / b.credits) - (a.score / a.credits)
-  })
-
   const formatSubscriptionExpiry = (expiresAt?: string) => {
     if (!expiresAt) {
       return "长期有效"
@@ -466,7 +427,7 @@ export default function NavBalance({
   }, [fetchTranscations, hasNextPage, isLoadingMore, page]);
 
   const normalizeSection = useCallback((section: WalletSectionId): BalanceSectionId => {
-    if (section === "profile" || section === "balance" || section === "plan") {
+    if (section === "profile" || section === "balance" || section === "plan" || section === "pricing") {
       return "account"
     }
     return section
@@ -486,6 +447,11 @@ export default function NavBalance({
       return
     }
 
+    if (section === "pricing") {
+      setShowModelPricingDialog(true)
+      return
+    }
+
     setActiveSection(normalizeSection(section))
     setIsInvitationListExpanded(false)
     reloadWallet();
@@ -499,7 +465,7 @@ export default function NavBalance({
   }, [fetchInvitations, fetchTranscations, normalizeSection, reloadCheckinStatus, reloadSubscription, reloadWallet])
 
   const openDialog = useCallback((section: WalletSectionId = "account") => {
-    if (section === "plan") {
+    if (section === "plan" || section === "pricing") {
       initializeDialog(section)
       return
     }
@@ -700,15 +666,10 @@ export default function NavBalance({
           title: "我的积分",
           description: "查看当前积分，并通过签到、兑换码和邀请注册获得积分",
         }
-    : activeSection === "usage"
-      ? {
-        title: "积分账单",
-        description: "查看积分充值、消耗和奖励记录",
-      }
-    : {
-        title: "模型定价",
-        description: "查看不同模型每百万 token 对应的积分消耗",
-      }
+      : {
+          title: "积分账单",
+          description: "查看积分充值、消耗和奖励记录",
+        }
 
   const accountContent = (
     <div className="space-y-4">
@@ -1054,75 +1015,8 @@ export default function NavBalance({
     </ItemGroup>
   )
 
-  const pricingContent = (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="text-sm text-muted-foreground">
-          价格按每百万 Token 计算
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" size="sm" variant="outline" className="gap-2">
-              <span>{pricingSortLabel}</span>
-              <IconChevronDown className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setPricingSort("value")}>
-              性价比排序
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setPricingSort("score")}>
-              代码能力排序
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setPricingSort("name")}>
-              按名字排序
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <ItemGroup className="flex flex-col gap-0 has-data-[size=sm]:gap-0 has-data-[size=xs]:gap-0">
-        {sortedModelPricing.map((item, index) => (
-          <div key={item.model}>
-            <Item variant="default" size="sm" className="px-2 py-3">
-              <ItemContent>
-                <ItemTitle className="grid w-full grid-cols-[minmax(0,1.6fr)_minmax(120px,0.8fr)_minmax(100px,0.6fr)] items-center gap-4">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Icon name={getBrandFromModelName(item.model)} className="size-4 shrink-0" />
-                    <div className="truncate font-mono text-sm font-medium">{item.model}</div>
-                  </div>
-                  <div>
-                    <Badge
-                      variant={item.credits === 0 ? "default" : "outline"}
-                      className={cn(
-                        "h-6 rounded-full px-2.5 text-xs font-medium",
-                        item.credits === 0 && "hover:bg-primary",
-                      )}
-                    >
-                      {item.credits === 0 ? "免费" : `${formatPoints(item.credits)} 积分 / 1M`}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-end">
-                    <Badge
-                      variant={scoreRankMap.has(item.model) ? "default" : "secondary"}
-                      className={cn(
-                        "h-6 rounded-full px-2.5 text-xs font-medium tabular-nums",
-                        scoreRankMap.has(item.model) && "bg-amber-500 text-white hover:bg-amber-500",
-                      )}
-                    >
-                      {item.score} 分
-                    </Badge>
-                  </div>
-                </ItemTitle>
-              </ItemContent>
-            </Item>
-            {index < sortedModelPricing.length - 1 && <ItemSeparator className="my-0" />}
-          </div>
-        ))}
-      </ItemGroup>
-    </div>
-  )
-
   return (
+    <>
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
       {!hideTrigger && (
         <DialogTrigger asChild>
@@ -1192,9 +1086,7 @@ export default function NavBalance({
                   ? accountContent
                   : activeSection === "earn"
                     ? earnContent
-                    : activeSection === "usage"
-                      ? usageContent
-                      : pricingContent}
+                    : usageContent}
               </div>
             </main>
           </div>
@@ -1431,5 +1323,7 @@ export default function NavBalance({
         </DialogContent>
       </Dialog>
     </Dialog>
+    <ModelPricingDialog open={showModelPricingDialog} onOpenChange={setShowModelPricingDialog} />
+    </>
   )
 }

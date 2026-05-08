@@ -1,31 +1,29 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
-import Icon from "@/components/common/Icon"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, type DomainProject, type DomainBranch } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { TASK_PROMPT_PLACEHOLDER, canUseModelBySubscription, getBrandFromModelName, getModelPricingItem, getOwnerTypeBadge, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import ModelSelect from "@/components/console/task/model-select"
+import { TASK_PROMPT_PLACEHOLDER, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconChevronDown, IconHelpCircle, IconSparkles } from "@tabler/icons-react"
+import { IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
-import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "@/components/console/task/task-dialog-params-storage"
+import { CircleQuestionMark } from "lucide-react"
+
+const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 interface StartDevelopTaskDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   project?: DomainProject
 }
-
-const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 export default function StartDevelopTaskDialog({
   open,
@@ -164,15 +162,8 @@ export default function StartDevelopTaskDialog({
       const justOpened = !prevOpenRef.current
       prevOpenRef.current = true
       if (justOpened) {
-        const storedParams = readStoredTaskDialogParams()
         setUserMessage('')
-        setSelectedModelId(
-          storedParams.modelId
-            && models.some((model) => model.id === storedParams.modelId)
-            && canUseModelBySubscription(models.find((model) => model.id === storedParams.modelId), subscription)
-            ? storedParams.modelId
-            : selectPreferredTaskModel(models, subscription)
-        )
+        setSelectedModelId(selectPreferredTaskModel(models, subscription))
         setSelectedBranch('main')
       }
     } else {
@@ -206,12 +197,6 @@ export default function StartDevelopTaskDialog({
       toast.error('请选择大模型')
       return
     }
-
-    const storedParams = readStoredTaskDialogParams()
-    writeStoredTaskDialogParams({
-      ...storedParams,
-      modelId: selectedModelId,
-    })
 
     setSubmitting(true)
 
@@ -252,7 +237,7 @@ export default function StartDevelopTaskDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex flex-col">
         <DialogHeader>
           <DialogTitle>启动 AI 任务</DialogTitle>
         </DialogHeader>
@@ -298,72 +283,26 @@ export default function StartDevelopTaskDialog({
             </div>
           )}
           <div className="space-y-2">
-            <Label>大模型</Label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="outline" className="w-full justify-between">
-                      {selectedModel ? (
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4" />
-                          <span className="truncate">{selectedModel.model}</span>
-                        </div>
-                      ) : (
-                        <span className="truncate text-muted-foreground">选择大模型</span>
-                      )}
-                      <IconChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-[320px]">
-                    <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
-                      {models.map((model) => (
-                        (() => {
-                          const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                          const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                          const pricingTags = pricing?.tags ?? []
-
-                          return (
-                            <DropdownMenuRadioItem
-                              key={model.id}
-                              value={model.id || ""}
-                              className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
-                            >
-                              <div className="flex min-w-0 flex-1 items-center gap-2">
-                                <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                                <span className="truncate">{model.model}</span>
-                              </div>
-                              <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                                {showPricingSummary && pricingTags.map((tag) => (
-                                  <Badge
-                                    key={`${model.id}-${tag}`}
-                                    variant="default"
-                                    className="shrink-0 !bg-primary !text-primary-foreground"
-                                  >
-                                    {tag}
-                                  </Badge>
-                                ))}
-                                {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                              </div>
-                            </DropdownMenuRadioItem>
-                          )
-                        })()
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label>大模型</Label>
               <Button
                 type="button"
-                size="icon-sm"
-                variant="outline"
-                className="shrink-0"
+                variant="link"
+                size="sm"
+                className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
                 onClick={handleOpenModelPricing}
-                aria-label="查看模型定价"
               >
-                <IconHelpCircle className="size-4" />
+                <CircleQuestionMark className="size-3" />如何选择大模型
               </Button>
             </div>
+            <ModelSelect
+              models={models}
+              selectedModel={selectedModel}
+              selectedModelId={selectedModelId}
+              setSelectedModelId={setSelectedModelId}
+              subscription={subscription}
+              showPricingButton={false}
+            />
           </div>
           <div className="space-y-2">
             <Label>任务内容</Label>

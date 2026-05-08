@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { getModelUrlDescription, modelProviderList } from "@/utils/common"
+import { getModelDisplayName, getModelUrlDescription, modelProviderList } from "@/utils/common"
 
 interface EditModelProps {
   open: boolean
@@ -321,7 +321,7 @@ export default function EditModel({
                               <SelectLabel>{groupKey}</SelectLabel>
                               {groups[groupKey].map((item, index) => (
                                 <SelectItem key={`${groupKey}-${index}`} value={item.model || ""}>
-                                  {item.model}
+                                  {getModelDisplayName(item.model)}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -356,4 +356,3 @@ export default function EditModel({
     </Dialog>
   )
 }
-
