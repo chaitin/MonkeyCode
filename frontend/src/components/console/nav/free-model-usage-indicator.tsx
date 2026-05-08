@@ -93,9 +93,9 @@ export default function FreeModelUsageIndicator() {
   const balanceLabel = Math.floor(balance).toLocaleString("zh-CN")
   const canUpgradePlan = plan !== "ultra"
   const canRenewPlan = plan !== "basic"
-  const openPlanSection = () => {
+  const openWalletSection = (section: "earn" | "usage" | "plan") => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "plan" },
+      detail: { section },
     }))
   }
 
@@ -134,21 +134,43 @@ export default function FreeModelUsageIndicator() {
             </span>
             <div className="flex shrink-0 items-center gap-1.5">
               {canUpgradePlan ? (
-                <Button type="button" size="xs" variant="secondary" onClick={openPlanSection}>
+                <Button type="button" size="xs" variant="secondary" onClick={() => openWalletSection("plan")}>
                   升级
                 </Button>
               ) : null}
               {canRenewPlan ? (
-                <Button type="button" size="xs" variant="secondary" onClick={openPlanSection}>
+                <Button type="button" size="xs" variant="secondary" onClick={() => openWalletSection("plan")}>
                   续费
                 </Button>
               ) : null}
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm">
-            <span className="text-muted-foreground">积分余额</span>
-            <span className="font-medium">{balanceLabel}</span>
+          <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">积分</span>
+              <span className="font-medium">{balanceLabel}</span>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => openWalletSection("earn")}
+              >
+                获得积分
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => openWalletSection("usage")}
+              >
+                积分账单
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-3">

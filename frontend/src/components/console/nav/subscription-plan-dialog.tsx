@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { IconCheck, IconCrown, IconHelpCircle, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { ConstsSubscriptionPlan } from "@/api/Api"
+import { ConstsSubscriptionPeriodUnit, ConstsSubscriptionPlan } from "@/api/Api"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
@@ -33,7 +33,6 @@ type SubscriptionBillingPeriod = "monthly" | "yearly"
 type AccountPlanFeature = {
   label: string
   status?: "supported" | "partial" | "unsupported"
-  tooltip?: string
 }
 
 type AccountPlanCard = {
@@ -89,8 +88,12 @@ const accountPlanCards: AccountPlanCard[] = [
 
 const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分"
 const enhancedCapabilitiesTooltip = "图片识别、文档解析、联网搜索等能力，调用时消耗积分"
+const basicModelsTooltip = "能力对标国内一线厂商的上一代主力模型，如 qwen3.5-plus，minimax-m2.5, kimi-k2.5, glm-4.7 等"
+const proModelsTooltip = "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等"
+const ultraModelsTooltip = "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.4, claude-opus-4.6 等"
+const monthlyCreditsTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。"
 
-const accountPlanComparisonRows: { label: string; values: Record<AccountPlanId, AccountPlanFeature> }[] = [
+const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<AccountPlanId, AccountPlanFeature> }[] = [
   {
     label: "任务并发",
     values: {
@@ -109,6 +112,7 @@ const accountPlanComparisonRows: { label: string; values: Record<AccountPlanId, 
   },
   {
     label: "基础模型",
+    tooltip: basicModelsTooltip,
     values: {
       basic: { label: "每天 2000 万 Token" },
       pro: { label: "每天 3000 万 Token" },
@@ -117,6 +121,7 @@ const accountPlanComparisonRows: { label: string; values: Record<AccountPlanId, 
   },
   {
     label: "专业模型",
+    tooltip: proModelsTooltip,
     values: {
       basic: { label: "无额度", status: "unsupported" },
       pro: { label: "每天 3000 万 Token" },
@@ -125,6 +130,7 @@ const accountPlanComparisonRows: { label: string; values: Record<AccountPlanId, 
   },
   {
     label: "旗舰模型",
+    tooltip: ultraModelsTooltip,
     values: {
       basic: { label: "无额度", status: "unsupported" },
       pro: { label: "无额度", status: "unsupported" },
@@ -133,6 +139,7 @@ const accountPlanComparisonRows: { label: string; values: Record<AccountPlanId, 
   },
   {
     label: "每月赠送积分",
+    tooltip: monthlyCreditsTooltip,
     values: {
       basic: { label: "不赠送积分", status: "unsupported" },
       pro: { label: "1 万积分" },
@@ -141,18 +148,20 @@ const accountPlanComparisonRows: { label: string; values: Record<AccountPlanId, 
   },
   {
     label: "更多第三方大模型",
+    tooltip: thirdPartyModelsTooltip,
     values: {
-      basic: { label: "部分支持", status: "partial", tooltip: thirdPartyModelsTooltip },
-      pro: { label: "支持", tooltip: thirdPartyModelsTooltip },
-      ultra: { label: "支持", tooltip: thirdPartyModelsTooltip },
+      basic: { label: "部分支持", status: "partial" },
+      pro: { label: "支持" },
+      ultra: { label: "支持" },
     },
   },
   {
     label: "更多增强能力",
+    tooltip: enhancedCapabilitiesTooltip,
     values: {
-      basic: { label: "部分支持", status: "partial", tooltip: enhancedCapabilitiesTooltip },
-      pro: { label: "支持", tooltip: enhancedCapabilitiesTooltip },
-      ultra: { label: "支持", tooltip: enhancedCapabilitiesTooltip },
+      basic: { label: "部分支持", status: "partial" },
+      pro: { label: "支持" },
+      ultra: { label: "支持" },
     },
   },
 ]
@@ -178,7 +187,6 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const {
     loadingSubscription,
     reloadSubscription,
-    reloadWallet,
     subscription,
     user,
   } = useCommonData()
@@ -203,6 +211,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const selectedAccountPlan = accountPlanCards.find((plan) => plan.id === selectedAccountPlanId) || accountPlanCards[0]
   const selectedAccountPlanFeatures = accountPlanComparisonRows.map((row) => ({
     label: row.label,
+    tooltip: row.tooltip,
     feature: row.values[selectedAccountPlan.id],
   }))
   const selectedSubscriptionPlan = selectedAccountPlan.id === "pro" || selectedAccountPlan.id === "ultra" ? selectedAccountPlan.id : null
@@ -212,6 +221,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const selectedPeriodAmount = selectedBillingPeriod === "monthly" ? selectedAccountPlan.monthlyAmount : selectedAccountPlan.yearlyAmount
   const selectedOrderTotal = selectedPeriodAmount * selectedPeriodCount
   const selectedPeriodUnitText = selectedBillingPeriod === "monthly" ? "月" : "年"
+  const selectedPeriodUnit = selectedBillingPeriod === "monthly" ? ConstsSubscriptionPeriodUnit.PeriodMonth : ConstsSubscriptionPeriodUnit.PeriodYear
   const subscriptionPeriodCounts = selectedBillingPeriod === "monthly" ? monthlyPeriodCounts : yearlyPeriodCounts
 
   useEffect(() => {
@@ -219,10 +229,16 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       return
     }
 
-    reloadWallet()
     reloadSubscription()
+  }, [open, reloadSubscription])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
     setSelectedAccountPlanId(isFlagshipPlan ? "ultra" : isProPlan ? "pro" : "basic")
-  }, [isFlagshipPlan, isProPlan, open, reloadSubscription, reloadWallet])
+  }, [isFlagshipPlan, isProPlan, open])
 
   const handleToggleAutoRenew = async (checked: boolean) => {
     if (!hasAdvancedPlan) {
@@ -248,7 +264,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     setLoading(true)
     await apiRequest("v1UsersWalletRechargeCreate", {
       plan: plan === "pro" ? ConstsSubscriptionPlan.PlanPro : ConstsSubscriptionPlan.PlanUltra,
-      period_unit: selectedPeriodUnitText,
+      period_unit: selectedPeriodUnit,
       period_count: selectedPeriodCount,
     }, [], (resp) => {
       const paymentUrl = resp.data?.url
@@ -276,9 +292,8 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex h-[60vh] max-h-[90vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
-          <DialogHeader className="border-b px-5 py-4">
+          <DialogHeader className="px-5 py-4">
             <DialogTitle>我的套餐</DialogTitle>
-            <DialogDescription>查看基础会员、专业会员与旗舰会员权益，以及当前套餐状态</DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
             {!isTeamUser && hasAdvancedPlan ? (
@@ -349,13 +364,13 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                         {selectedAccountPlan.name}
                         {isSelectedCurrentPlan ? <Badge>当前套餐</Badge> : null}
                       </div>
-                      <div className="mt-1 text-sm text-muted-foreground">{selectedAccountPlan.desc}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{selectedAccountPlan.desc}</div>
                     </div>
                   </div>
 
-                  <div className="min-h-0 flex-1 overflow-auto p-5">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {selectedAccountPlanFeatures.map(({ label, feature }) => {
+                  <div className="min-h-0 flex-1 overflow-auto p-4">
+                    <div className="divide-y">
+                      {selectedAccountPlanFeatures.map(({ label, tooltip, feature }) => {
                         const status = feature.status || "supported"
                         const FeatureIcon = status === "unsupported" ? IconX : IconCheck
 
@@ -363,35 +378,38 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                           <div
                             key={label}
                             className={cn(
-                              "flex items-start gap-3 rounded-md border bg-muted/30 px-4 py-3 text-sm",
+                              "flex h-10 items-center gap-3 px-4 text-sm",
                               status === "unsupported" && "text-muted-foreground",
                             )}
                           >
                             <FeatureIcon
                               className={cn(
-                                "mt-0.5 size-4 shrink-0",
+                                "size-4 shrink-0",
                                 status === "unsupported"
                                   ? "text-muted-foreground"
                                   : status === "partial"
                                     ? "text-yellow-600"
-                                    : "text-primary",
+                                : "text-primary",
                               )}
                             />
-                            <div className="min-w-0">
-                              <div className="text-xs text-muted-foreground">{label}</div>
-                              <div className={cn("mt-1 font-medium leading-5", status === "unsupported" ? "text-muted-foreground" : "text-foreground")}>
+                            <div className="flex min-w-0 flex-1 items-center gap-1 text-foreground">
+                              <span className="truncate">{label}</span>
+                              {tooltip ? (
+                                <Tooltip>
+                                  <TooltipTrigger className="inline-flex shrink-0 transition-colors hover:text-primary">
+                                    <IconHelpCircle className="size-3.5" />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[320px] leading-6">
+                                    {tooltip}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                            </div>
+                            <div className={cn(
+                              "flex max-w-[60%] shrink-0 items-center justify-end text-right font-medium leading-5",
+                              status === "unsupported" ? "text-muted-foreground" : "text-foreground",
+                            )}>
                                 {feature.label}
-                                {feature.tooltip ? (
-                                  <Tooltip>
-                                    <TooltipTrigger className="ml-1 inline-flex align-[-2px] text-muted-foreground transition-colors hover:text-primary">
-                                      <IconHelpCircle className="size-3.5" />
-                                    </TooltipTrigger>
-                                    <TooltipContent className="max-w-[320px] leading-6">
-                                      {feature.tooltip}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : null}
-                              </div>
                             </div>
                           </div>
                         )

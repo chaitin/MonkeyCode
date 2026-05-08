@@ -1,7 +1,7 @@
 import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
 import { getImageShortName } from '@/utils/common';
 import { apiRequest } from '@/utils/requestUtils';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 type CommonData = {
@@ -249,7 +249,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 500)
   }
 
-  const fetchWallet = () => {
+  const fetchWallet = useCallback(() => {
     apiRequest('v1UsersWalletList', {}, [], (resp) => {
       if (resp.code === 0) {
         setBalance((resp.data?.balance || 0) / 1000);
@@ -260,7 +260,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.error("获取余额失败: " + resp.message);
       }
     })
-  }
+  }, [])
 
   const fetchCheckinStatus = async (showLoading = true) => {
     if (showLoading) {
@@ -286,7 +286,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     )
   }
 
-  const fetchSubscription = async (showLoading = true) => {
+  const fetchSubscription = useCallback(async (showLoading = true) => {
     if (showLoading) {
       setLoadingSubscription(true)
     }
@@ -304,7 +304,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (showLoading) {
       setLoadingSubscription(false)
     }
-  }
+  }, [])
 
   const fetchMembers = async () => {
     setLoadingMembers(true)
@@ -387,7 +387,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchWallet();
       fetchCheckinStatus(false);
       fetchSubscription(false);
-    }, 60 * 1000);
+    }, 30 * 1000);
 
     return () => {
       window.clearInterval(timer);
@@ -427,7 +427,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reloadWallet: fetchWallet,
         subscription: subscription,
         loadingSubscription: loadingSubscription,
-        reloadSubscription: () => fetchSubscription(),
+        reloadSubscription: fetchSubscription,
 
         members: members,
         loadingMembers: loadingMembers,

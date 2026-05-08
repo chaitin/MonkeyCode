@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import CommunityDialog from "@/components/console/nav/community-dialog"
 import NavBalance from "@/components/console/nav/nav-balance"
+import WalletDialog from "@/components/console/nav/wallet-dialog"
 import { RefreshCw } from "lucide-react"
 import { DataProvider } from "@/components/console/data-provider"
 import FreeModelUsageIndicator from "@/components/console/nav/free-model-usage-indicator"
@@ -155,8 +156,9 @@ function UserConsoleContent() {
           hideTrigger
           open={balanceOpen}
           onOpenChange={setBalanceOpen}
-          initialSection="earn"
+          initialSection="account"
         />
+        <WalletDialog />
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </SidebarProvider>
       </SettingsDialogContext.Provider>

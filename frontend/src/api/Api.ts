@@ -118,6 +118,11 @@ export enum ConstsProjectIssueStatus {
   ProjectIssueStatusCompleted = "completed",
 }
 
+export enum ConstsSubscriptionPeriodUnit {
+  PeriodMonth = "month",
+  PeriodYear = "year",
+}
+
 export enum ConstsSubscriptionPlan {
   PlanBasic = "basic",
   PlanPro = "pro",
@@ -177,6 +182,9 @@ export enum ConstsTransactionKind {
   TransactionKindTopUp = "top_up",
   TransactionKindCheckin = "checkin",
   TransactionKindViolationFine = "violation_fine",
+  TransactionKindSubscriptionPurchase = "subscription_purchase",
+  TransactionKindSubscriptionGrant = "subscription_grant",
+  TransactionKindDailyBalanceMigration = "daily_balance_migration",
 }
 
 export enum ConstsUserPlatform {
@@ -554,12 +562,6 @@ export interface DomainFileSaveReq {
   id: string;
   /** 文件路径 */
   path: string;
-}
-
-export interface DomainFreePoolUsageResp {
-  date?: string;
-  usage_percent?: number;
-  used_user_count?: number;
 }
 
 export interface DomainGetProviderModelListResp {
@@ -1144,13 +1146,13 @@ export interface DomainPullRequest {
 }
 
 export interface DomainRechargeReq {
-  /** 充值积分: 2,000 | 15,000 | 100,000 | 500,000 */
+  /** 积分充值套餐: 2000 / 15000 / 100000 / 500000 */
   credits?: number;
-  /** 购买数量: x月 | x年 */
+  /** 购买周期数量，必须大于 0 */
   period_count?: number;
-  /** 购买周期: 月 | 年 */
-  period_unit?: string;
-  /** 订阅版本: pro(专业版) | ultra(旗舰版) */
+  /** 购买周期: month | year */
+  period_unit?: ConstsSubscriptionPeriodUnit;
+  /** 会员版本: pro | ultra */
   plan?: ConstsSubscriptionPlan;
 }
 
@@ -1331,7 +1333,7 @@ export interface DomainSubscriptionResp {
   expires_at?: string;
   /** "basic" | "pro" | "ultra" */
   plan?: string;
-  /** "points_exchange" | "team_member" | "admin_grant" */
+  /** "purchase" | "team_member" | "admin_grant" */
   source?: string;
 }
 
@@ -3801,30 +3803,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 返回当天免费模型共享池的用量百分比、剩余 Token 和使用人数
-     *
-     * @tags 【用户】会员
-     * @name V1UsersFreeModelPoolUsageList
-     * @summary 查询免费模型共享池实时用量
-     * @request GET:/api/v1/users/free-model-pool/usage
-     * @secure
-     */
-    v1UsersFreeModelPoolUsageList: (params: RequestParams = {}) =>
-      this.request<
-        GitInChaitinNetGoDevWebResp & {
-          data?: DomainFreePoolUsageResp;
-        },
-        GitInChaitinNetGoDevWebResp
-      >({
-        path: `/api/v1/users/free-model-pool/usage`,
-        method: "GET",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description Git Bot 列表
      *
      * @tags 【用户】Git Bot
@@ -4928,7 +4906,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 根据用户会员等级返回可用模型列表，Basic 用户返回基础可用模型，Pro 用户返回基础和专业模型及定价
+     * @description 获取模型列表及定价，模型等级仅用于选择每日模型额度池
      *
      * @tags 【用户】会员
      * @name V1UsersModelsAvailableList
@@ -5959,11 +5937,11 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 消耗积分兑换 1 个月会员，通过 plan 指定 pro 或 ultra
+     * @description 会员购买请使用钱包充值下单接口，本接口不再作为购买入口
      *
      * @tags 【用户】会员
      * @name V1UsersSubscriptionCreate
-     * @summary 兑换会员
+     * @summary 购买会员
      * @request POST:/api/v1/users/subscription
      * @secure
      */
