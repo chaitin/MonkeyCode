@@ -123,16 +123,41 @@ export function getModelDisplayName(modelName?: string | null): string {
     return modelName || '';
   }
 
-  switch (modelName.trim().toLowerCase()) {
-    case 'monkeycode-basic':
-      return '基础模型';
-    case 'monkeycode-pro':
-      return '专业模型';
-    case 'monkeycode-ultra':
-      return '旗舰模型';
-    default:
-      return modelName;
+  const builtinModelName = getBuiltinModelName(modelName);
+  if (builtinModelName === 'monkeycode-basic') {
+    return '基础模型';
   }
+
+  if (builtinModelName === 'monkeycode-pro') {
+    return '专业模型';
+  }
+
+  if (builtinModelName === 'monkeycode-ultra') {
+    return '旗舰模型';
+  }
+
+  return modelName;
+}
+
+export function getBuiltinModelName(modelName?: string | null): "monkeycode-basic" | "monkeycode-pro" | "monkeycode-ultra" | undefined {
+  const normalizedModelName = modelName?.trim().toLowerCase();
+  if (!normalizedModelName) {
+    return undefined;
+  }
+
+  if (normalizedModelName.startsWith('monkeycode-basic')) {
+    return 'monkeycode-basic';
+  }
+
+  if (normalizedModelName.startsWith('monkeycode-pro')) {
+    return 'monkeycode-pro';
+  }
+
+  if (normalizedModelName.startsWith('monkeycode-ultra')) {
+    return 'monkeycode-ultra';
+  }
+
+  return undefined;
 }
 
 export type ModelPricingItem = {
@@ -169,7 +194,8 @@ export function getModelPricingItem(modelName?: string): ModelPricingItem | unde
   }
 
   const normalizedModelName = modelName.trim().toLowerCase()
-  return modelPricingList.find((item) => item.model.toLowerCase() === normalizedModelName)
+  const builtinModelName = getBuiltinModelName(normalizedModelName)
+  return modelPricingList.find((item) => item.model.toLowerCase() === (builtinModelName || normalizedModelName))
 }
 
 export function formatMemory(bytes?: number): string {
@@ -437,14 +463,16 @@ export function canUseModelBySubscription(model?: DomainModel, subscription?: Do
     return false
   }
 
-  switch (model.model?.trim().toLowerCase()) {
-    case "monkeycode-pro":
-      return subscription?.plan === "pro" || subscription?.plan === "flagship" || subscription?.plan === "ultra"
-    case "monkeycode-ultra":
-      return subscription?.plan === "flagship" || subscription?.plan === "ultra"
-    default:
-      return true
+  const builtinModelName = getBuiltinModelName(model.model)
+  if (builtinModelName === "monkeycode-pro") {
+    return subscription?.plan === "pro" || subscription?.plan === "flagship" || subscription?.plan === "ultra"
   }
+
+  if (builtinModelName === "monkeycode-ultra") {
+    return subscription?.plan === "flagship" || subscription?.plan === "ultra"
+  }
+
+  return true
 }
 
 export function hasProSubscription(subscription?: DomainSubscriptionResp | null): boolean {
@@ -692,7 +720,7 @@ export function selectPreferredTaskModel(models: DomainModel[], subscription?: D
       : "monkeycode-basic"
   const planModel = models.find((model) => (
     model.id
-    && model.model?.trim().toLowerCase() === planPreferredModel
+    && getBuiltinModelName(model.model) === planPreferredModel
     && canUseModelBySubscription(model, subscription)
   ))
 

@@ -41,7 +41,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
 import Icon from "@/components/common/Icon"
 import { cn } from "@/lib/utils"
-import { formatTokens, getBrandFromModelName, getModelDisplayName, getModelPricingItem, getTaskDisplayName } from "@/utils/common"
+import { formatTokens, getBrandFromModelName, getBuiltinModelName, getModelDisplayName, getModelPricingItem, getTaskDisplayName } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHelpCircle, IconHistory, IconHome, IconReload, IconRobotFace, IconTerminal2, IconTrophy } from "@tabler/icons-react"
 import React from "react"
@@ -247,21 +247,20 @@ export default function TaskDetailPage() {
     [models]
   )
   const modelGroups = React.useMemo(() => {
-    const normalizedBuiltinNames = new Set<string>(BUILTIN_TASK_MODEL_NAMES)
     const builtinModels = BUILTIN_TASK_MODEL_NAMES
-      .map((modelName) => supportedModels.find((model) => model.model?.trim().toLowerCase() === modelName))
+      .map((modelName) => supportedModels.find((model) => getBuiltinModelName(model.model) === modelName))
       .filter((model): model is DomainModel => Boolean(model))
     const personalModels = supportedModels.filter((model) => (
       model.owner?.type === ConstsOwnerType.OwnerTypePrivate
-      && !normalizedBuiltinNames.has(model.model?.trim().toLowerCase() || "")
+      && !getBuiltinModelName(model.model)
     ))
     const teamModels = supportedModels.filter((model) => (
       model.owner?.type === ConstsOwnerType.OwnerTypeTeam
-      && !normalizedBuiltinNames.has(model.model?.trim().toLowerCase() || "")
+      && !getBuiltinModelName(model.model)
     ))
     const otherPublicModels = supportedModels.filter((model) => (
       model.owner?.type === ConstsOwnerType.OwnerTypePublic
-      && !normalizedBuiltinNames.has(model.model?.trim().toLowerCase() || "")
+      && !getBuiltinModelName(model.model)
     ))
 
     const teamModelGroups = Array.from(
@@ -980,10 +979,10 @@ export default function TaskDetailPage() {
                 <>
                   {modelGroups.builtinModels.map((model) => {
                     const modelName = model.model || "未知模型"
-                    const normalizedModelName = modelName.trim().toLowerCase()
                     const modelDisplayName = getModelDisplayName(modelName)
                     const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
-                    const modelIcon = BUILTIN_TASK_MODEL_ICONS[normalizedModelName as keyof typeof BUILTIN_TASK_MODEL_ICONS]
+                    const builtinModelName = getBuiltinModelName(modelName)
+                    const modelIcon = builtinModelName ? BUILTIN_TASK_MODEL_ICONS[builtinModelName] : undefined
                     const BuiltinModelIcon = modelIcon?.icon || IconTrophy
 
                     return (

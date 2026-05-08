@@ -13,6 +13,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   getBrandFromModelName,
+  getBuiltinModelName,
   getModelDisplayName,
   getModelPricingItem,
   getOwnerTypeBadge,
@@ -29,8 +30,6 @@ const BUILTIN_MODEL_OPTIONS = [
   { model: "monkeycode-pro", label: "专业模型" },
   { model: "monkeycode-ultra", label: "旗舰模型" },
 ] as const
-
-const BUILTIN_MODEL_NAMES: Set<string> = new Set(BUILTIN_MODEL_OPTIONS.map((option) => option.model))
 
 interface ModelSelectProps {
   models: DomainModel[]
@@ -54,15 +53,15 @@ export default function ModelSelect({
   const builtinModelOptions = useMemo(
     () => BUILTIN_MODEL_OPTIONS.map((option) => ({
       ...option,
-      modelItem: models.find((model) => model.model?.trim().toLowerCase() === option.model),
+      modelItem: models.find((model) => getBuiltinModelName(model.model) === option.model),
     })),
     [models],
   )
-  const selectedModelName = selectedModel?.model?.trim().toLowerCase()
-  const selectedBuiltinModel = BUILTIN_MODEL_OPTIONS.find((option) => option.model === selectedModelName)
+  const selectedBuiltinModelName = getBuiltinModelName(selectedModel?.model)
+  const selectedBuiltinModel = BUILTIN_MODEL_OPTIONS.find((option) => option.model === selectedBuiltinModelName)
   const selectedOtherModel = selectedModel && !selectedBuiltinModel ? selectedModel : undefined
   const otherModels = useMemo(
-    () => models.filter((model) => !BUILTIN_MODEL_NAMES.has(model.model?.trim().toLowerCase() || "")),
+    () => models.filter((model) => !getBuiltinModelName(model.model)),
     [models],
   )
 
@@ -87,7 +86,7 @@ export default function ModelSelect({
                   size="sm"
                   variant="ghost"
                   className="h-7 shrink-0 px-2 text-sm data-[selected=true]:bg-primary/10 data-[selected=true]:text-primary"
-                  data-selected={selectedModelName === option.model}
+                  data-selected={selectedBuiltinModelName === option.model}
                   disabled={disabled}
                   onClick={() => {
                     if (option.modelItem?.id && !disabled) {
