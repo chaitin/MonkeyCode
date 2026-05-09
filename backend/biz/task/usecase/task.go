@@ -133,16 +133,17 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 		return nil, fmt.Errorf("task virtual machine is nil")
 	}
 
+	taskOwnerID := t.UserID
 	if a.modelHook != nil {
-		if err := a.modelHook.ValidateAccess(ctx, user.ID, req.ModelID.String()); err != nil {
+		if err := a.modelHook.ValidateAccess(ctx, taskOwnerID, req.ModelID.String()); err != nil {
 			return nil, err
 		}
 	}
-	model, err := a.modelRepo.Get(ctx, user.ID, req.ModelID)
+	model, err := a.modelRepo.Get(ctx, taskOwnerID, req.ModelID)
 	if err != nil {
 		return nil, err
 	}
-	runtimeKey, err := a.modelRepo.CreateRuntimeAPIKey(ctx, user.ID, req.ModelID, t.VirtualMachine.ID)
+	runtimeKey, err := a.modelRepo.CreateRuntimeAPIKey(ctx, taskOwnerID, req.ModelID, t.VirtualMachine.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,11 +186,14 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 	item := &domain.TaskModelSwitch{
 		ID:          uuid.New(),
 		TaskID:      taskID,
-		UserID:      user.ID,
+		UserID:      taskOwnerID,
 		FromModelID: fromModelID,
 		ToModelID:   req.ModelID,
 		RequestID:   req.RequestID,
 		LoadSession: req.LoadSession,
+	}
+	if user.ID != taskOwnerID {
+		a.logger.InfoContext(ctx, "switch model on behalf of task owner", "operator_id", user.ID, "task_owner_id", taskOwnerID, "task_id", taskID, "model_id", req.ModelID)
 	}
 	if err := a.repo.CreateModelSwitch(ctx, item); err != nil {
 		return nil, err
