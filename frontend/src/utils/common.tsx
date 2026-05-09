@@ -170,7 +170,7 @@ export type ModelPricingItem = {
 export const modelPricingList: readonly ModelPricingItem[] = [
   { model: "monkeycode-basic", credits: 150, score: 572, tags: [] },
   { model: "monkeycode-pro", credits: 400, score: 847, tags: [] },
-  { model: "monkeycode-ultra", credits: 600, score: 922, tags: [] },
+  { model: "monkeycode-ultra", credits: 1000, score: 967, tags: [] },
   { model: "minimax-m2.7", credits: 250, score: 637, tags: [] },
   { model: "qwen3.5-plus", credits: 150, score: 538, tags: ["长上下文"] },
   { model: "gpt-5.5", credits: 1000, score: 967, tags: ["最新", "很强"] },
