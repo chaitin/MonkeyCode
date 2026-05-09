@@ -383,20 +383,12 @@ export default function CreateDefaultTaskDialog({
   }
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
   const showRepoAdvancedOptions = Boolean(selectedRepo && !selectedRepoDisplayName.endsWith(".zip"))
-  const showEnvironmentAdvancedOptions = user.role === ConstsUserRole.UserRoleSubAccount
-  const showAdvancedOptions = showRepoAdvancedOptions || showEnvironmentAdvancedOptions
 
   useEffect(() => {
     if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
       setSelectedHostId("public_host")
     }
   }, [selectedPublicModel, selectedHostId])
-
-  useEffect(() => {
-    if (!showAdvancedOptions) {
-      setAdvancedOptionsOpen(false)
-    }
-  }, [showAdvancedOptions])
 
   const handleConfirmExecute = () => {
     void executeTask()
@@ -902,54 +894,54 @@ export default function CreateDefaultTaskDialog({
 
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <FieldLabel>大模型</FieldLabel>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-                onClick={handleOpenModelPricing}
-              >
-                <CircleQuestionMark className="size-3" />如何选择大模型
-              </Button>
-            </div>
-            <ModelSelect
-              models={models}
-              selectedModel={selectedModel}
-              selectedModelId={selectedModelId}
-              setSelectedModelId={setSelectedModelId}
-              subscription={subscription}
-              showPricingButton={false}
-            />
-          </div>
-
-          {showAdvancedOptions && (
-            <>
-              <Separator />
-              <div className="space-y-4">
-                <Collapsible
-                  open={advancedOptionsOpen}
-                  onOpenChange={setAdvancedOptionsOpen}
-                  className="rounded-lg border"
+          <Separator />
+          <div className="space-y-4">
+            <Collapsible
+              open={advancedOptionsOpen}
+              onOpenChange={setAdvancedOptionsOpen}
+              className="rounded-lg border"
+            >
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
                 >
-                  <CollapsibleTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
-                    >
-                      <span className="font-medium">高级选项</span>
-                      <IconChevronDown
-                        className={cn(
-                          "size-4 text-muted-foreground transition-transform",
-                          advancedOptionsOpen && "rotate-180"
-                        )}
-                      />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+                  <span className="font-medium">高级选项</span>
+                  <IconChevronDown
+                    className={cn(
+                      "size-4 text-muted-foreground transition-transform",
+                      advancedOptionsOpen && "rotate-180"
+                    )}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+                    <Field>
+                      <div className="flex items-center justify-between gap-3">
+                        <FieldLabel>大模型</FieldLabel>
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
+                          onClick={handleOpenModelPricing}
+                        >
+                          <CircleQuestionMark className="size-3" />如何选择大模型
+                        </Button>
+                      </div>
+                      <FieldContent>
+                        <ModelSelect
+                          models={models}
+                          selectedModel={selectedModel}
+                          selectedModelId={selectedModelId}
+                          setSelectedModelId={setSelectedModelId}
+                          subscription={subscription}
+                          showPricingButton={false}
+                        />
+                      </FieldContent>
+                    </Field>
+
                     {showRepoAdvancedOptions && (
                       <>
                         <Field>
@@ -1055,11 +1047,9 @@ export default function CreateDefaultTaskDialog({
                         </FieldContent>
                       </Field>
                     )}
-                  </CollapsibleContent>
-                </Collapsible>
-              </div>
-            </>
-          )}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
         </div>
 
         <DialogFooter>

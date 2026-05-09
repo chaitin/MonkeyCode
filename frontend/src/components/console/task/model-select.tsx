@@ -24,11 +24,24 @@ import { IconChevronDown, IconHelpCircle } from "@tabler/icons-react"
 import { useMemo } from "react"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
+const OTHER_MODELS_TOOLTIP = "消耗积分调用"
 
 const BUILTIN_MODEL_OPTIONS = [
-  { model: "monkeycode-basic", label: "基础模型" },
-  { model: "monkeycode-pro", label: "专业模型" },
-  { model: "monkeycode-ultra", label: "旗舰模型" },
+  {
+    model: "monkeycode-basic",
+    label: "基础模型",
+    tooltip: "当前为 qwen3.5-plus",
+  },
+  {
+    model: "monkeycode-pro",
+    label: "专业模型",
+    tooltip: "当前为 kimi-k2.6",
+  },
+  {
+    model: "monkeycode-ultra",
+    label: "旗舰模型",
+    tooltip: "当前为 gpt-5.5",
+  },
 ] as const
 
 interface ModelSelectProps {
@@ -94,7 +107,20 @@ export default function ModelSelect({
                     }
                   }}
                 >
-                  {option.label}
+                  <span>{option.label}</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="inline-flex shrink-0 text-muted-foreground transition-colors hover:text-primary"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <IconHelpCircle className="size-3.5" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[320px] leading-6">
+                      {option.tooltip}
+                    </TooltipContent>
+                  </Tooltip>
                 </Button>
               )
             })()
@@ -114,7 +140,22 @@ export default function ModelSelect({
                       <span className="truncate">{getModelDisplayName(selectedOtherModel.model)}</span>
                     </span>
                   ) : (
-                    <span className="min-w-0 flex-1 truncate text-left">其他</span>
+                    <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
+                      <span className="truncate">其他模型</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex shrink-0 text-muted-foreground transition-colors hover:text-primary"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <IconHelpCircle className="size-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[320px] leading-6">
+                          {OTHER_MODELS_TOOLTIP}
+                        </TooltipContent>
+                      </Tooltip>
+                    </span>
                   )}
                   <IconChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
                 </Button>
@@ -137,6 +178,11 @@ export default function ModelSelect({
                           <span className="truncate">{getModelDisplayName(model.model)}</span>
                         </div>
                         <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+                          {showPricingSummary && pricing ? (
+                            <Badge variant="secondary" className="shrink-0">
+                              {pricing.credits} 积分
+                            </Badge>
+                          ) : null}
                           {showPricingSummary && pricingTags.map((tag) => (
                             <Badge
                               key={`${model.id}-${tag}`}

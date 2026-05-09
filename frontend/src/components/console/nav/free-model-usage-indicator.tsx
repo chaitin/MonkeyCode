@@ -2,10 +2,11 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Progress } from "@/components/ui/progress"
 import { CircularProgress } from "@/components/ui/circular-progress"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useCommonData } from "../data-provider"
 import { getSubscriptionPlanLabel } from "@/utils/common"
-import { Crown } from "lucide-react"
+import { CircleQuestionMark, Crown } from "lucide-react"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
@@ -29,6 +30,12 @@ const PLAN_TOKEN_LIMITS = {
 
 type PlanTokenLimitKey = keyof typeof PLAN_TOKEN_LIMITS
 type ModelQuotaKey = keyof (typeof PLAN_TOKEN_LIMITS)["basic"]
+
+const MODEL_QUOTA_TOOLTIPS: Record<ModelQuotaKey, string> = {
+  basic: "当前为 qwen3.5-plus",
+  pro: "当前为 kimi-k2.6",
+  ultra: "当前为 gpt-5.5",
+}
 
 function formatTokenNumber(value: number) {
   const amount = value / 1_000_000
@@ -203,7 +210,19 @@ export default function FreeModelUsageIndicator() {
             {quotaItems.map((item) => (
               <div key={item.key} className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium">{item.label}</span>
+                  <div className="flex min-w-0 items-center gap-1">
+                    <span className="truncate font-medium">{item.label}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex shrink-0 text-muted-foreground transition-colors hover:text-primary">
+                          <CircleQuestionMark className="size-3.5" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[320px] leading-6">
+                        {MODEL_QUOTA_TOOLTIPS[item.key as ModelQuotaKey]}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                   <span className={cn("text-xs", item.total > 0 ? "text-muted-foreground" : "text-muted-foreground/70")}>
                     {item.total > 0 ? `剩余 ${formatTokenNumber(item.remaining)} Tokens` : "无额度"}
                   </span>

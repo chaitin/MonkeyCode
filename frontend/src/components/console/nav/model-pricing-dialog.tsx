@@ -28,7 +28,7 @@ function formatPoints(value: number) {
 }
 
 export default function ModelPricingDialog({ open, onOpenChange }: ModelPricingDialogProps) {
-  const [pricingSort, setPricingSort] = useState<PricingSort>("value")
+  const [pricingSort, setPricingSort] = useState<PricingSort>("name")
   const pricingSortLabel = pricingSort === "value"
     ? "性价比排序"
     : pricingSort === "score"

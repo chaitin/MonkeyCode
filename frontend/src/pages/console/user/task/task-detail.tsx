@@ -39,6 +39,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import Icon from "@/components/common/Icon"
 import { cn } from "@/lib/utils"
 import { canUseModelBySubscription, formatTokens, getBrandFromModelName, getBuiltinModelName, getModelDisplayName, getModelPricingItem, getTaskDisplayName } from "@/utils/common"
@@ -58,6 +59,12 @@ const BUILTIN_TASK_MODEL_ICONS = {
   "monkeycode-pro": { icon: IconTrophy, color: "#94a3b8" },
   "monkeycode-ultra": { icon: IconTrophy, color: "#eab308" },
 } as const
+const BUILTIN_TASK_MODEL_TOOLTIPS = {
+  "monkeycode-basic": "当前为 qwen3.5-plus",
+  "monkeycode-pro": "当前为 kimi-k2.6",
+  "monkeycode-ultra": "当前为 gpt-5.5",
+} as const
+const OTHER_TASK_MODELS_TOOLTIP = "消耗积分调用"
 type MessageSource = "live" | "history"
 const MODEL_SWITCH_MIN_CREATED_AT = 1777381200 // 2026-04-28 21:00:00 +08:00
 
@@ -990,6 +997,7 @@ export default function TaskDetailPage() {
                     const builtinModelName = getBuiltinModelName(modelName)
                     const canUseModel = canUseModelBySubscription(model, subscription)
                     const modelIcon = builtinModelName ? BUILTIN_TASK_MODEL_ICONS[builtinModelName] : undefined
+                    const modelTooltip = builtinModelName ? BUILTIN_TASK_MODEL_TOOLTIPS[builtinModelName] : undefined
                     const BuiltinModelIcon = modelIcon?.icon || IconTrophy
 
                     return (
@@ -1021,6 +1029,24 @@ export default function TaskDetailPage() {
                           >
                             {modelDisplayName}
                           </span>
+                          {modelTooltip ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="inline-flex shrink-0 text-muted-foreground transition-colors hover:text-primary"
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                  }}
+                                >
+                                  <IconHelpCircle className="size-3.5" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[320px] leading-6">
+                                {modelTooltip}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : null}
                         </div>
                         {!canUseModel ? (
                           <Button
@@ -1092,7 +1118,23 @@ export default function TaskDetailPage() {
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger className="w-full">
                       <IconRobotFace className="size-4" />
-                      更多大模型
+                      <span>更多大模型</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex shrink-0 text-muted-foreground transition-colors hover:text-primary"
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                            }}
+                          >
+                            <IconHelpCircle className="size-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[320px] leading-6">
+                          {OTHER_TASK_MODELS_TOOLTIP}
+                        </TooltipContent>
+                      </Tooltip>
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="max-h-[320px] min-w-[240px] overflow-y-auto">
                       {modelGroups.otherPublicModels.length === 0 ? (
