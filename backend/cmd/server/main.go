@@ -37,18 +37,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 注册业务模块
-	if err := biz.RegisterAll(injector); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to register biz: %v\n", err)
-		os.Exit(1)
-	}
-
 	l := do.MustInvoke[*slog.Logger](injector)
 	l.With("config", cfg).Debug("print config")
 
 	// 运行数据库迁移
 	if err := store.MigrateSQL(cfg, l); err != nil {
-		l.Warn("database migration warning", "error", err)
+		l.Error("failed to migrate database", "error", err)
+		os.Exit(1)
+	}
+
+	// 注册业务模块
+	if err := biz.RegisterAll(injector); err != nil {
+		l.Error("failed to register biz", "error", err)
+		os.Exit(1)
 	}
 
 	// 获取 web 实例并启动服务

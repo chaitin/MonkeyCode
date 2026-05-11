@@ -2,6 +2,7 @@ package store
 
 import (
 	dql "database/sql"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -53,6 +54,8 @@ func MigrateSQL(cfg *config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	defer db.Close()
+
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return err
@@ -63,8 +66,23 @@ func MigrateSQL(cfg *config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close()
+
+	return runMigration(m, logger)
+}
+
+type migrator interface {
+	Up() error
+}
+
+func runMigration(m migrator, logger *slog.Logger) error {
 	if err := m.Up(); err != nil {
-		logger.With("component", "db").With("err", err).Warn("migrate db failed")
+		if errors.Is(err, migrate.ErrNoChange) {
+			logger.With("component", "db").Debug("database schema is up to date")
+			return nil
+		}
+		logger.With("component", "db").With("err", err).Error("migrate db failed")
+		return err
 	}
 
 	return nil
