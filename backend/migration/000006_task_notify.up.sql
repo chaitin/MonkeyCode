@@ -1,6 +1,3 @@
--- Task/Notify 相关表
-
--- tasks 任务表
 CREATE TABLE IF NOT EXISTS tasks (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     user_id uuid NOT NULL,
@@ -12,7 +9,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     deleted_at timestamp with time zone,
     completed_at timestamp with time zone,
     sub_type character varying(255),
-    summary text
+    summary text,
+    title text,
+    last_active_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    log_store character varying(255)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks USING btree (completed_at);
@@ -21,8 +21,6 @@ CREATE INDEX IF NOT EXISTS idx_tasks_kind ON tasks USING btree (kind);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks USING btree (status);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks USING btree (user_id);
 
-
--- project_tasks 项目任务关联表
 CREATE TABLE IF NOT EXISTS project_tasks (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     task_id uuid NOT NULL,
@@ -44,8 +42,6 @@ CREATE INDEX IF NOT EXISTS idx_project_tasks_image_id ON project_tasks USING btr
 CREATE INDEX IF NOT EXISTS idx_project_tasks_model_id ON project_tasks USING btree (model_id);
 CREATE INDEX IF NOT EXISTS idx_project_tasks_task_id ON project_tasks USING btree (task_id);
 
-
--- task_virtualmachines 任务-虚拟机关联表
 CREATE TABLE IF NOT EXISTS task_virtualmachines (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     task_id uuid NOT NULL,
@@ -55,7 +51,38 @@ CREATE TABLE IF NOT EXISTS task_virtualmachines (
 
 CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_task_virtualmachines ON task_virtualmachines USING btree (task_id, virtualmachine_id);
 
--- notify_channels 通知渠道表
+CREATE TABLE IF NOT EXISTS task_usage_stats (
+    id uuid PRIMARY KEY NOT NULL,
+    task_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    model character varying(255) DEFAULT ''::character varying NOT NULL,
+    input_tokens bigint DEFAULT 0 NOT NULL,
+    output_tokens bigint DEFAULT 0 NOT NULL,
+    total_tokens bigint DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_usage_stats_task_id ON task_usage_stats USING btree (task_id);
+CREATE INDEX IF NOT EXISTS idx_task_usage_stats_user_id ON task_usage_stats USING btree (user_id);
+
+CREATE TABLE IF NOT EXISTS task_model_switches (
+    id uuid PRIMARY KEY NOT NULL,
+    task_id uuid NOT NULL REFERENCES tasks(id),
+    user_id uuid NOT NULL REFERENCES users(id),
+    from_model_id uuid REFERENCES models(id) ON DELETE SET NULL,
+    to_model_id uuid NOT NULL REFERENCES models(id),
+    request_id text DEFAULT ''::text NOT NULL,
+    load_session boolean DEFAULT true NOT NULL,
+    success boolean,
+    message text DEFAULT ''::text NOT NULL,
+    session_id text DEFAULT ''::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_model_switches_task_id_created_at ON task_model_switches USING btree (task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_model_switches_user_id_created_at ON task_model_switches USING btree (user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS notify_channels (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     owner_id uuid NOT NULL,
@@ -74,10 +101,9 @@ CREATE TABLE IF NOT EXISTS notify_channels (
 CREATE INDEX IF NOT EXISTS idx_notify_channels_created_at ON notify_channels USING btree (created_at);
 CREATE INDEX IF NOT EXISTS idx_notify_channels_owner ON notify_channels USING btree (owner_id, owner_type);
 
--- notify_subscriptions 通知订阅表
 CREATE TABLE IF NOT EXISTS notify_subscriptions (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
-    channel_id uuid NOT NULL,
+    channel_id uuid NOT NULL REFERENCES notify_channels(id),
     scope character varying(128) DEFAULT 'self'::character varying NOT NULL,
     event_types jsonb DEFAULT '[]'::jsonb NOT NULL,
     enabled boolean DEFAULT true NOT NULL,
@@ -86,11 +112,8 @@ CREATE TABLE IF NOT EXISTS notify_subscriptions (
     deleted_at timestamp with time zone
 );
 
-CREATE INDEX idx_notify_subscriptions_channel_id ON notify_subscriptions USING btree (channel_id);
-ALTER TABLE ONLY notify_subscriptions
-    ADD CONSTRAINT notify_subscriptions_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES notify_channels(id);
+CREATE INDEX IF NOT EXISTS idx_notify_subscriptions_channel_id ON notify_subscriptions USING btree (channel_id);
 
--- notify_send_logs 通知发送日志表
 CREATE TABLE IF NOT EXISTS notify_send_logs (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     subscription_id uuid NOT NULL,

@@ -1,4 +1,3 @@
--- hosts 宿主机表
 CREATE TABLE IF NOT EXISTS hosts (
     id character varying(64) PRIMARY KEY NOT NULL,
     user_id uuid NOT NULL,
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS hosts (
 CREATE INDEX IF NOT EXISTS idx_hosts_created_at_id ON hosts USING btree (created_at, id);
 CREATE INDEX IF NOT EXISTS idx_hosts_user ON hosts USING btree (user_id);
 
--- virtualmachines 虚拟机表
 CREATE TABLE IF NOT EXISTS virtualmachines (
     id character varying(64) PRIMARY KEY NOT NULL,
     host_id character varying(64) NOT NULL,
@@ -50,7 +48,8 @@ CREATE TABLE IF NOT EXISTS virtualmachines (
     repo_url text DEFAULT ''::text NOT NULL,
     conditions jsonb,
     is_recycled boolean DEFAULT false,
-    repo_filename text
+    repo_filename text,
+    access_token character varying(255) UNIQUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_virtualmachines_created_at_id ON virtualmachines USING btree (created_at, id);
@@ -59,8 +58,6 @@ CREATE INDEX IF NOT EXISTS idx_virtualmachines_host ON virtualmachines USING btr
 CREATE INDEX IF NOT EXISTS idx_virtualmachines_model ON virtualmachines USING btree (model_id);
 CREATE INDEX IF NOT EXISTS idx_virtualmachines_repo ON virtualmachines USING btree (repo_id);
 
-
--- team_hosts 团队-宿主机关联表
 CREATE TABLE IF NOT EXISTS team_hosts (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     team_id uuid NOT NULL,
@@ -70,8 +67,6 @@ CREATE TABLE IF NOT EXISTS team_hosts (
 
 CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_team_hosts_team_host ON team_hosts USING btree (team_id, host_id);
 
-
--- team_group_hosts 团队组-宿主机关联表
 CREATE TABLE IF NOT EXISTS team_group_hosts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
     group_id uuid NOT NULL,
@@ -80,4 +75,5 @@ CREATE TABLE IF NOT EXISTS team_group_hosts (
     deleted_at timestamp with time zone
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_team_group_hosts ON team_group_hosts USING btree (host_id, group_id) WHERE (deleted_at IS NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_team_group_hosts ON team_group_hosts USING btree (host_id, group_id)
+    WHERE (deleted_at IS NULL);

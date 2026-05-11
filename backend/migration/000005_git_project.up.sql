@@ -1,4 +1,3 @@
--- git_identities: Git 平台身份凭证
 CREATE TABLE IF NOT EXISTS git_identities (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     user_id uuid NOT NULL,
@@ -14,17 +13,14 @@ CREATE TABLE IF NOT EXISTS git_identities (
     installation_id bigint,
     oauth_refresh_token text DEFAULT ''::text,
     oauth_expires_at timestamp with time zone,
-    oauth_site_id uuid
+    oauth_site_id uuid,
+    CONSTRAINT fk_git_identities_oauth_site_id FOREIGN KEY (oauth_site_id) REFERENCES team_oauth_sites(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_git_identities_installation_id ON git_identities USING btree (installation_id);
 CREATE INDEX IF NOT EXISTS idx_git_identities_oauth_site_id ON git_identities USING btree (oauth_site_id);
 CREATE INDEX IF NOT EXISTS idx_git_identities_user_id ON git_identities USING btree (user_id);
-ALTER TABLE ONLY git_identities
-    ADD CONSTRAINT fk_git_identities_oauth_site_id FOREIGN KEY (oauth_site_id) REFERENCES team_oauth_sites(id) ON DELETE SET NULL;
 
-
--- projects: 项目
 CREATE TABLE IF NOT EXISTS projects (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     user_id uuid NOT NULL,
@@ -45,8 +41,6 @@ CREATE INDEX IF NOT EXISTS idx_projects_created_at_id ON projects USING btree (c
 CREATE INDEX IF NOT EXISTS idx_projects_git_identity_id ON projects USING btree (git_identity_id);
 CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects USING btree (user_id);
 
-
--- project_collaborators: 项目协作者
 CREATE TABLE IF NOT EXISTS project_collaborators (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     project_id uuid NOT NULL,
@@ -59,10 +53,9 @@ CREATE TABLE IF NOT EXISTS project_collaborators (
 
 CREATE INDEX IF NOT EXISTS idx_project_collaborators_project_id ON project_collaborators USING btree (project_id);
 CREATE INDEX IF NOT EXISTS idx_project_collaborators_user_id ON project_collaborators USING btree (user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_project_collaborators_project_user ON project_collaborators USING btree (project_id, user_id) WHERE (deleted_at IS NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS unique_idx_project_collaborators_project_user ON project_collaborators USING btree (project_id, user_id)
+    WHERE (deleted_at IS NULL);
 
-
--- project_issues: 项目 Issue
 CREATE TABLE IF NOT EXISTS project_issues (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     user_id uuid NOT NULL,
@@ -84,8 +77,6 @@ CREATE INDEX IF NOT EXISTS idx_project_issues_project_id ON project_issues USING
 CREATE INDEX IF NOT EXISTS idx_project_issues_status ON project_issues USING btree (status);
 CREATE INDEX IF NOT EXISTS idx_project_issues_user_id ON project_issues USING btree (user_id);
 
-
--- project_issue_comments: Issue 评论
 CREATE TABLE IF NOT EXISTS project_issue_comments (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v1() NOT NULL,
     user_id uuid NOT NULL,
