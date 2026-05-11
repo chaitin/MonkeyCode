@@ -42,3 +42,16 @@ mcp_hub:
 vm_idle:
   sleep_seconds: 600
   recycle_seconds: 604800
+
+clickhouse:
+  addr: ""
+  database: ""
+  table: "task_logs"
+  init_enabled: false
+  username: ""
+  password: ""
+  read_username: ""
+  read_password: ""
+  max_open_conns: 64
+  max_idle_conns: 32
+  conn_max_lifetime: 3600

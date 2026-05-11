@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,5 +108,72 @@ func TestBuildDSNFallsBackToLegacyCredentials(t *testing.T) {
 	}
 	if dsn != "clickhouse://legacy:legacy-secret@chproxy:9000/monkeycode" {
 		t.Fatalf("dsn = %q, want legacy credentials", dsn)
+	}
+}
+
+func TestBuildBootstrapDSNOmitsDatabase(t *testing.T) {
+	dsn, err := buildBootstrapDSN(config.ClickHouse{
+		Addr:     "chproxy:9000",
+		Database: "monkeycode-ai",
+		Username: "mc_writer",
+		Password: "writer-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dsn != "clickhouse://mc_writer:writer-secret@chproxy:9000" {
+		t.Fatalf("dsn = %q, want DSN without database", dsn)
+	}
+}
+
+func TestBuildBootstrapDSNUsesWriteCredentials(t *testing.T) {
+	dsn, err := buildBootstrapDSN(config.ClickHouse{
+		Addr:         "chproxy:9000",
+		Database:     "monkeycode-ai",
+		Username:     "mc_writer",
+		Password:     "writer-secret",
+		ReadUsername: "mc_reader",
+		ReadPassword: "reader-secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dsn != "clickhouse://mc_writer:writer-secret@chproxy:9000" {
+		t.Fatalf("dsn = %q, want write credentials", dsn)
+	}
+}
+
+func TestShouldInitSchemaDefaultsToFalse(t *testing.T) {
+	if shouldInitSchema(config.ClickHouse{}) {
+		t.Fatal("expected clickhouse schema init disabled by default")
+	}
+}
+
+func TestShouldInitSchemaUsesConfigSwitch(t *testing.T) {
+	if !shouldInitSchema(config.ClickHouse{InitEnabled: true}) {
+		t.Fatal("expected clickhouse schema init enabled")
+	}
+}
+
+func TestQuoteIdentifierEscapesDatabaseName(t *testing.T) {
+	identifier, err := quoteIdentifier("monkeycode-ai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identifier != "`monkeycode-ai`" {
+		t.Fatalf("identifier = %q, want `monkeycode-ai`", identifier)
+	}
+}
+
+func TestBuildTaskLogTableSQLUsesConfiguredTable(t *testing.T) {
+	query, err := buildTaskLogTableSQL("task_logs_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(query, "CREATE TABLE IF NOT EXISTS `task_logs_test`") {
+		t.Fatalf("query = %q, want configured table", query)
+	}
+	if !strings.Contains(query, "ENGINE = MergeTree") {
+		t.Fatalf("query = %q, want MergeTree engine", query)
 	}
 }

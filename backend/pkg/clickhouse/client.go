@@ -38,6 +38,10 @@ func New(cfg config.ClickHouse, logger *slog.Logger) (*Client, error) {
 		return nil, err
 	}
 
+	if err := initSchema(cfg); err != nil {
+		return nil, err
+	}
+
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
 		return nil, err
@@ -126,6 +130,11 @@ func buildDSN(cfg config.ClickHouse) (string, error) {
 	return buildDSNWithCredentials(cfg, username, password)
 }
 
+func buildBootstrapDSN(cfg config.ClickHouse) (string, error) {
+	cfg.Database = ""
+	return buildDSNWithCredentials(cfg, cfg.Username, cfg.Password)
+}
+
 func readCredentials(cfg config.ClickHouse) (string, string) {
 	username := strings.TrimSpace(cfg.ReadUsername)
 	password := cfg.ReadPassword
@@ -155,4 +164,96 @@ func buildDSNWithCredentials(cfg config.ClickHouse, username, password string) (
 		u.Path = "/" + strings.TrimPrefix(cfg.Database, "/")
 	}
 	return u.String(), nil
+}
+
+func shouldInitSchema(cfg config.ClickHouse) bool {
+	return cfg.InitEnabled
+}
+
+func initSchema(cfg config.ClickHouse) error {
+	if !shouldInitSchema(cfg) {
+		return nil
+	}
+	return ensureSchema(cfg)
+}
+
+func ensureSchema(cfg config.ClickHouse) error {
+	database := strings.TrimSpace(cfg.Database)
+	dsn, err := buildBootstrapDSN(cfg)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("clickhouse", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.Ping(); err != nil {
+		return err
+	}
+	if database != "" {
+		databaseIdentifier, err := quoteIdentifier(database)
+		if err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(context.Background(), "CREATE DATABASE IF NOT EXISTS "+databaseIdentifier); err != nil {
+			return err
+		}
+	}
+
+	databaseDSN, err := buildDSNWithCredentials(cfg, cfg.Username, cfg.Password)
+	if err != nil {
+		return err
+	}
+	databaseDB, err := sql.Open("clickhouse", databaseDSN)
+	if err != nil {
+		return err
+	}
+	defer databaseDB.Close()
+	if err := databaseDB.Ping(); err != nil {
+		return err
+	}
+	query, err := buildTaskLogTableSQL(cfg.Table)
+	if err != nil {
+		return err
+	}
+	_, err = databaseDB.ExecContext(context.Background(), query)
+	return err
+}
+
+func quoteIdentifier(identifier string) (string, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return "", fmt.Errorf("clickhouse identifier is empty")
+	}
+	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`", nil
+}
+
+func buildTaskLogTableSQL(table string) (string, error) {
+	table, err := NormalizeTable(table)
+	if err != nil {
+		return "", err
+	}
+	tableIdentifier, err := quoteIdentifier(table)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s
+(
+	task_id UUID,
+	ts DateTime64(9, 'UTC'),
+	event LowCardinality(String),
+	kind LowCardinality(String),
+	turn_seq UInt32,
+	data String CODEC(ZSTD(3)),
+	msg_seq_start UInt64,
+	msg_seq_end UInt64,
+	source LowCardinality(String),
+	log_version UInt16,
+	ingest_id UUID
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(ts)
+ORDER BY (task_id, turn_seq, ts, msg_seq_start, ingest_id)
+TTL ts + INTERVAL 60 DAY`, tableIdentifier), nil
 }

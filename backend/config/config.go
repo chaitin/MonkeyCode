@@ -136,6 +136,7 @@ type ClickHouse struct {
 	Addr            string `mapstructure:"addr"`
 	Database        string `mapstructure:"database"`
 	Table           string `mapstructure:"table"`
+	InitEnabled     bool   `mapstructure:"init_enabled"`
 	Username        string `mapstructure:"username"`
 	Password        string `mapstructure:"password"`
 	ReadUsername    string `mapstructure:"read_username"`
@@ -197,6 +198,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("clickhouse.addr", "")
 	v.SetDefault("clickhouse.database", "")
 	v.SetDefault("clickhouse.table", "task_logs")
+	v.SetDefault("clickhouse.init_enabled", false)
 	v.SetDefault("clickhouse.username", "")
 	v.SetDefault("clickhouse.password", "")
 	v.SetDefault("clickhouse.read_username", "")
@@ -211,7 +213,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("database.conn_max_lifetime", 30)
 	v.SetDefault("root_path", "/app")
 	v.SetDefault("logger.level", "info")
-	v.SetDefault("session.expire_day", 1)
+	v.SetDefault("session.expire_day", 30)
 	v.SetDefault("smtp.host", "")
 	v.SetDefault("smtp.port", 587)
 	v.SetDefault("smtp.username", "")
