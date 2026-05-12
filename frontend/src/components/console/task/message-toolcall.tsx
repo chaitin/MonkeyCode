@@ -181,6 +181,29 @@ const toolCallRenderers: ToolCallRenderer[] = [
   {
     match: (message) => (
       message.data.kind === "other"
+      && message.data.title === "monkeycode-ai_MonkeyCode__image_generate_text_to_image"
+    ),
+    renderTitle: (message) => {
+      const prompt = message.data.rawInput?.prompt ?? message.data.rawInput?.query ?? message.data.rawInput?.description
+      return typeof prompt === "string" && prompt.trim().length > 0
+        ? `生成图片 "${prompt.trim()}"`
+        : "生成图片"
+    },
+    renderDetail: fallbackRender.renderDetail,
+    expandable: false,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
+      && message.data.title === "monkeycode-ai_MonkeyCode__image_generate_query_task"
+    ),
+    renderTitle: () => "查询图片生成进度",
+    renderDetail: fallbackRender.renderDetail,
+    expandable: false,
+  },
+  {
+    match: (message) => (
+      message.data.kind === "other"
       && imageAnalysisCreateTaskTitles.has(message.data.title ?? "")
     ),
     renderTitle: internalImageAnalysisRender.renderTitle,
