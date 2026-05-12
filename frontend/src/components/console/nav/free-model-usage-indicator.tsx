@@ -12,7 +12,7 @@ const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 const PLAN_TOKEN_LIMITS = {
   basic: {
-    basic: 20_000_000,
+    basic: 30_000_000,
     pro: 0,
     ultra: 0,
   },
@@ -32,7 +32,7 @@ type PlanTokenLimitKey = keyof typeof PLAN_TOKEN_LIMITS
 type ModelQuotaKey = keyof (typeof PLAN_TOKEN_LIMITS)["basic"]
 
 const MODEL_QUOTA_TOOLTIPS: Record<ModelQuotaKey, string> = {
-  basic: "当前为 qwen3.5-plus",
+  basic: "当前为 qwen3.6-plus",
   pro: "当前为 kimi-k2.6",
   ultra: "当前为 gpt-5.5",
 }

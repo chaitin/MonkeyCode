@@ -60,7 +60,7 @@ const BUILTIN_TASK_MODEL_ICONS = {
   "monkeycode-ultra": { icon: IconTrophy, color: "#eab308" },
 } as const
 const BUILTIN_TASK_MODEL_TOOLTIPS = {
-  "monkeycode-basic": "当前为 qwen3.5-plus",
+  "monkeycode-basic": "当前为 qwen3.6-plus",
   "monkeycode-pro": "当前为 kimi-k2.6",
   "monkeycode-ultra": "当前为 gpt-5.5",
 } as const

@@ -100,7 +100,7 @@ const accountPlanCards: AccountPlanCard[] = [
 
 const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分"
 const enhancedCapabilitiesTooltip = "图片识别、文档解析、联网搜索等能力，调用时消耗积分"
-const basicModelsTooltip = "能力对标国内一线厂商的上一代主力模型，如 qwen3.5-plus，minimax-m2.5, kimi-k2.5, glm-4.7 等"
+const basicModelsTooltip = "当前为 qwen3.6-plus"
 const proModelsTooltip = "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等"
 const ultraModelsTooltip = "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.5, claude-opus-4.6 等"
 const monthlyCreditsTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。"
@@ -126,7 +126,7 @@ const accountPlanComparisonRows: { label: string; tooltip?: string; values: Reco
     label: "基础模型",
     tooltip: basicModelsTooltip,
     values: {
-      basic: { label: "每天 2000 万 Token" },
+      basic: { label: "每天 3000 万 Token" },
       pro: { label: "每天 3000 万 Token" },
       ultra: { label: "每天 6000 万 Token" },
     },

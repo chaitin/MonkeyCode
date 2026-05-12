@@ -30,7 +30,7 @@ const BUILTIN_MODEL_OPTIONS = [
   {
     model: "monkeycode-basic",
     label: "基础模型",
-    tooltip: "当前为 qwen3.5-plus",
+    tooltip: "当前为 qwen3.6-plus",
   },
   {
     model: "monkeycode-pro",

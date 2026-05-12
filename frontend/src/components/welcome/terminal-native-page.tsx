@@ -215,7 +215,7 @@ type PricingFeature = {
 };
 
 const modelFeatureTooltips = {
-  basic: "能力对标国内一线厂商的上一代主力模型，如 qwen3.5-plus，minimax-m2.5, kimi-k2.5, glm-4.7 等",
+  basic: "当前为 qwen3.6-plus",
   pro: "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等",
   flagship: "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.5, claude-opus-4.6 等",
 };
@@ -252,7 +252,7 @@ const pricingTiers: PricingTier[] = [
     features: [
       { label: "1 个任务并发" },
       { label: "云开发环境 1C / 4G" },
-      { label: "基础模型：每天 2000 万 Token", tooltip: modelFeatureTooltips.basic },
+      { label: "基础模型：每天 3000 万 Token", tooltip: modelFeatureTooltips.basic },
       { label: "专业模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.pro },
       { label: "旗舰模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.flagship },
       { label: "不赠送积分", status: "unsupported", tooltip: creditFeatureTooltip },
