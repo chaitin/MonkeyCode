@@ -62,8 +62,8 @@ export const VoiceInputButton = ({ disabled = false, className = '', onTextRecog
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
       
-      // 创建 AudioContext，使用 16000Hz 采样率
-      const audioContext = new AudioContext({ sampleRate: 16000 })
+      // 创建 AudioContext，使用 24000Hz 采样率（gpt-realtime-whisper 要求）
+      const audioContext = new AudioContext({ sampleRate: 24000 })
       audioContextRef.current = audioContext
       
       // 加载 AudioWorklet

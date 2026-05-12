@@ -1,0 +1,14 @@
+# GPT Realtime API 配置示例
+# 将此配置添加到你的 config.yaml 文件中
+
+gpt:
+  base_url: "https://aiapi.monkeycode-ai.online/v1"
+  api_key: "sk-8495cc1966092d8b09e8a1b902007f107f865dab1695f895744df8e0f6e6062d"
+  model: "GPT-Realtime-2"
+
+# 注意：
+# 1. base_url 应该是你的 API 端点（不包含 /realtime 路径，代码会自动添加）
+# 2. api_key 是你的 API 密钥
+# 3. model 是要使用的模型名称（如 gpt-realtime-whisper 或 GPT-Realtime-2）
+# 4. 如果配置了 GPT，系统会优先使用 Realtime API 进行语音识别
+# 5. 如果未配置 GPT，系统会回退到阿里云 NLS（如果已配置）

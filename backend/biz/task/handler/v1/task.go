@@ -25,6 +25,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
+	"github.com/chaitin/MonkeyCode/backend/pkg/realtime"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
@@ -42,6 +43,7 @@ type TaskHandler struct {
 	taskflow      taskflow.Clienter
 	tasklog       *tasklog.Gateway
 	nls           *nls.NLS
+	realtimeAPI   *realtime.RealtimeClient
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
@@ -78,6 +80,13 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		nlsSvc = n
 	}
 
+	// 初始化 Realtime API 客户端（如果配置了 GPT）
+	var realtimeClient *realtime.RealtimeClient
+	if cfg.GPT.BaseURL != "" && cfg.GPT.APIKey != "" {
+		realtimeClient = realtime.NewRealtimeClient(cfg, logger)
+		logger.Info("Realtime API client initialized")
+	}
+
 	activeRepo := do.MustInvoke[domain.UserActiveRepo](i)
 
 	h := &TaskHandler{
@@ -89,6 +98,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		taskflow:      tf,
 		tasklog:       gw,
 		nls:           nlsSvc,
+		realtimeAPI:   realtimeClient,
 		taskConns:     tc,
 		controlConns:  cc,
 		taskSummary:   ts,
@@ -852,7 +862,8 @@ func validateSkillID(skillID string) error {
 func (h *TaskHandler) SpeechToText(c *web.Context) error {
 	user := middleware.GetUser(c)
 
-	if h.nls == nil {
+	// 优先使用 Realtime API，如果未配置则回退到阿里云 NLS
+	if h.realtimeAPI == nil && h.nls == nil {
 		h.logger.ErrorContext(c.Request().Context(), "speech recognition service not initialized")
 		return errcode.ErrInternalServer
 	}
@@ -879,12 +890,44 @@ func (h *TaskHandler) SpeechToText(c *web.Context) error {
 		return errcode.ErrInternalServer
 	}
 
-	resultCh, errorCh := h.nls.SpeechRecognition(c.Request().Context(), user.ID, audioData)
+	// 选择使用哪个语音识别服务
+	var resultCh <-chan interface{}
+	var errorCh <-chan error
+
+	if h.realtimeAPI != nil {
+		h.logger.InfoContext(c.Request().Context(), "using Realtime API for speech recognition")
+		realtimeResultCh, realtimeErrorCh := h.realtimeAPI.SpeechRecognition(c.Request().Context(), user.ID, audioData)
+
+		// 转换为通用 channel
+		genericResultCh := make(chan interface{}, 10)
+		go func() {
+			defer close(genericResultCh)
+			for result := range realtimeResultCh {
+				genericResultCh <- result
+			}
+		}()
+		resultCh = genericResultCh
+		errorCh = realtimeErrorCh
+	} else {
+		h.logger.InfoContext(c.Request().Context(), "using Aliyun NLS for speech recognition")
+		nlsResultCh, nlsErrorCh := h.nls.SpeechRecognition(c.Request().Context(), user.ID, audioData)
+
+		// 转换为通用 channel
+		genericResultCh := make(chan interface{}, 10)
+		go func() {
+			defer close(genericResultCh)
+			for result := range nlsResultCh {
+				genericResultCh <- result
+			}
+		}()
+		resultCh = genericResultCh
+		errorCh = nlsErrorCh
+	}
 
 	timeout := time.After(2 * time.Minute)
 	for {
 		select {
-		case result, ok := <-resultCh:
+		case resultInterface, ok := <-resultCh:
 			if !ok {
 				endEvent := domain.SpeechRecognitionEvent{
 					Event: "end",
@@ -893,14 +936,36 @@ func (h *TaskHandler) SpeechToText(c *web.Context) error {
 				h.sendSSEEvent(c, flusher, endEvent)
 				return nil
 			}
+
+			// 类型断言处理两种结果类型
+			var text string
+			var isFinal bool
+			var userID string
+			var timestamp int64
+
+			if realtimeResult, ok := resultInterface.(realtime.RecognitionResult); ok {
+				text = realtimeResult.Text
+				isFinal = realtimeResult.IsFinal
+				userID = realtimeResult.UserID
+				timestamp = realtimeResult.Timestamp
+			} else if nlsResult, ok := resultInterface.(nls.RecognitionResult); ok {
+				text = nlsResult.Text
+				isFinal = nlsResult.IsFinal
+				userID = nlsResult.UserID
+				timestamp = nlsResult.Timestamp
+			} else {
+				h.logger.WarnContext(c.Request().Context(), "unexpected recognition result type", "type", fmt.Sprintf("%T", resultInterface))
+				continue
+			}
+
 			recognitionEvent := domain.SpeechRecognitionEvent{
 				Event: "recognition",
 				Data: domain.SpeechRecognitionData{
 					Type:      "result",
-					Text:      result.Text,
-					IsFinal:   result.IsFinal,
-					UserID:    result.UserID,
-					Timestamp: result.Timestamp,
+					Text:      text,
+					IsFinal:   isFinal,
+					UserID:    userID,
+					Timestamp: timestamp,
 				},
 			}
 			h.sendSSEEvent(c, flusher, recognitionEvent)
