@@ -918,7 +918,9 @@ func (h *TaskHandler) SpeechToText(c *web.Context) error {
 				h.sendSSEEvent(c, flusher, errorEvent)
 				return nil
 			}
-			return nil
+			// errorCh closed without error — stop selecting on it,
+			// let resultCh drive the completion with the "end" event.
+			errorCh = nil
 
 		case <-timeout:
 			h.logger.WarnContext(c.Request().Context(), "speech recognition timeout")
