@@ -24,10 +24,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
-	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
-	"github.com/chaitin/MonkeyCode/backend/pkg/realtime"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
+	"github.com/chaitin/MonkeyCode/backend/pkg/transcription"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -35,21 +34,20 @@ var errTurnEnded = errors.New("turn ended")
 
 // TaskHandler 任务处理器
 type TaskHandler struct {
-	cfg           *config.Config
-	usecase       domain.TaskUsecase
-	userusecase   domain.UserUsecase
-	pubhost       domain.PublicHostUsecase
-	logger        *slog.Logger
-	taskflow      taskflow.Clienter
-	tasklog       *tasklog.Gateway
-	nls           *nls.NLS
-	realtimeAPI   *realtime.RealtimeClient
-	taskConns     *ws.TaskConn
-	controlConns  *ws.ControlConn
-	taskSummary   *service.TaskSummaryService
-	taskActivity  service.TaskActivityRefresher
-	idleRefresher vmidle.VMIdleRefresher
-	activeRepo    domain.UserActiveRepo
+	cfg            *config.Config
+	usecase        domain.TaskUsecase
+	userusecase    domain.UserUsecase
+	pubhost        domain.PublicHostUsecase
+	logger         *slog.Logger
+	taskflow       taskflow.Clienter
+	tasklog        *tasklog.Gateway
+	transcription  *transcription.Client
+	taskConns      *ws.TaskConn
+	controlConns   *ws.ControlConn
+	taskSummary    *service.TaskSummaryService
+	taskActivity   service.TaskActivityRefresher
+	idleRefresher  vmidle.VMIdleRefresher
+	activeRepo     domain.UserActiveRepo
 }
 
 // NewTaskHandler 创建任务处理器
@@ -75,16 +73,12 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		pubhost = ph
 	}
 
-	var nlsSvc *nls.NLS
-	if n, err := do.Invoke[*nls.NLS](i); err == nil {
-		nlsSvc = n
-	}
-
-	// 初始化 Realtime API 客户端（如果配置了 GPT）
-	var realtimeClient *realtime.RealtimeClient
-	if cfg.GPT.BaseURL != "" && cfg.GPT.APIKey != "" {
-		realtimeClient = realtime.NewRealtimeClient(cfg, logger)
-		logger.Info("Realtime API client initialized")
+	// 初始化 GPT 转录客户端
+	var transcriptionClient *transcription.Client
+	if cfg.NLS.BaseURL != "" && cfg.NLS.APIKey != "" {
+		transcriptionClient = transcription.NewClient(cfg, logger)
+		logger.Info("GPT transcription client initialized",
+			"base_url", cfg.NLS.BaseURL, "model", cfg.NLS.Model)
 	}
 
 	activeRepo := do.MustInvoke[domain.UserActiveRepo](i)
@@ -97,8 +91,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		logger:        logger.With("handler", "task.handler"),
 		taskflow:      tf,
 		tasklog:       gw,
-		nls:           nlsSvc,
-		realtimeAPI:   realtimeClient,
+		transcription: transcriptionClient,
 		taskConns:     tc,
 		controlConns:  cc,
 		taskSummary:   ts,
@@ -862,8 +855,7 @@ func validateSkillID(skillID string) error {
 func (h *TaskHandler) SpeechToText(c *web.Context) error {
 	user := middleware.GetUser(c)
 
-	// 优先使用 Realtime API，如果未配置则回退到阿里云 NLS
-	if h.realtimeAPI == nil && h.nls == nil {
+	if h.transcription == nil {
 		h.logger.ErrorContext(c.Request().Context(), "speech recognition service not initialized")
 		return errcode.ErrInternalServer
 	}
@@ -890,44 +882,12 @@ func (h *TaskHandler) SpeechToText(c *web.Context) error {
 		return errcode.ErrInternalServer
 	}
 
-	// 选择使用哪个语音识别服务
-	var resultCh <-chan interface{}
-	var errorCh <-chan error
-
-	if h.realtimeAPI != nil {
-		h.logger.InfoContext(c.Request().Context(), "using Realtime API for speech recognition")
-		realtimeResultCh, realtimeErrorCh := h.realtimeAPI.SpeechRecognition(c.Request().Context(), user.ID, audioData)
-
-		// 转换为通用 channel
-		genericResultCh := make(chan interface{}, 10)
-		go func() {
-			defer close(genericResultCh)
-			for result := range realtimeResultCh {
-				genericResultCh <- result
-			}
-		}()
-		resultCh = genericResultCh
-		errorCh = realtimeErrorCh
-	} else {
-		h.logger.InfoContext(c.Request().Context(), "using Aliyun NLS for speech recognition")
-		nlsResultCh, nlsErrorCh := h.nls.SpeechRecognition(c.Request().Context(), user.ID, audioData)
-
-		// 转换为通用 channel
-		genericResultCh := make(chan interface{}, 10)
-		go func() {
-			defer close(genericResultCh)
-			for result := range nlsResultCh {
-				genericResultCh <- result
-			}
-		}()
-		resultCh = genericResultCh
-		errorCh = nlsErrorCh
-	}
+	resultCh, errorCh := h.transcription.SpeechRecognition(c.Request().Context(), user.ID, audioData)
 
 	timeout := time.After(2 * time.Minute)
 	for {
 		select {
-		case resultInterface, ok := <-resultCh:
+		case result, ok := <-resultCh:
 			if !ok {
 				endEvent := domain.SpeechRecognitionEvent{
 					Event: "end",
@@ -937,35 +897,14 @@ func (h *TaskHandler) SpeechToText(c *web.Context) error {
 				return nil
 			}
 
-			// 类型断言处理两种结果类型
-			var text string
-			var isFinal bool
-			var userID string
-			var timestamp int64
-
-			if realtimeResult, ok := resultInterface.(realtime.RecognitionResult); ok {
-				text = realtimeResult.Text
-				isFinal = realtimeResult.IsFinal
-				userID = realtimeResult.UserID
-				timestamp = realtimeResult.Timestamp
-			} else if nlsResult, ok := resultInterface.(nls.RecognitionResult); ok {
-				text = nlsResult.Text
-				isFinal = nlsResult.IsFinal
-				userID = nlsResult.UserID
-				timestamp = nlsResult.Timestamp
-			} else {
-				h.logger.WarnContext(c.Request().Context(), "unexpected recognition result type", "type", fmt.Sprintf("%T", resultInterface))
-				continue
-			}
-
 			recognitionEvent := domain.SpeechRecognitionEvent{
 				Event: "recognition",
 				Data: domain.SpeechRecognitionData{
 					Type:      "result",
-					Text:      text,
-					IsFinal:   isFinal,
-					UserID:    userID,
-					Timestamp: timestamp,
+					Text:      result.Text,
+					IsFinal:   result.IsFinal,
+					UserID:    result.UserID,
+					Timestamp: result.Timestamp,
 				},
 			}
 			h.sendSSEEvent(c, flusher, recognitionEvent)

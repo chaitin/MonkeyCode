@@ -66,22 +66,12 @@ type Config struct {
 
 	InitTeam InitTeam `mapstructure:"init_team"`
 
-	// 语音识别配置（阿里云 NLS）
+	// 语音识别配置
 	NLS NLS `mapstructure:"nls"`
-
-	// GPT Realtime API 配置
-	GPT GPT `mapstructure:"gpt"`
 }
 
-// NLS 阿里云语音识别配置
+// NLS 语音识别配置
 type NLS struct {
-	AppKey string `mapstructure:"app_key"`
-	AkID   string `mapstructure:"ak_id"`
-	AkKey  string `mapstructure:"ak_key"`
-}
-
-// GPT Realtime API 配置
-type GPT struct {
 	BaseURL string `mapstructure:"base_url"`
 	APIKey  string `mapstructure:"api_key"`
 	Model   string `mapstructure:"model"`
