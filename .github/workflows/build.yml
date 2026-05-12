@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "dev*"
 
 env:
   NODE_VERSION: "20"
