@@ -154,6 +154,9 @@ other = "邮箱不能为空"
 [err-email-not-bound]
 other = "存在未绑定邮箱的用户，请绑定邮箱后再重置密码"
 
+[err-enterprise-reset-password-denied]
+other = "企业用户不支持重置密码，请联系开发人员"
+
 [err-deposit-failed]
 other = "充值失败"
 

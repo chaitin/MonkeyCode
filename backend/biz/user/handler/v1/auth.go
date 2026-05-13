@@ -127,7 +127,7 @@ func (h *AuthHandler) ChangePassword(c *web.Context, req domain.ChangePasswordRe
 
 	err := h.usecase.ChangePassword(ctx, user.ID, &req, false)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "change password failed", "error", err)
+		h.logger.ErrorContext(ctx, "change password failed", "userID", user.ID, "error", err)
 		return errcode.ErrChangePasswordFailed
 	}
 
@@ -293,37 +293,38 @@ func (h *AuthHandler) ResetPassword(c *web.Context, req domain.ResetUserPassword
 	key := fmt.Sprintf("reset_password_token:%s", req.Token)
 	userID, err := h.redis.Get(c.Request().Context(), key).Result()
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "get redis key failed", "error", err)
-		return errcode.ErrResetPasswordFailed
+		h.logger.ErrorContext(c.Request().Context(), "get redis key failed", "token", req.Token, "error", err)
+		return errcode.ErrResetPasswordFailed.Wrap(err)
 	}
 	id, err := uuid.Parse(userID)
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "invalid token", "error", err)
-		return errcode.ErrResetPasswordFailed
+		h.logger.ErrorContext(c.Request().Context(), "invalid token", "userID", userID, "error", err)
+		return errcode.ErrResetPasswordFailed.Wrap(err)
 	}
 
 	// 不允许从这个接口重置管理员的密码
 	teamUser, err := h.usecase.GetUserWithTeams(c.Request().Context(), id)
 	if err != nil {
-		return err
+		return errcode.ErrDatabaseQuery.Wrap(err)
 	}
 	if teamUser.User.Role == consts.UserRoleEnterprise {
-		return errcode.ErrResetPasswordFailed
+		h.logger.ErrorContext(c.Request().Context(), "enterprise not allowed to change password", "userID", userID)
+		return errcode.ErrEnterpriseResetPasswordDenied
 	}
 
 	err = h.usecase.ChangePassword(c.Request().Context(), id, &domain.ChangePasswordReq{NewPassword: req.NewPassword}, true)
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "change password failed", "error", err)
+		h.logger.ErrorContext(c.Request().Context(), "change password failed", "userID", userID, "error", err)
 		return err
 	}
 
 	// 重置后清除 redis 里的 key
 	err = h.redis.Del(c.Request().Context(), key).Err()
 	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "delete redis key failed", "error", err)
+		h.logger.ErrorContext(c.Request().Context(), "delete redis key failed", "userID", userID, "error", err)
 		return errcode.ErrResetPasswordFailed.Wrap(err)
 	}
-	h.logger.InfoContext(c.Request().Context(), "delete redis key success", "key", key)
+	h.logger.InfoContext(c.Request().Context(), "delete redis key success", "userID", userID, "key", key)
 
 	if err := h.authMiddleware.Session.Trunc(c.Request().Context(), consts.MonkeyCodeAISession, id); err != nil {
 		return err

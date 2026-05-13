@@ -94,7 +94,8 @@ var (
 	ErrEmailAlreadyBound    = web.NewErr(http.StatusOK, 10612, "err-email-already-bound")
 	ErrEmailTaken           = web.NewErr(http.StatusOK, 10613, "err-email-taken")
 	ErrEmailRequired        = web.NewErr(http.StatusOK, 10614, "err-email-required")
-	ErrEmailNotBound        = web.NewErr(http.StatusOK, 10615, "err-email-not-bound")
+	ErrEmailNotBound                 = web.NewErr(http.StatusOK, 10615, "err-email-not-bound")
+	ErrEnterpriseResetPasswordDenied = web.NewErr(http.StatusOK, 10616, "err-enterprise-reset-password-denied")
 
 	// captcha 模块
 	ErrCreateCaptchaFailed = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")

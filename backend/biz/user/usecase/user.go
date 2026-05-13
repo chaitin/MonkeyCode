@@ -84,7 +84,7 @@ func (u *UserUsecase) PasswordLogin(ctx context.Context, req *domain.TeamLoginRe
 func (u *UserUsecase) ChangePassword(ctx context.Context, userID uuid.UUID, req *domain.ChangePasswordReq, isReset bool) error {
 	err := u.repo.ChangePassword(ctx, userID, req.CurrentPassword, req.NewPassword, isReset)
 	if err != nil {
-		u.logger.ErrorContext(ctx, "change password failed", "error", err)
+		u.logger.ErrorContext(ctx, "change password failed", "userID", userID, "error", err)
 		return err
 	}
 	return nil
@@ -165,14 +165,14 @@ func (u *UserUsecase) SendBindEmailVerification(ctx context.Context, userID uuid
 	key := fmt.Sprintf("bind_email_token:%s", token)
 	value := fmt.Sprintf("%s:%s", userID.String(), req.Email)
 	if err := u.redis.Set(ctx, key, value, time.Hour*24).Err(); err != nil {
-		u.logger.ErrorContext(ctx, "set redis key failed", "error", err)
+		u.logger.ErrorContext(ctx, "set redis key failed", "userID", userID, "email", req.Email, "error", err)
 		return errcode.ErrDatabaseOperation.Wrap(err)
 	}
 
 	// 获取用户信息用于邮件发送
 	user, err := u.repo.Get(ctx, userID)
 	if err != nil {
-		u.logger.ErrorContext(ctx, "get user failed", "error", err)
+		u.logger.ErrorContext(ctx, "get user failed", "userID", userID, "email", req.Email, "error", err)
 		return errcode.ErrDatabaseQuery.Wrap(err)
 	}
 
@@ -180,7 +180,7 @@ func (u *UserUsecase) SendBindEmailVerification(ctx context.Context, userID uuid
 	verifyURL := fmt.Sprintf("%s/api/v1/users/email/verify?token=%s", u.config.Server.BaseURL, token)
 	go func() {
 		if err := u.email.SendBindEmailVerification(context.Background(), req.Email, user.Name, verifyURL); err != nil {
-			u.logger.ErrorContext(ctx, "send bind email verification mail failed", "error", err)
+			u.logger.ErrorContext(ctx, "send bind email verification mail failed", "userID", userID, "email", req.Email, "error", err)
 		}
 	}()
 
