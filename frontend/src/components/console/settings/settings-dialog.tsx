@@ -6,6 +6,7 @@ import {
   Bot,
   Blocks,
   Box,
+  FileText,
   HardDrive,
   MonitorCloud,
   Settings,
@@ -49,6 +50,7 @@ import Identities from "./identities"
 import VmsPage from "./vms"
 import Notifications from "./notifications"
 import ToolsAndMcp from "./tools-mcp"
+import MemoryTemplate from "./memory-template"
 
 const SETTINGS_NAV = [
   { id: "identities", name: "Git 身份", icon: IconPasswordFingerprint },
@@ -57,6 +59,7 @@ const SETTINGS_NAV = [
   { id: "images", name: "系统镜像", icon: Box },
   { id: "hosts", name: "宿主机", icon: HardDrive },
   { id: "vms", name: "开发环境", icon: MonitorCloud },
+  { id: "memory-template", name: "Memory 模板", icon: FileText },
   { id: "notifications", name: "通知", icon: Bell },
 ] as const
 
@@ -76,6 +79,8 @@ function SettingsContent({ section }: { section: SettingsSectionId }) {
       return <Hosts />
     case "vms":
       return <VmsPage />
+    case "memory-template":
+      return <MemoryTemplate />
     case "notifications":
       return <Notifications />
     default:
@@ -159,8 +164,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 activeSection={activeSection}
                 onSectionChange={setActiveSection}
               />
-              <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+              <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+                <div className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
                   <SettingsContent section={activeSection} />
                 </div>
               </main>

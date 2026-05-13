@@ -20,6 +20,7 @@ func ProvideSetting(i *do.Injector) {
 	do.Provide(i, v1.NewModelHandler)
 	do.Provide(i, v1.NewImageHandler)
 	do.Provide(i, v1.NewMCPHandler)
+	do.Provide(i, v1.NewMemoryTemplateHandler)
 }
 
 // InvokeSetting 触发 setting 模块的 handler 初始化
@@ -27,4 +28,5 @@ func InvokeSetting(i *do.Injector) {
 	do.MustInvoke[*v1.ModelHandler](i)
 	do.MustInvoke[*v1.ImageHandler](i)
 	do.MustInvoke[*v1.MCPHandler](i)
+	do.MustInvoke[*v1.MemoryTemplateHandler](i)
 }

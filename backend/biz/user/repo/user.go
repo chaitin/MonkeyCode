@@ -114,6 +114,13 @@ func (u *userRepo) GetUserByEmail(ctx context.Context, emails []string) ([]*db.U
 	return u.db.User.Query().WithTeams().Where(user.EmailIn(emails...)).All(ctx)
 }
 
+// UpdateMemoryTemplate implements domain.UserRepo.
+func (u *userRepo) UpdateMemoryTemplate(ctx context.Context, uid uuid.UUID, memoryTemplate string) error {
+	return u.db.User.UpdateOneID(uid).
+		SetMemoryTemplate(memoryTemplate).
+		Exec(ctx)
+}
+
 // SetEmail implements domain.UserRepo.
 func (u *userRepo) SetEmail(ctx context.Context, userID uuid.UUID, email string) error {
 	return u.db.User.UpdateOneID(userID).SetEmail(email).Exec(ctx)

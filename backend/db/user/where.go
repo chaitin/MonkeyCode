@@ -99,6 +99,11 @@ func IsBlocked(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldIsBlocked, v))
 }
 
+// MemoryTemplate applies equality check predicate on the "memory_template" field. It's identical to MemoryTemplateEQ.
+func MemoryTemplate(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMemoryTemplate, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -635,6 +640,81 @@ func DefaultConfigsIsNil() predicate.User {
 // DefaultConfigsNotNil applies the NotNil predicate on the "default_configs" field.
 func DefaultConfigsNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldDefaultConfigs))
+}
+
+// MemoryTemplateEQ applies the EQ predicate on the "memory_template" field.
+func MemoryTemplateEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateNEQ applies the NEQ predicate on the "memory_template" field.
+func MemoryTemplateNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateIn applies the In predicate on the "memory_template" field.
+func MemoryTemplateIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldMemoryTemplate, vs...))
+}
+
+// MemoryTemplateNotIn applies the NotIn predicate on the "memory_template" field.
+func MemoryTemplateNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldMemoryTemplate, vs...))
+}
+
+// MemoryTemplateGT applies the GT predicate on the "memory_template" field.
+func MemoryTemplateGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateGTE applies the GTE predicate on the "memory_template" field.
+func MemoryTemplateGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateLT applies the LT predicate on the "memory_template" field.
+func MemoryTemplateLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateLTE applies the LTE predicate on the "memory_template" field.
+func MemoryTemplateLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateContains applies the Contains predicate on the "memory_template" field.
+func MemoryTemplateContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateHasPrefix applies the HasPrefix predicate on the "memory_template" field.
+func MemoryTemplateHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateHasSuffix applies the HasSuffix predicate on the "memory_template" field.
+func MemoryTemplateHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateIsNil applies the IsNil predicate on the "memory_template" field.
+func MemoryTemplateIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldMemoryTemplate))
+}
+
+// MemoryTemplateNotNil applies the NotNil predicate on the "memory_template" field.
+func MemoryTemplateNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldMemoryTemplate))
+}
+
+// MemoryTemplateEqualFold applies the EqualFold predicate on the "memory_template" field.
+func MemoryTemplateEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldMemoryTemplate, v))
+}
+
+// MemoryTemplateContainsFold applies the ContainsFold predicate on the "memory_template" field.
+func MemoryTemplateContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldMemoryTemplate, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -38,6 +38,8 @@ type User struct {
 	IsBlocked bool `json:"is_blocked,omitempty"`
 	// DefaultConfigs holds the value of the "default_configs" field.
 	DefaultConfigs map[consts.DefaultConfigType]uuid.UUID `json:"default_configs,omitempty"`
+	// MemoryTemplate holds the value of the "memory_template" field.
+	MemoryTemplate *string `json:"memory_template,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -295,7 +297,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case user.FieldIsBlocked:
 			values[i] = new(sql.NullBool)
-		case user.FieldName, user.FieldEmail, user.FieldAvatarURL, user.FieldPassword, user.FieldRole, user.FieldStatus:
+		case user.FieldName, user.FieldEmail, user.FieldAvatarURL, user.FieldPassword, user.FieldRole, user.FieldStatus, user.FieldMemoryTemplate:
 			values[i] = new(sql.NullString)
 		case user.FieldDeletedAt, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -377,6 +379,13 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.DefaultConfigs); err != nil {
 					return fmt.Errorf("unmarshal field default_configs: %w", err)
 				}
+			}
+		case user.FieldMemoryTemplate:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field memory_template", values[i])
+			} else if value.Valid {
+				_m.MemoryTemplate = new(string)
+				*_m.MemoryTemplate = value.String
 			}
 		case user.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -557,6 +566,11 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("default_configs=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DefaultConfigs))
+	builder.WriteString(", ")
+	if v := _m.MemoryTemplate; v != nil {
+		builder.WriteString("memory_template=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

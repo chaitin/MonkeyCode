@@ -43,6 +43,7 @@ func (User) Fields() []ent.Field {
 		field.String("status").GoType(consts.UserStatus("")),
 		field.Bool("is_blocked").Default(false),
 		field.JSON("default_configs", map[consts.DefaultConfigType]uuid.UUID{}).Optional(),
+		field.String("memory_template").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
