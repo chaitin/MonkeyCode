@@ -147,6 +147,9 @@ other = "Email is required"
 [err-email-not-bound]
 other = "Some emails are not bound, please bind email before resetting password"
 
+[err-enterprise-reset-password-denied]
+other = "Enterprise users are not allowed to reset password, please contact the developer"
+
 [err-deposit-failed]
 other = "Deposit failed"
 

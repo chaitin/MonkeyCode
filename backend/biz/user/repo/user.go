@@ -86,19 +86,19 @@ func (u *userRepo) PasswordLogin(ctx context.Context, req *domain.TeamLoginReq) 
 func (u *userRepo) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string, isReset bool) error {
 	uu, err := u.db.User.Query().Where(user.IDEQ(userID)).First(ctx)
 	if err != nil {
-		return err
+		return errcode.ErrDatabaseQuery.Wrap(err)
 	}
 
 	if !isReset && uu.Password != "" {
 		err = crypto.VerifyPassword(uu.Password, currentPassword)
 		if err != nil {
-			return errcode.ErrInvalidPassword
+			return errcode.ErrInvalidPassword.Wrap(err)
 		}
 	}
 
 	hashedNewPassword, err := crypto.HashPassword(newPassword)
 	if err != nil {
-		return errcode.ErrLoginFailed
+		return errcode.ErrLoginFailed.Wrap(err)
 	}
 	err = u.db.User.UpdateOneID(userID).
 		SetPassword(hashedNewPassword).
