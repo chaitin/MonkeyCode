@@ -199,6 +199,26 @@ func (_u *UserUpdate) ClearDefaultConfigs() *UserUpdate {
 	return _u
 }
 
+// SetMemoryTemplate sets the "memory_template" field.
+func (_u *UserUpdate) SetMemoryTemplate(v string) *UserUpdate {
+	_u.mutation.SetMemoryTemplate(v)
+	return _u
+}
+
+// SetNillableMemoryTemplate sets the "memory_template" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableMemoryTemplate(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetMemoryTemplate(*v)
+	}
+	return _u
+}
+
+// ClearMemoryTemplate clears the value of the "memory_template" field.
+func (_u *UserUpdate) ClearMemoryTemplate() *UserUpdate {
+	_u.mutation.ClearMemoryTemplate()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *UserUpdate) SetCreatedAt(v time.Time) *UserUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -1091,6 +1111,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DefaultConfigsCleared() {
 		_spec.ClearField(user.FieldDefaultConfigs, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MemoryTemplate(); ok {
+		_spec.SetField(user.FieldMemoryTemplate, field.TypeString, value)
+	}
+	if _u.mutation.MemoryTemplateCleared() {
+		_spec.ClearField(user.FieldMemoryTemplate, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)
@@ -2258,6 +2284,26 @@ func (_u *UserUpdateOne) ClearDefaultConfigs() *UserUpdateOne {
 	return _u
 }
 
+// SetMemoryTemplate sets the "memory_template" field.
+func (_u *UserUpdateOne) SetMemoryTemplate(v string) *UserUpdateOne {
+	_u.mutation.SetMemoryTemplate(v)
+	return _u
+}
+
+// SetNillableMemoryTemplate sets the "memory_template" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableMemoryTemplate(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetMemoryTemplate(*v)
+	}
+	return _u
+}
+
+// ClearMemoryTemplate clears the value of the "memory_template" field.
+func (_u *UserUpdateOne) ClearMemoryTemplate() *UserUpdateOne {
+	_u.mutation.ClearMemoryTemplate()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *UserUpdateOne) SetCreatedAt(v time.Time) *UserUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -3180,6 +3226,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.DefaultConfigsCleared() {
 		_spec.ClearField(user.FieldDefaultConfigs, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MemoryTemplate(); ok {
+		_spec.SetField(user.FieldMemoryTemplate, field.TypeString, value)
+	}
+	if _u.mutation.MemoryTemplateCleared() {
+		_spec.ClearField(user.FieldMemoryTemplate, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)

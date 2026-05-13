@@ -33,6 +33,8 @@ const (
 	FieldIsBlocked = "is_blocked"
 	// FieldDefaultConfigs holds the string denoting the default_configs field in the database.
 	FieldDefaultConfigs = "default_configs"
+	// FieldMemoryTemplate holds the string denoting the memory_template field in the database.
+	FieldMemoryTemplate = "memory_template"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -236,6 +238,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldIsBlocked,
 	FieldDefaultConfigs,
+	FieldMemoryTemplate,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -328,6 +331,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByIsBlocked orders the results by the is_blocked field.
 func ByIsBlocked(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsBlocked, opts...).ToFunc()
+}
+
+// ByMemoryTemplate orders the results by the memory_template field.
+func ByMemoryTemplate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMemoryTemplate, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

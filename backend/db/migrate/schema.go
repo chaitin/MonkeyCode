@@ -1202,6 +1202,7 @@ var (
 		{Name: "status", Type: field.TypeString},
 		{Name: "is_blocked", Type: field.TypeBool, Default: false},
 		{Name: "default_configs", Type: field.TypeJSON, Nullable: true},
+		{Name: "memory_template", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}

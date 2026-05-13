@@ -28,6 +28,7 @@ type UserUsecase interface {
 type UserRepo interface {
 	Get(ctx context.Context, uid uuid.UUID) (*db.User, error)
 	Update(ctx context.Context, uid uuid.UUID, name, avatarURL string) error
+	UpdateMemoryTemplate(ctx context.Context, uid uuid.UUID, memoryTemplate string) error
 	GetUserWithTeams(ctx context.Context, uid uuid.UUID) (*db.User, error)
 	PasswordLogin(ctx context.Context, req *TeamLoginReq) (*db.User, error)
 	ChangePassword(ctx context.Context, uid uuid.UUID, currentPassword, newPassword string, isReset bool) error
@@ -43,17 +44,18 @@ type UserActiveRepo interface {
 }
 
 type User struct {
-	ID          uuid.UUID         `json:"id"`
-	Name        string            `json:"name"`
-	AvatarURL   string            `json:"avatar_url"`
-	Email       string            `json:"email"`
-	Role        consts.UserRole   `json:"role"`
-	Status      consts.UserStatus `json:"status"`
-	IsBlocked   bool              `json:"is_blocked"`
-	Token       string            `json:"token,omitempty"`
-	Identities  []*UserIdentity   `json:"identities"`
-	Team        *Team             `json:"team,omitempty"`
-	HasPassword bool              `json:"has_password"`
+	ID             uuid.UUID         `json:"id"`
+	Name           string            `json:"name"`
+	AvatarURL      string            `json:"avatar_url"`
+	Email          string            `json:"email"`
+	Role           consts.UserRole   `json:"role"`
+	Status         consts.UserStatus `json:"status"`
+	IsBlocked      bool              `json:"is_blocked"`
+	Token          string            `json:"token,omitempty"`
+	Identities     []*UserIdentity   `json:"identities"`
+	Team           *Team             `json:"team,omitempty"`
+	HasPassword    bool              `json:"has_password"`
+	MemoryTemplate *string           `json:"memory_template,omitempty"`
 }
 
 func (u *User) From(src *db.User) *User {
@@ -69,6 +71,7 @@ func (u *User) From(src *db.User) *User {
 	u.Status = src.Status
 	u.IsBlocked = src.IsBlocked
 	u.HasPassword = src.Password != ""
+	u.MemoryTemplate = src.MemoryTemplate
 	u.Identities = cvt.Iter(src.Edges.Identities, func(_ int, i *db.UserIdentity) *UserIdentity {
 		return cvt.From(i, &UserIdentity{})
 	})
@@ -127,8 +130,9 @@ type TeamUserLoginResp struct {
 
 // UpdateUserReq 更新用户信息请求
 type UpdateUserReq struct {
-	Name      string `json:"name,omitempty" form:"name"`
-	AvatarURL string `json:"avatar_url,omitempty" form:"avatar_url"`
+	Name           string  `json:"name,omitempty" form:"name"`
+	AvatarURL      string  `json:"avatar_url,omitempty" form:"avatar_url"`
+	MemoryTemplate *string `json:"memory_template,omitempty" form:"memory_template"`
 }
 
 // UpdateUserResp 更新用户信息响应

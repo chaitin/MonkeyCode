@@ -34598,6 +34598,7 @@ type UserMutation struct {
 	status                        *consts.UserStatus
 	is_blocked                    *bool
 	default_configs               *map[consts.DefaultConfigType]uuid.UUID
+	memory_template               *string
 	created_at                    *time.Time
 	updated_at                    *time.Time
 	clearedFields                 map[string]struct{}
@@ -35160,6 +35161,55 @@ func (m *UserMutation) DefaultConfigsCleared() bool {
 func (m *UserMutation) ResetDefaultConfigs() {
 	m.default_configs = nil
 	delete(m.clearedFields, user.FieldDefaultConfigs)
+}
+
+// SetMemoryTemplate sets the "memory_template" field.
+func (m *UserMutation) SetMemoryTemplate(s string) {
+	m.memory_template = &s
+}
+
+// MemoryTemplate returns the value of the "memory_template" field in the mutation.
+func (m *UserMutation) MemoryTemplate() (r string, exists bool) {
+	v := m.memory_template
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMemoryTemplate returns the old "memory_template" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldMemoryTemplate(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMemoryTemplate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMemoryTemplate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMemoryTemplate: %w", err)
+	}
+	return oldValue.MemoryTemplate, nil
+}
+
+// ClearMemoryTemplate clears the value of the "memory_template" field.
+func (m *UserMutation) ClearMemoryTemplate() {
+	m.memory_template = nil
+	m.clearedFields[user.FieldMemoryTemplate] = struct{}{}
+}
+
+// MemoryTemplateCleared returns if the "memory_template" field was cleared in this mutation.
+func (m *UserMutation) MemoryTemplateCleared() bool {
+	_, ok := m.clearedFields[user.FieldMemoryTemplate]
+	return ok
+}
+
+// ResetMemoryTemplate resets all changes to the "memory_template" field.
+func (m *UserMutation) ResetMemoryTemplate() {
+	m.memory_template = nil
+	delete(m.clearedFields, user.FieldMemoryTemplate)
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -36402,7 +36452,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.deleted_at != nil {
 		fields = append(fields, user.FieldDeletedAt)
 	}
@@ -36429,6 +36479,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.default_configs != nil {
 		fields = append(fields, user.FieldDefaultConfigs)
+	}
+	if m.memory_template != nil {
+		fields = append(fields, user.FieldMemoryTemplate)
 	}
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
@@ -36462,6 +36515,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.IsBlocked()
 	case user.FieldDefaultConfigs:
 		return m.DefaultConfigs()
+	case user.FieldMemoryTemplate:
+		return m.MemoryTemplate()
 	case user.FieldCreatedAt:
 		return m.CreatedAt()
 	case user.FieldUpdatedAt:
@@ -36493,6 +36548,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldIsBlocked(ctx)
 	case user.FieldDefaultConfigs:
 		return m.OldDefaultConfigs(ctx)
+	case user.FieldMemoryTemplate:
+		return m.OldMemoryTemplate(ctx)
 	case user.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case user.FieldUpdatedAt:
@@ -36569,6 +36626,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDefaultConfigs(v)
 		return nil
+	case user.FieldMemoryTemplate:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMemoryTemplate(v)
+		return nil
 	case user.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -36628,6 +36692,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldDefaultConfigs) {
 		fields = append(fields, user.FieldDefaultConfigs)
 	}
+	if m.FieldCleared(user.FieldMemoryTemplate) {
+		fields = append(fields, user.FieldMemoryTemplate)
+	}
 	return fields
 }
 
@@ -36656,6 +36723,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldDefaultConfigs:
 		m.ClearDefaultConfigs()
+		return nil
+	case user.FieldMemoryTemplate:
+		m.ClearMemoryTemplate()
 		return nil
 	}
 	return fmt.Errorf("unknown User nullable field %s", name)
@@ -36691,6 +36761,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldDefaultConfigs:
 		m.ResetDefaultConfigs()
+		return nil
+	case user.FieldMemoryTemplate:
+		m.ResetMemoryTemplate()
 		return nil
 	case user.FieldCreatedAt:
 		m.ResetCreatedAt()

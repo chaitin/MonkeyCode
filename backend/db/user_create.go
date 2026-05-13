@@ -139,6 +139,20 @@ func (_c *UserCreate) SetDefaultConfigs(v map[consts.DefaultConfigType]uuid.UUID
 	return _c
 }
 
+// SetMemoryTemplate sets the "memory_template" field.
+func (_c *UserCreate) SetMemoryTemplate(v string) *UserCreate {
+	_c.mutation.SetMemoryTemplate(v)
+	return _c
+}
+
+// SetNillableMemoryTemplate sets the "memory_template" field if the given value is not nil.
+func (_c *UserCreate) SetNillableMemoryTemplate(v *string) *UserCreate {
+	if v != nil {
+		_c.SetMemoryTemplate(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UserCreate) SetCreatedAt(v time.Time) *UserCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -642,6 +656,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DefaultConfigs(); ok {
 		_spec.SetField(user.FieldDefaultConfigs, field.TypeJSON, value)
 		_node.DefaultConfigs = value
+	}
+	if value, ok := _c.mutation.MemoryTemplate(); ok {
+		_spec.SetField(user.FieldMemoryTemplate, field.TypeString, value)
+		_node.MemoryTemplate = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)
@@ -1192,6 +1210,24 @@ func (u *UserUpsert) ClearDefaultConfigs() *UserUpsert {
 	return u
 }
 
+// SetMemoryTemplate sets the "memory_template" field.
+func (u *UserUpsert) SetMemoryTemplate(v string) *UserUpsert {
+	u.Set(user.FieldMemoryTemplate, v)
+	return u
+}
+
+// UpdateMemoryTemplate sets the "memory_template" field to the value that was provided on create.
+func (u *UserUpsert) UpdateMemoryTemplate() *UserUpsert {
+	u.SetExcluded(user.FieldMemoryTemplate)
+	return u
+}
+
+// ClearMemoryTemplate clears the value of the "memory_template" field.
+func (u *UserUpsert) ClearMemoryTemplate() *UserUpsert {
+	u.SetNull(user.FieldMemoryTemplate)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *UserUpsert) SetCreatedAt(v time.Time) *UserUpsert {
 	u.Set(user.FieldCreatedAt, v)
@@ -1422,6 +1458,27 @@ func (u *UserUpsertOne) UpdateDefaultConfigs() *UserUpsertOne {
 func (u *UserUpsertOne) ClearDefaultConfigs() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearDefaultConfigs()
+	})
+}
+
+// SetMemoryTemplate sets the "memory_template" field.
+func (u *UserUpsertOne) SetMemoryTemplate(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetMemoryTemplate(v)
+	})
+}
+
+// UpdateMemoryTemplate sets the "memory_template" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateMemoryTemplate() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateMemoryTemplate()
+	})
+}
+
+// ClearMemoryTemplate clears the value of the "memory_template" field.
+func (u *UserUpsertOne) ClearMemoryTemplate() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearMemoryTemplate()
 	})
 }
 
@@ -1826,6 +1883,27 @@ func (u *UserUpsertBulk) UpdateDefaultConfigs() *UserUpsertBulk {
 func (u *UserUpsertBulk) ClearDefaultConfigs() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearDefaultConfigs()
+	})
+}
+
+// SetMemoryTemplate sets the "memory_template" field.
+func (u *UserUpsertBulk) SetMemoryTemplate(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetMemoryTemplate(v)
+	})
+}
+
+// UpdateMemoryTemplate sets the "memory_template" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateMemoryTemplate() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateMemoryTemplate()
+	})
+}
+
+// ClearMemoryTemplate clears the value of the "memory_template" field.
+func (u *UserUpsertBulk) ClearMemoryTemplate() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearMemoryTemplate()
 	})
 }
 

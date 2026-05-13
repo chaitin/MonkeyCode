@@ -48,10 +48,22 @@ func (u *UserUsecase) Get(ctx context.Context, uid uuid.UUID) (*domain.User, err
 
 // Update implements domain.UserUsecase.
 func (u *UserUsecase) Update(ctx context.Context, uid uuid.UUID, avatarURL string, req domain.UpdateUserReq) (*domain.User, error) {
-	err := u.repo.Update(ctx, uid, req.Name, avatarURL)
-	if err != nil {
-		u.logger.ErrorContext(ctx, "update user failed", "error", err, "user_id", uid)
-		return nil, err
+	// 如果有 memory_template，更新它
+	if req.MemoryTemplate != nil {
+		err := u.repo.UpdateMemoryTemplate(ctx, uid, *req.MemoryTemplate)
+		if err != nil {
+			u.logger.ErrorContext(ctx, "update memory template failed", "error", err, "user_id", uid)
+			return nil, err
+		}
+	}
+
+	// 更新其他字段
+	if req.Name != "" || avatarURL != "" {
+		err := u.repo.Update(ctx, uid, req.Name, avatarURL)
+		if err != nil {
+			u.logger.ErrorContext(ctx, "update user failed", "error", err, "user_id", uid)
+			return nil, err
+		}
 	}
 
 	user, err := u.Get(ctx, uid)
