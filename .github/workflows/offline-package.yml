@@ -8,6 +8,9 @@ on:
         required: false
         default: "29.0.4"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   package:
     strategy:
@@ -54,11 +57,13 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           DOCKER_VERSION: ${{ inputs.docker_version || '29.0.4' }}
+          PACKAGE_TGZ: "true"
         run: ./scripts/build-offline-package.sh
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: backend/dist/offline/${{ matrix.artifact }}.tgz
+          archive: false
           if-no-files-found: error
