@@ -57,6 +57,7 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 
 	// 密码登录
 	v1.POST("/password-login", web.BindHandler(h.PasswordLogin), targetActive.TargetActive())
+	v1.PUT("", web.BindHandler(h.Update), auth.Auth(), targetActive.TargetActive())
 	v1.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.Check(), targetActive.TargetActive())
 	v1.GET("/status", web.BaseHandler(h.Status), auth.Check(), targetActive.TargetActive())
 	v1.POST("/logout", web.BaseHandler(h.Logout), auth.Auth(), targetActive.TargetActive())
@@ -100,6 +101,37 @@ func (h *AuthHandler) PasswordLogin(c *web.Context, req domain.TeamLoginReq) err
 	}
 
 	return c.Success(user)
+}
+
+// Update 更新用户信息
+//
+//	@Summary		更新用户信息
+//	@Description	更新用户昵称和头像
+//	@Tags			【用户】用户
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			name		formData	string	false	"昵称"
+//	@Param			avatar_url	formData	string	false	"OSS 头像地址"
+//	@Success		200			{object}	web.Resp{data=domain.UpdateUserResp}
+//	@Router			/api/v1/users [put]
+func (h *AuthHandler) Update(c *web.Context, req domain.UpdateUserReq) error {
+	user := middleware.GetUser(c)
+	if user == nil {
+		return errcode.ErrUnauthorized
+	}
+
+	updated, err := h.usecase.Update(c.Request().Context(), user.ID, req.AvatarURL, req)
+	if err != nil {
+		h.logger.ErrorContext(c.Request().Context(), "update user failed", "error", err, "user_id", user.ID)
+		return err
+	}
+
+	return c.Success(domain.UpdateUserResp{
+		User:    updated,
+		Message: "success",
+		Success: true,
+	})
 }
 
 // ChangePassword 修改密码接口

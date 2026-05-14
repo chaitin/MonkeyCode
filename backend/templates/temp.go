@@ -7,6 +7,9 @@ import (
 //go:embed install.sh.tmpl
 var InstallTmpl []byte
 
+//go:embed install_offline.sh.tmpl
+var InstallOfflineTmpl []byte
+
 //go:embed codex.tmpl
 var Codex []byte
 

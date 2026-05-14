@@ -6,12 +6,15 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/file"
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
+	"github.com/chaitin/MonkeyCode/backend/biz/llmproxy"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
 	"github.com/chaitin/MonkeyCode/backend/biz/project"
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
 	"github.com/chaitin/MonkeyCode/backend/biz/setting"
+	"github.com/chaitin/MonkeyCode/backend/biz/static"
 	"github.com/chaitin/MonkeyCode/backend/biz/task"
 	"github.com/chaitin/MonkeyCode/backend/biz/team"
+	"github.com/chaitin/MonkeyCode/backend/biz/uploader"
 	"github.com/chaitin/MonkeyCode/backend/biz/user"
 	"github.com/chaitin/MonkeyCode/backend/biz/vmidle"
 )
@@ -19,7 +22,6 @@ import (
 // RegisterAll 注册所有 biz 模块
 // 分两阶段：先 Provide（懒注册），再 Invoke（解析依赖），避免模块间循环依赖
 func RegisterAll(i *do.Injector) error {
-	// 阶段一：所有模块注册服务工厂（do.Provide，不触发依赖解析）
 	notify.ProvideNotify(i)
 	public.ProvidePublic(i)
 	user.ProvideUser(i)
@@ -31,8 +33,10 @@ func RegisterAll(i *do.Injector) error {
 	project.ProvideProject(i)
 	file.ProvideFile(i)
 	vmidle.ProvideVMIdle(i)
+	return nil
+}
 
-	// 阶段二：统一触发 handler 初始化（do.MustInvoke，此时所有服务已注册）
+func InvokeAll(i *do.Injector) {
 	notify.InvokeNotify(i)
 	public.InvokePublic(i)
 	user.InvokeUser(i)
@@ -44,6 +48,17 @@ func RegisterAll(i *do.Injector) error {
 	project.InvokeProject(i)
 	file.InvokeFile(i)
 	vmidle.InvokeVMIdle(i)
+}
 
-	return nil
+// RegisterOpenSource 注册仅在开源项目中使用的模块
+func RegisterOpenSource(i *do.Injector) {
+	uploader.ProvideUploader(i)
+	llmproxy.ProvideLLMProxy(i)
+	static.ProviderStatic(i)
+}
+
+func InvokeOpenSource(i *do.Injector) {
+	uploader.InvokeUploader(i)
+	llmproxy.InvokeLLMProxy(i)
+	static.InvokeStatic(i)
 }

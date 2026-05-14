@@ -64,12 +64,13 @@ func TestPickHostSelectsHostByRandomOffset(t *testing.T) {
 	}
 }
 
-func TestPickHostTreatsNonPositiveWeightsAsOne(t *testing.T) {
+func TestPickHostIgnoresNonPositiveWeights(t *testing.T) {
 	u := &PublicHostUsecase{
 		repo: &publicHostRepoStub{
 			hosts: []*db.Host{
 				{ID: "host-a", Hostname: "a", Weight: 0},
 				{ID: "host-b", Hostname: "b", Weight: -2},
+				{ID: "host-c", Hostname: "c", Weight: 1},
 			},
 		},
 		taskflow: &taskflowClientStub{
@@ -77,6 +78,7 @@ func TestPickHostTreatsNonPositiveWeightsAsOne(t *testing.T) {
 				onlineMap: map[string]bool{
 					"host-a": true,
 					"host-b": true,
+					"host-c": true,
 				},
 			},
 		},
@@ -84,10 +86,10 @@ func TestPickHostTreatsNonPositiveWeightsAsOne(t *testing.T) {
 
 	prevRandUint64n := randUint64n
 	randUint64n = func(n uint64) (uint64, error) {
-		if n != 2 {
-			t.Fatalf("rand limit = %d, want 2", n)
+		if n != 1 {
+			t.Fatalf("rand limit = %d, want 1", n)
 		}
-		return 1, nil
+		return 0, nil
 	}
 	t.Cleanup(func() {
 		randUint64n = prevRandUint64n
@@ -97,8 +99,8 @@ func TestPickHostTreatsNonPositiveWeightsAsOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PickHost() error = %v", err)
 	}
-	if host.ID != "host-b" {
-		t.Fatalf("PickHost() = %q, want %q", host.ID, "host-b")
+	if host.ID != "host-c" {
+		t.Fatalf("PickHost() = %q, want %q", host.ID, "host-c")
 	}
 }
 

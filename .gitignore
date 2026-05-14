@@ -9,6 +9,7 @@ logs
 
 # Local build artifacts
 monkeycode-ai/
+backend/bin/
 .pnpm-store/
 frontend/.vite/
 
@@ -16,3 +17,10 @@ frontend/.vite/
 desktop/release/
 desktop/release-full/
 frontend/release/
+
+# tar
+*.tar
+*.tgz
+
+# Builder
+dist

@@ -33,9 +33,7 @@ func Resolve(input Input) taskflow.VirtualMachineStatus {
 			return taskflow.VirtualMachineStatusOffline
 
 		case etypes.ConditionTypeHibernated:
-			if last.Reason == "Hibernated" {
-				return taskflow.VirtualMachineStatusHibernated
-			}
+			return taskflow.VirtualMachineStatusHibernated
 		}
 	}
 
