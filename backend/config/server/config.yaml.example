@@ -35,6 +35,12 @@ admin_token: "change-me"
 logger:
   level: "info"
 
+init_team:
+  email: ""
+  password: ""
+  name: ""
+  image: ""
+
 mcp_hub:
   enabled: false
   url: "http://mcp-hub:8897/mcp"

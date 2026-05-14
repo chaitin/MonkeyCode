@@ -12,8 +12,10 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -324,51 +326,112 @@ func (r *TeamGroupUserRepo) GetMember(ctx context.Context, teamID, userID uuid.U
 }
 
 // InitTeam 初始化团队：创建用户（如果不存在）、创建团队、并将用户设为管理员。
-func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string) error {
+func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string, imageName string) error {
 	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
 		// 检查用户是否已存在
-		exists, err := tx.User.Query().Where(user.EmailEQ(email)).Exist(ctx)
+		existingUser, err := tx.User.Query().Where(user.EmailEQ(email)).First(ctx)
 		if err != nil {
-			return err
-		}
-		if exists {
-			return nil
+			if !db.IsNotFound(err) {
+				return err
+			}
 		}
 
-		// 哈希密码
-		hashedPassword, err := crypto.HashPassword(password)
-		if err != nil {
-			return err
+		var initUser *db.User
+		var initTeam *db.Team
+		if existingUser == nil {
+			// 哈希密码
+			hashedPassword, err := crypto.HashPassword(password)
+			if err != nil {
+				return err
+			}
+
+			// 创建用户
+			initUser, err = tx.User.Create().
+				SetID(uuid.New()).
+				SetName(name).
+				SetEmail(email).
+				SetStatus(consts.UserStatusActive).
+				SetPassword(hashedPassword).
+				SetRole(consts.UserRoleEnterprise).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
+
+			// 创建团队
+			initTeam, err = tx.Team.Create().
+				SetID(uuid.New()).
+				SetName(name).
+				SetMemberLimit(1000).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
+
+			// 将用户添加为团队管理员
+			if _, err = tx.TeamMember.Create().
+				SetID(uuid.New()).
+				SetTeamID(initTeam.ID).
+				SetUserID(initUser.ID).
+				SetRole(consts.TeamMemberRoleAdmin).
+				Save(ctx); err != nil {
+				return err
+			}
+		} else {
+			initUser = existingUser
+			member, err := tx.TeamMember.Query().
+				Where(teammember.UserIDEQ(initUser.ID)).
+				First(ctx)
+			if err != nil {
+				if db.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			initTeam, err = tx.Team.Get(ctx, member.TeamID)
+			if err != nil {
+				return err
+			}
 		}
 
-		// 创建用户
-		newUser, err := tx.User.Create().
-			SetName(name).
-			SetEmail(email).
-			SetStatus(consts.UserStatusActive).
-			SetPassword(hashedPassword).
-			SetRole(consts.UserRoleEnterprise).
-			Save(ctx)
-		if err != nil {
-			return err
-		}
-
-		// 创建团队
-		newTeam, err := tx.Team.Create().
-			SetID(uuid.New()).
-			SetName(name).
-			SetMemberLimit(1000).
-			Save(ctx)
-		if err != nil {
-			return err
-		}
-
-		// 将用户添加为团队管理员
-		_, err = tx.TeamMember.Create().
-			SetTeamID(newTeam.ID).
-			SetUserID(newUser.ID).
-			SetRole(consts.TeamMemberRoleAdmin).
-			Save(ctx)
-		return err
+		return r.initTeamImage(ctx, tx, initTeam.ID, initUser.ID, imageName)
 	})
+}
+
+func (r *TeamGroupUserRepo) initTeamImage(ctx context.Context, tx *db.Tx, teamID, userID uuid.UUID, imageName string) error {
+	if imageName == "" {
+		return nil
+	}
+	img, err := tx.Image.Query().
+		Where(image.UserIDEQ(userID), image.NameEQ(imageName)).
+		First(ctx)
+	if err != nil {
+		if !db.IsNotFound(err) {
+			return err
+		}
+		img, err = tx.Image.Create().
+			SetID(uuid.New()).
+			SetUserID(userID).
+			SetName(imageName).
+			SetRemark("MonkeyCode-AI 默认开发环境").
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	exists, err := tx.TeamImage.Query().
+		Where(teamimage.TeamIDEQ(teamID), teamimage.ImageIDEQ(img.ID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	return tx.TeamImage.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetImageID(img.ID).
+		Exec(ctx)
 }

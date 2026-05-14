@@ -62,7 +62,7 @@ func (u *TeamGroupUserUsecase) initTeam() {
 	}
 
 	ctx := context.Background()
-	if err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password); err != nil {
+	if err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password, u.config.InitTeam.Image); err != nil {
 		u.logger.ErrorContext(ctx, "init team failed", "error", err)
 		return
 	}

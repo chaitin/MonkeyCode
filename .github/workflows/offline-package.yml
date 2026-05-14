@@ -70,9 +70,12 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           AWS_DEFAULT_REGION: ${{ secrets.OSS_REGION || 'us-east-1' }}
           AWS_EC2_METADATA_DISABLED: "true"
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
           OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
           OSS_PREFIX: ${{ secrets.OSS_PREFIX }}
+          OSS_ADDRESSING_STYLE: ${{ secrets.OSS_ADDRESSING_STYLE || 'virtual' }}
           PACKAGE_VERSION: ${{ inputs.package_version }}
           ARTIFACT_NAME: ${{ matrix.artifact }}
         run: |
@@ -101,6 +104,6 @@ jobs:
           object_prefix="${object_prefix%/}/$version"
           object_uri="s3://${OSS_BUCKET}/${object_prefix}/${ARTIFACT_NAME}.tgz"
 
-          aws configure set default.s3.addressing_style path
+          aws configure set default.s3.addressing_style "$OSS_ADDRESSING_STYLE"
           aws s3 cp "$package_file" "$object_uri" --endpoint-url "$OSS_ENDPOINT" --only-show-errors
           echo "package uploaded: $object_uri"

@@ -1,0 +1,79 @@
+#!/bin/bash
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+set -e
+trap 'handle_error $? $LINENO' ERR
+
+handle_error() {
+    local exit_code=$1
+    local line_number=$2
+    echo -e "${RED}Error occurred in script at line $line_number with exit code $exit_code${NC}"
+    cleanup
+    exit $exit_code
+}
+
+ARCH=$(uname -m)
+case "$ARCH" in
+    "x86_64"|"amd64")
+        ARCH="x86_64"
+        ;;
+    "aarch64"|"arm64"|"armv8l")
+        ARCH="aarch64"
+        ;;
+    *)
+        echo -e "${RED}This installer only supports amd64 (x86_64) and arm64 (aarch64) architectures${NC}"
+        echo -e "${RED}Current architecture: $ARCH${NC}"
+        exit 1
+        ;;
+esac
+
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${RED}This script must be run as root${NC}"
+    exit 1
+fi
+
+TOKEN="{{.token}}"
+GRPC_URL="{{.grpc_url}}"
+BASE_URL="{{.base_url}}"
+INSTALLER_URL="{{.installer_url}}"
+DOCKER_BUNDLE_PATH="{{.docker_bundle_path}}"
+HOST_BUNDLE_PATH="{{.host_bundle_path}}"
+INSTALLER_FILE="/tmp/monkeycode-installer"
+
+cleanup() {
+    echo -e "${YELLOW}Cleaning up temporary files...${NC}"
+    rm -f "$INSTALLER_FILE"
+}
+
+if [[ -z "$BASE_URL" || -z "$INSTALLER_URL" ]]; then
+    echo -e "${RED}Installer URL is empty${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Architecture: $ARCH${NC}"
+echo -e "${GREEN}Starting MonkeyCode Installer Bootstrap${NC}"
+echo -e "${YELLOW}Downloading installer...${NC}"
+
+INSTALLER_URL=${INSTALLER_URL//\{\{.arch\}\}/$ARCH}
+DOCKER_BUNDLE_PATH=${DOCKER_BUNDLE_PATH//\{\{.arch\}\}/$ARCH}
+HOST_BUNDLE_PATH=${HOST_BUNDLE_PATH//\{\{.arch\}\}/$ARCH}
+if ! curl -4fLk --progress-bar -o "$INSTALLER_FILE" "$INSTALLER_URL"; then
+    echo -e "${RED}Failed to download installer${NC}"
+    exit 1
+fi
+
+chmod +x "$INSTALLER_FILE"
+MCAI_BASE_URL="$BASE_URL" \
+MCAI_DOCKER_BUNDLE_PATH="$DOCKER_BUNDLE_PATH" \
+MCAI_HOST_BUNDLE_PATH="$HOST_BUNDLE_PATH" \
+MCAI_HOST_TOKEN="$TOKEN" \
+MCAI_TASKFLOW_GRPC_URL="$GRPC_URL" \
+"$INSTALLER_FILE" host
+
+echo -e "${GREEN}Installer exited successfully${NC}"
+cleanup
+exit 0
