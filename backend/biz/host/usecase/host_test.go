@@ -4,18 +4,114 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/redis/go-redis/v9"
 
+	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
+
+func TestInstallScriptDefaultsToOnlineInstaller(t *testing.T) {
+	t.Parallel()
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	token := "install-token"
+	if err := rdb.Set(context.Background(), "host:token:"+token, "1", time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	u := &HostUsecase{
+		cfg: &config.Config{
+			TaskFlow: config.TaskFlow{GrpcURL: "121.41.208.82:50443"},
+		},
+		redis: rdb,
+	}
+
+	script, err := u.InstallScript(context.Background(), &domain.InstallReq{Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, "release.baizhi.cloud/monkeycode/runner/$ARCH/installer") {
+		t.Fatalf("script missing online installer: %s", script)
+	}
+	if !strings.Contains(script, "--env GRPC_URL=121.41.208.82:50443") {
+		t.Fatalf("script missing grpc url: %s", script)
+	}
+	if strings.Contains(script, "install_docker_from_bundle") {
+		t.Fatalf("online script should not include offline installer: %s", script)
+	}
+}
+
+func TestInstallScriptUsesOfflineBundle(t *testing.T) {
+	t.Parallel()
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	token := "install-token"
+	if err := rdb.Set(context.Background(), "host:token:"+token, "1", time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	u := &HostUsecase{
+		cfg: &config.Config{
+			Server: struct {
+				Addr    string `mapstructure:"addr"`
+				BaseURL string `mapstructure:"base_url"`
+			}{BaseURL: "http://monkeycode.local"},
+			TaskFlow: config.TaskFlow{GrpcURL: "121.41.208.82:50443"},
+			StaticFiles: config.StaticFilesConfig{
+				RoutePrefix: "/static",
+			},
+			HostInstaller: config.HostInstaller{
+				Mode:       "offline",
+				BundlePath: "installer/{{.arch}}/host.tgz",
+			},
+		},
+		redis: rdb,
+	}
+
+	script, err := u.InstallScript(context.Background(), &domain.InstallReq{Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, "GRPC_URL=\"121.41.208.82:50443\"") {
+		t.Fatalf("script missing grpc url: %s", script)
+	}
+	if !strings.Contains(script, "INSTALLER_URL=\"http://monkeycode.local/static/installer/{{.arch}}/installer\"") {
+		t.Fatalf("script missing installer url: %s", script)
+	}
+	if !strings.Contains(script, "BASE_URL=\"http://monkeycode.local\"") || !strings.Contains(script, "MCAI_BASE_URL=\"$BASE_URL\"") {
+		t.Fatalf("script missing base url: %s", script)
+	}
+	if !strings.Contains(script, "HOST_BUNDLE_PATH=\"/static/installer/{{.arch}}/host.tgz\"") || !strings.Contains(script, "HOST_BUNDLE_PATH=${HOST_BUNDLE_PATH//\\{\\{.arch\\}\\}/$ARCH}") || !strings.Contains(script, "MCAI_HOST_BUNDLE_PATH=\"$HOST_BUNDLE_PATH\"") {
+		t.Fatalf("script missing host bundle path: %s", script)
+	}
+	if !strings.Contains(script, "DOCKER_BUNDLE_PATH=\"/static/installer/{{.arch}}/docker.tgz\"") || !strings.Contains(script, "DOCKER_BUNDLE_PATH=${DOCKER_BUNDLE_PATH//\\{\\{.arch\\}\\}/$ARCH}") || !strings.Contains(script, "MCAI_DOCKER_BUNDLE_PATH=\"$DOCKER_BUNDLE_PATH\"") {
+		t.Fatalf("script missing docker bundle path: %s", script)
+	}
+	if !strings.Contains(script, "TOKEN=\"install-token\"") || !strings.Contains(script, "MCAI_HOST_TOKEN=\"$TOKEN\"") {
+		t.Fatalf("script missing host token: %s", script)
+	}
+	if strings.Contains(script, "docker load") || strings.Contains(script, "docker compose") {
+		t.Fatalf("bootstrap script should not install host directly: %s", script)
+	}
+	if strings.Contains(script, "release.baizhi.cloud") {
+		t.Fatalf("script should not download public installer: %s", script)
+	}
+}
 
 func TestHostUsecase_markRecycledTasksFinished(t *testing.T) {
 	t.Parallel()

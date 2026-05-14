@@ -59,7 +59,8 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		do.ProvideValue(i, w[0])
 	} else {
 		do.Provide(i, func(i *do.Injector) (*web.Web, error) {
-			return web.New(), nil
+			w := web.New()
+			return w, nil
 		})
 	}
 

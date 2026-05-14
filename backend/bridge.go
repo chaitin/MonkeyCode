@@ -121,5 +121,7 @@ func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 		opt(injector)
 	}
 
-	return biz.RegisterAll(injector)
+	biz.RegisterAll(injector)
+	biz.InvokeAll(injector)
+	return nil
 }
