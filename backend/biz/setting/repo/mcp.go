@@ -34,12 +34,22 @@ func NewMCPRepo(i *do.Injector) (domain.UserMCPRepo, error) {
 
 func (r *mcpRepo) ListUserUpstreams(ctx context.Context, uid uuid.UUID, _ domain.CursorReq) ([]*domain.MCPUpstream, error) {
 	rows, err := r.db.MCPUpstream.Query().
-		WithTools().
+		WithTools(func(tq *db.MCPToolQuery) {
+			tq.Where(
+				mcptool.Or(
+					mcptool.ScopeEQ(mcptool.ScopeUser),
+					mcptool.Enabled(true),
+				),
+			)
+		}).
 		WithUser().
 		Where(
 			mcpupstream.Or(
 				mcpupstream.UserID(uid),
-				mcpupstream.ScopeEQ(mcpupstream.ScopePlatform),
+				mcpupstream.And(
+					mcpupstream.ScopeEQ(mcpupstream.ScopePlatform),
+					mcpupstream.Enabled(true),
+				),
 			),
 		).
 		Order(mcpupstream.ByCreatedAt(sql.OrderDesc())).
