@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemHeader, ItemTitle } from "@/components/ui/item"
 import { Spinner } from "@/components/ui/spinner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Empty,
   EmptyDescription,
@@ -217,37 +218,45 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
             </ItemContent>
             <ItemFooter className="flex flex-row gap-2 justify-between border-t pt-3 text-xs text-muted-foreground">
               <div className="flex flex-row gap-2">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    task.status === "processing" || task.status === "pending" ? "" : "text-muted-foreground"
-                  )}
-                >
-                  {task.status === "finished" && (
-                    <>
-                      <IconCircleCheck />
-                      已关机
-                    </>
-                  )}
-                  {task.status === "error" && (
-                    <>
-                      <IconAlertTriangle />
-                      启动失败
-                    </>
-                  )}
-                  {task.status === "pending" && (
-                    <>
-                      <Spinner />
-                      正在启动
-                    </>
-                  )}
-                  {task.status === "processing" && (
-                    <>
-                      <Spinner />
-                      运行中
-                    </>
-                  )}
-                </Badge>
+                {task.status === "finished" ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Badge variant="outline" className="text-muted-foreground">
+                          <IconCircleCheck />
+                          已终止
+                        </Badge>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>连续三天不对话的任务将自动回收</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      task.status === "processing" || task.status === "pending" ? "" : "text-muted-foreground"
+                    )}
+                  >
+                    {task.status === "error" && (
+                      <>
+                        <IconAlertTriangle />
+                        启动失败
+                      </>
+                    )}
+                    {task.status === "pending" && (
+                      <>
+                        <Spinner />
+                        正在启动
+                      </>
+                    )}
+                    {task.status === "processing" && (
+                      <>
+                        <Spinner />
+                        运行中
+                      </>
+                    )}
+                  </Badge>
+                )}
                 {task.stats?.total_tokens ? (
                   <Badge variant="outline" className="text-muted-foreground">
                     {formatTokens(task.stats.total_tokens)} tokens

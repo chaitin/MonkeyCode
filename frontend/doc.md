@@ -706,7 +706,7 @@
 
 当前任务状态展示：
 
-- `finished`：显示 `已关机`
+- `finished`：显示 `已终止`
 - `error`：显示 `启动失败`
 - `pending`：显示 `正在启动`
 - `processing`：显示 `运行中`
