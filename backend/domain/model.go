@@ -192,9 +192,9 @@ type CreateModelReq struct {
 	Temperature     float32              `json:"temperature"`
 	IsDefault       bool                 `json:"is_default"`
 	InterfaceType   consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
-	ThinkingEnabled bool                 `json:"thinking_enabled"`
-	ContextLimit    int                  `json:"context_limit"`
-	OutputLimit     int                  `json:"output_limit"`
+	ThinkingEnabled *bool                `json:"thinking_enabled"`
+	ContextLimit    *int                 `json:"context_limit"`
+	OutputLimit     *int                 `json:"output_limit"`
 }
 
 // CreateModelResp 创建模型配置响应
