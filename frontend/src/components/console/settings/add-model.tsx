@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Spinner } from "@/components/ui/spinner"
 import { CircleQuestionMark } from 'lucide-react'
 import { getModelDisplayName, getModelUrlDescription, modelProviderList } from "@/utils/common"
@@ -42,6 +43,9 @@ export default function AddModel({
   const [apiToken, setApiToken] = useState("")
   const [baseUrl, setBaseUrl] = useState("https://model-square.app.baizhi.cloud/v1")
   const [interfaceType, setInterfaceType] = useState<ConstsInterfaceType>(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+  const [contextLimit, setContextLimit] = useState("200000")
+  const [outputLimit, setOutputLimit] = useState("32000")
+  const [thinkingEnabled, setThinkingEnabled] = useState(true)
   const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -67,6 +71,16 @@ export default function AddModel({
     !loadingModels &&
     modelListAttempted &&
     (modelListFetchFailed || modelList.length === 0)
+
+  const parsePositiveInteger = (value: string, label: string) => {
+    const parsedValue = Number(value.trim())
+    if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+      toast.error(`${label}必须为大于 0 的整数`)
+      return null
+    }
+
+    return parsedValue
+  }
 
   const fetchModelList = async () => {
     if (!apiToken.trim()) {
@@ -119,6 +133,14 @@ export default function AddModel({
       toast.error("请输入模型 API 地址")
       return
     }
+    const parsedContextLimit = parsePositiveInteger(contextLimit, "上下文长度")
+    if (parsedContextLimit === null) {
+      return
+    }
+    const parsedOutputLimit = parsePositiveInteger(outputLimit, "输出长度")
+    if (parsedOutputLimit === null) {
+      return
+    }
 
     setSaving(true)
 
@@ -141,6 +163,9 @@ export default function AddModel({
             base_url: baseUrl.trim(),
             api_key: apiToken.trim(),
             interface_type: interfaceType,
+            context_limit: parsedContextLimit,
+            output_limit: parsedOutputLimit,
+            thinking_enabled: thinkingEnabled,
           }
 
           await apiRequest('v1UsersModelsCreate', requestData, [], (resp) => {
@@ -150,6 +175,9 @@ export default function AddModel({
               setApiToken("")
               setBaseUrl("https://model-square.app.baizhi.cloud/v1")
               setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+              setContextLimit("200000")
+              setOutputLimit("32000")
+              setThinkingEnabled(true)
               resetModelListState()
               onOpenChange(false)
               onRefresh?.()
@@ -171,6 +199,9 @@ export default function AddModel({
     setApiToken("")
     setBaseUrl("https://model-square.app.baizhi.cloud/v1")
     setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+    setContextLimit("200000")
+    setOutputLimit("32000")
+    setThinkingEnabled(true)
     resetModelListState()
     onOpenChange(false)
   }
@@ -278,6 +309,49 @@ export default function AddModel({
                   resetModelListState()
                 }}
               />
+            </FieldContent>
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>上下文长度</FieldLabel>
+              <FieldContent>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="请输入上下文长度"
+                  value={contextLimit}
+                  onChange={(e) => setContextLimit(e.target.value)}
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>输出长度</FieldLabel>
+              <FieldContent>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="请输入输出长度"
+                  value={outputLimit}
+                  onChange={(e) => setOutputLimit(e.target.value)}
+                />
+              </FieldContent>
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel>推理 / 思考</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  {thinkingEnabled ? "启用" : "禁用"}
+                </span>
+                <Switch
+                  checked={thinkingEnabled}
+                  onCheckedChange={setThinkingEnabled}
+                  disabled={saving}
+                />
+              </div>
             </FieldContent>
           </Field>
           <Field>

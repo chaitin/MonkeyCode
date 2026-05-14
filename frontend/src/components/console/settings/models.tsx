@@ -47,6 +47,7 @@ export default function Models() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState<DomainModel | undefined>(undefined)
   const { models, reloadModels, loadingModels } = useCommonData();
+  const privateModels = models.filter((model) => model.owner?.type === ConstsOwnerType.OwnerTypePrivate)
 
 
   const handleEdit = (model: DomainModel) => {
@@ -108,7 +109,7 @@ export default function Models() {
   const listModels = () => {
     return (
       <ItemGroup className="flex flex-col gap-4">
-        {models.map((model) => (
+        {privateModels.map((model) => (
         <Item key={model.id} variant="outline" className="hover:border-primary/50" size="sm">
           <ItemMedia className="hidden md:flex">
             <Avatar>
@@ -195,7 +196,7 @@ export default function Models() {
         />
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-        {loadingModels ? loadModels() : models.length === 0 ? noModels() : listModels()}
+        {loadingModels ? loadModels() : privateModels.length === 0 ? noModels() : listModels()}
       </div>
       <EditModel
         open={isEditDialogOpen}
