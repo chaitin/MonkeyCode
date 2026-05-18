@@ -16,9 +16,9 @@ func (s *CheckDocker) Run(c *Context) error {
 	status := deploy.CheckDockerStatus(context.Background(), c.Runner)
 	c.DockerStatus = status
 
-	logCheck(c.Reporter, "docker", status.DockerInstalled, status.DockerVersion)
-	logCheck(c.Reporter, "docker compose", status.ComposeInstalled, status.ComposeVersion)
-	logCheck(c.Reporter, "docker daemon", status.DaemonRunning, status.DaemonVersion)
+	logCheck(c, "docker", status.DockerInstalled, status.DockerVersion)
+	logCheck(c, "docker compose", status.ComposeInstalled, status.ComposeVersion)
+	logCheck(c, "docker daemon", status.DaemonRunning, status.DaemonVersion)
 
 	if status.DockerInstalled && !status.ComposeInstalled {
 		return fmt.Errorf("docker compose 缺失，需要 v2 plugin")
@@ -26,14 +26,14 @@ func (s *CheckDocker) Run(c *Context) error {
 	return nil
 }
 
-func logCheck(r Reporter, label string, ok bool, version string) {
+func logCheck(c *Context, label string, ok bool, version string) {
 	if ok {
 		if version != "" {
-			r.Log("[1/4] ✓ %-15s %s", label, version)
+			c.Log("✓ %-15s %s", label, version)
 		} else {
-			r.Log("[1/4] ✓ %-15s ok", label)
+			c.Log("✓ %-15s ok", label)
 		}
 		return
 	}
-	r.Log("[1/4] ✗ %-15s 未安装/未运行", label)
+	c.Log("✗ %-15s 未安装/未运行", label)
 }

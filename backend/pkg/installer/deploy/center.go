@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -246,6 +247,9 @@ func CenterAccessURL(host, port string) string {
 	port = strings.TrimSpace(port)
 	if host == "" {
 		host = "localhost"
+	}
+	if ip := net.ParseIP(host); ip != nil && strings.Contains(host, ":") {
+		host = "[" + host + "]"
 	}
 	if port == "" || port == "80" {
 		return "http://" + host

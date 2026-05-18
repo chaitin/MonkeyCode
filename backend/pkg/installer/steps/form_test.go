@@ -55,3 +55,54 @@ func TestServiceFormEmptyPasswordOK(t *testing.T) {
 		t.Fatal("TeamPassword should remain empty when not provided")
 	}
 }
+
+func TestServiceFormRejectsInvalidPort(t *testing.T) {
+	ctx, r, _ := ctxWithFakeReporter()
+	r.FormAns = [][]string{{
+		"/data/myapp",
+		"192.168.1.10",
+		"70000",
+		"admin@example.com",
+		"MyTeam",
+		"",
+	}}
+
+	err := (&ServiceForm{}).Run(ctx)
+	if err == nil {
+		t.Fatal("expected invalid port error")
+	}
+}
+
+func TestServiceFormRejectsInvalidEmail(t *testing.T) {
+	ctx, r, _ := ctxWithFakeReporter()
+	r.FormAns = [][]string{{
+		"/data/myapp",
+		"192.168.1.10",
+		"8080",
+		"admin@",
+		"MyTeam",
+		"",
+	}}
+
+	err := (&ServiceForm{}).Run(ctx)
+	if err == nil {
+		t.Fatal("expected invalid email error")
+	}
+}
+
+func TestServiceFormRejectsURLAccessHost(t *testing.T) {
+	ctx, r, _ := ctxWithFakeReporter()
+	r.FormAns = [][]string{{
+		"/data/myapp",
+		"http://example.com",
+		"8080",
+		"admin@example.com",
+		"MyTeam",
+		"",
+	}}
+
+	err := (&ServiceForm{}).Run(ctx)
+	if err == nil {
+		t.Fatal("expected invalid access host error")
+	}
+}

@@ -40,7 +40,7 @@ func (h *HostInstall) Run(c *Context) error {
 		if err != nil {
 			return fmt.Errorf("解析 Docker 包地址失败: %w", err)
 		}
-		c.Reporter.Log("[2/5] 下载地址: %s", dockerURL)
+		c.Log("下载地址: %s", dockerURL)
 		plan := deploy.DockerInstallPlan{
 			WorkDir:    hostDockerInstallWorkDir,
 			BundleFile: hostDockerBundleFile,
@@ -57,9 +57,9 @@ func (h *HostInstall) Run(c *Context) error {
 		if !status.Ready() {
 			return fmt.Errorf("Docker 环境仍未就绪")
 		}
-		c.Reporter.Log("[2/5] ✓ Docker 安装完成")
+		c.Log("✓ Docker 安装完成")
 	} else {
-		c.Reporter.Log("[2/5] ⊘ Docker 环境完整，跳过此步骤")
+		c.Log("⊘ Docker 环境完整，跳过此步骤")
 	}
 
 	c.Reporter.SetStep("收集安装参数...", "下一步: 下载安装包")
@@ -70,14 +70,14 @@ func (h *HostInstall) Run(c *Context) error {
 		return err
 	}
 	workDir := values[0]
-	c.Reporter.Log("[3/5] 安装目录: %s", workDir)
+	c.Log("安装目录: %s", workDir)
 
 	c.Reporter.SetStep("下载宿主机安装包...", "下一步: 加载镜像")
 	hostURL, err := cfg.hostBundleURL()
 	if err != nil {
 		return fmt.Errorf("解析宿主机包地址失败: %w", err)
 	}
-	c.Reporter.Log("[4/5] 下载地址: %s", hostURL)
+	c.Log("下载地址: %s", hostURL)
 	bundlePlan := deploy.HostBundlePlan{
 		BundleURL:  hostURL,
 		BundleFile: hostBundleFile,
@@ -89,14 +89,14 @@ func (h *HostInstall) Run(c *Context) error {
 	if err != nil {
 		return fmt.Errorf("准备宿主机安装包失败: %w", err)
 	}
-	c.Reporter.Log("[4/5] ✓ 安装包已就绪")
+	c.Log("✓ 安装包已就绪")
 
 	c.Reporter.SetStep("启动宿主机服务...", "下一步: 完成")
 	images, err := deploy.ScanImages(filepath.Join(workDir, "images"))
 	if err != nil {
 		return fmt.Errorf("扫描镜像失败: %w", err)
 	}
-	c.Reporter.Log("[5/5] 发现 %d 个镜像归档", len(images))
+	c.Log("发现 %d 个镜像归档", len(images))
 
 	plan := deploy.HostInstallPlan{
 		WorkDir:     workDir,
@@ -109,7 +109,7 @@ func (h *HostInstall) Run(c *Context) error {
 	if err := deploy.InstallHost(bg, logRunner, plan); err != nil {
 		return fmt.Errorf("启动宿主机服务失败: %w", err)
 	}
-	c.Reporter.Log("[5/5] ✓ 服务已启动")
+	c.Log("✓ 服务已启动")
 
 	c.Input.InstallDir = workDir
 	return nil
@@ -150,7 +150,7 @@ func (h *HostUninstall) Run(c *Context) error {
 	if err := deploy.UninstallHost(bg, logRunner, plan); err != nil {
 		return fmt.Errorf("卸载失败: %w", err)
 	}
-	c.Reporter.Log("[2/2] ✓ 已卸载")
+	c.Log("✓ 已卸载")
 
 	return nil
 }

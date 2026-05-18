@@ -60,6 +60,7 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 	u.POST("/logout", web.BaseHandler(h.Logout), auth.TeamAuthCheck())
 	u.GET("/status", web.BaseHandler(h.Status), auth.TeamAuthCheck())
 	u.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.TeamAuth(), audit.Audit("change_team_user_password"))
+	u.POST("/with-password", web.BindHandler(h.AddUserWithPassword), auth.TeamAuth(), adminAuth, audit.Audit("add_team_user_with_password"))
 	u.POST("", web.BindHandler(h.AddUser), auth.TeamAuth(), adminAuth, audit.Audit("add_team_user"))
 	u.GET("", web.BindHandler(h.MemberList), auth.TeamAuth(), adminAuth)
 	u.PUT("/:user_id", web.BindHandler(h.UpdateUser), auth.TeamAuth(), adminAuth, audit.Audit("update_team_user"))
@@ -204,6 +205,28 @@ func (h *TeamGroupUserHandler) ChangePassword(c *web.Context, req domain.ChangeP
 func (h *TeamGroupUserHandler) AddUser(c *web.Context, req domain.AddTeamUserReq) error {
 	teamUser := middleware.GetTeamUser(c)
 	resp, err := h.usecase.AddUser(c.Request().Context(), teamUser, &req)
+	if err != nil {
+		return err
+	}
+	return c.Success(resp)
+}
+
+// AddUserWithPassword 创建团队成员并返回初始密码
+//
+//	@Summary		创建团队成员并返回初始密码
+//	@Description	创建团队成员，后端生成初始密码并只在响应中返回一次
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			req	body		domain.AddTeamUserReq								true	"请求参数"
+//	@Success		200	{object}	web.Resp{data=domain.AddTeamUserWithPasswordResp}	"成功"
+//	@Failure		401	{object}	web.Resp											"未授权"
+//	@Failure		500	{object}	web.Resp											"服务器内部错误"
+//	@Router			/api/v1/teams/users/with-password [post]
+func (h *TeamGroupUserHandler) AddUserWithPassword(c *web.Context, req domain.AddTeamUserReq) error {
+	teamUser := middleware.GetTeamUser(c)
+	resp, err := h.usecase.AddUserWithPassword(c.Request().Context(), teamUser, &req)
 	if err != nil {
 		return err
 	}

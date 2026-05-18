@@ -1,9 +1,6 @@
 package steps
 
 import (
-	"errors"
-	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -16,9 +13,9 @@ func (s *ServiceForm) Run(c *Context) error {
 
 	values, err := c.Reporter.AskForm([]FormField{
 		{Label: "安装目录", Default: "/data/monkeycode-ai", Help: "请输入绝对路径", Validate: validateAbsPath},
-		{Label: "访问地址", Help: "请输入用户和宿主机能访问到的 IP 或域名", Validate: required("请输入服务端访问地址")},
-		{Label: "访问端口", Default: "80", Validate: required("请输入 Nginx 端口")},
-		{Label: "管理员邮箱", Validate: required("请输入管理员邮箱")},
+		{Label: "访问地址", Help: "请输入用户和宿主机能访问到的 IP 或域名，不含协议和端口", Validate: validateAccessHost},
+		{Label: "访问端口", Default: "80", Validate: validatePort},
+		{Label: "管理员邮箱", Validate: validateEmail},
 		{Label: "团队名称", Default: "MonkeyCode"},
 		{Label: "管理员密码", Password: true, Help: "留空时自动生成随机密码"},
 	})
@@ -33,37 +30,16 @@ func (s *ServiceForm) Run(c *Context) error {
 	c.Input.TeamName = strings.TrimSpace(values[4])
 	c.Input.TeamPassword = strings.TrimSpace(values[5])
 
-	c.Reporter.Log("[3/4] 安装目录   %s", c.Input.InstallDir)
-	c.Reporter.Log("[3/4] 访问地址   %s", c.Input.AccessHost)
-	c.Reporter.Log("[3/4] Nginx 端口 %s", c.Input.NginxPort)
-	c.Reporter.Log("[3/4] 管理员     %s", c.Input.TeamEmail)
-	c.Reporter.Log("[3/4] 团队名称   %s", c.Input.TeamName)
+	c.Log("安装目录   %s", c.Input.InstallDir)
+	c.Log("访问地址   %s", c.Input.AccessHost)
+	c.Log("Nginx 端口 %s", c.Input.NginxPort)
+	c.Log("管理员     %s", c.Input.TeamEmail)
+	c.Log("团队名称   %s", c.Input.TeamName)
 	if c.Input.TeamPassword == "" {
-		c.Reporter.Log("[3/4] 管理员密码 （未提供，安装时自动生成）")
+		c.Log("管理员密码 （未提供，安装时自动生成）")
 	} else {
-		c.Reporter.LogScreen("[3/4] 管理员密码 %s", c.Input.TeamPassword)
-		c.Reporter.LogFile("[3/4] 管理员密码 ********")
+		c.LogScreen("管理员密码 %s", c.Input.TeamPassword)
+		c.LogFile("管理员密码 ********")
 	}
 	return nil
-}
-
-func validateAbsPath(v string) error {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return fmt.Errorf("请输入路径")
-	}
-	if !filepath.IsAbs(v) {
-		return fmt.Errorf("请输入绝对路径")
-	}
-	return nil
-}
-
-func required(msg string) Validator {
-	err := errors.New(msg)
-	return func(v string) error {
-		if strings.TrimSpace(v) == "" {
-			return err
-		}
-		return nil
-	}
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 )
 
 func newTeamRepoTestDB(t *testing.T) *db.Client {
@@ -134,5 +136,41 @@ func TestInitTeamAddsImageForExistingTeam(t *testing.T) {
 		t.Fatal(err)
 	} else if count != 1 {
 		t.Fatalf("team image count = %d, want 1", count)
+	}
+}
+
+func TestCreateUsersWithPasswordStoresHashedPassword(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := uuid.New()
+	if _, err := client.Team.Create().
+		SetID(teamID).
+		SetName("MonkeyCode").
+		SetMemberLimit(1000).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	users, err := repo.CreateUsersWithPassword(ctx, teamID, &domain.AddTeamUserWithPasswordReq{
+		Emails: []string{"member@example.com"},
+		Passwords: map[string]string{
+			"member@example.com": "Abcdef123456",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 {
+		t.Fatalf("users len = %d, want 1", len(users))
+	}
+	if users[0].Password == "" || users[0].Password == "Abcdef123456" {
+		t.Fatalf("password should be hashed, got %q", users[0].Password)
+	}
+	if err := crypto.VerifyPassword(users[0].Password, "Abcdef123456"); err != nil {
+		t.Fatalf("verify password failed: %v", err)
 	}
 }

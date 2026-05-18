@@ -16,7 +16,7 @@ func (s *InstallDocker) Name() string { return "安装 Docker" }
 
 func (s *InstallDocker) Run(c *Context) error {
 	if c.DockerStatus.Ready() {
-		c.Reporter.Log("[2/4] ⊘ Docker 环境完整，跳过此步骤")
+		c.Log("⊘ Docker 环境完整，跳过此步骤")
 		return nil
 	}
 
@@ -25,8 +25,8 @@ func (s *InstallDocker) Run(c *Context) error {
 	if err != nil {
 		return err
 	}
-	c.Reporter.Log("[2/4] 离线包: %s", bundle)
-	c.Reporter.Log("[2/4] Docker 环境不完整，使用离线包安装")
+	c.Log("离线包: %s", bundle)
+	c.Log("Docker 环境不完整，使用离线包安装")
 
 	plan := deploy.DockerInstallPlan{
 		WorkDir:    dockerInstallWorkDir,
@@ -43,6 +43,6 @@ func (s *InstallDocker) Run(c *Context) error {
 	if !status.Ready() {
 		return fmt.Errorf("安装脚本执行完成但 Docker 仍不可用")
 	}
-	c.Reporter.Log("[2/4] ✓ Docker 安装完成")
+	c.Log("✓ Docker 安装完成")
 	return nil
 }

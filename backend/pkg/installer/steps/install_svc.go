@@ -21,7 +21,7 @@ func (s *InstallService) Run(c *Context) error {
 	if err != nil {
 		return fmt.Errorf("生成环境配置失败: %w", err)
 	}
-	c.Reporter.Log("[4/4] ✓ 环境变量已生成")
+	c.Log("✓ 环境变量已生成")
 
 	c.Reporter.SetStep("复制安装文件...", "下一步: 生成 TLS 证书")
 	pkgDir, err := packageDir()
@@ -35,7 +35,7 @@ func (s *InstallService) Run(c *Context) error {
 	if err != nil {
 		return err
 	}
-	c.Reporter.Log("[4/4] ✓ 配置已生成 %s", plan.ComposeFile)
+	c.Log("✓ 配置已生成 %s", plan.ComposeFile)
 
 	c.Reporter.SetStep("生成 TLS 证书...", "下一步: 准备数据目录")
 	plan.TLS = deploy.TLSPlan{
@@ -46,7 +46,7 @@ func (s *InstallService) Run(c *Context) error {
 	if err := deploy.GenerateSelfSignedTLS(plan.TLS); err != nil {
 		return fmt.Errorf("生成 TLS 证书失败: %w", err)
 	}
-	c.Reporter.Log("[4/4] ✓ TLS 证书已生成 %s", plan.TLS.CertFile)
+	c.Log("✓ TLS 证书已生成 %s", plan.TLS.CertFile)
 
 	logRunner := wrapRunner(c.Runner, c.Reporter, "      ")
 
@@ -54,7 +54,7 @@ func (s *InstallService) Run(c *Context) error {
 	if err := deploy.PrepareCenterDirs(bg, logRunner, env.InstallDir); err != nil {
 		return fmt.Errorf("准备数据目录失败: %w", err)
 	}
-	c.Reporter.Log("[4/4] ✓ 数据目录已准备")
+	c.Log("✓ 数据目录已准备")
 
 	c.Reporter.SetStep("加载离线镜像...", "下一步: 启动服务")
 	images, err := deploy.ScanImages(filepath.Join(env.InstallDir, "images"))
@@ -62,13 +62,13 @@ func (s *InstallService) Run(c *Context) error {
 		return fmt.Errorf("扫描镜像失败: %w", err)
 	}
 	if len(images) == 0 {
-		c.Reporter.Log("[4/4] ⊘ 未发现离线镜像")
+		c.Log("⊘ 未发现离线镜像")
 	} else {
-		c.Reporter.Log("[4/4] 发现 %d 个镜像归档", len(images))
+		c.Log("发现 %d 个镜像归档", len(images))
 		if err := deploy.LoadImages(bg, logRunner, images); err != nil {
 			return fmt.Errorf("加载镜像失败: %w", err)
 		}
-		c.Reporter.Log("[4/4] ✓ 所有镜像已加载")
+		c.Log("✓ 所有镜像已加载")
 	}
 	plan.Images = images
 
@@ -76,7 +76,7 @@ func (s *InstallService) Run(c *Context) error {
 	if err := deploy.InstallCenter(bg, logRunner, plan); err != nil {
 		return fmt.Errorf("启动服务失败: %w", err)
 	}
-	c.Reporter.Log("[4/4] ✓ 服务已启动")
+	c.Log("✓ 服务已启动")
 
 	c.Result = deploy.InstallResult{
 		URL:           deploy.CenterAccessURL(c.Input.AccessHost, env.NginxPort),

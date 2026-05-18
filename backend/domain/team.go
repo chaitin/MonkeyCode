@@ -18,6 +18,7 @@ type TeamGroupUserUsecase interface {
 	List(ctx context.Context, teamUser *TeamUser) (*ListTeamGroupsResp, error)
 	Add(ctx context.Context, teamUser *TeamUser, req *AddTeamGroupReq) (*TeamGroup, error)
 	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
+	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
 	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*TeamGroup, error)
 	Delete(ctx context.Context, teamUser *TeamUser, req *DeleteTeamGroupReq) error
@@ -36,6 +37,7 @@ type TeamGroupUserRepo interface {
 	Get(ctx context.Context, groupID uuid.UUID) (*db.TeamGroup, error)
 	Create(ctx context.Context, teamID uuid.UUID, req *AddTeamGroupReq) (*db.TeamGroup, error)
 	CreateUsers(ctx context.Context, teamID uuid.UUID, req *AddTeamUserReq) ([]*db.User, error)
+	CreateUsersWithPassword(ctx context.Context, teamID uuid.UUID, req *AddTeamUserWithPasswordReq) ([]*db.User, error)
 	CreateAdmin(ctx context.Context, teamID uuid.UUID, req *AddTeamAdminReq) (*db.User, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*db.TeamGroup, error)
 	Delete(ctx context.Context, teamID, groupID uuid.UUID) error
@@ -254,9 +256,25 @@ type AddTeamUserReq struct {
 	GroupID uuid.UUID `json:"group_id" validate:"omitempty"` // 团队组ID
 }
 
+type AddTeamUserWithPasswordReq struct {
+	Emails    []string          `json:"emails" validate:"required"`
+	GroupID   uuid.UUID         `json:"group_id" validate:"omitempty"`
+	Passwords map[string]string `json:"-" swaggerignore:"true"`
+}
+
 // AddTeamUserResp 创建团队成员响应
 type AddTeamUserResp struct {
 	Users []*TeamUser `json:"users"`
+}
+
+type TeamUserPassword struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type AddTeamUserWithPasswordResp struct {
+	Users     []*TeamUser         `json:"users"`
+	Passwords []*TeamUserPassword `json:"passwords"`
 }
 
 // AddTeamAdminReq 创建团队管理员请求

@@ -1,6 +1,8 @@
 package steps
 
 import (
+	"fmt"
+
 	"github.com/chaitin/MonkeyCode/backend/pkg/installer/deploy"
 )
 
@@ -37,9 +39,43 @@ type Context struct {
 	Runner       deploy.Runner
 	Reporter     Reporter
 	LogPath      string
+	Progress     Progress
 	DockerStatus deploy.DockerStatus
 	Input        deploy.CenterEnvInput
 	Result       deploy.InstallResult
+}
+
+type Progress struct {
+	Current int
+	Total   int
+}
+
+func (p Progress) Prefix() string {
+	if p.Current <= 0 || p.Total <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%d/%d]", p.Current, p.Total)
+}
+
+func (c *Context) Log(format string, args ...any) {
+	c.logWith(c.Reporter.Log, format, args...)
+}
+
+func (c *Context) LogScreen(format string, args ...any) {
+	c.logWith(c.Reporter.LogScreen, format, args...)
+}
+
+func (c *Context) LogFile(format string, args ...any) {
+	c.logWith(c.Reporter.LogFile, format, args...)
+}
+
+func (c *Context) logWith(log func(string, ...any), format string, args ...any) {
+	prefix := c.Progress.Prefix()
+	if prefix == "" {
+		log(format, args...)
+		return
+	}
+	log(prefix+" "+format, args...)
 }
 
 type Step interface {

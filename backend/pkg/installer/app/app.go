@@ -70,7 +70,8 @@ func (a *App) Run() int {
 			LogPath:  a.Logger.Path(),
 		}
 		var failedStep string
-		for _, s := range picked.Steps {
+		for i, s := range picked.Steps {
+			ctx.Progress = steps.Progress{Current: i + 1, Total: len(picked.Steps)}
 			if err := s.Run(ctx); err != nil {
 				failedStep = s.Name()
 				printFailure(reporter, runner, failedStep, err, a.Logger.Path())

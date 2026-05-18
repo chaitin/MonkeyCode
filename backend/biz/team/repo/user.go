@@ -126,6 +126,80 @@ func (r *TeamGroupUserRepo) CreateUsers(ctx context.Context, teamID uuid.UUID, r
 	return users, nil
 }
 
+func (r *TeamGroupUserRepo) CreateUsersWithPassword(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamUserWithPasswordReq) ([]*db.User, error) {
+	var users []*db.User
+
+	for _, emailAddr := range req.Emails {
+		existingUser, err := r.db.User.Query().Where(user.EmailEQ(emailAddr)).First(ctx)
+		if err == nil && existingUser != nil {
+			_, err := r.db.TeamMember.Query().Where(
+				teammember.TeamIDEQ(teamID),
+				teammember.UserIDEQ(existingUser.ID),
+			).First(ctx)
+			if err == nil {
+				continue
+			}
+			if existingUser.Password == "" {
+				hashedPassword, err := crypto.HashPassword(req.Passwords[emailAddr])
+				if err != nil {
+					r.logger.ErrorContext(ctx, "hash password failed", "error", err, "email", emailAddr)
+					continue
+				}
+				existingUser, err = r.db.User.UpdateOneID(existingUser.ID).
+					SetPassword(hashedPassword).
+					Save(ctx)
+				if err != nil {
+					r.logger.ErrorContext(ctx, "set user password failed", "error", err, "email", emailAddr)
+					continue
+				}
+			}
+			_, err = r.db.TeamMember.Create().
+				SetID(uuid.New()).
+				SetTeamID(teamID).
+				SetUserID(existingUser.ID).
+				SetRole(consts.TeamMemberRoleUser).
+				Save(ctx)
+			if err != nil {
+				r.logger.ErrorContext(ctx, "add user to team failed", "error", err)
+				continue
+			}
+			users = append(users, existingUser)
+			continue
+		}
+
+		hashedPassword, err := crypto.HashPassword(req.Passwords[emailAddr])
+		if err != nil {
+			r.logger.ErrorContext(ctx, "hash password failed", "error", err, "email", emailAddr)
+			continue
+		}
+		newUser, err := r.db.User.Create().
+			SetID(uuid.New()).
+			SetName(emailAddr).
+			SetEmail(emailAddr).
+			SetStatus(consts.UserStatusActive).
+			SetPassword(hashedPassword).
+			SetRole(consts.UserRoleSubAccount).
+			Save(ctx)
+		if err != nil {
+			r.logger.ErrorContext(ctx, "create user failed", "error", err, "email", emailAddr)
+			continue
+		}
+
+		_, err = r.db.TeamMember.Create().
+			SetID(uuid.New()).
+			SetTeamID(teamID).
+			SetUserID(newUser.ID).
+			SetRole(consts.TeamMemberRoleUser).
+			Save(ctx)
+		if err != nil {
+			r.logger.ErrorContext(ctx, "add user to team failed", "error", err)
+			continue
+		}
+		users = append(users, newUser)
+	}
+	return users, nil
+}
+
 // CreateAdmin 创建团队管理员
 func (r *TeamGroupUserRepo) CreateAdmin(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamAdminReq) (*db.User, error) {
 	// 检查邮箱是否已注册
