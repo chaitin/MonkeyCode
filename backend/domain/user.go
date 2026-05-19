@@ -184,6 +184,9 @@ func (r *ResetUserPasswordEmailReq) Validate() error {
 // TeamMembersResp 团队成员列表响应
 type TeamMembersResp []*User
 
+// UserMemberListReq 用户侧团队成员列表请求
+type UserMemberListReq struct{}
+
 // ActivateReq 激活请求
 type ActivateReq struct {
 	InviteCode string `json:"invite_code" validate:"required"`

@@ -14,6 +14,7 @@ func ProvideTeam(i *do.Injector) {
 	do.Provide(i, repo.NewAuditRepo)
 	do.Provide(i, usecase.NewTeamGroupUserUsecase)
 	do.Provide(i, usecase.NewAuditUsecase)
+	do.Provide(i, v1.NewAuditHandler)
 	do.Provide(i, repo.NewTeamModelRepo)
 	do.Provide(i, usecase.NewTeamModelUsecase)
 	do.Provide(i, v1.NewTeamModelHandler)
@@ -32,6 +33,7 @@ func InvokeTeam(i *do.Injector) {
 	if err != nil {
 		panic(err)
 	}
+	do.MustInvoke[*v1.AuditHandler](i)
 	do.MustInvoke[*v1.TeamModelHandler](i)
 	do.MustInvoke[*v1.TeamImageHandler](i)
 	do.MustInvoke[*v1.TeamHostHandler](i)
