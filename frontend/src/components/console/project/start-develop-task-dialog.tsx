@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
 import { CircleQuestionMark } from "lucide-react"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
@@ -285,15 +286,17 @@ export default function StartDevelopTaskDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label>大模型</Label>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-                onClick={handleOpenModelPricing}
-              >
-                <CircleQuestionMark className="size-3" />如何选择大模型
-              </Button>
+              {!IS_OFFLINE_EDITION && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
+                  onClick={handleOpenModelPricing}
+                >
+                  <CircleQuestionMark className="size-3" />如何选择大模型
+                </Button>
+              )}
             </div>
             <ModelSelect
               models={models}

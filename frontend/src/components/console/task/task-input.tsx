@@ -3,7 +3,6 @@ import Icon from "@/components/common/Icon";
 import { useCommonData } from "@/components/console/data-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,9 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { TASK_PROMPT_PLACEHOLDER, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, getSkillTagIcon, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
+import { TASK_PROMPT_PLACEHOLDER, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconLink, IconPuzzle, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconBug, IconLink, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -27,45 +26,16 @@ import { toast } from "sonner";
 import { VoiceInputButton } from "./voice-input-button";
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { defaultSkills } from "@/utils/config";
+import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 import ModelSelect from "./model-select";
 import { CircleQuestionMark } from "lucide-react";
+import { TaskSkillSelector } from "./task-skill-selector";
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog";
 
-
-interface SkillItemProps {
-  skill: DomainSkill;
-  selectedSkills: string[];
-  onSkillChange: (skillName: string, checked: boolean) => void;
-}
-
-function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
-  if (!skill.id) {
-    return null;
-  }
-
-  const isChecked = selectedSkills.includes(skill.id);
-
-  return (
-    <div 
-      className="cursor-pointer hover:bg-accent rounded-md px-2 py-1 items-center flex flex-row gap-2" 
-      onClick={() => { onSkillChange(skill.id!, !isChecked)}}>
-      <Checkbox checked={isChecked} disabled={defaultSkills.includes(skill.id!)} />
-      <div>
-        <div className="text-sm cursor-pointer">
-          {skill.name}
-        </div>
-        <div className="text-xs text-muted-foreground break-all line-clamp-1">
-          {skill.description}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 interface RepoOption {
   gitIdentityId: string;
@@ -157,6 +127,10 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
 
   const fetchSkillList = () => {
+    if (IS_OFFLINE_EDITION) {
+      return;
+    }
+
     apiRequest('v1SkillsList', {}, [], (resp) => {
       if (resp.code === 0) {
         setSkillList(resp.data || []);
@@ -236,12 +210,11 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     setSelectedModelId(selectPreferredTaskModel(models, subscription));
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
-      const nextHostId = (
-        storedParams.hostId === "public_host"
-        || hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
-      )
+      const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
         ? (storedParams.hostId || "public_host")
-        : selectHost(hosts, true);
+        : IS_OFFLINE_EDITION
+          ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
+          : selectHost(hosts, true);
       const nextImageId = (
         storedParams.imageId
         && images.some((image) => image.id === storedParams.imageId)
@@ -266,7 +239,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic;
 
   useEffect(() => {
-    if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
+    if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
       setSelectedHostId("public_host");
     }
   }, [selectedPublicModel, selectedHostId]);
@@ -283,7 +256,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     }
 
     // 检查公共模型与非公共宿主机的组合
-    if (selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
+    if (!IS_OFFLINE_EDITION && selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
       toast.warning('内置模型只能在内置宿主机上使用');
       return;
     }
@@ -714,48 +687,28 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 </DropdownMenuSub>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Popover open={skillPopoverOpen} onOpenChange={setSkillPopoverOpen} >
-              <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className={cn("rounded-full", selectedSkill.length > 0 ? "text-primary hover:text-primary" : "")}>
-                  <IconPuzzle />
-                  <span className="hidden sm:block">
-                    {selectedSkill.length > 0 ? `${selectedSkill.length} 个技能` : '技能'}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[90vw] max-w-xl flex-col overflow-hidden p-2" align="start">
-                <Tabs value={activeSkillTag} onValueChange={setActiveSkillTag} className="flex min-h-0 w-full flex-1 flex-col">
-                  <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
-                    {skillTags.map((tag, index) => (
-                      <TabsTrigger key={index} value={tag} className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none">
-                        {getSkillTagIcon(tag)}
-                        {tag}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {skillTags.map((tag, index) => (
-                    <TabsContent key={index} value={tag} className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1">
-                      {skillList.filter(skill => {
-                        return (skill.tags || []).includes(tag) || tag === "全部";
-                      }).map((skill, skillIndex) => (
-                        <SkillItem 
-                          key={skillIndex} 
-                          skill={skill} 
-                          selectedSkills={selectedSkill}
-                          onSkillChange={handleSkillChange}
-                        />
-                      ))}
-                    </TabsContent>
-                  ))}
-                </Tabs>
-              </PopoverContent>
-            </Popover>
+            {!IS_OFFLINE_EDITION && (
+              <TaskSkillSelector
+                open={skillPopoverOpen}
+                onOpenChange={setSkillPopoverOpen}
+                selectedSkills={selectedSkill}
+                skills={skillList}
+                skillTags={skillTags}
+                activeSkillTag={activeSkillTag}
+                onActiveSkillTagChange={setActiveSkillTag}
+                onSkillChange={handleSkillChange}
+                triggerClassName="rounded-full"
+                labelClassName="hidden sm:block"
+              />
+            )}
           </div>
           <div className="flex flex-row gap-2">
-            <VoiceInputButton
-              disabled={false}
-              onTextRecognized={(text) => setTaskContent(text)}
-            />
+            {!IS_OFFLINE_EDITION && (
+              <VoiceInputButton
+                disabled={false}
+                onTextRecognized={(text) => setTaskContent(text)}
+              />
+            )}
             <Button size="sm" className="rounded-full" disabled={creatingTask} onClick={handleExecuteButtonClick}>
               <span className="hidden sm:block">执行</span>
               {creatingTask ? <Spinner /> : <IconSend />}
@@ -773,15 +726,17 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
           <Field>
             <div className="flex items-center justify-between gap-3">
               <FieldLabel>大模型</FieldLabel>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-                onClick={handleOpenModelPricing}
-              >
-                <CircleQuestionMark className="size-3" />如何选择大模型
-              </Button>
+              {!IS_OFFLINE_EDITION && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
+                  onClick={handleOpenModelPricing}
+                >
+                  <CircleQuestionMark className="size-3" />如何选择大模型
+                </Button>
+              )}
             </div>
             <FieldContent>
               <ModelSelect
@@ -836,18 +791,20 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   <SelectValue placeholder="选择开发工具" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={"public_host"}>
-                    <div className="flex items-center gap-2">
-                      <span>MonkeyCode</span>
-                      <Badge className="!text-primary-foreground">免费</Badge>
-                    </div>
-                  </SelectItem>
+                  {!IS_OFFLINE_EDITION && (
+                    <SelectItem value={"public_host"}>
+                      <div className="flex items-center gap-2">
+                        <span>MonkeyCode</span>
+                        <Badge className="!text-primary-foreground">免费</Badge>
+                      </div>
+                    </SelectItem>
+                  )}
                   {hosts.map((host) => {
                     return (
                       <SelectItem
                         key={host.id}
                         value={host.id!}
-                        disabled={host.status !== ConstsHostStatus.HostStatusOnline || selectedPublicModel}>
+                        disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}>
                         <div className="flex items-center gap-2">
                           <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
                           {getHostBadges(host)}

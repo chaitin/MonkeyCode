@@ -30,6 +30,7 @@ import { getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, isValidEmail }
 import { useNavigate } from "react-router-dom";
 import SubscriptionPlanDialog from "./subscription-plan-dialog";
 import ModelPricingDialog from "./model-pricing-dialog";
+import { IS_OFFLINE_EDITION } from "@/utils/edition";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
@@ -328,11 +329,13 @@ export default function NavBalance({
       </Avatar>
       <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
         <span className="truncate font-medium">{user?.name || "未知用户"}</span>
-        <span className="truncate text-xs">{triggerPlanLabel}</span>
+        {!IS_OFFLINE_EDITION && <span className="truncate text-xs">{triggerPlanLabel}</span>}
       </div>
-      <div className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary tabular-nums group-data-[collapsible=icon]:hidden">
-        {formatPoints(remainingPoints)}
-      </div>
+      {!IS_OFFLINE_EDITION && (
+        <div className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary tabular-nums group-data-[collapsible=icon]:hidden">
+          {formatPoints(remainingPoints)}
+        </div>
+      )}
     </div>
   ) : (
     <div className="flex w-full min-w-0 items-center justify-between gap-3">
@@ -390,46 +393,50 @@ export default function NavBalance({
       </section>
 
       <section className="divide-y divide-border/60 border-y border-border/60">
-        <div className="flex min-h-12 items-center justify-between gap-4 py-2">
-          <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">当前套餐</div>
-            <div className="mt-1 truncate text-sm font-medium">
-              {getSubscriptionPlanLabel(subscription?.plan)}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {formatSubscriptionExpiry(subscription?.expires_at) === "长期有效"
-                  ? "长期有效"
-                  : `${formatSubscriptionExpiry(subscription?.expires_at)} 前有效`}
-              </span>
+        {!IS_OFFLINE_EDITION && (
+          <>
+            <div className="flex min-h-12 items-center justify-between gap-4 py-2">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">当前套餐</div>
+                <div className="mt-1 truncate text-sm font-medium">
+                  {getSubscriptionPlanLabel(subscription?.plan)}
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {formatSubscriptionExpiry(subscription?.expires_at) === "长期有效"
+                      ? "长期有效"
+                      : `${formatSubscriptionExpiry(subscription?.expires_at)} 前有效`}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 px-3 text-xs"
+                onClick={() => setShowSubscriptionPlanDialog(true)}
+              >
+                升级套餐
+              </Button>
             </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 px-3 text-xs"
-            onClick={() => setShowSubscriptionPlanDialog(true)}
-          >
-            升级套餐
-          </Button>
-        </div>
 
-        <div className="flex min-h-12 items-center justify-between gap-4 py-2">
-          <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">当前积分</div>
-            <div className="mt-1 truncate text-sm font-medium tabular-nums">{formatPoints(remainingPoints)}</div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 px-3 text-xs"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-                detail: { section: "earn" },
-              }))
-            }}
-          >
-            充值
-          </Button>
-        </div>
+            <div className="flex min-h-12 items-center justify-between gap-4 py-2">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">当前积分</div>
+                <div className="mt-1 truncate text-sm font-medium tabular-nums">{formatPoints(remainingPoints)}</div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 px-3 text-xs"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+                    detail: { section: "earn" },
+                  }))
+                }}
+              >
+                充值
+              </Button>
+            </div>
+          </>
+        )}
 
         <div className="flex min-h-12 items-center justify-between gap-4 py-2">
           <div className="min-w-0">

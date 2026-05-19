@@ -12,6 +12,7 @@ import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands, TaskPlan, TaskStreamStatus, TaskUserInput } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamCloseReason, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -1173,14 +1174,18 @@ export default function TaskDetailPage() {
                       })}
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleOpenModelPricing}
-                    className="w-full text-xs text-muted-foreground focus:text-foreground"
-                  >
-                    <IconHelpCircle className="size-3.5" />
-                    如何选择大模型
-                  </DropdownMenuItem>
+                  {!IS_OFFLINE_EDITION && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={handleOpenModelPricing}
+                        className="w-full text-xs text-muted-foreground focus:text-foreground"
+                      >
+                        <IconHelpCircle className="size-3.5" />
+                        如何选择大模型
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </>
               )}
             </DropdownMenuContent>

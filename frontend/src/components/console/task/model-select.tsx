@@ -19,9 +19,10 @@ import {
   getOwnerTypeBadge,
   canUseModelBySubscription,
 } from "@/utils/common"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { cn } from "@/lib/utils"
 import { IconChevronDown, IconHelpCircle } from "@tabler/icons-react"
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 const OTHER_MODELS_TOOLTIP = "消耗积分调用"
@@ -77,11 +78,94 @@ export default function ModelSelect({
     () => models.filter((model) => !getBuiltinModelName(model.model)),
     [models],
   )
+  const offlineModels = otherModels
+  const selectedOfflineModel = offlineModels.find((model) => model.id === selectedModelId)
+
+  useEffect(() => {
+    if (!IS_OFFLINE_EDITION || offlineModels.length === 0) {
+      return
+    }
+
+    const hasSelectedOfflineModel = offlineModels.some((model) => model.id === selectedModelId)
+    const firstOfflineModelId = offlineModels.find((model) => model.id)?.id
+    if (!hasSelectedOfflineModel && firstOfflineModelId) {
+      setSelectedModelId(firstOfflineModelId)
+    }
+  }, [offlineModels, selectedModelId, setSelectedModelId])
 
   const handleOpenModelPricing = () => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
       detail: { section: "pricing" },
     }))
+  }
+
+  const renderModelOption = (model: DomainModel) => {
+    const showPricingSummary =
+      !IS_OFFLINE_EDITION && model.owner?.type === ConstsOwnerType.OwnerTypePublic
+    const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
+    const pricingTags = pricing?.tags ?? []
+
+    return (
+      <DropdownMenuRadioItem
+        key={model.id}
+        value={model.id || ""}
+        className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
+          <span className="truncate">{getModelDisplayName(model.model)}</span>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+          {showPricingSummary && pricing ? (
+            <Badge variant="secondary" className="shrink-0">
+              {pricing.credits} 积分
+            </Badge>
+          ) : null}
+          {showPricingSummary && pricingTags.map((tag) => (
+            <Badge
+              key={`${model.id}-${tag}`}
+              variant="default"
+              className="shrink-0 !bg-primary !text-primary-foreground"
+            >
+              {tag}
+            </Badge>
+          ))}
+          {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
+        </div>
+      </DropdownMenuRadioItem>
+    )
+  }
+
+  if (IS_OFFLINE_EDITION) {
+    return (
+      <div className={cn("w-full", className)}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-full min-w-0 justify-between rounded-md px-2 text-sm"
+              disabled={offlineModels.length === 0}
+            >
+              {selectedOfflineModel ? (
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <Icon name={getBrandFromModelName(selectedOfflineModel.model || "")} className="size-4 shrink-0" />
+                  <span className="truncate">{getModelDisplayName(selectedOfflineModel.model)}</span>
+                </span>
+              ) : (
+                <span className="truncate text-muted-foreground">选择模型</span>
+              )}
+              <IconChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[320px]">
+            <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
+              {offlineModels.map(renderModelOption)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    )
   }
 
   return (
@@ -162,41 +246,7 @@ export default function ModelSelect({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-[320px]">
                 <DropdownMenuRadioGroup value={selectedModelId} onValueChange={setSelectedModelId}>
-                  {otherModels.map((model) => {
-                    const showPricingSummary = model.owner?.type === ConstsOwnerType.OwnerTypePublic
-                    const pricing = showPricingSummary ? getModelPricingItem(model.model) : undefined
-                    const pricingTags = pricing?.tags ?? []
-
-                    return (
-                      <DropdownMenuRadioItem
-                        key={model.id}
-                        value={model.id || ""}
-                        className="w-full justify-between gap-3 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
-                      >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
-                          <span className="truncate">{getModelDisplayName(model.model)}</span>
-                        </div>
-                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
-                          {showPricingSummary && pricing ? (
-                            <Badge variant="secondary" className="shrink-0">
-                              {pricing.credits} 积分
-                            </Badge>
-                          ) : null}
-                          {showPricingSummary && pricingTags.map((tag) => (
-                            <Badge
-                              key={`${model.id}-${tag}`}
-                              variant="default"
-                              className="shrink-0 !bg-primary !text-primary-foreground"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                          {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
-                        </div>
-                      </DropdownMenuRadioItem>
-                    )
-                  })}
+                  {otherModels.map(renderModelOption)}
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -24,6 +24,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { Link, useNavigate } from "react-router-dom"
 import { captchaChallenge } from "@/utils/common"
 import { ArrowLeft, Eye, EyeOff } from "lucide-react"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
@@ -151,18 +152,20 @@ export default function LoginPage({
                   {userLoginView === 'choices' ? (
                     <div className="mt-1 flex flex-col gap-4">
                       <div className="text-sm font-medium">选择登录方式</div>
-                      <Button size="lg" className="w-full" asChild>
-                        <a
-                          href={userLoginHref}
-                          onClick={(e) => {
-                            if (!ensureTermsAccepted()) {
-                              e.preventDefault()
-                            }
-                          }}
-                        >
-                          百智云登录 - 推荐
-                        </a>
-                      </Button>
+                      {!IS_OFFLINE_EDITION && (
+                        <Button size="lg" className="w-full" asChild>
+                          <a
+                            href={userLoginHref}
+                            onClick={(e) => {
+                              if (!ensureTermsAccepted()) {
+                                e.preventDefault()
+                              }
+                            }}
+                          >
+                            百智云登录 - 推荐
+                          </a>
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         size="lg"
@@ -172,18 +175,20 @@ export default function LoginPage({
                       >
                         账号密码登录
                       </Button>
-                      <Button size="lg" variant="secondary" className="w-full" asChild>
-                        <a
-                          href={userLoginHref}
-                          onClick={(e) => {
-                            if (!ensureTermsAccepted()) {
-                              e.preventDefault()
-                            }
-                          }}
-                        >
-                          快速注册
-                        </a>
-                      </Button>
+                      {!IS_OFFLINE_EDITION && (
+                        <Button size="lg" variant="secondary" className="w-full" asChild>
+                          <a
+                            href={userLoginHref}
+                            onClick={(e) => {
+                              if (!ensureTermsAccepted()) {
+                                e.preventDefault()
+                              }
+                            }}
+                          >
+                            快速注册
+                          </a>
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <div className="mt-1 flex flex-col gap-4">
@@ -211,9 +216,11 @@ export default function LoginPage({
                           <Field>
                             <div className="flex flex-row items-center justify-between">
                               <FieldLabel htmlFor="user-password">密码</FieldLabel>
-                              <Link to="/findpassword" tabIndex={-1} className="text-sm text-muted-foreground hover:underline">
-                                找回密码
-                              </Link>
+                              {!IS_OFFLINE_EDITION && (
+                                <Link to="/findpassword" tabIndex={-1} className="text-sm text-muted-foreground hover:underline">
+                                  找回密码
+                                </Link>
+                              )}
                             </div>
                             <div className="relative">
                               <Input

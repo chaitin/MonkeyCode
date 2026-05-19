@@ -14,6 +14,7 @@ import { TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } fro
 import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
@@ -515,7 +516,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                   <span className="truncate">耗时 {(executionTimeMs / 1000).toFixed(1)} 秒</span>
                 </div>
               )}
-              {!isExecuting && (
+              {!IS_OFFLINE_EDITION && !isExecuting && (
                 <VoiceInputButton
                   onTextRecognized={handleTextRecognized}
                   disabled={controlsDisabled}

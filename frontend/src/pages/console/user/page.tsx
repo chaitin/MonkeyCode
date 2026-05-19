@@ -24,6 +24,7 @@ import WalletDialog from "@/components/console/nav/wallet-dialog"
 import { RefreshCw } from "lucide-react"
 import { DataProvider } from "@/components/console/data-provider"
 import FreeModelUsageIndicator from "@/components/console/nav/free-model-usage-indicator"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 const SettingsDialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
 export const useSettingsDialog = () => {
@@ -132,7 +133,7 @@ function UserConsoleContent() {
               </Breadcrumb>
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-2 px-4">
-              <FreeModelUsageIndicator />
+              {!IS_OFFLINE_EDITION && <FreeModelUsageIndicator />}
               <Button
                 variant="ghost"
                 size="sm"

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useSettingsDialog } from "@/pages/console/user/page"
 import { Settings } from "lucide-react"
+import { IS_ONLINE_EDITION } from "@/utils/edition"
 
 export default function UserSidebar({ 
   ...props 
@@ -43,11 +44,13 @@ export default function UserSidebar({
       <SidebarFooter className="md:p-0">
         <NavCheckin />
         <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
-          <NavCommunity
-            menuClassName="flex-[2]"
-            itemClassName="h-full"
-            buttonClassName="h-full py-1"
-          />
+          {IS_ONLINE_EDITION && (
+            <NavCommunity
+              menuClassName="flex-[2]"
+              itemClassName="h-full"
+              buttonClassName="h-full py-1"
+            />
+          )}
           <SidebarMenu className="flex-1">
             <SidebarMenuItem className="h-full">
               <SidebarMenuButton

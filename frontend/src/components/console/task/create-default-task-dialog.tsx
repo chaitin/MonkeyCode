@@ -14,7 +14,6 @@ import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import {
@@ -41,12 +40,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useSettingsDialog } from "@/pages/console/user/page"
 import { defaultSkills } from "@/utils/config"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
   getGitPlatformIcon,
   getHostBadges,
@@ -55,7 +54,6 @@ import {
   getOwnerTypeBadge,
   getRepoIcon,
   getRepoNameFromUrl,
-  getSkillTagIcon,
   TASK_PROMPT_PLACEHOLDER,
   selectHost,
   selectImage,
@@ -68,7 +66,6 @@ import {
   IconBug,
   IconChevronDown,
   IconLink,
-  IconPuzzle,
   IconReload,
   IconSourceCode,
   IconTerminal2,
@@ -83,6 +80,7 @@ import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog"
 import ModelSelect from "./model-select"
 import { CircleQuestionMark } from "lucide-react"
+import { TaskSkillSelector } from "./task-skill-selector"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
@@ -91,39 +89,10 @@ interface CreateDefaultTaskDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-interface SkillItemProps {
-  skill: DomainSkill
-  selectedSkills: string[]
-  onSkillChange: (skillId: string, checked: boolean) => void
-}
-
 interface RepoOption {
   gitIdentityId: string
   username: string
   repository: DomainAuthRepository
-}
-
-function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
-  if (!skill.id) {
-    return null
-  }
-
-  const isChecked = selectedSkills.includes(skill.id)
-
-  return (
-    <div
-      className="flex cursor-pointer flex-row items-center gap-2 rounded-md px-2 py-1 hover:bg-accent"
-      onClick={() => onSkillChange(skill.id!, !isChecked)}
-    >
-      <Checkbox checked={isChecked} disabled={defaultSkills.includes(skill.id)} />
-      <div className="min-w-0">
-        <div className="text-sm">{skill.name}</div>
-        <div className="line-clamp-1 break-all text-xs text-muted-foreground">
-          {skill.description}
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
@@ -207,7 +176,7 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    if (skillList.length > 0) {
+    if (IS_OFFLINE_EDITION || skillList.length > 0) {
       return
     }
 
@@ -350,12 +319,11 @@ export default function CreateDefaultTaskDialog({
     setSelectedModelId(selectPreferredTaskModel(models, subscription))
 
     if (user.role === ConstsUserRole.UserRoleSubAccount) {
-      const nextHostId = (
-        storedParams.hostId === "public_host"
-        || hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
-      )
+      const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
         ? (storedParams.hostId || "public_host")
-        : selectHost(hosts, true)
+        : IS_OFFLINE_EDITION
+          ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
+          : selectHost(hosts, true)
       const nextImageId = (
         storedParams.imageId
         && images.some((image) => image.id === storedParams.imageId)
@@ -385,7 +353,7 @@ export default function CreateDefaultTaskDialog({
   const showRepoAdvancedOptions = Boolean(selectedRepo && !selectedRepoDisplayName.endsWith(".zip"))
 
   useEffect(() => {
-    if (selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
+    if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
       setSelectedHostId("public_host")
     }
   }, [selectedPublicModel, selectedHostId])
@@ -409,7 +377,7 @@ export default function CreateDefaultTaskDialog({
       setSelectedIdentityId("none")
     }
 
-    if (selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
+    if (!IS_OFFLINE_EDITION && selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
       toast.warning("内置模型只能在内置宿主机上使用")
       return
     }
@@ -835,62 +803,19 @@ export default function CreateDefaultTaskDialog({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Popover open={skillPopoverOpen} onOpenChange={setSkillPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    "rounded-md",
-                    selectedSkill.length > 0 && "text-primary hover:text-primary"
-                  )}
-                >
-                  <IconPuzzle />
-                  <span>{selectedSkill.length > 0 ? `${selectedSkill.length} 个技能` : "技能"}</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="flex max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[90vw] max-w-xl flex-col overflow-hidden p-2"
-                align="start"
-              >
-                <Tabs
-                  value={activeSkillTag}
-                  onValueChange={setActiveSkillTag}
-                  className="flex min-h-0 w-full flex-1 flex-col"
-                >
-                  <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
-                    {skillTags.map((tag) => (
-                      <TabsTrigger
-                        key={tag}
-                        value={tag}
-                        className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none"
-                      >
-                        {getSkillTagIcon(tag)}
-                        {tag}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {skillTags.map((tag) => (
-                    <TabsContent
-                      key={tag}
-                      value={tag}
-                      className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
-                    >
-                      {skillList
-                        .filter((skill) => tag === "全部" || (skill.tags || []).includes(tag))
-                        .map((skill) => (
-                          <SkillItem
-                            key={skill.id}
-                            skill={skill}
-                            selectedSkills={selectedSkill}
-                            onSkillChange={handleSkillChange}
-                          />
-                        ))}
-                    </TabsContent>
-                  ))}
-                </Tabs>
-              </PopoverContent>
-            </Popover>
+            {!IS_OFFLINE_EDITION && (
+              <TaskSkillSelector
+                open={skillPopoverOpen}
+                onOpenChange={setSkillPopoverOpen}
+                selectedSkills={selectedSkill}
+                skills={skillList}
+                skillTags={skillTags}
+                activeSkillTag={activeSkillTag}
+                onActiveSkillTagChange={setActiveSkillTag}
+                onSkillChange={handleSkillChange}
+                triggerClassName="rounded-md"
+              />
+            )}
 
           </div>
 
@@ -920,15 +845,17 @@ export default function CreateDefaultTaskDialog({
                     <Field>
                       <div className="flex items-center justify-between gap-3">
                         <FieldLabel>大模型</FieldLabel>
-                        <Button
-                          type="button"
-                          variant="link"
-                          size="sm"
-                          className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-                          onClick={handleOpenModelPricing}
-                        >
-                          <CircleQuestionMark className="size-3" />如何选择大模型
-                        </Button>
+                        {!IS_OFFLINE_EDITION && (
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
+                            onClick={handleOpenModelPricing}
+                          >
+                            <CircleQuestionMark className="size-3" />如何选择大模型
+                          </Button>
+                        )}
                       </div>
                       <FieldContent>
                         <ModelSelect
@@ -995,17 +922,19 @@ export default function CreateDefaultTaskDialog({
                               <SelectValue placeholder="选择开发工具" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="public_host">
-                                <div className="flex items-center gap-2">
-                                  <span>MonkeyCode</span>
-                                  <Badge className="!text-primary-foreground">免费</Badge>
-                                </div>
-                              </SelectItem>
+                              {!IS_OFFLINE_EDITION && (
+                                <SelectItem value="public_host">
+                                  <div className="flex items-center gap-2">
+                                    <span>MonkeyCode</span>
+                                    <Badge className="!text-primary-foreground">免费</Badge>
+                                  </div>
+                                </SelectItem>
+                              )}
                               {hosts.map((host) => (
                                 <SelectItem
                                   key={host.id}
                                   value={host.id!}
-                                  disabled={host.status !== ConstsHostStatus.HostStatusOnline || selectedPublicModel}
+                                  disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}
                                 >
                                   <div className="flex items-center gap-2">
                                     <span>{host.remark || `${host.name}-${host.external_ip}`}</span>

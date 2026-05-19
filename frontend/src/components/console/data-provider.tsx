@@ -1,5 +1,6 @@
 import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
 import { getImageShortName } from '@/utils/common';
+import { IS_OFFLINE_EDITION } from '@/utils/edition';
 import { apiRequest } from '@/utils/requestUtils';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -250,6 +251,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const fetchWallet = useCallback(() => {
+    if (IS_OFFLINE_EDITION) {
+      return;
+    }
+
     apiRequest('v1UsersWalletList', {}, [], (resp) => {
       if (resp.code === 0) {
         setBalance((resp.data?.balance || 0) / 1000);
