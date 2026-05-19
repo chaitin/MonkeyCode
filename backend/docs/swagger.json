@@ -124,6 +124,98 @@
                 }
             }
         },
+        "/api/v1/teams/audits": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "查询审计日志列表，支持条件过滤和分页",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team管理员】审计日志"
+                ],
+                "summary": "查询审计日志",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "name": "created_at_end",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "created_at_start",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "operation",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "request",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "response",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "source_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "user_agent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "name": "user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ListAuditsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/groups": {
             "get": {
                 "security": [
@@ -1961,6 +2053,69 @@
                 }
             }
         },
+        "/api/v1/teams/users/with-password": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "创建团队成员，后端生成初始密码并只在响应中返回一次",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】分组成员管理"
+                ],
+                "summary": "创建团队成员并返回初始密码",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.AddTeamUserReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.AddTeamUserWithPasswordResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/users/{user_id}": {
             "put": {
                 "security": [
@@ -2026,6 +2181,60 @@
                         "description": "服务器内部错误",
                         "schema": {
                             "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users": {
+            "put": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "更新用户昵称和头像",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】用户"
+                ],
+                "summary": "更新用户信息",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "昵称",
+                        "name": "name",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "OSS 头像地址",
+                        "name": "avatar_url",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.UpdateUserResp"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -4920,6 +5129,61 @@
                 }
             }
         },
+        "/api/v1/users/members": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "获取当前用户所在团队的普通成员列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】用户"
+                ],
+                "summary": "获取团队成员列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.User"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/models": {
             "get": {
                 "security": [
@@ -7083,6 +7347,52 @@
                 }
             }
         },
+        "/api/v1/users/subscription": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "开源版固定返回基础订阅状态",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】会员"
+                ],
+                "summary": "查询当前会员状态",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.SubscriptionResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权，用户未登录",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/tasks": {
             "get": {
                 "security": [
@@ -8196,6 +8506,23 @@
                 }
             }
         },
+        "domain.AddTeamUserWithPasswordResp": {
+            "type": "object",
+            "properties": {
+                "passwords": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamUserPassword"
+                    }
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamUser"
+                    }
+                }
+            }
+        },
         "domain.ApplyPortReq": {
             "type": "object",
             "required": [
@@ -8216,6 +8543,35 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "domain.Audit": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "operation": {
+                    "type": "string"
+                },
+                "request": {
+                    "type": "string"
+                },
+                "response": {
+                    "type": "string"
+                },
+                "source_ip": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/domain.User"
+                },
+                "user_agent": {
+                    "type": "string"
                 }
             }
         },
@@ -8984,6 +9340,20 @@
                 }
             }
         },
+        "domain.ListAuditsResponse": {
+            "type": "object",
+            "properties": {
+                "audits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Audit"
+                    }
+                },
+                "page": {
+                    "$ref": "#/definitions/db.Cursor"
+                }
+            }
+        },
         "domain.ListCollaboratorsResp": {
             "type": "object",
             "properties": {
@@ -9359,6 +9729,62 @@
                 }
             }
         },
+        "domain.ModelBrief": {
+            "type": "object",
+            "properties": {
+                "access_level": {
+                    "type": "string"
+                },
+                "context_limit": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "interface_type": {
+                    "$ref": "#/definitions/consts.InterfaceType"
+                },
+                "is_free": {
+                    "type": "boolean"
+                },
+                "last_check_at": {
+                    "type": "integer"
+                },
+                "last_check_error": {
+                    "type": "string"
+                },
+                "last_check_success": {
+                    "type": "boolean"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "output_limit": {
+                    "type": "integer"
+                },
+                "owner": {
+                    "$ref": "#/definitions/domain.Owner"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "thinking_enabled": {
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "type": "integer"
+                },
+                "weight": {
+                    "type": "integer"
+                }
+            }
+        },
         "domain.NotifyChannel": {
             "type": "object",
             "properties": {
@@ -9669,7 +10095,7 @@
                     "$ref": "#/definitions/consts.LogStore"
                 },
                 "model": {
-                    "$ref": "#/definitions/domain.Model"
+                    "$ref": "#/definitions/domain.ModelBrief"
                 },
                 "repo_filename": {
                     "type": "string"
@@ -9916,6 +10342,23 @@
                 }
             }
         },
+        "domain.SubscriptionResp": {
+            "type": "object",
+            "properties": {
+                "auto_renew": {
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "plan": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.Task": {
             "type": "object",
             "properties": {
@@ -9953,7 +10396,7 @@
                     "$ref": "#/definitions/consts.LogStore"
                 },
                 "model": {
-                    "$ref": "#/definitions/domain.Model"
+                    "$ref": "#/definitions/domain.ModelBrief"
                 },
                 "repo_filename": {
                     "type": "string"
@@ -10277,6 +10720,17 @@
                 },
                 "user": {
                     "$ref": "#/definitions/domain.User"
+                }
+            }
+        },
+        "domain.TeamUserPassword": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
                 }
             }
         },
@@ -10630,6 +11084,20 @@
                 }
             }
         },
+        "domain.UpdateUserResp": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "user": {
+                    "$ref": "#/definitions/domain.User"
+                }
+            }
+        },
         "domain.UpdateVMReq": {
             "type": "object",
             "required": [
@@ -10764,7 +11232,7 @@
                 "conditions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/types.Condition"
+                        "$ref": "#/definitions/github_com_chaitin_MonkeyCode_backend_ent_types.Condition"
                     }
                 },
                 "cores": {
@@ -10811,6 +11279,29 @@
                 },
                 "version": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_chaitin_MonkeyCode_backend_ent_types.Condition": {
+            "type": "object",
+            "properties": {
+                "last_transition_time": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "progress": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/types.ConditionStatus"
+                },
+                "type": {
+                    "$ref": "#/definitions/types.ConditionType"
                 }
             }
         },
@@ -10954,29 +11445,6 @@
                 "VirtualMachineStatusOffline",
                 "VirtualMachineStatusHibernated"
             ]
-        },
-        "types.Condition": {
-            "type": "object",
-            "properties": {
-                "last_transition_time": {
-                    "type": "integer"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "progress": {
-                    "type": "integer"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "status": {
-                    "$ref": "#/definitions/types.ConditionStatus"
-                },
-                "type": {
-                    "$ref": "#/definitions/types.ConditionType"
-                }
-            }
         },
         "types.ConditionStatus": {
             "type": "integer",
