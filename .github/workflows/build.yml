@@ -39,7 +39,7 @@ jobs:
 
       - name: Build
         working-directory: frontend
-        run: pnpm run build
+        run: pnpm run build:online
 
       - name: Upload dist
         run: |

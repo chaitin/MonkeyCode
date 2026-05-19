@@ -8,9 +8,9 @@
   "main": "electron/main.cjs",
   "scripts": {
     "postinstall": "node scripts/postinstall.cjs",
-    "electron:build:dist": "cross-env ELECTRON=true pnpm --dir ../frontend run build",
+    "electron:build:dist": "cross-env ELECTRON=true pnpm --dir ../frontend run build:online",
     "electron:sync-web": "node scripts/sync-web-dist.mjs",
-    "electron:dev": "concurrently -k \"pnpm --dir ../frontend dev\" \"wait-on http://localhost:11180 && electron .\"",
+    "electron:dev": "concurrently -k \"pnpm --dir ../frontend dev:online\" \"wait-on http://localhost:11180 && electron .\"",
     "electron:pack": "electron-builder --mac --publish never",
     "electron:pack:dir": "electron-builder --mac dir --publish never",
     "electron:pack:with-dist": "pnpm electron:build:dist && pnpm electron:sync-web && electron-builder --mac -c electron-builder.full.json --publish never",

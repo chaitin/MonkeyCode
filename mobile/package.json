@@ -5,7 +5,7 @@
   "description": "MonkeyCode 移动端壳（Capacitor）",
   "type": "module",
   "scripts": {
-    "build:web": "cross-env ELECTRON=true pnpm --dir ../frontend run build",
+    "build:web": "cross-env ELECTRON=true pnpm --dir ../frontend run build:online",
     "cap:sync": "cap sync",
     "sync": "pnpm run build:web && cap sync",
     "open:android": "cap open android",

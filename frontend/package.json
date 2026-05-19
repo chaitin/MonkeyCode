@@ -7,7 +7,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:online": "vite --mode online",
+    "dev:offline": "vite --mode offline",
     "build": "tsc -b && vite build",
+    "build:online": "tsc -b && vite build --mode online",
+    "build:offline": "tsc -b && vite build --mode offline",
     "lint": "eslint .",
     "preview": "vite preview",
     "api": "sta --path ${SWAGGER} --output src/api"

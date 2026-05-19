@@ -48,7 +48,7 @@ jobs:
         working-directory: frontend
         run: |
           pnpm install --frozen-lockfile
-          pnpm run build
+          pnpm run build:offline
           rm -rf docker/dist
           mkdir -p docker/dist
           cp -R dist/. docker/dist/
