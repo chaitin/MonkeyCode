@@ -56,6 +56,13 @@ type User struct {
 	HasPassword bool              `json:"has_password"`
 }
 
+type SubscriptionResp struct {
+	Plan      string     `json:"plan"`
+	Source    string     `json:"source,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	AutoRenew bool       `json:"auto_renew"`
+}
+
 func (u *User) From(src *db.User) *User {
 	if src == nil {
 		return u
