@@ -12,6 +12,7 @@ docker-compose.yml
 images/backend.tar.gz
 images/frontend.tar.gz
 images/taskflow.tar.gz
+images/preview.tar.gz
 images/ingress.tar.gz
 images/postgres.tar.gz
 images/redis.tar.gz

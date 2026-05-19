@@ -17,6 +17,7 @@ func TestOfflineComposeImagesUseVariables(t *testing.T) {
 		"image: ${TASKFLOW_IMAGE}",
 		"image: ${FRONTEND_IMAGE}",
 		"image: ${BACKEND_IMAGE}",
+		"image: ${PREVIEW_IMAGE}",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("docker-compose.yml missing %q", want)
@@ -70,6 +71,25 @@ func TestOfflineComposeUsesInstallDirBindMounts(t *testing.T) {
 	}
 }
 
+func TestOfflineComposeConfiguresPreviewRelay(t *testing.T) {
+	content := readFile(t, "../../docker-compose.yml")
+	for _, want := range []string{
+		"container_name: monkeycode-ai-preview",
+		"network_mode: host",
+		"RELAY_DOMAIN: ${REMOTE_IP}",
+		"RELAY_TUNNEL_PORT_RANGES: 30000-50000",
+		"RELAY_JWT_SECRET: ${RELAY_SECRET}",
+		"MCAI_JWT_SECRET: ${RELAY_SECRET}",
+		"MCAI_JWT_RELAY_HOST: ${REMOTE_IP}",
+		"MCAI_JWT_RELAY_PORT: 7000",
+		"MCAI_JWT_RELAY_USE_TLS: false",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("docker-compose.yml missing %q", want)
+		}
+	}
+}
+
 func TestOfflinePackageScriptDoesNotRetagImagesToLocal(t *testing.T) {
 	content := readFile(t, "../build-offline-package.sh")
 	for _, forbidden := range []string{"docker tag ", ":local", "monkeycode-offline/backend:local"} {
@@ -85,6 +105,39 @@ func TestOfflinePackageScriptDoesNotRetagImagesToLocal(t *testing.T) {
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("build-offline-package.sh missing %q", want)
+		}
+	}
+}
+
+func TestOfflinePackageIncludesPreviewImage(t *testing.T) {
+	content := readFile(t, "../build-offline-package.sh")
+	for _, want := range []string{
+		`PREVIEW_IMAGE="${PREVIEW_IMAGE:-chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode/preview-relay:2502c9d}"`,
+		`set_env_value PREVIEW_IMAGE "$PREVIEW_IMAGE"`,
+		`docker pull "$PREVIEW_IMAGE"`,
+		`docker save "$PREVIEW_IMAGE" | gzip > "$PACKAGE_DIR/images/preview.tar.gz"`,
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("build-offline-package.sh missing %q", want)
+		}
+	}
+}
+
+func TestOfflinePackageCheckRequiresPreviewImage(t *testing.T) {
+	content := readFile(t, "../check-offline-package.sh")
+	if !strings.Contains(content, "images/preview.tar.gz") {
+		t.Fatalf("check-offline-package.sh missing preview image requirement")
+	}
+}
+
+func TestCenterEnvExampleIncludesPreviewRelaySettings(t *testing.T) {
+	content := readFile(t, "../../installation/center/.env.example")
+	for _, want := range []string{
+		"RELAY_SECRET=",
+		"PREVIEW_IMAGE=",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf(".env.example missing %q", want)
 		}
 	}
 }

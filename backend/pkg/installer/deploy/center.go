@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 const DefaultDevboxImage = "ghcr.io/chaitin/monkeycode-runner/devbox:latest"
@@ -42,6 +44,7 @@ type CenterEnv struct {
 	TeamPassword       string
 	InitTeamImage      string
 	SubnetPrefix       string
+	RelaySecret        string
 }
 
 type CenterInstallPlan struct {
@@ -100,6 +103,9 @@ func NewCenterEnv(input CenterEnvInput) (CenterEnv, error) {
 	if env.RustFSSecretKey, err = randomSecret(32); err != nil {
 		return CenterEnv{}, err
 	}
+	if env.RelaySecret, err = randomUUID(); err != nil {
+		return CenterEnv{}, err
+	}
 	return env, nil
 }
 
@@ -122,6 +128,7 @@ func RenderCenterEnv(template string, env CenterEnv) string {
 		"TEAM_PASSWORD":       env.TeamPassword,
 		"INIT_TEAM_IMAGE":     env.InitTeamImage,
 		"SUBNET_PREFIX":       env.SubnetPrefix,
+		"RELAY_SECRET":        env.RelaySecret,
 	}
 	lines := strings.Split(template, "\n")
 	for i, line := range lines {
@@ -263,6 +270,14 @@ func randomSecret(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b)[:n], nil
+}
+
+func randomUUID() (string, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
 }
 
 func fallback(v, def string) string {

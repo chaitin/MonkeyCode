@@ -118,6 +118,10 @@ services:
       MCAI_CLICKHOUSE_USERNAME: ${CLICKHOUSE_USER}
       MCAI_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       MCAI_TEMPLATE_PROJECT_ZIP_URL: http://${REMOTE_IP}:${NGINX_PORT:-80}/static/project-tpl.zip
+      MCAI_JWT_SECRET: ${RELAY_SECRET}
+      MCAI_JWT_RELAY_HOST: ${REMOTE_IP}
+      MCAI_JWT_RELAY_PORT: 7000
+      MCAI_JWT_RELAY_USE_TLS: false
     networks:
       monkeycode:
         ipv4_address: "${SUBNET_PREFIX:-10.100.50}.16"
@@ -164,6 +168,16 @@ services:
     networks:
       monkeycode:
         ipv4_address: "${SUBNET_PREFIX:-10.100.50}.18"
+
+  preview:
+    image: ${PREVIEW_IMAGE}
+    container_name: monkeycode-ai-preview
+    restart: always
+    network_mode: host
+    environment:
+      RELAY_DOMAIN: ${REMOTE_IP}
+      RELAY_TUNNEL_PORT_RANGES: 30000-50000
+      RELAY_JWT_SECRET: ${RELAY_SECRET}
 
 networks:
   monkeycode:
