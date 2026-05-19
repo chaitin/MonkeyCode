@@ -12,8 +12,8 @@ import (
 const (
 	HostDefaultInstallDir = "/data/monkeycode_runner"
 
-	hostDockerInstallWorkDir = "/tmp/monkeycode-installer"
-	hostDockerBundleFile     = "/tmp/monkeycode-installer/docker.tgz"
+	hostDockerInstallWorkDir = "/tmp/monkeycode_runner"
+	hostDockerBundleFile     = "/tmp/monkeycode_runner/docker.tgz"
 	hostBundleFile           = "/tmp/monkeycode-host.tgz"
 
 	envBaseURL          = "MCAI_BASE_URL"

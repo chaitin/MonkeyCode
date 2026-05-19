@@ -97,7 +97,7 @@ jobs:
 
           version="${PACKAGE_VERSION:-}"
           if [ -z "$version" ]; then
-            version="${GITHUB_REF_NAME}-${GITHUB_SHA}"
+            version="${GITHUB_SHA}"
           fi
 
           object_prefix="${OSS_PREFIX:-monkeycode/offline-package}"

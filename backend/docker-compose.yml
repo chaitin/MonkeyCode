@@ -178,6 +178,7 @@ services:
       RELAY_DOMAIN: ${REMOTE_IP}
       RELAY_TUNNEL_PORT_RANGES: 30000-50000
       RELAY_JWT_SECRET: ${RELAY_SECRET}
+      RELAY_LISTEN_HTTP: ":9080"
 
 networks:
   monkeycode:

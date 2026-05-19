@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
@@ -31,6 +32,8 @@ type TeamGroupUserRepo struct {
 	config *config.Config
 	logger *slog.Logger
 }
+
+const defaultTeamGroupName = "默认分组"
 
 // NewTeamGroupUserRepo 创建团队分组成员数据访问层 (samber/do 风格)
 func NewTeamGroupUserRepo(i *do.Injector) (domain.TeamGroupUserRepo, error) {
@@ -468,11 +471,32 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 			}
 		}
 
-		return r.initTeamImage(ctx, tx, initTeam.ID, initUser.ID, imageName)
+		defaultGroup, err := r.ensureDefaultTeamGroup(ctx, tx, initTeam.ID)
+		if err != nil {
+			return err
+		}
+		return r.initTeamImage(ctx, tx, initTeam.ID, defaultGroup.ID, initUser.ID, imageName)
 	})
 }
 
-func (r *TeamGroupUserRepo) initTeamImage(ctx context.Context, tx *db.Tx, teamID, userID uuid.UUID, imageName string) error {
+func (r *TeamGroupUserRepo) ensureDefaultTeamGroup(ctx context.Context, tx *db.Tx, teamID uuid.UUID) (*db.TeamGroup, error) {
+	group, err := tx.TeamGroup.Query().
+		Where(teamgroup.TeamIDEQ(teamID), teamgroup.NameEQ(defaultTeamGroupName)).
+		First(ctx)
+	if err == nil {
+		return group, nil
+	}
+	if !db.IsNotFound(err) {
+		return nil, err
+	}
+	return tx.TeamGroup.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetName(defaultTeamGroupName).
+		Save(ctx)
+}
+
+func (r *TeamGroupUserRepo) initTeamImage(ctx context.Context, tx *db.Tx, teamID, groupID, userID uuid.UUID, imageName string) error {
 	if imageName == "" {
 		return nil
 	}
@@ -500,12 +524,27 @@ func (r *TeamGroupUserRepo) initTeamImage(ctx context.Context, tx *db.Tx, teamID
 	if err != nil {
 		return err
 	}
-	if exists {
+	if !exists {
+		if err := tx.TeamImage.Create().
+			SetID(uuid.New()).
+			SetTeamID(teamID).
+			SetImageID(img.ID).
+			Exec(ctx); err != nil {
+			return err
+		}
+	}
+	groupImageExists, err := tx.TeamGroupImage.Query().
+		Where(teamgroupimage.GroupIDEQ(groupID), teamgroupimage.ImageIDEQ(img.ID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if groupImageExists {
 		return nil
 	}
-	return tx.TeamImage.Create().
+	return tx.TeamGroupImage.Create().
 		SetID(uuid.New()).
-		SetTeamID(teamID).
+		SetGroupID(groupID).
 		SetImageID(img.ID).
 		Exec(ctx)
 }

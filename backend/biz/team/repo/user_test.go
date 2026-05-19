@@ -13,6 +13,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -63,6 +65,21 @@ func TestInitTeamCreatesConfiguredImage(t *testing.T) {
 	if !exists {
 		t.Fatal("team image relation was not created")
 	}
+	group, err := client.TeamGroup.Query().
+		Where(teamgroup.TeamIDEQ(member.TeamID), teamgroup.NameEQ("默认分组")).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exists, err = client.TeamGroupImage.Query().
+		Where(teamgroupimage.GroupIDEQ(group.ID), teamgroupimage.ImageIDEQ(img.ID)).
+		Exist(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("default group image relation was not created")
+	}
 
 	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest"); err != nil {
 		t.Fatal(err)
@@ -71,6 +88,11 @@ func TestInitTeamCreatesConfiguredImage(t *testing.T) {
 		t.Fatal(err)
 	} else if count != 1 {
 		t.Fatalf("image count = %d, want 1", count)
+	}
+	if count, err := client.TeamGroup.Query().Where(teamgroup.TeamIDEQ(member.TeamID), teamgroup.NameEQ("默认分组")).Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("default group count = %d, want 1", count)
 	}
 }
 

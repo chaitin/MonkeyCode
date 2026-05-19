@@ -1,8 +1,9 @@
 package deploy
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -20,7 +21,7 @@ type TLSPlan struct {
 }
 
 func GenerateSelfSignedTLS(plan TLSPlan) error {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
 	}
@@ -60,6 +61,9 @@ func GenerateSelfSignedTLS(plan TLSPlan) error {
 	if err := os.WriteFile(plan.CertFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644); err != nil {
 		return err
 	}
-	keyBytes := x509.MarshalPKCS1PrivateKey(key)
-	return os.WriteFile(plan.KeyFile, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes}), 0o600)
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(plan.KeyFile, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}), 0o600)
 }
