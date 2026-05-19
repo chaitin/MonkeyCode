@@ -15,7 +15,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
+	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/random"
 )
 
 // TeamGroupUserUsecase 团队分组成员业务逻辑层
@@ -62,7 +64,7 @@ func (u *TeamGroupUserUsecase) initTeam() {
 	}
 
 	ctx := context.Background()
-	if err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password); err != nil {
+	if err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password, u.config.InitTeam.Image); err != nil {
 		u.logger.ErrorContext(ctx, "init team failed", "error", err)
 		return
 	}
@@ -126,6 +128,43 @@ func (u *TeamGroupUserUsecase) AddUser(ctx context.Context, teamUser *domain.Tea
 		return cvt.From(user, &domain.TeamUser{})
 	})
 	return &domain.AddTeamUserResp{Users: teamUsers}, nil
+}
+
+func (u *TeamGroupUserUsecase) AddUserWithPassword(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamUserReq) (*domain.AddTeamUserWithPasswordResp, error) {
+	passwords := make(map[string]string, len(req.Emails))
+	for _, email := range req.Emails {
+		passwords[email] = random.String(16)
+	}
+	users, err := u.repo.CreateUsersWithPassword(ctx, teamUser.GetTeamID(), &domain.AddTeamUserWithPasswordReq{
+		Emails:    req.Emails,
+		GroupID:   req.GroupID,
+		Passwords: passwords,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if u.teamHook != nil {
+		for _, user := range users {
+			if err := u.teamHook.OnMemberAdded(ctx, teamUser.GetTeamID(), user.ID); err != nil {
+				u.logger.WarnContext(ctx, "teamHook.OnMemberAdded failed", "user_id", user.ID, "error", err)
+			}
+		}
+	}
+	return &domain.AddTeamUserWithPasswordResp{
+		Users: cvt.Iter(users, func(_ int, user *db.User) *domain.TeamUser {
+			return cvt.From(user, &domain.TeamUser{})
+		}),
+		Passwords: cvt.Filter(users, func(_ int, user *db.User) (*domain.TeamUserPassword, bool) {
+			password, ok := passwords[user.Email]
+			if !ok || user.Password == "" || crypto.VerifyPassword(user.Password, password) != nil {
+				return nil, false
+			}
+			return &domain.TeamUserPassword{
+				Email:    user.Email,
+				Password: password,
+			}, true
+		}),
+	}, nil
 }
 
 // AddAdmin 创建团队管理员

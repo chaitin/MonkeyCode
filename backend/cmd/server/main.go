@@ -47,10 +47,10 @@ func main() {
 	}
 
 	// 注册业务模块
-	if err := biz.RegisterAll(injector); err != nil {
-		l.Error("failed to register biz", "error", err)
-		os.Exit(1)
-	}
+	biz.RegisterAll(injector)
+	biz.RegisterOpenSource(injector)
+	biz.InvokeAll(injector)
+	biz.InvokeOpenSource(injector)
 
 	// 获取 web 实例并启动服务
 	w := do.MustInvoke[*web.Web](injector)

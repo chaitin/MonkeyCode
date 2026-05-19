@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -198,19 +199,54 @@ func (h *HostUsecase) InstallScript(ctx context.Context, token *domain.InstallRe
 		return "", errcode.ErrInvalidInstallToken
 	}
 
-	tmp, err := template.New("install").Parse(string(templates.InstallTmpl))
+	tplName := "install"
+	tplContent := templates.InstallTmpl
+	if h.cfg.HostInstaller.Mode == "offline" {
+		tplName = "install_offline"
+		tplContent = templates.InstallOfflineTmpl
+	}
+
+	tmp, err := template.New(tplName).Parse(string(tplContent))
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template %s", err)
 	}
 	buf := bytes.NewBuffer([]byte(""))
 	param := map[string]any{
-		"token":    token.Token,
-		"grpc_url": h.cfg.TaskFlow.GrpcURL,
+		"token":              token.Token,
+		"grpc_url":           h.cfg.TaskFlow.GrpcURL,
+		"base_url":           h.cfg.Server.BaseURL,
+		"installer_url":      h.installerURL(),
+		"docker_bundle_path": h.installerBundlePath("docker.tgz"),
+		"host_bundle_path":   h.hostBundlePath(),
 	}
 	if err := tmp.Execute(buf, param); err != nil {
 		return "", fmt.Errorf("failed to execute template %s", err)
 	}
 	return buf.String(), nil
+}
+
+func (h *HostUsecase) installerURL() string {
+	if h.cfg.Server.BaseURL == "" {
+		return ""
+	}
+	baseurl, err := url.Parse(h.cfg.Server.BaseURL)
+	if err != nil {
+		return ""
+	}
+	baseurl = baseurl.JoinPath(h.cfg.StaticFiles.RoutePrefix, "installer")
+	return strings.TrimRight(baseurl.String(), "/") + "/{{.arch}}/installer"
+}
+
+func (h *HostUsecase) hostBundlePath() string {
+	bundlePath := h.cfg.HostInstaller.BundlePath
+	if bundlePath == "" {
+		bundlePath = "installer/{{.arch}}/host.tgz"
+	}
+	return "/" + strings.Trim(h.cfg.StaticFiles.RoutePrefix, "/") + "/" + strings.TrimLeft(bundlePath, "/")
+}
+
+func (h *HostUsecase) installerBundlePath(name string) string {
+	return "/" + strings.Trim(h.cfg.StaticFiles.RoutePrefix, "/") + "/installer/{{.arch}}/" + name
 }
 
 // List implements domain.HostUsecase.

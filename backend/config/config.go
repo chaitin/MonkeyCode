@@ -43,17 +43,20 @@ type Config struct {
 	AdminToken string        `mapstructure:"admin_token"`
 	Proxies    []string      `mapstructure:"proxies"`
 
-	TaskFlow    TaskFlow    `mapstructure:"taskflow"`
-	MCPHub      MCPHub      `mapstructure:"mcp_hub"`
-	PublicHost  PublicHost  `mapstructure:"public_host"`
-	Task        Task        `mapstructure:"task"`
-	TaskSummary TaskSummary `mapstructure:"task_summary"`
-	Loki        Loki        `mapstructure:"loki"`
-	ClickHouse  ClickHouse  `mapstructure:"clickhouse"`
-	LLM         LLM         `mapstructure:"llm"`
-	Notify      Notify      `mapstructure:"notify"`
-	VMIdle      VMIdle      `mapstructure:"vm_idle"`
-	Attachment  Attachment  `mapstructure:"attachment"`
+	TaskFlow      TaskFlow            `mapstructure:"taskflow"`
+	MCPHub        MCPHub              `mapstructure:"mcp_hub"`
+	PublicHost    PublicHost          `mapstructure:"public_host"`
+	Task          Task                `mapstructure:"task"`
+	TaskSummary   TaskSummary         `mapstructure:"task_summary"`
+	Loki          Loki                `mapstructure:"loki"`
+	ClickHouse    ClickHouse          `mapstructure:"clickhouse"`
+	LLM           LLM                 `mapstructure:"llm"`
+	Notify        Notify              `mapstructure:"notify"`
+	VMIdle        VMIdle              `mapstructure:"vm_idle"`
+	Attachment    Attachment          `mapstructure:"attachment"`
+	ObjectStorage ObjectStorageConfig `mapstructure:"object_storage"`
+	StaticFiles   StaticFilesConfig   `mapstructure:"static_files"`
+	HostInstaller HostInstaller       `mapstructure:"host_installer"`
 
 	// Context7 API 配置
 	Context7ApiKey string `mapstructure:"context7_api_key"`
@@ -81,6 +84,7 @@ type InitTeam struct {
 	Email    string `mapstructure:"email"`
 	Password string `mapstructure:"password"`
 	Name     string `mapstructure:"name"`
+	Image    string `mapstructure:"image"`
 }
 
 type TaskFlow struct {
@@ -103,6 +107,36 @@ type PublicHost struct {
 
 type Attachment struct {
 	AllowedURLPrefixes []string `mapstructure:"allowed_url_prefixes"`
+}
+
+type ObjectStorageConfig struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	Provider        string `mapstructure:"provider"`
+	ForcePathStyle  bool   `mapstructure:"force_path_style"`
+	InitBucket      bool   `mapstructure:"init_bucket"`
+	PresignExpires  string `mapstructure:"presign_expires"`
+	Endpoint        string `mapstructure:"endpoint"`
+	AccessEndpoint  string `mapstructure:"access_endpoint"`
+	AccessKey       string `mapstructure:"access_key"`
+	AccessKeySecret string `mapstructure:"access_key_secret"`
+	Bucket          string `mapstructure:"bucket"`
+	Region          string `mapstructure:"region"`
+	MaxSize         int64  `mapstructure:"max_size"`
+	AvatarPrefix    string `mapstructure:"avatar_prefix"`
+	SpecPrefix      string `mapstructure:"spec_prefix"`
+	RepoPrefix      string `mapstructure:"repo_prefix"`
+	TempPrefix      string `mapstructure:"temp_prefix"`
+}
+
+type StaticFilesConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	Dir         string `mapstructure:"dir"`
+	RoutePrefix string `mapstructure:"route_prefix"`
+}
+
+type HostInstaller struct {
+	Mode       string `mapstructure:"mode"`
+	BundlePath string `mapstructure:"bundle_path"`
 }
 
 // Task 任务相关配置
@@ -193,7 +227,7 @@ func Init(dir string) (*Config, error) {
 
 	v.SetDefault("debug", false)
 	v.SetDefault("server.addr", ":8888")
-	v.SetDefault("server.base_url", "http://localhost:8888")
+	v.SetDefault("server.base_url", "")
 	v.SetDefault("loki.addr", "http://monkeycode-ai-loki:3100")
 	v.SetDefault("clickhouse.addr", "")
 	v.SetDefault("clickhouse.database", "")
@@ -229,6 +263,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("init_team.email", "")
 	v.SetDefault("init_team.name", "")
 	v.SetDefault("init_team.password", "")
+	v.SetDefault("init_team.image", "")
 	v.SetDefault("taskflow.grpc_url", "")
 	v.SetDefault("task.at_keyword", "")
 	v.SetDefault("task.host_ids", []string{})
@@ -236,6 +271,28 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("mcp_hub.url", "")
 	v.SetDefault("mcp_hub.token", "")
 	v.SetDefault("attachment.allowed_url_prefixes", []string{})
+	v.SetDefault("object_storage.enabled", false)
+	v.SetDefault("object_storage.provider", "s3")
+	v.SetDefault("object_storage.force_path_style", true)
+	v.SetDefault("object_storage.init_bucket", false)
+	v.SetDefault("object_storage.presign_expires", "168h")
+	v.SetDefault("object_storage.endpoint", "http://monkeycode-ai-rustfs:9000")
+	v.SetDefault("object_storage.access_endpoint", "")
+	v.SetDefault("object_storage.access_key", "")
+	v.SetDefault("object_storage.access_key_secret", "")
+	v.SetDefault("object_storage.bucket", "monkeycode-ai")
+	v.SetDefault("object_storage.region", "us-east-1")
+	v.SetDefault("object_storage.max_size", 50<<20)
+	v.SetDefault("object_storage.avatar_prefix", "avatar")
+	v.SetDefault("object_storage.spec_prefix", "spec")
+	v.SetDefault("object_storage.repo_prefix", "repo")
+	v.SetDefault("object_storage.temp_prefix", "temp")
+	v.SetDefault("static_files.enabled", true)
+	v.SetDefault("static_files.dir", "/app/static")
+	v.SetDefault("static_files.route_prefix", "/static")
+	v.SetDefault("host_installer.mode", "online")
+	v.SetDefault("host_installer.bundle_path", "installer/{{.arch}}/host.tgz")
+	v.SetDefault("llm_proxy.base_url", "")
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)

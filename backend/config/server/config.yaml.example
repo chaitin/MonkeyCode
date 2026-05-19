@@ -1,6 +1,7 @@
 debug: true
 server:
   addr: ":8888"
+  # 必须手动配置为外部可访问地址，用于安装脚本、回调、对象存储公开 URL 等场景。
   base_url: "http://localhost:8888"
 
 database:
@@ -34,6 +35,12 @@ admin_token: "change-me"
 logger:
   level: "info"
 
+init_team:
+  email: ""
+  password: ""
+  name: ""
+  image: ""
+
 mcp_hub:
   enabled: false
   url: "http://mcp-hub:8897/mcp"
@@ -55,3 +62,32 @@ clickhouse:
   max_open_conns: 64
   max_idle_conns: 32
   conn_max_lifetime: 3600
+
+object_storage:
+  enabled: false
+  provider: "s3"
+  force_path_style: true
+  init_bucket: false
+  presign_expires: "168h"
+
+  endpoint: ""
+  # 外部访问入口，例如 http://example.com/oss。留空时回退到 endpoint。
+  access_endpoint: ""
+  access_key: ""
+  access_key_secret: ""
+  bucket: ""
+  region: "us-east-1"
+  max_size: 52428800
+  avatar_prefix: "avatar"
+  spec_prefix: "spec"
+  repo_prefix: "repo"
+  temp_prefix: "temp"
+
+static_files:
+  enabled: true
+  dir: "/app/static"
+  route_prefix: "/static"
+
+host_installer:
+  mode: "online"
+  bundle_path: "installer/{{.arch}}/host.tgz"

@@ -1,0 +1,19 @@
+name: monkeycode_runner
+services:
+  orchestrator:
+    image: ${ORCHESTRATOR_IMAGE}
+    container_name: monkeycode-orchestrator
+    restart: always
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    environment:
+      - ORCHESTRATOR_GRPC_URL=${GRPC_URL}
+      - ORCHESTRATOR_AUTH_TOKEN=${TOKEN}
+      - ORCHESTRATOR_TYPE=docker
+      - ORCHESTRATOR_LOG_LEVEL=debug
+      - ORCHESTRATOR_GRPC_PROXY=${GRPC_PROXY:-}
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_API_TOKEN:-change-this-token}
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock

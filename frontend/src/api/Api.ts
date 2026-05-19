@@ -291,6 +291,16 @@ export interface DomainAddTeamUserResp {
   users?: DomainTeamUser[];
 }
 
+export interface DomainTeamUserPassword {
+  email?: string;
+  password?: string;
+}
+
+export interface DomainAddTeamUserWithPasswordResp {
+  passwords?: DomainTeamUserPassword[];
+  users?: DomainTeamUser[];
+}
+
 export interface DomainApplyPortReq {
   /** 转发 id */
   forward_id?: string;
@@ -3347,6 +3357,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/users`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 创建团队成员，后端生成初始密码并只在响应中返回一次
+     *
+     * @tags 【Team 管理员】分组成员管理
+     * @name V1TeamsUsersWithPasswordCreate
+     * @summary 创建团队成员并返回初始密码
+     * @request POST:/api/v1/teams/users/with-password
+     * @secure
+     */
+    v1TeamsUsersWithPasswordCreate: (req: DomainAddTeamUserReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainAddTeamUserWithPasswordResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/users/with-password`,
         method: "POST",
         body: req,
         secure: true,

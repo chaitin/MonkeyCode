@@ -12,8 +12,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
+	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -29,6 +32,8 @@ type TeamGroupUserRepo struct {
 	config *config.Config
 	logger *slog.Logger
 }
+
+const defaultTeamGroupName = "默认分组"
 
 // NewTeamGroupUserRepo 创建团队分组成员数据访问层 (samber/do 风格)
 func NewTeamGroupUserRepo(i *do.Injector) (domain.TeamGroupUserRepo, error) {
@@ -111,6 +116,80 @@ func (r *TeamGroupUserRepo) CreateUsers(ctx context.Context, teamID uuid.UUID, r
 
 		// 添加到团队
 		_, err = r.db.TeamMember.Create().
+			SetTeamID(teamID).
+			SetUserID(newUser.ID).
+			SetRole(consts.TeamMemberRoleUser).
+			Save(ctx)
+		if err != nil {
+			r.logger.ErrorContext(ctx, "add user to team failed", "error", err)
+			continue
+		}
+		users = append(users, newUser)
+	}
+	return users, nil
+}
+
+func (r *TeamGroupUserRepo) CreateUsersWithPassword(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamUserWithPasswordReq) ([]*db.User, error) {
+	var users []*db.User
+
+	for _, emailAddr := range req.Emails {
+		existingUser, err := r.db.User.Query().Where(user.EmailEQ(emailAddr)).First(ctx)
+		if err == nil && existingUser != nil {
+			_, err := r.db.TeamMember.Query().Where(
+				teammember.TeamIDEQ(teamID),
+				teammember.UserIDEQ(existingUser.ID),
+			).First(ctx)
+			if err == nil {
+				continue
+			}
+			if existingUser.Password == "" {
+				hashedPassword, err := crypto.HashPassword(req.Passwords[emailAddr])
+				if err != nil {
+					r.logger.ErrorContext(ctx, "hash password failed", "error", err, "email", emailAddr)
+					continue
+				}
+				existingUser, err = r.db.User.UpdateOneID(existingUser.ID).
+					SetPassword(hashedPassword).
+					Save(ctx)
+				if err != nil {
+					r.logger.ErrorContext(ctx, "set user password failed", "error", err, "email", emailAddr)
+					continue
+				}
+			}
+			_, err = r.db.TeamMember.Create().
+				SetID(uuid.New()).
+				SetTeamID(teamID).
+				SetUserID(existingUser.ID).
+				SetRole(consts.TeamMemberRoleUser).
+				Save(ctx)
+			if err != nil {
+				r.logger.ErrorContext(ctx, "add user to team failed", "error", err)
+				continue
+			}
+			users = append(users, existingUser)
+			continue
+		}
+
+		hashedPassword, err := crypto.HashPassword(req.Passwords[emailAddr])
+		if err != nil {
+			r.logger.ErrorContext(ctx, "hash password failed", "error", err, "email", emailAddr)
+			continue
+		}
+		newUser, err := r.db.User.Create().
+			SetID(uuid.New()).
+			SetName(emailAddr).
+			SetEmail(emailAddr).
+			SetStatus(consts.UserStatusActive).
+			SetPassword(hashedPassword).
+			SetRole(consts.UserRoleSubAccount).
+			Save(ctx)
+		if err != nil {
+			r.logger.ErrorContext(ctx, "create user failed", "error", err, "email", emailAddr)
+			continue
+		}
+
+		_, err = r.db.TeamMember.Create().
+			SetID(uuid.New()).
 			SetTeamID(teamID).
 			SetUserID(newUser.ID).
 			SetRole(consts.TeamMemberRoleUser).
@@ -324,51 +403,148 @@ func (r *TeamGroupUserRepo) GetMember(ctx context.Context, teamID, userID uuid.U
 }
 
 // InitTeam 初始化团队：创建用户（如果不存在）、创建团队、并将用户设为管理员。
-func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string) error {
+func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string, imageName string) error {
 	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
 		// 检查用户是否已存在
-		exists, err := tx.User.Query().Where(user.EmailEQ(email)).Exist(ctx)
+		existingUser, err := tx.User.Query().Where(user.EmailEQ(email)).First(ctx)
+		if err != nil {
+			if !db.IsNotFound(err) {
+				return err
+			}
+		}
+
+		var initUser *db.User
+		var initTeam *db.Team
+		if existingUser == nil {
+			// 哈希密码
+			hashedPassword, err := crypto.HashPassword(password)
+			if err != nil {
+				return err
+			}
+
+			// 创建用户
+			initUser, err = tx.User.Create().
+				SetID(uuid.New()).
+				SetName(name).
+				SetEmail(email).
+				SetStatus(consts.UserStatusActive).
+				SetPassword(hashedPassword).
+				SetRole(consts.UserRoleEnterprise).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
+
+			// 创建团队
+			initTeam, err = tx.Team.Create().
+				SetID(uuid.New()).
+				SetName(name).
+				SetMemberLimit(1000).
+				Save(ctx)
+			if err != nil {
+				return err
+			}
+
+			// 将用户添加为团队管理员
+			if _, err = tx.TeamMember.Create().
+				SetID(uuid.New()).
+				SetTeamID(initTeam.ID).
+				SetUserID(initUser.ID).
+				SetRole(consts.TeamMemberRoleAdmin).
+				Save(ctx); err != nil {
+				return err
+			}
+		} else {
+			initUser = existingUser
+			member, err := tx.TeamMember.Query().
+				Where(teammember.UserIDEQ(initUser.ID)).
+				First(ctx)
+			if err != nil {
+				if db.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}
+			initTeam, err = tx.Team.Get(ctx, member.TeamID)
+			if err != nil {
+				return err
+			}
+		}
+
+		defaultGroup, err := r.ensureDefaultTeamGroup(ctx, tx, initTeam.ID)
 		if err != nil {
 			return err
 		}
-		if exists {
-			return nil
-		}
-
-		// 哈希密码
-		hashedPassword, err := crypto.HashPassword(password)
-		if err != nil {
-			return err
-		}
-
-		// 创建用户
-		newUser, err := tx.User.Create().
-			SetName(name).
-			SetEmail(email).
-			SetStatus(consts.UserStatusActive).
-			SetPassword(hashedPassword).
-			SetRole(consts.UserRoleEnterprise).
-			Save(ctx)
-		if err != nil {
-			return err
-		}
-
-		// 创建团队
-		newTeam, err := tx.Team.Create().
-			SetID(uuid.New()).
-			SetName(name).
-			SetMemberLimit(1000).
-			Save(ctx)
-		if err != nil {
-			return err
-		}
-
-		// 将用户添加为团队管理员
-		_, err = tx.TeamMember.Create().
-			SetTeamID(newTeam.ID).
-			SetUserID(newUser.ID).
-			SetRole(consts.TeamMemberRoleAdmin).
-			Save(ctx)
-		return err
+		return r.initTeamImage(ctx, tx, initTeam.ID, defaultGroup.ID, initUser.ID, imageName)
 	})
+}
+
+func (r *TeamGroupUserRepo) ensureDefaultTeamGroup(ctx context.Context, tx *db.Tx, teamID uuid.UUID) (*db.TeamGroup, error) {
+	group, err := tx.TeamGroup.Query().
+		Where(teamgroup.TeamIDEQ(teamID), teamgroup.NameEQ(defaultTeamGroupName)).
+		First(ctx)
+	if err == nil {
+		return group, nil
+	}
+	if !db.IsNotFound(err) {
+		return nil, err
+	}
+	return tx.TeamGroup.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetName(defaultTeamGroupName).
+		Save(ctx)
+}
+
+func (r *TeamGroupUserRepo) initTeamImage(ctx context.Context, tx *db.Tx, teamID, groupID, userID uuid.UUID, imageName string) error {
+	if imageName == "" {
+		return nil
+	}
+	img, err := tx.Image.Query().
+		Where(image.UserIDEQ(userID), image.NameEQ(imageName)).
+		First(ctx)
+	if err != nil {
+		if !db.IsNotFound(err) {
+			return err
+		}
+		img, err = tx.Image.Create().
+			SetID(uuid.New()).
+			SetUserID(userID).
+			SetName(imageName).
+			SetRemark("MonkeyCode-AI 默认开发环境").
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	exists, err := tx.TeamImage.Query().
+		Where(teamimage.TeamIDEQ(teamID), teamimage.ImageIDEQ(img.ID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if err := tx.TeamImage.Create().
+			SetID(uuid.New()).
+			SetTeamID(teamID).
+			SetImageID(img.ID).
+			Exec(ctx); err != nil {
+			return err
+		}
+	}
+	groupImageExists, err := tx.TeamGroupImage.Query().
+		Where(teamgroupimage.GroupIDEQ(groupID), teamgroupimage.ImageIDEQ(img.ID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if groupImageExists {
+		return nil
+	}
+	return tx.TeamGroupImage.Create().
+		SetID(uuid.New()).
+		SetGroupID(groupID).
+		SetImageID(img.ID).
+		Exec(ctx)
 }

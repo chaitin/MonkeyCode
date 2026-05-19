@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { IconCirclePlus, IconDotsVertical, IconForbid, IconLockCode, IconUser, IconUserCircle, IconCheck } from "@tabler/icons-react";
+import { IconCirclePlus, IconCopy, IconDotsVertical, IconForbid, IconLockCode, IconUser, IconUserCircle, IconCheck } from "@tabler/icons-react";
 import { Fragment, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,6 +28,8 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
   const [emails, setEmails] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const [generatedPasswords, setGeneratedPasswords] = useState<{ email?: string; password?: string }[]>([]);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [resettingPasswordEmail, setResettingPasswordEmail] = useState<string>("");
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -69,12 +71,15 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
     }
 
     setSubmitting(true);
-    await apiRequest('v1TeamsUsersCreate', {
+    await apiRequest('v1TeamsUsersWithPasswordCreate', {
       emails: emailList,
       group_id: selectedGroupId || undefined,
     }, [], (resp) => {
       if (resp.code === 0) {
         toast.success("成员添加成功");
+        const passwords = resp.data?.passwords || [];
+        setGeneratedPasswords(passwords);
+        setPasswordDialogOpen(passwords.length > 0);
         setAddMemberDialogOpen(false);
         setEmails("");
         setSelectedGroupId("");
@@ -84,6 +89,18 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
       }
     })
     setSubmitting(false);
+  };
+
+  const handleCopyGeneratedPasswords = async () => {
+    const text = generatedPasswords
+      .map(item => `${item.email || ""}\t${item.password || ""}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("初始密码已复制到剪贴板");
+    } catch {
+      toast.error("复制失败，请手动复制");
+    }
   };
 
   const handleCancelAddMember = () => {
@@ -257,6 +274,31 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
             </Button>
             <Button onClick={handleAddMember} disabled={!emails.trim() || submitting}>
               {submitting ? "添加中..." : "添加"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>成员初始密码</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            {generatedPasswords.map((item) => (
+              <div key={item.email} className="rounded-md border p-3 text-sm">
+                <div className="text-muted-foreground">{item.email}</div>
+                <div className="mt-1 font-mono break-all">{item.password}</div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCopyGeneratedPasswords} disabled={generatedPasswords.length === 0}>
+              <IconCopy />
+              复制
+            </Button>
+            <Button onClick={() => setPasswordDialogOpen(false)}>
+              完成
             </Button>
           </DialogFooter>
         </DialogContent>

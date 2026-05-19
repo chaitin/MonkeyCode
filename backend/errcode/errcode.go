@@ -43,7 +43,7 @@ var (
 	ErrVMIDRequired          = web.NewErr(http.StatusOK, 10200, "err-vm-id-required")
 	ErrVMNotBelongToUser     = web.NewErr(http.StatusOK, 10201, "err-vm-not-belong-to-user")
 	ErrPermisionDenied       = web.NewErr(http.StatusOK, 10202, "err-permision-denied")
-	ErrInvalidInstallToken   = web.NewErr(http.StatusOK, 10203, "err-host-id-required")
+	ErrInvalidInstallToken   = web.NewErr(http.StatusOK, 10203, "err-invalid-token")
 	ErrPublicHostNotFound    = web.NewErr(http.StatusOK, 10204, "err-public-host-not-found")
 	ErrHostOffline           = web.NewErr(http.StatusOK, 10205, "err-host-offline")
 	ErrVMExpired             = web.NewErr(http.StatusOK, 10206, "err-vm-expired")
