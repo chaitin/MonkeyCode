@@ -20,7 +20,6 @@ import TeamManagerHosts from "./pages/console/manager/hosts"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
 import TeamManagerManager from "./pages/console/manager/manager"
-import TeamManagerOtherSettings from "./pages/console/manager/other-settings"
 import PlaygroundPage from "./pages/playground"
 import PlaygroundDetailPage from "./pages/playground-detail"
 import PublicTaskPage from "./pages/public-task"
@@ -30,6 +29,7 @@ import TaskDetailPage from "./pages/console/user/task/task-detail"
 import PrivacyPolicyPage from "./pages/privacy-policy"
 import UserAgreementPage from "./pages/user-agreement"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 function TaskDetailRoute() {
   const { taskId } = useParams()
@@ -43,7 +43,7 @@ function App() {
         <BrowserRouter>
           <ThemePathListener />
           <Routes>
-            <Route path="/" element={<WelcomePage />} />
+            <Route path="/" element={IS_OFFLINE_EDITION ? <Navigate to="/login" replace /> : <WelcomePage />} />
             <Route path="/playground" element={<PlaygroundPage />} />
             <Route path="/playground/create" element={<PostCreatePage />} />
             <Route path="/playground/detail" element={<PlaygroundDetailPage />} />
@@ -73,7 +73,6 @@ function App() {
               <Route path="models" element={<TeamManagerModels />} />
               <Route path="logs" element={<TeamManagerLogs />} />
               <Route path="manager" element={<TeamManagerManager />} />
-              <Route path="other-settings" element={<TeamManagerOtherSettings />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

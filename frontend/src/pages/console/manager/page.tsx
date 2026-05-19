@@ -43,9 +43,6 @@ export default function ManagerConsolePage() {
     "/manager/logs": [
       { label: "操作记录", href: "/manager/logs" },
     ],
-    "/manager/other-settings": [
-      { label: "其他配置", href: "/manager/other-settings" },
-    ],
   }
   
 
