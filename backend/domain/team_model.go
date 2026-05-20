@@ -37,6 +37,7 @@ type TeamModel struct {
 	APIKey           string               `json:"api_key"`
 	BaseURL          string               `json:"base_url"`
 	Model            string               `json:"model"`
+	Remark           string               `json:"remark,omitempty"`
 	Temperature      float64              `json:"temperature"`
 	InterfaceType    consts.InterfaceType `json:"interface_type"`
 	CreatedAt        int64                `json:"created_at"`
@@ -57,6 +58,7 @@ func (t *TeamModel) From(src *db.Model) *TeamModel {
 	t.Provider = src.Provider
 	t.BaseURL = src.BaseURL
 	t.Model = src.Model
+	t.Remark = src.Remark
 	t.Temperature = src.Temperature
 	t.Groups = cvt.Iter(src.Edges.Groups, func(_ int, g *db.TeamGroup) *TeamGroup {
 		return cvt.From(g, &TeamGroup{})
@@ -76,6 +78,7 @@ type AddTeamModelReq struct {
 	APIKey        string               `json:"api_key" validate:"required"`
 	BaseURL       string               `json:"base_url" validate:"required"`
 	Model         string               `json:"model" validate:"required"`
+	Remark        string               `json:"remark,omitempty"`
 	Temperature   float64              `json:"temperature"`
 	GroupIDs      []uuid.UUID          `json:"group_ids" validate:"required"`
 	InterfaceType consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
@@ -93,6 +96,7 @@ type UpdateTeamModelReq struct {
 	APIKey        string               `json:"api_key" validate:"omitempty"`
 	BaseURL       string               `json:"base_url" validate:"omitempty"`
 	Model         string               `json:"model" validate:"omitempty"`
+	Remark        *string              `json:"remark,omitempty" validate:"omitempty"`
 	Temperature   float64              `json:"temperature" validate:"omitempty"`
 	GroupIDs      []uuid.UUID          `json:"group_ids" validate:"omitempty"`
 	InterfaceType consts.InterfaceType `json:"interface_type" validate:"omitempty,oneof=openai_chat openai_responses anthropic"`

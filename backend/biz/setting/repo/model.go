@@ -138,6 +138,7 @@ func (r *modelRepo) Create(ctx context.Context, uid uuid.UUID, req *domain.Creat
 			SetAPIKey(req.APIKey).
 			SetBaseURL(req.BaseURL).
 			SetModel(req.Model).
+			SetRemark(req.Remark).
 			SetLastCheckAt(time.Now()).
 			SetLastCheckSuccess(true).
 			SetTemperature(float64(req.Temperature)).
@@ -217,6 +218,9 @@ func (r *modelRepo) Update(ctx context.Context, uid, id uuid.UUID, req *domain.U
 		}
 		if req.Model != nil {
 			update.SetModel(*req.Model)
+		}
+		if req.Remark != nil {
+			update.SetRemark(*req.Remark)
 		}
 		if req.Temperature != nil {
 			update.SetTemperature(float64(*req.Temperature))

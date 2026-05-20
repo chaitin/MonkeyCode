@@ -80,6 +80,7 @@ func (r *teamModelRepo) Create(ctx context.Context, teamID uuid.UUID, userID uui
 			SetAPIKey(req.APIKey).
 			SetBaseURL(req.BaseURL).
 			SetModel(req.Model).
+			SetRemark(req.Remark).
 			SetUserID(userID).
 			SetTemperature(req.Temperature).
 			SetInterfaceType(string(req.InterfaceType)).
@@ -139,6 +140,9 @@ func (r *teamModelRepo) Update(ctx context.Context, teamID uuid.UUID, req *domai
 		}
 		if req.Model != "" {
 			upt.SetModel(req.Model)
+		}
+		if req.Remark != nil {
+			upt.SetRemark(*req.Remark)
 		}
 		if req.Temperature != 0 {
 			upt.SetTemperature(req.Temperature)

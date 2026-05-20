@@ -38,6 +38,7 @@ type Model struct {
 	APIKey           string               `json:"api_key,omitempty"`
 	BaseURL          string               `json:"base_url"`
 	Model            string               `json:"model"`
+	Remark           string               `json:"remark,omitempty"`
 	Temperature      float64              `json:"temperature"`
 	IsDefault        bool                 `json:"is_default"`
 	CreatedAt        int64                `json:"created_at"`
@@ -65,6 +66,7 @@ func (m *Model) From(src *db.Model) *Model {
 	m.APIKey = src.APIKey
 	m.BaseURL = src.BaseURL
 	m.Model = src.Model
+	m.Remark = src.Remark
 	m.Temperature = src.Temperature
 	m.InterfaceType = consts.InterfaceType(src.InterfaceType)
 	m.Weight = src.Weight
@@ -127,6 +129,7 @@ type ModelBrief struct {
 	ID               uuid.UUID            `json:"id"`
 	Provider         string               `json:"provider"`
 	Model            string               `json:"model"`
+	Remark           string               `json:"remark,omitempty"`
 	Temperature      float64              `json:"temperature"`
 	CreatedAt        int64                `json:"created_at"`
 	UpdatedAt        int64                `json:"updated_at"`
@@ -151,6 +154,7 @@ func (m *ModelBrief) From(src *db.Model) *ModelBrief {
 	m.ID = full.ID
 	m.Provider = full.Provider
 	m.Model = full.Model
+	m.Remark = full.Remark
 	m.Temperature = full.Temperature
 	m.CreatedAt = full.CreatedAt
 	m.UpdatedAt = full.UpdatedAt
@@ -189,6 +193,7 @@ type CreateModelReq struct {
 	APIKey          string               `json:"api_key" validate:"required"`
 	BaseURL         string               `json:"base_url" validate:"required"`
 	Model           string               `json:"model" validate:"required"`
+	Remark          string               `json:"remark,omitempty"`
 	Temperature     float32              `json:"temperature"`
 	IsDefault       bool                 `json:"is_default"`
 	InterfaceType   consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
@@ -234,6 +239,7 @@ type UpdateModelReq struct {
 	APIKey          *string               `json:"api_key,omitempty"`
 	BaseURL         *string               `json:"base_url,omitempty"`
 	Model           *string               `json:"model,omitempty"`
+	Remark          *string               `json:"remark,omitempty"`
 	Temperature     *float32              `json:"temperature,omitempty"`
 	IsDefault       *bool                 `json:"is_default,omitempty"`
 	InterfaceType   *consts.InterfaceType `json:"interface_type,omitempty" validate:"omitempty,oneof=openai_chat openai_responses anthropic"`
