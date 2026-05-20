@@ -7,7 +7,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { IconChartBar, IconReport, IconUsersGroup } from "@tabler/icons-react"
+import { IconReport, IconUsersGroup } from "@tabler/icons-react"
 import { Bot, Box, MonitorCloud, User } from "lucide-react"
 
 export default function NavTeams() {
@@ -17,17 +17,6 @@ export default function NavTeams() {
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>企业管理</SidebarGroupLabel>
       <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={location.pathname === "/manager/dashboard"}
-            asChild
-          >
-            <Link to="/manager/dashboard">
-              <IconChartBar />
-              <span>仪表盘</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={location.pathname === "/manager/members"}

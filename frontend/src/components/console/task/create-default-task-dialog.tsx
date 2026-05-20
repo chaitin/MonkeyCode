@@ -3,7 +3,6 @@ import {
   ConstsGitPlatform,
   ConstsHostStatus,
   ConstsOwnerType,
-  ConstsTaskSubType,
   ConstsTaskType,
   ConstsUserRole,
   type DomainAuthRepository,
@@ -15,7 +14,6 @@ import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import {
   Dialog,
   DialogContent,
@@ -36,7 +34,6 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
@@ -63,15 +60,12 @@ import {
 import { apiRequest } from "@/utils/requestUtils"
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage"
 import {
-  IconBug,
   IconChevronDown,
   IconLink,
   IconReload,
   IconSourceCode,
-  IconTerminal2,
   IconUpload,
   IconUser,
-  IconVocabulary,
   IconXboxX,
 } from "@tabler/icons-react"
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
@@ -113,8 +107,7 @@ export default function CreateDefaultTaskDialog({
   const { setOpen: setSettingsOpen } = useSettingsDialog()
 
   const [content, setContent] = useState("")
-  const [taskType, setTaskType] = useState<ConstsTaskType>(ConstsTaskType.TaskTypeDevelop)
-  const [taskTypePopoverOpen, setTaskTypePopoverOpen] = useState(false)
+  const taskType = ConstsTaskType.TaskTypeDevelop
   const [codeDropdownOpen, setCodeDropdownOpen] = useState(false)
   const [skillPopoverOpen, setSkillPopoverOpen] = useState(false)
   const [searchInput, setSearchInput] = useState("")
@@ -155,8 +148,6 @@ export default function CreateDefaultTaskDialog({
   useEffect(() => {
     if (!open) {
       setContent("")
-      setTaskType(ConstsTaskType.TaskTypeDevelop)
-      setTaskTypePopoverOpen(false)
       setCodeDropdownOpen(false)
       setSkillPopoverOpen(false)
       setSearchInput("")
@@ -411,7 +402,6 @@ export default function CreateDefaultTaskDialog({
       image_id: selectedImageId,
       model_id: selectedModelId,
       task_type: taskType,
-      sub_type: taskType === ConstsTaskType.TaskTypeDesign ? ConstsTaskSubType.TaskSubTypeGenerateRequirement : undefined,
       repo: selectedRepoDisplayName.endsWith(".zip") ? {
         zip_url: zipUrl,
         repo_filename: selectedRepoDisplayName,
@@ -494,75 +484,6 @@ export default function CreateDefaultTaskDialog({
           />
 
           <div className="flex flex-wrap items-center gap-2">
-            <Popover open={taskTypePopoverOpen} onOpenChange={setTaskTypePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="rounded-md text-primary hover:text-primary">
-                  {taskType === ConstsTaskType.TaskTypeDevelop && <><IconTerminal2 /><span>开发</span></>}
-                  {taskType === ConstsTaskType.TaskTypeDesign && <><IconVocabulary /><span>设计</span></>}
-                  {taskType === ConstsTaskType.TaskTypeReview && <><IconBug /><span>审查</span></>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0" align="start">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      <CommandItem
-                        value={ConstsTaskType.TaskTypeDevelop}
-                        onSelect={() => {
-                          setTaskType(ConstsTaskType.TaskTypeDevelop)
-                          setTaskTypePopoverOpen(false)
-                        }}
-                      >
-                        <div className="flex flex-row items-center gap-2">
-                          <div className="flex size-8 items-center justify-center rounded-full bg-accent">
-                            <IconTerminal2 className="size-5 text-foreground" />
-                          </div>
-                          <div className="flex flex-col">
-                            <div className="font-bold">开发</div>
-                            <div className="text-xs text-muted-foreground">根据需求执行开发编码任务</div>
-                          </div>
-                        </div>
-                      </CommandItem>
-                      <CommandItem
-                        value={ConstsTaskType.TaskTypeDesign}
-                        onSelect={() => {
-                          setTaskType(ConstsTaskType.TaskTypeDesign)
-                          setTaskTypePopoverOpen(false)
-                        }}
-                      >
-                        <div className="flex flex-row items-center gap-2">
-                          <div className="flex size-8 items-center justify-center rounded-full bg-accent">
-                            <IconVocabulary className="size-5 text-foreground" />
-                          </div>
-                          <div className="flex flex-col">
-                            <div className="font-bold">设计</div>
-                            <div className="text-xs text-muted-foreground">进行架构设计，输出技术方案与设计文档</div>
-                          </div>
-                        </div>
-                      </CommandItem>
-                      <CommandItem
-                        value={ConstsTaskType.TaskTypeReview}
-                        onSelect={() => {
-                          setTaskType(ConstsTaskType.TaskTypeReview)
-                          setTaskTypePopoverOpen(false)
-                        }}
-                      >
-                        <div className="flex flex-row items-center gap-2">
-                          <div className="flex size-8 items-center justify-center rounded-full bg-accent">
-                            <IconBug className="size-5 text-foreground" />
-                          </div>
-                          <div className="flex flex-col">
-                            <div className="font-bold">审查</div>
-                            <div className="text-xs text-muted-foreground">审查代码，识别风险，提出改进建议</div>
-                          </div>
-                        </div>
-                      </CommandItem>
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-
             <DropdownMenu
               open={codeDropdownOpen}
               onOpenChange={(nextOpen) => {

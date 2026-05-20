@@ -1,23 +1,21 @@
-import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskSubType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkill } from "@/api/Api";
+import { ConstsCliName, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, ConstsTaskType, ConstsUserRole, type DomainAuthRepository, type DomainGitIdentity, type DomainSkill } from "@/api/Api";
 import Icon from "@/components/common/Icon";
 import { useCommonData } from "@/components/console/data-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupTextarea } from "@/components/ui/input-group";
 import { InputGroupAddon } from "@/components/ui/input-group";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { TASK_PROMPT_PLACEHOLDER, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
-import { IconBug, IconLink, IconReload, IconSend, IconSourceCode, IconTerminal2, IconUpload, IconUser, IconVocabulary, IconXboxX } from "@tabler/icons-react";
+import { IconLink, IconReload, IconSend, IconSourceCode, IconUpload, IconUser, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsDialog } from "@/pages/console/user/page";
@@ -62,8 +60,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const navigate = useNavigate()
   // 输入相关状态
   const [taskContent, setTaskContent] = useState<string>("");
-  const [taskType, setTaskType] = useState<ConstsTaskType>(ConstsTaskType.TaskTypeDevelop);
-  const [taskTypePopoverOpen, setTaskTypePopoverOpen] = useState<boolean>(false);
+  const taskType = ConstsTaskType.TaskTypeDevelop;
   const [skillPopoverOpen, setSkillPopoverOpen] = useState<boolean>(false);
   const [searchInput, setSearchInput] = useState<string>("");
   const [selectedRepo, setSelectedRepo] = useState<string>("");
@@ -280,7 +277,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       image_id: selectedImageId,
       model_id: selectedModelId,
       task_type: taskType,
-      sub_type: taskType === ConstsTaskType.TaskTypeDesign ? ConstsTaskSubType.TaskSubTypeGenerateRequirement : undefined,
       repo: selectedRepoDisplayName.endsWith('.zip') ? {
         zip_url: selectedRepo,
         repo_filename: selectedRepoDisplayName,
@@ -416,65 +412,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
         />
         <InputGroupAddon align="block-end" className="flex flex-row w-full justify-between">
           <div className="flex flex-row gap-2">
-            <Popover open={taskTypePopoverOpen} onOpenChange={setTaskTypePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="rounded-full text-primary hover:text-primary">
-                  {taskType === ConstsTaskType.TaskTypeDevelop && <><IconTerminal2 /><span className="hidden sm:block">开发</span></>}
-                  {taskType === ConstsTaskType.TaskTypeDesign && <><IconVocabulary /><span className="hidden sm:block">设计</span></>}
-                  {taskType === ConstsTaskType.TaskTypeReview && <><IconBug /><span className="hidden sm:block">审查</span></>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-0" align="start">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      <CommandItem value={ConstsTaskType.TaskTypeDevelop} onSelect={() => {
-                        setTaskType(ConstsTaskType.TaskTypeDevelop);
-                        setTaskTypePopoverOpen(false);
-                      }} >
-                        <div className="flex flex-row gap-2 items-center" >
-                          <div className="size-8 bg-accent rounded-full flex items-center justify-center">
-                            <IconTerminal2 className="size-5 text-foreground" />
-                          </div>
-                          <div className="flex flex-col" >
-                            <div className="font-bold">开发</div>
-                            <div className="text-muted-foreground text-xs">根据需求执行开发编码任务</div>
-                          </div>
-                        </div>
-                      </CommandItem>
-                      <CommandItem value={ConstsTaskType.TaskTypeDesign} onSelect={() => {
-                        setTaskType(ConstsTaskType.TaskTypeDesign);
-                        setTaskTypePopoverOpen(false);
-                      }}>
-                        <div className="flex flex-row gap-2 items-center" >
-                          <div className="size-8 bg-accent rounded-full flex items-center justify-center">
-                            <IconVocabulary className="size-5 text-foreground" />
-                          </div>
-                          <div className="flex flex-col" >
-                            <div className="font-bold">设计</div>
-                            <div className="text-muted-foreground text-xs">进行架构设计，输出技术方案与设计文档</div>
-                          </div>
-                        </div>
-                      </CommandItem>
-                      <CommandItem value={ConstsTaskType.TaskTypeReview} onSelect={() => {
-                        setTaskType(ConstsTaskType.TaskTypeReview);
-                        setTaskTypePopoverOpen(false);
-                      }}>
-                        <div className="flex flex-row gap-2 items-center" >
-                          <div className="size-8 bg-accent rounded-full flex items-center justify-center">
-                            <IconBug className="size-5 text-foreground" />
-                          </div>
-                          <div className="flex flex-col" >
-                            <div className="font-bold">审查</div>
-                            <div className="text-muted-foreground text-xs">审查代码，识别风险，提出改进建议</div>
-                          </div>
-                        </div>
-                      </CommandItem>
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
             <DropdownMenu open={codeDropdownOpen}             onOpenChange={(open) => {
               setCodeDropdownOpen(open);
               if (open) {
