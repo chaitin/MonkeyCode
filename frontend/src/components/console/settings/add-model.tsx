@@ -40,6 +40,7 @@ export default function AddModel({
   onRefresh,
 }: AddModelProps) {
   const [model, setModel] = useState("")
+  const [remark, setRemark] = useState("")
   const [apiToken, setApiToken] = useState("")
   const [baseUrl, setBaseUrl] = useState("https://model-square.app.baizhi.cloud/v1")
   const [interfaceType, setInterfaceType] = useState<ConstsInterfaceType>(ConstsInterfaceType.InterfaceTypeOpenAIChat)
@@ -160,6 +161,7 @@ export default function AddModel({
           const requestData: any = {
             provider: "BaiZhiCloud",
             model: model.trim(),
+            remark: remark.trim(),
             base_url: baseUrl.trim(),
             api_key: apiToken.trim(),
             interface_type: interfaceType,
@@ -172,6 +174,7 @@ export default function AddModel({
             if (resp.code === 0) {
               toast.success("模型绑定成功")
               setModel("")
+              setRemark("")
               setApiToken("")
               setBaseUrl("https://model-square.app.baizhi.cloud/v1")
               setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
@@ -196,6 +199,7 @@ export default function AddModel({
 
   const handleCancel = () => {
     setModel("")
+    setRemark("")
     setApiToken("")
     setBaseUrl("https://model-square.app.baizhi.cloud/v1")
     setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
@@ -311,49 +315,6 @@ export default function AddModel({
               />
             </FieldContent>
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel>上下文长度</FieldLabel>
-              <FieldContent>
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="请输入上下文长度"
-                  value={contextLimit}
-                  onChange={(e) => setContextLimit(e.target.value)}
-                />
-              </FieldContent>
-            </Field>
-            <Field>
-              <FieldLabel>输出长度</FieldLabel>
-              <FieldContent>
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="请输入输出长度"
-                  value={outputLimit}
-                  onChange={(e) => setOutputLimit(e.target.value)}
-                />
-              </FieldContent>
-            </Field>
-          </div>
-          <Field>
-            <FieldLabel>推理 / 思考</FieldLabel>
-            <FieldContent>
-              <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                <span className="text-sm text-muted-foreground">
-                  {thinkingEnabled ? "启用" : "禁用"}
-                </span>
-                <Switch
-                  checked={thinkingEnabled}
-                  onCheckedChange={setThinkingEnabled}
-                  disabled={saving}
-                />
-              </div>
-            </FieldContent>
-          </Field>
           <Field>
             <FieldLabel>模型名称</FieldLabel>
             <FieldContent>
@@ -414,6 +375,59 @@ export default function AddModel({
                   </SelectContent>
                 </Select>
               )}
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>备注</FieldLabel>
+            <FieldContent>
+              <Input
+                placeholder="请输入备注（选填）"
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+              />
+            </FieldContent>
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>上下文长度</FieldLabel>
+              <FieldContent>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="请输入上下文长度"
+                  value={contextLimit}
+                  onChange={(e) => setContextLimit(e.target.value)}
+                />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel>输出长度</FieldLabel>
+              <FieldContent>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="请输入输出长度"
+                  value={outputLimit}
+                  onChange={(e) => setOutputLimit(e.target.value)}
+                />
+              </FieldContent>
+            </Field>
+          </div>
+          <Field>
+            <FieldLabel>推理 / 思考</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  {thinkingEnabled ? "启用" : "禁用"}
+                </span>
+                <Switch
+                  checked={thinkingEnabled}
+                  onCheckedChange={setThinkingEnabled}
+                  disabled={saving}
+                />
+              </div>
             </FieldContent>
           </Field>
         </div>

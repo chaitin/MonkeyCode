@@ -120,7 +120,7 @@ export default function Models() {
           </ItemMedia>
             <ItemContent>
               <ItemTitle className="break-all">
-              {getModelDisplayName(model.model || '未知模型')}
+              {model.remark?.trim() || getModelDisplayName(model.model || '未知模型')}
               {getInterfaceTypeBadge(model.interface_type)}
               {getOwnerTypeBadge(model.owner)}
             </ItemTitle>

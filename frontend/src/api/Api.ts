@@ -268,6 +268,7 @@ export interface DomainAddTeamModelReq {
   interface_type: "openai_chat" | "openai_responses" | "anthropic";
   model: string;
   provider: string;
+  remark?: string;
   temperature?: number;
 }
 
@@ -289,11 +290,6 @@ export interface DomainAddTeamUserReq {
 
 export interface DomainAddTeamUserResp {
   users?: DomainTeamUser[];
-}
-
-export interface DomainTeamUserPassword {
-  email?: string;
-  password?: string;
 }
 
 export interface DomainAddTeamUserWithPasswordResp {
@@ -386,6 +382,8 @@ export interface DomainCheckModelResp {
 export interface DomainCollaborator {
   avatar_url?: string;
   email?: string;
+  /** 免费 Tokens 耗尽后是否继续启用积分消费模型，未配置时默认 true */
+  enable_credit_consumption?: boolean;
   has_password?: boolean;
   id?: string;
   /** 用户绑定的身份列表，例如 github, gitlab */
@@ -450,6 +448,7 @@ export interface DomainCreateModelReq {
   /** @min 1 */
   output_limit?: number;
   provider: string;
+  remark?: string;
   temperature?: number;
   thinking_enabled?: boolean;
 }
@@ -538,6 +537,11 @@ export interface DomainCreateVMReq {
   repo?: DomainTaskRepoReq;
   /** 资源配置 */
   resource: DomainResource;
+}
+
+export interface DomainCreditConsumptionReq {
+  /** 免费 Tokens 耗尽后是否继续启用积分消费模型 */
+  enable_credit_consumption?: boolean;
 }
 
 export interface DomainDeleteImageReq {
@@ -850,6 +854,7 @@ export interface DomainModel {
   output_limit?: number;
   owner?: DomainOwner;
   provider?: string;
+  remark?: string;
   temperature?: number;
   thinking_enabled?: boolean;
   updated_at?: number;
@@ -870,6 +875,7 @@ export interface DomainModelBrief {
   output_limit?: number;
   owner?: DomainOwner;
   provider?: string;
+  remark?: string;
   temperature?: number;
   thinking_enabled?: boolean;
   updated_at?: number;
@@ -1340,6 +1346,8 @@ export interface DomainSubscribeReq {
 
 export interface DomainSubscriptionResp {
   auto_renew?: boolean;
+  /** 免费 Tokens 耗尽后是否继续启用积分消费模型，未配置时默认 true */
+  enable_credit_consumption?: boolean;
   expires_at?: string;
   /** "basic" | "pro" | "ultra" */
   plan?: string;
@@ -1475,6 +1483,7 @@ export interface DomainTeamModel {
   last_check_success?: boolean;
   model?: string;
   provider?: string;
+  remark?: string;
   temperature?: number;
   updated_at?: number;
 }
@@ -1500,6 +1509,11 @@ export interface DomainTeamUser {
 export interface DomainTeamUserInfo {
   teams?: DomainTeamMember[];
   user?: DomainUser;
+}
+
+export interface DomainTeamUserPassword {
+  email?: string;
+  password?: string;
 }
 
 export interface DomainTerminal {
@@ -1593,6 +1607,7 @@ export interface DomainUpdateModelReq {
   /** @min 1 */
   output_limit?: number;
   provider?: string;
+  remark?: string;
   temperature?: number;
   thinking_enabled?: boolean;
 }
@@ -1645,6 +1660,7 @@ export interface DomainUpdateTeamModelReq {
   interface_type?: "openai_chat" | "openai_responses" | "anthropic";
   model?: string;
   provider?: string;
+  remark?: string;
   temperature?: number;
 }
 
@@ -1698,6 +1714,8 @@ export interface DomainUpdateVMReq {
 export interface DomainUser {
   avatar_url?: string;
   email?: string;
+  /** 免费 Tokens 耗尽后是否继续启用积分消费模型，未配置时默认 true */
+  enable_credit_consumption?: boolean;
   has_password?: boolean;
   id?: string;
   /** 用户绑定的身份列表，例如 github, gitlab */
@@ -1769,11 +1787,11 @@ export interface DomainVirtualMachine {
 export interface DomainWallet {
   /** 积分余额 */
   balance?: number;
-  /** 基础版每日模型剩余 tokens */
+  /** 基础会员每日模型剩余 tokens */
   daily_basic_token_balance?: number;
-  /** 专业版每日模型剩余 tokens */
+  /** 专业会员每日模型剩余 tokens */
   daily_pro_token_balance?: number;
-  /** 旗舰版每日模型剩余 tokens */
+  /** 旗舰会员每日模型剩余 tokens */
   daily_ultra_token_balance?: number;
   id?: string;
 }
@@ -2595,7 +2613,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<DomainListAuditsResponse, GitInChaitinNetGoDevWebResp>({
+      this.request<DomainListAuditsResponse, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/audits`,
         method: "GET",
         query: query,
@@ -3366,31 +3384,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 创建团队成员，后端生成初始密码并只在响应中返回一次
-     *
-     * @tags 【Team 管理员】分组成员管理
-     * @name V1TeamsUsersWithPasswordCreate
-     * @summary 创建团队成员并返回初始密码
-     * @request POST:/api/v1/teams/users/with-password
-     * @secure
-     */
-    v1TeamsUsersWithPasswordCreate: (req: DomainAddTeamUserReq, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainAddTeamUserWithPasswordResp;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/users/with-password`,
-        method: "POST",
-        body: req,
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 团队用户登录，password 字段需要传 MD5 加密后的值
      *
      * @tags 【Team 管理员】认证
@@ -3501,6 +3494,31 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
+     * @description 创建团队成员，后端生成初始密码并只在响应中返回一次
+     *
+     * @tags 【Team 管理员】分组成员管理
+     * @name V1TeamsUsersWithPasswordCreate
+     * @summary 创建团队成员并返回初始密码
+     * @request POST:/api/v1/teams/users/with-password
+     * @secure
+     */
+    v1TeamsUsersWithPasswordCreate: (req: DomainAddTeamUserReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainAddTeamUserWithPasswordResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/users/with-password`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description 更新团队成员信息
      *
      * @tags 【Team 管理员】分组成员管理
@@ -3519,6 +3537,30 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/teams/users/${userId}`,
         method: "PUT",
         body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 管理员为团队成员生成新密码，密码只在响应中返回一次
+     *
+     * @tags 【Team 管理员】分组成员管理
+     * @name V1TeamsUsersPasswordsResetUpdate
+     * @summary 重置团队成员密码
+     * @request PUT:/api/v1/teams/users/{user_id}/passwords/reset
+     * @secure
+     */
+    v1TeamsUsersPasswordsResetUpdate: (userId: string, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamUserPassword;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/users/${userId}/passwords/reset`,
+        method: "PUT",
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -3604,7 +3646,12 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       },
       params: RequestParams = {},
     ) =>
-      this.request<DomainUpdateUserResp, GitInChaitinNetGoDevWebResp>({
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainUpdateUserResp;
+        },
+        any
+      >({
         path: `/api/v1/users`,
         method: "PUT",
         body: data,
@@ -4883,7 +4930,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 获取团队成员列表
+     * @description 获取当前用户所在团队的普通成员列表
      *
      * @tags 【用户】用户
      * @name V1UsersMembersList
@@ -4893,10 +4940,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersMembersList: (params: RequestParams = {}) =>
       this.request<
-        GitInChaitinNetGoDevWebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainUser[];
         },
-        GitInChaitinNetGoDevWebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/members`,
         method: "GET",
@@ -5972,7 +6019,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 查询当前会员状态和到期时间
+     * @description 开源版固定返回基础订阅状态
      *
      * @tags 【用户】会员
      * @name V1UsersSubscriptionList
@@ -5982,10 +6029,10 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
      */
     v1UsersSubscriptionList: (params: RequestParams = {}) =>
       this.request<
-        GitInChaitinNetGoDevWebResp & {
+        GithubComGoYokoWebResp & {
           data?: DomainSubscriptionResp;
         },
-        GitInChaitinNetGoDevWebResp
+        GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/subscription`,
         method: "GET",
@@ -6016,7 +6063,7 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 设置专业版自动续费开关
+     * @description 设置专业会员自动续费开关
      *
      * @tags 【用户】会员
      * @name V1UsersSubscriptionAutoRenewUpdate
@@ -6027,6 +6074,26 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     v1UsersSubscriptionAutoRenewUpdate: (req: DomainAutoRenewReq, params: RequestParams = {}) =>
       this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
         path: `/api/v1/users/subscription/auto-renew`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 关闭后，基础/专业/旗舰模型当日免费 Tokens 耗尽时不再消耗积分
+     *
+     * @tags 【用户】会员
+     * @name V1UsersSubscriptionCreditConsumptionUpdate
+     * @summary 开关免费额度耗尽后的积分消费
+     * @request PUT:/api/v1/users/subscription/credit-consumption
+     * @secure
+     */
+    v1UsersSubscriptionCreditConsumptionUpdate: (req: DomainCreditConsumptionReq, params: RequestParams = {}) =>
+      this.request<GitInChaitinNetGoDevWebResp, GitInChaitinNetGoDevWebResp>({
+        path: `/api/v1/users/subscription/credit-consumption`,
         method: "PUT",
         body: req,
         secure: true,

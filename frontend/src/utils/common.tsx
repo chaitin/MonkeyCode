@@ -115,6 +115,10 @@ export function getBrandFromModelName(modelName: string): string {
     return 'minimax';
   }
 
+  if (lowerName.includes('mimo')) {
+    return 'mimo';
+  }
+
   return 'openai';
 }
 
@@ -168,10 +172,8 @@ export type ModelPricingItem = {
 }
 
 export const modelPricingList: readonly ModelPricingItem[] = [
-  { model: "monkeycode-basic", credits: 150, score: 572, tags: [] },
-  { model: "monkeycode-pro", credits: 400, score: 847, tags: [] },
-  { model: "monkeycode-ultra", credits: 1000, score: 967, tags: [] },
   { model: "minimax-m2.7", credits: 250, score: 637, tags: [] },
+  { model: "deepseek-v4-pro", credits: 600, score: 852, tags: [] },
   { model: "qwen3.5-plus", credits: 150, score: 538, tags: ["长上下文"] },
   { model: "gpt-5.5", credits: 1000, score: 967, tags: ["最新", "很强"] },
   { model: "gpt-5.4", credits: 600, score: 922, tags: ["能力强"] },
@@ -180,7 +182,6 @@ export const modelPricingList: readonly ModelPricingItem[] = [
   { model: "glm-5", credits: 600, score: 847, tags: [] },
   { model: "glm-4.7", credits: 400, score: 709, tags: [] },
   { model: "kimi-k2.6", credits: 700, score: 912, tags: [] },
-  { model: "qwen3-max", credits: 700, score: 840, tags: ["长上下文"] },
   { model: "qwen3.6-plus", credits: 300, score: 751, tags: ["长上下文"] },
 ]
 
@@ -716,11 +717,20 @@ export function selectPreferredTaskModel(models: DomainModel[], subscription?: D
     : subscription?.plan === "flagship" || subscription?.plan === "ultra"
       ? "monkeycode-ultra"
       : "monkeycode-basic"
-  const planModel = models.find((model) => (
-    model.id
-    && getBuiltinModelName(model.model) === planPreferredModel
-    && canUseModelBySubscription(model, subscription)
-  ))
+  const planModel = models
+    .filter((model) => (
+      model.id
+      && getBuiltinModelName(model.model) === planPreferredModel
+      && canUseModelBySubscription(model, subscription)
+    ))
+    .sort((left, right) => {
+      const weightDiff = (right.weight || 0) - (left.weight || 0)
+      if (weightDiff !== 0) {
+        return weightDiff
+      }
+
+      return (left.model || "").localeCompare(right.model || "")
+    })[0]
 
   if (planModel?.id) {
     return planModel.id

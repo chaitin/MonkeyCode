@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item"
@@ -46,6 +47,7 @@ export default function WalletDialog() {
   const [selectedRechargeCredits, setSelectedRechargeCredits] = useState<number | null>(null)
   const [rechargingCredits, setRechargingCredits] = useState<number | null>(null)
   const [showRechargeDialog, setShowRechargeDialog] = useState(false)
+  const [isCreditConsumptionUpdating, setIsCreditConsumptionUpdating] = useState(false)
   const [page, setPage] = useState(1)
   const [hasNextPage, setHasNextPage] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
@@ -57,7 +59,9 @@ export default function WalletDialog() {
     checkedInToday,
     loadingCheckinStatus,
     reloadCheckinStatus,
+    reloadSubscription,
     reloadWallet,
+    subscription,
     user,
   } = useCommonData()
 
@@ -206,12 +210,13 @@ export default function WalletDialog() {
     setIsInvitationListExpanded(false)
     reloadWallet()
     reloadCheckinStatus()
+    reloadSubscription()
     setPage(1)
     setTranscations([])
     setHasNextPage(false)
     fetchTranscations(1, true)
     fetchInvitations()
-  }, [fetchInvitations, fetchTranscations, reloadCheckinStatus, reloadWallet])
+  }, [fetchInvitations, fetchTranscations, reloadCheckinStatus, reloadSubscription, reloadWallet])
 
   useEffect(() => {
     const handleOpenWallet = (event: Event) => {
@@ -304,6 +309,28 @@ export default function WalletDialog() {
       }
     })
     setRechargingCredits(null)
+  }
+
+  const handleCreditConsumptionChange = async (enabled: boolean) => {
+    if (isCreditConsumptionUpdating) {
+      return
+    }
+
+    setIsCreditConsumptionUpdating(true)
+    await apiRequest("v1UsersSubscriptionCreditConsumptionUpdate", {
+      enable_credit_consumption: enabled,
+    }, [], (resp) => {
+      if (resp.code === 0) {
+        reloadSubscription()
+        toast.success(enabled ? "已允许额度耗尽后消耗积分" : "已关闭额度耗尽后消耗积分")
+        return
+      }
+
+      toast.error(resp.message || "设置失败")
+    }, () => {
+      toast.error("设置失败")
+    })
+    setIsCreditConsumptionUpdating(false)
   }
 
   const handleCheckin = async () => {
@@ -511,8 +538,24 @@ export default function WalletDialog() {
   )
 
   const usageContent = (
-    <ItemGroup className="flex flex-col gap-0 has-data-[size=sm]:gap-0 has-data-[size=xs]:gap-0">
-      {transcations.map((transaction, index) => (
+    <div className="space-y-4">
+      <div className="rounded-md border p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">额度耗尽后消耗积分</div>
+            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+              开启后，基础模型、专业模型、旗舰模型的当日免费额度用完时，将继续消耗积分使用对应模型。
+            </div>
+          </div>
+          <Switch
+            checked={subscription?.enable_credit_consumption !== false}
+            onCheckedChange={(checked) => void handleCreditConsumptionChange(checked)}
+            disabled={isCreditConsumptionUpdating}
+          />
+        </div>
+      </div>
+      <ItemGroup className="flex flex-col gap-0 has-data-[size=sm]:gap-0 has-data-[size=xs]:gap-0">
+        {transcations.map((transaction, index) => (
         <div key={`${transaction.created_at || 0}-${transaction.kind || "unknown"}-${index}`}>
           <Item
             variant="default"
@@ -545,12 +588,13 @@ export default function WalletDialog() {
           {index < transcations.length - 1 && <ItemSeparator className="my-0" />}
         </div>
       ))}
-      {hasNextPage && (
-        <div ref={loadMoreRef} className="flex justify-center py-2">
-          {isLoadingMore && <Spinner className="size-4" />}
-        </div>
-      )}
-    </ItemGroup>
+        {hasNextPage && (
+          <div ref={loadMoreRef} className="flex justify-center py-2">
+            {isLoadingMore && <Spinner className="size-4" />}
+          </div>
+        )}
+      </ItemGroup>
+    </div>
   )
 
   const sectionMeta = activeSection === "earn"

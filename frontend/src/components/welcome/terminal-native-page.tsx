@@ -214,12 +214,6 @@ type PricingFeature = {
   tooltip?: string;
 };
 
-const modelFeatureTooltips = {
-  basic: "当前为 qwen3.6-plus",
-  pro: "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等",
-  flagship: "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.5, claude-opus-4.6 等",
-};
-
 const creditFeatureTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。";
 const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分";
 const enhancedCapabilitiesTooltip = "图片识别、文档解析、联网搜索等能力，调用时消耗积分";
@@ -252,9 +246,9 @@ const pricingTiers: PricingTier[] = [
     features: [
       { label: "1 个任务并发" },
       { label: "云开发环境 1C / 4G" },
-      { label: "基础模型：每天 3000 万 Token", tooltip: modelFeatureTooltips.basic },
-      { label: "专业模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.pro },
-      { label: "旗舰模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.flagship },
+      { label: "基础模型：每天 3000 万 Token" },
+      { label: "专业模型：无额度", status: "unsupported" },
+      { label: "旗舰模型：无额度", status: "unsupported" },
       { label: "不赠送积分", status: "unsupported", tooltip: creditFeatureTooltip },
       { label: "更多第三方大模型", status: "partial", tooltip: thirdPartyModelsTooltip },
       { label: "更多增强能力", status: "partial", tooltip: enhancedCapabilitiesTooltip },
@@ -275,9 +269,9 @@ const pricingTiers: PricingTier[] = [
     features: [
       { label: "3 个任务并发" },
       { label: "云开发环境 2C / 8G" },
-      { label: "基础模型：每天 3000 万 Token", tooltip: modelFeatureTooltips.basic },
-      { label: "专业模型：每天 3000 万 Token", tooltip: modelFeatureTooltips.pro },
-      { label: "旗舰模型：无额度", status: "unsupported", tooltip: modelFeatureTooltips.flagship },
+      { label: "基础模型：每天 3000 万 Token" },
+      { label: "专业模型：每天 3000 万 Token" },
+      { label: "旗舰模型：无额度", status: "unsupported" },
       { label: "每月赠送 1 万积分", tooltip: creditFeatureTooltip },
       { label: "更多第三方大模型", tooltip: thirdPartyModelsTooltip },
       { label: "更多增强能力", tooltip: enhancedCapabilitiesTooltip },
@@ -297,9 +291,9 @@ const pricingTiers: PricingTier[] = [
     features: [
       { label: "3 个任务并发" },
       { label: "云开发环境 2C / 8G" },
-      { label: "基础模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.basic },
-      { label: "专业模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.pro },
-      { label: "旗舰模型：每天 6000 万 Token", tooltip: modelFeatureTooltips.flagship },
+      { label: "基础模型：每天 6000 万 Token" },
+      { label: "专业模型：每天 6000 万 Token" },
+      { label: "旗舰模型：每天 6000 万 Token" },
       { label: "每月赠送 10 万积分", tooltip: creditFeatureTooltip },
       { label: "更多第三方大模型", tooltip: thirdPartyModelsTooltip },
       { label: "更多增强能力", tooltip: enhancedCapabilitiesTooltip },
