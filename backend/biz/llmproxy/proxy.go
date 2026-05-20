@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -147,26 +147,55 @@ func (p *Proxy) resolveModel(ctx context.Context, token string) (*modelContext, 
 	}, nil
 }
 
+var LLMAllowPaths []string = []string{
+	"/v1/messages",
+	"/chat/completions",
+	"/responses",
+}
+
+func fetchAllowPath(path string) string {
+	for _, v := range LLMAllowPaths {
+		if strings.HasSuffix(path, v) {
+			return v
+		}
+	}
+	return ""
+}
+
 func (p *Proxy) rewrite(r *httputil.ProxyRequest) {
+	path := r.In.URL.Path
+	p.logger.With("path", path).DebugContext(r.In.Context(), "new rewrite request")
+
 	ctx, ok := r.In.Context().Value(contextKey{}).(*proxyContext)
 	if !ok || ctx == nil || ctx.model == nil {
 		p.logger.WarnContext(r.In.Context(), "missing model context")
 		return
 	}
+
+	uppath := fetchAllowPath(path)
+	if uppath == "" {
+		p.logger.With("path", path).WarnContext(r.In.Context(), "unsupport api type")
+		return
+	}
+
 	m := ctx.model
-	baseURL, err := url.Parse(m.baseURL)
+	ul, err := url.Parse(m.baseURL)
 	if err != nil {
 		p.logger.ErrorContext(r.In.Context(), "parse model base url failed", "base_url", m.baseURL, "error", err)
 		return
 	}
-	r.Out.URL.Scheme = baseURL.Scheme
-	r.Out.URL.Host = baseURL.Host
-	r.Out.URL.Path = joinURLPath(baseURL.Path, ctx.upstreamPath)
-	r.Out.URL.RawQuery = r.In.URL.RawQuery
-	r.Out.Host = baseURL.Host
+	r.Out.URL.Scheme = ul.Scheme
+	r.Out.URL.Host = ul.Host
+	r.Out.URL.Path = filepath.Join(ul.Path, uppath)
 	r.Out.Header.Set("Authorization", "Bearer "+m.apiKey)
 	r.Out.Header.Set("X-Api-Key", m.apiKey)
 	r.SetXForwarded()
+	r.Out.Host = ul.Host
+	p.logger.With(
+		"model", m.modelName,
+		"in", r.In.URL.String(),
+		"out", r.Out.URL.String(),
+	).DebugContext(r.In.Context(), "rewrite request success")
 }
 
 func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) {
@@ -197,11 +226,4 @@ func readRequestModel(body []byte) (string, error) {
 		return "", fmt.Errorf("parse llm request: %w", err)
 	}
 	return payload.Model, nil
-}
-
-func joinURLPath(basePath, requestPath string) string {
-	if basePath == "" || basePath == "/" {
-		return requestPath
-	}
-	return path.Join(basePath, requestPath)
 }
