@@ -3446,30 +3446,6 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       }),
 
     /**
-     * @description 管理员为团队成员生成新密码，密码只在响应中返回一次
-     *
-     * @tags 【Team 管理员】分组成员管理
-     * @name V1TeamsUsersPasswordsResetUpdate
-     * @summary 重置团队成员密码
-     * @request PUT:/api/v1/teams/users/{user_id}/passwords/reset
-     * @secure
-     */
-    v1TeamsUsersPasswordsResetUpdate: (userId: string, params: RequestParams = {}) =>
-      this.request<
-        GithubComGoYokoWebResp & {
-          data?: DomainTeamUserPassword;
-        },
-        GithubComGoYokoWebResp
-      >({
-        path: `/api/v1/teams/users/${userId}/passwords/reset`,
-        method: "PUT",
-        secure: true,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
      * @description 获取团队用户登录状态
      *
      * @tags 【Team 管理员】认证
