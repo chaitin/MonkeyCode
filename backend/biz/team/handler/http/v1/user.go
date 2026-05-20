@@ -63,6 +63,7 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 	u.POST("/with-password", web.BindHandler(h.AddUserWithPassword), auth.TeamAuth(), adminAuth, audit.Audit("add_team_user_with_password"))
 	u.POST("", web.BindHandler(h.AddUser), auth.TeamAuth(), adminAuth, audit.Audit("add_team_user"))
 	u.GET("", web.BindHandler(h.MemberList), auth.TeamAuth(), adminAuth)
+	u.PUT("/:user_id/passwords/reset", web.BindHandler(h.ResetPassword), auth.TeamAuth(), adminAuth, audit.Audit("reset_team_user_password"))
 	u.PUT("/:user_id", web.BindHandler(h.UpdateUser), auth.TeamAuth(), adminAuth, audit.Audit("update_team_user"))
 
 	g := w.Group("/api/v1/teams/groups")
@@ -249,6 +250,28 @@ func (h *TeamGroupUserHandler) AddUserWithPassword(c *web.Context, req domain.Ad
 func (h *TeamGroupUserHandler) AddAdmin(c *web.Context, req domain.AddTeamAdminReq) error {
 	teamUser := middleware.GetTeamUser(c)
 	resp, err := h.usecase.AddAdmin(c.Request().Context(), teamUser, &req)
+	if err != nil {
+		return err
+	}
+	return c.Success(resp)
+}
+
+// ResetPassword 重置团队成员密码
+//
+//	@Summary		重置团队成员密码
+//	@Description	管理员为团队成员生成新密码，密码只在响应中返回一次
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			user_id	path		string						true	"用户ID"
+//	@Success		200		{object}	web.Resp{data=domain.TeamUserPassword}	"成功"
+//	@Failure		401		{object}	web.Resp						"未授权"
+//	@Failure		500		{object}	web.Resp						"服务器内部错误"
+//	@Router			/api/v1/teams/users/{user_id}/passwords/reset [put]
+func (h *TeamGroupUserHandler) ResetPassword(c *web.Context, req domain.ResetPasswordReq) error {
+	teamUser := middleware.GetTeamUser(c)
+	resp, err := h.usecase.ResetPassword(c.Request().Context(), teamUser, &req)
 	if err != nil {
 		return err
 	}

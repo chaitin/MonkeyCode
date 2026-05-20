@@ -12,8 +12,8 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/utils/requestUtils";
-import { toast } from "sonner";
 import { captchaChallenge } from "@/utils/common";
+import { toast } from "sonner";
 import dayjs from "dayjs";
 
 interface TeamMembersCardProps {
@@ -24,14 +24,16 @@ interface TeamMembersCardProps {
 }
 
 export default function TeamMembersCard({ members, memberLimit, groups, onRefreshMembers }: TeamMembersCardProps) {
+  const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [emails, setEmails] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [generatedPasswords, setGeneratedPasswords] = useState<{ email?: string; password?: string }[]>([]);
+  const [passwordDialogTitle, setPasswordDialogTitle] = useState("成员初始密码");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
-  const [resettingPasswordEmail, setResettingPasswordEmail] = useState<string>("");
+  const [resettingPasswordUser, setResettingPasswordUser] = useState<{ id?: string; email?: string }>({});
   const [resettingPassword, setResettingPassword] = useState(false);
 
   // 获取成员所属的组
@@ -79,6 +81,7 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
         toast.success("成员添加成功");
         const passwords = resp.data?.passwords || [];
         setGeneratedPasswords(passwords);
+        setPasswordDialogTitle("成员初始密码");
         setPasswordDialogOpen(passwords.length > 0);
         setAddMemberDialogOpen(false);
         setEmails("");
@@ -122,40 +125,59 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
     })
   }
 
-  const handleOpenResetPasswordDialog = (email: string) => {
-    setResettingPasswordEmail(email);
+  const handleOpenResetPasswordDialog = (user: { id?: string; email?: string }) => {
+    setResettingPasswordUser(user);
     setResetPasswordDialogOpen(true);
   };
 
   const handleCancelResetPassword = () => {
-    setResettingPasswordEmail("");
+    setResettingPasswordUser({});
     setResetPasswordDialogOpen(false);
   };
 
   const handleConfirmResetPassword = async () => {
-    if (!resettingPasswordEmail) {
-      return;
-    }
-
-    const captchaToken = await captchaChallenge();
-    if (!captchaToken) {
-      toast.error("验证码验证失败");
+    if (!resettingPasswordUser.email) {
       return;
     }
 
     setResettingPassword(true);
-    await apiRequest('v1UsersPasswordsResetRequestUpdate', {
-      emails: [resettingPasswordEmail],
-      captcha_token: captchaToken,
-    }, [], (resp) => {
-      if (resp.code === 0) {
-        toast.success(`已为 ${resettingPasswordEmail} 发送密码重置邮件`);
-        setResetPasswordDialogOpen(false);
-        setResettingPasswordEmail("");
-      } else {
-        toast.error("发送密码重置邮件失败: " + resp.message);
+    if (isOfflineEdition) {
+      if (!resettingPasswordUser.id) {
+        setResettingPassword(false);
+        return;
       }
-    })
+      await apiRequest('v1TeamsUsersPasswordsResetUpdate', {}, [resettingPasswordUser.id], (resp) => {
+        if (resp.code === 0) {
+          toast.success(`已为 ${resettingPasswordUser.email || "该成员"} 重置密码`);
+          setGeneratedPasswords(resp.data ? [resp.data] : []);
+          setPasswordDialogTitle("成员重置密码");
+          setPasswordDialogOpen(!!resp.data?.password);
+          setResetPasswordDialogOpen(false);
+          setResettingPasswordUser({});
+        } else {
+          toast.error("重置密码失败: " + resp.message);
+        }
+      })
+    } else {
+      const captchaToken = await captchaChallenge();
+      if (!captchaToken) {
+        toast.error("验证码验证失败");
+        setResettingPassword(false);
+        return;
+      }
+      await apiRequest('v1UsersPasswordsResetRequestUpdate', {
+        emails: [resettingPasswordUser.email],
+        captcha_token: captchaToken,
+      }, [], (resp) => {
+        if (resp.code === 0) {
+          toast.success(`已为 ${resettingPasswordUser.email} 发送密码重置邮件`);
+          setResetPasswordDialogOpen(false);
+          setResettingPasswordUser({});
+        } else {
+          toast.error("发送密码重置邮件失败: " + resp.message);
+        }
+      })
+    }
     setResettingPassword(false);
   };
 
@@ -228,7 +250,7 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
-                          onClick={() => handleOpenResetPasswordDialog(member.user?.email)}
+                          onClick={() => handleOpenResetPasswordDialog({ id: member.user?.id, email: member.user?.email })}
                         >
                           <IconLockCode />
                           重置密码
@@ -282,7 +304,7 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>成员初始密码</DialogTitle>
+            <DialogTitle>{passwordDialogTitle}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             {generatedPasswords.map((item) => (
@@ -309,7 +331,9 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
           <AlertDialogHeader>
             <AlertDialogTitle>确认重置密码</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要为成员 "{resettingPasswordEmail}" 重置密码吗？系统将发送密码重置邮件到该成员的邮箱。
+              {isOfflineEdition
+                ? `确定要为成员 "${resettingPasswordUser.email}" 重置密码吗？系统将生成新密码，并仅在本次操作后展示一次。`
+                : `确定要为成员 "${resettingPasswordUser.email}" 重置密码吗？系统将发送密码重置邮件到该成员的邮箱。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

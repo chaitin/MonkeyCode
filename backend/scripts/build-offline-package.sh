@@ -5,6 +5,10 @@ ARCH="${ARCH:-amd64}"
 DOCKER_VERSION="${DOCKER_VERSION:-29.4.3}"
 DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-v5.1.3}"
 PROJECT_TPL_URL="${PROJECT_TPL_URL:-https://baizhiyun.oss-cn-hangzhou.aliyuncs.com/codingmatrix/project-tpl/codingmatrix-project-tpl.master.zip}"
+FIREFACTORY_OFFLINE_OSS_URI="${FIREFACTORY_OFFLINE_OSS_URI:-s3://monkeycode-release/firefactory/firefactory-offline_1.0.0+g741818d_amd64.tgz}"
+FIREFACTORY_OFFLINE_FILE="${FIREFACTORY_OFFLINE_FILE:-firefactory-offline_1.0.0+g741818d_amd64.tgz}"
+FIREFACTORY_OSS_ENDPOINT="${FIREFACTORY_OSS_ENDPOINT:-${OSS_ENDPOINT:-}}"
+OSS_ADDRESSING_STYLE="${OSS_ADDRESSING_STYLE:-virtual}"
 OUT_DIR="${OUT_DIR:-dist/offline}"
 PACKAGE_NAME="monkeycode-offline-linux-$ARCH"
 PACKAGE_DIR="$OUT_DIR/$PACKAGE_NAME"
@@ -109,6 +113,15 @@ if [ -d static ]; then
   cp -R static/. "$PACKAGE_DIR/static/"
 fi
 curl -fL "$PROJECT_TPL_URL" -o "$PACKAGE_DIR/static/project-tpl.zip"
+for required in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY FIREFACTORY_OSS_ENDPOINT; do
+  eval "value=\${$required:-}"
+  if [ -z "$value" ]; then
+    echo "$required is required"
+    exit 1
+  fi
+done
+aws configure set default.s3.addressing_style "$OSS_ADDRESSING_STYLE"
+aws s3 cp "$FIREFACTORY_OFFLINE_OSS_URI" "$PACKAGE_DIR/static/$FIREFACTORY_OFFLINE_FILE" --endpoint-url "$FIREFACTORY_OSS_ENDPOINT" --only-show-errors
 
 docker build \
   -f build/Dockerfile \

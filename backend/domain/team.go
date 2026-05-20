@@ -19,6 +19,7 @@ type TeamGroupUserUsecase interface {
 	Add(ctx context.Context, teamUser *TeamUser, req *AddTeamGroupReq) (*TeamGroup, error)
 	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
 	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
+	ResetPassword(ctx context.Context, teamUser *TeamUser, req *ResetPasswordReq) (*TeamUserPassword, error)
 	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*TeamGroup, error)
 	Delete(ctx context.Context, teamUser *TeamUser, req *DeleteTeamGroupReq) error
@@ -38,6 +39,7 @@ type TeamGroupUserRepo interface {
 	Create(ctx context.Context, teamID uuid.UUID, req *AddTeamGroupReq) (*db.TeamGroup, error)
 	CreateUsers(ctx context.Context, teamID uuid.UUID, req *AddTeamUserReq) ([]*db.User, error)
 	CreateUsersWithPassword(ctx context.Context, teamID uuid.UUID, req *AddTeamUserWithPasswordReq) ([]*db.User, error)
+	ResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error
 	CreateAdmin(ctx context.Context, teamID uuid.UUID, req *AddTeamAdminReq) (*db.User, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*db.TeamGroup, error)
 	Delete(ctx context.Context, teamID, groupID uuid.UUID) error
@@ -277,6 +279,10 @@ type AddTeamUserWithPasswordResp struct {
 	Passwords []*TeamUserPassword `json:"passwords"`
 }
 
+type ResetPasswordReq struct {
+	UserID uuid.UUID `param:"user_id" validate:"required" json:"-" swaggerignore:"true"`
+}
+
 // AddTeamAdminReq 创建团队管理员请求
 type AddTeamAdminReq struct {
 	Email string `json:"email" validate:"required,email"` // 邮箱
@@ -335,11 +341,6 @@ type UpdateTeamUserReq struct {
 // UpdateTeamUserResp 更新团队用户信息响应
 type UpdateTeamUserResp struct {
 	User *User `json:"user"`
-}
-
-// ResetPasswordReq 重置密码请求
-type ResetPasswordReq struct {
-	UserIDs []uuid.UUID `json:"user_ids" validate:"required"` // 用户ID列表
 }
 
 // InviteLinkToken 邀请链接令牌
