@@ -73,6 +73,10 @@ func (r *TeamGroupUserRepo) Create(ctx context.Context, teamID uuid.UUID, req *d
 
 // CreateUsers 创建团队成员
 func (r *TeamGroupUserRepo) CreateUsers(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamUserReq) ([]*db.User, error) {
+	if err := r.checkTeamMemberLimit(ctx, teamID, req.Emails); err != nil {
+		return nil, err
+	}
+
 	var users []*db.User
 
 	for _, emailAddr := range req.Emails {
@@ -130,6 +134,10 @@ func (r *TeamGroupUserRepo) CreateUsers(ctx context.Context, teamID uuid.UUID, r
 }
 
 func (r *TeamGroupUserRepo) CreateUsersWithPassword(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamUserWithPasswordReq) ([]*db.User, error) {
+	if err := r.checkTeamMemberLimit(ctx, teamID, req.Emails); err != nil {
+		return nil, err
+	}
+
 	var users []*db.User
 
 	for _, emailAddr := range req.Emails {
@@ -213,6 +221,10 @@ func (r *TeamGroupUserRepo) ResetPassword(ctx context.Context, userID uuid.UUID,
 
 // CreateAdmin 创建团队管理员
 func (r *TeamGroupUserRepo) CreateAdmin(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamAdminReq) (*db.User, error) {
+	if err := r.checkTeamMemberLimit(ctx, teamID, []string{req.Email}); err != nil {
+		return nil, err
+	}
+
 	// 检查邮箱是否已注册
 	existingUser, err := r.db.User.Query().Where(user.EmailEQ(req.Email)).First(ctx)
 	if err == nil && existingUser != nil {
@@ -257,6 +269,66 @@ func (r *TeamGroupUserRepo) CreateAdmin(ctx context.Context, teamID uuid.UUID, r
 		return nil, err
 	}
 	return newUser, nil
+}
+
+func (r *TeamGroupUserRepo) checkTeamMemberLimit(ctx context.Context, teamID uuid.UUID, emails []string) error {
+	team, err := r.db.Team.Get(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if team.MemberLimit <= 0 {
+		return nil
+	}
+
+	existingCount, err := r.db.TeamMember.Query().
+		Where(teammember.TeamIDEQ(teamID)).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+
+	addCount, err := r.countNewTeamMembers(ctx, teamID, emails)
+	if err != nil {
+		return err
+	}
+	if existingCount+addCount > team.MemberLimit {
+		return errcode.ErrTeamMemberLimitExceeded
+	}
+	return nil
+}
+
+func (r *TeamGroupUserRepo) countNewTeamMembers(ctx context.Context, teamID uuid.UUID, emails []string) (int, error) {
+	seen := make(map[string]struct{}, len(emails))
+	count := 0
+
+	for _, emailAddr := range emails {
+		if _, ok := seen[emailAddr]; ok {
+			continue
+		}
+		seen[emailAddr] = struct{}{}
+
+		existingUser, err := r.db.User.Query().Where(user.EmailEQ(emailAddr)).First(ctx)
+		if err != nil {
+			if db.IsNotFound(err) {
+				count++
+				continue
+			}
+			return 0, err
+		}
+		exists, err := r.db.TeamMember.Query().
+			Where(
+				teammember.TeamIDEQ(teamID),
+				teammember.UserIDEQ(existingUser.ID),
+			).
+			Exist(ctx)
+		if err != nil {
+			return 0, err
+		}
+		if !exists {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // Update 更新团队分组

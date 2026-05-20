@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 )
 
@@ -197,6 +199,108 @@ func TestCreateUsersWithPasswordStoresHashedPassword(t *testing.T) {
 	}
 }
 
+func TestCreateUsersRejectsWhenTeamMemberLimitExceeded(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamAtLimit(t, client)
+
+	users, err := repo.CreateUsers(ctx, teamID, &domain.AddTeamUserReq{
+		Emails: []string{"new-member@example.com"},
+	})
+
+	if !errors.Is(err, errcode.ErrTeamMemberLimitExceeded) {
+		t.Fatalf("err = %v, want %v", err, errcode.ErrTeamMemberLimitExceeded)
+	}
+	if len(users) != 0 {
+		t.Fatalf("users len = %d, want 0", len(users))
+	}
+	assertTeamMemberCount(t, client, teamID, 1)
+}
+
+func TestCreateUsersWithPasswordRejectsWhenTeamMemberLimitExceeded(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamAtLimit(t, client)
+
+	users, err := repo.CreateUsersWithPassword(ctx, teamID, &domain.AddTeamUserWithPasswordReq{
+		Emails: []string{"new-member@example.com"},
+		Passwords: map[string]string{
+			"new-member@example.com": "Abcdef123456",
+		},
+	})
+
+	if !errors.Is(err, errcode.ErrTeamMemberLimitExceeded) {
+		t.Fatalf("err = %v, want %v", err, errcode.ErrTeamMemberLimitExceeded)
+	}
+	if len(users) != 0 {
+		t.Fatalf("users len = %d, want 0", len(users))
+	}
+	assertTeamMemberCount(t, client, teamID, 1)
+}
+
+func TestCreateAdminRejectsWhenTeamMemberLimitExceeded(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamAtLimit(t, client)
+	if _, err := client.User.Create().
+		SetID(uuid.New()).
+		SetName("new-admin").
+		SetEmail("new-admin@example.com").
+		SetPassword("hashed").
+		SetRole(consts.UserRoleIndividual).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	admin, err := repo.CreateAdmin(ctx, teamID, &domain.AddTeamAdminReq{
+		Email: "new-admin@example.com",
+		Name:  "new-admin",
+	})
+
+	if !errors.Is(err, errcode.ErrTeamMemberLimitExceeded) {
+		t.Fatalf("err = %v, want %v", err, errcode.ErrTeamMemberLimitExceeded)
+	}
+	if admin != nil {
+		t.Fatalf("admin = %v, want nil", admin)
+	}
+	assertTeamMemberCount(t, client, teamID, 1)
+}
+
+func TestCreateUsersSkipsExistingTeamMembersWithoutConsumingLimit(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamAtLimit(t, client)
+
+	users, err := repo.CreateUsers(ctx, teamID, &domain.AddTeamUserReq{
+		Emails: []string{"existing@example.com"},
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 0 {
+		t.Fatalf("users len = %d, want 0", len(users))
+	}
+	assertTeamMemberCount(t, client, teamID, 1)
+}
+
 func TestResetPasswordStoresHashedPassword(t *testing.T) {
 	ctx := context.Background()
 	client := newTeamRepoTestDB(t)
@@ -236,5 +340,51 @@ func TestResetPasswordStoresHashedPassword(t *testing.T) {
 	}
 	if err := crypto.VerifyPassword(updated.Password, "old-password"); err == nil {
 		t.Fatal("old password should not remain valid")
+	}
+}
+
+func createTeamAtLimit(t *testing.T, client *db.Client) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	if _, err := client.Team.Create().
+		SetID(teamID).
+		SetName("MonkeyCode").
+		SetMemberLimit(1).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.User.Create().
+		SetID(userID).
+		SetName("existing").
+		SetEmail("existing@example.com").
+		SetPassword("hashed").
+		SetRole(consts.UserRoleSubAccount).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.TeamMember.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetUserID(userID).
+		SetRole(consts.TeamMemberRoleUser).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return teamID
+}
+
+func assertTeamMemberCount(t *testing.T, client *db.Client, teamID uuid.UUID, want int) {
+	t.Helper()
+	count, err := client.TeamMember.Query().
+		Where(teammember.TeamIDEQ(teamID)).
+		Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("team member count = %d, want %d", count, want)
 	}
 }
