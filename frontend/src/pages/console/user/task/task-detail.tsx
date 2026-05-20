@@ -32,7 +32,6 @@ import {
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -47,7 +46,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { canUseModelBySubscription, formatTokens, getBrandFromModelName, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHelpCircle, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -706,12 +705,6 @@ export default function TaskDetailPage() {
     setModelSwitchDialogOpen(true)
   }, [currentModelId, currentModelName])
 
-  const handleOpenModelPricing = React.useCallback(() => {
-    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "pricing" },
-    }))
-  }, [])
-
   const handleOpenSubscriptionPlan = React.useCallback(() => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
       detail: { section: "plan" },
@@ -1174,18 +1167,6 @@ export default function TaskDetailPage() {
                       </div>
                     </div>
                   )) : modelGroups.map(renderModelSwitchGroup)}
-                  {!IS_OFFLINE_EDITION && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={handleOpenModelPricing}
-                        className="w-full text-xs text-muted-foreground focus:text-foreground"
-                      >
-                        <IconHelpCircle className="size-3.5" />
-                        如何选择大模型
-                      </DropdownMenuItem>
-                    </>
-                  )}
                 </DropdownMenuRadioGroup>
               )}
             </DropdownMenuContent>

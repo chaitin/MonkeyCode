@@ -8,11 +8,6 @@ import { selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { CircleQuestionMark } from "lucide-react"
-import { IS_OFFLINE_EDITION } from "@/utils/edition"
-
-const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 function getDefaultModelId(models: DomainModel[], subscription: DomainSubscriptionResp | null) {
   return selectPreferredTaskModel(models, subscription)
@@ -234,35 +229,15 @@ export function IssueTaskModelSelect({
   setSelectedModelId: (modelId: string) => void
   subscription?: DomainSubscriptionResp | null
 }) {
-  const handleOpenModelPricing = () => {
-    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "pricing" },
-    }))
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <Label>大模型</Label>
-        {!IS_OFFLINE_EDITION && (
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-            onClick={handleOpenModelPricing}
-          >
-            <CircleQuestionMark className="size-3" />如何选择大模型
-          </Button>
-        )}
-      </div>
+      <Label>大模型</Label>
       <ModelSelect
         models={models}
         selectedModel={selectedModel}
         selectedModelId={selectedModelId}
         setSelectedModelId={setSelectedModelId}
         subscription={subscription}
-        showPricingButton={false}
       />
     </div>
   )

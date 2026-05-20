@@ -29,7 +29,6 @@ import { useCommonData } from "../data-provider";
 import { getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 import SubscriptionPlanDialog from "./subscription-plan-dialog";
-import ModelPricingDialog from "./model-pricing-dialog";
 import { IS_OFFLINE_EDITION } from "@/utils/edition";
 
 interface NavBalanceProps {
@@ -43,7 +42,7 @@ interface NavBalanceProps {
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
-type WalletSectionId = "account" | "profile" | "plan" | "balance" | "pricing"
+type WalletSectionId = "account" | "profile" | "plan" | "balance"
 
 export default function NavBalance({
   variant = "sidebar",
@@ -55,7 +54,6 @@ export default function NavBalance({
 }: NavBalanceProps) {
   const [dialogOpenInternal, setDialogOpenInternal] = useState(false);
   const [showSubscriptionPlanDialog, setShowSubscriptionPlanDialog] = useState(false);
-  const [showModelPricingDialog, setShowModelPricingDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -261,17 +259,12 @@ export default function NavBalance({
       return
     }
 
-    if (section === "pricing") {
-      setShowModelPricingDialog(true)
-      return
-    }
-
     reloadWallet();
     reloadSubscription();
   }, [reloadSubscription, reloadWallet])
 
   const openDialog = useCallback((section: WalletSectionId = "account") => {
-    if (section === "plan" || section === "pricing") {
+    if (section === "plan") {
       initializeDialog(section)
       return
     }
@@ -687,7 +680,6 @@ export default function NavBalance({
         </DialogContent>
       </Dialog>
     </Dialog>
-    <ModelPricingDialog open={showModelPricingDialog} onOpenChange={setShowModelPricingDialog} />
     </>
   )
 }

@@ -13,7 +13,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   getBrandFromModelName,
   getBuiltinModelName,
@@ -24,10 +23,9 @@ import {
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
-import { IconChevronDown, IconHelpCircle } from "@tabler/icons-react"
+import { IconChevronDown } from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 
-const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 const BUILTIN_MODEL_OPTIONS = [
   {
     model: "monkeycode-basic",
@@ -52,7 +50,6 @@ interface ModelSelectProps {
   selectedModelId: string
   setSelectedModelId: (modelId: string) => void
   className?: string
-  showPricingButton?: boolean
   subscription?: DomainSubscriptionResp | null
 }
 
@@ -62,7 +59,6 @@ export default function ModelSelect({
   selectedModelId,
   setSelectedModelId,
   className,
-  showPricingButton = true,
   subscription,
 }: ModelSelectProps) {
   const isMobile = useIsMobile()
@@ -143,12 +139,6 @@ export default function ModelSelect({
   )
   const hasSelectableModel = modelGroups.some((group) => group.models.some((model) => model.id))
   const [openModelGroupKey, setOpenModelGroupKey] = useState<string>()
-
-  const handleOpenModelPricing = () => {
-    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "pricing" },
-    }))
-  }
 
   const getNestedModelDisplayName = (modelName?: string | null) => {
     const normalizedModelName = modelName?.trim()
@@ -331,23 +321,6 @@ export default function ModelSelect({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        {showPricingButton ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="outline"
-                className="shrink-0 rounded-md"
-                onClick={handleOpenModelPricing}
-                aria-label="查看模型定价"
-              >
-                <IconHelpCircle className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>查看模型定价</TooltipContent>
-          </Tooltip>
-        ) : null}
       </div>
     </div>
   )

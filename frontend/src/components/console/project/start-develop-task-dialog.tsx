@@ -15,10 +15,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
-import { CircleQuestionMark } from "lucide-react"
-import { IS_OFFLINE_EDITION } from "@/utils/edition"
-
-const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 interface StartDevelopTaskDialogProps {
   open: boolean
@@ -58,12 +54,6 @@ export default function StartDevelopTaskDialog({
       project.repo_url || "",
     ].join(":")
   }, [project?.id, project?.platform, project?.git_identity_id, project?.full_name, project?.repo_url])
-
-  const handleOpenModelPricing = () => {
-    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "pricing" },
-    }))
-  }
 
   const selectBranch = (branch: string) => {
     branchTouchedRef.current = true
@@ -284,27 +274,13 @@ export default function StartDevelopTaskDialog({
             </div>
           )}
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label>大模型</Label>
-              {!IS_OFFLINE_EDITION && (
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-                  onClick={handleOpenModelPricing}
-                >
-                  <CircleQuestionMark className="size-3" />如何选择大模型
-                </Button>
-              )}
-            </div>
+            <Label>大模型</Label>
             <ModelSelect
               models={models}
               selectedModel={selectedModel}
               selectedModelId={selectedModelId}
               setSelectedModelId={setSelectedModelId}
               subscription={subscription}
-              showPricingButton={false}
             />
           </div>
           <div className="space-y-2">

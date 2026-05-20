@@ -159,7 +159,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoadingModels(true)
     await apiRequest('v1UsersModelsList', {}, [], (resp) => {
       if (resp.code === 0) {
-        const modelsList = resp.data?.models || [];
+        const modelsList = (resp.data?.models || []).filter((model: DomainModel) => (
+          model.model !== 'monkeycode-basic'
+          && model.model !== 'monkeycode-pro'
+          && model.model !== 'monkeycode-ultra'
+        ));
         
         // 排序：先按 owner.type (private > team > public)，然后按名字
         const sortedModels = [...modelsList].sort((a, b) => {

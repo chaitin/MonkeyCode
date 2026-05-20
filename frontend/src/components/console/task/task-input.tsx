@@ -29,11 +29,7 @@ import { defaultSkills } from "@/utils/config";
 import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 import ModelSelect from "./model-select";
-import { CircleQuestionMark } from "lucide-react";
 import { TaskSkillSelector } from "./task-skill-selector";
-
-const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog";
-
 
 interface RepoOption {
   gitIdentityId: string;
@@ -99,13 +95,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     () => identities.filter(isIdentityWithRepos),
     [identities]
   );
-
-  const handleOpenModelPricing = () => {
-    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-      detail: { section: "pricing" },
-    }));
-  };
-
 
   // 根据选中的仓库自动匹配身份凭证；若用户已显式选择（如从「我的仓库」选中、或选择「匿名」），且该身份仍在匹配列表中，则保留用户选择
   useEffect(() => {
@@ -661,20 +650,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
             <DialogTitle>任务参数</DialogTitle>
           </DialogHeader>
           <Field>
-            <div className="flex items-center justify-between gap-3">
-              <FieldLabel>大模型</FieldLabel>
-              {!IS_OFFLINE_EDITION && (
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto items-center p-0 text-xs leading-none text-muted-foreground hover:text-foreground"
-                  onClick={handleOpenModelPricing}
-                >
-                  <CircleQuestionMark className="size-3" />如何选择大模型
-                </Button>
-              )}
-            </div>
+            <FieldLabel>大模型</FieldLabel>
             <FieldContent>
               <ModelSelect
                 models={models}
@@ -682,7 +658,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 selectedModelId={selectedModelId}
                 setSelectedModelId={setSelectedModelId}
                 subscription={subscription}
-                showPricingButton={false}
               />
             </FieldContent>
           </Field>
