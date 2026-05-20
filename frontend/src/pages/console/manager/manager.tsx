@@ -21,12 +21,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { captchaChallenge } from "@/utils/common";
 import dayjs from "dayjs";
 
 
 
 export default function TeamManagerManager() {
 
+  const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [managers, setManagers] = useState<any[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -96,22 +98,47 @@ export default function TeamManagerManager() {
   };
 
   const handleConfirmResetPassword = async () => {
-    if (!resettingPasswordUser.id) {
+    if (!resettingPasswordUser.email) {
       return;
     }
 
     setResettingPassword(true);
-    await apiRequest('v1TeamsUsersPasswordsResetUpdate', {}, [resettingPasswordUser.id], (resp) => {
-      if (resp.code === 0) {
-        toast.success(`已为 ${resettingPasswordUser.email || "该管理员"} 重置密码`);
-        setResetPasswordResult(resp.data || null);
-        setPasswordDialogOpen(!!resp.data?.password);
-        setResetPasswordDialogOpen(false);
-        setResettingPasswordUser({});
-      } else {
-        toast.error("重置密码失败: " + resp.message);
+    if (isOfflineEdition) {
+      if (!resettingPasswordUser.id) {
+        setResettingPassword(false);
+        return;
       }
-    })
+      await apiRequest('v1TeamsUsersPasswordsResetUpdate', {}, [resettingPasswordUser.id], (resp) => {
+        if (resp.code === 0) {
+          toast.success(`已为 ${resettingPasswordUser.email || "该管理员"} 重置密码`);
+          setResetPasswordResult(resp.data || null);
+          setPasswordDialogOpen(!!resp.data?.password);
+          setResetPasswordDialogOpen(false);
+          setResettingPasswordUser({});
+        } else {
+          toast.error("重置密码失败: " + resp.message);
+        }
+      })
+    } else {
+      const captchaToken = await captchaChallenge();
+      if (!captchaToken) {
+        toast.error("验证码验证失败");
+        setResettingPassword(false);
+        return;
+      }
+      await apiRequest('v1UsersPasswordsResetRequestUpdate', {
+        emails: [resettingPasswordUser.email],
+        captcha_token: captchaToken,
+      }, [], (resp) => {
+        if (resp.code === 0) {
+          toast.success(`已为 ${resettingPasswordUser.email} 发送密码重置邮件`);
+          setResetPasswordDialogOpen(false);
+          setResettingPasswordUser({});
+        } else {
+          toast.error("发送密码重置邮件失败: " + resp.message);
+        }
+      })
+    }
     setResettingPassword(false);
   };
 
@@ -248,7 +275,9 @@ export default function TeamManagerManager() {
       <AlertDialogHeader>
         <AlertDialogTitle>确认重置密码</AlertDialogTitle>
         <AlertDialogDescription>
-          确定要为管理员 "{resettingPasswordUser.email}" 重置密码吗？系统将生成新密码，并仅在本次操作后展示一次。
+          {isOfflineEdition
+            ? `确定要为管理员 "${resettingPasswordUser.email}" 重置密码吗？系统将生成新密码，并仅在本次操作后展示一次。`
+            : `确定要为管理员 "${resettingPasswordUser.email}" 重置密码吗？系统将发送密码重置邮件到该管理员的邮箱。`}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
