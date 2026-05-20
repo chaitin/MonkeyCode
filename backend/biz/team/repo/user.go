@@ -203,6 +203,14 @@ func (r *TeamGroupUserRepo) CreateUsersWithPassword(ctx context.Context, teamID 
 	return users, nil
 }
 
+func (r *TeamGroupUserRepo) ResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error {
+	hashedPassword, err := crypto.HashPassword(newPassword)
+	if err != nil {
+		return errcode.ErrPasswordHashFailed
+	}
+	return r.db.User.UpdateOneID(userID).SetPassword(hashedPassword).Exec(ctx)
+}
+
 // CreateAdmin 创建团队管理员
 func (r *TeamGroupUserRepo) CreateAdmin(ctx context.Context, teamID uuid.UUID, req *domain.AddTeamAdminReq) (*db.User, error) {
 	// 检查邮箱是否已注册

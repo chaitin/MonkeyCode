@@ -167,6 +167,22 @@ func (u *TeamGroupUserUsecase) AddUserWithPassword(ctx context.Context, teamUser
 	}, nil
 }
 
+func (u *TeamGroupUserUsecase) ResetPassword(ctx context.Context, teamUser *domain.TeamUser, req *domain.ResetPasswordReq) (*domain.TeamUserPassword, error) {
+	member, err := u.repo.GetMember(ctx, teamUser.GetTeamID(), req.UserID)
+	if err != nil {
+		return nil, err
+	}
+	password := random.String(16)
+	if err := u.repo.ResetPassword(ctx, req.UserID, password); err != nil {
+		return nil, err
+	}
+	resp := &domain.TeamUserPassword{Password: password}
+	if member.Edges.User != nil {
+		resp.Email = member.Edges.User.Email
+	}
+	return resp, nil
+}
+
 // AddAdmin 创建团队管理员
 func (u *TeamGroupUserUsecase) AddAdmin(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamAdminReq) (*domain.AddTeamAdminResp, error) {
 	user, err := u.repo.CreateAdmin(ctx, teamUser.GetTeamID(), req)

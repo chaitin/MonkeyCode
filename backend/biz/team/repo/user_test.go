@@ -196,3 +196,45 @@ func TestCreateUsersWithPasswordStoresHashedPassword(t *testing.T) {
 		t.Fatalf("verify password failed: %v", err)
 	}
 }
+
+func TestResetPasswordStoresHashedPassword(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	userID := uuid.New()
+	oldPassword, err := crypto.HashPassword("old-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.User.Create().
+		SetID(userID).
+		SetName("member").
+		SetEmail("member@example.com").
+		SetPassword(oldPassword).
+		SetRole(consts.UserRoleSubAccount).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.ResetPassword(ctx, userID, "NewPassword123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := client.User.Get(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Password == "" || updated.Password == "NewPassword123456" {
+		t.Fatalf("password should be hashed, got %q", updated.Password)
+	}
+	if err := crypto.VerifyPassword(updated.Password, "NewPassword123456"); err != nil {
+		t.Fatalf("verify new password failed: %v", err)
+	}
+	if err := crypto.VerifyPassword(updated.Password, "old-password"); err == nil {
+		t.Fatal("old password should not remain valid")
+	}
+}

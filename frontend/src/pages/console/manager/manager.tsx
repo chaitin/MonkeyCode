@@ -10,6 +10,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconCirclePlus, IconUser, IconUserCircle } from "@tabler/icons-react";
 import { IconLockCode } from "@tabler/icons-react";
+import { IconCopy } from "@tabler/icons-react";
 import { IconDotsVertical } from "@tabler/icons-react";
 import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 import { Fragment, useState } from "react";
@@ -20,7 +21,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { captchaChallenge } from "@/utils/common";
 import dayjs from "dayjs";
 
 
@@ -33,8 +33,10 @@ export default function TeamManagerManager() {
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
-  const [resettingPasswordEmail, setResettingPasswordEmail] = useState<string>("");
+  const [resettingPasswordUser, setResettingPasswordUser] = useState<{ id?: string; email?: string }>({});
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ email?: string; password?: string } | null>(null);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
 
   const fetchManagers = async () => {
     await apiRequest('v1TeamsUsersList', { role: "admin" }, [], (resp) => {
@@ -83,41 +85,46 @@ export default function TeamManagerManager() {
     setSubmitting(false);
   };
 
-  const handleOpenResetPasswordDialog = (email: string) => {
-    setResettingPasswordEmail(email);
+  const handleOpenResetPasswordDialog = (user: { id?: string; email?: string }) => {
+    setResettingPasswordUser(user);
     setResetPasswordDialogOpen(true);
   };
 
   const handleCancelResetPassword = () => {
-    setResettingPasswordEmail("");
+    setResettingPasswordUser({});
     setResetPasswordDialogOpen(false);
   };
 
   const handleConfirmResetPassword = async () => {
-    if (!resettingPasswordEmail) {
-      return;
-    }
-
-    const captchaToken = await captchaChallenge();
-    if (!captchaToken) {
-      toast.error("验证码验证失败");
+    if (!resettingPasswordUser.id) {
       return;
     }
 
     setResettingPassword(true);
-    await apiRequest('v1UsersPasswordsResetRequestUpdate',{
-      emails: [resettingPasswordEmail],
-      captcha_token: captchaToken,
-    }, [], (resp) => {
+    await apiRequest('v1TeamsUsersPasswordsResetUpdate', {}, [resettingPasswordUser.id], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已为 ${resettingPasswordEmail} 发送密码重置邮件`);
+        toast.success(`已为 ${resettingPasswordUser.email || "该管理员"} 重置密码`);
+        setResetPasswordResult(resp.data || null);
+        setPasswordDialogOpen(!!resp.data?.password);
         setResetPasswordDialogOpen(false);
-        setResettingPasswordEmail("");
+        setResettingPasswordUser({});
       } else {
-        toast.error("发送密码重置邮件失败: " + resp.message);
+        toast.error("重置密码失败: " + resp.message);
       }
     })
     setResettingPassword(false);
+  };
+
+  const handleCopyResetPassword = async () => {
+    if (!resetPasswordResult) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(`${resetPasswordResult.email || ""}\t${resetPasswordResult.password || ""}`);
+      toast.success("新密码已复制到剪贴板");
+    } catch {
+      toast.error("复制失败，请手动复制");
+    }
   };
 
   return (
@@ -173,7 +180,7 @@ export default function TeamManagerManager() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
-                      onClick={() => handleOpenResetPasswordDialog(manager.user?.email)}
+                      onClick={() => handleOpenResetPasswordDialog({ id: manager.user?.id, email: manager.user?.email })}
                     >
                       <IconLockCode />
                       重置密码
@@ -241,7 +248,7 @@ export default function TeamManagerManager() {
       <AlertDialogHeader>
         <AlertDialogTitle>确认重置密码</AlertDialogTitle>
         <AlertDialogDescription>
-          确定要为管理员 "{resettingPasswordEmail}" 重置密码吗？系统将发送密码重置邮件到该管理员的邮箱。
+          确定要为管理员 "{resettingPasswordUser.email}" 重置密码吗？系统将生成新密码，并仅在本次操作后展示一次。
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
@@ -254,6 +261,29 @@ export default function TeamManagerManager() {
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+
+  <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>管理员重置密码</DialogTitle>
+      </DialogHeader>
+      {resetPasswordResult && (
+        <div className="rounded-md border p-3 text-sm">
+          <div className="text-muted-foreground">{resetPasswordResult.email}</div>
+          <div className="mt-1 font-mono break-all">{resetPasswordResult.password}</div>
+        </div>
+      )}
+      <DialogFooter>
+        <Button variant="outline" onClick={handleCopyResetPassword} disabled={!resetPasswordResult?.password}>
+          <IconCopy />
+          复制
+        </Button>
+        <Button onClick={() => setPasswordDialogOpen(false)}>
+          完成
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
   </>
   )
 }
