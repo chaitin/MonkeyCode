@@ -335,6 +335,38 @@ export class TaskMessageHandler {
     }
   }
 
+  private applyAlertMessage(text: string, level: "info" | "warning", timestamp: number) {
+    const newMessage: MessageType = {
+      id: this.createMessageId(),
+      time: timestamp,
+      role: "agent",
+      type: "alert_message",
+      data: { text, level },
+    }
+
+    this.state.messages.push(newMessage)
+  }
+
+  private applyLLMCallRetry(data: any, timestamp: number) {
+    const update = data.update ?? {}
+    const errorMessage = update.message || "未知错误"
+    const text = typeof update.attempt === "number"
+      ? `模型调用失败，正在重试第 ${update.attempt} 次：${errorMessage}`
+      : `模型调用失败，正在重试：${errorMessage}`
+
+    this.applyAlertMessage(text, "warning", timestamp)
+  }
+
+  private applyCompactStatus(data: any, timestamp: number) {
+    const status = data.update?.status
+
+    if (status === "started") {
+      this.applyAlertMessage("启动上下文压缩", "info", timestamp)
+    } else if (status === "ended") {
+      this.applyAlertMessage("上下文压缩完成", "info", timestamp)
+    }
+  }
+
   private applyACPEvent(data: any, timestamp: number) {
     const messageType = data.update.sessionUpdate
     switch (messageType) {
@@ -367,6 +399,12 @@ export class TaskMessageHandler {
           size: typeof data.update.size === "number" ? data.update.size : this.state.contextUsage.size,
           used: typeof data.update.used === "number" ? data.update.used : this.state.contextUsage.used,
         }
+        break
+      case "llm_call_retry":
+        this.applyLLMCallRetry(data, timestamp)
+        break
+      case "compact_status":
+        this.applyCompactStatus(data, timestamp)
         break
       default:
         console.warn("TaskMessageHandler: unknown ACP sessionUpdate", data)

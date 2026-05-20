@@ -65,12 +65,14 @@ export function TaskSkillSelector({
 }: TaskSkillSelectorProps) {
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
-  const [canScrollRight, setCanScrollRight] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(skillTags.length > 1)
 
   const updateScrollState = useCallback(() => {
     const tabsList = tabsListRef.current
 
     if (!tabsList) {
+      setCanScrollLeft(false)
+      setCanScrollRight(skillTags.length > 1)
       return
     }
 
@@ -78,7 +80,7 @@ export function TaskSkillSelector({
     setCanScrollRight(
       tabsList.scrollLeft + tabsList.clientWidth < tabsList.scrollWidth - 1
     )
-  }, [])
+  }, [skillTags.length])
 
   const scrollTabs = (direction: "left" | "right") => {
     tabsListRef.current?.scrollBy({
@@ -88,8 +90,20 @@ export function TaskSkillSelector({
   }
 
   useEffect(() => {
-    updateScrollState()
+    if (!open) {
+      return
+    }
+
+    const animationFrame = requestAnimationFrame(updateScrollState)
+
+    return () => cancelAnimationFrame(animationFrame)
   }, [open, skillTags, updateScrollState])
+
+  useEffect(() => {
+    window.addEventListener("resize", updateScrollState)
+
+    return () => window.removeEventListener("resize", updateScrollState)
+  }, [updateScrollState])
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>

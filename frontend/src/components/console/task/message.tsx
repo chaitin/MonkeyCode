@@ -9,6 +9,7 @@ import { UserInputMessageItem } from "./message-userinput"
 import { SystemMessageItem } from "./message-system"
 import type { ConstsCliName } from "@/api/Api"
 import { RestartSessionMessageItem } from "./message-restart-session"
+import { AlertMessageItem } from "./message-alert"
 import type { TaskUserInput, TaskUserInputAttachment } from "./task-shared"
 
 const normalizeTimestampToSeconds = (timestamp: number) => {
@@ -23,12 +24,14 @@ interface MessageType {
   id: string
   time: number
   role: 'agent' | 'user' | 'system'
-  type: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_input' | 'user_cancel' | 'tool_call' | 'tool_call_update' | 'available_commands_update' | 'plan' | 'error_message' | 'ask_user_question' | 'system_message' | 'restart_session'
+  type: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_input' | 'user_cancel' | 'tool_call' | 'tool_call_update' | 'available_commands_update' | 'plan' | 'error_message' | 'alert_message' | 'ask_user_question' | 'system_message' | 'restart_session'
   data: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     _meta?: any
     requestId?: string
     details?: string
+    text?: string
+    level?: 'info' | 'warning'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     content?: any
     kind?: string
@@ -78,6 +81,8 @@ const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType,
         return <ToolCallMessageItem message={message} cli={cli} />
       case 'error_message':
         return <ErrorMessageItem message={message} />
+      case 'alert_message':
+        return <AlertMessageItem message={message} />
       case 'ask_user_question':
         return <AskUserQuestionMessageItem message={message} onResponse={message.onResponseAskUserQuestion} />
       case 'system_message':
