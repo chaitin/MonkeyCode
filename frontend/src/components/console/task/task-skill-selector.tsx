@@ -6,7 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { getSkillTagIcon } from "@/utils/common"
 import { defaultSkills } from "@/utils/config"
-import { IconPuzzle } from "@tabler/icons-react"
+import { IconChevronLeft, IconChevronRight, IconPuzzle } from "@tabler/icons-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 interface TaskSkillSelectorProps {
   open: boolean
@@ -62,6 +63,34 @@ export function TaskSkillSelector({
   triggerClassName,
   labelClassName,
 }: TaskSkillSelectorProps) {
+  const tabsListRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const updateScrollState = useCallback(() => {
+    const tabsList = tabsListRef.current
+
+    if (!tabsList) {
+      return
+    }
+
+    setCanScrollLeft(tabsList.scrollLeft > 0)
+    setCanScrollRight(
+      tabsList.scrollLeft + tabsList.clientWidth < tabsList.scrollWidth - 1
+    )
+  }, [])
+
+  const scrollTabs = (direction: "left" | "right") => {
+    tabsListRef.current?.scrollBy({
+      left: direction === "left" ? -160 : 160,
+      behavior: "smooth",
+    })
+  }
+
+  useEffect(() => {
+    updateScrollState()
+  }, [open, skillTags, updateScrollState])
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -88,23 +117,49 @@ export function TaskSkillSelector({
           onValueChange={onActiveSkillTagChange}
           className="flex min-h-0 w-full flex-1 flex-col"
         >
-          <TabsList className="no-scrollbar h-7 w-full justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7">
-            {skillTags.map((tag) => (
-              <TabsTrigger
-                key={tag}
-                value={tag}
-                className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none"
-              >
-                {getSkillTagIcon(tag)}
-                {tag}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              disabled={!canScrollLeft}
+              onClick={() => scrollTabs("left")}
+            >
+              <IconChevronLeft className="size-4" />
+            </Button>
+            <TabsList
+              ref={tabsListRef}
+              onScroll={updateScrollState}
+              className="no-scrollbar h-7 min-w-0 flex-1 justify-start gap-1 overflow-x-auto overflow-y-hidden bg-background p-0 whitespace-nowrap group-data-horizontal/tabs:h-7"
+            >
+              {skillTags.map((tag) => (
+                <TabsTrigger
+                  key={tag}
+                  value={tag}
+                  className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none"
+                >
+                  {getSkillTagIcon(tag)}
+                  {tag}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              disabled={!canScrollRight}
+              onClick={() => scrollTabs("right")}
+            >
+              <IconChevronRight className="size-4" />
+            </Button>
+          </div>
           {skillTags.map((tag) => (
             <TabsContent
               key={tag}
               value={tag}
-              className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
+              className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
             >
               {skills
                 .filter((skill) => tag === "全部" || (skill.tags || []).includes(tag))
