@@ -149,7 +149,7 @@ export function FreeModelQuotaIndicator() {
             indicatorClassName={getQuotaCircularProgressClassName(usedProgress)}
             aria-hidden="true"
           />
-          <span className="hidden text-muted-foreground lg:inline">今日免费额度剩余</span>
+          <span className="hidden lg:inline">今日免费额度剩余</span>
           <span className="font-medium">{formatTokenNumber(remainingTokens)}</span>
         </button>
       </HoverCardTrigger>

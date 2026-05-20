@@ -753,11 +753,34 @@ export default function TaskDetailPage() {
     return currentModel ? getModelOptionDisplayName(currentModel) : getModelDisplayName(currentModelName)
   }, [currentModel, currentModelName, getModelOptionDisplayName, isMobile])
 
+  const getRecommendedModelBadge = React.useCallback((modelName?: string | null) => {
+    const normalizedModelName = modelName?.trim().toLowerCase()
+    if (!normalizedModelName) {
+      return null
+    }
+
+    const builtinModelName = getBuiltinModelName(normalizedModelName)
+    const nestedModelName = builtinModelName
+      ? normalizedModelName.slice(builtinModelName.length).replace(/^\/+/, "")
+      : normalizedModelName
+
+    if (
+      (builtinModelName === "monkeycode-basic" && nestedModelName === "qwen3.5-plus")
+      || (builtinModelName === "monkeycode-pro" && nestedModelName === "qwen3.6-plus")
+      || (builtinModelName === "monkeycode-ultra" && nestedModelName === "gpt-5.5")
+    ) {
+      return "推荐"
+    }
+
+    return null
+  }, [])
+
   const renderModelSwitchOption = React.useCallback((model: DomainModel, nested = false, indented = false) => {
     const modelName = model.model || "未知模型"
     const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
     const canUseModel = canUseModelBySubscription(model, subscription)
     const displayName = getModelOptionDisplayName(model, nested)
+    const recommendedBadge = getRecommendedModelBadge(model.model)
 
     return (
       <DropdownMenuRadioItem
@@ -784,11 +807,14 @@ export default function TaskDetailPage() {
           <span className="truncate">{displayName}</span>
         </div>
         <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+          {recommendedBadge ? (
+            <Badge variant="secondary" className="shrink-0">{recommendedBadge}</Badge>
+          ) : null}
           {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
         </div>
       </DropdownMenuRadioItem>
     )
-  }, [currentModelId, currentModelName, getModelOptionDisplayName, handleOpenSubscriptionPlan, handleRequestModelSwitch, subscription])
+  }, [currentModelId, currentModelName, getModelOptionDisplayName, getRecommendedModelBadge, handleOpenSubscriptionPlan, handleRequestModelSwitch, subscription])
 
   const renderModelSwitchGroupHeader = React.useCallback((group: { key: string; label: string; badge?: string; badgeVariant?: "default" | "secondary"; iconName?: string; models: DomainModel[] }) => (
     <div key={group.key} className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground">

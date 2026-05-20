@@ -185,8 +185,31 @@ export default function ModelSelect({
     return selectedModel ? getModelOptionDisplayName(selectedModel) : ""
   }
 
+  const getRecommendedModelBadge = (modelName?: string | null) => {
+    const normalizedModelName = modelName?.trim().toLowerCase()
+    if (!normalizedModelName) {
+      return null
+    }
+
+    const builtinModelName = getBuiltinModelName(normalizedModelName)
+    const nestedModelName = builtinModelName
+      ? normalizedModelName.slice(builtinModelName.length).replace(/^\/+/, "")
+      : normalizedModelName
+
+    if (
+      (builtinModelName === "monkeycode-basic" && nestedModelName === "qwen3.5-plus")
+      || (builtinModelName === "monkeycode-pro" && nestedModelName === "qwen3.6-plus")
+      || (builtinModelName === "monkeycode-ultra" && nestedModelName === "gpt-5.5")
+    ) {
+      return "推荐"
+    }
+
+    return null
+  }
+
   const renderModelOption = (model: DomainModel, nested = false, indented = false) => {
     const displayName = getModelOptionDisplayName(model, nested)
+    const recommendedBadge = getRecommendedModelBadge(model.model)
 
     return (
       <DropdownMenuRadioItem
@@ -203,6 +226,9 @@ export default function ModelSelect({
           <span className="truncate">{displayName}</span>
         </div>
         <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
+          {recommendedBadge ? (
+            <Badge variant="secondary" className="shrink-0">{recommendedBadge}</Badge>
+          ) : null}
           {model.owner?.type !== ConstsOwnerType.OwnerTypePublic && getOwnerTypeBadge(model.owner)}
         </div>
       </DropdownMenuRadioItem>
