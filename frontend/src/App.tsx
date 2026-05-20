@@ -12,7 +12,6 @@ import FileManagerPage from "@/pages/console/user/file-manager"
 import { Toaster } from "@/components/ui/sonner"
 import SharedTerminalPage from "@/pages/shared-terminal"
 import TeamManagerMembers from "./pages/console/manager/members"
-import TeamManagerDashboard from "./pages/console/manager/dashboard"
 import TeamManagerModels from "@/pages/console/manager/models"
 import TeamManagerImages from "@/pages/console/manager/images"
 import TeamManagerLogs from "@/pages/console/manager/logs"
@@ -65,8 +64,7 @@ function App() {
             <Route path="/console/files" element={<FileManagerPage />} />
             <Route path="/sharedterminal" element={<SharedTerminalPage />} />
             <Route path="/manager" element={<ManagerConsolePage />}>
-              <Route index element={<Navigate to="/manager/dashboard" replace />} />
-              <Route path="dashboard" element={<TeamManagerDashboard />} />
+              <Route index element={<Navigate to="/manager/members" replace />} />
               <Route path="members" element={<TeamManagerMembers />} />
               <Route path="hosts" element={<TeamManagerHosts />} />
               <Route path="images" element={<TeamManagerImages />} />
