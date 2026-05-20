@@ -62,6 +62,14 @@ jobs:
           ARCH: ${{ matrix.arch }}
           DOCKER_VERSION: ${{ inputs.docker_version || '29.0.4' }}
           PACKAGE_TGZ: "true"
+          AWS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          AWS_DEFAULT_REGION: ${{ secrets.OSS_REGION || 'us-east-1' }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ADDRESSING_STYLE: ${{ secrets.OSS_ADDRESSING_STYLE || 'virtual' }}
         run: ./scripts/build-offline-package.sh
 
       - name: Upload package to private OSS

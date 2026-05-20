@@ -19,6 +19,7 @@ images/redis.tar.gz
 images/clickhouse.tar.gz
 images/rustfs.tar.gz
 static/project-tpl.zip
+static/firefactory-offline_1.0.0+g741818d_amd64.tgz
 static/installer/x86_64/installer
 static/installer/x86_64/docker.tgz
 static/installer/x86_64/host.tgz
