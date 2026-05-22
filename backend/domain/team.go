@@ -13,14 +13,18 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 )
 
+// MemberManager 定义产品侧必须提供的新增成员入口。
+type MemberManager interface {
+	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
+	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
+	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
+}
+
 // TeamGroupUserUsecase 团队分组成员业务逻辑接口
 type TeamGroupUserUsecase interface {
 	List(ctx context.Context, teamUser *TeamUser) (*ListTeamGroupsResp, error)
 	Add(ctx context.Context, teamUser *TeamUser, req *AddTeamGroupReq) (*TeamGroup, error)
-	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
-	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
 	ResetPassword(ctx context.Context, teamUser *TeamUser, req *ResetPasswordReq) (*TeamUserPassword, error)
-	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*TeamGroup, error)
 	Delete(ctx context.Context, teamUser *TeamUser, req *DeleteTeamGroupReq) error
 	ListGroups(ctx context.Context, req *ListTeamGroupUsersReq) (*ListTeamGroupUsersResp, error)

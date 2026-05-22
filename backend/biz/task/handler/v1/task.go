@@ -36,6 +36,7 @@ var errTurnEnded = errors.New("turn ended")
 type TaskHandler struct {
 	cfg           *config.Config
 	usecase       domain.TaskUsecase
+	creator       domain.TaskCreator
 	userusecase   domain.UserUsecase
 	pubhost       domain.PublicHostUsecase
 	logger        *slog.Logger
@@ -55,6 +56,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	cfg := do.MustInvoke[*config.Config](i)
 	uc := do.MustInvoke[domain.TaskUsecase](i)
+	creator := do.MustInvoke[domain.TaskCreator](i)
 	uuc := do.MustInvoke[domain.UserUsecase](i)
 	logger := do.MustInvoke[*slog.Logger](i)
 	tf := do.MustInvoke[taskflow.Clienter](i)
@@ -83,6 +85,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	h := &TaskHandler{
 		cfg:           cfg,
 		usecase:       uc,
+		creator:       creator,
 		userusecase:   uuc,
 		pubhost:       pubhost,
 		logger:        logger.With("handler", "task.handler"),
@@ -276,8 +279,7 @@ func (h *TaskHandler) Create(c *web.Context, req domain.CreateTaskReq) error {
 		return errcode.ErrBadRequest.Wrap(err)
 	}
 
-	// token 由 usecase 根据 req.GitIdentityID 解析，此处传空
-	task, err := h.usecase.Create(c.Request().Context(), user, req)
+	task, err := h.creator.Create(c.Request().Context(), user, req)
 	if err != nil {
 		return err
 	}

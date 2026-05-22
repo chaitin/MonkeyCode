@@ -16,6 +16,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseaudit"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseinstallation"
+	"github.com/chaitin/MonkeyCode/backend/db/licenserecord"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
@@ -321,6 +324,87 @@ func (f TraverseImage) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.ImageQuery", q)
+}
+
+// The LicenseAuditFunc type is an adapter to allow the use of ordinary function as a Querier.
+type LicenseAuditFunc func(context.Context, *db.LicenseAuditQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f LicenseAuditFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.LicenseAuditQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.LicenseAuditQuery", q)
+}
+
+// The TraverseLicenseAudit type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseLicenseAudit func(context.Context, *db.LicenseAuditQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseLicenseAudit) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseLicenseAudit) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.LicenseAuditQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.LicenseAuditQuery", q)
+}
+
+// The LicenseInstallationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type LicenseInstallationFunc func(context.Context, *db.LicenseInstallationQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f LicenseInstallationFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.LicenseInstallationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.LicenseInstallationQuery", q)
+}
+
+// The TraverseLicenseInstallation type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseLicenseInstallation func(context.Context, *db.LicenseInstallationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseLicenseInstallation) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseLicenseInstallation) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.LicenseInstallationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.LicenseInstallationQuery", q)
+}
+
+// The LicenseRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
+type LicenseRecordFunc func(context.Context, *db.LicenseRecordQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f LicenseRecordFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.LicenseRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.LicenseRecordQuery", q)
+}
+
+// The TraverseLicenseRecord type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseLicenseRecord func(context.Context, *db.LicenseRecordQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseLicenseRecord) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseLicenseRecord) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.LicenseRecordQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.LicenseRecordQuery", q)
 }
 
 // The MCPToolFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1206,6 +1290,12 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.HostQuery, predicate.Host, host.OrderOption]{typ: db.TypeHost, tq: q}, nil
 	case *db.ImageQuery:
 		return &query[*db.ImageQuery, predicate.Image, image.OrderOption]{typ: db.TypeImage, tq: q}, nil
+	case *db.LicenseAuditQuery:
+		return &query[*db.LicenseAuditQuery, predicate.LicenseAudit, licenseaudit.OrderOption]{typ: db.TypeLicenseAudit, tq: q}, nil
+	case *db.LicenseInstallationQuery:
+		return &query[*db.LicenseInstallationQuery, predicate.LicenseInstallation, licenseinstallation.OrderOption]{typ: db.TypeLicenseInstallation, tq: q}, nil
+	case *db.LicenseRecordQuery:
+		return &query[*db.LicenseRecordQuery, predicate.LicenseRecord, licenserecord.OrderOption]{typ: db.TypeLicenseRecord, tq: q}, nil
 	case *db.MCPToolQuery:
 		return &query[*db.MCPToolQuery, predicate.MCPTool, mcptool.OrderOption]{typ: db.TypeMCPTool, tq: q}, nil
 	case *db.MCPUpstreamQuery:

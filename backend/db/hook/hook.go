@@ -105,6 +105,42 @@ func (f ImageFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ImageMutation", m)
 }
 
+// The LicenseAuditFunc type is an adapter to allow the use of ordinary
+// function as LicenseAudit mutator.
+type LicenseAuditFunc func(context.Context, *db.LicenseAuditMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LicenseAuditFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.LicenseAuditMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.LicenseAuditMutation", m)
+}
+
+// The LicenseInstallationFunc type is an adapter to allow the use of ordinary
+// function as LicenseInstallation mutator.
+type LicenseInstallationFunc func(context.Context, *db.LicenseInstallationMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LicenseInstallationFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.LicenseInstallationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.LicenseInstallationMutation", m)
+}
+
+// The LicenseRecordFunc type is an adapter to allow the use of ordinary
+// function as LicenseRecord mutator.
+type LicenseRecordFunc func(context.Context, *db.LicenseRecordMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LicenseRecordFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.LicenseRecordMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.LicenseRecordMutation", m)
+}
+
 // The MCPToolFunc type is an adapter to allow the use of ordinary
 // function as MCPTool mutator.
 type MCPToolFunc func(context.Context, *db.MCPToolMutation) (db.Value, error)

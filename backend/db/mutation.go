@@ -20,6 +20,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseaudit"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseinstallation"
+	"github.com/chaitin/MonkeyCode/backend/db/licenserecord"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
@@ -74,6 +77,9 @@ const (
 	TypeGitTask             = "GitTask"
 	TypeHost                = "Host"
 	TypeImage               = "Image"
+	TypeLicenseAudit        = "LicenseAudit"
+	TypeLicenseInstallation = "LicenseInstallation"
+	TypeLicenseRecord       = "LicenseRecord"
 	TypeMCPTool             = "MCPTool"
 	TypeMCPUpstream         = "MCPUpstream"
 	TypeMCPUserToolSetting  = "MCPUserToolSetting"
@@ -8922,6 +8928,2330 @@ func (m *ImageMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Image edge %s", name)
+}
+
+// LicenseAuditMutation represents an operation that mutates the LicenseAudit nodes in the graph.
+type LicenseAuditMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	license_id    *string
+	action        *licenseaudit.Action
+	result        *licenseaudit.Result
+	message       *string
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*LicenseAudit, error)
+	predicates    []predicate.LicenseAudit
+}
+
+var _ ent.Mutation = (*LicenseAuditMutation)(nil)
+
+// licenseauditOption allows management of the mutation configuration using functional options.
+type licenseauditOption func(*LicenseAuditMutation)
+
+// newLicenseAuditMutation creates new mutation for the LicenseAudit entity.
+func newLicenseAuditMutation(c config, op Op, opts ...licenseauditOption) *LicenseAuditMutation {
+	m := &LicenseAuditMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeLicenseAudit,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withLicenseAuditID sets the ID field of the mutation.
+func withLicenseAuditID(id uuid.UUID) licenseauditOption {
+	return func(m *LicenseAuditMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *LicenseAudit
+		)
+		m.oldValue = func(ctx context.Context) (*LicenseAudit, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().LicenseAudit.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withLicenseAudit sets the old LicenseAudit of the mutation.
+func withLicenseAudit(node *LicenseAudit) licenseauditOption {
+	return func(m *LicenseAuditMutation) {
+		m.oldValue = func(context.Context) (*LicenseAudit, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m LicenseAuditMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m LicenseAuditMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of LicenseAudit entities.
+func (m *LicenseAuditMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *LicenseAuditMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *LicenseAuditMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().LicenseAudit.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetLicenseID sets the "license_id" field.
+func (m *LicenseAuditMutation) SetLicenseID(s string) {
+	m.license_id = &s
+}
+
+// LicenseID returns the value of the "license_id" field in the mutation.
+func (m *LicenseAuditMutation) LicenseID() (r string, exists bool) {
+	v := m.license_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLicenseID returns the old "license_id" field's value of the LicenseAudit entity.
+// If the LicenseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseAuditMutation) OldLicenseID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLicenseID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLicenseID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLicenseID: %w", err)
+	}
+	return oldValue.LicenseID, nil
+}
+
+// ClearLicenseID clears the value of the "license_id" field.
+func (m *LicenseAuditMutation) ClearLicenseID() {
+	m.license_id = nil
+	m.clearedFields[licenseaudit.FieldLicenseID] = struct{}{}
+}
+
+// LicenseIDCleared returns if the "license_id" field was cleared in this mutation.
+func (m *LicenseAuditMutation) LicenseIDCleared() bool {
+	_, ok := m.clearedFields[licenseaudit.FieldLicenseID]
+	return ok
+}
+
+// ResetLicenseID resets all changes to the "license_id" field.
+func (m *LicenseAuditMutation) ResetLicenseID() {
+	m.license_id = nil
+	delete(m.clearedFields, licenseaudit.FieldLicenseID)
+}
+
+// SetAction sets the "action" field.
+func (m *LicenseAuditMutation) SetAction(l licenseaudit.Action) {
+	m.action = &l
+}
+
+// Action returns the value of the "action" field in the mutation.
+func (m *LicenseAuditMutation) Action() (r licenseaudit.Action, exists bool) {
+	v := m.action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAction returns the old "action" field's value of the LicenseAudit entity.
+// If the LicenseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseAuditMutation) OldAction(ctx context.Context) (v licenseaudit.Action, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAction: %w", err)
+	}
+	return oldValue.Action, nil
+}
+
+// ResetAction resets all changes to the "action" field.
+func (m *LicenseAuditMutation) ResetAction() {
+	m.action = nil
+}
+
+// SetResult sets the "result" field.
+func (m *LicenseAuditMutation) SetResult(l licenseaudit.Result) {
+	m.result = &l
+}
+
+// Result returns the value of the "result" field in the mutation.
+func (m *LicenseAuditMutation) Result() (r licenseaudit.Result, exists bool) {
+	v := m.result
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResult returns the old "result" field's value of the LicenseAudit entity.
+// If the LicenseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseAuditMutation) OldResult(ctx context.Context) (v licenseaudit.Result, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResult is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResult requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResult: %w", err)
+	}
+	return oldValue.Result, nil
+}
+
+// ResetResult resets all changes to the "result" field.
+func (m *LicenseAuditMutation) ResetResult() {
+	m.result = nil
+}
+
+// SetMessage sets the "message" field.
+func (m *LicenseAuditMutation) SetMessage(s string) {
+	m.message = &s
+}
+
+// Message returns the value of the "message" field in the mutation.
+func (m *LicenseAuditMutation) Message() (r string, exists bool) {
+	v := m.message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMessage returns the old "message" field's value of the LicenseAudit entity.
+// If the LicenseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseAuditMutation) OldMessage(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMessage: %w", err)
+	}
+	return oldValue.Message, nil
+}
+
+// ClearMessage clears the value of the "message" field.
+func (m *LicenseAuditMutation) ClearMessage() {
+	m.message = nil
+	m.clearedFields[licenseaudit.FieldMessage] = struct{}{}
+}
+
+// MessageCleared returns if the "message" field was cleared in this mutation.
+func (m *LicenseAuditMutation) MessageCleared() bool {
+	_, ok := m.clearedFields[licenseaudit.FieldMessage]
+	return ok
+}
+
+// ResetMessage resets all changes to the "message" field.
+func (m *LicenseAuditMutation) ResetMessage() {
+	m.message = nil
+	delete(m.clearedFields, licenseaudit.FieldMessage)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *LicenseAuditMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *LicenseAuditMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the LicenseAudit entity.
+// If the LicenseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseAuditMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *LicenseAuditMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the LicenseAuditMutation builder.
+func (m *LicenseAuditMutation) Where(ps ...predicate.LicenseAudit) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the LicenseAuditMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *LicenseAuditMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.LicenseAudit, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *LicenseAuditMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *LicenseAuditMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (LicenseAudit).
+func (m *LicenseAuditMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *LicenseAuditMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.license_id != nil {
+		fields = append(fields, licenseaudit.FieldLicenseID)
+	}
+	if m.action != nil {
+		fields = append(fields, licenseaudit.FieldAction)
+	}
+	if m.result != nil {
+		fields = append(fields, licenseaudit.FieldResult)
+	}
+	if m.message != nil {
+		fields = append(fields, licenseaudit.FieldMessage)
+	}
+	if m.created_at != nil {
+		fields = append(fields, licenseaudit.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *LicenseAuditMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case licenseaudit.FieldLicenseID:
+		return m.LicenseID()
+	case licenseaudit.FieldAction:
+		return m.Action()
+	case licenseaudit.FieldResult:
+		return m.Result()
+	case licenseaudit.FieldMessage:
+		return m.Message()
+	case licenseaudit.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *LicenseAuditMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case licenseaudit.FieldLicenseID:
+		return m.OldLicenseID(ctx)
+	case licenseaudit.FieldAction:
+		return m.OldAction(ctx)
+	case licenseaudit.FieldResult:
+		return m.OldResult(ctx)
+	case licenseaudit.FieldMessage:
+		return m.OldMessage(ctx)
+	case licenseaudit.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown LicenseAudit field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LicenseAuditMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case licenseaudit.FieldLicenseID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLicenseID(v)
+		return nil
+	case licenseaudit.FieldAction:
+		v, ok := value.(licenseaudit.Action)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAction(v)
+		return nil
+	case licenseaudit.FieldResult:
+		v, ok := value.(licenseaudit.Result)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResult(v)
+		return nil
+	case licenseaudit.FieldMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMessage(v)
+		return nil
+	case licenseaudit.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseAudit field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *LicenseAuditMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *LicenseAuditMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LicenseAuditMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown LicenseAudit numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *LicenseAuditMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(licenseaudit.FieldLicenseID) {
+		fields = append(fields, licenseaudit.FieldLicenseID)
+	}
+	if m.FieldCleared(licenseaudit.FieldMessage) {
+		fields = append(fields, licenseaudit.FieldMessage)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *LicenseAuditMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *LicenseAuditMutation) ClearField(name string) error {
+	switch name {
+	case licenseaudit.FieldLicenseID:
+		m.ClearLicenseID()
+		return nil
+	case licenseaudit.FieldMessage:
+		m.ClearMessage()
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseAudit nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *LicenseAuditMutation) ResetField(name string) error {
+	switch name {
+	case licenseaudit.FieldLicenseID:
+		m.ResetLicenseID()
+		return nil
+	case licenseaudit.FieldAction:
+		m.ResetAction()
+		return nil
+	case licenseaudit.FieldResult:
+		m.ResetResult()
+		return nil
+	case licenseaudit.FieldMessage:
+		m.ResetMessage()
+		return nil
+	case licenseaudit.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseAudit field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *LicenseAuditMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *LicenseAuditMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *LicenseAuditMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *LicenseAuditMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *LicenseAuditMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *LicenseAuditMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *LicenseAuditMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown LicenseAudit unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *LicenseAuditMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown LicenseAudit edge %s", name)
+}
+
+// LicenseInstallationMutation represents an operation that mutates the LicenseInstallation nodes in the graph.
+type LicenseInstallationMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *uuid.UUID
+	installation_id *string
+	product         *licenseinstallation.Product
+	product_version *string
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*LicenseInstallation, error)
+	predicates      []predicate.LicenseInstallation
+}
+
+var _ ent.Mutation = (*LicenseInstallationMutation)(nil)
+
+// licenseinstallationOption allows management of the mutation configuration using functional options.
+type licenseinstallationOption func(*LicenseInstallationMutation)
+
+// newLicenseInstallationMutation creates new mutation for the LicenseInstallation entity.
+func newLicenseInstallationMutation(c config, op Op, opts ...licenseinstallationOption) *LicenseInstallationMutation {
+	m := &LicenseInstallationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeLicenseInstallation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withLicenseInstallationID sets the ID field of the mutation.
+func withLicenseInstallationID(id uuid.UUID) licenseinstallationOption {
+	return func(m *LicenseInstallationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *LicenseInstallation
+		)
+		m.oldValue = func(ctx context.Context) (*LicenseInstallation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().LicenseInstallation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withLicenseInstallation sets the old LicenseInstallation of the mutation.
+func withLicenseInstallation(node *LicenseInstallation) licenseinstallationOption {
+	return func(m *LicenseInstallationMutation) {
+		m.oldValue = func(context.Context) (*LicenseInstallation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m LicenseInstallationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m LicenseInstallationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of LicenseInstallation entities.
+func (m *LicenseInstallationMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *LicenseInstallationMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *LicenseInstallationMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().LicenseInstallation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetInstallationID sets the "installation_id" field.
+func (m *LicenseInstallationMutation) SetInstallationID(s string) {
+	m.installation_id = &s
+}
+
+// InstallationID returns the value of the "installation_id" field in the mutation.
+func (m *LicenseInstallationMutation) InstallationID() (r string, exists bool) {
+	v := m.installation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInstallationID returns the old "installation_id" field's value of the LicenseInstallation entity.
+// If the LicenseInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseInstallationMutation) OldInstallationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInstallationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInstallationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInstallationID: %w", err)
+	}
+	return oldValue.InstallationID, nil
+}
+
+// ResetInstallationID resets all changes to the "installation_id" field.
+func (m *LicenseInstallationMutation) ResetInstallationID() {
+	m.installation_id = nil
+}
+
+// SetProduct sets the "product" field.
+func (m *LicenseInstallationMutation) SetProduct(l licenseinstallation.Product) {
+	m.product = &l
+}
+
+// Product returns the value of the "product" field in the mutation.
+func (m *LicenseInstallationMutation) Product() (r licenseinstallation.Product, exists bool) {
+	v := m.product
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProduct returns the old "product" field's value of the LicenseInstallation entity.
+// If the LicenseInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseInstallationMutation) OldProduct(ctx context.Context) (v licenseinstallation.Product, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProduct is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProduct requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProduct: %w", err)
+	}
+	return oldValue.Product, nil
+}
+
+// ResetProduct resets all changes to the "product" field.
+func (m *LicenseInstallationMutation) ResetProduct() {
+	m.product = nil
+}
+
+// SetProductVersion sets the "product_version" field.
+func (m *LicenseInstallationMutation) SetProductVersion(s string) {
+	m.product_version = &s
+}
+
+// ProductVersion returns the value of the "product_version" field in the mutation.
+func (m *LicenseInstallationMutation) ProductVersion() (r string, exists bool) {
+	v := m.product_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProductVersion returns the old "product_version" field's value of the LicenseInstallation entity.
+// If the LicenseInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseInstallationMutation) OldProductVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProductVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProductVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProductVersion: %w", err)
+	}
+	return oldValue.ProductVersion, nil
+}
+
+// ClearProductVersion clears the value of the "product_version" field.
+func (m *LicenseInstallationMutation) ClearProductVersion() {
+	m.product_version = nil
+	m.clearedFields[licenseinstallation.FieldProductVersion] = struct{}{}
+}
+
+// ProductVersionCleared returns if the "product_version" field was cleared in this mutation.
+func (m *LicenseInstallationMutation) ProductVersionCleared() bool {
+	_, ok := m.clearedFields[licenseinstallation.FieldProductVersion]
+	return ok
+}
+
+// ResetProductVersion resets all changes to the "product_version" field.
+func (m *LicenseInstallationMutation) ResetProductVersion() {
+	m.product_version = nil
+	delete(m.clearedFields, licenseinstallation.FieldProductVersion)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *LicenseInstallationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *LicenseInstallationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the LicenseInstallation entity.
+// If the LicenseInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseInstallationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *LicenseInstallationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *LicenseInstallationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *LicenseInstallationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the LicenseInstallation entity.
+// If the LicenseInstallation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseInstallationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *LicenseInstallationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the LicenseInstallationMutation builder.
+func (m *LicenseInstallationMutation) Where(ps ...predicate.LicenseInstallation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the LicenseInstallationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *LicenseInstallationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.LicenseInstallation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *LicenseInstallationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *LicenseInstallationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (LicenseInstallation).
+func (m *LicenseInstallationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *LicenseInstallationMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.installation_id != nil {
+		fields = append(fields, licenseinstallation.FieldInstallationID)
+	}
+	if m.product != nil {
+		fields = append(fields, licenseinstallation.FieldProduct)
+	}
+	if m.product_version != nil {
+		fields = append(fields, licenseinstallation.FieldProductVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, licenseinstallation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, licenseinstallation.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *LicenseInstallationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case licenseinstallation.FieldInstallationID:
+		return m.InstallationID()
+	case licenseinstallation.FieldProduct:
+		return m.Product()
+	case licenseinstallation.FieldProductVersion:
+		return m.ProductVersion()
+	case licenseinstallation.FieldCreatedAt:
+		return m.CreatedAt()
+	case licenseinstallation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *LicenseInstallationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case licenseinstallation.FieldInstallationID:
+		return m.OldInstallationID(ctx)
+	case licenseinstallation.FieldProduct:
+		return m.OldProduct(ctx)
+	case licenseinstallation.FieldProductVersion:
+		return m.OldProductVersion(ctx)
+	case licenseinstallation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case licenseinstallation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown LicenseInstallation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LicenseInstallationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case licenseinstallation.FieldInstallationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInstallationID(v)
+		return nil
+	case licenseinstallation.FieldProduct:
+		v, ok := value.(licenseinstallation.Product)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProduct(v)
+		return nil
+	case licenseinstallation.FieldProductVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProductVersion(v)
+		return nil
+	case licenseinstallation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case licenseinstallation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseInstallation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *LicenseInstallationMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *LicenseInstallationMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LicenseInstallationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown LicenseInstallation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *LicenseInstallationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(licenseinstallation.FieldProductVersion) {
+		fields = append(fields, licenseinstallation.FieldProductVersion)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *LicenseInstallationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *LicenseInstallationMutation) ClearField(name string) error {
+	switch name {
+	case licenseinstallation.FieldProductVersion:
+		m.ClearProductVersion()
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseInstallation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *LicenseInstallationMutation) ResetField(name string) error {
+	switch name {
+	case licenseinstallation.FieldInstallationID:
+		m.ResetInstallationID()
+		return nil
+	case licenseinstallation.FieldProduct:
+		m.ResetProduct()
+		return nil
+	case licenseinstallation.FieldProductVersion:
+		m.ResetProductVersion()
+		return nil
+	case licenseinstallation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case licenseinstallation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseInstallation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *LicenseInstallationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *LicenseInstallationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *LicenseInstallationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *LicenseInstallationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *LicenseInstallationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *LicenseInstallationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *LicenseInstallationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown LicenseInstallation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *LicenseInstallationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown LicenseInstallation edge %s", name)
+}
+
+// LicenseRecordMutation represents an operation that mutates the LicenseRecord nodes in the graph.
+type LicenseRecordMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *uuid.UUID
+	license_id      *string
+	installation_id *string
+	customer_id     *string
+	customer_name   *string
+	seats           *int
+	addseats        *int
+	issued_at       *time.Time
+	expires_at      *time.Time
+	payload_json    *string
+	signature       *string
+	key_id          *string
+	alg             *licenserecord.Alg
+	active          *bool
+	imported_at     *time.Time
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*LicenseRecord, error)
+	predicates      []predicate.LicenseRecord
+}
+
+var _ ent.Mutation = (*LicenseRecordMutation)(nil)
+
+// licenserecordOption allows management of the mutation configuration using functional options.
+type licenserecordOption func(*LicenseRecordMutation)
+
+// newLicenseRecordMutation creates new mutation for the LicenseRecord entity.
+func newLicenseRecordMutation(c config, op Op, opts ...licenserecordOption) *LicenseRecordMutation {
+	m := &LicenseRecordMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeLicenseRecord,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withLicenseRecordID sets the ID field of the mutation.
+func withLicenseRecordID(id uuid.UUID) licenserecordOption {
+	return func(m *LicenseRecordMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *LicenseRecord
+		)
+		m.oldValue = func(ctx context.Context) (*LicenseRecord, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().LicenseRecord.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withLicenseRecord sets the old LicenseRecord of the mutation.
+func withLicenseRecord(node *LicenseRecord) licenserecordOption {
+	return func(m *LicenseRecordMutation) {
+		m.oldValue = func(context.Context) (*LicenseRecord, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m LicenseRecordMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m LicenseRecordMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of LicenseRecord entities.
+func (m *LicenseRecordMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *LicenseRecordMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *LicenseRecordMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().LicenseRecord.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetLicenseID sets the "license_id" field.
+func (m *LicenseRecordMutation) SetLicenseID(s string) {
+	m.license_id = &s
+}
+
+// LicenseID returns the value of the "license_id" field in the mutation.
+func (m *LicenseRecordMutation) LicenseID() (r string, exists bool) {
+	v := m.license_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLicenseID returns the old "license_id" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldLicenseID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLicenseID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLicenseID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLicenseID: %w", err)
+	}
+	return oldValue.LicenseID, nil
+}
+
+// ResetLicenseID resets all changes to the "license_id" field.
+func (m *LicenseRecordMutation) ResetLicenseID() {
+	m.license_id = nil
+}
+
+// SetInstallationID sets the "installation_id" field.
+func (m *LicenseRecordMutation) SetInstallationID(s string) {
+	m.installation_id = &s
+}
+
+// InstallationID returns the value of the "installation_id" field in the mutation.
+func (m *LicenseRecordMutation) InstallationID() (r string, exists bool) {
+	v := m.installation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInstallationID returns the old "installation_id" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldInstallationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInstallationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInstallationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInstallationID: %w", err)
+	}
+	return oldValue.InstallationID, nil
+}
+
+// ResetInstallationID resets all changes to the "installation_id" field.
+func (m *LicenseRecordMutation) ResetInstallationID() {
+	m.installation_id = nil
+}
+
+// SetCustomerID sets the "customer_id" field.
+func (m *LicenseRecordMutation) SetCustomerID(s string) {
+	m.customer_id = &s
+}
+
+// CustomerID returns the value of the "customer_id" field in the mutation.
+func (m *LicenseRecordMutation) CustomerID() (r string, exists bool) {
+	v := m.customer_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomerID returns the old "customer_id" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldCustomerID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomerID: %w", err)
+	}
+	return oldValue.CustomerID, nil
+}
+
+// ClearCustomerID clears the value of the "customer_id" field.
+func (m *LicenseRecordMutation) ClearCustomerID() {
+	m.customer_id = nil
+	m.clearedFields[licenserecord.FieldCustomerID] = struct{}{}
+}
+
+// CustomerIDCleared returns if the "customer_id" field was cleared in this mutation.
+func (m *LicenseRecordMutation) CustomerIDCleared() bool {
+	_, ok := m.clearedFields[licenserecord.FieldCustomerID]
+	return ok
+}
+
+// ResetCustomerID resets all changes to the "customer_id" field.
+func (m *LicenseRecordMutation) ResetCustomerID() {
+	m.customer_id = nil
+	delete(m.clearedFields, licenserecord.FieldCustomerID)
+}
+
+// SetCustomerName sets the "customer_name" field.
+func (m *LicenseRecordMutation) SetCustomerName(s string) {
+	m.customer_name = &s
+}
+
+// CustomerName returns the value of the "customer_name" field in the mutation.
+func (m *LicenseRecordMutation) CustomerName() (r string, exists bool) {
+	v := m.customer_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomerName returns the old "customer_name" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldCustomerName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomerName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomerName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomerName: %w", err)
+	}
+	return oldValue.CustomerName, nil
+}
+
+// ClearCustomerName clears the value of the "customer_name" field.
+func (m *LicenseRecordMutation) ClearCustomerName() {
+	m.customer_name = nil
+	m.clearedFields[licenserecord.FieldCustomerName] = struct{}{}
+}
+
+// CustomerNameCleared returns if the "customer_name" field was cleared in this mutation.
+func (m *LicenseRecordMutation) CustomerNameCleared() bool {
+	_, ok := m.clearedFields[licenserecord.FieldCustomerName]
+	return ok
+}
+
+// ResetCustomerName resets all changes to the "customer_name" field.
+func (m *LicenseRecordMutation) ResetCustomerName() {
+	m.customer_name = nil
+	delete(m.clearedFields, licenserecord.FieldCustomerName)
+}
+
+// SetSeats sets the "seats" field.
+func (m *LicenseRecordMutation) SetSeats(i int) {
+	m.seats = &i
+	m.addseats = nil
+}
+
+// Seats returns the value of the "seats" field in the mutation.
+func (m *LicenseRecordMutation) Seats() (r int, exists bool) {
+	v := m.seats
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeats returns the old "seats" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldSeats(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeats is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeats requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeats: %w", err)
+	}
+	return oldValue.Seats, nil
+}
+
+// AddSeats adds i to the "seats" field.
+func (m *LicenseRecordMutation) AddSeats(i int) {
+	if m.addseats != nil {
+		*m.addseats += i
+	} else {
+		m.addseats = &i
+	}
+}
+
+// AddedSeats returns the value that was added to the "seats" field in this mutation.
+func (m *LicenseRecordMutation) AddedSeats() (r int, exists bool) {
+	v := m.addseats
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSeats resets all changes to the "seats" field.
+func (m *LicenseRecordMutation) ResetSeats() {
+	m.seats = nil
+	m.addseats = nil
+}
+
+// SetIssuedAt sets the "issued_at" field.
+func (m *LicenseRecordMutation) SetIssuedAt(t time.Time) {
+	m.issued_at = &t
+}
+
+// IssuedAt returns the value of the "issued_at" field in the mutation.
+func (m *LicenseRecordMutation) IssuedAt() (r time.Time, exists bool) {
+	v := m.issued_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIssuedAt returns the old "issued_at" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldIssuedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIssuedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIssuedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIssuedAt: %w", err)
+	}
+	return oldValue.IssuedAt, nil
+}
+
+// ResetIssuedAt resets all changes to the "issued_at" field.
+func (m *LicenseRecordMutation) ResetIssuedAt() {
+	m.issued_at = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *LicenseRecordMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *LicenseRecordMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *LicenseRecordMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetPayloadJSON sets the "payload_json" field.
+func (m *LicenseRecordMutation) SetPayloadJSON(s string) {
+	m.payload_json = &s
+}
+
+// PayloadJSON returns the value of the "payload_json" field in the mutation.
+func (m *LicenseRecordMutation) PayloadJSON() (r string, exists bool) {
+	v := m.payload_json
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloadJSON returns the old "payload_json" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldPayloadJSON(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloadJSON is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloadJSON requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloadJSON: %w", err)
+	}
+	return oldValue.PayloadJSON, nil
+}
+
+// ResetPayloadJSON resets all changes to the "payload_json" field.
+func (m *LicenseRecordMutation) ResetPayloadJSON() {
+	m.payload_json = nil
+}
+
+// SetSignature sets the "signature" field.
+func (m *LicenseRecordMutation) SetSignature(s string) {
+	m.signature = &s
+}
+
+// Signature returns the value of the "signature" field in the mutation.
+func (m *LicenseRecordMutation) Signature() (r string, exists bool) {
+	v := m.signature
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSignature returns the old "signature" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldSignature(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSignature is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSignature requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSignature: %w", err)
+	}
+	return oldValue.Signature, nil
+}
+
+// ResetSignature resets all changes to the "signature" field.
+func (m *LicenseRecordMutation) ResetSignature() {
+	m.signature = nil
+}
+
+// SetKeyID sets the "key_id" field.
+func (m *LicenseRecordMutation) SetKeyID(s string) {
+	m.key_id = &s
+}
+
+// KeyID returns the value of the "key_id" field in the mutation.
+func (m *LicenseRecordMutation) KeyID() (r string, exists bool) {
+	v := m.key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKeyID returns the old "key_id" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldKeyID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKeyID: %w", err)
+	}
+	return oldValue.KeyID, nil
+}
+
+// ResetKeyID resets all changes to the "key_id" field.
+func (m *LicenseRecordMutation) ResetKeyID() {
+	m.key_id = nil
+}
+
+// SetAlg sets the "alg" field.
+func (m *LicenseRecordMutation) SetAlg(l licenserecord.Alg) {
+	m.alg = &l
+}
+
+// Alg returns the value of the "alg" field in the mutation.
+func (m *LicenseRecordMutation) Alg() (r licenserecord.Alg, exists bool) {
+	v := m.alg
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAlg returns the old "alg" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldAlg(ctx context.Context) (v licenserecord.Alg, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAlg is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAlg requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAlg: %w", err)
+	}
+	return oldValue.Alg, nil
+}
+
+// ResetAlg resets all changes to the "alg" field.
+func (m *LicenseRecordMutation) ResetAlg() {
+	m.alg = nil
+}
+
+// SetActive sets the "active" field.
+func (m *LicenseRecordMutation) SetActive(b bool) {
+	m.active = &b
+}
+
+// Active returns the value of the "active" field in the mutation.
+func (m *LicenseRecordMutation) Active() (r bool, exists bool) {
+	v := m.active
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActive returns the old "active" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldActive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActive: %w", err)
+	}
+	return oldValue.Active, nil
+}
+
+// ResetActive resets all changes to the "active" field.
+func (m *LicenseRecordMutation) ResetActive() {
+	m.active = nil
+}
+
+// SetImportedAt sets the "imported_at" field.
+func (m *LicenseRecordMutation) SetImportedAt(t time.Time) {
+	m.imported_at = &t
+}
+
+// ImportedAt returns the value of the "imported_at" field in the mutation.
+func (m *LicenseRecordMutation) ImportedAt() (r time.Time, exists bool) {
+	v := m.imported_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImportedAt returns the old "imported_at" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldImportedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImportedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImportedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImportedAt: %w", err)
+	}
+	return oldValue.ImportedAt, nil
+}
+
+// ResetImportedAt resets all changes to the "imported_at" field.
+func (m *LicenseRecordMutation) ResetImportedAt() {
+	m.imported_at = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *LicenseRecordMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *LicenseRecordMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *LicenseRecordMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *LicenseRecordMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *LicenseRecordMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the LicenseRecord entity.
+// If the LicenseRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LicenseRecordMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *LicenseRecordMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the LicenseRecordMutation builder.
+func (m *LicenseRecordMutation) Where(ps ...predicate.LicenseRecord) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the LicenseRecordMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *LicenseRecordMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.LicenseRecord, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *LicenseRecordMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *LicenseRecordMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (LicenseRecord).
+func (m *LicenseRecordMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *LicenseRecordMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.license_id != nil {
+		fields = append(fields, licenserecord.FieldLicenseID)
+	}
+	if m.installation_id != nil {
+		fields = append(fields, licenserecord.FieldInstallationID)
+	}
+	if m.customer_id != nil {
+		fields = append(fields, licenserecord.FieldCustomerID)
+	}
+	if m.customer_name != nil {
+		fields = append(fields, licenserecord.FieldCustomerName)
+	}
+	if m.seats != nil {
+		fields = append(fields, licenserecord.FieldSeats)
+	}
+	if m.issued_at != nil {
+		fields = append(fields, licenserecord.FieldIssuedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, licenserecord.FieldExpiresAt)
+	}
+	if m.payload_json != nil {
+		fields = append(fields, licenserecord.FieldPayloadJSON)
+	}
+	if m.signature != nil {
+		fields = append(fields, licenserecord.FieldSignature)
+	}
+	if m.key_id != nil {
+		fields = append(fields, licenserecord.FieldKeyID)
+	}
+	if m.alg != nil {
+		fields = append(fields, licenserecord.FieldAlg)
+	}
+	if m.active != nil {
+		fields = append(fields, licenserecord.FieldActive)
+	}
+	if m.imported_at != nil {
+		fields = append(fields, licenserecord.FieldImportedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, licenserecord.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, licenserecord.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *LicenseRecordMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case licenserecord.FieldLicenseID:
+		return m.LicenseID()
+	case licenserecord.FieldInstallationID:
+		return m.InstallationID()
+	case licenserecord.FieldCustomerID:
+		return m.CustomerID()
+	case licenserecord.FieldCustomerName:
+		return m.CustomerName()
+	case licenserecord.FieldSeats:
+		return m.Seats()
+	case licenserecord.FieldIssuedAt:
+		return m.IssuedAt()
+	case licenserecord.FieldExpiresAt:
+		return m.ExpiresAt()
+	case licenserecord.FieldPayloadJSON:
+		return m.PayloadJSON()
+	case licenserecord.FieldSignature:
+		return m.Signature()
+	case licenserecord.FieldKeyID:
+		return m.KeyID()
+	case licenserecord.FieldAlg:
+		return m.Alg()
+	case licenserecord.FieldActive:
+		return m.Active()
+	case licenserecord.FieldImportedAt:
+		return m.ImportedAt()
+	case licenserecord.FieldCreatedAt:
+		return m.CreatedAt()
+	case licenserecord.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *LicenseRecordMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case licenserecord.FieldLicenseID:
+		return m.OldLicenseID(ctx)
+	case licenserecord.FieldInstallationID:
+		return m.OldInstallationID(ctx)
+	case licenserecord.FieldCustomerID:
+		return m.OldCustomerID(ctx)
+	case licenserecord.FieldCustomerName:
+		return m.OldCustomerName(ctx)
+	case licenserecord.FieldSeats:
+		return m.OldSeats(ctx)
+	case licenserecord.FieldIssuedAt:
+		return m.OldIssuedAt(ctx)
+	case licenserecord.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case licenserecord.FieldPayloadJSON:
+		return m.OldPayloadJSON(ctx)
+	case licenserecord.FieldSignature:
+		return m.OldSignature(ctx)
+	case licenserecord.FieldKeyID:
+		return m.OldKeyID(ctx)
+	case licenserecord.FieldAlg:
+		return m.OldAlg(ctx)
+	case licenserecord.FieldActive:
+		return m.OldActive(ctx)
+	case licenserecord.FieldImportedAt:
+		return m.OldImportedAt(ctx)
+	case licenserecord.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case licenserecord.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown LicenseRecord field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LicenseRecordMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case licenserecord.FieldLicenseID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLicenseID(v)
+		return nil
+	case licenserecord.FieldInstallationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInstallationID(v)
+		return nil
+	case licenserecord.FieldCustomerID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomerID(v)
+		return nil
+	case licenserecord.FieldCustomerName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomerName(v)
+		return nil
+	case licenserecord.FieldSeats:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeats(v)
+		return nil
+	case licenserecord.FieldIssuedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIssuedAt(v)
+		return nil
+	case licenserecord.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case licenserecord.FieldPayloadJSON:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloadJSON(v)
+		return nil
+	case licenserecord.FieldSignature:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSignature(v)
+		return nil
+	case licenserecord.FieldKeyID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKeyID(v)
+		return nil
+	case licenserecord.FieldAlg:
+		v, ok := value.(licenserecord.Alg)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAlg(v)
+		return nil
+	case licenserecord.FieldActive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActive(v)
+		return nil
+	case licenserecord.FieldImportedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImportedAt(v)
+		return nil
+	case licenserecord.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case licenserecord.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseRecord field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *LicenseRecordMutation) AddedFields() []string {
+	var fields []string
+	if m.addseats != nil {
+		fields = append(fields, licenserecord.FieldSeats)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *LicenseRecordMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case licenserecord.FieldSeats:
+		return m.AddedSeats()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LicenseRecordMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case licenserecord.FieldSeats:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSeats(v)
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseRecord numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *LicenseRecordMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(licenserecord.FieldCustomerID) {
+		fields = append(fields, licenserecord.FieldCustomerID)
+	}
+	if m.FieldCleared(licenserecord.FieldCustomerName) {
+		fields = append(fields, licenserecord.FieldCustomerName)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *LicenseRecordMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *LicenseRecordMutation) ClearField(name string) error {
+	switch name {
+	case licenserecord.FieldCustomerID:
+		m.ClearCustomerID()
+		return nil
+	case licenserecord.FieldCustomerName:
+		m.ClearCustomerName()
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseRecord nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *LicenseRecordMutation) ResetField(name string) error {
+	switch name {
+	case licenserecord.FieldLicenseID:
+		m.ResetLicenseID()
+		return nil
+	case licenserecord.FieldInstallationID:
+		m.ResetInstallationID()
+		return nil
+	case licenserecord.FieldCustomerID:
+		m.ResetCustomerID()
+		return nil
+	case licenserecord.FieldCustomerName:
+		m.ResetCustomerName()
+		return nil
+	case licenserecord.FieldSeats:
+		m.ResetSeats()
+		return nil
+	case licenserecord.FieldIssuedAt:
+		m.ResetIssuedAt()
+		return nil
+	case licenserecord.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case licenserecord.FieldPayloadJSON:
+		m.ResetPayloadJSON()
+		return nil
+	case licenserecord.FieldSignature:
+		m.ResetSignature()
+		return nil
+	case licenserecord.FieldKeyID:
+		m.ResetKeyID()
+		return nil
+	case licenserecord.FieldAlg:
+		m.ResetAlg()
+		return nil
+	case licenserecord.FieldActive:
+		m.ResetActive()
+		return nil
+	case licenserecord.FieldImportedAt:
+		m.ResetImportedAt()
+		return nil
+	case licenserecord.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case licenserecord.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown LicenseRecord field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *LicenseRecordMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *LicenseRecordMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *LicenseRecordMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *LicenseRecordMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *LicenseRecordMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *LicenseRecordMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *LicenseRecordMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown LicenseRecord unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *LicenseRecordMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown LicenseRecord edge %s", name)
 }
 
 // MCPToolMutation represents an operation that mutates the MCPTool nodes in the graph.

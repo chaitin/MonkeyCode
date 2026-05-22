@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,14 +12,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
-	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
-	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
-	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -30,7 +25,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
-	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/vmstatus"
 	"github.com/chaitin/MonkeyCode/backend/templates"
@@ -38,44 +32,30 @@ import (
 
 // TaskUsecase 任务业务逻辑实现
 type TaskUsecase struct {
-	cfg                   *config.Config
-	repo                  domain.TaskRepo
-	modelRepo             domain.ModelRepo
-	logger                *slog.Logger
-	taskflow              taskflow.Clienter
-	loki                  *loki.Client
-	redis                 *redis.Client
-	notifyDispatcher      *dispatcher.Dispatcher
-	taskHook              domain.TaskHook
-	privilegeChecker      domain.PrivilegeChecker
-	modelHook             domain.ModelHook
-	taskLifecycle         *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
-	vmLifecycle           *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
-	girepo                domain.GitIdentityRepo
-	tokenProvider         *gituc.TokenProvider
-	projectRepo           domain.ProjectRepo
-	taskActivityRefresher service.TaskActivityRefresher
-	idleRefresher         vmidle.VMIdleRefresher
+	cfg              *config.Config
+	repo             domain.TaskRepo
+	modelRepo        domain.ModelRepo
+	logger           *slog.Logger
+	taskflow         taskflow.Clienter
+	loki             *loki.Client
+	redis            *redis.Client
+	taskHook         domain.TaskHook
+	privilegeChecker domain.PrivilegeChecker
+	modelHook        domain.ModelHook
+	vmLifecycle      *lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
 func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 	u := &TaskUsecase{
-		cfg:                   do.MustInvoke[*config.Config](i),
-		repo:                  do.MustInvoke[domain.TaskRepo](i),
-		modelRepo:             do.MustInvoke[domain.ModelRepo](i),
-		logger:                do.MustInvoke[*slog.Logger](i).With("module", "usecase.TaskUsecase"),
-		taskflow:              do.MustInvoke[taskflow.Clienter](i),
-		loki:                  do.MustInvoke[*loki.Client](i),
-		redis:                 do.MustInvoke[*redis.Client](i),
-		notifyDispatcher:      do.MustInvoke[*dispatcher.Dispatcher](i),
-		taskLifecycle:         do.MustInvoke[*lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]](i),
-		vmLifecycle:           do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
-		girepo:                do.MustInvoke[domain.GitIdentityRepo](i),
-		tokenProvider:         do.MustInvoke[*gituc.TokenProvider](i),
-		projectRepo:           do.MustInvoke[domain.ProjectRepo](i),
-		taskActivityRefresher: do.MustInvoke[service.TaskActivityRefresher](i),
-		idleRefresher:         do.MustInvoke[vmidle.VMIdleRefresher](i),
+		cfg:         do.MustInvoke[*config.Config](i),
+		repo:        do.MustInvoke[domain.TaskRepo](i),
+		modelRepo:   do.MustInvoke[domain.ModelRepo](i),
+		logger:      do.MustInvoke[*slog.Logger](i).With("module", "usecase.TaskUsecase"),
+		taskflow:    do.MustInvoke[taskflow.Clienter](i),
+		loki:        do.MustInvoke[*loki.Client](i),
+		redis:       do.MustInvoke[*redis.Client](i),
+		vmLifecycle: do.MustInvoke[*lifecycle.Manager[string, lifecycle.VMState, lifecycle.VMMetadata]](i),
 	}
 
 	// 可选注入 TaskHook
@@ -404,262 +384,6 @@ func (a *TaskUsecase) IncrUserInputCount(ctx context.Context, userID, taskID uui
 	pipe.Expire(ctx, dailyKey, 90*24*time.Hour)
 	_, err := pipe.Exec(ctx)
 	return err
-}
-
-// Create implements domain.TaskUsecase.
-func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.CreateTaskReq) (*domain.ProjectTask, error) {
-	if err := validateAttachments(req.Attachments, a.cfg.Attachment); err != nil {
-		return nil, err
-	}
-
-	r, err := a.taskflow.Host().IsOnline(ctx, &taskflow.IsOnlineReq[string]{
-		IDs: []string{req.HostID},
-	})
-	if err != nil {
-		return nil, errcode.ErrHostOffline.Wrap(err)
-	}
-	if !r.OnlineMap[req.HostID] {
-		return nil, errcode.ErrHostOffline
-	}
-
-	// 模型访问校验（仅在注入 ModelHook 时生效）
-	if a.modelHook != nil {
-		if err := a.modelHook.ValidateAccess(ctx, user.ID, req.ModelID); err != nil {
-			return nil, err
-		}
-	}
-
-	req.Now = time.Now()
-	var token string
-
-	git := taskflow.Git{
-		Token:  token,
-		Branch: req.RepoReq.Branch,
-	}
-
-	imageName := ""
-	env := make([]string, 0)
-	if req.Extra.ProjectID != uuid.Nil {
-		project, err := a.projectRepo.Get(ctx, user.ID, req.Extra.ProjectID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get project: %w", err)
-		}
-
-		git.URL = project.RepoURL
-		if project.EnvVariables != nil {
-			for k, v := range project.EnvVariables {
-				env = append(env, fmt.Sprintf("%s=%v", k, v))
-			}
-		}
-		if project.Edges.Image != nil {
-			imageName = project.Edges.Image.Name
-		}
-
-		if gi := project.Edges.GitIdentity; gi != nil {
-			req.GitIdentityID = gi.ID
-		}
-	}
-
-	// 根据 GitIdentityID 解析 git token / username / email
-	if req.GitIdentityID != uuid.Nil {
-		identity, err := a.girepo.Get(ctx, req.GitIdentityID)
-		if err != nil {
-			return nil, fmt.Errorf("get git identity: %w", err)
-		}
-		t, err := a.tokenProvider.GetToken(ctx, req.GitIdentityID)
-		if err != nil {
-			return nil, fmt.Errorf("get git token: %w", err)
-		}
-
-		git.Token = t
-		git.Username = identity.Username
-		git.Email = identity.Email
-	}
-
-	limit := 1
-	if a.taskHook != nil {
-		if req.SystemPrompt == "" {
-			// 如果有 TaskHook，获取系统提示词
-			if prompt, err := a.taskHook.GetSystemPrompt(ctx, req.Type, req.SubType); err == nil && prompt != "" {
-				req.SystemPrompt = prompt
-			}
-		}
-
-		n, err := a.taskHook.GetMaxConcurrent(ctx, user.ID)
-		if err != nil {
-			return nil, err
-		}
-		limit = cmp.Or(n, limit)
-	}
-
-	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
-
-	var createdVm *taskflow.VirtualMachine
-	pt, err := a.repo.Create(ctx, user, req, token, func(pt *db.ProjectTask, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error) {
-		t := pt.Edges.Task
-		if t == nil {
-			return nil, fmt.Errorf("task edge is nil")
-		}
-		if git.URL == "" {
-			git.URL = pt.RepoURL
-		}
-
-		var token string
-		if keys := m.Edges.Apikeys; len(keys) > 0 {
-			m.APIKey = keys[0].APIKey
-			m.BaseURL = a.cfg.LLMProxy.BaseURL + "/v1"
-			token = keys[0].APIKey
-		}
-
-		coding, configs, err := a.getCodingConfigs(req.CliName, m, req.Extra.SkillIDs)
-		if err != nil {
-			return nil, err
-		}
-
-		vm, err := a.taskflow.VirtualMachiner().Create(ctx, &taskflow.CreateVirtualMachineReq{
-			UserID:   user.ID.String(),
-			HostID:   req.HostID,
-			HostName: t.ID.String(),
-			Git:      git,
-			ZipUrl:   req.RepoReq.ZipURL,
-			ImageURL: cmp.Or(imageName, i.Name),
-			ProxyURL: "",
-			TaskID:   t.ID,
-			LLM: taskflow.LLMProviderReq{
-				Provider: taskflow.LlmProviderOpenAI,
-				ApiKey:   m.APIKey,
-				BaseURL:  m.BaseURL,
-				Model:    m.Model,
-			},
-			Cores:    "2",
-			Memory:   8 << 30,
-			Envs:     env,
-			LogStore: normalizeTaskLogStore(t.LogStore),
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		if vm == nil {
-			return nil, fmt.Errorf("vm is nil")
-		}
-		createdVm = vm
-
-		mcps := a.buildMCPConfigs(t.ID, token)
-
-		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
-		createTaskReq := &taskflow.CreateTaskReq{
-			ID:           t.ID,
-			VMID:         vm.ID,
-			Text:         req.Content,
-			Attachments:  taskAttachmentsToTaskflow(req.Attachments),
-			SystemPrompt: req.SystemPrompt,
-			CodingAgent:  coding,
-			LLM: taskflow.LLM{
-				ApiKey:  m.APIKey,
-				BaseURL: m.BaseURL,
-				Model:   m.Model,
-				ApiType: m.InterfaceType,
-			},
-			Configs:    configs,
-			McpConfigs: mcps,
-			LogStore:   normalizeTaskLogStore(t.LogStore),
-		}
-		b, err := json.Marshal(createTaskReq)
-		if err != nil {
-			return vm, err
-		}
-		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
-		if err := a.redis.Set(ctx, reqKey, string(b), 10*time.Minute).Err(); err != nil {
-			a.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
-		}
-
-		return vm, nil
-	})
-	if err != nil {
-		a.logger.With("error", err, "req", req).ErrorContext(ctx, "failed to create task")
-		return nil, err
-	}
-	a.logger.With("req", req).InfoContext(ctx, "task created")
-	taskMeta := lifecycle.TaskMetadata{
-		TaskID: pt.TaskID,
-		UserID: user.ID,
-	}
-	if err := a.taskLifecycle.Transition(ctx, pt.TaskID, consts.TaskStatusPending, taskMeta); err != nil {
-		a.logger.WarnContext(ctx, "task lifecycle transition failed", "error", err)
-	}
-
-	if createdVm != nil {
-		vmMeta := lifecycle.VMMetadata{
-			VMID:   createdVm.ID,
-			TaskID: &pt.TaskID,
-			UserID: user.ID,
-		}
-		if err := a.vmLifecycle.Transition(ctx, createdVm.ID, lifecycle.VMStatePending, vmMeta); err != nil {
-			a.logger.WarnContext(ctx, "vm lifecycle transition failed", "error", err)
-		}
-	}
-
-	if err := a.IncrUserInputCount(ctx, user.ID, pt.Edges.Task.ID); err != nil {
-		a.logger.WarnContext(ctx, "failed to incr user input count on create", "error", err)
-	}
-	vmID := ""
-	if createdVm != nil {
-		vmID = createdVm.ID
-	}
-	a.refreshCreatedTaskState(ctx, pt.TaskID, vmID)
-
-	result := cvt.From(pt, &domain.ProjectTask{})
-
-	// 通知 TaskHook（如内部项目的 git task 创建等）
-	if a.taskHook != nil {
-		if err := a.taskHook.OnTaskCreated(ctx, result); err != nil {
-			a.logger.WarnContext(ctx, "taskHook.OnTaskCreated failed", "error", err)
-		}
-	}
-
-	return result, nil
-}
-
-func (a *TaskUsecase) refreshCreatedTaskState(ctx context.Context, taskID uuid.UUID, vmID string) {
-	if err := a.taskActivityRefresher.ForceRefresh(ctx, taskID); err != nil {
-		a.logger.WarnContext(ctx, "failed to refresh task last active on create", "task_id", taskID, "error", err)
-	}
-	if vmID == "" {
-		return
-	}
-	if err := a.idleRefresher.Refresh(ctx, vmID); err != nil {
-		a.logger.WarnContext(ctx, "failed to refresh vm idle timers on create", "task_id", taskID, "vm_id", vmID, "error", err)
-	}
-}
-
-func (a *TaskUsecase) buildMCPConfigs(taskID uuid.UUID, token string) []taskflow.McpServerConfig {
-	mcps := []taskflow.McpServerConfig{
-		{
-			Type: "http",
-			Name: "mcaiBuiltin",
-			Url:  proto.String(fmt.Sprintf("http://127.0.0.1:65510/mcp?task_id=%s", taskID.String())),
-		},
-	}
-
-	if token != "" {
-		mcps = append(mcps, taskflow.McpServerConfig{
-			Type: "http",
-			Name: "monkeycode-ai",
-			Url:  proto.String(fmt.Sprintf("%s/mcp", strings.TrimRight(a.cfg.Server.BaseURL, "/"))),
-			Headers: []*taskflow.McpHttpHeader{
-				{
-					Name:  "Authorization",
-					Value: fmt.Sprintf("Bearer %s", token),
-				},
-			},
-			Command: new(string),
-			Args:    []string{},
-			Env:     map[string]string{},
-		})
-	}
-
-	return mcps
 }
 
 func opencodeNpmPackage(interfaceType string) (string, error) {

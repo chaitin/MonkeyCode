@@ -15,13 +15,17 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
 
+// TaskCreator 定义产品侧必须提供的任务创建入口。
+type TaskCreator interface {
+	Create(ctx context.Context, user *User, req CreateTaskReq) (*ProjectTask, error)
+}
+
 // TaskUsecase 任务业务逻辑接口
 type TaskUsecase interface {
 	GetPublic(ctx context.Context, user *User, id uuid.UUID) (*Task, error)
 	Info(ctx context.Context, user *User, id uuid.UUID) (*Task, bool, error)
 	List(ctx context.Context, user *User, req TaskListReq) (*ListTaskResp, error)
 	Continue(ctx context.Context, user *User, id uuid.UUID, req ContinueTaskReq) error
-	Create(ctx context.Context, user *User, req CreateTaskReq) (*ProjectTask, error)
 	Stop(ctx context.Context, user *User, id uuid.UUID) error
 	Cancel(ctx context.Context, user *User, id uuid.UUID) error
 	AutoApprove(ctx context.Context, user *User, id uuid.UUID, approve bool) error

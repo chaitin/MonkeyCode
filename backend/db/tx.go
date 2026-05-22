@@ -30,6 +30,12 @@ type Tx struct {
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
 	Image *ImageClient
+	// LicenseAudit is the client for interacting with the LicenseAudit builders.
+	LicenseAudit *LicenseAuditClient
+	// LicenseInstallation is the client for interacting with the LicenseInstallation builders.
+	LicenseInstallation *LicenseInstallationClient
+	// LicenseRecord is the client for interacting with the LicenseRecord builders.
+	LicenseRecord *LicenseRecordClient
 	// MCPTool is the client for interacting with the MCPTool builders.
 	MCPTool *MCPToolClient
 	// MCPUpstream is the client for interacting with the MCPUpstream builders.
@@ -233,6 +239,9 @@ func (tx *Tx) init() {
 	tx.GitTask = NewGitTaskClient(tx.config)
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
+	tx.LicenseAudit = NewLicenseAuditClient(tx.config)
+	tx.LicenseInstallation = NewLicenseInstallationClient(tx.config)
+	tx.LicenseRecord = NewLicenseRecordClient(tx.config)
 	tx.MCPTool = NewMCPToolClient(tx.config)
 	tx.MCPUpstream = NewMCPUpstreamClient(tx.config)
 	tx.MCPUserToolSetting = NewMCPUserToolSettingClient(tx.config)

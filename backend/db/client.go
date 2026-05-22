@@ -24,6 +24,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseaudit"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseinstallation"
+	"github.com/chaitin/MonkeyCode/backend/db/licenserecord"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
@@ -81,6 +84,12 @@ type Client struct {
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
 	Image *ImageClient
+	// LicenseAudit is the client for interacting with the LicenseAudit builders.
+	LicenseAudit *LicenseAuditClient
+	// LicenseInstallation is the client for interacting with the LicenseInstallation builders.
+	LicenseInstallation *LicenseInstallationClient
+	// LicenseRecord is the client for interacting with the LicenseRecord builders.
+	LicenseRecord *LicenseRecordClient
 	// MCPTool is the client for interacting with the MCPTool builders.
 	MCPTool *MCPToolClient
 	// MCPUpstream is the client for interacting with the MCPUpstream builders.
@@ -164,6 +173,9 @@ func (c *Client) init() {
 	c.GitTask = NewGitTaskClient(c.config)
 	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
+	c.LicenseAudit = NewLicenseAuditClient(c.config)
+	c.LicenseInstallation = NewLicenseInstallationClient(c.config)
+	c.LicenseRecord = NewLicenseRecordClient(c.config)
 	c.MCPTool = NewMCPToolClient(c.config)
 	c.MCPUpstream = NewMCPUpstreamClient(c.config)
 	c.MCPUserToolSetting = NewMCPUserToolSettingClient(c.config)
@@ -296,6 +308,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GitTask:             NewGitTaskClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
+		LicenseAudit:        NewLicenseAuditClient(cfg),
+		LicenseInstallation: NewLicenseInstallationClient(cfg),
+		LicenseRecord:       NewLicenseRecordClient(cfg),
 		MCPTool:             NewMCPToolClient(cfg),
 		MCPUpstream:         NewMCPUpstreamClient(cfg),
 		MCPUserToolSetting:  NewMCPUserToolSettingClient(cfg),
@@ -355,6 +370,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GitTask:             NewGitTaskClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
+		LicenseAudit:        NewLicenseAuditClient(cfg),
+		LicenseInstallation: NewLicenseInstallationClient(cfg),
+		LicenseRecord:       NewLicenseRecordClient(cfg),
 		MCPTool:             NewMCPToolClient(cfg),
 		MCPUpstream:         NewMCPUpstreamClient(cfg),
 		MCPUserToolSetting:  NewMCPUserToolSettingClient(cfg),
@@ -417,14 +435,14 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host,
-		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
-		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
-		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
-		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
-		c.VirtualMachine,
+		c.Image, c.LicenseAudit, c.LicenseInstallation, c.LicenseRecord, c.MCPTool,
+		c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey, c.ModelPricing,
+		c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
+		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
+		c.ProjectTask, c.Task, c.TaskModelSwitch, c.TaskUsageStat,
+		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
+		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -435,14 +453,14 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host,
-		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
-		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
-		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
-		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
-		c.VirtualMachine,
+		c.Image, c.LicenseAudit, c.LicenseInstallation, c.LicenseRecord, c.MCPTool,
+		c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey, c.ModelPricing,
+		c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
+		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
+		c.ProjectTask, c.Task, c.TaskModelSwitch, c.TaskUsageStat,
+		c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
+		c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -467,6 +485,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Host.mutate(ctx, m)
 	case *ImageMutation:
 		return c.Image.mutate(ctx, m)
+	case *LicenseAuditMutation:
+		return c.LicenseAudit.mutate(ctx, m)
+	case *LicenseInstallationMutation:
+		return c.LicenseInstallation.mutate(ctx, m)
+	case *LicenseRecordMutation:
+		return c.LicenseRecord.mutate(ctx, m)
 	case *MCPToolMutation:
 		return c.MCPTool.mutate(ctx, m)
 	case *MCPUpstreamMutation:
@@ -2053,6 +2077,405 @@ func (c *ImageClient) mutate(ctx context.Context, m *ImageMutation) (Value, erro
 		return (&ImageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Image mutation op: %q", m.Op())
+	}
+}
+
+// LicenseAuditClient is a client for the LicenseAudit schema.
+type LicenseAuditClient struct {
+	config
+}
+
+// NewLicenseAuditClient returns a client for the LicenseAudit from the given config.
+func NewLicenseAuditClient(c config) *LicenseAuditClient {
+	return &LicenseAuditClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `licenseaudit.Hooks(f(g(h())))`.
+func (c *LicenseAuditClient) Use(hooks ...Hook) {
+	c.hooks.LicenseAudit = append(c.hooks.LicenseAudit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `licenseaudit.Intercept(f(g(h())))`.
+func (c *LicenseAuditClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LicenseAudit = append(c.inters.LicenseAudit, interceptors...)
+}
+
+// Create returns a builder for creating a LicenseAudit entity.
+func (c *LicenseAuditClient) Create() *LicenseAuditCreate {
+	mutation := newLicenseAuditMutation(c.config, OpCreate)
+	return &LicenseAuditCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LicenseAudit entities.
+func (c *LicenseAuditClient) CreateBulk(builders ...*LicenseAuditCreate) *LicenseAuditCreateBulk {
+	return &LicenseAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LicenseAuditClient) MapCreateBulk(slice any, setFunc func(*LicenseAuditCreate, int)) *LicenseAuditCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LicenseAuditCreateBulk{err: fmt.Errorf("calling to LicenseAuditClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LicenseAuditCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LicenseAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LicenseAudit.
+func (c *LicenseAuditClient) Update() *LicenseAuditUpdate {
+	mutation := newLicenseAuditMutation(c.config, OpUpdate)
+	return &LicenseAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LicenseAuditClient) UpdateOne(_m *LicenseAudit) *LicenseAuditUpdateOne {
+	mutation := newLicenseAuditMutation(c.config, OpUpdateOne, withLicenseAudit(_m))
+	return &LicenseAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LicenseAuditClient) UpdateOneID(id uuid.UUID) *LicenseAuditUpdateOne {
+	mutation := newLicenseAuditMutation(c.config, OpUpdateOne, withLicenseAuditID(id))
+	return &LicenseAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LicenseAudit.
+func (c *LicenseAuditClient) Delete() *LicenseAuditDelete {
+	mutation := newLicenseAuditMutation(c.config, OpDelete)
+	return &LicenseAuditDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LicenseAuditClient) DeleteOne(_m *LicenseAudit) *LicenseAuditDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LicenseAuditClient) DeleteOneID(id uuid.UUID) *LicenseAuditDeleteOne {
+	builder := c.Delete().Where(licenseaudit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LicenseAuditDeleteOne{builder}
+}
+
+// Query returns a query builder for LicenseAudit.
+func (c *LicenseAuditClient) Query() *LicenseAuditQuery {
+	return &LicenseAuditQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLicenseAudit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LicenseAudit entity by its id.
+func (c *LicenseAuditClient) Get(ctx context.Context, id uuid.UUID) (*LicenseAudit, error) {
+	return c.Query().Where(licenseaudit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LicenseAuditClient) GetX(ctx context.Context, id uuid.UUID) *LicenseAudit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LicenseAuditClient) Hooks() []Hook {
+	return c.hooks.LicenseAudit
+}
+
+// Interceptors returns the client interceptors.
+func (c *LicenseAuditClient) Interceptors() []Interceptor {
+	return c.inters.LicenseAudit
+}
+
+func (c *LicenseAuditClient) mutate(ctx context.Context, m *LicenseAuditMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LicenseAuditCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LicenseAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LicenseAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LicenseAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown LicenseAudit mutation op: %q", m.Op())
+	}
+}
+
+// LicenseInstallationClient is a client for the LicenseInstallation schema.
+type LicenseInstallationClient struct {
+	config
+}
+
+// NewLicenseInstallationClient returns a client for the LicenseInstallation from the given config.
+func NewLicenseInstallationClient(c config) *LicenseInstallationClient {
+	return &LicenseInstallationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `licenseinstallation.Hooks(f(g(h())))`.
+func (c *LicenseInstallationClient) Use(hooks ...Hook) {
+	c.hooks.LicenseInstallation = append(c.hooks.LicenseInstallation, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `licenseinstallation.Intercept(f(g(h())))`.
+func (c *LicenseInstallationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LicenseInstallation = append(c.inters.LicenseInstallation, interceptors...)
+}
+
+// Create returns a builder for creating a LicenseInstallation entity.
+func (c *LicenseInstallationClient) Create() *LicenseInstallationCreate {
+	mutation := newLicenseInstallationMutation(c.config, OpCreate)
+	return &LicenseInstallationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LicenseInstallation entities.
+func (c *LicenseInstallationClient) CreateBulk(builders ...*LicenseInstallationCreate) *LicenseInstallationCreateBulk {
+	return &LicenseInstallationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LicenseInstallationClient) MapCreateBulk(slice any, setFunc func(*LicenseInstallationCreate, int)) *LicenseInstallationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LicenseInstallationCreateBulk{err: fmt.Errorf("calling to LicenseInstallationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LicenseInstallationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LicenseInstallationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LicenseInstallation.
+func (c *LicenseInstallationClient) Update() *LicenseInstallationUpdate {
+	mutation := newLicenseInstallationMutation(c.config, OpUpdate)
+	return &LicenseInstallationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LicenseInstallationClient) UpdateOne(_m *LicenseInstallation) *LicenseInstallationUpdateOne {
+	mutation := newLicenseInstallationMutation(c.config, OpUpdateOne, withLicenseInstallation(_m))
+	return &LicenseInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LicenseInstallationClient) UpdateOneID(id uuid.UUID) *LicenseInstallationUpdateOne {
+	mutation := newLicenseInstallationMutation(c.config, OpUpdateOne, withLicenseInstallationID(id))
+	return &LicenseInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LicenseInstallation.
+func (c *LicenseInstallationClient) Delete() *LicenseInstallationDelete {
+	mutation := newLicenseInstallationMutation(c.config, OpDelete)
+	return &LicenseInstallationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LicenseInstallationClient) DeleteOne(_m *LicenseInstallation) *LicenseInstallationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LicenseInstallationClient) DeleteOneID(id uuid.UUID) *LicenseInstallationDeleteOne {
+	builder := c.Delete().Where(licenseinstallation.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LicenseInstallationDeleteOne{builder}
+}
+
+// Query returns a query builder for LicenseInstallation.
+func (c *LicenseInstallationClient) Query() *LicenseInstallationQuery {
+	return &LicenseInstallationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLicenseInstallation},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LicenseInstallation entity by its id.
+func (c *LicenseInstallationClient) Get(ctx context.Context, id uuid.UUID) (*LicenseInstallation, error) {
+	return c.Query().Where(licenseinstallation.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LicenseInstallationClient) GetX(ctx context.Context, id uuid.UUID) *LicenseInstallation {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LicenseInstallationClient) Hooks() []Hook {
+	return c.hooks.LicenseInstallation
+}
+
+// Interceptors returns the client interceptors.
+func (c *LicenseInstallationClient) Interceptors() []Interceptor {
+	return c.inters.LicenseInstallation
+}
+
+func (c *LicenseInstallationClient) mutate(ctx context.Context, m *LicenseInstallationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LicenseInstallationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LicenseInstallationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LicenseInstallationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LicenseInstallationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown LicenseInstallation mutation op: %q", m.Op())
+	}
+}
+
+// LicenseRecordClient is a client for the LicenseRecord schema.
+type LicenseRecordClient struct {
+	config
+}
+
+// NewLicenseRecordClient returns a client for the LicenseRecord from the given config.
+func NewLicenseRecordClient(c config) *LicenseRecordClient {
+	return &LicenseRecordClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `licenserecord.Hooks(f(g(h())))`.
+func (c *LicenseRecordClient) Use(hooks ...Hook) {
+	c.hooks.LicenseRecord = append(c.hooks.LicenseRecord, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `licenserecord.Intercept(f(g(h())))`.
+func (c *LicenseRecordClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LicenseRecord = append(c.inters.LicenseRecord, interceptors...)
+}
+
+// Create returns a builder for creating a LicenseRecord entity.
+func (c *LicenseRecordClient) Create() *LicenseRecordCreate {
+	mutation := newLicenseRecordMutation(c.config, OpCreate)
+	return &LicenseRecordCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LicenseRecord entities.
+func (c *LicenseRecordClient) CreateBulk(builders ...*LicenseRecordCreate) *LicenseRecordCreateBulk {
+	return &LicenseRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LicenseRecordClient) MapCreateBulk(slice any, setFunc func(*LicenseRecordCreate, int)) *LicenseRecordCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LicenseRecordCreateBulk{err: fmt.Errorf("calling to LicenseRecordClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LicenseRecordCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LicenseRecordCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LicenseRecord.
+func (c *LicenseRecordClient) Update() *LicenseRecordUpdate {
+	mutation := newLicenseRecordMutation(c.config, OpUpdate)
+	return &LicenseRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LicenseRecordClient) UpdateOne(_m *LicenseRecord) *LicenseRecordUpdateOne {
+	mutation := newLicenseRecordMutation(c.config, OpUpdateOne, withLicenseRecord(_m))
+	return &LicenseRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LicenseRecordClient) UpdateOneID(id uuid.UUID) *LicenseRecordUpdateOne {
+	mutation := newLicenseRecordMutation(c.config, OpUpdateOne, withLicenseRecordID(id))
+	return &LicenseRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LicenseRecord.
+func (c *LicenseRecordClient) Delete() *LicenseRecordDelete {
+	mutation := newLicenseRecordMutation(c.config, OpDelete)
+	return &LicenseRecordDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LicenseRecordClient) DeleteOne(_m *LicenseRecord) *LicenseRecordDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LicenseRecordClient) DeleteOneID(id uuid.UUID) *LicenseRecordDeleteOne {
+	builder := c.Delete().Where(licenserecord.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LicenseRecordDeleteOne{builder}
+}
+
+// Query returns a query builder for LicenseRecord.
+func (c *LicenseRecordClient) Query() *LicenseRecordQuery {
+	return &LicenseRecordQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLicenseRecord},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LicenseRecord entity by its id.
+func (c *LicenseRecordClient) Get(ctx context.Context, id uuid.UUID) (*LicenseRecord, error) {
+	return c.Query().Where(licenserecord.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LicenseRecordClient) GetX(ctx context.Context, id uuid.UUID) *LicenseRecord {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LicenseRecordClient) Hooks() []Hook {
+	return c.hooks.LicenseRecord
+}
+
+// Interceptors returns the client interceptors.
+func (c *LicenseRecordClient) Interceptors() []Interceptor {
+	return c.inters.LicenseRecord
+}
+
+func (c *LicenseRecordClient) mutate(ctx context.Context, m *LicenseRecordMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LicenseRecordCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LicenseRecordUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LicenseRecordUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LicenseRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown LicenseRecord mutation op: %q", m.Op())
 	}
 }
 
@@ -8236,22 +8659,23 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 type (
 	hooks struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
-		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
-		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
-		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
-		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
+		LicenseAudit, LicenseInstallation, LicenseRecord, MCPTool, MCPUpstream,
+		MCPUserToolSetting, Model, ModelApiKey, ModelPricing, NotifyChannel,
+		NotifySendLog, NotifySubscription, Project, ProjectCollaborator, ProjectGitBot,
+		ProjectIssue, ProjectIssueComment, ProjectTask, Task, TaskModelSwitch,
+		TaskUsageStat, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
-		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
-		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
-		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
-		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity,
-		VirtualMachine []ent.Interceptor
+		LicenseAudit, LicenseInstallation, LicenseRecord, MCPTool, MCPUpstream,
+		MCPUserToolSetting, Model, ModelApiKey, ModelPricing, NotifyChannel,
+		NotifySendLog, NotifySubscription, Project, ProjectCollaborator, ProjectGitBot,
+		ProjectIssue, ProjectIssueComment, ProjectTask, Task, TaskModelSwitch,
+		TaskUsageStat, TaskVirtualMachine, Team, TeamGroup, TeamGroupHost,
+		TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Interceptor
 	}
 )
 

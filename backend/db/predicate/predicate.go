@@ -30,6 +30,15 @@ type Host func(*sql.Selector)
 // Image is the predicate function for image builders.
 type Image func(*sql.Selector)
 
+// LicenseAudit is the predicate function for licenseaudit builders.
+type LicenseAudit func(*sql.Selector)
+
+// LicenseInstallation is the predicate function for licenseinstallation builders.
+type LicenseInstallation func(*sql.Selector)
+
+// LicenseRecord is the predicate function for licenserecord builders.
+type LicenseRecord func(*sql.Selector)
+
 // MCPTool is the predicate function for mcptool builders.
 type MCPTool func(*sql.Selector)
 

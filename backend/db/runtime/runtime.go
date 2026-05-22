@@ -14,6 +14,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseaudit"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseinstallation"
+	"github.com/chaitin/MonkeyCode/backend/db/licenserecord"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
@@ -160,6 +163,52 @@ func init() {
 	image.DefaultUpdatedAt = imageDescUpdatedAt.Default.(func() time.Time)
 	// image.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	image.UpdateDefaultUpdatedAt = imageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	licenseauditFields := schema.LicenseAudit{}.Fields()
+	_ = licenseauditFields
+	// licenseauditDescCreatedAt is the schema descriptor for created_at field.
+	licenseauditDescCreatedAt := licenseauditFields[5].Descriptor()
+	// licenseaudit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	licenseaudit.DefaultCreatedAt = licenseauditDescCreatedAt.Default.(func() time.Time)
+	licenseinstallationFields := schema.LicenseInstallation{}.Fields()
+	_ = licenseinstallationFields
+	// licenseinstallationDescInstallationID is the schema descriptor for installation_id field.
+	licenseinstallationDescInstallationID := licenseinstallationFields[1].Descriptor()
+	// licenseinstallation.InstallationIDValidator is a validator for the "installation_id" field. It is called by the builders before save.
+	licenseinstallation.InstallationIDValidator = licenseinstallationDescInstallationID.Validators[0].(func(string) error)
+	// licenseinstallationDescCreatedAt is the schema descriptor for created_at field.
+	licenseinstallationDescCreatedAt := licenseinstallationFields[4].Descriptor()
+	// licenseinstallation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	licenseinstallation.DefaultCreatedAt = licenseinstallationDescCreatedAt.Default.(func() time.Time)
+	// licenseinstallationDescUpdatedAt is the schema descriptor for updated_at field.
+	licenseinstallationDescUpdatedAt := licenseinstallationFields[5].Descriptor()
+	// licenseinstallation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	licenseinstallation.DefaultUpdatedAt = licenseinstallationDescUpdatedAt.Default.(func() time.Time)
+	// licenseinstallation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	licenseinstallation.UpdateDefaultUpdatedAt = licenseinstallationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	licenserecordFields := schema.LicenseRecord{}.Fields()
+	_ = licenserecordFields
+	// licenserecordDescLicenseID is the schema descriptor for license_id field.
+	licenserecordDescLicenseID := licenserecordFields[1].Descriptor()
+	// licenserecord.LicenseIDValidator is a validator for the "license_id" field. It is called by the builders before save.
+	licenserecord.LicenseIDValidator = licenserecordDescLicenseID.Validators[0].(func(string) error)
+	// licenserecordDescInstallationID is the schema descriptor for installation_id field.
+	licenserecordDescInstallationID := licenserecordFields[2].Descriptor()
+	// licenserecord.InstallationIDValidator is a validator for the "installation_id" field. It is called by the builders before save.
+	licenserecord.InstallationIDValidator = licenserecordDescInstallationID.Validators[0].(func(string) error)
+	// licenserecordDescActive is the schema descriptor for active field.
+	licenserecordDescActive := licenserecordFields[12].Descriptor()
+	// licenserecord.DefaultActive holds the default value on creation for the active field.
+	licenserecord.DefaultActive = licenserecordDescActive.Default.(bool)
+	// licenserecordDescCreatedAt is the schema descriptor for created_at field.
+	licenserecordDescCreatedAt := licenserecordFields[14].Descriptor()
+	// licenserecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	licenserecord.DefaultCreatedAt = licenserecordDescCreatedAt.Default.(func() time.Time)
+	// licenserecordDescUpdatedAt is the schema descriptor for updated_at field.
+	licenserecordDescUpdatedAt := licenserecordFields[15].Descriptor()
+	// licenserecord.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	licenserecord.DefaultUpdatedAt = licenserecordDescUpdatedAt.Default.(func() time.Time)
+	// licenserecord.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	licenserecord.UpdateDefaultUpdatedAt = licenserecordDescUpdatedAt.UpdateDefault.(func() time.Time)
 	mcptoolMixin := schema.MCPTool{}.Mixin()
 	mcptoolMixinHooks0 := mcptoolMixin[0].Hooks()
 	mcptool.Hooks[0] = mcptoolMixinHooks0[0]

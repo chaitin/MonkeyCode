@@ -20,6 +20,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseaudit"
+	"github.com/chaitin/MonkeyCode/backend/db/licenseinstallation"
+	"github.com/chaitin/MonkeyCode/backend/db/licenserecord"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
@@ -120,6 +123,9 @@ func checkColumn(t, c string) error {
 			gittask.Table:             gittask.ValidColumn,
 			host.Table:                host.ValidColumn,
 			image.Table:               image.ValidColumn,
+			licenseaudit.Table:        licenseaudit.ValidColumn,
+			licenseinstallation.Table: licenseinstallation.ValidColumn,
+			licenserecord.Table:       licenserecord.ValidColumn,
 			mcptool.Table:             mcptool.ValidColumn,
 			mcpupstream.Table:         mcpupstream.ValidColumn,
 			mcpusertoolsetting.Table:  mcpusertoolsetting.ValidColumn,

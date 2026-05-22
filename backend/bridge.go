@@ -71,6 +71,13 @@ func WithTaskHook(hook domain.TaskHook) BridgeOption {
 	}
 }
 
+// WithTaskCreator 注入产品侧任务创建实现。
+func WithTaskCreator(creator domain.TaskCreator) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, creator)
+	}
+}
+
 // WithProjectHook 注入项目模块回调
 func WithProjectHook(hook domain.ProjectHook) BridgeOption {
 	return func(i *do.Injector) {
@@ -82,6 +89,13 @@ func WithProjectHook(hook domain.ProjectHook) BridgeOption {
 func WithTeamHook(hook domain.TeamHook) BridgeOption {
 	return func(i *do.Injector) {
 		do.ProvideValue(i, hook)
+	}
+}
+
+// WithMemberManager 注入产品侧成员新增实现。
+func WithMemberManager(manager domain.MemberManager) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, manager)
 	}
 }
 

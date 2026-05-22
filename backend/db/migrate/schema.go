@@ -239,6 +239,61 @@ var (
 			},
 		},
 	}
+	// LicenseAuditsColumns holds the columns for the "license_audits" table.
+	LicenseAuditsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "license_id", Type: field.TypeString, Nullable: true},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"export_machine_code", "import_license", "view_status"}},
+		{Name: "result", Type: field.TypeEnum, Enums: []string{"success", "failed"}},
+		{Name: "message", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// LicenseAuditsTable holds the schema information for the "license_audits" table.
+	LicenseAuditsTable = &schema.Table{
+		Name:       "license_audits",
+		Columns:    LicenseAuditsColumns,
+		PrimaryKey: []*schema.Column{LicenseAuditsColumns[0]},
+	}
+	// LicenseInstallationsColumns holds the columns for the "license_installations" table.
+	LicenseInstallationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "installation_id", Type: field.TypeString, Unique: true},
+		{Name: "product", Type: field.TypeEnum, Enums: []string{"monkeycode-enterprise"}},
+		{Name: "product_version", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// LicenseInstallationsTable holds the schema information for the "license_installations" table.
+	LicenseInstallationsTable = &schema.Table{
+		Name:       "license_installations",
+		Columns:    LicenseInstallationsColumns,
+		PrimaryKey: []*schema.Column{LicenseInstallationsColumns[0]},
+	}
+	// LicenseRecordsColumns holds the columns for the "license_records" table.
+	LicenseRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "license_id", Type: field.TypeString, Unique: true},
+		{Name: "installation_id", Type: field.TypeString},
+		{Name: "customer_id", Type: field.TypeString, Nullable: true},
+		{Name: "customer_name", Type: field.TypeString, Nullable: true},
+		{Name: "seats", Type: field.TypeInt},
+		{Name: "issued_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "payload_json", Type: field.TypeString},
+		{Name: "signature", Type: field.TypeString},
+		{Name: "key_id", Type: field.TypeString},
+		{Name: "alg", Type: field.TypeEnum, Enums: []string{"Ed25519"}},
+		{Name: "active", Type: field.TypeBool, Default: false},
+		{Name: "imported_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// LicenseRecordsTable holds the schema information for the "license_records" table.
+	LicenseRecordsTable = &schema.Table{
+		Name:       "license_records",
+		Columns:    LicenseRecordsColumns,
+		PrimaryKey: []*schema.Column{LicenseRecordsColumns[0]},
+	}
 	// McpToolsColumns holds the columns for the "mcp_tools" table.
 	McpToolsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1357,6 +1412,9 @@ var (
 		GitTasksTable,
 		HostsTable,
 		ImagesTable,
+		LicenseAuditsTable,
+		LicenseInstallationsTable,
+		LicenseRecordsTable,
 		McpToolsTable,
 		McpUpstreamsTable,
 		McpUserToolSettingsTable,
@@ -1426,6 +1484,15 @@ func init() {
 	ImagesTable.ForeignKeys[0].RefTable = UsersTable
 	ImagesTable.Annotation = &entsql.Annotation{
 		Table: "images",
+	}
+	LicenseAuditsTable.Annotation = &entsql.Annotation{
+		Table: "license_audits",
+	}
+	LicenseInstallationsTable.Annotation = &entsql.Annotation{
+		Table: "license_installations",
+	}
+	LicenseRecordsTable.Annotation = &entsql.Annotation{
+		Table: "license_records",
 	}
 	McpToolsTable.ForeignKeys[0].RefTable = McpUpstreamsTable
 	McpToolsTable.Annotation = &entsql.Annotation{
