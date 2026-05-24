@@ -11,6 +11,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
@@ -59,6 +60,18 @@ func (u *userRepo) GetUserWithTeams(ctx context.Context, userID uuid.UUID) (*db.
 		}).
 		WithTeams().
 		First(ctx)
+}
+
+// WechatMPBound implements domain.UserRepo.
+func (u *userRepo) WechatMPBound(ctx context.Context, uid uuid.UUID) (bool, error) {
+	return u.db.NotifyChannel.Query().
+		Where(
+			notifychannel.OwnerIDEQ(uid),
+			notifychannel.OwnerTypeEQ(consts.NotifyOwnerUser),
+			notifychannel.KindEQ(consts.NotifyChannelWechatMP),
+			notifychannel.EnabledEQ(true),
+		).
+		Exist(ctx)
 }
 
 // PasswordLogin implements domain.UserRepo.

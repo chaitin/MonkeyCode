@@ -94,6 +94,11 @@ func Secret(v string) predicate.NotifyChannel {
 	return predicate.NotifyChannel(sql.FieldEQ(FieldSecret, v))
 }
 
+// TargetID applies equality check predicate on the "target_id" field. It's identical to TargetIDEQ.
+func TargetID(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldEQ(FieldTargetID, v))
+}
+
 // Enabled applies equality check predicate on the "enabled" field. It's identical to EnabledEQ.
 func Enabled(v bool) predicate.NotifyChannel {
 	return predicate.NotifyChannel(sql.FieldEQ(FieldEnabled, v))
@@ -580,6 +585,81 @@ func HeadersIsNil() predicate.NotifyChannel {
 // HeadersNotNil applies the NotNil predicate on the "headers" field.
 func HeadersNotNil() predicate.NotifyChannel {
 	return predicate.NotifyChannel(sql.FieldNotNull(FieldHeaders))
+}
+
+// MetadataIsNil applies the IsNil predicate on the "metadata" field.
+func MetadataIsNil() predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldIsNull(FieldMetadata))
+}
+
+// MetadataNotNil applies the NotNil predicate on the "metadata" field.
+func MetadataNotNil() predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldNotNull(FieldMetadata))
+}
+
+// TargetIDEQ applies the EQ predicate on the "target_id" field.
+func TargetIDEQ(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldEQ(FieldTargetID, v))
+}
+
+// TargetIDNEQ applies the NEQ predicate on the "target_id" field.
+func TargetIDNEQ(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldNEQ(FieldTargetID, v))
+}
+
+// TargetIDIn applies the In predicate on the "target_id" field.
+func TargetIDIn(vs ...string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldIn(FieldTargetID, vs...))
+}
+
+// TargetIDNotIn applies the NotIn predicate on the "target_id" field.
+func TargetIDNotIn(vs ...string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldNotIn(FieldTargetID, vs...))
+}
+
+// TargetIDGT applies the GT predicate on the "target_id" field.
+func TargetIDGT(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldGT(FieldTargetID, v))
+}
+
+// TargetIDGTE applies the GTE predicate on the "target_id" field.
+func TargetIDGTE(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldGTE(FieldTargetID, v))
+}
+
+// TargetIDLT applies the LT predicate on the "target_id" field.
+func TargetIDLT(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldLT(FieldTargetID, v))
+}
+
+// TargetIDLTE applies the LTE predicate on the "target_id" field.
+func TargetIDLTE(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldLTE(FieldTargetID, v))
+}
+
+// TargetIDContains applies the Contains predicate on the "target_id" field.
+func TargetIDContains(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldContains(FieldTargetID, v))
+}
+
+// TargetIDHasPrefix applies the HasPrefix predicate on the "target_id" field.
+func TargetIDHasPrefix(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldHasPrefix(FieldTargetID, v))
+}
+
+// TargetIDHasSuffix applies the HasSuffix predicate on the "target_id" field.
+func TargetIDHasSuffix(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldHasSuffix(FieldTargetID, v))
+}
+
+// TargetIDEqualFold applies the EqualFold predicate on the "target_id" field.
+func TargetIDEqualFold(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldEqualFold(FieldTargetID, v))
+}
+
+// TargetIDContainsFold applies the ContainsFold predicate on the "target_id" field.
+func TargetIDContainsFold(v string) predicate.NotifyChannel {
+	return predicate.NotifyChannel(sql.FieldContainsFold(FieldTargetID, v))
 }
 
 // EnabledEQ applies the EQ predicate on the "enabled" field.

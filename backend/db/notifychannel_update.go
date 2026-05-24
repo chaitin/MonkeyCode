@@ -154,6 +154,32 @@ func (_u *NotifyChannelUpdate) ClearHeaders() *NotifyChannelUpdate {
 	return _u
 }
 
+// SetMetadata sets the "metadata" field.
+func (_u *NotifyChannelUpdate) SetMetadata(v map[string]string) *NotifyChannelUpdate {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *NotifyChannelUpdate) ClearMetadata() *NotifyChannelUpdate {
+	_u.mutation.ClearMetadata()
+	return _u
+}
+
+// SetTargetID sets the "target_id" field.
+func (_u *NotifyChannelUpdate) SetTargetID(v string) *NotifyChannelUpdate {
+	_u.mutation.SetTargetID(v)
+	return _u
+}
+
+// SetNillableTargetID sets the "target_id" field if the given value is not nil.
+func (_u *NotifyChannelUpdate) SetNillableTargetID(v *string) *NotifyChannelUpdate {
+	if v != nil {
+		_u.SetTargetID(*v)
+	}
+	return _u
+}
+
 // SetEnabled sets the "enabled" field.
 func (_u *NotifyChannelUpdate) SetEnabled(v bool) *NotifyChannelUpdate {
 	_u.mutation.SetEnabled(v)
@@ -278,11 +304,6 @@ func (_u *NotifyChannelUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "NotifyChannel.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.WebhookURL(); ok {
-		if err := notifychannel.WebhookURLValidator(v); err != nil {
-			return &ValidationError{Name: "webhook_url", err: fmt.Errorf(`db: validator failed for field "NotifyChannel.webhook_url": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -336,6 +357,15 @@ func (_u *NotifyChannelUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.HeadersCleared() {
 		_spec.ClearField(notifychannel.FieldHeaders, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(notifychannel.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(notifychannel.FieldMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.TargetID(); ok {
+		_spec.SetField(notifychannel.FieldTargetID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(notifychannel.FieldEnabled, field.TypeBool, value)
@@ -535,6 +565,32 @@ func (_u *NotifyChannelUpdateOne) ClearHeaders() *NotifyChannelUpdateOne {
 	return _u
 }
 
+// SetMetadata sets the "metadata" field.
+func (_u *NotifyChannelUpdateOne) SetMetadata(v map[string]string) *NotifyChannelUpdateOne {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *NotifyChannelUpdateOne) ClearMetadata() *NotifyChannelUpdateOne {
+	_u.mutation.ClearMetadata()
+	return _u
+}
+
+// SetTargetID sets the "target_id" field.
+func (_u *NotifyChannelUpdateOne) SetTargetID(v string) *NotifyChannelUpdateOne {
+	_u.mutation.SetTargetID(v)
+	return _u
+}
+
+// SetNillableTargetID sets the "target_id" field if the given value is not nil.
+func (_u *NotifyChannelUpdateOne) SetNillableTargetID(v *string) *NotifyChannelUpdateOne {
+	if v != nil {
+		_u.SetTargetID(*v)
+	}
+	return _u
+}
+
 // SetEnabled sets the "enabled" field.
 func (_u *NotifyChannelUpdateOne) SetEnabled(v bool) *NotifyChannelUpdateOne {
 	_u.mutation.SetEnabled(v)
@@ -672,11 +728,6 @@ func (_u *NotifyChannelUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "NotifyChannel.name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.WebhookURL(); ok {
-		if err := notifychannel.WebhookURLValidator(v); err != nil {
-			return &ValidationError{Name: "webhook_url", err: fmt.Errorf(`db: validator failed for field "NotifyChannel.webhook_url": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -747,6 +798,15 @@ func (_u *NotifyChannelUpdateOne) sqlSave(ctx context.Context) (_node *NotifyCha
 	}
 	if _u.mutation.HeadersCleared() {
 		_spec.ClearField(notifychannel.FieldHeaders, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(notifychannel.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(notifychannel.FieldMetadata, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.TargetID(); ok {
+		_spec.SetField(notifychannel.FieldTargetID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(notifychannel.FieldEnabled, field.TypeBool, value)

@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
+	"github.com/chaitin/MonkeyCode/backend/pkg/msgpush"
 	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/channel"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
@@ -181,12 +182,21 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 	})
 
 	// Channel Registry（通知渠道）
+	do.Provide(i, func(i *do.Injector) (*msgpush.WechatClient, error) {
+		cfg := do.MustInvoke[*config.Config](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		r := do.MustInvoke[*redis.Client](i)
+		return msgpush.NewWechatClient(cfg, l, r), nil
+	})
 	do.Provide(i, func(i *do.Injector) (*channel.Registry, error) {
+		cfg := do.MustInvoke[*config.Config](i)
+		wc := do.MustInvoke[*msgpush.WechatClient](i)
 		return channel.NewRegistry(
 			channel.NewDingTalkSender(),
 			channel.NewFeishuSender(),
 			channel.NewWeComSender(),
 			channel.NewWebhookSender(),
+			channel.NewWechatMPSender(cfg, wc),
 		), nil
 	})
 

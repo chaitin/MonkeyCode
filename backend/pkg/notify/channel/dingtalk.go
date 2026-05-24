@@ -2,12 +2,15 @@ package channel
 
 import (
 	"context"
+
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"net/url"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
@@ -19,7 +22,11 @@ func NewDingTalkSender() *DingTalkSender { return &DingTalkSender{} }
 
 func (d *DingTalkSender) Kind() consts.NotifyChannelKind { return consts.NotifyChannelDingTalk }
 
-func (d *DingTalkSender) Send(ctx context.Context, cfg *ChannelConfig, msg Message) error {
+func (d *DingTalkSender) Validate(cfg *ChannelConfig) error {
+	return validateURLChannelCfg(cfg)
+}
+
+func (d *DingTalkSender) Send(ctx context.Context, cfg *ChannelConfig, _ *domain.NotifyEvent, msg Message) error {
 	webhookURL := cfg.WebhookURL
 	if cfg.Secret != "" {
 		var err error

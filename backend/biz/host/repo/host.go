@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -615,6 +616,22 @@ func (h *HostRepo) GetVirtualMachineByEnvID(ctx context.Context, envID string) (
 		WithTasks().
 		Where(virtualmachine.EnvironmentID(envID)).
 		First(ctx)
+}
+
+// GetTaskIDByVMID implements domain.HostRepo.
+// 直接查 task_virtualmachines 关联表，避免 GetVirtualMachine + WithTasks 的整行 JOIN。
+// VM 未绑定任务时返回空字符串（不视为错误），调用方据此跳过推送。
+func (h *HostRepo) GetTaskIDByVMID(ctx context.Context, vmID string) (string, error) {
+	tm, err := h.db.TaskVirtualMachine.Query().
+		Where(taskvirtualmachine.VirtualmachineID(vmID)).
+		First(ctx)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return tm.TaskID.String(), nil
 }
 
 // BatchGetVmIDsByEnvironmentIDs 批量查询 environmentID -> vmID 映射

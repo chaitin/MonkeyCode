@@ -39,6 +39,10 @@ func NewNotifyChannelUsecase(i *do.Injector) (domain.NotifyChannelUsecase, error
 }
 
 func (u *NotifyChannelUsecaseImpl) Create(ctx context.Context, ownerID uuid.UUID, ownerType consts.NotifyOwnerType, req *domain.CreateNotifyChannelReq) (*domain.NotifyChannel, error) {
+	// 微信公众号渠道由扫码 callback (HandleBindEvent) 自动创建，不允许从这里手动建。
+	if req.Kind == consts.NotifyChannelWechatMP {
+		return nil, errcode.ErrInvalidParameter
+	}
 	if err := channel.ValidateWebhookURL(req.WebhookURL); err != nil {
 		return nil, errcode.ErrInvalidParameter.Wrap(err)
 	}
@@ -63,6 +67,18 @@ func (u *NotifyChannelUsecaseImpl) Create(ctx context.Context, ownerID uuid.UUID
 }
 
 func (u *NotifyChannelUsecaseImpl) Update(ctx context.Context, ownerID uuid.UUID, id uuid.UUID, req *domain.UpdateNotifyChannelReq) (*domain.NotifyChannel, error) {
+	ch, err := u.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if ch.OwnerID != ownerID {
+		return nil, errcode.ErrForbidden
+	}
+	// 微信公众号渠道对 CRUD 接口隐藏，仅由扫码/取关回调维护。
+	if ch.Kind == consts.NotifyChannelWechatMP {
+		return nil, errcode.ErrNotFound
+	}
+
 	if req.WebhookURL != "" {
 		if err := channel.ValidateWebhookURL(req.WebhookURL); err != nil {
 			return nil, errcode.ErrInvalidParameter.Wrap(err)
@@ -71,13 +87,7 @@ func (u *NotifyChannelUsecaseImpl) Update(ctx context.Context, ownerID uuid.UUID
 	if err := channel.ValidateHeaders(req.Headers); err != nil {
 		return nil, errcode.ErrInvalidParameter.Wrap(err)
 	}
-	ch, err := u.repo.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if ch.OwnerID != ownerID {
-		return nil, errcode.ErrForbidden
-	}
+
 	_, err = u.repo.Update(ctx, id, req)
 	if err != nil {
 		return nil, err
@@ -107,6 +117,9 @@ func (u *NotifyChannelUsecaseImpl) Delete(ctx context.Context, ownerID uuid.UUID
 	if ch.OwnerID != ownerID {
 		return errcode.ErrForbidden
 	}
+	if ch.Kind == consts.NotifyChannelWechatMP {
+		return errcode.ErrNotFound
+	}
 	return u.repo.Delete(ctx, id)
 }
 
@@ -115,9 +128,13 @@ func (u *NotifyChannelUsecaseImpl) List(ctx context.Context, ownerID uuid.UUID, 
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*domain.NotifyChannel, len(channels))
-	for i, ch := range channels {
-		result[i] = toNotifyChannel(ch)
+	result := make([]*domain.NotifyChannel, 0, len(channels))
+	for _, ch := range channels {
+		// 微信公众号渠道对 CRUD 接口隐藏。
+		if ch.Kind == consts.NotifyChannelWechatMP {
+			continue
+		}
+		result = append(result, toNotifyChannel(ch))
 	}
 	return result, nil
 }
@@ -130,6 +147,9 @@ func (u *NotifyChannelUsecaseImpl) Test(ctx context.Context, ownerID uuid.UUID, 
 	if ch.OwnerID != ownerID {
 		return errcode.ErrForbidden
 	}
+	if ch.Kind == consts.NotifyChannelWechatMP {
+		return errcode.ErrNotFound
+	}
 
 	sender, ok := u.senderReg.Get(ch.Kind)
 	if !ok {
@@ -140,12 +160,11 @@ func (u *NotifyChannelUsecaseImpl) Test(ctx context.Context, ownerID uuid.UUID, 
 		WebhookURL: ch.WebhookURL,
 		Secret:     ch.Secret,
 		Headers:    ch.Headers,
+		TargetID:   ch.TargetID,
 	}
 
-	if err := channel.ValidateWebhookURL(cfg.WebhookURL); err != nil {
-		return errcode.ErrInvalidParameter.Wrap(err)
-	}
-	if err := channel.ValidateHeaders(cfg.Headers); err != nil {
+	// 由 sender 自己判定哪些字段需要校验（URL 类做 SSRF，ID 类做 target_id 非空等）。
+	if err := sender.Validate(cfg); err != nil {
 		return errcode.ErrInvalidParameter.Wrap(err)
 	}
 
@@ -154,7 +173,7 @@ func (u *NotifyChannelUsecaseImpl) Test(ctx context.Context, ownerID uuid.UUID, 
 		Body:  "这是一条测试消息，说明您的通知渠道配置正确。\n\n**时间**: " + time.Now().Format("2006-01-02 15:04:05"),
 	}
 
-	return sender.Send(ctx, cfg, msg)
+	return sender.Send(ctx, cfg, nil, msg)
 }
 
 func ownerScope(ownerType consts.NotifyOwnerType, ownerID uuid.UUID) string {

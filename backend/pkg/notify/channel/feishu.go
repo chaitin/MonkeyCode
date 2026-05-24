@@ -2,11 +2,14 @@ package channel
 
 import (
 	"context"
+
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"time"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
@@ -18,7 +21,11 @@ func NewFeishuSender() *FeishuSender { return &FeishuSender{} }
 
 func (f *FeishuSender) Kind() consts.NotifyChannelKind { return consts.NotifyChannelFeishu }
 
-func (f *FeishuSender) Send(ctx context.Context, cfg *ChannelConfig, msg Message) error {
+func (f *FeishuSender) Validate(cfg *ChannelConfig) error {
+	return validateURLChannelCfg(cfg)
+}
+
+func (f *FeishuSender) Send(ctx context.Context, cfg *ChannelConfig, _ *domain.NotifyEvent, msg Message) error {
 	body := map[string]any{
 		"msg_type": "interactive",
 		"card": map[string]any{

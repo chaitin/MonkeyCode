@@ -14831,6 +14831,8 @@ type NotifyChannelMutation struct {
 	webhook_url          *string
 	secret               *string
 	headers              *map[string]string
+	metadata             *map[string]string
+	target_id            *string
 	enabled              *bool
 	created_at           *time.Time
 	updated_at           *time.Time
@@ -15274,6 +15276,91 @@ func (m *NotifyChannelMutation) ResetHeaders() {
 	delete(m.clearedFields, notifychannel.FieldHeaders)
 }
 
+// SetMetadata sets the "metadata" field.
+func (m *NotifyChannelMutation) SetMetadata(value map[string]string) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *NotifyChannelMutation) Metadata() (r map[string]string, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the NotifyChannel entity.
+// If the NotifyChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChannelMutation) OldMetadata(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (m *NotifyChannelMutation) ClearMetadata() {
+	m.metadata = nil
+	m.clearedFields[notifychannel.FieldMetadata] = struct{}{}
+}
+
+// MetadataCleared returns if the "metadata" field was cleared in this mutation.
+func (m *NotifyChannelMutation) MetadataCleared() bool {
+	_, ok := m.clearedFields[notifychannel.FieldMetadata]
+	return ok
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *NotifyChannelMutation) ResetMetadata() {
+	m.metadata = nil
+	delete(m.clearedFields, notifychannel.FieldMetadata)
+}
+
+// SetTargetID sets the "target_id" field.
+func (m *NotifyChannelMutation) SetTargetID(s string) {
+	m.target_id = &s
+}
+
+// TargetID returns the value of the "target_id" field in the mutation.
+func (m *NotifyChannelMutation) TargetID() (r string, exists bool) {
+	v := m.target_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetID returns the old "target_id" field's value of the NotifyChannel entity.
+// If the NotifyChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChannelMutation) OldTargetID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetID: %w", err)
+	}
+	return oldValue.TargetID, nil
+}
+
+// ResetTargetID resets all changes to the "target_id" field.
+func (m *NotifyChannelMutation) ResetTargetID() {
+	m.target_id = nil
+}
+
 // SetEnabled sets the "enabled" field.
 func (m *NotifyChannelMutation) SetEnabled(b bool) {
 	m.enabled = &b
@@ -15470,7 +15557,7 @@ func (m *NotifyChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotifyChannelMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 13)
 	if m.deleted_at != nil {
 		fields = append(fields, notifychannel.FieldDeletedAt)
 	}
@@ -15494,6 +15581,12 @@ func (m *NotifyChannelMutation) Fields() []string {
 	}
 	if m.headers != nil {
 		fields = append(fields, notifychannel.FieldHeaders)
+	}
+	if m.metadata != nil {
+		fields = append(fields, notifychannel.FieldMetadata)
+	}
+	if m.target_id != nil {
+		fields = append(fields, notifychannel.FieldTargetID)
 	}
 	if m.enabled != nil {
 		fields = append(fields, notifychannel.FieldEnabled)
@@ -15528,6 +15621,10 @@ func (m *NotifyChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.Secret()
 	case notifychannel.FieldHeaders:
 		return m.Headers()
+	case notifychannel.FieldMetadata:
+		return m.Metadata()
+	case notifychannel.FieldTargetID:
+		return m.TargetID()
 	case notifychannel.FieldEnabled:
 		return m.Enabled()
 	case notifychannel.FieldCreatedAt:
@@ -15559,6 +15656,10 @@ func (m *NotifyChannelMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldSecret(ctx)
 	case notifychannel.FieldHeaders:
 		return m.OldHeaders(ctx)
+	case notifychannel.FieldMetadata:
+		return m.OldMetadata(ctx)
+	case notifychannel.FieldTargetID:
+		return m.OldTargetID(ctx)
 	case notifychannel.FieldEnabled:
 		return m.OldEnabled(ctx)
 	case notifychannel.FieldCreatedAt:
@@ -15630,6 +15731,20 @@ func (m *NotifyChannelMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetHeaders(v)
 		return nil
+	case notifychannel.FieldMetadata:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
+		return nil
+	case notifychannel.FieldTargetID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetID(v)
+		return nil
 	case notifychannel.FieldEnabled:
 		v, ok := value.(bool)
 		if !ok {
@@ -15690,6 +15805,9 @@ func (m *NotifyChannelMutation) ClearedFields() []string {
 	if m.FieldCleared(notifychannel.FieldHeaders) {
 		fields = append(fields, notifychannel.FieldHeaders)
 	}
+	if m.FieldCleared(notifychannel.FieldMetadata) {
+		fields = append(fields, notifychannel.FieldMetadata)
+	}
 	return fields
 }
 
@@ -15712,6 +15830,9 @@ func (m *NotifyChannelMutation) ClearField(name string) error {
 		return nil
 	case notifychannel.FieldHeaders:
 		m.ClearHeaders()
+		return nil
+	case notifychannel.FieldMetadata:
+		m.ClearMetadata()
 		return nil
 	}
 	return fmt.Errorf("unknown NotifyChannel nullable field %s", name)
@@ -15744,6 +15865,12 @@ func (m *NotifyChannelMutation) ResetField(name string) error {
 		return nil
 	case notifychannel.FieldHeaders:
 		m.ResetHeaders()
+		return nil
+	case notifychannel.FieldMetadata:
+		m.ResetMetadata()
+		return nil
+	case notifychannel.FieldTargetID:
+		m.ResetTargetID()
 		return nil
 	case notifychannel.FieldEnabled:
 		m.ResetEnabled()
