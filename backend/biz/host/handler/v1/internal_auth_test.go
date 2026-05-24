@@ -163,6 +163,10 @@ func (s *internalHostRepoStub) GetVirtualMachine(ctx context.Context, _ string) 
 	return s.vm, nil
 }
 
+func (s *internalHostRepoStub) GetTaskIDByVMID(context.Context, string) (string, error) {
+	return "", nil
+}
+
 func (s *internalHostRepoStub) GetVirtualMachineByAccessToken(ctx context.Context, _ string) (*db.VirtualMachine, error) {
 	if s.assertSkipMarker {
 		v, ok := ctx.Value(s.skipMarkerKey).(string)

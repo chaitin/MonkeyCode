@@ -472,24 +472,24 @@ func init() {
 			return nil
 		}
 	}()
-	// notifychannelDescWebhookURL is the schema descriptor for webhook_url field.
-	notifychannelDescWebhookURL := notifychannelFields[5].Descriptor()
-	// notifychannel.WebhookURLValidator is a validator for the "webhook_url" field. It is called by the builders before save.
-	notifychannel.WebhookURLValidator = notifychannelDescWebhookURL.Validators[0].(func(string) error)
 	// notifychannelDescSecret is the schema descriptor for secret field.
 	notifychannelDescSecret := notifychannelFields[6].Descriptor()
 	// notifychannel.DefaultSecret holds the default value on creation for the secret field.
 	notifychannel.DefaultSecret = notifychannelDescSecret.Default.(string)
+	// notifychannelDescTargetID is the schema descriptor for target_id field.
+	notifychannelDescTargetID := notifychannelFields[9].Descriptor()
+	// notifychannel.DefaultTargetID holds the default value on creation for the target_id field.
+	notifychannel.DefaultTargetID = notifychannelDescTargetID.Default.(string)
 	// notifychannelDescEnabled is the schema descriptor for enabled field.
-	notifychannelDescEnabled := notifychannelFields[8].Descriptor()
+	notifychannelDescEnabled := notifychannelFields[10].Descriptor()
 	// notifychannel.DefaultEnabled holds the default value on creation for the enabled field.
 	notifychannel.DefaultEnabled = notifychannelDescEnabled.Default.(bool)
 	// notifychannelDescCreatedAt is the schema descriptor for created_at field.
-	notifychannelDescCreatedAt := notifychannelFields[9].Descriptor()
+	notifychannelDescCreatedAt := notifychannelFields[11].Descriptor()
 	// notifychannel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	notifychannel.DefaultCreatedAt = notifychannelDescCreatedAt.Default.(func() time.Time)
 	// notifychannelDescUpdatedAt is the schema descriptor for updated_at field.
-	notifychannelDescUpdatedAt := notifychannelFields[10].Descriptor()
+	notifychannelDescUpdatedAt := notifychannelFields[12].Descriptor()
 	// notifychannel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	notifychannel.DefaultUpdatedAt = notifychannelDescUpdatedAt.Default.(func() time.Time)
 	// notifychannel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

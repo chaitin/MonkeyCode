@@ -11,6 +11,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	"github.com/google/uuid"
+
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -29,8 +31,67 @@ const (
 	sleepQueueKey   = "vm:idle:sleep"
 	notifyQueueKey  = "vm:idle:notify"
 	recycleQueueKey = "vm:idle:recycle"
-	notifyLead      = time.Hour
 )
+
+// notifySchedule 描述一档"距回收还有 lead 时"要触发的提醒，及它应当落到哪些渠道。
+//
+// 历史上微信公众号有独立的 2h/15m 两段提醒（产品需求：更早地提醒用户），其它渠道只在 T-1h
+// 提醒一次。原实现给每档拆了独立 Redis 队列 + 独立 consumer，本结构把这种"按 channel kind
+// 差异化提醒节奏"统一收敛为一份配置 + 单队列 + 单 consumer。
+//
+// 每档以 name 做 ZSet member key 后缀（"<vmID>:<name>"），保证各档互不覆盖。
+type notifySchedule struct {
+	name         string                     // 队列 member key 后缀，需稳定唯一
+	lead         time.Duration              // 距回收多少时间触发
+	includeKinds []consts.NotifyChannelKind // 仅这些渠道生效；空=不过滤
+	excludeKinds []consts.NotifyChannelKind // 这些渠道跳过；空=不排除
+	leadSeconds  int                        // 写入 event.Payload.LeadSeconds 让 sender 切文案
+}
+
+var (
+	defaultRecycleWarnWechatLeadSeconds  = []int{7200, 900}
+	defaultRecycleWarnDefaultLeadSeconds = 3600
+)
+
+// buildNotifySchedules 按配置生成提醒档位。微信公众号档由 cfg.RecycleWarnWechatLeadSeconds 直接展开成 N 档，
+// 默认档（其它渠道）取 cfg.RecycleWarnDefaultLeadSeconds，<=0 视为禁用该档。配置缺省时回退到
+// 历史硬编码值（wechat=[7200,900]、default=3600），保持升级兼容。
+//
+// tier name 统一格式 "wechat<N>s" / "default"，作为 Redis ZSet member key 后缀与
+// event.RefID 的 dedup 分量。lookupSchedule 用 strings.HasSuffix(jobID, ":"+name) 反查，
+// 因此 name 必须稳定唯一。
+func buildNotifySchedules(cfg config.VMIdle) []notifySchedule {
+	defaultLead := cfg.RecycleWarnDefaultLeadSeconds
+	if defaultLead == 0 {
+		defaultLead = defaultRecycleWarnDefaultLeadSeconds
+	}
+	wechatLeads := cfg.RecycleWarnWechatLeadSeconds
+	if wechatLeads == nil {
+		wechatLeads = defaultRecycleWarnWechatLeadSeconds
+	}
+
+	var schedules []notifySchedule
+	if defaultLead > 0 {
+		schedules = append(schedules, notifySchedule{
+			name:         "default",
+			lead:         time.Duration(defaultLead) * time.Second,
+			excludeKinds: []consts.NotifyChannelKind{consts.NotifyChannelWechatMP},
+			leadSeconds:  defaultLead,
+		})
+	}
+	for _, s := range wechatLeads {
+		if s <= 0 {
+			continue
+		}
+		schedules = append(schedules, notifySchedule{
+			name:         fmt.Sprintf("wechat%ds", s),
+			lead:         time.Duration(s) * time.Second,
+			includeKinds: []consts.NotifyChannelKind{consts.NotifyChannelWechatMP},
+			leadSeconds:  s,
+		})
+	}
+	return schedules
+}
 
 type vmIdleRefresher struct {
 	cfg              *config.Config
@@ -43,11 +104,13 @@ type vmIdleRefresher struct {
 	sleepQueue       *delayqueue.VMSleepQueue
 	notifyQueue      *delayqueue.VMNotifyQueue
 	recycleQueue     *delayqueue.VMRecycleQueue
+	schedules        []notifySchedule
 }
 
 func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
+	cfg := do.MustInvoke[*config.Config](i)
 	r := &vmIdleRefresher{
-		cfg:              do.MustInvoke[*config.Config](i),
+		cfg:              cfg,
 		redis:            do.MustInvoke[*redis.Client](i),
 		taskflow:         do.MustInvoke[taskflow.Clienter](i),
 		logger:           do.MustInvoke[*slog.Logger](i).With("module", "VMIdleRefresher"),
@@ -57,7 +120,19 @@ func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
 		sleepQueue:       do.MustInvoke[*delayqueue.VMSleepQueue](i),
 		notifyQueue:      do.MustInvoke[*delayqueue.VMNotifyQueue](i),
 		recycleQueue:     do.MustInvoke[*delayqueue.VMRecycleQueue](i),
+		schedules:        buildNotifySchedules(cfg.VMIdle),
 	}
+
+	tierNames := make([]string, 0, len(r.schedules))
+	for _, s := range r.schedules {
+		tierNames = append(tierNames, s.name)
+	}
+	r.logger.Info("vm idle refresher initialized",
+		"sleep_seconds", cfg.VMIdle.SleepSeconds,
+		"recycle_seconds", cfg.VMIdle.RecycleSeconds,
+		"recycle_warn_wechat_lead_seconds", cfg.VMIdle.RecycleWarnWechatLeadSeconds,
+		"recycle_warn_default_lead_seconds", cfg.VMIdle.RecycleWarnDefaultLeadSeconds,
+		"tiers", tierNames)
 
 	go r.sleepConsumer()
 	go r.notifyConsumer()
@@ -74,20 +149,20 @@ func (r *vmIdleRefresher) recycleDelay() time.Duration {
 	return time.Duration(r.cfg.VMIdle.RecycleSeconds) * time.Second
 }
 
-func (r *vmIdleRefresher) notifyDelay() time.Duration {
+func (r *vmIdleRefresher) notifyDelayFor(lead time.Duration) time.Duration {
 	d := r.recycleDelay()
-	if d <= notifyLead {
+	if d <= lead {
 		return 0
 	}
-	return d - notifyLead
+	return d - lead
 }
 
-func (r *vmIdleRefresher) notifyRemaining() time.Duration {
+func (r *vmIdleRefresher) notifyRemainingFor(lead time.Duration) time.Duration {
 	d := r.recycleDelay()
-	if d <= notifyLead {
+	if d <= lead {
 		return d
 	}
-	return notifyLead
+	return lead
 }
 
 func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
@@ -112,22 +187,39 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 		return nil
 	}
 
+	now := time.Now()
+	recycleAt := now.Add(r.recycleDelay())
 	payload := &domain.VmIdleInfo{
-		UID:    vm.UserID,
-		VmID:   vm.ID,
-		HostID: vm.HostID,
-		EnvID:  vm.EnvironmentID,
+		UID:       vm.UserID,
+		VmID:      vm.ID,
+		HostID:    vm.HostID,
+		EnvID:     vm.EnvironmentID,
+		RecycleAt: recycleAt,
 	}
 
-	now := time.Now()
 	var errs []error
 	if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, now.Add(r.sleepDelay()), vmID); err != nil {
 		r.logger.ErrorContext(ctx, "failed to enqueue sleep", "error", err, "vmID", vmID)
 		errs = append(errs, fmt.Errorf("enqueue sleep: %w", err))
 	}
-	if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, now.Add(r.notifyDelay()), vmID); err != nil {
-		r.logger.ErrorContext(ctx, "failed to enqueue notify", "error", err, "vmID", vmID)
-		errs = append(errs, fmt.Errorf("enqueue notify: %w", err))
+	for _, s := range r.schedules {
+		// member key 带 tier name 后缀，让同一 VM 的不同档作业互不覆盖。
+		// 同档再次 Enqueue 会用新 runAt + 新 payload(含新 RecycleAt) 覆盖旧作业，
+		// 实现"每次 Refresh 重新计时"。
+		member := fmt.Sprintf("%s:%s", vmID, s.name)
+		delay := r.notifyDelayFor(s.lead)
+		runAt := now.Add(delay)
+		if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, runAt, member); err != nil {
+			r.logger.ErrorContext(ctx, "failed to enqueue notify", "error", err, "vm_id", vmID, "tier", s.name)
+			errs = append(errs, fmt.Errorf("enqueue notify %s: %w", s.name, err))
+			continue
+		}
+		r.logger.DebugContext(ctx, "notify tier scheduled",
+			"vm_id", vmID,
+			"tier", s.name,
+			"lead_seconds", s.leadSeconds,
+			"delay_seconds", int(delay.Seconds()),
+			"fire_at", runAt.Format(time.RFC3339))
 	}
 	if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, now.Add(r.recycleDelay()), vmID); err != nil {
 		r.logger.ErrorContext(ctx, "failed to enqueue recycle", "error", err, "vmID", vmID)
@@ -173,30 +265,76 @@ func (r *vmIdleRefresher) notifyConsumer() {
 	for {
 		err := r.notifyQueue.StartConsumer(context.Background(), notifyQueueKey,
 			func(ctx context.Context, job *delayqueue.Job[*domain.VmIdleInfo]) error {
-				logger.InfoContext(ctx, "vm recycle notify triggered", "vmID", job.Payload.VmID)
+				// job.ID 形如 "<vmID>:<tier.name>"，从中解出 tier 名再 lookup schedule。
+				s, ok := r.lookupSchedule(job.ID)
+				if !ok {
+					logger.WarnContext(ctx, "vm idle notify: unknown tier in job id, skipping", "job_id", job.ID, "vm_id", job.Payload.VmID)
+					return nil
+				}
+
+				lg := logger.With("vm_id", job.Payload.VmID, "tier", s.name)
+				prefix := ""
+				if strings.HasPrefix(s.name, "wechat") {
+					lg = lg.With("channel", "wechat_mp")
+					prefix = "wechat mp: "
+				}
+
+				lg.InfoContext(ctx, prefix+"recycle notify triggered")
 				vm, err := r.hostRepo.GetVirtualMachine(ctx, job.Payload.VmID)
 				if err != nil {
 					if db.IsNotFound(err) {
+						lg.WarnContext(ctx, prefix+"vm not found, skip recycle notify")
 						return nil
 					}
 					return fmt.Errorf("get vm %s: %w", job.Payload.VmID, err)
 				}
 				if vm.IsRecycled {
+					lg.WarnContext(ctx, prefix+"vm already recycled, skip recycle notify")
 					return nil
 				}
 
-				event, err := r.buildRecycleNotifyEvent(ctx, vm, time.Now().Add(r.notifyRemaining()))
+				event, err := r.buildRecycleNotifyEvent(ctx, vm, job.Payload.RecycleAt)
 				if err != nil {
 					return err
 				}
 				if event == nil {
+					lg.WarnContext(ctx, prefix+"no task bound to vm, skip recycle notify")
 					return nil
 				}
-				return r.notifyDispatcher.Publish(ctx, event)
+
+				event.RefID = fmt.Sprintf("%s:%s:%d", event.RefID, s.name, job.Payload.RecycleAt.Unix())
+				event.Payload.LeadSeconds = s.leadSeconds
+				if len(s.includeKinds) > 0 {
+					event.ChannelKinds = s.includeKinds
+				}
+				if len(s.excludeKinds) > 0 {
+					event.ExcludeKinds = s.excludeKinds
+				}
+				lg.DebugContext(ctx, prefix+"dispatching notify",
+					"ref_id", event.RefID,
+					"include_kinds", s.includeKinds,
+					"exclude_kinds", s.excludeKinds)
+				if err := r.notifyDispatcher.Publish(ctx, event); err != nil {
+					lg.ErrorContext(ctx, prefix+"dispatcher publish failed", "error", err, "ref_id", event.RefID)
+					return err
+				}
+				lg.DebugContext(ctx, prefix+"dispatcher publish ok", "ref_id", event.RefID)
+				return nil
 			})
 		logger.Warn("notify consumer error, retrying...", "error", err)
 		time.Sleep(10 * time.Second)
 	}
+}
+
+// lookupSchedule 从 "<vmID>:<tier.name>" 形式的 job.ID 反查档位配置。
+// 用后缀匹配而非 strings.Split，避免 vmID 本身含 ":" 的边缘情况。
+func (r *vmIdleRefresher) lookupSchedule(jobID string) (notifySchedule, bool) {
+	for _, s := range r.schedules {
+		if strings.HasSuffix(jobID, ":"+s.name) {
+			return s, true
+		}
+	}
+	return notifySchedule{}, false
 }
 
 func (r *vmIdleRefresher) recycleConsumer() {
@@ -266,25 +404,37 @@ func (r *vmIdleRefresher) markRecycledTasksFinished(ctx context.Context, vm *db.
 }
 
 func (r *vmIdleRefresher) buildRecycleNotifyEvent(ctx context.Context, vm *db.VirtualMachine, expiresAt time.Time) (*domain.NotifyEvent, error) {
-	if len(vm.Edges.Tasks) == 0 || vm.Edges.Tasks[0] == nil {
+	// 直接按 virtualmachine_id 查 task_virtualmachines 拿 task_id，
+	// 不再依赖 vm.Edges.Tasks 的 eager load 链。
+	taskIDStr, err := r.hostRepo.GetTaskIDByVMID(ctx, vm.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get task id by vm %s: %w", vm.ID, err)
+	}
+	if taskIDStr == "" {
+		// VM 没绑任务（用户单跑环境等场景），不推送
 		return nil, nil
 	}
-
-	tk, err := r.taskRepo.GetByID(ctx, vm.Edges.Tasks[0].ID)
+	taskID, err := uuid.Parse(taskIDStr)
 	if err != nil {
-		return nil, fmt.Errorf("get task %s: %w", vm.Edges.Tasks[0].ID, err)
+		return nil, fmt.Errorf("invalid task id %q: %w", taskIDStr, err)
+	}
+
+	tk, err := r.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get task %s: %w", taskIDStr, err)
 	}
 
 	event := &domain.NotifyEvent{
 		EventType:     consts.NotifyEventVMExpiringSoon,
 		SubjectUserID: tk.UserID,
-		RefID:         tk.ID.String(),
+		RefID:         taskIDStr,
 		OccurredAt:    time.Now(),
 		Payload: domain.NotifyEventPayload{
-			TaskID:      tk.ID.String(),
+			TaskID:      taskIDStr,
 			TaskContent: tk.Content,
+			TaskSummary: tk.Summary,
 			TaskStatus:  string(tk.Status),
-			TaskURL:     strings.TrimRight(r.cfg.Server.BaseURL, "/") + "/console/task/" + tk.ID.String(),
+			TaskURL:     strings.TrimRight(r.cfg.Server.BaseURL, "/") + "/console/task/" + taskIDStr,
 			VMID:        vm.ID,
 			VMName:      vm.Name,
 			HostID:      vm.HostID,

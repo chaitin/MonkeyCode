@@ -192,6 +192,9 @@ func (q *RedisDelayQueue[T]) pollOnce(ctx context.Context, queue string, handler
 	if err != nil {
 		return err
 	}
+	if len(ids) > 0 {
+		q.logger.Debug("delayqueue jobs claimed", "queue", queue, "count", len(ids), "ids", ids)
+	}
 	for _, id := range ids {
 		job, err := q.loadJob(ctx, queue, id)
 		if err != nil {

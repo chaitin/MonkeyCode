@@ -31,6 +31,7 @@ const (
 	NotifyChannelFeishu   NotifyChannelKind = "feishu"
 	NotifyChannelWeCom    NotifyChannelKind = "wecom"
 	NotifyChannelWebhook  NotifyChannelKind = "webhook"
+	NotifyChannelWechatMP NotifyChannelKind = "wechat_mp"
 )
 
 // NotifyOwnerType 通知渠道所有者类型

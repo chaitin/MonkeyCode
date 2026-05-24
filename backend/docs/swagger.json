@@ -2186,6 +2186,67 @@
                 }
             }
         },
+        "/api/v1/teams/users/{user_id}/passwords/reset": {
+            "put": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "管理员为团队成员生成新密码，密码只在响应中返回一次",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】分组成员管理"
+                ],
+                "summary": "重置团队成员密码",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamUserPassword"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "put": {
                 "security": [
@@ -7956,6 +8017,206 @@
                     }
                 }
             }
+        },
+        "/api/v1/users/wechat-mp/bind": {
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "解除当前用户与微信公众号 OpenID 的绑定关系",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】微信公众号推送"
+                ],
+                "summary": "解除公众号绑定",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权，用户未登录",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/wechat-mp/bind-qrcode": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "为当前登录用户创建微信公众号绑定临时二维码，用户扫码关注/扫码后完成绑定",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】微信公众号推送"
+                ],
+                "summary": "创建公众号绑定二维码",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.BindQRCodeResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权，用户未登录",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/wechat/callback": {
+            "get": {
+                "description": "接收微信服务器配置校验、关注/取消关注、扫码等事件回调；该接口无需登录鉴权",
+                "consumes": [
+                    "text/xml"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "【用户】微信公众号推送"
+                ],
+                "summary": "微信公众号回调",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "微信签名",
+                        "name": "signature",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "时间戳",
+                        "name": "timestamp",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "随机数",
+                        "name": "nonce",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "微信服务器配置校验字符串，仅 GET 请求使用",
+                        "name": "echostr",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "安全模式消息签名",
+                        "name": "msg_signature",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "微信回调处理结果",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "接收微信服务器配置校验、关注/取消关注、扫码等事件回调；该接口无需登录鉴权",
+                "consumes": [
+                    "text/xml"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "【用户】微信公众号推送"
+                ],
+                "summary": "微信公众号回调",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "微信签名",
+                        "name": "signature",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "时间戳",
+                        "name": "timestamp",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "随机数",
+                        "name": "nonce",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "微信服务器配置校验字符串，仅 GET 请求使用",
+                        "name": "echostr",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "安全模式消息签名",
+                        "name": "msg_signature",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "微信回调处理结果",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -8057,13 +8318,15 @@
                 "dingtalk",
                 "feishu",
                 "wecom",
-                "webhook"
+                "webhook",
+                "wechat_mp"
             ],
             "x-enum-varnames": [
                 "NotifyChannelDingTalk",
                 "NotifyChannelFeishu",
                 "NotifyChannelWeCom",
-                "NotifyChannelWebhook"
+                "NotifyChannelWebhook",
+                "NotifyChannelWechatMP"
             ]
         },
         "consts.NotifyEventType": {
@@ -8246,6 +8509,13 @@
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
             },
+            "x-enum-descriptions": [
+                "百智云平台",
+                "",
+                "",
+                "",
+                ""
+            ],
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
                 "UserPlatformGithub",
@@ -8270,6 +8540,13 @@
                 "UserRoleIndividual": "个人用户",
                 "UserRoleSubAccount": "企业子账户"
             },
+            "x-enum-descriptions": [
+                "个人用户",
+                "企业用户",
+                "企业子账户",
+                "MonkeyCode-AI 管理员账号，用来配置公共资源. 如公共宿主机等",
+                "全自动 git 任务插入的用户"
+            ],
             "x-enum-varnames": [
                 "UserRoleIndividual",
                 "UserRoleEnterprise",
@@ -8589,6 +8866,20 @@
                 }
             }
         },
+        "domain.BindQRCodeResp": {
+            "type": "object",
+            "properties": {
+                "expire_seconds": {
+                    "type": "integer"
+                },
+                "qrcode_url": {
+                    "type": "string"
+                },
+                "ticket": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.Branch": {
             "type": "object",
             "properties": {
@@ -8700,6 +8991,9 @@
                 },
                 "token": {
                     "type": "string"
+                },
+                "wechat_mp_bound": {
+                    "type": "boolean"
                 }
             }
         },
@@ -11155,6 +11449,9 @@
                 },
                 "token": {
                     "type": "string"
+                },
+                "wechat_mp_bound": {
+                    "type": "boolean"
                 }
             }
         },
@@ -11448,6 +11745,7 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
+            "format": "int32",
             "enum": [
                 0,
                 1,

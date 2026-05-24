@@ -92,7 +92,6 @@ type UpdateGitIdentityReq struct {
 	OAuthExpiresAt    *time.Time          `json:"-"` // 内部使用，OAuth 过期时间
 }
 
-
 // GetGitIdentityReq 获取 Git 身份认证详情请求
 type GetGitIdentityReq struct {
 	ID    uuid.UUID `param:"id" validate:"required"`

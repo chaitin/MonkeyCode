@@ -98,6 +98,26 @@ func (_c *NotifyChannelCreate) SetHeaders(v map[string]string) *NotifyChannelCre
 	return _c
 }
 
+// SetMetadata sets the "metadata" field.
+func (_c *NotifyChannelCreate) SetMetadata(v map[string]string) *NotifyChannelCreate {
+	_c.mutation.SetMetadata(v)
+	return _c
+}
+
+// SetTargetID sets the "target_id" field.
+func (_c *NotifyChannelCreate) SetTargetID(v string) *NotifyChannelCreate {
+	_c.mutation.SetTargetID(v)
+	return _c
+}
+
+// SetNillableTargetID sets the "target_id" field if the given value is not nil.
+func (_c *NotifyChannelCreate) SetNillableTargetID(v *string) *NotifyChannelCreate {
+	if v != nil {
+		_c.SetTargetID(*v)
+	}
+	return _c
+}
+
 // SetEnabled sets the "enabled" field.
 func (_c *NotifyChannelCreate) SetEnabled(v bool) *NotifyChannelCreate {
 	_c.mutation.SetEnabled(v)
@@ -206,6 +226,10 @@ func (_c *NotifyChannelCreate) defaults() error {
 		v := notifychannel.DefaultSecret
 		_c.mutation.SetSecret(v)
 	}
+	if _, ok := _c.mutation.TargetID(); !ok {
+		v := notifychannel.DefaultTargetID
+		_c.mutation.SetTargetID(v)
+	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		v := notifychannel.DefaultEnabled
 		_c.mutation.SetEnabled(v)
@@ -249,10 +273,8 @@ func (_c *NotifyChannelCreate) check() error {
 	if _, ok := _c.mutation.WebhookURL(); !ok {
 		return &ValidationError{Name: "webhook_url", err: errors.New(`db: missing required field "NotifyChannel.webhook_url"`)}
 	}
-	if v, ok := _c.mutation.WebhookURL(); ok {
-		if err := notifychannel.WebhookURLValidator(v); err != nil {
-			return &ValidationError{Name: "webhook_url", err: fmt.Errorf(`db: validator failed for field "NotifyChannel.webhook_url": %w`, err)}
-		}
+	if _, ok := _c.mutation.TargetID(); !ok {
+		return &ValidationError{Name: "target_id", err: errors.New(`db: missing required field "NotifyChannel.target_id"`)}
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`db: missing required field "NotifyChannel.enabled"`)}
@@ -330,6 +352,14 @@ func (_c *NotifyChannelCreate) createSpec() (*NotifyChannel, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.Headers(); ok {
 		_spec.SetField(notifychannel.FieldHeaders, field.TypeJSON, value)
 		_node.Headers = value
+	}
+	if value, ok := _c.mutation.Metadata(); ok {
+		_spec.SetField(notifychannel.FieldMetadata, field.TypeJSON, value)
+		_node.Metadata = value
+	}
+	if value, ok := _c.mutation.TargetID(); ok {
+		_spec.SetField(notifychannel.FieldTargetID, field.TypeString, value)
+		_node.TargetID = value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(notifychannel.FieldEnabled, field.TypeBool, value)
@@ -522,6 +552,36 @@ func (u *NotifyChannelUpsert) UpdateHeaders() *NotifyChannelUpsert {
 // ClearHeaders clears the value of the "headers" field.
 func (u *NotifyChannelUpsert) ClearHeaders() *NotifyChannelUpsert {
 	u.SetNull(notifychannel.FieldHeaders)
+	return u
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *NotifyChannelUpsert) SetMetadata(v map[string]string) *NotifyChannelUpsert {
+	u.Set(notifychannel.FieldMetadata, v)
+	return u
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *NotifyChannelUpsert) UpdateMetadata() *NotifyChannelUpsert {
+	u.SetExcluded(notifychannel.FieldMetadata)
+	return u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *NotifyChannelUpsert) ClearMetadata() *NotifyChannelUpsert {
+	u.SetNull(notifychannel.FieldMetadata)
+	return u
+}
+
+// SetTargetID sets the "target_id" field.
+func (u *NotifyChannelUpsert) SetTargetID(v string) *NotifyChannelUpsert {
+	u.Set(notifychannel.FieldTargetID, v)
+	return u
+}
+
+// UpdateTargetID sets the "target_id" field to the value that was provided on create.
+func (u *NotifyChannelUpsert) UpdateTargetID() *NotifyChannelUpsert {
+	u.SetExcluded(notifychannel.FieldTargetID)
 	return u
 }
 
@@ -739,6 +799,41 @@ func (u *NotifyChannelUpsertOne) UpdateHeaders() *NotifyChannelUpsertOne {
 func (u *NotifyChannelUpsertOne) ClearHeaders() *NotifyChannelUpsertOne {
 	return u.Update(func(s *NotifyChannelUpsert) {
 		s.ClearHeaders()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *NotifyChannelUpsertOne) SetMetadata(v map[string]string) *NotifyChannelUpsertOne {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *NotifyChannelUpsertOne) UpdateMetadata() *NotifyChannelUpsertOne {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *NotifyChannelUpsertOne) ClearMetadata() *NotifyChannelUpsertOne {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.ClearMetadata()
+	})
+}
+
+// SetTargetID sets the "target_id" field.
+func (u *NotifyChannelUpsertOne) SetTargetID(v string) *NotifyChannelUpsertOne {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.SetTargetID(v)
+	})
+}
+
+// UpdateTargetID sets the "target_id" field to the value that was provided on create.
+func (u *NotifyChannelUpsertOne) UpdateTargetID() *NotifyChannelUpsertOne {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.UpdateTargetID()
 	})
 }
 
@@ -1129,6 +1224,41 @@ func (u *NotifyChannelUpsertBulk) UpdateHeaders() *NotifyChannelUpsertBulk {
 func (u *NotifyChannelUpsertBulk) ClearHeaders() *NotifyChannelUpsertBulk {
 	return u.Update(func(s *NotifyChannelUpsert) {
 		s.ClearHeaders()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *NotifyChannelUpsertBulk) SetMetadata(v map[string]string) *NotifyChannelUpsertBulk {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *NotifyChannelUpsertBulk) UpdateMetadata() *NotifyChannelUpsertBulk {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *NotifyChannelUpsertBulk) ClearMetadata() *NotifyChannelUpsertBulk {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.ClearMetadata()
+	})
+}
+
+// SetTargetID sets the "target_id" field.
+func (u *NotifyChannelUpsertBulk) SetTargetID(v string) *NotifyChannelUpsertBulk {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.SetTargetID(v)
+	})
+}
+
+// UpdateTargetID sets the "target_id" field to the value that was provided on create.
+func (u *NotifyChannelUpsertBulk) UpdateTargetID() *NotifyChannelUpsertBulk {
+	return u.Update(func(s *NotifyChannelUpsert) {
+		s.UpdateTargetID()
 	})
 }
 
