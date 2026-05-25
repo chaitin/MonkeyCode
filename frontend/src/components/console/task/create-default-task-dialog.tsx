@@ -59,6 +59,7 @@ import {
 } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage"
+import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 import {
   IconChevronDown,
   IconLink,
@@ -334,6 +335,22 @@ export default function CreateDefaultTaskDialog({
   )
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
   const showRepoAdvancedOptions = Boolean(selectedRepo && !selectedRepoDisplayName.endsWith(".zip"))
+  const contentLength = content.length
+  const contentTooLong = contentLength > MAX_TASK_CONTENT_LENGTH
+
+  const validateTaskContent = () => {
+    if (!content.trim()) {
+      toast.error("请输入任务内容")
+      return false
+    }
+
+    if (contentTooLong) {
+      toast.error(getTaskContentLimitErrorMessage())
+      return false
+    }
+
+    return true
+  }
 
   useEffect(() => {
     if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
@@ -342,12 +359,15 @@ export default function CreateDefaultTaskDialog({
   }, [selectedPublicModel, selectedHostId])
 
   const handleConfirmExecute = () => {
+    if (!validateTaskContent()) {
+      return
+    }
+
     void executeTask()
   }
 
   const executeTask = async () => {
-    if (!content.trim()) {
-      toast.error("请输入任务内容")
+    if (!validateTaskContent()) {
       return
     }
 
@@ -468,12 +488,20 @@ export default function CreateDefaultTaskDialog({
             className="hidden"
             onChange={handleZipFileSelect}
           />
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder={TASK_PROMPT_PLACEHOLDER}
-            className="min-h-36 resize-none"
-          />
+          <div className="space-y-1">
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder={TASK_PROMPT_PLACEHOLDER}
+              className="min-h-36 resize-none"
+              aria-invalid={contentTooLong}
+            />
+            {contentTooLong && (
+              <div className="px-1 text-xs text-destructive">
+                已超出 {contentLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <DropdownMenu
@@ -884,7 +912,7 @@ export default function CreateDefaultTaskDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={handleConfirmExecute} disabled={!content.trim() || creatingTask}>
+          <Button onClick={handleConfirmExecute} disabled={!content.trim() || creatingTask || contentTooLong}>
             {creatingTask && <Spinner />}
             开始任务
           </Button>

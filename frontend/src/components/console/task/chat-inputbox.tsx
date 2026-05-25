@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
@@ -56,10 +57,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
+  const nextAttachmentFileIndexRef = useRef(1)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
   const wasExecutingRef = useRef(isExecuting)
   const restoreSubmittedInputOnIdleRef = useRef(false)
-  const lastSubmittedInputRef = useRef<{ content: string; uploadedFiles: TaskUploadedFile[] } | null>(null)
+  const lastSubmittedInputRef = useRef<{ content: string; uploadedFiles: TaskUploadedFile[]; nextAttachmentFileIndex: number } | null>(null)
   const canInput = React.useMemo(() => {
     return !sending && !isExecuting && queueSize === 0
   }, [sending, isExecuting, queueSize])
@@ -71,6 +73,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
         setContent(lastSubmittedInput.content)
         setUploadedFiles(lastSubmittedInput.uploadedFiles)
         setPreviewFile(null)
+        nextAttachmentFileIndexRef.current = lastSubmittedInput.nextAttachmentFileIndex
       }
       restoreSubmittedInputOnIdleRef.current = false
     }
@@ -79,6 +82,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   const sendCurrentInput = async () => {
     if (content.trim() === '') {
+      return
+    }
+
+    if (content.length > MAX_TASK_CONTENT_LENGTH) {
+      toast.error(getTaskContentLimitErrorMessage())
       return
     }
 
@@ -97,12 +105,14 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     lastSubmittedInputRef.current = {
       content,
       uploadedFiles,
+      nextAttachmentFileIndex: nextAttachmentFileIndexRef.current,
     }
     restoreSubmittedInputOnIdleRef.current = false
     setContent('')
     setUploadedFiles([])
     setPreviewFile(null)
     setWhiteboardFileIndex(1)
+    nextAttachmentFileIndexRef.current = 1
   }
 
   const handleCancel = () => {
@@ -112,6 +122,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   const handleSend = () => {
     if (content.trim() === '') {
+      return
+    }
+
+    if (content.length > MAX_TASK_CONTENT_LENGTH) {
+      toast.error(getTaskContentLimitErrorMessage())
       return
     }
 
@@ -145,6 +160,30 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     return `pasted-image-${timestamp}.${extension}`
   }
 
+  const createFileWithName = (file: File, filename: string) => {
+    if (file.name === filename) {
+      return file
+    }
+
+    try {
+      return new File([file], filename, {
+        type: file.type,
+        lastModified: file.lastModified,
+      })
+    } catch {
+      return file
+    }
+  }
+
+  const appendAttachmentFileIndex = (filename: string, index: number) => {
+    const extensionIndex = filename.lastIndexOf(".")
+    if (extensionIndex <= 0) {
+      return `${filename}-${index}`
+    }
+
+    return `${filename.slice(0, extensionIndex)}-${index}${filename.slice(extensionIndex)}`
+  }
+
   const normalizeUploadFile = (file: File) => {
     if (file.name && hasFileExtension(file.name)) {
       return file
@@ -155,14 +194,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return file
     }
 
-    try {
-      return new File([file], pastedImageName, {
-        type: file.type,
-        lastModified: file.lastModified,
-      })
-    } catch {
-      return file
-    }
+    return createFileWithName(file, pastedImageName)
+  }
+
+  const addCurrentRoundFileIndex = (file: File) => {
+    return createFileWithName(file, appendAttachmentFileIndex(file.name, nextAttachmentFileIndexRef.current))
   }
 
   const prepareUploadFile = (file: File, options?: { autoUpload?: boolean }) => {
@@ -175,7 +211,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return
     }
 
-    const normalizedFile = normalizeUploadFile(file)
+    const normalizedFile = addCurrentRoundFileIndex(normalizeUploadFile(file))
 
     if (normalizedFile.size === 0) {
       toast.error("不能上传空文件")
@@ -215,6 +251,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       }
       return [...prev, file]
     })
+    nextAttachmentFileIndexRef.current += 1
     setSelectedUploadFile(null)
     setShouldAutoUpload(false)
   }
@@ -379,7 +416,9 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
-  const canSend = content.trim() !== ''
+  const contentLength = content.length
+  const contentTooLong = contentLength > MAX_TASK_CONTENT_LENGTH
+  const canSend = content.trim() !== '' && !contentTooLong
   const canUploadMoreFiles = uploadedFiles.length < MAX_UPLOADED_FILES
   const whiteboardFileName = `画板-${whiteboardFileIndex}.png`
 
@@ -536,6 +575,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           </div>
         </InputGroupAddon>
       </InputGroup>
+      {contentTooLong && (
+        <div className="mt-1 px-1 text-xs text-destructive">
+          已超出 {contentLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+        </div>
+      )}
       <TaskFileUploadDialog
         open={uploadDialogOpen}
         file={selectedUploadFile}

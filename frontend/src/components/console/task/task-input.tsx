@@ -30,6 +30,7 @@ import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 import ModelSelect from "./model-select";
 import { TaskSkillSelector } from "./task-skill-selector";
+import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
 
 interface RepoOption {
   gitIdentityId: string;
@@ -223,6 +224,22 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   );
 
   const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic;
+  const taskContentLength = taskContent.length;
+  const taskContentTooLong = taskContentLength > MAX_TASK_CONTENT_LENGTH;
+
+  const validateTaskContent = () => {
+    if (!taskContent.trim()) {
+      toast.error('请输入任务内容');
+      return false;
+    }
+
+    if (taskContentTooLong) {
+      toast.error(getTaskContentLimitErrorMessage());
+      return false;
+    }
+
+    return true;
+  };
 
   useEffect(() => {
     if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
@@ -231,8 +248,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   }, [selectedPublicModel, selectedHostId]);
 
   const readyToExecuteTask = () => {
-    if (!taskContent.trim()) {
-      toast.error('请输入任务内容');
+    if (!validateTaskContent()) {
       return;
     }
 
@@ -257,6 +273,10 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   };
 
   const executeTask = async () => {
+    if (!validateTaskContent()) {
+      return;
+    }
+
     setCreatingTask(true);
     await apiRequest('v1UsersTasksCreate', {
       cli_name: ConstsCliName.CliNameOpencode,
@@ -341,8 +361,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   };
 
   const handleExecuteButtonClick = () => {
-    if (!taskContent.trim()) {
-      toast.error('请输入任务内容');
+    if (!validateTaskContent()) {
       return;
     }
 
@@ -395,6 +414,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       <InputGroup className="rounded-4xl p-2 pb-0">
         <InputGroupTextarea 
           className="min-h-30 max-h-60 break-all" 
+          aria-invalid={taskContentTooLong}
           placeholder={TASK_PROMPT_PLACEHOLDER} 
           value={taskContent} 
           onChange={(e) => setTaskContent(e.target.value)} 
@@ -635,13 +655,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 onTextRecognized={(text) => setTaskContent(text)}
               />
             )}
-            <Button size="sm" className="rounded-full" disabled={creatingTask} onClick={handleExecuteButtonClick}>
+            <Button size="sm" className="rounded-full" disabled={creatingTask || taskContentTooLong} onClick={handleExecuteButtonClick}>
               <span className="hidden sm:block">执行</span>
               {creatingTask ? <Spinner /> : <IconSend />}
             </Button>
           </div>
         </InputGroupAddon>
       </InputGroup>
+      {taskContentTooLong && (
+        <div className="mt-1 px-1 text-xs text-destructive">
+          已超出 {taskContentLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+        </div>
+      )}
 
       {/* 运行参数对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -760,7 +785,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
-            <Button disabled={creatingTask} onClick={() => {
+            <Button disabled={creatingTask || taskContentTooLong} onClick={() => {
               readyToExecuteTask();
             }}>
               {creatingTask && <Spinner />}

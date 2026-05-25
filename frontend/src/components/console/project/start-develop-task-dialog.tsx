@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import ModelSelect from "@/components/console/task/model-select"
+import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "@/components/console/task/task-content-limit"
 import { TASK_PROMPT_PLACEHOLDER, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
@@ -44,6 +45,8 @@ export default function StartDevelopTaskDialog({
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
   )
+  const userMessageLength = userMessage.length
+  const userMessageTooLong = userMessageLength > MAX_TASK_CONTENT_LENGTH
   const branchSourceKey = useMemo(() => {
     if (!project?.id) return ""
     return [
@@ -174,6 +177,11 @@ export default function StartDevelopTaskDialog({
       return
     }
 
+    if (userMessageTooLong) {
+      toast.error(getTaskContentLimitErrorMessage())
+      return
+    }
+
     if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && loadingBranches) {
       toast.error('分支列表加载中，请稍后')
       return
@@ -285,20 +293,28 @@ export default function StartDevelopTaskDialog({
           </div>
           <div className="space-y-2">
             <Label>任务内容</Label>
-            <Textarea
-              value={userMessage}
-              onChange={(e) => setUserMessage(e.target.value)}
-              placeholder={TASK_PROMPT_PLACEHOLDER}
-              rows={4}
-              className="resize-none break-all"
-            />
+            <div className="space-y-1">
+              <Textarea
+                value={userMessage}
+                onChange={(e) => setUserMessage(e.target.value)}
+                placeholder={TASK_PROMPT_PLACEHOLDER}
+                rows={4}
+                className="resize-none break-all"
+                aria-invalid={userMessageTooLong}
+              />
+              {userMessageTooLong && (
+                <div className="px-1 text-xs text-destructive">
+                  已超出 {userMessageLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+                </div>
+              )}
+            </div>
           </div>
          </div>
          
          <DialogFooter>
           <Button 
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || userMessageTooLong}
           >
             {submitting ? <Spinner /> : <IconSparkles className="size-4" />}
             开始对话
