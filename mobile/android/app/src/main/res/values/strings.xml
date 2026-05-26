@@ -4,4 +4,16 @@
     <string name="title_activity_main">MonkeyCode</string>
     <string name="package_name">com.monkeycode.mobile</string>
     <string name="custom_url_scheme">com.monkeycode.mobile</string>
+    <string name="download_description">Downloading file...</string>
+    <string name="download_started">Download started</string>
+    <string name="download_failed">Download failed</string>
+    <string name="download_complete">Download complete</string>
+    <string name="download_in_progress">Downloading...</string>
+    <string name="download_progress_percent">Downloaded %1$d%%</string>
+    <string name="download_saved_path">Saved to /sdcard/Download/monkeycode/</string>
+    <string name="download_completed_toast">Download completed and saved to /sdcard/Download/monkeycode/</string>
+    <string name="download_channel_name">File downloads</string>
+    <string name="download_channel_description">Shows MonkeyCode file download progress</string>
+    <string name="all_files_permission_prompt">Please allow MonkeyCode to access all files and folders.</string>
+    <string name="file_picker_unavailable">No file picker available</string>
 </resources>
