@@ -17,10 +17,12 @@ import (
 )
 
 const (
-	vmSleepQueueKey   = "vm:idle:sleep"
-	vmNotifyQueueKey  = "vm:idle:notify"
-	vmRecycleQueueKey = "vm:idle:recycle"
-	vmExpireQueueKey  = "vm:expire"
+	vmSleepQueueKey     = "vm:idle:sleep"
+	vmNotifyQueueKey    = "vm:idle:notify"
+	vmWechat2hQueueKey  = "vm:idle:notify:wechat:2h"
+	vmWechat15mQueueKey = "vm:idle:notify:wechat:15m"
+	vmRecycleQueueKey   = "vm:idle:recycle"
+	vmExpireQueueKey    = "vm:expire"
 )
 
 // VMRecycleHook VM 回收 Hook，负责删除 VM、清理队列和 Redis 键、标记 DB
@@ -114,6 +116,8 @@ func (h *VMRecycleHook) cleanup(ctx context.Context, logger *slog.Logger, vm *db
 	// 3. 清理 delay queue 条目
 	_ = h.vmSleepQueue.Remove(ctx, vmSleepQueueKey, vm.ID)
 	_ = h.vmNotifyQueue.Remove(ctx, vmNotifyQueueKey, vm.ID)
+	_ = h.vmNotifyQueue.Remove(ctx, vmWechat2hQueueKey, vm.ID)
+	_ = h.vmNotifyQueue.Remove(ctx, vmWechat15mQueueKey, vm.ID)
 	_ = h.vmRecycleQueue.Remove(ctx, vmRecycleQueueKey, vm.ID)
 	_ = h.vmExpireQueue.Remove(ctx, vmExpireQueueKey, vm.ID)
 

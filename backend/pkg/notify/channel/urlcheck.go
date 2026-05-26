@@ -51,6 +51,15 @@ func ValidateHeaders(headers map[string]string) error {
 	return nil
 }
 
+// validateURLChannelCfg 是 URL 类渠道（dingtalk/feishu/wecom/webhook）的共用校验：
+// 校验 webhook URL 与 Header 的 SSRF 风险，让各 sender 在 Validate 里直接复用。
+func validateURLChannelCfg(cfg *ChannelConfig) error {
+	if err := ValidateWebhookURL(cfg.WebhookURL); err != nil {
+		return err
+	}
+	return ValidateHeaders(cfg.Headers)
+}
+
 func isBlockedIP(ip net.IP) bool {
 	if ip.IsLoopback() {
 		return true

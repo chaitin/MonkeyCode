@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -152,7 +153,7 @@ func (d *Dispatcher) ackMessage(streamKey, msgID string) {
 }
 
 func (d *Dispatcher) dispatchOne(ctx context.Context, event *domain.NotifyEvent) {
-	logger := d.logger.With("event_type", event.EventType, "ref_id", event.RefID, "user_id", event.SubjectUserID)
+	logger := d.logger.With("event_type", event.EventType, "ref_id", event.RefID, "user_id", event.SubjectUserID, "vm_name", event.Payload.VMName)
 
 	logger.InfoContext(ctx, "dispatching event")
 
@@ -184,6 +185,12 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, event *domain.NotifyEvent)
 
 	var wg sync.WaitGroup
 	for _, ch := range channels {
+		if len(event.ChannelKinds) > 0 && !slices.Contains(event.ChannelKinds, ch.Kind) {
+			continue
+		}
+		if len(event.ExcludeKinds) > 0 && slices.Contains(event.ExcludeKinds, ch.Kind) {
+			continue
+		}
 		for _, sub := range ch.Edges.Subscriptions {
 			exists, err := d.sendLogRepo.Exists(ctx, sub.ID, event.EventType, event.RefID)
 			if err != nil {
@@ -209,18 +216,16 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, event *domain.NotifyEvent)
 					WebhookURL: ch.WebhookURL,
 					Secret:     ch.Secret,
 					Headers:    ch.Headers,
+					TargetID:   ch.TargetID,
 				}
 
-				if err := channel.ValidateWebhookURL(cfg.WebhookURL); err != nil {
-					logger.WarnContext(ctx, "blocked webhook url", "channel_id", ch.ID, "error", err)
-					return
-				}
-				if err := channel.ValidateHeaders(cfg.Headers); err != nil {
-					logger.WarnContext(ctx, "blocked webhook headers", "channel_id", ch.ID, "error", err)
+				// 校验 ChannelConfig 由各 sender 自己负责（URL 类做 SSRF，ID 类做 target_id 非空等）。
+				if err := sender.Validate(cfg); err != nil {
+					logger.WarnContext(ctx, "channel config invalid", "channel_id", ch.ID, "kind", ch.Kind, "error", err)
 					return
 				}
 
-				sendErr := sender.Send(ctx, cfg, msg)
+				sendErr := sender.Send(ctx, cfg, event, msg)
 
 				status := consts.NotifySendOK
 				errMsg := ""

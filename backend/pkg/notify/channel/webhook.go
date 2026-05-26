@@ -2,7 +2,10 @@ package channel
 
 import (
 	"context"
+
 	"fmt"
+
+	"github.com/chaitin/MonkeyCode/backend/domain"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/request"
@@ -14,7 +17,11 @@ func NewWebhookSender() *WebhookSender { return &WebhookSender{} }
 
 func (w *WebhookSender) Kind() consts.NotifyChannelKind { return consts.NotifyChannelWebhook }
 
-func (w *WebhookSender) Send(ctx context.Context, cfg *ChannelConfig, msg Message) error {
+func (w *WebhookSender) Validate(cfg *ChannelConfig) error {
+	return validateURLChannelCfg(cfg)
+}
+
+func (w *WebhookSender) Send(ctx context.Context, cfg *ChannelConfig, _ *domain.NotifyEvent, msg Message) error {
 	body := map[string]any{
 		"title": msg.Title,
 		"body":  msg.Body,
