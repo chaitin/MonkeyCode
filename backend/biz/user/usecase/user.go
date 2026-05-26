@@ -68,7 +68,15 @@ func (u *UserUsecase) GetUserWithTeams(ctx context.Context, userID uuid.UUID) (*
 	if err != nil {
 		return nil, err
 	}
-	return cvt.From(user, &domain.TeamUserInfo{}), nil
+	teamUser := cvt.From(user, &domain.TeamUserInfo{})
+	if teamUser.User != nil {
+		bound, err := u.repo.WechatMPBound(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		teamUser.User.WechatMPBound = bound
+	}
+	return teamUser, nil
 }
 
 // PasswordLogin implements domain.UserUsecase.

@@ -32,6 +32,10 @@ const (
 	FieldSecret = "secret"
 	// FieldHeaders holds the string denoting the headers field in the database.
 	FieldHeaders = "headers"
+	// FieldMetadata holds the string denoting the metadata field in the database.
+	FieldMetadata = "metadata"
+	// FieldTargetID holds the string denoting the target_id field in the database.
+	FieldTargetID = "target_id"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -62,6 +66,8 @@ var Columns = []string{
 	FieldWebhookURL,
 	FieldSecret,
 	FieldHeaders,
+	FieldMetadata,
+	FieldTargetID,
 	FieldEnabled,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -89,10 +95,10 @@ var (
 	DefaultOwnerType consts.NotifyOwnerType
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
-	// WebhookURLValidator is a validator for the "webhook_url" field. It is called by the builders before save.
-	WebhookURLValidator func(string) error
 	// DefaultSecret holds the default value on creation for the "secret" field.
 	DefaultSecret string
+	// DefaultTargetID holds the default value on creation for the "target_id" field.
+	DefaultTargetID string
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -144,6 +150,11 @@ func ByWebhookURL(opts ...sql.OrderTermOption) OrderOption {
 // BySecret orders the results by the secret field.
 func BySecret(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSecret, opts...).ToFunc()
+}
+
+// ByTargetID orders the results by the target_id field.
+func ByTargetID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTargetID, opts...).ToFunc()
 }
 
 // ByEnabled orders the results by the enabled field.

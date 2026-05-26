@@ -411,6 +411,8 @@ var (
 		{Name: "webhook_url", Type: field.TypeString, Size: 2147483647},
 		{Name: "secret", Type: field.TypeString, Nullable: true, Size: 2147483647, Default: ""},
 		{Name: "headers", Type: field.TypeJSON, Nullable: true},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "target_id", Type: field.TypeString, Default: ""},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -425,6 +427,22 @@ var (
 				Name:    "notifychannel_owner_id_owner_type",
 				Unique:  false,
 				Columns: []*schema.Column{NotifyChannelsColumns[2], NotifyChannelsColumns[3]},
+			},
+			{
+				Name:    "notifychannel_owner_id",
+				Unique:  true,
+				Columns: []*schema.Column{NotifyChannelsColumns[2]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "kind = 'wechat_mp' AND deleted_at IS NULL",
+				},
+			},
+			{
+				Name:    "notifychannel_kind_target_id",
+				Unique:  false,
+				Columns: []*schema.Column{NotifyChannelsColumns[5], NotifyChannelsColumns[10]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL",
+				},
 			},
 		},
 	}

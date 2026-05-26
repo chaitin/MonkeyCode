@@ -67,6 +67,9 @@ type Config struct {
 	Gitea  GiteaConfig  `mapstructure:"gitea"`
 	Gitee  GiteeConfig  `mapstructure:"gitee"`
 
+	// 微信配置（开放平台 OAuth 登录 + 公众号消息推送）
+	Wechat WechatConfig `mapstructure:"wechat"`
+
 	InitTeam InitTeam `mapstructure:"init_team"`
 
 	// 语音识别配置（阿里云 NLS）
@@ -194,8 +197,10 @@ type Notify struct {
 }
 
 type VMIdle struct {
-	SleepSeconds   int `mapstructure:"sleep_seconds"`   // VM 空闲休眠时间（秒）
-	RecycleSeconds int `mapstructure:"recycle_seconds"` // VM 空闲回收时间（秒）
+	SleepSeconds                  int   `mapstructure:"sleep_seconds"`                    // VM 空闲休眠时间（秒）
+	RecycleSeconds                int   `mapstructure:"recycle_seconds"`                  // VM 空闲回收时间（秒）
+	RecycleWarnWechatLeadSeconds  []int `mapstructure:"recycle_warn_wechat_lead_seconds"`  // VM 回收前，微信公众号档每个 tier 的提前预警时长（秒），可配多档；缺省 [7200, 900]
+	RecycleWarnDefaultLeadSeconds int   `mapstructure:"recycle_warn_default_lead_seconds"` // VM 回收前，非微信公众号渠道（钉钉/飞书等）的提前预警时长（秒），<=0 视为禁用该档；缺省 3600
 }
 
 type Session struct {
@@ -293,6 +298,13 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("host_installer.mode", "online")
 	v.SetDefault("host_installer.bundle_path", "installer/{{.arch}}/host.tgz")
 	v.SetDefault("llm_proxy.base_url", "")
+	v.SetDefault("wechat.open.app_id", "")
+	v.SetDefault("wechat.open.app_secret", "")
+	v.SetDefault("wechat.open.scope", "snsapi_login")
+	v.SetDefault("wechat.mp.app_id", "")
+	v.SetDefault("wechat.mp.app_secret", "")
+	v.SetDefault("wechat.mp.token", "")
+	v.SetDefault("wechat.mp.template_id", "")
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
@@ -521,4 +533,33 @@ func (c *Config) GetGiteeOAuthRedirectURL() string {
 		return c.Gitee.OAuth.RedirectURL
 	}
 	return c.Server.BaseURL + "/api/v1/oauth/gitee/callback"
+}
+
+// WechatConfig 微信配置（包含开放平台和公众号两部分）
+type WechatConfig struct {
+	Open WechatOpenConfig `mapstructure:"open"`
+	MP   WechatMPConfig   `mapstructure:"mp"`
+}
+
+// WechatOpenConfig 微信开放平台配置 - 用于网站扫码登录
+type WechatOpenConfig struct {
+	AppID       string `mapstructure:"app_id"`
+	AppSecret   string `mapstructure:"app_secret"`
+	CallbackURL string `mapstructure:"callback_url"`
+	Scope       string `mapstructure:"scope"`
+	Debug       bool   `mapstructure:"debug"`
+}
+
+// WechatMPConfig 微信公众号配置 - 用于消息推送
+type WechatMPConfig struct {
+	AppID          string `mapstructure:"app_id"`
+	AppSecret      string `mapstructure:"app_secret"`
+	Token          string `mapstructure:"token"`
+	EncodingAESKey string `mapstructure:"encoding_aes_key"`
+	TemplateID     string `mapstructure:"template_id"`
+	// MirrorMode 开启后，绑定成功时除了写 XML inline reply 外，还会主动调微信 API 推一条
+	// 模板消息确认。仅用于 Nginx mirror 转发场景——回调被 mirror 到多个后端，
+	// inline reply 会被丢弃，用户收不到"绑定成功"提示。
+	// 普通单后端部署务必保持 false，否则用户会同时收到 XML 回复和模板消息两条通知。
+	MirrorMode bool `mapstructure:"mirror_mode"`
 }

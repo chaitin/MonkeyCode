@@ -78,17 +78,21 @@ type NotifyChannel struct {
 
 // NotifyEvent 通知事件
 type NotifyEvent struct {
-	EventType     consts.NotifyEventType `json:"event_type"`
-	SubjectUserID uuid.UUID              `json:"subject_user_id"`
-	RefID         string                 `json:"ref_id"`
-	OccurredAt    time.Time              `json:"occurred_at"`
-	Payload       NotifyEventPayload     `json:"payload"`
+	EventType     consts.NotifyEventType     `json:"event_type"`
+	SubjectUserID uuid.UUID                  `json:"subject_user_id"`
+	RefID         string                     `json:"ref_id"`
+	OccurredAt    time.Time                  `json:"occurred_at"`
+	Payload       NotifyEventPayload         `json:"payload"`
+	ChannelKinds  []consts.NotifyChannelKind `json:"channel_kinds,omitempty"`
+	ExcludeKinds  []consts.NotifyChannelKind `json:"exclude_kinds,omitempty"`
 }
 
 // NotifyEventPayload 通知事件载荷
 type NotifyEventPayload struct {
 	TaskID      string     `json:"task_id,omitempty"`
 	TaskContent string     `json:"task_content,omitempty"`
+	TaskSummary string     `json:"task_summary,omitempty"`
+	TaskTitle   string     `json:"task_title,omitempty"`
 	TaskStatus  string     `json:"task_status,omitempty"`
 	RepoURL     string     `json:"repo_url,omitempty"`
 	ModelName   string     `json:"model_name,omitempty"`
@@ -103,6 +107,10 @@ type NotifyEventPayload struct {
 	VMCores     int        `json:"vm_cores,omitempty"`
 	VMMemory    int64      `json:"vm_memory,omitempty"`
 	VMOS        string     `json:"vm_os,omitempty"`
+	// LeadSeconds 表示距事件实际发生还有多少秒。
+	// vm.expiring_soon 场景下事件源（vmidle）显式塞值，sender 据此选择文案
+	// （2h 提醒 vs 15m 提醒等不同档位）；不传则为 0，sender 走通用文案。
+	LeadSeconds int `json:"lead_seconds,omitempty"`
 }
 
 // CreateNotifySendLogReq 创建通知发送日志请求

@@ -264,10 +264,10 @@ func (h *TeamGroupUserHandler) AddAdmin(c *web.Context, req domain.AddTeamAdminR
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAITeamAuth
-//	@Param			user_id	path		string						true	"用户ID"
+//	@Param			user_id	path		string									true	"用户ID"
 //	@Success		200		{object}	web.Resp{data=domain.TeamUserPassword}	"成功"
-//	@Failure		401		{object}	web.Resp						"未授权"
-//	@Failure		500		{object}	web.Resp						"服务器内部错误"
+//	@Failure		401		{object}	web.Resp								"未授权"
+//	@Failure		500		{object}	web.Resp								"服务器内部错误"
 //	@Router			/api/v1/teams/users/{user_id}/passwords/reset [put]
 func (h *TeamGroupUserHandler) ResetPassword(c *web.Context, req domain.ResetPasswordReq) error {
 	teamUser := middleware.GetTeamUser(c)

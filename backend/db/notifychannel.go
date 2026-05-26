@@ -36,6 +36,10 @@ type NotifyChannel struct {
 	Secret string `json:"secret,omitempty"`
 	// Headers holds the value of the "headers" field.
 	Headers map[string]string `json:"headers,omitempty"`
+	// Metadata holds the value of the "metadata" field.
+	Metadata map[string]string `json:"metadata,omitempty"`
+	// TargetID holds the value of the "target_id" field.
+	TargetID string `json:"target_id,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -71,11 +75,11 @@ func (*NotifyChannel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case notifychannel.FieldHeaders:
+		case notifychannel.FieldHeaders, notifychannel.FieldMetadata:
 			values[i] = new([]byte)
 		case notifychannel.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case notifychannel.FieldOwnerType, notifychannel.FieldName, notifychannel.FieldKind, notifychannel.FieldWebhookURL, notifychannel.FieldSecret:
+		case notifychannel.FieldOwnerType, notifychannel.FieldName, notifychannel.FieldKind, notifychannel.FieldWebhookURL, notifychannel.FieldSecret, notifychannel.FieldTargetID:
 			values[i] = new(sql.NullString)
 		case notifychannel.FieldDeletedAt, notifychannel.FieldCreatedAt, notifychannel.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -151,6 +155,20 @@ func (_m *NotifyChannel) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.Headers); err != nil {
 					return fmt.Errorf("unmarshal field headers: %w", err)
 				}
+			}
+		case notifychannel.FieldMetadata:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field metadata", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Metadata); err != nil {
+					return fmt.Errorf("unmarshal field metadata: %w", err)
+				}
+			}
+		case notifychannel.FieldTargetID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field target_id", values[i])
+			} else if value.Valid {
+				_m.TargetID = value.String
 			}
 		case notifychannel.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -234,6 +252,12 @@ func (_m *NotifyChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("headers=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Headers))
+	builder.WriteString(", ")
+	builder.WriteString("metadata=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))
+	builder.WriteString(", ")
+	builder.WriteString("target_id=")
+	builder.WriteString(_m.TargetID)
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))

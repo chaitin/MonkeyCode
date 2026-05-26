@@ -29,6 +29,7 @@ type UserRepo interface {
 	Get(ctx context.Context, uid uuid.UUID) (*db.User, error)
 	Update(ctx context.Context, uid uuid.UUID, name, avatarURL string) error
 	GetUserWithTeams(ctx context.Context, uid uuid.UUID) (*db.User, error)
+	WechatMPBound(ctx context.Context, uid uuid.UUID) (bool, error)
 	PasswordLogin(ctx context.Context, req *TeamLoginReq) (*db.User, error)
 	ChangePassword(ctx context.Context, uid uuid.UUID, currentPassword, newPassword string, isReset bool) error
 	GetUserByEmail(ctx context.Context, emails []string) ([]*db.User, error)
@@ -43,17 +44,18 @@ type UserActiveRepo interface {
 }
 
 type User struct {
-	ID          uuid.UUID         `json:"id"`
-	Name        string            `json:"name"`
-	AvatarURL   string            `json:"avatar_url"`
-	Email       string            `json:"email"`
-	Role        consts.UserRole   `json:"role"`
-	Status      consts.UserStatus `json:"status"`
-	IsBlocked   bool              `json:"is_blocked"`
-	Token       string            `json:"token,omitempty"`
-	Identities  []*UserIdentity   `json:"identities"`
-	Team        *Team             `json:"team,omitempty"`
-	HasPassword bool              `json:"has_password"`
+	ID            uuid.UUID         `json:"id"`
+	Name          string            `json:"name"`
+	AvatarURL     string            `json:"avatar_url"`
+	Email         string            `json:"email"`
+	Role          consts.UserRole   `json:"role"`
+	Status        consts.UserStatus `json:"status"`
+	IsBlocked     bool              `json:"is_blocked"`
+	Token         string            `json:"token,omitempty"`
+	WechatMPBound bool              `json:"wechat_mp_bound"`
+	Identities    []*UserIdentity   `json:"identities"`
+	Team          *Team             `json:"team,omitempty"`
+	HasPassword   bool              `json:"has_password"`
 }
 
 type SubscriptionResp struct {
