@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
@@ -116,6 +117,7 @@ func checkColumn(t, c string) error {
 			gitbottask.Table:          gitbottask.ValidColumn,
 			gitbotuser.Table:          gitbotuser.ValidColumn,
 			gitidentity.Table:         gitidentity.ValidColumn,
+			gittask.Table:             gittask.ValidColumn,
 			host.Table:                host.ValidColumn,
 			image.Table:               image.ValidColumn,
 			mcptool.Table:             mcptool.ValidColumn,

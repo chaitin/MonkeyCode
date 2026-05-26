@@ -11,6 +11,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
@@ -107,6 +108,16 @@ func init() {
 	gitidentity.DefaultUpdatedAt = gitidentityDescUpdatedAt.Default.(func() time.Time)
 	// gitidentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	gitidentity.UpdateDefaultUpdatedAt = gitidentityDescUpdatedAt.UpdateDefault.(func() time.Time)
+	gittaskFields := schema.GitTask{}.Fields()
+	_ = gittaskFields
+	// gittaskDescSubjectType is the schema descriptor for subject_type field.
+	gittaskDescSubjectType := gittaskFields[3].Descriptor()
+	// gittask.SubjectTypeValidator is a validator for the "subject_type" field. It is called by the builders before save.
+	gittask.SubjectTypeValidator = gittaskDescSubjectType.Validators[0].(func(string) error)
+	// gittaskDescCreatedAt is the schema descriptor for created_at field.
+	gittaskDescCreatedAt := gittaskFields[11].Descriptor()
+	// gittask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	gittask.DefaultCreatedAt = gittaskDescCreatedAt.Default.(func() time.Time)
 	hostMixin := schema.Host{}.Mixin()
 	hostMixinHooks0 := hostMixin[0].Hooks()
 	host.Hooks[0] = hostMixinHooks0[0]

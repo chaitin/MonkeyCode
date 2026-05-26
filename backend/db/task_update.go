@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
@@ -262,6 +263,25 @@ func (_u *TaskUpdate) AddProjectTasks(v ...*ProjectTask) *TaskUpdate {
 	return _u.AddProjectTaskIDs(ids...)
 }
 
+// SetGitTasksID sets the "git_tasks" edge to the GitTask entity by ID.
+func (_u *TaskUpdate) SetGitTasksID(id uuid.UUID) *TaskUpdate {
+	_u.mutation.SetGitTasksID(id)
+	return _u
+}
+
+// SetNillableGitTasksID sets the "git_tasks" edge to the GitTask entity by ID if the given value is not nil.
+func (_u *TaskUpdate) SetNillableGitTasksID(id *uuid.UUID) *TaskUpdate {
+	if id != nil {
+		_u = _u.SetGitTasksID(*id)
+	}
+	return _u
+}
+
+// SetGitTasks sets the "git_tasks" edge to the GitTask entity.
+func (_u *TaskUpdate) SetGitTasks(v *GitTask) *TaskUpdate {
+	return _u.SetGitTasksID(v.ID)
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *TaskUpdate) SetUser(v *User) *TaskUpdate {
 	return _u.SetUserID(v.ID)
@@ -351,6 +371,12 @@ func (_u *TaskUpdate) RemoveProjectTasks(v ...*ProjectTask) *TaskUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearGitTasks clears the "git_tasks" edge to the GitTask entity.
+func (_u *TaskUpdate) ClearGitTasks() *TaskUpdate {
+	_u.mutation.ClearGitTasks()
+	return _u
 }
 
 // ClearUser clears the "user" edge to the User entity.
@@ -608,6 +634,35 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   task.GitTasksTable,
+			Columns: []string{task.GitTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gittask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   task.GitTasksTable,
+			Columns: []string{task.GitTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gittask.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1083,6 +1138,25 @@ func (_u *TaskUpdateOne) AddProjectTasks(v ...*ProjectTask) *TaskUpdateOne {
 	return _u.AddProjectTaskIDs(ids...)
 }
 
+// SetGitTasksID sets the "git_tasks" edge to the GitTask entity by ID.
+func (_u *TaskUpdateOne) SetGitTasksID(id uuid.UUID) *TaskUpdateOne {
+	_u.mutation.SetGitTasksID(id)
+	return _u
+}
+
+// SetNillableGitTasksID sets the "git_tasks" edge to the GitTask entity by ID if the given value is not nil.
+func (_u *TaskUpdateOne) SetNillableGitTasksID(id *uuid.UUID) *TaskUpdateOne {
+	if id != nil {
+		_u = _u.SetGitTasksID(*id)
+	}
+	return _u
+}
+
+// SetGitTasks sets the "git_tasks" edge to the GitTask entity.
+func (_u *TaskUpdateOne) SetGitTasks(v *GitTask) *TaskUpdateOne {
+	return _u.SetGitTasksID(v.ID)
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *TaskUpdateOne) SetUser(v *User) *TaskUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -1172,6 +1246,12 @@ func (_u *TaskUpdateOne) RemoveProjectTasks(v ...*ProjectTask) *TaskUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectTaskIDs(ids...)
+}
+
+// ClearGitTasks clears the "git_tasks" edge to the GitTask entity.
+func (_u *TaskUpdateOne) ClearGitTasks() *TaskUpdateOne {
+	_u.mutation.ClearGitTasks()
+	return _u
 }
 
 // ClearUser clears the "user" edge to the User entity.
@@ -1459,6 +1539,35 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GitTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   task.GitTasksTable,
+			Columns: []string{task.GitTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gittask.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GitTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   task.GitTasksTable,
+			Columns: []string{task.GitTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gittask.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

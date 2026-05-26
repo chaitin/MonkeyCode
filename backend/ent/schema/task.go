@@ -55,6 +55,7 @@ func (Task) Fields() []ent.Field {
 func (Task) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("project_tasks", ProjectTask.Type),
+		edge.To("git_tasks", GitTask.Type).Unique(),
 		edge.From("user", User.Type).Ref("tasks").Field("user_id").Unique().Required(),
 		edge.From("vms", VirtualMachine.Type).Through("task_vms", TaskVirtualMachine.Type).Ref("tasks"),
 		edge.To("git_bot_tasks", GitBotTask.Type),

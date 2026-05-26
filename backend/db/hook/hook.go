@@ -69,6 +69,18 @@ func (f GitIdentityFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.GitIdentityMutation", m)
 }
 
+// The GitTaskFunc type is an adapter to allow the use of ordinary
+// function as GitTask mutator.
+type GitTaskFunc func(context.Context, *db.GitTaskMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GitTaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.GitTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.GitTaskMutation", m)
+}
+
 // The HostFunc type is an adapter to allow the use of ordinary
 // function as Host mutator.
 type HostFunc func(context.Context, *db.HostMutation) (db.Value, error)

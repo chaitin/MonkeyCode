@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
@@ -200,6 +201,25 @@ func (_c *TaskCreate) AddProjectTasks(v ...*ProjectTask) *TaskCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddProjectTaskIDs(ids...)
+}
+
+// SetGitTasksID sets the "git_tasks" edge to the GitTask entity by ID.
+func (_c *TaskCreate) SetGitTasksID(id uuid.UUID) *TaskCreate {
+	_c.mutation.SetGitTasksID(id)
+	return _c
+}
+
+// SetNillableGitTasksID sets the "git_tasks" edge to the GitTask entity by ID if the given value is not nil.
+func (_c *TaskCreate) SetNillableGitTasksID(id *uuid.UUID) *TaskCreate {
+	if id != nil {
+		_c = _c.SetGitTasksID(*id)
+	}
+	return _c
+}
+
+// SetGitTasks sets the "git_tasks" edge to the GitTask entity.
+func (_c *TaskCreate) SetGitTasks(v *GitTask) *TaskCreate {
+	return _c.SetGitTasksID(v.ID)
 }
 
 // SetUser sets the "user" edge to the User entity.
@@ -452,6 +472,22 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(projecttask.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GitTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   task.GitTasksTable,
+			Columns: []string{task.GitTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(gittask.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

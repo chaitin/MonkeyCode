@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 )
@@ -25,10 +26,18 @@ func NewLogger(cfg *Config) *slog.Logger {
 		level.Set(slog.LevelWarn)
 	}
 	base := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
+		Level:       level,
+		ReplaceAttr: replaceAttr,
 	})
 	handler := &ContextLogger{Handler: base}
 	return slog.New(handler)
+}
+
+func replaceAttr(_ []string, attr slog.Attr) slog.Attr {
+	if err, ok := attr.Value.Any().(error); ok && err != nil && err.Error() == "" {
+		attr.Value = slog.StringValue(fmt.Sprintf("%T", err))
+	}
+	return attr
 }
 
 func SetLevel(lv string) {

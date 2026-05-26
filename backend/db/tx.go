@@ -24,6 +24,8 @@ type Tx struct {
 	GitBotUser *GitBotUserClient
 	// GitIdentity is the client for interacting with the GitIdentity builders.
 	GitIdentity *GitIdentityClient
+	// GitTask is the client for interacting with the GitTask builders.
+	GitTask *GitTaskClient
 	// Host is the client for interacting with the Host builders.
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
@@ -228,6 +230,7 @@ func (tx *Tx) init() {
 	tx.GitBotTask = NewGitBotTaskClient(tx.config)
 	tx.GitBotUser = NewGitBotUserClient(tx.config)
 	tx.GitIdentity = NewGitIdentityClient(tx.config)
+	tx.GitTask = NewGitTaskClient(tx.config)
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
 	tx.MCPTool = NewMCPToolClient(tx.config)

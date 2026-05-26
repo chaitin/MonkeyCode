@@ -43,6 +43,8 @@ const (
 	FieldCompletedAt = "completed_at"
 	// EdgeProjectTasks holds the string denoting the project_tasks edge name in mutations.
 	EdgeProjectTasks = "project_tasks"
+	// EdgeGitTasks holds the string denoting the git_tasks edge name in mutations.
+	EdgeGitTasks = "git_tasks"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeVms holds the string denoting the vms edge name in mutations.
@@ -62,6 +64,13 @@ const (
 	ProjectTasksInverseTable = "project_tasks"
 	// ProjectTasksColumn is the table column denoting the project_tasks relation/edge.
 	ProjectTasksColumn = "task_id"
+	// GitTasksTable is the table that holds the git_tasks relation/edge.
+	GitTasksTable = "git_tasks"
+	// GitTasksInverseTable is the table name for the GitTask entity.
+	// It exists in this package in order to avoid circular dependency with the "gittask" package.
+	GitTasksInverseTable = "git_tasks"
+	// GitTasksColumn is the table column denoting the git_tasks relation/edge.
+	GitTasksColumn = "task_id"
 	// UserTable is the table that holds the user relation/edge.
 	UserTable = "tasks"
 	// UserInverseTable is the table name for the User entity.
@@ -238,6 +247,13 @@ func ByProjectTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByGitTasksField orders the results by git_tasks field.
+func ByGitTasksField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGitTasksStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByUserField orders the results by user field.
 func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -305,6 +321,13 @@ func newProjectTasksStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProjectTasksInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ProjectTasksTable, ProjectTasksColumn),
+	)
+}
+func newGitTasksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GitTasksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2O, false, GitTasksTable, GitTasksColumn),
 	)
 }
 func newUserStep() *sqlgraph.Step {

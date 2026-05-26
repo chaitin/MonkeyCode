@@ -30,6 +30,7 @@ type GithubWebhookHandler struct {
 	logger         *slog.Logger
 	redis          *redis.Client
 	gitbotUsecase  domain.GitBotUsecase
+	pubhost        domain.PublicHostUsecase
 	gitTaskUsecase domain.GitTaskUsecase
 }
 
@@ -41,6 +42,7 @@ func NewGithubWebhookHandler(i *do.Injector) (*GithubWebhookHandler, error) {
 		redis:          do.MustInvoke[*redis.Client](i),
 		gitbotUsecase:  do.MustInvoke[domain.GitBotUsecase](i),
 		gitTaskUsecase: do.MustInvoke[domain.GitTaskUsecase](i),
+		pubhost:        do.MustInvoke[domain.PublicHostUsecase](i),
 	}
 
 	w := do.MustInvoke[*web.Web](i)
@@ -76,6 +78,7 @@ func (h *GithubWebhookHandler) Webhook(c *web.Context) error {
 	}
 
 	event := c.Request().Header.Get("X-Github-Event")
+	h.logger.With("bot", bot.ID, "body", string(body), "event", event).DebugContext(c.Request().Context(), "github webhook")
 	if event == "pull_request" {
 		h.handlePullRequest(ctx, bot, body)
 	}
@@ -132,21 +135,34 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		return
 	}
 
+	host, err := h.pubhost.PickHost(ctx)
+	if err != nil {
+		h.logger.With("error", err).ErrorContext(ctx, "failed to pick host")
+		return
+	}
+
 	branch := pr.Head.Ref
 	repo := pr.Head.Repo
-	h.gitTaskUsecase.Create(ctx, domain.CreateGitTaskReq{
-		HostID:  bot.Host.ID,
+	if _, err := h.gitTaskUsecase.Create(ctx, domain.CreateGitTaskReq{
+		HostID:  host.ID,
 		ImageID: uuid.MustParse(h.cfg.Task.ImageID),
 		Prompt:  pr.HTMLURL,
 		Git:     taskflow.Git{Token: bot.Token},
 		Subject: domain.Subject{
-			ID: fmt.Sprintf("%d", pr.ID), Type: "PullRequest",
-			Title: pr.Title, URL: pr.HTMLURL, Number: pr.Number,
+			ID:     fmt.Sprintf("%d", pr.ID),
+			Type:   "PullRequest",
+			Title:  pr.Title,
+			URL:    pr.HTMLURL,
+			Number: pr.Number,
 		},
 		Repo: domain.Repo{
-			ID: fmt.Sprintf("%d", repo.ID), Name: repo.Name,
-			FullName: repo.FullName, URL: repo.HTMLURL,
-			Desc: repo.Description, IsPrivate: repo.Private, Branch: &branch,
+			ID:        fmt.Sprintf("%d", repo.ID),
+			Name:      repo.Name,
+			FullName:  repo.FullName,
+			URL:       repo.HTMLURL,
+			Desc:      repo.Description,
+			IsPrivate: repo.Private,
+			Branch:    &branch,
 		},
 		Platform: consts.GitPlatformGithub,
 		User:     domain.User{Name: pr.User.Login, AvatarURL: pr.User.AvatarURL, Email: pr.User.Email},
@@ -154,7 +170,9 @@ func (h *GithubWebhookHandler) handlePullRequest(ctx context.Context, bot *domai
 		Time:     time.Now(),
 		Env:      map[string]string{"GITHUB_TOKEN": bot.Token},
 		Bot:      bot,
-	})
+	}); err != nil {
+		h.logger.With("error", err).ErrorContext(ctx, "failed to create git task")
+	}
 }
 
 // --- 公共工具函数 ---

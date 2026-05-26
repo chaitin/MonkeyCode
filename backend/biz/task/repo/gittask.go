@@ -13,7 +13,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
-	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -60,7 +59,7 @@ func (g *GitTaskRepo) upsertUser(ctx context.Context, tx *db.Tx, u *domain.User)
 }
 
 // Create implements domain.GitTaskRepoInterface.
-func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, fn func(user *db.User, t *db.Task, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error)) (*db.Task, error) {
+func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, fn func(user *db.User, t *db.Task, m *db.Model) (*taskflow.VirtualMachine, error)) (*db.Task, error) {
 	var res *db.Task
 	err := entx.WithTx2(ctx, g.db, func(tx *db.Tx) error {
 		h, err := tx.Host.Query().Where(host.ID(req.HostID)).First(ctx)
@@ -68,19 +67,17 @@ func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, f
 			return fmt.Errorf("host not found: %w", err)
 		}
 
-		// 查找 review 模型
-		ms, err := tx.Model.Query().
-			Where(model.Remark("review")).
-			Where(model.HasUserWith(user.Role(consts.UserRoleAdmin))).
-			All(ctx)
-		if err != nil || len(ms) == 0 {
-			return fmt.Errorf("review model not found")
-		}
-		m := ms[0]
-
-		img, err := tx.Image.Query().Where(image.ID(req.ImageID)).First(ctx)
+		mid, err := uuid.Parse(g.cfg.ReviewAgent.ModelID)
 		if err != nil {
-			return fmt.Errorf("image not found: %w", err)
+			return fmt.Errorf("failed to parse model id: %w", err)
+		}
+
+		// 查找 review 模型
+		m, err := tx.Model.Query().
+			Where(model.ID(mid)).
+			First(ctx)
+		if err != nil {
+			return fmt.Errorf("review model not found")
 		}
 
 		u, err := g.upsertUser(ctx, tx, &req.User)
@@ -101,26 +98,26 @@ func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, f
 			SetContent(req.Prompt).
 			SetUserID(u.ID).
 			SetStatus(consts.TaskStatusPending).
+			SetLogStore(consts.LogStoreClickHouse).
 			Save(ctx)
 		if err != nil {
 			return err
 		}
 
-		// 创建 ProjectTask 关联
-		pt, err := tx.ProjectTask.Create().
-			SetImageID(img.ID).
-			SetModelID(m.ID).
+		// 创建 GitTask 关联
+		if err := tx.GitTask.Create().
 			SetTaskID(tk.ID).
-			SetRepoURL(req.Repo.URL).
-			SetBranch(branch).
-			SetCliName(consts.CliNameClaude).
-			Save(ctx)
-		if err != nil {
+			SetGithubInstallationID(req.GithubInstallationID).
+			SetSubjectID(req.Subject.ID).
+			SetSubjectNumber(req.Subject.Number).
+			SetSubjectTitle(req.Subject.Title).
+			SetSubjectType(req.Subject.Type).
+			SetSubjectURL(req.Subject.URL).
+			Exec(ctx); err != nil {
 			return err
 		}
-		_ = pt
 
-		vm, err := fn(u, tk, m, img)
+		vm, err := fn(u, tk, m)
 		if err != nil {
 			return err
 		}

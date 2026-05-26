@@ -55,7 +55,7 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 		req.Env = make(map[string]string)
 	}
 
-	tk, err := g.repo.Create(ctx, req, func(u *db.User, t *db.Task, m *db.Model, img *db.Image) (*taskflow.VirtualMachine, error) {
+	tk, err := g.repo.Create(ctx, req, func(u *db.User, t *db.Task, m *db.Model) (*taskflow.VirtualMachine, error) {
 		branch := "master"
 		if req.Repo.Branch != nil {
 			branch = *req.Repo.Branch
@@ -72,7 +72,7 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 				Branch:   branch,
 				Token:    req.Git.Token,
 			},
-			ImageURL: img.Name,
+			ImageURL: g.cfg.ReviewAgent.Image,
 			TaskID:   t.ID,
 			LLM: taskflow.LLMProviderReq{
 				Provider: taskflow.LlmProviderOpenAI,

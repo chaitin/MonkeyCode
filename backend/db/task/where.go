@@ -960,6 +960,29 @@ func HasProjectTasksWith(preds ...predicate.ProjectTask) predicate.Task {
 	})
 }
 
+// HasGitTasks applies the HasEdge predicate on the "git_tasks" edge.
+func HasGitTasks() predicate.Task {
+	return predicate.Task(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, GitTasksTable, GitTasksColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGitTasksWith applies the HasEdge predicate on the "git_tasks" edge with a given conditions (other predicates).
+func HasGitTasksWith(preds ...predicate.GitTask) predicate.Task {
+	return predicate.Task(func(s *sql.Selector) {
+		step := newGitTasksStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUser applies the HasEdge predicate on the "user" edge.
 func HasUser() predicate.Task {
 	return predicate.Task(func(s *sql.Selector) {
