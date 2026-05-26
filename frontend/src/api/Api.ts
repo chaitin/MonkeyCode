@@ -53,6 +53,7 @@ export enum ConstsNotifyChannelKind {
   NotifyChannelFeishu = "feishu",
   NotifyChannelWeCom = "wecom",
   NotifyChannelWebhook = "webhook",
+  NotifyChannelWechatMP = "wechat_mp",
 }
 
 export enum ConstsNotifyEventType {
@@ -342,6 +343,12 @@ export interface DomainAvailableModelResp {
   output_price?: number;
 }
 
+export interface DomainBindQRCodeResp {
+  expire_seconds?: number;
+  qrcode_url?: string;
+  ticket?: string;
+}
+
 export interface DomainBranch {
   name?: string;
 }
@@ -397,6 +404,7 @@ export interface DomainCollaborator {
   status?: ConstsUserStatus;
   team?: DomainTeam;
   token?: string;
+  wechat_mp_bound?: boolean;
 }
 
 export interface DomainCreateCollaboratorItem {
@@ -669,6 +677,13 @@ export interface DomainImage {
   remark?: string;
 }
 
+export interface DomainImportLicenseResp {
+  /** license 唯一 ID */
+  license_id?: string;
+  /** 导入后的授权状态 */
+  state?: DomainLicenseState;
+}
+
 export interface DomainInstallCommand {
   command?: string;
 }
@@ -685,6 +700,45 @@ export interface DomainInvitationListResp {
   count?: number;
   items?: DomainInvitationItem[];
   page?: Dbv2PageInfo;
+}
+
+export interface DomainLicenseMachineCodeResp {
+  /** 机器码生成时间，RFC3339 */
+  generated_at?: string;
+  /** 客户部署实例 ID */
+  installation_id?: string;
+  /** 产品标识，首版固定为 monkeycode-enterprise */
+  product?: DomainLicenseProduct;
+  /** 当前私有化产品版本 */
+  product_version?: string;
+  /** 协议版本，首版固定为 1 */
+  version?: number;
+}
+
+export enum DomainLicenseProduct {
+  LicenseProductMonkeyCodeEnterprise = "monkeycode-enterprise",
+}
+
+export enum DomainLicenseState {
+  LicenseStateMissing = "missing",
+  LicenseStateActive = "active",
+  LicenseStateExpired = "expired",
+  LicenseStateInvalid = "invalid",
+}
+
+export interface DomainLicenseStatusResp {
+  /** 客户名称 */
+  customer_name?: string;
+  /** 授权过期时间，RFC3339 */
+  expires_at?: string;
+  /** 当前生效 license ID */
+  license_id?: string;
+  /** 授权席位数 */
+  seats?: number;
+  /** 当前授权状态 */
+  state?: DomainLicenseState;
+  /** 当前已使用席位数 */
+  used_seats?: number;
 }
 
 export interface DomainListAuditsResponse {
@@ -1727,6 +1781,7 @@ export interface DomainUser {
   status?: ConstsUserStatus;
   team?: DomainTeam;
   token?: string;
+  wechat_mp_bound?: boolean;
 }
 
 export interface DomainUserIdentity {
@@ -1811,6 +1866,7 @@ export interface GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition {
   type?: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType;
 }
 
+/** @format int32 */
 export enum GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionStatus {
   ConditionStatusCONDITIONSTATUSUNKNOWN = 0,
   ConditionStatusCONDITIONSTATUSINPROGRESS = 1,
@@ -2271,6 +2327,88 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         GitInChaitinNetGoDevWebResp
       >({
         path: `/api/v1/gitlab/sites`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 私有化部署直接上传 license.lic 文件。SaaS 环境仅用于生成 Swagger 文档，实际业务由 MonkeyCodePro 实现。
+     *
+     * @tags 【License】License
+     * @name V1LicenseImportCreate
+     * @summary 导入 license
+     * @request POST:/api/v1/license/import
+     * @secure
+     */
+    v1LicenseImportCreate: (
+      data: {
+        /**
+         * license.lic 文件
+         * @format binary
+         */
+        file: File;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainImportLicenseResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/license/import`,
+        method: "POST",
+        body: data,
+        secure: true,
+        type: ContentType.FormData,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 私有化部署导出 machine-code.json。SaaS 环境仅用于生成 Swagger 文档，实际业务由 MonkeyCodePro 实现。
+     *
+     * @tags 【License】License
+     * @name V1LicenseMachineCodeList
+     * @summary 导出机器码
+     * @request GET:/api/v1/license/machine-code
+     * @secure
+     */
+    v1LicenseMachineCodeList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainLicenseMachineCodeResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/license/machine-code`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 私有化部署查看当前 license 状态。SaaS 环境仅用于生成 Swagger 文档，实际业务由 MonkeyCodePro 实现。
+     *
+     * @tags 【License】License
+     * @name V1LicenseStatusList
+     * @summary 查看 license 状态
+     * @request GET:/api/v1/license/status
+     * @secure
+     */
+    v1LicenseStatusList: (params: RequestParams = {}) =>
+      this.request<
+        GitInChaitinNetGoDevWebResp & {
+          data?: DomainLicenseStatusResp;
+        },
+        GitInChaitinNetGoDevWebResp
+      >({
+        path: `/api/v1/license/status`,
         method: "GET",
         secure: true,
         type: ContentType.Json,
@@ -6513,6 +6651,49 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/users/wallet/transaction`,
         method: "GET",
         query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 解除当前用户与微信公众号 OpenID 的绑定关系
+     *
+     * @tags 【用户】微信公众号推送
+     * @name V1UsersWechatMpBindDelete
+     * @summary 解除公众号绑定
+     * @request DELETE:/api/v1/users/wechat-mp/bind
+     * @secure
+     */
+    v1UsersWechatMpBindDelete: (params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/wechat-mp/bind`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 为当前登录用户创建微信公众号绑定临时二维码，用户扫码关注/扫码后完成绑定
+     *
+     * @tags 【用户】微信公众号推送
+     * @name V1UsersWechatMpBindQrcodeCreate
+     * @summary 创建公众号绑定二维码
+     * @request POST:/api/v1/users/wechat-mp/bind-qrcode
+     * @secure
+     */
+    v1UsersWechatMpBindQrcodeCreate: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainBindQRCodeResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/wechat-mp/bind-qrcode`,
+        method: "POST",
         secure: true,
         type: ContentType.Json,
         format: "json",

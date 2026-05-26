@@ -1,8 +1,9 @@
 import { ConstsGitPlatform, ConstsOwnerType, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainProject, type DomainProjectTask, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine } from '@/api/Api';
+import { WechatMpBindDialog } from '@/components/console/wechat-mp-bind-dialog';
 import { getImageShortName } from '@/utils/common';
 import { IS_OFFLINE_EDITION } from '@/utils/edition';
 import { apiRequest } from '@/utils/requestUtils';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 type CommonData = {
@@ -62,6 +63,8 @@ const DataContext = createContext<CommonData | null>(null);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [userInfo, setUserInfo] = useState<DomainUser>({});
+  const [wechatMpBindDialogOpen, setWechatMpBindDialogOpen] = useState(false);
+  const checkedWechatMpBindRef = useRef(false);
 
   const [hosts, setHosts] = useState<DomainHost[]>([]);
   const [hostsInited, setHostsInited] = useState<boolean>(false);
@@ -101,6 +104,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await apiRequest('v1UsersStatusList', {}, [], (resp) => {
       nextUser = resp.data?.user || {}
       setUserInfo(nextUser);
+      if (resp.code === 0 && !IS_OFFLINE_EDITION && !checkedWechatMpBindRef.current) {
+        checkedWechatMpBindRef.current = true;
+        setWechatMpBindDialogOpen(nextUser.wechat_mp_bound !== true);
+      }
     })
     return nextUser
   }
@@ -404,7 +411,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{
+    <>
+      <DataContext.Provider value={{
         user: userInfo,
         reloadUser: fetchUserInfo,
 
@@ -453,9 +461,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         historicalTasks: historicalTasks,
         loadingHistoricalTasks: loadingHistoricalTasks,
         reloadHistoricalTasks: fetchHistoricalTasks,
-    }}>
-      {children}
-    </DataContext.Provider>
+      }}>
+        {children}
+      </DataContext.Provider>
+      <WechatMpBindDialog
+        open={wechatMpBindDialogOpen}
+        onOpenChange={setWechatMpBindDialogOpen}
+      />
+    </>
   );
 };
 

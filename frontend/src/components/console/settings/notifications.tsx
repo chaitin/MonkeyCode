@@ -58,6 +58,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "
 
 /** 接收端类型（UI 用，wechat_work 映射到 API 的 wecom） */
 export type ReceiverType = "dingtalk" | "feishu" | "wechat_work" | "webhook"
+type ApiReceiverKind = "dingtalk" | "feishu" | "wecom" | "webhook"
 
 const RECEIVER_TYPE_OPTIONS: { value: ReceiverType; label: string; icon: React.ReactNode }[] = [
   { value: "dingtalk", label: "钉钉机器人", icon: <Icon name="dingtalk" className="size-4" /> },
@@ -66,19 +67,19 @@ const RECEIVER_TYPE_OPTIONS: { value: ReceiverType; label: string; icon: React.R
   { value: "webhook", label: "Webhook", icon: <Link2 className="size-4" /> },
 ]
 
-const RECEIVER_TO_API_KIND: Record<ReceiverType, ConstsNotifyChannelKind> = {
+const RECEIVER_TO_API_KIND: Record<ReceiverType, ApiReceiverKind> = {
   dingtalk: ConstsNotifyChannelKind.NotifyChannelDingTalk,
   feishu: ConstsNotifyChannelKind.NotifyChannelFeishu,
   wechat_work: ConstsNotifyChannelKind.NotifyChannelWeCom,
   webhook: ConstsNotifyChannelKind.NotifyChannelWebhook,
 }
 
-/** UI ReceiverType -> API ConstsNotifyChannelKind */
-function toApiKind(type: ReceiverType): ConstsNotifyChannelKind {
+/** UI ReceiverType -> API notify channel kind */
+function toApiKind(type: ReceiverType): ApiReceiverKind {
   return RECEIVER_TO_API_KIND[type]
 }
 
-const API_KIND_TO_RECEIVER: Record<ConstsNotifyChannelKind, ReceiverType> = {
+const API_KIND_TO_RECEIVER: Partial<Record<ConstsNotifyChannelKind, ReceiverType>> = {
   [ConstsNotifyChannelKind.NotifyChannelDingTalk]: "dingtalk",
   [ConstsNotifyChannelKind.NotifyChannelFeishu]: "feishu",
   [ConstsNotifyChannelKind.NotifyChannelWeCom]: "wechat_work",
