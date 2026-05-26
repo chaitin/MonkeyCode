@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { Bell, CirclePlus, Link2, MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -55,6 +56,8 @@ import Icon from "@/components/common/Icon"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { WechatMpBindDialog } from "@/components/console/wechat-mp-bind-dialog"
+import { useCommonData } from "@/components/console/data-provider"
 
 /** 接收端类型（UI 用，wechat_work 映射到 API 的 wecom） */
 export type ReceiverType = "dingtalk" | "feishu" | "wechat_work" | "webhook"
@@ -100,11 +103,15 @@ function getReceiverTypeIcon(type: ReceiverType): React.ReactNode {
 }
 
 export default function Notifications() {
+  const { user, reloadUser } = useCommonData()
   const [channels, setChannels] = useState<DomainNotifyChannel[]>([])
   const [eventTypes, setEventTypes] = useState<ConstsNotifyEventTypeInfo[]>([])
   const [loadingChannels, setLoadingChannels] = useState(true)
   const [loadingEventTypes, setLoadingEventTypes] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [wechatMpBindDialogOpen, setWechatMpBindDialogOpen] = useState(false)
+  const [wechatMpUnbindDialogOpen, setWechatMpUnbindDialogOpen] = useState(false)
+  const [unbindingWechatMp, setUnbindingWechatMp] = useState(false)
   const [editingChannel, setEditingChannel] = useState<DomainNotifyChannel | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [channelToDelete, setChannelToDelete] = useState<DomainNotifyChannel | null>(null)
@@ -275,6 +282,24 @@ export default function Notifications() {
     }
   }
 
+  const handleUnbindWechatMp = async () => {
+    setUnbindingWechatMp(true)
+    try {
+      const res = await api.api.v1UsersWechatMpBindDelete()
+      if (res.data?.code === 0) {
+        toast.success("已解除公众号绑定")
+        setWechatMpUnbindDialogOpen(false)
+        await reloadUser()
+      } else {
+        toast.error(res.data?.message ?? "解除绑定失败")
+      }
+    } catch {
+      toast.error("解除绑定失败")
+    } finally {
+      setUnbindingWechatMp(false)
+    }
+  }
+
   const toggleEventType = (et: ConstsNotifyEventType) => {
     setFormEventTypes((prev) =>
       prev.includes(et) ? prev.filter((e) => e !== et) : [...prev, et]
@@ -353,6 +378,48 @@ export default function Notifications() {
     </Empty>
   )
 
+  const wechatMpBound = user.wechat_mp_bound === true
+  const wechatMpStatusCard = (
+    <Item variant="outline" className="mb-4">
+      <ItemMedia className="hidden sm:flex">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          <Bell className="size-4" />
+        </div>
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle className="flex items-center gap-2">
+          微信公众号
+          <Badge variant={wechatMpBound ? "default" : "outline"}>
+            {wechatMpBound ? "已绑定" : "未绑定"}
+          </Badge>
+        </ItemTitle>
+        <ItemDescription>
+          订阅任务通知，避免任务自动终止后丢失工作文件。
+        </ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        {wechatMpBound ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setWechatMpUnbindDialogOpen(true)}
+            disabled={unbindingWechatMp}
+          >
+            {unbindingWechatMp ? <Spinner className="size-4" /> : "解绑"}
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setWechatMpBindDialogOpen(true)}
+          >
+            绑定
+          </Button>
+        )}
+      </ItemActions>
+    </Item>
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-start justify-between gap-4 pb-4">
@@ -376,6 +443,7 @@ export default function Notifications() {
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        {wechatMpStatusCard}
         {loadingChannels ? (
           loadingContent
         ) : channels.length > 0 ? (
@@ -520,6 +588,33 @@ export default function Notifications() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
               {deleting ? <Spinner className="size-4" /> : "确认移除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <WechatMpBindDialog
+        open={wechatMpBindDialogOpen}
+        onOpenChange={(open) => {
+          setWechatMpBindDialogOpen(open)
+          if (!open) {
+            reloadUser()
+          }
+        }}
+      />
+      <AlertDialog open={wechatMpUnbindDialogOpen} onOpenChange={setWechatMpUnbindDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认解绑微信公众号</AlertDialogTitle>
+            <AlertDialogDescription>
+              解绑后将无法通过微信公众号接收任务通知。确定要继续吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unbindingWechatMp}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleUnbindWechatMp} disabled={unbindingWechatMp}>
+              {unbindingWechatMp ? <Spinner className="size-4" /> : "确认解绑"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
