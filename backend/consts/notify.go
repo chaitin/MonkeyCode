@@ -4,9 +4,13 @@ package consts
 type NotifyEventType string
 
 const (
-	NotifyEventTaskCreated    NotifyEventType = "task.created"
-	NotifyEventTaskEnded      NotifyEventType = "task.ended"
-	NotifyEventVMExpiringSoon NotifyEventType = "vm.expiring_soon"
+	NotifyEventTaskCreated         NotifyEventType = "task.created"
+	NotifyEventTaskEnded           NotifyEventType = "task.ended"
+	NotifyEventVMExpiringSoon      NotifyEventType = "vm.expiring_soon"
+	NotifyEventQuotaRefreshed      NotifyEventType = "quota.refreshed"
+	NotifyEventQuotaBasicExhausted NotifyEventType = "quota.basic_exhausted"
+	NotifyEventQuotaProExhausted   NotifyEventType = "quota.pro_exhausted"
+	NotifyEventQuotaUltraExhausted NotifyEventType = "quota.ultra_exhausted"
 )
 
 // NotifyEventTypeInfo 事件类型描述信息
@@ -21,6 +25,40 @@ var AllNotifyEventTypes = []NotifyEventTypeInfo{
 	{Type: NotifyEventTaskCreated, Name: "创建任务", Description: "新任务创建事件"},
 	{Type: NotifyEventTaskEnded, Name: "对话完成", Description: "任务过程中的一轮对话完成"},
 	{Type: NotifyEventVMExpiringSoon, Name: "开发环境即将被回收", Description: "开发环境即将到期回收"},
+	{Type: NotifyEventQuotaRefreshed, Name: "会员免费额度已刷新", Description: "每日免费额度刷新提醒（仅会员）"},
+	{Type: NotifyEventQuotaBasicExhausted, Name: "今日基础模型额度已耗尽", Description: "基础模型当日免费额度耗尽提醒"},
+	{Type: NotifyEventQuotaProExhausted, Name: "今日专业模型额度已耗尽", Description: "专业模型当日免费额度耗尽提醒"},
+	{Type: NotifyEventQuotaUltraExhausted, Name: "今日旗舰模型额度已耗尽", Description: "旗舰模型当日免费额度耗尽提醒"},
+}
+
+// WechatMPFixedNotifyEventTypes 是微信公众号渠道固定接收的事件集合。
+var WechatMPFixedNotifyEventTypes = []NotifyEventType{
+	NotifyEventVMExpiringSoon,
+	NotifyEventQuotaRefreshed,
+	NotifyEventQuotaBasicExhausted,
+	NotifyEventQuotaProExhausted,
+	NotifyEventQuotaUltraExhausted,
+}
+
+// MergeWechatMPNotifyEventTypes 返回微信公众号渠道的最终事件集合：固定事件 + 数据库附加事件。
+func MergeWechatMPNotifyEventTypes(extra []NotifyEventType) []NotifyEventType {
+	merged := make([]NotifyEventType, 0, len(WechatMPFixedNotifyEventTypes)+len(extra))
+	for _, eventType := range WechatMPFixedNotifyEventTypes {
+		merged = append(merged, eventType)
+	}
+	for _, eventType := range extra {
+		exists := false
+		for _, fixedEventType := range merged {
+			if fixedEventType == eventType {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			merged = append(merged, eventType)
+		}
+	}
+	return merged
 }
 
 // NotifyChannelKind 通知渠道类型
