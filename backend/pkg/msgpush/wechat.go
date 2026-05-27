@@ -456,10 +456,6 @@ type TemplateMessageResp struct {
 
 // SendTemplateMessage 发送模板消息
 func (c *WechatClient) SendTemplateMessage(ctx context.Context, msg *TemplateMessage) error {
-	if msg.TemplateID == "" {
-		msg.TemplateID = c.cfg.Wechat.MP.TemplateID
-	}
-
 	resp, err := withTokenRetry(ctx, c, func(token string) (*TemplateMessageResp, error) {
 		return request.Post[TemplateMessageResp](c.wechatClient, ctx, "/cgi-bin/message/template/send",
 			msg,

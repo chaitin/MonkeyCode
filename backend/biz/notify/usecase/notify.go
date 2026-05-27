@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -195,6 +196,22 @@ func toNotifyChannel(ch *db.NotifyChannel) *domain.NotifyChannel {
 		WebhookURL: ch.WebhookURL,
 		Enabled:    ch.Enabled,
 		CreatedAt:  ch.CreatedAt.Unix(),
+	}
+	if ch.Kind == consts.NotifyChannelWechatMP {
+		result.Scope = "self"
+		var dbEventTypes []consts.NotifyEventType
+		for _, sub := range ch.Edges.Subscriptions {
+			if result.Scope == "self" && sub.Scope != "" {
+				result.Scope = sub.Scope
+			}
+			for _, eventType := range sub.EventTypes {
+				if !slices.Contains(dbEventTypes, eventType) {
+					dbEventTypes = append(dbEventTypes, eventType)
+				}
+			}
+		}
+		result.EventTypes = consts.MergeWechatMPNotifyEventTypes(dbEventTypes)
+		return result
 	}
 	if subs := ch.Edges.Subscriptions; len(subs) > 0 {
 		result.Scope = subs[0].Scope
