@@ -25,6 +25,7 @@ type TeamGroupUserHandler struct {
 	auditMiddleware *middleware.AuditMiddleware
 	logger          *slog.Logger
 	captcha         *captcha.Captcha
+	memberManager   domain.MemberManager
 }
 
 // NewTeamGroupUserHandler 创建团队分组用户处理器 (samber/do 风格)
@@ -42,6 +43,7 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 		auditMiddleware: audit,
 		logger:          logger.With("module", "handler.team_group_user"),
 		captcha:         do.MustInvoke[*captcha.Captcha](i),
+		memberManager:   do.MustInvoke[domain.MemberManager](i),
 	}
 
 	adminAuth := middleware.TeamAdminAuth(func(ctx context.Context, teamID, userID uuid.UUID) bool {
@@ -205,7 +207,7 @@ func (h *TeamGroupUserHandler) ChangePassword(c *web.Context, req domain.ChangeP
 //	@Router			/api/v1/teams/users [post]
 func (h *TeamGroupUserHandler) AddUser(c *web.Context, req domain.AddTeamUserReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	resp, err := h.usecase.AddUser(c.Request().Context(), teamUser, &req)
+	resp, err := h.memberManager.AddUser(c.Request().Context(), teamUser, &req)
 	if err != nil {
 		return err
 	}
@@ -227,7 +229,7 @@ func (h *TeamGroupUserHandler) AddUser(c *web.Context, req domain.AddTeamUserReq
 //	@Router			/api/v1/teams/users/with-password [post]
 func (h *TeamGroupUserHandler) AddUserWithPassword(c *web.Context, req domain.AddTeamUserReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	resp, err := h.usecase.AddUserWithPassword(c.Request().Context(), teamUser, &req)
+	resp, err := h.memberManager.AddUserWithPassword(c.Request().Context(), teamUser, &req)
 	if err != nil {
 		return err
 	}
@@ -249,7 +251,7 @@ func (h *TeamGroupUserHandler) AddUserWithPassword(c *web.Context, req domain.Ad
 //	@Router			/api/v1/teams/admin [post]
 func (h *TeamGroupUserHandler) AddAdmin(c *web.Context, req domain.AddTeamAdminReq) error {
 	teamUser := middleware.GetTeamUser(c)
-	resp, err := h.usecase.AddAdmin(c.Request().Context(), teamUser, &req)
+	resp, err := h.memberManager.AddAdmin(c.Request().Context(), teamUser, &req)
 	if err != nil {
 		return err
 	}

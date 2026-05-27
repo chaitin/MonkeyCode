@@ -98,6 +98,12 @@ func WithCaptcha(captcha *captcha.Captcha) BridgeOption {
 	}
 }
 
+func WithMemberManager(mm domain.MemberManager) BridgeOption {
+	return func(i *do.Injector) {
+		do.OverrideValue(i, mm)
+	}
+}
+
 func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 	cfg, err := config.Init(dir)
 	if err != nil {
