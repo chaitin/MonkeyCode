@@ -23,7 +23,7 @@ import (
 // 对应一个公众号模板（可以指向同一模板 ID，也可以分开）。字段结构按事件类型分两套：
 //
 //  1. vm.expiring_soon —— thing16/thing3/time2/thing25/time35
-//  2. quota.* (4 个) —— thing17/thing8/thing13/time10
+//  2. quota.* (4 个) —— thing17/thing8/const4/time10
 //
 // URL 字段：vm 类填 TaskURL；quota 类填 quotaJumpURL（首页）。
 type WechatMPSender struct {
@@ -132,9 +132,9 @@ func isQuotaEvent(t consts.NotifyEventType) bool {
 
 // buildQuotaFields 构造 quota 类模板的 4 个字段：
 //
-//	thing17.DATA 平台名 → "MonkeyCode"
-//	thing8.DATA  账户名 → event.Payload.UserName（rune 截到 20）
-//	thing13.DATA 钱包名 → 按 EventType 4 选 1 的固定文案
+//	thing17.DATA 平台名称 → "MonkeyCode"
+//	thing8.DATA  账户名称 → event.Payload.UserName（rune 截到 20）
+//	const4.DATA  异常原因 → 按 EventType 4 选 1 的固定枚举值
 //	time10.DATA  当前时间
 func (s *WechatMPSender) buildQuotaFields(event *domain.NotifyEvent) map[string]msgpush.TemplateMessageData {
 	const thingMax = 20
@@ -145,21 +145,21 @@ func (s *WechatMPSender) buildQuotaFields(event *domain.NotifyEvent) map[string]
 	return map[string]msgpush.TemplateMessageData{
 		"thing17": {Value: "MonkeyCode"},
 		"thing8":  {Value: userName},
-		"thing13": {Value: quotaWalletName(event.EventType)},
+		"const4":  {Value: quotaReason(event.EventType)},
 		"time10":  {Value: time.Now().Format("2006-01-02 15:04:05")},
 	}
 }
 
-func quotaWalletName(t consts.NotifyEventType) string {
+func quotaReason(t consts.NotifyEventType) string {
 	switch t {
 	case consts.NotifyEventQuotaRefreshed:
-		return "会员免费额度已刷新"
+		return "会员免费额度已重置"
 	case consts.NotifyEventQuotaBasicExhausted:
-		return "今日基础模型额度已耗尽"
+		return "今日基础模型额度已用尽"
 	case consts.NotifyEventQuotaProExhausted:
-		return "今日专业模型额度已耗尽"
+		return "今日专业模型额度已用尽"
 	case consts.NotifyEventQuotaUltraExhausted:
-		return "今日旗舰模型额度已耗尽"
+		return "今日旗舰模型额度已用尽"
 	}
 	return "-"
 }
