@@ -13,14 +13,17 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 )
 
+type MemberManager interface {
+	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
+	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
+	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
+}
+
 // TeamGroupUserUsecase 团队分组成员业务逻辑接口
 type TeamGroupUserUsecase interface {
 	List(ctx context.Context, teamUser *TeamUser) (*ListTeamGroupsResp, error)
 	Add(ctx context.Context, teamUser *TeamUser, req *AddTeamGroupReq) (*TeamGroup, error)
-	AddUser(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserResp, error)
-	AddUserWithPassword(ctx context.Context, teamUser *TeamUser, req *AddTeamUserReq) (*AddTeamUserWithPasswordResp, error)
 	ResetPassword(ctx context.Context, teamUser *TeamUser, req *ResetPasswordReq) (*TeamUserPassword, error)
-	AddAdmin(ctx context.Context, teamUser *TeamUser, req *AddTeamAdminReq) (*AddTeamAdminResp, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*TeamGroup, error)
 	Delete(ctx context.Context, teamUser *TeamUser, req *DeleteTeamGroupReq) error
 	ListGroups(ctx context.Context, req *ListTeamGroupUsersReq) (*ListTeamGroupUsersResp, error)
@@ -37,10 +40,7 @@ type TeamGroupUserRepo interface {
 	List(ctx context.Context, teamID uuid.UUID) ([]*db.TeamGroup, error)
 	Get(ctx context.Context, groupID uuid.UUID) (*db.TeamGroup, error)
 	Create(ctx context.Context, teamID uuid.UUID, req *AddTeamGroupReq) (*db.TeamGroup, error)
-	CreateUsers(ctx context.Context, teamID uuid.UUID, req *AddTeamUserReq) ([]*db.User, error)
-	CreateUsersWithPassword(ctx context.Context, teamID uuid.UUID, req *AddTeamUserWithPasswordReq) ([]*db.User, error)
 	ResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error
-	CreateAdmin(ctx context.Context, teamID uuid.UUID, req *AddTeamAdminReq) (*db.User, error)
 	Update(ctx context.Context, req *UpdateTeamGroupReq) (*db.TeamGroup, error)
 	Delete(ctx context.Context, teamID, groupID uuid.UUID) error
 	ListGroupUsers(ctx context.Context, groupID uuid.UUID) ([]*db.TeamGroupMember, error)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -15,7 +14,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
-	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/random"
 )
@@ -93,80 +91,6 @@ func (u *TeamGroupUserUsecase) Add(ctx context.Context, teamUser *domain.TeamUse
 	return cvt.From(group, &domain.TeamGroup{}), nil
 }
 
-// AddUser 创建团队成员
-func (u *TeamGroupUserUsecase) AddUser(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamUserReq) (*domain.AddTeamUserResp, error) {
-	users, err := u.repo.CreateUsers(ctx, teamUser.GetTeamID(), req)
-	if err != nil {
-		return nil, err
-	}
-	if u.teamHook != nil {
-		for _, user := range users {
-			if err := u.teamHook.OnMemberAdded(ctx, teamUser.GetTeamID(), user.ID); err != nil {
-				u.logger.WarnContext(ctx, "teamHook.OnMemberAdded failed", "user_id", user.ID, "error", err)
-			}
-		}
-	}
-	// 发送重置密码邮件（如果没有发送成功就用户自己请求重置）
-	for _, user := range users {
-		if user.Email != "" {
-			token, err := u.generateResetPWDToken(ctx, user.ID)
-			if err != nil {
-				u.logger.ErrorContext(ctx, "generate reset password token failed", "error", err)
-				continue
-			}
-			// 存一份到 redis
-			key := fmt.Sprintf("reset_password_token:%s", token)
-			if err := u.redisClient.Set(ctx, key, user.ID.String(), time.Hour*24).Err(); err != nil {
-				u.logger.ErrorContext(ctx, "set redis failed", "key", key, "token", token, "error", err)
-				continue
-			}
-			u.logger.InfoContext(ctx, "set redis success", "key", key, "token", token)
-			go u.sendResetPasswordEmail(ctx, user.Email, user.Name, token)
-		}
-	}
-	teamUsers := cvt.Iter(users, func(_ int, user *db.User) *domain.TeamUser {
-		return cvt.From(user, &domain.TeamUser{})
-	})
-	return &domain.AddTeamUserResp{Users: teamUsers}, nil
-}
-
-func (u *TeamGroupUserUsecase) AddUserWithPassword(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamUserReq) (*domain.AddTeamUserWithPasswordResp, error) {
-	passwords := make(map[string]string, len(req.Emails))
-	for _, email := range req.Emails {
-		passwords[email] = random.String(16)
-	}
-	users, err := u.repo.CreateUsersWithPassword(ctx, teamUser.GetTeamID(), &domain.AddTeamUserWithPasswordReq{
-		Emails:    req.Emails,
-		GroupID:   req.GroupID,
-		Passwords: passwords,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if u.teamHook != nil {
-		for _, user := range users {
-			if err := u.teamHook.OnMemberAdded(ctx, teamUser.GetTeamID(), user.ID); err != nil {
-				u.logger.WarnContext(ctx, "teamHook.OnMemberAdded failed", "user_id", user.ID, "error", err)
-			}
-		}
-	}
-	return &domain.AddTeamUserWithPasswordResp{
-		Users: cvt.Iter(users, func(_ int, user *db.User) *domain.TeamUser {
-			return cvt.From(user, &domain.TeamUser{})
-		}),
-		Passwords: cvt.Filter(users, func(_ int, user *db.User) (*domain.TeamUserPassword, bool) {
-			password, ok := passwords[user.Email]
-			if !ok || user.Password == "" || crypto.VerifyPassword(user.Password, password) != nil {
-				return nil, false
-			}
-			return &domain.TeamUserPassword{
-				Email:    user.Email,
-				Password: password,
-			}, true
-		}),
-	}, nil
-}
-
 func (u *TeamGroupUserUsecase) ResetPassword(ctx context.Context, teamUser *domain.TeamUser, req *domain.ResetPasswordReq) (*domain.TeamUserPassword, error) {
 	member, err := u.repo.GetMember(ctx, teamUser.GetTeamID(), req.UserID)
 	if err != nil {
@@ -181,37 +105,6 @@ func (u *TeamGroupUserUsecase) ResetPassword(ctx context.Context, teamUser *doma
 		resp.Email = member.Edges.User.Email
 	}
 	return resp, nil
-}
-
-// AddAdmin 创建团队管理员
-func (u *TeamGroupUserUsecase) AddAdmin(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamAdminReq) (*domain.AddTeamAdminResp, error) {
-	user, err := u.repo.CreateAdmin(ctx, teamUser.GetTeamID(), req)
-	if err != nil {
-		return nil, err
-	}
-	if u.teamHook != nil {
-		if err := u.teamHook.OnMemberAdded(ctx, teamUser.GetTeamID(), user.ID); err != nil {
-			u.logger.WarnContext(ctx, "teamHook.OnMemberAdded failed", "user_id", user.ID, "error", err)
-		}
-	}
-	if user.Email != "" {
-		token, err := u.generateResetPWDToken(ctx, user.ID)
-		if err != nil {
-			u.logger.ErrorContext(ctx, "generate reset password token failed", "error", err)
-			return nil, err
-		}
-		// 存一份到 redis
-		key := fmt.Sprintf("reset_password_token:%s", token)
-		if err := u.redisClient.Set(ctx, key, user.ID.String(), time.Hour*24).Err(); err != nil {
-			u.logger.ErrorContext(ctx, "set redis failed", "key", key, "token", token, "error", err)
-			return nil, err
-		}
-		u.logger.InfoContext(ctx, "set redis success", "key", key, "token", token)
-		go u.sendResetPasswordEmail(ctx, user.Email, user.Name, token)
-	}
-
-	teamUserResp := cvt.From(user, &domain.TeamUser{})
-	return &domain.AddTeamAdminResp{User: teamUserResp}, nil
 }
 
 // Update 更新团队分组
