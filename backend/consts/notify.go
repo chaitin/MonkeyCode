@@ -31,6 +31,36 @@ var AllNotifyEventTypes = []NotifyEventTypeInfo{
 	{Type: NotifyEventQuotaUltraExhausted, Name: "今日旗舰模型额度已耗尽", Description: "旗舰模型当日免费额度耗尽提醒"},
 }
 
+// WechatMPFixedNotifyEventTypes 是微信公众号渠道固定接收的事件集合。
+var WechatMPFixedNotifyEventTypes = []NotifyEventType{
+	NotifyEventVMExpiringSoon,
+	NotifyEventQuotaRefreshed,
+	NotifyEventQuotaBasicExhausted,
+	NotifyEventQuotaProExhausted,
+	NotifyEventQuotaUltraExhausted,
+}
+
+// MergeWechatMPNotifyEventTypes 返回微信公众号渠道的最终事件集合：固定事件 + 数据库附加事件。
+func MergeWechatMPNotifyEventTypes(extra []NotifyEventType) []NotifyEventType {
+	merged := make([]NotifyEventType, 0, len(WechatMPFixedNotifyEventTypes)+len(extra))
+	for _, eventType := range WechatMPFixedNotifyEventTypes {
+		merged = append(merged, eventType)
+	}
+	for _, eventType := range extra {
+		exists := false
+		for _, fixedEventType := range merged {
+			if fixedEventType == eventType {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			merged = append(merged, eventType)
+		}
+	}
+	return merged
+}
+
 // NotifyChannelKind 通知渠道类型
 type NotifyChannelKind string
 

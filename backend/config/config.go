@@ -204,8 +204,8 @@ type Notify struct {
 }
 
 type VMIdle struct {
-	SleepSeconds                  int   `mapstructure:"sleep_seconds"`                    // VM 空闲休眠时间（秒）
-	RecycleSeconds                int   `mapstructure:"recycle_seconds"`                  // VM 空闲回收时间（秒）
+	SleepSeconds                  int   `mapstructure:"sleep_seconds"`                     // VM 空闲休眠时间（秒）
+	RecycleSeconds                int   `mapstructure:"recycle_seconds"`                   // VM 空闲回收时间（秒）
 	RecycleWarnWechatLeadSeconds  []int `mapstructure:"recycle_warn_wechat_lead_seconds"`  // VM 回收前，微信公众号档每个 tier 的提前预警时长（秒），可配多档；缺省 [7200, 900]
 	RecycleWarnDefaultLeadSeconds int   `mapstructure:"recycle_warn_default_lead_seconds"` // VM 回收前，非微信公众号渠道（钉钉/飞书等）的提前预警时长（秒），<=0 视为禁用该档；缺省 3600
 }
@@ -559,16 +559,10 @@ type WechatOpenConfig struct {
 
 // WechatMPConfig 微信公众号配置 - 用于消息推送
 type WechatMPConfig struct {
-	AppID          string `mapstructure:"app_id"`
-	AppSecret      string `mapstructure:"app_secret"`
-	Token          string `mapstructure:"token"`
-	EncodingAESKey string `mapstructure:"encoding_aes_key"`
-	// Templates 按事件类型路由的模板 ID，键为 consts.NotifyEventType 字符串。
-	// 所有事件（含 vm.expiring_soon、quota.* 等）都从这里查。
-	Templates map[string]string `mapstructure:"templates"`
-	// MirrorMode 开启后，绑定成功时除了写 XML inline reply 外，还会主动调微信 API 推一条
-	// 模板消息确认。仅用于 Nginx mirror 转发场景——回调被 mirror 到多个后端，
-	// inline reply 会被丢弃，用户收不到"绑定成功"提示。
-	// 普通单后端部署务必保持 false，否则用户会同时收到 XML 回复和模板消息两条通知。
-	MirrorMode bool `mapstructure:"mirror_mode"`
+	AppID          string            `mapstructure:"app_id"`
+	AppSecret      string            `mapstructure:"app_secret"`
+	Token          string            `mapstructure:"token"`
+	EncodingAESKey string            `mapstructure:"encoding_aes_key"`
+	Templates      map[string]string `mapstructure:"templates"`
+	MirrorMode     bool              `mapstructure:"mirror_mode"`
 }
