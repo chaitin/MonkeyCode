@@ -311,7 +311,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("wechat.mp.app_id", "")
 	v.SetDefault("wechat.mp.app_secret", "")
 	v.SetDefault("wechat.mp.token", "")
-	v.SetDefault("wechat.mp.template_id", "")
+	v.SetDefault("wechat.mp.templates", map[string]string{})
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
@@ -563,7 +563,9 @@ type WechatMPConfig struct {
 	AppSecret      string `mapstructure:"app_secret"`
 	Token          string `mapstructure:"token"`
 	EncodingAESKey string `mapstructure:"encoding_aes_key"`
-	TemplateID     string `mapstructure:"template_id"`
+	// Templates 按事件类型路由的模板 ID，键为 consts.NotifyEventType 字符串。
+	// 所有事件（含 vm.expiring_soon、quota.* 等）都从这里查。
+	Templates map[string]string `mapstructure:"templates"`
 	// MirrorMode 开启后，绑定成功时除了写 XML inline reply 外，还会主动调微信 API 推一条
 	// 模板消息确认。仅用于 Nginx mirror 转发场景——回调被 mirror 到多个后端，
 	// inline reply 会被丢弃，用户收不到"绑定成功"提示。

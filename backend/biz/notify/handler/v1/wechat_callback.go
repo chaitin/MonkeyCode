@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/GoYoko/web"
@@ -22,7 +21,6 @@ const (
 	defaultReplySubscribe = "感谢关注！您将收到任务进度通知。"
 	defaultReplyScan      = "扫码成功"
 	defaultReplyClick     = "收到点击事件"
-	defaultReplyBindHint  = "请点击下方链接完成账号绑定，绑定后可接收任务通知。"
 	defaultReplyText      = "收到您的消息"
 )
 
@@ -202,11 +200,7 @@ func (h *WechatCallbackHandler) routeEvent(ctx context.Context, msg *msgpush.Mes
 
 	case "text":
 		h.logger.InfoContext(ctx, "wechat mp callback: text received", "openid", msg.FromUserName, "content", msg.Content)
-		if strings.Contains(msg.Content, "订阅") || strings.Contains(msg.Content, "绑定") {
-			replyContent = defaultReplyBindHint
-		} else {
-			replyContent = defaultReplyText
-		}
+		replyContent = defaultReplyText
 
 	default:
 		h.logger.InfoContext(ctx, "wechat mp callback: unknown msg type", "type", msg.MsgType, "openid", msg.FromUserName)

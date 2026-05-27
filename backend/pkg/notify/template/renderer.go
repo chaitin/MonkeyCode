@@ -23,6 +23,10 @@ func NewDefaultRegistry() *Registry {
 		&TaskCreatedRenderer{},
 		&TaskEndedRenderer{},
 		&VMExpiringSoonRenderer{},
+		&QuotaRefreshedRenderer{},
+		&QuotaBasicExhaustedRenderer{},
+		&QuotaProExhaustedRenderer{},
+		&QuotaUltraExhaustedRenderer{},
 	} {
 		r.renderers[rr.EventType()] = rr
 	}
