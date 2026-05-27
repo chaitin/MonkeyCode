@@ -32,7 +32,6 @@ const (
 // WechatMPUsecaseImpl 微信公众号绑定业务实现
 type WechatMPUsecaseImpl struct {
 	db           *db.Client
-	subRepo      domain.NotifySubscriptionRepo
 	wechatClient *msgpush.WechatClient
 	redis        *redis.Client
 	config       *config.Config
@@ -43,7 +42,6 @@ type WechatMPUsecaseImpl struct {
 func NewWechatMPUsecase(i *do.Injector) (domain.WechatMPUsecase, error) {
 	return &WechatMPUsecaseImpl{
 		db:           do.MustInvoke[*db.Client](i),
-		subRepo:      do.MustInvoke[domain.NotifySubscriptionRepo](i),
 		wechatClient: do.MustInvoke[*msgpush.WechatClient](i),
 		redis:        do.MustInvoke[*redis.Client](i),
 		config:       do.MustInvoke[*config.Config](i),
@@ -149,9 +147,8 @@ func (u *WechatMPUsecaseImpl) HandleBindEvent(ctx context.Context, scene, mpOpen
 		return "", fmt.Errorf("failed to query notify channel: %w", err)
 	}
 
-	var channelID uuid.UUID
 	if existing != nil {
-		updated, err := existing.Update().
+		_, err := existing.Update().
 			SetTargetID(mpOpenID).
 			SetMetadata(metadata).
 			SetEnabled(true).
@@ -159,9 +156,8 @@ func (u *WechatMPUsecaseImpl) HandleBindEvent(ctx context.Context, scene, mpOpen
 		if err != nil {
 			return "", fmt.Errorf("failed to update notify channel: %w", err)
 		}
-		channelID = updated.ID
 	} else {
-		created, err := u.db.NotifyChannel.Create().
+		_, err := u.db.NotifyChannel.Create().
 			SetOwnerID(userID).
 			SetOwnerType(consts.NotifyOwnerUser).
 			SetName("微信公众号").
@@ -187,7 +183,7 @@ func (u *WechatMPUsecaseImpl) HandleBindEvent(ctx context.Context, scene, mpOpen
 			if qerr != nil {
 				return "", fmt.Errorf("failed to re-query after constraint conflict: %w", qerr)
 			}
-			updated, err := winner.Update().
+			_, err := winner.Update().
 				SetTargetID(mpOpenID).
 				SetMetadata(metadata).
 				SetEnabled(true).
@@ -195,16 +191,7 @@ func (u *WechatMPUsecaseImpl) HandleBindEvent(ctx context.Context, scene, mpOpen
 			if err != nil {
 				return "", fmt.Errorf("failed to update after constraint conflict: %w", err)
 			}
-			channelID = updated.ID
-		} else {
-			channelID = created.ID
 		}
-	}
-
-	// 扫码绑定即自动订阅 VM 过期提醒：Upsert 按 channel_id 唯一，重复扫码只刷新事件列表不会产生重复行。
-	// 用户仍可通过 PUT /api/v1/users/notify/channels/:id 调整订阅事件。
-	if _, err := u.subRepo.Upsert(ctx, channelID, "self", []consts.NotifyEventType{consts.NotifyEventVMExpiringSoon}); err != nil {
-		logger.WarnContext(ctx, "wechat mp bind: auto subscribe vm.expiring_soon failed", "error", err, "channel_id", channelID)
 	}
 
 	u.redis.Del(ctx, redisKey)

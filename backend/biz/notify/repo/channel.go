@@ -17,6 +17,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 )
 
+var wechatMPFixedSubscriptionID = uuid.MustParse("00000000-0000-0000-0000-00000000c001")
+
 type NotifyChannelRepoImpl struct {
 	db     *db.Client
 	logger *slog.Logger
@@ -159,6 +161,25 @@ func (r *NotifyChannelRepoImpl) FindMatchingChannels(ctx context.Context, subjec
 			if slices.Contains(sub.EventTypes, eventType) {
 				matchingSubs = append(matchingSubs, sub)
 			}
+		}
+		if ch.Kind == consts.NotifyChannelWechatMP {
+			if ch.OwnerID != subjectUserID || ch.OwnerType != consts.NotifyOwnerUser {
+				continue
+			}
+			if slices.Contains(consts.WechatMPFixedNotifyEventTypes, eventType) {
+				matchingSubs = append(matchingSubs, &db.NotifySubscription{
+					ID:         wechatMPFixedSubscriptionID,
+					ChannelID:  ch.ID,
+					Scope:      "self",
+					EventTypes: []consts.NotifyEventType{eventType},
+					Enabled:    true,
+				})
+			}
+			if len(matchingSubs) > 0 {
+				ch.Edges.Subscriptions = matchingSubs
+				result = append(result, ch)
+			}
+			continue
 		}
 		if len(matchingSubs) > 0 {
 			ch.Edges.Subscriptions = matchingSubs
