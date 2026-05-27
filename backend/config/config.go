@@ -1,10 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/viper"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 )
 
@@ -318,12 +320,57 @@ func Init(dir string) (*Config, error) {
 	v.SetConfigName("config")
 	v.ReadInConfig()
 
+	if err := normalizeWechatMPTemplates(v); err != nil {
+		return nil, err
+	}
+
 	c := Config{}
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, err
 	}
 
 	return &c, nil
+}
+
+func normalizeWechatMPTemplates(v *viper.Viper) error {
+	raw := v.GetStringMap("wechat.mp.templates")
+	if len(raw) == 0 {
+		return nil
+	}
+
+	flat := make(map[string]string, len(raw))
+	for key, value := range raw {
+		valueStr, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("invalid wechat.mp.templates value type at %s: %T", key, value)
+		}
+
+		normalizedKey := normalizeWechatMPTemplateKey(key)
+		if _, exists := flat[normalizedKey]; exists && normalizedKey != key {
+			continue
+		}
+		flat[normalizedKey] = valueStr
+	}
+
+	v.Set("wechat.mp.templates", flat)
+	return nil
+}
+
+func normalizeWechatMPTemplateKey(key string) string {
+	switch key {
+	case "vm_expiring_soon":
+		return string(consts.NotifyEventVMExpiringSoon)
+	case "quota_refreshed":
+		return string(consts.NotifyEventQuotaRefreshed)
+	case "quota_basic_exhausted":
+		return string(consts.NotifyEventQuotaBasicExhausted)
+	case "quota_pro_exhausted":
+		return string(consts.NotifyEventQuotaProExhausted)
+	case "quota_ultra_exhausted":
+		return string(consts.NotifyEventQuotaUltraExhausted)
+	default:
+		return key
+	}
 }
 
 // GithubConfig GitHub 配置
