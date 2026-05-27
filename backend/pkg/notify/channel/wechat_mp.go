@@ -99,7 +99,13 @@ func (s *WechatMPSender) buildTemplate(event *domain.NotifyEvent, msg Message) (
 		templateID = s.cfg.Wechat.MP.Templates[string(event.EventType)]
 	}
 
-	if event != nil && isQuotaEvent(event.EventType) {
+	if event != nil && event.EventType == consts.NotifyEventQuotaRefreshed {
+		data = s.buildQuotaRefreshedFields(event)
+		url = quotaJumpURL
+		return
+	}
+
+	if event != nil && isQuotaExhaustedEvent(event.EventType) {
 		data = s.buildQuotaFields(event)
 		url = quotaJumpURL
 		return
@@ -119,15 +125,29 @@ func (s *WechatMPSender) buildTemplate(event *domain.NotifyEvent, msg Message) (
 	return
 }
 
-func isQuotaEvent(t consts.NotifyEventType) bool {
+func isQuotaExhaustedEvent(t consts.NotifyEventType) bool {
 	switch t {
-	case consts.NotifyEventQuotaRefreshed,
-		consts.NotifyEventQuotaBasicExhausted,
+	case consts.NotifyEventQuotaBasicExhausted,
 		consts.NotifyEventQuotaProExhausted,
 		consts.NotifyEventQuotaUltraExhausted:
 		return true
 	}
 	return false
+}
+
+// buildQuotaRefreshedFields 构造会员免费额度刷新模板字段。
+func (s *WechatMPSender) buildQuotaRefreshedFields(event *domain.NotifyEvent) map[string]msgpush.TemplateMessageData {
+	const thingMax = 20
+	userName := "-"
+	if event.Payload.UserName != "" {
+		userName = truncateRune(event.Payload.UserName, thingMax)
+	}
+	return map[string]msgpush.TemplateMessageData{
+		"thing20": {Value: userName},
+		"thing9":  {Value: "MonkeyCode"},
+		"thing12": {Value: "会员免费额度已刷新"},
+		"time7":   {Value: time.Now().Format("2006-01-02 15:04:05")},
+	}
 }
 
 // buildQuotaFields 构造 quota 类模板的 4 个字段：
