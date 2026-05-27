@@ -74,6 +74,13 @@ type Config struct {
 
 	// 语音识别配置（阿里云 NLS）
 	NLS NLS `mapstructure:"nls"`
+
+	ReviewAgent ReviewAgent `mapstructure:"review_agent"`
+}
+
+type ReviewAgent struct {
+	ModelID string `mapstructure:"model_id"`
+	Image   string `mapstructure:"image"`
 }
 
 // NLS 阿里云语音识别配置

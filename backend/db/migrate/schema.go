@@ -152,6 +152,35 @@ var (
 			},
 		},
 	}
+	// GitTasksColumns holds the columns for the "git_tasks" table.
+	GitTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "repo_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "subject_type", Type: field.TypeString},
+		{Name: "subject_id", Type: field.TypeString, Nullable: true},
+		{Name: "subject_number", Type: field.TypeInt, Nullable: true},
+		{Name: "subject_url", Type: field.TypeString, Nullable: true},
+		{Name: "subject_title", Type: field.TypeString, Nullable: true},
+		{Name: "prompt_id", Type: field.TypeString, Nullable: true},
+		{Name: "show_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "github_installation_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "task_id", Type: field.TypeUUID, Unique: true},
+	}
+	// GitTasksTable holds the schema information for the "git_tasks" table.
+	GitTasksTable = &schema.Table{
+		Name:       "git_tasks",
+		Columns:    GitTasksColumns,
+		PrimaryKey: []*schema.Column{GitTasksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "git_tasks_tasks_git_tasks",
+				Columns:    []*schema.Column{GitTasksColumns[11]},
+				RefColumns: []*schema.Column{TasksColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// HostsColumns holds the columns for the "hosts" table.
 	HostsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -1325,6 +1354,7 @@ var (
 		GitBotTasksTable,
 		GitBotUsersTable,
 		GitIdentitiesTable,
+		GitTasksTable,
 		HostsTable,
 		ImagesTable,
 		McpToolsTable,
@@ -1384,6 +1414,10 @@ func init() {
 	GitIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	GitIdentitiesTable.Annotation = &entsql.Annotation{
 		Table: "git_identities",
+	}
+	GitTasksTable.ForeignKeys[0].RefTable = TasksTable
+	GitTasksTable.Annotation = &entsql.Annotation{
+		Table: "git_tasks",
 	}
 	HostsTable.ForeignKeys[0].RefTable = UsersTable
 	HostsTable.Annotation = &entsql.Annotation{

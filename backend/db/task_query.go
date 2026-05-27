@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
@@ -32,6 +33,7 @@ type TaskQuery struct {
 	inters            []Interceptor
 	predicates        []predicate.Task
 	withProjectTasks  *ProjectTaskQuery
+	withGitTasks      *GitTaskQuery
 	withUser          *UserQuery
 	withVms           *VirtualMachineQuery
 	withGitBotTasks   *GitBotTaskQuery
@@ -89,6 +91,28 @@ func (_q *TaskQuery) QueryProjectTasks() *ProjectTaskQuery {
 			sqlgraph.From(task.Table, task.FieldID, selector),
 			sqlgraph.To(projecttask.Table, projecttask.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, task.ProjectTasksTable, task.ProjectTasksColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGitTasks chains the current query on the "git_tasks" edge.
+func (_q *TaskQuery) QueryGitTasks() *GitTaskQuery {
+	query := (&GitTaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(task.Table, task.FieldID, selector),
+			sqlgraph.To(gittask.Table, gittask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, task.GitTasksTable, task.GitTasksColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -399,6 +423,7 @@ func (_q *TaskQuery) Clone() *TaskQuery {
 		inters:            append([]Interceptor{}, _q.inters...),
 		predicates:        append([]predicate.Task{}, _q.predicates...),
 		withProjectTasks:  _q.withProjectTasks.Clone(),
+		withGitTasks:      _q.withGitTasks.Clone(),
 		withUser:          _q.withUser.Clone(),
 		withVms:           _q.withVms.Clone(),
 		withGitBotTasks:   _q.withGitBotTasks.Clone(),
@@ -419,6 +444,17 @@ func (_q *TaskQuery) WithProjectTasks(opts ...func(*ProjectTaskQuery)) *TaskQuer
 		opt(query)
 	}
 	_q.withProjectTasks = query
+	return _q
+}
+
+// WithGitTasks tells the query-builder to eager-load the nodes that are connected to
+// the "git_tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TaskQuery) WithGitTasks(opts ...func(*GitTaskQuery)) *TaskQuery {
+	query := (&GitTaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGitTasks = query
 	return _q
 }
 
@@ -555,8 +591,9 @@ func (_q *TaskQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Task, e
 	var (
 		nodes       = []*Task{}
 		_spec       = _q.querySpec()
-		loadedTypes = [6]bool{
+		loadedTypes = [7]bool{
 			_q.withProjectTasks != nil,
+			_q.withGitTasks != nil,
 			_q.withUser != nil,
 			_q.withVms != nil,
 			_q.withGitBotTasks != nil,
@@ -589,6 +626,12 @@ func (_q *TaskQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Task, e
 		if err := _q.loadProjectTasks(ctx, query, nodes,
 			func(n *Task) { n.Edges.ProjectTasks = []*ProjectTask{} },
 			func(n *Task, e *ProjectTask) { n.Edges.ProjectTasks = append(n.Edges.ProjectTasks, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGitTasks; query != nil {
+		if err := _q.loadGitTasks(ctx, query, nodes, nil,
+			func(n *Task, e *GitTask) { n.Edges.GitTasks = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -644,6 +687,33 @@ func (_q *TaskQuery) loadProjectTasks(ctx context.Context, query *ProjectTaskQue
 	}
 	query.Where(predicate.ProjectTask(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(task.ProjectTasksColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TaskID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "task_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *TaskQuery) loadGitTasks(ctx context.Context, query *GitTaskQuery, nodes []*Task, init func(*Task), assign func(*Task, *GitTask)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Task)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(gittask.FieldTaskID)
+	}
+	query.Where(predicate.GitTask(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(task.GitTasksColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

@@ -21,6 +21,9 @@ type GitBotUser func(*sql.Selector)
 // GitIdentity is the predicate function for gitidentity builders.
 type GitIdentity func(*sql.Selector)
 
+// GitTask is the predicate function for gittask builders.
+type GitTask func(*sql.Selector)
+
 // Host is the predicate function for host builders.
 type Host func(*sql.Selector)
 

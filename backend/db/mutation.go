@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
@@ -70,6 +71,7 @@ const (
 	TypeGitBotTask          = "GitBotTask"
 	TypeGitBotUser          = "GitBotUser"
 	TypeGitIdentity         = "GitIdentity"
+	TypeGitTask             = "GitTask"
 	TypeHost                = "Host"
 	TypeImage               = "Image"
 	TypeMCPTool             = "MCPTool"
@@ -4672,6 +4674,1158 @@ func (m *GitIdentityMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown GitIdentity edge %s", name)
+}
+
+// GitTaskMutation represents an operation that mutates the GitTask nodes in the graph.
+type GitTaskMutation struct {
+	config
+	op                        Op
+	typ                       string
+	id                        *uuid.UUID
+	repo_id                   *uuid.UUID
+	subject_type              *string
+	subject_id                *string
+	subject_number            *int
+	addsubject_number         *int
+	subject_url               *string
+	subject_title             *string
+	prompt_id                 *string
+	show_url                  *string
+	github_installation_id    *int64
+	addgithub_installation_id *int64
+	created_at                *time.Time
+	clearedFields             map[string]struct{}
+	task                      *uuid.UUID
+	clearedtask               bool
+	done                      bool
+	oldValue                  func(context.Context) (*GitTask, error)
+	predicates                []predicate.GitTask
+}
+
+var _ ent.Mutation = (*GitTaskMutation)(nil)
+
+// gittaskOption allows management of the mutation configuration using functional options.
+type gittaskOption func(*GitTaskMutation)
+
+// newGitTaskMutation creates new mutation for the GitTask entity.
+func newGitTaskMutation(c config, op Op, opts ...gittaskOption) *GitTaskMutation {
+	m := &GitTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeGitTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withGitTaskID sets the ID field of the mutation.
+func withGitTaskID(id uuid.UUID) gittaskOption {
+	return func(m *GitTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *GitTask
+		)
+		m.oldValue = func(ctx context.Context) (*GitTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().GitTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withGitTask sets the old GitTask of the mutation.
+func withGitTask(node *GitTask) gittaskOption {
+	return func(m *GitTaskMutation) {
+		m.oldValue = func(context.Context) (*GitTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m GitTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m GitTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of GitTask entities.
+func (m *GitTaskMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *GitTaskMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *GitTaskMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().GitTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTaskID sets the "task_id" field.
+func (m *GitTaskMutation) SetTaskID(u uuid.UUID) {
+	m.task = &u
+}
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *GitTaskMutation) TaskID() (r uuid.UUID, exists bool) {
+	v := m.task
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskID returns the old "task_id" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldTaskID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+	}
+	return oldValue.TaskID, nil
+}
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *GitTaskMutation) ResetTaskID() {
+	m.task = nil
+}
+
+// SetRepoID sets the "repo_id" field.
+func (m *GitTaskMutation) SetRepoID(u uuid.UUID) {
+	m.repo_id = &u
+}
+
+// RepoID returns the value of the "repo_id" field in the mutation.
+func (m *GitTaskMutation) RepoID() (r uuid.UUID, exists bool) {
+	v := m.repo_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepoID returns the old "repo_id" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldRepoID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepoID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepoID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepoID: %w", err)
+	}
+	return oldValue.RepoID, nil
+}
+
+// ClearRepoID clears the value of the "repo_id" field.
+func (m *GitTaskMutation) ClearRepoID() {
+	m.repo_id = nil
+	m.clearedFields[gittask.FieldRepoID] = struct{}{}
+}
+
+// RepoIDCleared returns if the "repo_id" field was cleared in this mutation.
+func (m *GitTaskMutation) RepoIDCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldRepoID]
+	return ok
+}
+
+// ResetRepoID resets all changes to the "repo_id" field.
+func (m *GitTaskMutation) ResetRepoID() {
+	m.repo_id = nil
+	delete(m.clearedFields, gittask.FieldRepoID)
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (m *GitTaskMutation) SetSubjectType(s string) {
+	m.subject_type = &s
+}
+
+// SubjectType returns the value of the "subject_type" field in the mutation.
+func (m *GitTaskMutation) SubjectType() (r string, exists bool) {
+	v := m.subject_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectType returns the old "subject_type" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldSubjectType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectType: %w", err)
+	}
+	return oldValue.SubjectType, nil
+}
+
+// ResetSubjectType resets all changes to the "subject_type" field.
+func (m *GitTaskMutation) ResetSubjectType() {
+	m.subject_type = nil
+}
+
+// SetSubjectID sets the "subject_id" field.
+func (m *GitTaskMutation) SetSubjectID(s string) {
+	m.subject_id = &s
+}
+
+// SubjectID returns the value of the "subject_id" field in the mutation.
+func (m *GitTaskMutation) SubjectID() (r string, exists bool) {
+	v := m.subject_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectID returns the old "subject_id" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldSubjectID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectID: %w", err)
+	}
+	return oldValue.SubjectID, nil
+}
+
+// ClearSubjectID clears the value of the "subject_id" field.
+func (m *GitTaskMutation) ClearSubjectID() {
+	m.subject_id = nil
+	m.clearedFields[gittask.FieldSubjectID] = struct{}{}
+}
+
+// SubjectIDCleared returns if the "subject_id" field was cleared in this mutation.
+func (m *GitTaskMutation) SubjectIDCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldSubjectID]
+	return ok
+}
+
+// ResetSubjectID resets all changes to the "subject_id" field.
+func (m *GitTaskMutation) ResetSubjectID() {
+	m.subject_id = nil
+	delete(m.clearedFields, gittask.FieldSubjectID)
+}
+
+// SetSubjectNumber sets the "subject_number" field.
+func (m *GitTaskMutation) SetSubjectNumber(i int) {
+	m.subject_number = &i
+	m.addsubject_number = nil
+}
+
+// SubjectNumber returns the value of the "subject_number" field in the mutation.
+func (m *GitTaskMutation) SubjectNumber() (r int, exists bool) {
+	v := m.subject_number
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectNumber returns the old "subject_number" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldSubjectNumber(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectNumber is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectNumber requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectNumber: %w", err)
+	}
+	return oldValue.SubjectNumber, nil
+}
+
+// AddSubjectNumber adds i to the "subject_number" field.
+func (m *GitTaskMutation) AddSubjectNumber(i int) {
+	if m.addsubject_number != nil {
+		*m.addsubject_number += i
+	} else {
+		m.addsubject_number = &i
+	}
+}
+
+// AddedSubjectNumber returns the value that was added to the "subject_number" field in this mutation.
+func (m *GitTaskMutation) AddedSubjectNumber() (r int, exists bool) {
+	v := m.addsubject_number
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearSubjectNumber clears the value of the "subject_number" field.
+func (m *GitTaskMutation) ClearSubjectNumber() {
+	m.subject_number = nil
+	m.addsubject_number = nil
+	m.clearedFields[gittask.FieldSubjectNumber] = struct{}{}
+}
+
+// SubjectNumberCleared returns if the "subject_number" field was cleared in this mutation.
+func (m *GitTaskMutation) SubjectNumberCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldSubjectNumber]
+	return ok
+}
+
+// ResetSubjectNumber resets all changes to the "subject_number" field.
+func (m *GitTaskMutation) ResetSubjectNumber() {
+	m.subject_number = nil
+	m.addsubject_number = nil
+	delete(m.clearedFields, gittask.FieldSubjectNumber)
+}
+
+// SetSubjectURL sets the "subject_url" field.
+func (m *GitTaskMutation) SetSubjectURL(s string) {
+	m.subject_url = &s
+}
+
+// SubjectURL returns the value of the "subject_url" field in the mutation.
+func (m *GitTaskMutation) SubjectURL() (r string, exists bool) {
+	v := m.subject_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectURL returns the old "subject_url" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldSubjectURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectURL: %w", err)
+	}
+	return oldValue.SubjectURL, nil
+}
+
+// ClearSubjectURL clears the value of the "subject_url" field.
+func (m *GitTaskMutation) ClearSubjectURL() {
+	m.subject_url = nil
+	m.clearedFields[gittask.FieldSubjectURL] = struct{}{}
+}
+
+// SubjectURLCleared returns if the "subject_url" field was cleared in this mutation.
+func (m *GitTaskMutation) SubjectURLCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldSubjectURL]
+	return ok
+}
+
+// ResetSubjectURL resets all changes to the "subject_url" field.
+func (m *GitTaskMutation) ResetSubjectURL() {
+	m.subject_url = nil
+	delete(m.clearedFields, gittask.FieldSubjectURL)
+}
+
+// SetSubjectTitle sets the "subject_title" field.
+func (m *GitTaskMutation) SetSubjectTitle(s string) {
+	m.subject_title = &s
+}
+
+// SubjectTitle returns the value of the "subject_title" field in the mutation.
+func (m *GitTaskMutation) SubjectTitle() (r string, exists bool) {
+	v := m.subject_title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectTitle returns the old "subject_title" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldSubjectTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectTitle: %w", err)
+	}
+	return oldValue.SubjectTitle, nil
+}
+
+// ClearSubjectTitle clears the value of the "subject_title" field.
+func (m *GitTaskMutation) ClearSubjectTitle() {
+	m.subject_title = nil
+	m.clearedFields[gittask.FieldSubjectTitle] = struct{}{}
+}
+
+// SubjectTitleCleared returns if the "subject_title" field was cleared in this mutation.
+func (m *GitTaskMutation) SubjectTitleCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldSubjectTitle]
+	return ok
+}
+
+// ResetSubjectTitle resets all changes to the "subject_title" field.
+func (m *GitTaskMutation) ResetSubjectTitle() {
+	m.subject_title = nil
+	delete(m.clearedFields, gittask.FieldSubjectTitle)
+}
+
+// SetPromptID sets the "prompt_id" field.
+func (m *GitTaskMutation) SetPromptID(s string) {
+	m.prompt_id = &s
+}
+
+// PromptID returns the value of the "prompt_id" field in the mutation.
+func (m *GitTaskMutation) PromptID() (r string, exists bool) {
+	v := m.prompt_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromptID returns the old "prompt_id" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldPromptID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromptID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromptID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromptID: %w", err)
+	}
+	return oldValue.PromptID, nil
+}
+
+// ClearPromptID clears the value of the "prompt_id" field.
+func (m *GitTaskMutation) ClearPromptID() {
+	m.prompt_id = nil
+	m.clearedFields[gittask.FieldPromptID] = struct{}{}
+}
+
+// PromptIDCleared returns if the "prompt_id" field was cleared in this mutation.
+func (m *GitTaskMutation) PromptIDCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldPromptID]
+	return ok
+}
+
+// ResetPromptID resets all changes to the "prompt_id" field.
+func (m *GitTaskMutation) ResetPromptID() {
+	m.prompt_id = nil
+	delete(m.clearedFields, gittask.FieldPromptID)
+}
+
+// SetShowURL sets the "show_url" field.
+func (m *GitTaskMutation) SetShowURL(s string) {
+	m.show_url = &s
+}
+
+// ShowURL returns the value of the "show_url" field in the mutation.
+func (m *GitTaskMutation) ShowURL() (r string, exists bool) {
+	v := m.show_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldShowURL returns the old "show_url" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldShowURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldShowURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldShowURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldShowURL: %w", err)
+	}
+	return oldValue.ShowURL, nil
+}
+
+// ClearShowURL clears the value of the "show_url" field.
+func (m *GitTaskMutation) ClearShowURL() {
+	m.show_url = nil
+	m.clearedFields[gittask.FieldShowURL] = struct{}{}
+}
+
+// ShowURLCleared returns if the "show_url" field was cleared in this mutation.
+func (m *GitTaskMutation) ShowURLCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldShowURL]
+	return ok
+}
+
+// ResetShowURL resets all changes to the "show_url" field.
+func (m *GitTaskMutation) ResetShowURL() {
+	m.show_url = nil
+	delete(m.clearedFields, gittask.FieldShowURL)
+}
+
+// SetGithubInstallationID sets the "github_installation_id" field.
+func (m *GitTaskMutation) SetGithubInstallationID(i int64) {
+	m.github_installation_id = &i
+	m.addgithub_installation_id = nil
+}
+
+// GithubInstallationID returns the value of the "github_installation_id" field in the mutation.
+func (m *GitTaskMutation) GithubInstallationID() (r int64, exists bool) {
+	v := m.github_installation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGithubInstallationID returns the old "github_installation_id" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldGithubInstallationID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGithubInstallationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGithubInstallationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGithubInstallationID: %w", err)
+	}
+	return oldValue.GithubInstallationID, nil
+}
+
+// AddGithubInstallationID adds i to the "github_installation_id" field.
+func (m *GitTaskMutation) AddGithubInstallationID(i int64) {
+	if m.addgithub_installation_id != nil {
+		*m.addgithub_installation_id += i
+	} else {
+		m.addgithub_installation_id = &i
+	}
+}
+
+// AddedGithubInstallationID returns the value that was added to the "github_installation_id" field in this mutation.
+func (m *GitTaskMutation) AddedGithubInstallationID() (r int64, exists bool) {
+	v := m.addgithub_installation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGithubInstallationID clears the value of the "github_installation_id" field.
+func (m *GitTaskMutation) ClearGithubInstallationID() {
+	m.github_installation_id = nil
+	m.addgithub_installation_id = nil
+	m.clearedFields[gittask.FieldGithubInstallationID] = struct{}{}
+}
+
+// GithubInstallationIDCleared returns if the "github_installation_id" field was cleared in this mutation.
+func (m *GitTaskMutation) GithubInstallationIDCleared() bool {
+	_, ok := m.clearedFields[gittask.FieldGithubInstallationID]
+	return ok
+}
+
+// ResetGithubInstallationID resets all changes to the "github_installation_id" field.
+func (m *GitTaskMutation) ResetGithubInstallationID() {
+	m.github_installation_id = nil
+	m.addgithub_installation_id = nil
+	delete(m.clearedFields, gittask.FieldGithubInstallationID)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *GitTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *GitTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the GitTask entity.
+// If the GitTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *GitTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearTask clears the "task" edge to the Task entity.
+func (m *GitTaskMutation) ClearTask() {
+	m.clearedtask = true
+	m.clearedFields[gittask.FieldTaskID] = struct{}{}
+}
+
+// TaskCleared reports if the "task" edge to the Task entity was cleared.
+func (m *GitTaskMutation) TaskCleared() bool {
+	return m.clearedtask
+}
+
+// TaskIDs returns the "task" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TaskID instead. It exists only for internal usage by the builders.
+func (m *GitTaskMutation) TaskIDs() (ids []uuid.UUID) {
+	if id := m.task; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTask resets all changes to the "task" edge.
+func (m *GitTaskMutation) ResetTask() {
+	m.task = nil
+	m.clearedtask = false
+}
+
+// Where appends a list predicates to the GitTaskMutation builder.
+func (m *GitTaskMutation) Where(ps ...predicate.GitTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the GitTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *GitTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.GitTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *GitTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *GitTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (GitTask).
+func (m *GitTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *GitTaskMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.task != nil {
+		fields = append(fields, gittask.FieldTaskID)
+	}
+	if m.repo_id != nil {
+		fields = append(fields, gittask.FieldRepoID)
+	}
+	if m.subject_type != nil {
+		fields = append(fields, gittask.FieldSubjectType)
+	}
+	if m.subject_id != nil {
+		fields = append(fields, gittask.FieldSubjectID)
+	}
+	if m.subject_number != nil {
+		fields = append(fields, gittask.FieldSubjectNumber)
+	}
+	if m.subject_url != nil {
+		fields = append(fields, gittask.FieldSubjectURL)
+	}
+	if m.subject_title != nil {
+		fields = append(fields, gittask.FieldSubjectTitle)
+	}
+	if m.prompt_id != nil {
+		fields = append(fields, gittask.FieldPromptID)
+	}
+	if m.show_url != nil {
+		fields = append(fields, gittask.FieldShowURL)
+	}
+	if m.github_installation_id != nil {
+		fields = append(fields, gittask.FieldGithubInstallationID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, gittask.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *GitTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case gittask.FieldTaskID:
+		return m.TaskID()
+	case gittask.FieldRepoID:
+		return m.RepoID()
+	case gittask.FieldSubjectType:
+		return m.SubjectType()
+	case gittask.FieldSubjectID:
+		return m.SubjectID()
+	case gittask.FieldSubjectNumber:
+		return m.SubjectNumber()
+	case gittask.FieldSubjectURL:
+		return m.SubjectURL()
+	case gittask.FieldSubjectTitle:
+		return m.SubjectTitle()
+	case gittask.FieldPromptID:
+		return m.PromptID()
+	case gittask.FieldShowURL:
+		return m.ShowURL()
+	case gittask.FieldGithubInstallationID:
+		return m.GithubInstallationID()
+	case gittask.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *GitTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case gittask.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case gittask.FieldRepoID:
+		return m.OldRepoID(ctx)
+	case gittask.FieldSubjectType:
+		return m.OldSubjectType(ctx)
+	case gittask.FieldSubjectID:
+		return m.OldSubjectID(ctx)
+	case gittask.FieldSubjectNumber:
+		return m.OldSubjectNumber(ctx)
+	case gittask.FieldSubjectURL:
+		return m.OldSubjectURL(ctx)
+	case gittask.FieldSubjectTitle:
+		return m.OldSubjectTitle(ctx)
+	case gittask.FieldPromptID:
+		return m.OldPromptID(ctx)
+	case gittask.FieldShowURL:
+		return m.OldShowURL(ctx)
+	case gittask.FieldGithubInstallationID:
+		return m.OldGithubInstallationID(ctx)
+	case gittask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown GitTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case gittask.FieldTaskID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskID(v)
+		return nil
+	case gittask.FieldRepoID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepoID(v)
+		return nil
+	case gittask.FieldSubjectType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectType(v)
+		return nil
+	case gittask.FieldSubjectID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectID(v)
+		return nil
+	case gittask.FieldSubjectNumber:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectNumber(v)
+		return nil
+	case gittask.FieldSubjectURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectURL(v)
+		return nil
+	case gittask.FieldSubjectTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectTitle(v)
+		return nil
+	case gittask.FieldPromptID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromptID(v)
+		return nil
+	case gittask.FieldShowURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetShowURL(v)
+		return nil
+	case gittask.FieldGithubInstallationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGithubInstallationID(v)
+		return nil
+	case gittask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *GitTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.addsubject_number != nil {
+		fields = append(fields, gittask.FieldSubjectNumber)
+	}
+	if m.addgithub_installation_id != nil {
+		fields = append(fields, gittask.FieldGithubInstallationID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *GitTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case gittask.FieldSubjectNumber:
+		return m.AddedSubjectNumber()
+	case gittask.FieldGithubInstallationID:
+		return m.AddedGithubInstallationID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *GitTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case gittask.FieldSubjectNumber:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSubjectNumber(v)
+		return nil
+	case gittask.FieldGithubInstallationID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGithubInstallationID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown GitTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *GitTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(gittask.FieldRepoID) {
+		fields = append(fields, gittask.FieldRepoID)
+	}
+	if m.FieldCleared(gittask.FieldSubjectID) {
+		fields = append(fields, gittask.FieldSubjectID)
+	}
+	if m.FieldCleared(gittask.FieldSubjectNumber) {
+		fields = append(fields, gittask.FieldSubjectNumber)
+	}
+	if m.FieldCleared(gittask.FieldSubjectURL) {
+		fields = append(fields, gittask.FieldSubjectURL)
+	}
+	if m.FieldCleared(gittask.FieldSubjectTitle) {
+		fields = append(fields, gittask.FieldSubjectTitle)
+	}
+	if m.FieldCleared(gittask.FieldPromptID) {
+		fields = append(fields, gittask.FieldPromptID)
+	}
+	if m.FieldCleared(gittask.FieldShowURL) {
+		fields = append(fields, gittask.FieldShowURL)
+	}
+	if m.FieldCleared(gittask.FieldGithubInstallationID) {
+		fields = append(fields, gittask.FieldGithubInstallationID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *GitTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *GitTaskMutation) ClearField(name string) error {
+	switch name {
+	case gittask.FieldRepoID:
+		m.ClearRepoID()
+		return nil
+	case gittask.FieldSubjectID:
+		m.ClearSubjectID()
+		return nil
+	case gittask.FieldSubjectNumber:
+		m.ClearSubjectNumber()
+		return nil
+	case gittask.FieldSubjectURL:
+		m.ClearSubjectURL()
+		return nil
+	case gittask.FieldSubjectTitle:
+		m.ClearSubjectTitle()
+		return nil
+	case gittask.FieldPromptID:
+		m.ClearPromptID()
+		return nil
+	case gittask.FieldShowURL:
+		m.ClearShowURL()
+		return nil
+	case gittask.FieldGithubInstallationID:
+		m.ClearGithubInstallationID()
+		return nil
+	}
+	return fmt.Errorf("unknown GitTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *GitTaskMutation) ResetField(name string) error {
+	switch name {
+	case gittask.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case gittask.FieldRepoID:
+		m.ResetRepoID()
+		return nil
+	case gittask.FieldSubjectType:
+		m.ResetSubjectType()
+		return nil
+	case gittask.FieldSubjectID:
+		m.ResetSubjectID()
+		return nil
+	case gittask.FieldSubjectNumber:
+		m.ResetSubjectNumber()
+		return nil
+	case gittask.FieldSubjectURL:
+		m.ResetSubjectURL()
+		return nil
+	case gittask.FieldSubjectTitle:
+		m.ResetSubjectTitle()
+		return nil
+	case gittask.FieldPromptID:
+		m.ResetPromptID()
+		return nil
+	case gittask.FieldShowURL:
+		m.ResetShowURL()
+		return nil
+	case gittask.FieldGithubInstallationID:
+		m.ResetGithubInstallationID()
+		return nil
+	case gittask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown GitTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *GitTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.task != nil {
+		edges = append(edges, gittask.EdgeTask)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *GitTaskMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case gittask.EdgeTask:
+		if id := m.task; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *GitTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *GitTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *GitTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedtask {
+		edges = append(edges, gittask.EdgeTask)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *GitTaskMutation) EdgeCleared(name string) bool {
+	switch name {
+	case gittask.EdgeTask:
+		return m.clearedtask
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *GitTaskMutation) ClearEdge(name string) error {
+	switch name {
+	case gittask.EdgeTask:
+		m.ClearTask()
+		return nil
+	}
+	return fmt.Errorf("unknown GitTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *GitTaskMutation) ResetEdge(name string) error {
+	switch name {
+	case gittask.EdgeTask:
+		m.ResetTask()
+		return nil
+	}
+	return fmt.Errorf("unknown GitTask edge %s", name)
 }
 
 // HostMutation represents an operation that mutates the Host nodes in the graph.
@@ -23900,6 +25054,8 @@ type TaskMutation struct {
 	project_tasks         map[uuid.UUID]struct{}
 	removedproject_tasks  map[uuid.UUID]struct{}
 	clearedproject_tasks  bool
+	git_tasks             *uuid.UUID
+	clearedgit_tasks      bool
 	user                  *uuid.UUID
 	cleareduser           bool
 	vms                   map[string]struct{}
@@ -24623,6 +25779,45 @@ func (m *TaskMutation) ResetProjectTasks() {
 	m.removedproject_tasks = nil
 }
 
+// SetGitTasksID sets the "git_tasks" edge to the GitTask entity by id.
+func (m *TaskMutation) SetGitTasksID(id uuid.UUID) {
+	m.git_tasks = &id
+}
+
+// ClearGitTasks clears the "git_tasks" edge to the GitTask entity.
+func (m *TaskMutation) ClearGitTasks() {
+	m.clearedgit_tasks = true
+}
+
+// GitTasksCleared reports if the "git_tasks" edge to the GitTask entity was cleared.
+func (m *TaskMutation) GitTasksCleared() bool {
+	return m.clearedgit_tasks
+}
+
+// GitTasksID returns the "git_tasks" edge ID in the mutation.
+func (m *TaskMutation) GitTasksID() (id uuid.UUID, exists bool) {
+	if m.git_tasks != nil {
+		return *m.git_tasks, true
+	}
+	return
+}
+
+// GitTasksIDs returns the "git_tasks" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GitTasksID instead. It exists only for internal usage by the builders.
+func (m *TaskMutation) GitTasksIDs() (ids []uuid.UUID) {
+	if id := m.git_tasks; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGitTasks resets all changes to the "git_tasks" edge.
+func (m *TaskMutation) ResetGitTasks() {
+	m.git_tasks = nil
+	m.clearedgit_tasks = false
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *TaskMutation) ClearUser() {
 	m.cleareduser = true
@@ -25242,9 +26437,12 @@ func (m *TaskMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TaskMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.project_tasks != nil {
 		edges = append(edges, task.EdgeProjectTasks)
+	}
+	if m.git_tasks != nil {
+		edges = append(edges, task.EdgeGitTasks)
 	}
 	if m.user != nil {
 		edges = append(edges, task.EdgeUser)
@@ -25274,6 +26472,10 @@ func (m *TaskMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case task.EdgeGitTasks:
+		if id := m.git_tasks; id != nil {
+			return []ent.Value{*id}
+		}
 	case task.EdgeUser:
 		if id := m.user; id != nil {
 			return []ent.Value{*id}
@@ -25308,7 +26510,7 @@ func (m *TaskMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TaskMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedproject_tasks != nil {
 		edges = append(edges, task.EdgeProjectTasks)
 	}
@@ -25367,9 +26569,12 @@ func (m *TaskMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TaskMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedproject_tasks {
 		edges = append(edges, task.EdgeProjectTasks)
+	}
+	if m.clearedgit_tasks {
+		edges = append(edges, task.EdgeGitTasks)
 	}
 	if m.cleareduser {
 		edges = append(edges, task.EdgeUser)
@@ -25395,6 +26600,8 @@ func (m *TaskMutation) EdgeCleared(name string) bool {
 	switch name {
 	case task.EdgeProjectTasks:
 		return m.clearedproject_tasks
+	case task.EdgeGitTasks:
+		return m.clearedgit_tasks
 	case task.EdgeUser:
 		return m.cleareduser
 	case task.EdgeVms:
@@ -25413,6 +26620,9 @@ func (m *TaskMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *TaskMutation) ClearEdge(name string) error {
 	switch name {
+	case task.EdgeGitTasks:
+		m.ClearGitTasks()
+		return nil
 	case task.EdgeUser:
 		m.ClearUser()
 		return nil
@@ -25426,6 +26636,9 @@ func (m *TaskMutation) ResetEdge(name string) error {
 	switch name {
 	case task.EdgeProjectTasks:
 		m.ResetProjectTasks()
+		return nil
+	case task.EdgeGitTasks:
+		m.ResetGitTasks()
 		return nil
 	case task.EdgeUser:
 		m.ResetUser()

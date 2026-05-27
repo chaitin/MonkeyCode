@@ -51,6 +51,7 @@ func TaskConcurrencyHook(next ent.Mutator) ent.Mutator {
 			Where(
 				task.UserIDEQ(userID),
 				task.StatusIn(consts.TaskStatusPending, consts.TaskStatusProcessing),
+				task.HasProjectTasks(),
 			).
 			Count(ctx)
 		if err != nil {

@@ -81,6 +81,20 @@ func (_m *GitIdentityQuery) Page(ctx context.Context, page, size int) ([]*GitIde
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *GitTaskQuery) Page(ctx context.Context, page, size int) ([]*GitTask, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *HostQuery) Page(ctx context.Context, page, size int) ([]*Host, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {

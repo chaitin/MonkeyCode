@@ -18,7 +18,7 @@ type GitTaskUsecase interface {
 
 // GitTaskRepoInterface GitTask 数据访问接口
 type GitTaskRepoInterface interface {
-	Create(ctx context.Context, req CreateGitTaskReq, fn func(user *db.User, t *db.Task, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error)) (*db.Task, error)
+	Create(ctx context.Context, req CreateGitTaskReq, fn func(user *db.User, t *db.Task, m *db.Model) (*taskflow.VirtualMachine, error)) (*db.Task, error)
 }
 
 // CreateGitTaskReq 创建 GitTask 请求

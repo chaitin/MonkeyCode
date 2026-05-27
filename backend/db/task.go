@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
@@ -56,6 +57,8 @@ type Task struct {
 type TaskEdges struct {
 	// ProjectTasks holds the value of the project_tasks edge.
 	ProjectTasks []*ProjectTask `json:"project_tasks,omitempty"`
+	// GitTasks holds the value of the git_tasks edge.
+	GitTasks *GitTask `json:"git_tasks,omitempty"`
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
 	// Vms holds the value of the vms edge.
@@ -68,7 +71,7 @@ type TaskEdges struct {
 	TaskVms []*TaskVirtualMachine `json:"task_vms,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [6]bool
+	loadedTypes [7]bool
 }
 
 // ProjectTasksOrErr returns the ProjectTasks value or an error if the edge
@@ -80,12 +83,23 @@ func (e TaskEdges) ProjectTasksOrErr() ([]*ProjectTask, error) {
 	return nil, &NotLoadedError{edge: "project_tasks"}
 }
 
+// GitTasksOrErr returns the GitTasks value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e TaskEdges) GitTasksOrErr() (*GitTask, error) {
+	if e.GitTasks != nil {
+		return e.GitTasks, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: gittask.Label}
+	}
+	return nil, &NotLoadedError{edge: "git_tasks"}
+}
+
 // UserOrErr returns the User value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
 func (e TaskEdges) UserOrErr() (*User, error) {
 	if e.User != nil {
 		return e.User, nil
-	} else if e.loadedTypes[1] {
+	} else if e.loadedTypes[2] {
 		return nil, &NotFoundError{label: user.Label}
 	}
 	return nil, &NotLoadedError{edge: "user"}
@@ -94,7 +108,7 @@ func (e TaskEdges) UserOrErr() (*User, error) {
 // VmsOrErr returns the Vms value or an error if the edge
 // was not loaded in eager-loading.
 func (e TaskEdges) VmsOrErr() ([]*VirtualMachine, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.Vms, nil
 	}
 	return nil, &NotLoadedError{edge: "vms"}
@@ -103,7 +117,7 @@ func (e TaskEdges) VmsOrErr() ([]*VirtualMachine, error) {
 // GitBotTasksOrErr returns the GitBotTasks value or an error if the edge
 // was not loaded in eager-loading.
 func (e TaskEdges) GitBotTasksOrErr() ([]*GitBotTask, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.GitBotTasks, nil
 	}
 	return nil, &NotLoadedError{edge: "git_bot_tasks"}
@@ -112,7 +126,7 @@ func (e TaskEdges) GitBotTasksOrErr() ([]*GitBotTask, error) {
 // ModelSwitchesOrErr returns the ModelSwitches value or an error if the edge
 // was not loaded in eager-loading.
 func (e TaskEdges) ModelSwitchesOrErr() ([]*TaskModelSwitch, error) {
-	if e.loadedTypes[4] {
+	if e.loadedTypes[5] {
 		return e.ModelSwitches, nil
 	}
 	return nil, &NotLoadedError{edge: "model_switches"}
@@ -121,7 +135,7 @@ func (e TaskEdges) ModelSwitchesOrErr() ([]*TaskModelSwitch, error) {
 // TaskVmsOrErr returns the TaskVms value or an error if the edge
 // was not loaded in eager-loading.
 func (e TaskEdges) TaskVmsOrErr() ([]*TaskVirtualMachine, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TaskVms, nil
 	}
 	return nil, &NotLoadedError{edge: "task_vms"}
@@ -254,6 +268,11 @@ func (_m *Task) Value(name string) (ent.Value, error) {
 // QueryProjectTasks queries the "project_tasks" edge of the Task entity.
 func (_m *Task) QueryProjectTasks() *ProjectTaskQuery {
 	return NewTaskClient(_m.config).QueryProjectTasks(_m)
+}
+
+// QueryGitTasks queries the "git_tasks" edge of the Task entity.
+func (_m *Task) QueryGitTasks() *GitTaskQuery {
+	return NewTaskClient(_m.config).QueryGitTasks(_m)
 }
 
 // QueryUser queries the "user" edge of the Task entity.

@@ -13,6 +13,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
@@ -239,6 +240,33 @@ func (f TraverseGitIdentity) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.GitIdentityQuery", q)
+}
+
+// The GitTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
+type GitTaskFunc func(context.Context, *db.GitTaskQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f GitTaskFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.GitTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.GitTaskQuery", q)
+}
+
+// The TraverseGitTask type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseGitTask func(context.Context, *db.GitTaskQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseGitTask) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseGitTask) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.GitTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.GitTaskQuery", q)
 }
 
 // The HostFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1172,6 +1200,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.GitBotUserQuery, predicate.GitBotUser, gitbotuser.OrderOption]{typ: db.TypeGitBotUser, tq: q}, nil
 	case *db.GitIdentityQuery:
 		return &query[*db.GitIdentityQuery, predicate.GitIdentity, gitidentity.OrderOption]{typ: db.TypeGitIdentity, tq: q}, nil
+	case *db.GitTaskQuery:
+		return &query[*db.GitTaskQuery, predicate.GitTask, gittask.OrderOption]{typ: db.TypeGitTask, tq: q}, nil
 	case *db.HostQuery:
 		return &query[*db.HostQuery, predicate.Host, host.OrderOption]{typ: db.TypeHost, tq: q}, nil
 	case *db.ImageQuery:

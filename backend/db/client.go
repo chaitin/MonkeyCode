@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbotuser"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
+	"github.com/chaitin/MonkeyCode/backend/db/gittask"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
@@ -74,6 +75,8 @@ type Client struct {
 	GitBotUser *GitBotUserClient
 	// GitIdentity is the client for interacting with the GitIdentity builders.
 	GitIdentity *GitIdentityClient
+	// GitTask is the client for interacting with the GitTask builders.
+	GitTask *GitTaskClient
 	// Host is the client for interacting with the Host builders.
 	Host *HostClient
 	// Image is the client for interacting with the Image builders.
@@ -158,6 +161,7 @@ func (c *Client) init() {
 	c.GitBotTask = NewGitBotTaskClient(c.config)
 	c.GitBotUser = NewGitBotUserClient(c.config)
 	c.GitIdentity = NewGitIdentityClient(c.config)
+	c.GitTask = NewGitTaskClient(c.config)
 	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
 	c.MCPTool = NewMCPToolClient(c.config)
@@ -289,6 +293,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GitBotTask:          NewGitBotTaskClient(cfg),
 		GitBotUser:          NewGitBotUserClient(cfg),
 		GitIdentity:         NewGitIdentityClient(cfg),
+		GitTask:             NewGitTaskClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
 		MCPTool:             NewMCPToolClient(cfg),
@@ -347,6 +352,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GitBotTask:          NewGitBotTaskClient(cfg),
 		GitBotUser:          NewGitBotUserClient(cfg),
 		GitIdentity:         NewGitIdentityClient(cfg),
+		GitTask:             NewGitTaskClient(cfg),
 		Host:                NewHostClient(cfg),
 		Image:               NewImageClient(cfg),
 		MCPTool:             NewMCPToolClient(cfg),
@@ -410,14 +416,15 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
-		c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
-		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
-		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
-		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
-		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost,
-		c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage,
-		c.TeamMember, c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
+		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host,
+		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
+		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
+		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
+		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
+		c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -427,14 +434,15 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.Host, c.Image,
-		c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
-		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
-		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
-		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
-		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup, c.TeamGroupHost,
-		c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage,
-		c.TeamMember, c.TeamModel, c.User, c.UserIdentity, c.VirtualMachine,
+		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host,
+		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
+		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
+		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
+		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
+		c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -453,6 +461,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GitBotUser.mutate(ctx, m)
 	case *GitIdentityMutation:
 		return c.GitIdentity.mutate(ctx, m)
+	case *GitTaskMutation:
+		return c.GitTask.mutate(ctx, m)
 	case *HostMutation:
 		return c.Host.mutate(ctx, m)
 	case *ImageMutation:
@@ -1432,6 +1442,155 @@ func (c *GitIdentityClient) mutate(ctx context.Context, m *GitIdentityMutation) 
 		return (&GitIdentityDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown GitIdentity mutation op: %q", m.Op())
+	}
+}
+
+// GitTaskClient is a client for the GitTask schema.
+type GitTaskClient struct {
+	config
+}
+
+// NewGitTaskClient returns a client for the GitTask from the given config.
+func NewGitTaskClient(c config) *GitTaskClient {
+	return &GitTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `gittask.Hooks(f(g(h())))`.
+func (c *GitTaskClient) Use(hooks ...Hook) {
+	c.hooks.GitTask = append(c.hooks.GitTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `gittask.Intercept(f(g(h())))`.
+func (c *GitTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.GitTask = append(c.inters.GitTask, interceptors...)
+}
+
+// Create returns a builder for creating a GitTask entity.
+func (c *GitTaskClient) Create() *GitTaskCreate {
+	mutation := newGitTaskMutation(c.config, OpCreate)
+	return &GitTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of GitTask entities.
+func (c *GitTaskClient) CreateBulk(builders ...*GitTaskCreate) *GitTaskCreateBulk {
+	return &GitTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GitTaskClient) MapCreateBulk(slice any, setFunc func(*GitTaskCreate, int)) *GitTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GitTaskCreateBulk{err: fmt.Errorf("calling to GitTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GitTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GitTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for GitTask.
+func (c *GitTaskClient) Update() *GitTaskUpdate {
+	mutation := newGitTaskMutation(c.config, OpUpdate)
+	return &GitTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GitTaskClient) UpdateOne(_m *GitTask) *GitTaskUpdateOne {
+	mutation := newGitTaskMutation(c.config, OpUpdateOne, withGitTask(_m))
+	return &GitTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GitTaskClient) UpdateOneID(id uuid.UUID) *GitTaskUpdateOne {
+	mutation := newGitTaskMutation(c.config, OpUpdateOne, withGitTaskID(id))
+	return &GitTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for GitTask.
+func (c *GitTaskClient) Delete() *GitTaskDelete {
+	mutation := newGitTaskMutation(c.config, OpDelete)
+	return &GitTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GitTaskClient) DeleteOne(_m *GitTask) *GitTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GitTaskClient) DeleteOneID(id uuid.UUID) *GitTaskDeleteOne {
+	builder := c.Delete().Where(gittask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GitTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for GitTask.
+func (c *GitTaskClient) Query() *GitTaskQuery {
+	return &GitTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGitTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a GitTask entity by its id.
+func (c *GitTaskClient) Get(ctx context.Context, id uuid.UUID) (*GitTask, error) {
+	return c.Query().Where(gittask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GitTaskClient) GetX(ctx context.Context, id uuid.UUID) *GitTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTask queries the task edge of a GitTask.
+func (c *GitTaskClient) QueryTask(_m *GitTask) *TaskQuery {
+	query := (&TaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(gittask.Table, gittask.FieldID, id),
+			sqlgraph.To(task.Table, task.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, true, gittask.TaskTable, gittask.TaskColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GitTaskClient) Hooks() []Hook {
+	return c.hooks.GitTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *GitTaskClient) Interceptors() []Interceptor {
+	return c.inters.GitTask
+}
+
+func (c *GitTaskClient) mutate(ctx context.Context, m *GitTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GitTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GitTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GitTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GitTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown GitTask mutation op: %q", m.Op())
 	}
 }
 
@@ -4756,6 +4915,22 @@ func (c *TaskClient) QueryProjectTasks(_m *Task) *ProjectTaskQuery {
 	return query
 }
 
+// QueryGitTasks queries the git_tasks edge of a Task.
+func (c *TaskClient) QueryGitTasks(_m *Task) *GitTaskQuery {
+	query := (&GitTaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(task.Table, task.FieldID, id),
+			sqlgraph.To(gittask.Table, gittask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, task.GitTasksTable, task.GitTasksColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUser queries the user edge of a Task.
 func (c *TaskClient) QueryUser(_m *Task) *UserQuery {
 	query := (&UserClient{config: c.config}).Query()
@@ -8060,8 +8235,8 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, MCPTool,
-		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
+		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
+		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
@@ -8069,8 +8244,8 @@ type (
 		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
-		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, Host, Image, MCPTool,
-		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
+		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
+		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
