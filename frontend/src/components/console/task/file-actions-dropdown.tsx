@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { IconCopy, IconDotsVertical, IconDownload, IconFile, IconFolder, IconReload, IconTrash, IconTransfer, IconUpload } from "@tabler/icons-react"
-import { normalizePath } from "@/utils/common"
+import { nativeDownloadFile, normalizePath } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { RepoFileEntryMode, type RepoFileStatus } from "./task-shared"
@@ -97,6 +97,12 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           return
         }
       }
+    }
+
+    if (!nextFileHandle) {
+      if (!envid) return
+      nativeDownloadFile(envid, filePath, downloadFilename)
+      return
     }
 
     setDownloadFileHandle(nextFileHandle)

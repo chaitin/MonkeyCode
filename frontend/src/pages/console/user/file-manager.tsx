@@ -44,6 +44,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+type WindowWithSaveFilePicker = Window & {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string
+  }) => Promise<FileSystemFileHandle>
+}
+
 const formatPermissions = (mode?: number) => {
   if (typeof mode !== 'number') return '未知'
   
@@ -257,6 +263,44 @@ export default function FileManagerPage() {
     setMoveFileDialogOpen(true)
   }
 
+  const handleDownloadFile = async (file: TaskflowFile) => {
+    if (!file.name || !envid) {
+      return
+    }
+
+    const filePath = normalizePath(currentPath + '/' + file.name)
+    const filename = file.kind === TaskflowFileKind.FileKindDir ? `${file.name}.zip` : file.name
+    const typedWindow = window as WindowWithSaveFilePicker
+
+    try {
+      if (typeof typedWindow.showSaveFilePicker === "function") {
+        let fileHandle: FileSystemFileHandle | null = null
+
+        try {
+          fileHandle = await typedWindow.showSaveFilePicker({
+            suggestedName: filename,
+          })
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return
+          }
+        }
+
+        if (fileHandle) {
+          const writable = await fileHandle.createWritable()
+
+          await downloadFile(envid, filePath, filename, undefined, undefined, writable)
+          toast.success(`已下载 "${filename}"`)
+          return
+        }
+      }
+
+      await downloadFile(envid, filePath, filename)
+    } catch (error) {
+      toast.error('下载失败：' + (error instanceof Error ? error.message : '未知错误'))
+    }
+  }
+
   const breadcrumbList = () => {
     const parts = ['/'].concat(currentPath.split('/').filter((part) => part !== ''))
     return (
@@ -405,14 +449,8 @@ export default function FileManagerPage() {
                           <DropdownMenuItem onClick={() => handleMoveFileClick(file)}>
                             <IconTransfer />移动
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={async () => {
-                            const filePath = normalizePath(currentPath + '/' + file.name)
-                            const filename = file.kind === TaskflowFileKind.FileKindDir ? `${file.name}.zip` : file.name
-                            try {
-                              await downloadFile(envid, filePath, filename)
-                            } catch (error) {
-                              toast.error('下载失败：' + (error instanceof Error ? error.message : '未知错误'))
-                            }
+                          <DropdownMenuItem onClick={() => {
+                            void handleDownloadFile(file)
                           }}>
                             <IconDownload />下载
                           </DropdownMenuItem>

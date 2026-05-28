@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"path"
 	"strings"
 	"time"
 
@@ -24,6 +26,22 @@ type FileHandler struct {
 	logger   *slog.Logger
 	taskflow taskflow.Clienter
 	usecase  domain.HostUsecase
+}
+
+func downloadFilename(name string) string {
+	name = strings.ReplaceAll(name, "\\", "/")
+	name = path.Base(strings.TrimRight(name, "/"))
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." || name == "/" {
+		return "download"
+	}
+	return name
 }
 
 // NewFileHandler 创建文件管理处理器
@@ -368,6 +386,7 @@ func (f *FileHandler) Upload(c *web.Context) error {
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
 //	@Param			param	query		domain.FilePathReq	false	"参数"
+//	@Param			filename	query		string				false	"下载文件名"
 //	@Success		200		{object}	web.Resp{}			"成功"
 //	@Router			/api/v1/users/files/download [get]
 func (f *FileHandler) Download(c *web.Context, req domain.FilePathReq) error {
@@ -383,7 +402,13 @@ func (f *FileHandler) Download(c *web.Context, req domain.FilePathReq) error {
 		return errcode.ErrFilePermisionDenied.Wrap(err).WithParam("file", req.Path)
 	}
 
-	c.Response().Header().Set("Content-Disposition", "attachment; filename=\"\"")
+	filename := c.QueryParam("filename")
+	if filename == "" {
+		filename = req.Path
+	}
+	filename = downloadFilename(filename)
+
+	c.Response().Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	c.Response().Header().Set(echo.HeaderContentType, "application/octet-stream")
 
 	err := f.taskflow.FileManager().Download(c.Request().Context(), taskflow.FileReq{

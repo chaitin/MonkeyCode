@@ -8,7 +8,6 @@ import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIs
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
-import streamSaver from "streamsaver"
 
 /** GitHub App 安装地址：https://monkeycode-ai.com 用正式环境，其他域名用开发环境 */
 export function getGithubAppInstallUrl(): string {
@@ -788,16 +787,44 @@ export function selectImage(images: DomainImage[], followDefault: boolean = true
 }
 
 /**
- * 下载文件（流式下载，不占用内存）
+ * 下载文件。传入 writableStream 时使用 fetch 流式写入；否则交给浏览器原生下载。
  * @param envid 环境 ID
  * @param path 文件路径
  * @param filename 下载时的文件名（可选，默认从路径中提取）
- * @throws 网络错误或下载失败时抛出错误
+ * @throws 流式写入模式下，网络错误或下载失败时抛出错误
  */
 export interface DownloadFileProgress {
   loaded: number
   total: number | null
   percent: number | null
+}
+
+export function getDownloadFileUrl(envid: string, path: string, filename?: string): string {
+  const params = new URLSearchParams({
+    id: envid,
+    path,
+  })
+
+  if (filename) {
+    params.set('filename', filename)
+  }
+
+  return `/api/v1/users/files/download?${params.toString()}`
+}
+
+export function nativeDownloadFile(envid: string, path: string, filename?: string): void {
+  const downloadFilename = filename || getFileName(path)
+  const link = document.createElement('a')
+
+  link.href = getDownloadFileUrl(envid, path, downloadFilename)
+  link.download = downloadFilename
+  link.style.display = 'none'
+
+  document.body.appendChild(link)
+  link.click()
+  window.setTimeout(() => {
+    link.remove()
+  }, 0)
 }
 
 export async function downloadFile(
@@ -808,7 +835,18 @@ export async function downloadFile(
   signal?: AbortSignal,
   writableStream?: WritableStream<Uint8Array>,
 ): Promise<void> {
-  const url = `/api/v1/users/files/download?id=${encodeURIComponent(envid)}&path=${encodeURIComponent(path)}`
+  const downloadFilename = filename || getFileName(path)
+
+  if (!writableStream) {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError')
+    }
+
+    nativeDownloadFile(envid, path, downloadFilename)
+    return
+  }
+
+  const url = getDownloadFileUrl(envid, path, downloadFilename)
   
   const response = await fetch(url, { signal })
   
@@ -826,14 +864,11 @@ export async function downloadFile(
     throw new Error(`下载失败（${response.status}）`)
   }
   
-  const downloadFilename = filename || getFileName(path)
   const contentLength = response.headers.get('content-length')
   const total = contentLength ? Number(contentLength) : null
   
-  // 创建可写流，直接写入磁盘（流式下载）
-  const fileStream = writableStream ?? streamSaver.createWriteStream(downloadFilename, {
-    size: total ?? undefined
-  })
+  // 使用调用方提供的浏览器/系统写入流，避免把大文件缓存在内存里。
+  const fileStream = writableStream
   const reader = response.body.getReader()
   const writer = fileStream.getWriter()
   let loaded = 0
