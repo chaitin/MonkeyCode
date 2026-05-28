@@ -24,6 +24,35 @@ func TestNewCenterEnvGeneratesRelaySecretUUID(t *testing.T) {
 	}
 }
 
+func TestNewCenterEnvUsesClickHouseSafeDatabaseName(t *testing.T) {
+	env, err := NewCenterEnv(CenterEnvInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(env.ClickHouseDB) {
+		t.Fatalf("ClickHouseDB = %q, want identifier safe for clickhouse entrypoint", env.ClickHouseDB)
+	}
+}
+
+func TestNewCenterEnvUsesUnifiedDatabaseIdentifiers(t *testing.T) {
+	env, err := NewCenterEnv(CenterEnvInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.PostgresDB != "monkeycode" {
+		t.Fatalf("PostgresDB = %q, want monkeycode", env.PostgresDB)
+	}
+	if env.PostgresUser != "monkeycode" {
+		t.Fatalf("PostgresUser = %q, want monkeycode", env.PostgresUser)
+	}
+	if env.ClickHouseDB != "monkeycode" {
+		t.Fatalf("ClickHouseDB = %q, want monkeycode", env.ClickHouseDB)
+	}
+	if env.ClickHouseUser != "monkeycode" {
+		t.Fatalf("ClickHouseUser = %q, want monkeycode", env.ClickHouseUser)
+	}
+}
+
 func TestRenderCenterEnvWritesRelaySecret(t *testing.T) {
 	rendered := RenderCenterEnv("RELAY_SECRET=\nTEAM_NAME=\n", CenterEnv{
 		RelaySecret: "11111111-1111-4111-8111-111111111111",
