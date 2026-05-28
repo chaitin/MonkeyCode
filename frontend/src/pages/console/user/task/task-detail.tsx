@@ -980,6 +980,8 @@ export default function TaskDetailPage() {
   }, [getChatScrollContainer])
 
   React.useEffect(() => {
+    if (showPreparing) return
+
     const container = getChatScrollContainer()
     const content = chatContentRef.current
     if (!container) return
@@ -1001,7 +1003,7 @@ export default function TaskDetailPage() {
       container.removeEventListener("scroll", handleScroll)
       resizeObserver.disconnect()
     }
-  }, [getChatScrollContainer, updateChatScrollState])
+  }, [getChatScrollContainer, showPreparing, updateChatScrollState])
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
