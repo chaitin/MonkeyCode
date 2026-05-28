@@ -420,7 +420,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                                   status === "unsupported"
                                     ? "text-muted-foreground"
                                     : status === "partial"
-                                      ? "text-yellow-600"
+                                      ? "text-warning"
                                   : "text-primary",
                                 )}
                               />

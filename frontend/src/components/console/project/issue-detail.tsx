@@ -210,7 +210,7 @@ export default function ViewIssueDialog({
                     }} />
                 </div>
               ) : (
-                <div className="border rounded-md p-2 min-h-10 bg-neutral-50">
+                <div className="border rounded-md p-2 min-h-10 bg-muted/40">
                   <Markdown>{issueData?.requirement_document || "暂无内容"}</Markdown>
                 </div>
               )}
@@ -243,7 +243,7 @@ export default function ViewIssueDialog({
                     }} />
                 </div>
               ) : (
-                <div className="border rounded-md p-2 min-h-10 bg-neutral-50">
+                <div className="border rounded-md p-2 min-h-10 bg-muted/40">
                   <Markdown>{issueData?.design_document || "暂无内容"}</Markdown>
                 </div>
               )}

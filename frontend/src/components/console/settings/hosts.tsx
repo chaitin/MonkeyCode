@@ -277,7 +277,7 @@ export default function Hosts() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <pre
-                  className="bg-muted p-4 rounded-md whitespace-pre-wrap break-words text-sm cursor-pointer hover:text-primary"
+                  className="bg-muted p-4 rounded-md whitespace-pre-wrap break-words text-sm cursor-pointer hover:text-success"
                   onClick={handleCopy}
                 >
                   <code className="code-font">{loadingCommand ? "正在生成安装命令..." : command}</code>

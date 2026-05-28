@@ -14,7 +14,7 @@ export const ErrorMessageItem = ({ message }: { message: MessageType }) => {
   return (
     <HoverCard open={open} onOpenChange={setOpen} openDelay={100} closeDelay={200}>
       <HoverCardTrigger asChild>
-        <Badge variant="destructive" className="max-w-[80%] cursor-pointer hover:text-primary">
+        <Badge variant="destructive" className="max-w-[80%] cursor-pointer">
           <IconAlertTriangle className="size-4" />
           <div className="min-w-0 flex-1 whitespace-normal line-clamp-1 break-all">
             {message.data.details}

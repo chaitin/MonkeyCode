@@ -119,7 +119,7 @@ const ProjectInfo = ({
           </ItemTitle>
           <ItemDescription className="flex flex-row gap-2 items-center">
             {isRepoUnbound && (
-              <span className="text-amber-600">未绑定仓库</span>
+              <span className="text-warning">未绑定仓库</span>
             ) || (
               <span>{project?.description || "暂无描述"}</span>
             )}

@@ -226,7 +226,7 @@ export default function TeamManagerHosts() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <pre
-                  className="bg-muted p-4 rounded-md whitespace-pre-wrap break-words text-sm cursor-pointer hover:text-green-500"
+                  className="bg-muted p-4 rounded-md whitespace-pre-wrap break-words text-sm cursor-pointer hover:text-success"
                   onClick={handleCopyCommand}
                 >
                   <code className="code-font">{loadingInstallCommand ? "正在生成安装命令..." : command}</code>
@@ -245,4 +245,3 @@ export default function TeamManagerHosts() {
     </div>
   )
 }
-
