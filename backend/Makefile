@@ -4,8 +4,6 @@ OUTPUT=type=docker,dest=$(HOME)/tmp/mcai_server.tar
 GOCACHE=/root/.cache/go-build
 GOMODCACHE?=/go/pkg/mod
 REGISTRY=chaitin-registry.cn-hangzhou.cr.aliyuncs.com/monkeycode
-INSTALLER_OUT=bin/installer
-.PHONY: installer
 # make server PLATFORM= TAG= OUTPUT_SERVER= GOCACHE=
 image:
 	docker buildx build \
@@ -47,14 +45,3 @@ check-generate:
 
 migrate_sql:
 	migrate create -ext sql -dir migration -seq ${SEQ}
-
-installer:
-	mkdir -p ${INSTALLER_OUT}/x86_64 ${INSTALLER_OUT}/aarch64
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ${INSTALLER_OUT}/x86_64/installer ./cmd/installer
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ${INSTALLER_OUT}/aarch64/installer ./cmd/installer
-	@echo Installer: ${INSTALLER_OUT}/x86_64/installer
-	@echo Installer: ${INSTALLER_OUT}/aarch64/installer
-
-.PHONY: offline-package
-offline-package:
-	ARCH=$${ARCH:-amd64} ./scripts/build-offline-package.sh
