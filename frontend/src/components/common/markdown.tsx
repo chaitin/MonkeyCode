@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
 mermaid.initialize({
   startOnLoad: false,
   theme: "default",
-  securityLevel: "loose",
+  securityLevel: "strict",
   suppressErrorRendering: true,
 })
 
