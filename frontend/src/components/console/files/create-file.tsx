@@ -29,7 +29,7 @@ export default function CreateFileDialog({
   baseDir = '',
   onSuccess,
 }: CreateFileDialogProps) {
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const [fileName, setFileName] = useState('')
   const [fileContent, setFileContent] = useState('')
   const [creating, setCreating] = useState(false)
@@ -100,7 +100,7 @@ export default function CreateFileDialog({
             <div className="border rounded-md overflow-hidden p-0 overflow-y-hidden">
               <AceEditor
                 mode="text"
-                theme={theme === 'dark' ? 'terminal' : 'github'}
+                theme={resolvedTheme === 'dark' ? 'terminal' : 'github'}
                 value={fileContent}
                 onChange={setFileContent}
                 width="100%"

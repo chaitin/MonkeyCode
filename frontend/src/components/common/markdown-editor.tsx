@@ -5,7 +5,10 @@ import { IconLoader, IconEdit, IconEye } from "@tabler/icons-react"
 import AceEditor from "react-ace"
 import type { IAceEditor } from "react-ace/lib/types"
 import "@/utils/ace-theme"
+import "ace-builds/src-noconflict/theme-github"
+import "ace-builds/src-noconflict/theme-monokai"
 import { Markdown } from "@/components/common/markdown"
+import { useTheme } from "@/components/theme-provider"
 
 interface MarkdownEditorProps {
   disabled?: boolean
@@ -31,6 +34,7 @@ export default function MarkdownEditor({
   const [uploading, setUploading] = useState(false)
   const [mode, setMode] = useState<"edit" | "preview">(defaultMode)
   const editorRef = useRef<IAceEditor | null>(null)
+  const { resolvedTheme } = useTheme()
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items
@@ -80,7 +84,7 @@ export default function MarkdownEditor({
 
   return (
     <div 
-      className={`break-all overflow-hidden border rounded-md focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px] bg-[white] relative h-full flex flex-col ${className}`}
+      className={`break-all overflow-hidden border rounded-md focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px] bg-background relative h-full flex flex-col ${className}`}
       onPaste={handlePaste}
     >
       {/* Toolbar */}
@@ -129,9 +133,9 @@ export default function MarkdownEditor({
         
         {mode === "edit" ? (
           <div className="w-full h-full p-1">
-            <AceEditor
-              mode="markdown"
-              theme="monkeycode"
+              <AceEditor
+                mode="markdown"
+                theme={resolvedTheme === "dark" ? "monokai" : "github"}
               width="100%"
               readOnly={disabled}
               height={height}

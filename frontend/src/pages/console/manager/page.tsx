@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import ManagerSidebar from "@/components/manager/manager-sidebar"
 import { Fragment } from "react/jsx-runtime"
+import { ModeToggle } from "@/components/mode-toggle"
 
 export default function ManagerConsolePage() {
   const location = useLocation()
@@ -100,7 +101,7 @@ export default function ManagerConsolePage() {
               <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
               刷新
             </Button>
-            {/*<ModeToggle />*/}
+            <ModeToggle />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">

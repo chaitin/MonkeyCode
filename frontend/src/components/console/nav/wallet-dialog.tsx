@@ -402,7 +402,7 @@ export default function WalletDialog() {
               将下方邀请链接分享给好友。好友通过该链接注册后，你将获得 5000 积分奖励。
             </div>
           </div>
-          <div className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+          <div className="rounded-full bg-brand-muted px-2.5 py-1 text-xs font-medium text-brand">
             +5,000
           </div>
         </div>
@@ -449,7 +449,7 @@ export default function WalletDialog() {
                         </div>
                       </div>
                     </div>
-                    <div className="shrink-0 text-sm font-medium text-primary">
+                    <div className="shrink-0 text-sm font-medium text-brand">
                       +{formatPoints(invitation.credits || 0)} 积分
                     </div>
                   </div>
@@ -677,21 +677,21 @@ export default function WalletDialog() {
                 key={option.credits}
                 type="button"
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-md border px-4 py-3 text-left transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-60",
-                  selectedRechargeCredits === option.credits && "border-2 border-primary",
+                    "flex w-full items-center justify-between gap-3 rounded-md border px-4 py-3 text-left transition-colors hover:border-brand-border disabled:cursor-not-allowed disabled:opacity-60",
+                  selectedRechargeCredits === option.credits && "border-2 border-brand",
                 )}
                 onClick={() => setSelectedRechargeCredits(option.credits)}
                 disabled={rechargingCredits !== null}
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="truncate text-sm font-medium">{formatPoints(option.credits)} 积分</div>
-                  <div className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  <div className="shrink-0 rounded-full bg-brand-muted px-2 py-0.5 text-xs font-medium text-brand">
                     {option.discountLabel}
                   </div>
                 </div>
                 <div
                   className={cn(
-                    "shrink-0 text-primary text-base font-medium",
+                    "shrink-0 text-brand text-base font-medium",
                     selectedRechargeCredits === option.credits && "font-bold",
                   )}
                 >

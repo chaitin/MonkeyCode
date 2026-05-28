@@ -65,7 +65,7 @@ export default function FileEditor({
   const [content, setContent] = useState("")
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const [languageMode, setLanguageMode] = useState("text")
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export default function FileEditor({
             <div className="border h-[60vh]">
               <AceEditor
                 mode={languageMode}
-                theme={theme === 'dark' ? 'monokai' : 'github'}
+                theme={resolvedTheme === 'dark' ? 'monokai' : 'github'}
                 value={content}
                 onChange={setContent}
                 width="100%"
@@ -164,4 +164,3 @@ export default function FileEditor({
     </Dialog>
   )
 }
-

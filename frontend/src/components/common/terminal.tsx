@@ -133,7 +133,10 @@ export default function Terminal({
 
   React.useEffect(() => {
     if (xtermInstance.current) {
-       xtermInstance.current.options.theme = { ...themes[validTheme as keyof typeof themes] };
+      xtermInstance.current.options.theme = { ...themes[validTheme as keyof typeof themes] };
+      if (xtermInstance.current.rows > 0) {
+        xtermInstance.current.refresh(0, xtermInstance.current.rows - 1);
+      }
       xtermInstance.current.focus();
     }
   }, [validTheme])

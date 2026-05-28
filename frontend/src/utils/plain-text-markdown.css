@@ -137,7 +137,7 @@
 
 /* Links */
 .user-message-markdown a {
-  color: rgb(107, 148, 255);
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
@@ -148,17 +148,17 @@
 
 /* Blockquotes */
 .user-message-markdown blockquote {
-  border-left: 3px solid oklch(0.7 0 0);
+  border-left: 3px solid var(--border);
   padding-left: 1em;
   margin: 0.75em 0;
-  color: oklch(from currentColor l c h / calc(alpha * 0.6));
+  color: var(--muted-foreground);
   font-style: italic;
 }
 
 /* Horizontal Rules */
 .user-message-markdown hr {
   border: none;
-  border-top: 1px solid oklch(from currentColor l c h / calc(alpha * 0.6));
+  border-top: 1px solid var(--border);
   margin: 1em 0;
 }
 /* Tables */
@@ -170,14 +170,14 @@
 
 .user-message-markdown th,
 .user-message-markdown td {
-  border: 1px solid oklch(0.9 0 0);
+  border: 1px solid var(--border);
   padding: 0.5em;
   text-align: left;
 }
 
 
 .user-message-markdown th {
-  background-color: oklch(from currentColor l c h / calc(alpha * 0.2));
+  background-color: var(--muted);
   font-weight: 600;
 }
 
@@ -236,4 +236,3 @@
   margin-left: 0;
   padding-left: 1.5em;
 }
-

@@ -37,7 +37,7 @@ function TaskDetailRoute() {
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="light" storageKey="monkeycode-theme">
+    <ThemeProvider defaultTheme="system" storageKey="monkeycode-theme">
       <TooltipProvider>
         <BrowserRouter>
           <ThemePathListener />

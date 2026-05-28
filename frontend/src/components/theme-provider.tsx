@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { useLocation } from "react-router-dom"
 
 type Theme = "dark" | "light" | "system"
+type AppliedTheme = "dark" | "light"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -11,44 +12,65 @@ type ThemeProviderProps = {
 
 type ThemeProviderState = {
   theme: Theme
+  resolvedTheme: AppliedTheme
+  setPathname: (pathname: string) => void
   setTheme: (theme: Theme) => void
 }
 
-const initialState: ThemeProviderState = {
-  theme: "system",
-  setTheme: () => null,
+const ThemeProviderContext = createContext<ThemeProviderState | undefined>(undefined)
+
+function isTheme(value: string | null): value is Theme {
+  return value === "dark" || value === "light" || value === "system"
 }
 
-const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
+function getSystemTheme(): AppliedTheme {
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light"
+  } catch {
+    return "light"
+  }
+}
+
+function getStoredTheme(storageKey: string, defaultTheme: Theme): Theme {
+  try {
+    const storedTheme = localStorage.getItem(storageKey)
+    return isTheme(storedTheme) ? storedTheme : defaultTheme
+  } catch {
+    return defaultTheme
+  }
+}
+
+function setStoredTheme(storageKey: string, theme: Theme) {
+  try {
+    localStorage.setItem(storageKey, theme)
+  } catch {
+    // Storage can be unavailable in restricted browsing contexts.
+  }
+}
+
+function resolveTheme(theme: Theme, systemTheme: AppliedTheme, pathname: string): AppliedTheme {
+  if (pathname === "/") return "light"
+  return theme === "system" ? systemTheme : theme
+}
+
+function applyTheme(resolvedTheme: AppliedTheme) {
+  const root = window.document.documentElement
+
+  root.classList.remove("light", "dark")
+  root.classList.add(resolvedTheme)
+  root.style.colorScheme = resolvedTheme
+}
 
 // 用于在 Router 内部监听路径变化的组件
 export function ThemePathListener() {
-  const { theme } = useTheme()
+  const { setPathname } = useTheme()
   const location = useLocation()
 
   useEffect(() => {
-    const root = window.document.documentElement
-
-    root.classList.remove("light", "dark")
-
-    // 在 / 路径下强制使用 light 主题
-    if (location.pathname === "/") {
-      root.classList.add("light")
-      return
-    }
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-
-      root.classList.add(systemTheme)
-      return
-    }
-
-    root.classList.add(theme)
-  }, [theme, location.pathname])
+    setPathname(location.pathname)
+  }, [location.pathname, setPathname])
 
   return null
 }
@@ -60,42 +82,39 @@ export function ThemeProvider({
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+    () => getStoredTheme(storageKey, defaultTheme)
   )
+  const [systemTheme, setSystemTheme] = useState<AppliedTheme>(() => getSystemTheme())
+  const [pathname, setPathname] = useState(() => window.location.pathname)
+  const resolvedTheme = resolveTheme(theme, systemTheme, pathname)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+    const handleChange = (event: MediaQueryListEvent) => setSystemTheme(event.matches ? "dark" : "light")
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleChange)
+      return () => mediaQuery.removeEventListener("change", handleChange)
+    }
+
+    mediaQuery.addListener(handleChange)
+    return () => mediaQuery.removeListener(handleChange)
+  }, [])
 
   // 初始加载时的主题设置（路径检查由 ThemePathListener 处理）
   useEffect(() => {
-    const root = window.document.documentElement
-    const pathname = window.location.pathname
+    applyTheme(resolvedTheme)
+  }, [resolvedTheme])
 
-    root.classList.remove("light", "dark")
-
-    // 在 / 路径下强制使用 light 主题
-    if (pathname === "/") {
-      root.classList.add("light")
-      return
-    }
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-
-      root.classList.add(systemTheme)
-      return
-    }
-
-    root.classList.add(theme)
-  }, [theme])
-
-  const value = {
+  const value = useMemo(() => ({
     theme,
+    resolvedTheme,
+    setPathname,
     setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
+      setStoredTheme(storageKey, theme)
       setTheme(theme)
     },
-  }
+  }), [resolvedTheme, storageKey, theme])
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>
