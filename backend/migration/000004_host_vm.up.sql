@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS virtualmachines (
     conditions jsonb,
     is_recycled boolean DEFAULT false,
     repo_filename text,
-    access_token character varying(255) UNIQUE
+    access_token character varying(255) UNIQUE,
+    expired_at timestamp with time zone
 );
 
 CREATE INDEX IF NOT EXISTS idx_virtualmachines_created_at_id ON virtualmachines USING btree (created_at, id);

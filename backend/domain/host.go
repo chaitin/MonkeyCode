@@ -189,10 +189,9 @@ func (v *VirtualMachine) From(vm *db.VirtualMachine) *VirtualMachine {
 		Now:        time.Now(),
 	})
 
-	switch vm.TTLKind {
-	case consts.CountDown:
-		v.LifeTimeSeconds = vm.TTL - (time.Now().Unix() - vm.CreatedAt.Unix())
-	case consts.Forever:
+	if vm.ExpiredAt != nil {
+		v.LifeTimeSeconds = int64(time.Until(*vm.ExpiredAt).Seconds())
+	} else {
 		v.LifeTimeSeconds = 0
 	}
 	if vm.Edges.Host != nil {

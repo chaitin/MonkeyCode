@@ -372,17 +372,7 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			cnt, err := tx.VirtualMachine.Query().
 				Where(virtualmachine.UserID(u.ID)).
 				Where(virtualmachine.HasHostWith(host.HasUserWith(user.Role(consts.UserRoleAdmin)))).
-				Where(func(s *sql.Selector) {
-					s.Where(sql.P(func(b *sql.Builder) {
-						b.WriteString("NOW()").
-							WriteOp(sql.OpLT).
-							Ident(s.C(virtualmachine.FieldCreatedAt)).
-							WriteOp(sql.OpAdd).
-							WriteString("make_interval(secs => ").
-							Ident(s.C(virtualmachine.FieldTTL)).
-							WriteByte(')')
-					}))
-				}).
+				Where(virtualmachine.ExpiredAtGT(time.Now())).
 				Count(ctx)
 			if err != nil {
 				return errcode.ErrDatabaseOperation.Wrap(err)
@@ -482,8 +472,6 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 			SetName(fmt.Sprintf("task-%s", id.String())).
 			SetHostID(h.ID).
 			SetEnvironmentID(vm.EnvironmentID).
-			SetTTLKind(consts.Forever).
-			SetTTL(0).
 			SetCores(resource.Core).
 			SetMemory(int64(resource.Memory)).
 			SetModelID(m.ID).

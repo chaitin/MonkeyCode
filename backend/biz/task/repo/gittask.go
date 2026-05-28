@@ -125,13 +125,13 @@ func (g *GitTaskRepo) Create(ctx context.Context, req domain.CreateGitTaskReq, f
 			return fmt.Errorf("created virtual machine is nil")
 		}
 
+		expiredAt := time.Now().Add(time.Hour)
 		crt := tx.VirtualMachine.Create().
 			SetID(vm.ID).
 			SetUserID(u.ID).
 			SetHostID(h.ID).
 			SetEnvironmentID(vm.EnvironmentID).
-			SetTTL(60 * 60).
-			SetTTLKind(consts.CountDown).
+			SetExpiredAt(expiredAt).
 			SetName(fmt.Sprintf("gittask-%s", id.String())).
 			SetModelID(m.ID).
 			SetRepoURL(req.Repo.URL).
