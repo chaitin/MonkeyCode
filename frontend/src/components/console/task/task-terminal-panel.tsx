@@ -19,6 +19,7 @@ import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { useTheme } from "@/components/theme-provider"
 
 interface TaskTerminalPanelProps {
   envid?: string
@@ -27,6 +28,7 @@ interface TaskTerminalPanelProps {
 }
 
 export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTerminalPanelProps) {
+  const { resolvedTheme } = useTheme()
   const [sessions, setSessions] = useState<DomainTerminal[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [signal, setSignal] = useState<number>(0)
@@ -113,6 +115,8 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
   }, [currentSessionId, sessions])
 
   const displaySessions = [...sessions]
+  const terminalTheme = resolvedTheme === "dark" ? "Dracula" : "Tomorrow"
+
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     displaySessions.unshift({
       id: currentSessionId,
@@ -232,7 +236,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
         {currentSessionId ? (
           <Terminal
             ws={`/api/v1/users/hosts/vms/${envid}/terminals/connect?terminal_id=${currentSessionId}`}
-            theme="Tomorrow"
+            theme={terminalTheme}
             signal={signal}
             onTitleChanged={onTitleChanged}
             onUserNameChanged={() => {}}

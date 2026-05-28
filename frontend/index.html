@@ -12,6 +12,34 @@
     <meta name="author" content="MonkeyCode AI" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://monkeycode-ai.com" />
+    <script>
+      (function () {
+        var theme = "system";
+
+        try {
+          theme = localStorage.getItem("monkeycode-theme") || "system";
+        } catch (error) {
+          theme = "system";
+        }
+
+        var systemTheme = "light";
+
+        try {
+          systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        } catch (error) {
+          systemTheme = "light";
+        }
+        var resolvedTheme = window.location.pathname === "/" ? "light" : theme === "system" ? systemTheme : theme;
+
+        if (resolvedTheme !== "dark" && resolvedTheme !== "light") {
+          resolvedTheme = "light";
+        }
+
+        document.documentElement.classList.remove("light", "dark");
+        document.documentElement.classList.add(resolvedTheme);
+        document.documentElement.style.colorScheme = resolvedTheme;
+      })();
+    </script>
     <!-- 必须在所有模块代码之前设置，确保 cap.js 使用本地 WASM 而非 CDN（jsdelivr.net 在国内不稳定） -->
     <script>window.CAP_CUSTOM_WASM_URL = location.origin + "/captcha/cap_wasm.js";</script>
   </head>

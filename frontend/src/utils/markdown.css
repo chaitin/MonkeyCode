@@ -59,6 +59,59 @@
   --color-prettylights-syntax-sublimelinter-gutter-mark: #818b98;
 }
 
+html.dark .markdown-body,
+.markdown-body.markdown-body-dark {
+  --focus-outlineColor: #1f6feb;
+  --fgColor-default: #c9d1d9;
+  --fgColor-muted: #8b949e;
+  --fgColor-accent: #2f81f7;
+  --fgColor-success: #3fb950;
+  --fgColor-attention: #d29922;
+  --fgColor-danger: #f85149;
+  --fgColor-done: #a371f7;
+  --bgColor-default: var(--background);
+  --bgColor-neutral-muted: #6e768166;
+  --bgColor-attention-muted: #bb800926;
+  --borderColor-default: #30363d;
+  --borderColor-muted: #30363db3;
+  --borderColor-neutral-muted: #30363db3;
+  --borderColor-accent-emphasis: #1f6feb;
+  --borderColor-success-emphasis: #238636;
+  --borderColor-attention-emphasis: #9e6a03;
+  --borderColor-danger-emphasis: #da3633;
+  --borderColor-done-emphasis: #8957e5;
+  --color-prettylights-syntax-comment: #8b949e;
+  --color-prettylights-syntax-constant: #79c0ff;
+  --color-prettylights-syntax-constant-other-reference-link: #a5d6ff;
+  --color-prettylights-syntax-entity: #d2a8ff;
+  --color-prettylights-syntax-storage-modifier-import: #c9d1d9;
+  --color-prettylights-syntax-entity-tag: #7ee787;
+  --color-prettylights-syntax-keyword: #ff7b72;
+  --color-prettylights-syntax-string: #a5d6ff;
+  --color-prettylights-syntax-variable: #ffa657;
+  --color-prettylights-syntax-brackethighlighter-unmatched: #f85149;
+  --color-prettylights-syntax-brackethighlighter-angle: #8b949e;
+  --color-prettylights-syntax-invalid-illegal-text: #f0f6fc;
+  --color-prettylights-syntax-invalid-illegal-bg: #8e1519;
+  --color-prettylights-syntax-carriage-return-text: #f0f6fc;
+  --color-prettylights-syntax-carriage-return-bg: #b62324;
+  --color-prettylights-syntax-string-regexp: #7ee787;
+  --color-prettylights-syntax-markup-list: #f2cc60;
+  --color-prettylights-syntax-markup-heading: #1f6feb;
+  --color-prettylights-syntax-markup-italic: #c9d1d9;
+  --color-prettylights-syntax-markup-bold: #c9d1d9;
+  --color-prettylights-syntax-markup-deleted-text: #ffdcd7;
+  --color-prettylights-syntax-markup-deleted-bg: #67060c;
+  --color-prettylights-syntax-markup-inserted-text: #aff5b4;
+  --color-prettylights-syntax-markup-inserted-bg: #033a16;
+  --color-prettylights-syntax-markup-changed-text: #ffdfb6;
+  --color-prettylights-syntax-markup-changed-bg: #5a1e02;
+  --color-prettylights-syntax-markup-ignored-text: #c9d1d9;
+  --color-prettylights-syntax-markup-ignored-bg: #1158c7;
+  --color-prettylights-syntax-meta-diff-range: #d2a8ff;
+  --color-prettylights-syntax-sublimelinter-gutter-mark: #484f58;
+}
+
 .markdown-body {
   -ms-text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
@@ -69,6 +122,22 @@
   font-size: 14px;
   line-height: 1.5;
   word-wrap: break-word;
+}
+
+html.dark .markdown-body,
+.markdown-body.markdown-body-dark {
+  color-scheme: dark;
+}
+
+html.dark .markdown-body .highlight pre,
+html.dark .markdown-body pre,
+html.dark .markdown-body code,
+.markdown-body.markdown-body-dark .highlight pre,
+.markdown-body.markdown-body-dark pre,
+.markdown-body.markdown-body-dark code,
+.markdown-body.markdown-body-dark tt,
+html.dark .markdown-body tt {
+  background-color: var(--muted);
 }
 
 .markdown-body .octicon {

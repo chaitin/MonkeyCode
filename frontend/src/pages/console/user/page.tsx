@@ -25,6 +25,7 @@ import { RefreshCw } from "lucide-react"
 import { DataProvider } from "@/components/console/data-provider"
 import FreeModelUsageIndicator from "@/components/console/nav/free-model-usage-indicator"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import { ModeToggle } from "@/components/mode-toggle"
 
 const SettingsDialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
 export const useSettingsDialog = () => {
@@ -143,7 +144,7 @@ function UserConsoleContent() {
                 <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
                 刷新
               </Button>
-              {/*<ModeToggle />*/}
+              <ModeToggle />
             </div>
           </header>
           <div className="flex h-full w-full flex-col gap-4 pb-4 overflow-y-hidden">

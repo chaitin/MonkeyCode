@@ -325,7 +325,7 @@ export default function NavBalance({
         {!IS_OFFLINE_EDITION && <span className="truncate text-xs">{triggerPlanLabel}</span>}
       </div>
       {!IS_OFFLINE_EDITION && (
-        <div className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary tabular-nums group-data-[collapsible=icon]:hidden">
+        <div className="shrink-0 rounded-md bg-brand-muted px-2 py-1 text-xs font-medium text-brand tabular-nums group-data-[collapsible=icon]:hidden">
           {formatPoints(remainingPoints)}
         </div>
       )}
@@ -336,7 +336,7 @@ export default function NavBalance({
         <IconCrown className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-4"} />
         <span className="truncate">{triggerPlanLabel}</span>
       </div>
-      <div className="text-primary flex shrink-0 items-center gap-1.5 tabular-nums">
+      <div className="text-brand flex shrink-0 items-center gap-1.5 tabular-nums">
         <IconCoin className={variant === "header" ? "h-[1.2rem] w-[1.2rem]" : "size-4"} />
         <span>{formatPoints(remainingPoints)}</span>
       </div>

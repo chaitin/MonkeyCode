@@ -5,12 +5,14 @@ import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
 import mermaid from "mermaid"
 import { Link, useLocation } from "react-router-dom"
 import { IconCopy } from "@tabler/icons-react"
 import { toast } from "sonner"
 import "@/utils/markdown.css"
 import { cn } from "@/lib/utils"
+import { useTheme } from "@/components/theme-provider"
 
 // 初始化 mermaid 配置
 mermaid.initialize({
@@ -22,9 +24,10 @@ mermaid.initialize({
 
 interface MermaidProps {
   chart: string
+  isDark: boolean
 }
 
-const Mermaid = memo(function Mermaid({ chart }: MermaidProps) {
+const Mermaid = memo(function Mermaid({ chart, isDark }: MermaidProps) {
   const [svg, setSvg] = useState<string>("")
   const [hasError, setHasError] = useState(false)
   const renderVersionRef = useRef(0)
@@ -34,6 +37,12 @@ const Mermaid = memo(function Mermaid({ chart }: MermaidProps) {
 
     const renderChart = async () => {
       try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: isDark ? "dark" : "default",
+          securityLevel: "loose",
+          suppressErrorRendering: true,
+        })
         // 使用唯一 ID 避免冲突
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`
         const { svg } = await mermaid.render(id, chart)
@@ -49,11 +58,11 @@ const Mermaid = memo(function Mermaid({ chart }: MermaidProps) {
     }
 
     renderChart()
-  }, [chart])
+  }, [chart, isDark])
 
   if (hasError) {
     return (
-      <CodeBlock code={chart} language="mermaid" />
+      <CodeBlock code={chart} language="mermaid" isDark={isDark} />
     )
   }
 
@@ -78,9 +87,10 @@ const MarkdownParagraph: NonNullable<Components["p"]> = ({ children, ...props })
 interface CodeBlockProps {
   code: string
   language: string
+  isDark: boolean
 }
 
-const CodeBlock = ({ code, language }: CodeBlockProps) => {
+const CodeBlock = ({ code, language, isDark }: CodeBlockProps) => {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code)
@@ -105,7 +115,8 @@ const CodeBlock = ({ code, language }: CodeBlockProps) => {
         language={language}
         PreTag="pre"
         wrapLines={true}
-        customStyle={{ textShadow: "none" }}
+        style={isDark ? oneDark : oneLight}
+        customStyle={{ textShadow: "none", background: "var(--muted)" }}
         codeTagProps={{ style: { wordBreak: "break-all", whiteSpace: "pre-wrap", textShadow: "none" } }}
       >
         {code}
@@ -114,17 +125,17 @@ const CodeBlock = ({ code, language }: CodeBlockProps) => {
   )
 }
 
-const MarkdownCodeBlock: NonNullable<Components["pre"]> = ({ children }) => {
+function MarkdownCodeBlock({ children, isDark }: { children: React.ReactNode; isDark: boolean }) {
   const childElement = children as React.ReactElement | undefined
   const props = childElement?.props as { children?: string; className?: string } | undefined
   const code = props?.children ?? ""
   const language = props?.className?.replace("language-", "").trim() || "text"
 
   if (language === "mermaid") {
-    return <Mermaid chart={String(code).trim()} />
+    return <Mermaid chart={String(code).trim()} isDark={isDark} />
   }
 
-  return <CodeBlock code={String(code)} language={language} />
+  return <CodeBlock code={String(code)} language={language} isDark={isDark} />
 }
 
 interface MarkdownProps {
@@ -181,6 +192,8 @@ function resolveRelativePath(href: string, currentPath: string): string {
 
 export const Markdown = memo(function Markdown({ children, allowHtml = false, allowInternalLink = true, className }: MarkdownProps) {
   const location = useLocation()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
   const markdownSource = typeof children === "string" ? children : ""
   const components = useMemo<Components>(() => ({
     a({ href, children, ...props }) {
@@ -196,11 +209,11 @@ export const Markdown = memo(function Markdown({ children, allowHtml = false, al
       )
     },
     p: MarkdownParagraph,
-    pre: MarkdownCodeBlock,
-  }), [allowInternalLink, location.pathname])
+    pre: ({ children }) => <MarkdownCodeBlock isDark={isDark}>{children}</MarkdownCodeBlock>,
+  }), [allowInternalLink, isDark, location.pathname])
 
   return (
-    <div className={cn("markdown-body pb-2", className)}>
+    <div className={cn("markdown-body pb-2", isDark ? "markdown-body-dark" : "markdown-body-light", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={allowHtml ? [rehypeRaw, rehypeSanitize] : []}

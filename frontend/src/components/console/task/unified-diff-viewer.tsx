@@ -196,14 +196,14 @@ function UnifiedLine({ line, lineNumberWidth }: { line: DiffLine; lineNumberWidt
     <div
       className={cn(
         "grid border-b border-transparent font-mono text-xs leading-5",
-        isAdd && "bg-green-500/8",
-        isDelete && "bg-red-500/8",
+        isAdd && "bg-green-500/10 dark:bg-green-500/22",
+        isDelete && "bg-red-500/10 dark:bg-red-500/22",
         isMeta && "text-muted-foreground italic"
       )}
       style={{ gridTemplateColumns: `${lineNumberWidth} 1.5rem minmax(0, 1fr)` }}
     >
       <LineNumberCell value={lineNumber} />
-      <span className={cn("select-none text-center", isAdd && "text-green-700 dark:text-green-400", isDelete && "text-red-700 dark:text-red-400")}>{isAdd ? "+" : isDelete ? "-" : ""}</span>
+      <span className={cn("select-none text-center", isAdd && "text-green-700 dark:text-green-300", isDelete && "text-red-700 dark:text-red-300")}>{isAdd ? "+" : isDelete ? "-" : ""}</span>
       <pre className="min-w-0 whitespace-pre-wrap break-words pr-2 font-mono">{line.content || " "}</pre>
     </div>
   )
@@ -251,11 +251,11 @@ function SplitLine({ oldLine, newLine, lineNumberWidth }: { oldLine?: DiffLine; 
   return (
     <div className="grid font-mono text-xs leading-5 min-w-0" style={{ gridTemplateColumns: `${lineNumberWidth} 1.5rem minmax(0, 1fr) ${lineNumberWidth} 1.5rem minmax(0, 1fr)` }}>
       <LineNumberCell value={oldLine?.oldLineNumber} />
-      <span className={cn("select-none text-center", oldIsDelete && "bg-red-500/8 text-red-700 dark:text-red-400")}>{oldIsDelete ? "-" : ""}</span>
-      <pre className={cn("min-w-0 whitespace-pre-wrap break-words pr-2 font-mono", oldIsDelete && "bg-red-500/8", isMeta && "text-muted-foreground italic")}>{oldLine?.content || " "}</pre>
+      <span className={cn("select-none text-center", oldIsDelete && "bg-red-500/10 text-red-700 dark:bg-red-500/22 dark:text-red-300")}>{oldIsDelete ? "-" : ""}</span>
+      <pre className={cn("min-w-0 whitespace-pre-wrap break-words pr-2 font-mono", oldIsDelete && "bg-red-500/10 dark:bg-red-500/22", isMeta && "text-muted-foreground italic")}>{oldLine?.content || " "}</pre>
       <LineNumberCell value={newLine?.newLineNumber} className="border-l" />
-      <span className={cn("select-none text-center", newIsAdd && "bg-green-500/8 text-green-700 dark:text-green-400")}>{newIsAdd ? "+" : ""}</span>
-      <pre className={cn("min-w-0 whitespace-pre-wrap break-words pr-2 font-mono", newIsAdd && "bg-green-500/8", isMeta && "text-muted-foreground italic")}>{newLine?.content || " "}</pre>
+      <span className={cn("select-none text-center", newIsAdd && "bg-green-500/10 text-green-700 dark:bg-green-500/22 dark:text-green-300")}>{newIsAdd ? "+" : ""}</span>
+      <pre className={cn("min-w-0 whitespace-pre-wrap break-words pr-2 font-mono", newIsAdd && "bg-green-500/10 dark:bg-green-500/22", isMeta && "text-muted-foreground italic")}>{newLine?.content || " "}</pre>
     </div>
   )
 }

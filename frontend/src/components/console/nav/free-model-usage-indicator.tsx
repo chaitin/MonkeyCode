@@ -139,7 +139,7 @@ export function FreeModelQuotaIndicator() {
       <HoverCardTrigger asChild>
         <button
           type="button"
-          className="hidden h-8 items-center gap-1.5 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-background md:inline-flex"
+          className="hidden h-8 items-center gap-1.5 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left text-sm transition-colors hover:border-brand-border hover:bg-background md:inline-flex"
         >
           <CircularProgress
             value={usedProgress}
@@ -196,10 +196,10 @@ export function MembershipBalanceIndicator() {
       <HoverCardTrigger asChild>
         <button
           type="button"
-          className="hidden h-8 items-center gap-2 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left transition-colors hover:border-primary/30 hover:bg-background md:inline-flex"
+          className="hidden h-8 items-center gap-2 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left transition-colors hover:border-brand-border hover:bg-background md:inline-flex"
         >
           <span className="shrink-0 text-sm font-medium">{planLabel}</span>
-          <span className="shrink-0 rounded-sm bg-primary/10 px-1.5 py-0.5 text-xs text-primary">{balanceLabel} 积分</span>
+          <span className="shrink-0 rounded-sm bg-brand-muted px-1.5 py-0.5 text-xs text-brand">{balanceLabel} 积分</span>
         </button>
       </HoverCardTrigger>
       <HoverCardContent
@@ -210,7 +210,7 @@ export function MembershipBalanceIndicator() {
         <div className="rounded-lg border bg-muted/20 p-3 text-sm">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-sm bg-primary/10 px-2 py-1 font-medium text-primary">
+              <span className="inline-flex items-center gap-1.5 rounded-sm bg-brand-muted px-2 py-1 font-medium text-brand">
                 <Crown className="size-3.5" />
                 {planLabel}
               </span>
