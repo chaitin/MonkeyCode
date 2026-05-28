@@ -43,10 +43,6 @@ const (
 	FieldExternalIP = "external_ip"
 	// FieldInternalIP holds the string denoting the internal_ip field in the database.
 	FieldInternalIP = "internal_ip"
-	// FieldTTLKind holds the string denoting the ttl_kind field in the database.
-	FieldTTLKind = "ttl_kind"
-	// FieldTTL holds the string denoting the ttl field in the database.
-	FieldTTL = "ttl"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// FieldMachineID holds the string denoting the machine_id field in the database.
@@ -63,6 +59,8 @@ const (
 	FieldIsRecycled = "is_recycled"
 	// FieldConditions holds the string denoting the conditions field in the database.
 	FieldConditions = "conditions"
+	// FieldExpiredAt holds the string denoting the expired_at field in the database.
+	FieldExpiredAt = "expired_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -140,8 +138,6 @@ var Columns = []string{
 	FieldOs,
 	FieldExternalIP,
 	FieldInternalIP,
-	FieldTTLKind,
-	FieldTTL,
 	FieldVersion,
 	FieldMachineID,
 	FieldRepoURL,
@@ -150,6 +146,7 @@ var Columns = []string{
 	FieldGitIdentityID,
 	FieldIsRecycled,
 	FieldConditions,
+	FieldExpiredAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -262,16 +259,6 @@ func ByInternalIP(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldInternalIP, opts...).ToFunc()
 }
 
-// ByTTLKind orders the results by the ttl_kind field.
-func ByTTLKind(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTTLKind, opts...).ToFunc()
-}
-
-// ByTTL orders the results by the ttl field.
-func ByTTL(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTTL, opts...).ToFunc()
-}
-
 // ByVersion orders the results by the version field.
 func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVersion, opts...).ToFunc()
@@ -305,6 +292,11 @@ func ByGitIdentityID(opts ...sql.OrderTermOption) OrderOption {
 // ByIsRecycled orders the results by the is_recycled field.
 func ByIsRecycled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsRecycled, opts...).ToFunc()
+}
+
+// ByExpiredAt orders the results by the expired_at field.
+func ByExpiredAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiredAt, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -324,17 +324,7 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 			cnt, err := tx.VirtualMachine.Query().
 				Where(virtualmachine.UserID(u.ID)).
 				Where(virtualmachine.HasHostWith(host.HasUserWith(user.Role(consts.UserRoleAdmin)))).
-				Where(func(s *sql.Selector) {
-					s.Where(sql.P(func(b *sql.Builder) {
-						b.WriteString("NOW()").
-							WriteOp(sql.OpLT).
-							Ident(s.C(virtualmachine.FieldCreatedAt)).
-							WriteOp(sql.OpAdd).
-							WriteString("make_interval(secs => ").
-							Ident(s.C(virtualmachine.FieldTTL)).
-							WriteByte(')')
-					}))
-				}).
+				Where(virtualmachine.ExpiredAtGT(time.Now())).
 				Count(ctx)
 			if err != nil {
 				return errcode.ErrDatabaseOperation.Wrap(err)
@@ -405,9 +395,10 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 		}
 		res = vm
 
-		kind := consts.CountDown
-		if req.Life <= 0 {
-			kind = consts.Forever
+		var expiredAt *time.Time
+		if req.Life > 0 {
+			t := req.Now.Add(time.Duration(req.Life) * time.Second)
+			expiredAt = &t
 		}
 
 		crt := tx.VirtualMachine.Create().
@@ -416,14 +407,15 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 			SetEnvironmentID(vm.EnvironmentID).
 			SetName(vm.Name).
 			SetHostID(vm.Host.ID).
-			SetTTLKind(kind).
-			SetTTL(req.Life).
 			SetCores(req.Resource.CPU).
 			SetMemory(req.Resource.Memory).
 			SetRepoURL(repoURL).
 			SetRepoFilename(repoFilename).
 			SetBranch(branch).
 			SetCreatedAt(req.Now)
+		if expiredAt != nil {
+			crt.SetExpiredAt(*expiredAt)
+		}
 		if vm.AccessToken != "" {
 			crt.SetAccessToken(vm.AccessToken)
 		}
@@ -546,16 +538,17 @@ func (h *HostRepo) UpdateHost(ctx context.Context, uid uuid.UUID, req *domain.Up
 // PastHourVirtualMachine implements domain.HostRepo.
 func (h *HostRepo) PastHourVirtualMachine(ctx context.Context) ([]*db.VirtualMachine, error) {
 	return h.db.VirtualMachine.Query().
-		Where(virtualmachine.TTLKind(consts.CountDown)).
+		Where(virtualmachine.ExpiredAtNotNil()).
 		Where(virtualmachine.IsRecycled(false)).
-		Where(virtualmachine.CreatedAtGTE(time.Now().Add(-24 * time.Hour))).
+		Where(virtualmachine.ExpiredAtLTE(time.Now().Add(24 * time.Hour))).
+		Where(virtualmachine.ExpiredAtGTE(time.Now().Add(-24 * time.Hour))).
 		All(ctx)
 }
 
 // AllCountDownVirtualMachine implements domain.HostRepo.
 func (h *HostRepo) AllCountDownVirtualMachine(ctx context.Context) ([]*db.VirtualMachine, error) {
 	return h.db.VirtualMachine.Query().
-		Where(virtualmachine.TTLKind(consts.CountDown)).
+		Where(virtualmachine.ExpiredAtNotNil()).
 		Where(virtualmachine.IsRecycled(false)).
 		All(ctx)
 }
@@ -576,30 +569,32 @@ func (h *HostRepo) UpdateVM(ctx context.Context, req domain.UpdateVMReq, fn func
 			return errcode.ErrDatabaseOperation.Wrap(err)
 		}
 
-		// 公共主机 TTL 续期上限（仅在配置了 TTLLimit 时生效）
+		// 公共主机过期时间续期上限（仅在配置了 TTLLimit 时生效）
 		if req.Life > 0 && h.cfg.PublicHost.TTLLimit > 0 {
 			if vm.Edges.Host != nil && vm.Edges.Host.Edges.User != nil &&
 				vm.Edges.Host.Edges.User.Role == consts.UserRoleAdmin {
 				now := time.Now()
-				expiredAt := vm.CreatedAt.Add(time.Duration(vm.TTL) * time.Second)
-				remaining := max(int64(expiredAt.Sub(now).Seconds()), 0)
+				remaining := int64(0)
+				if vm.ExpiredAt != nil {
+					remaining = max(int64(vm.ExpiredAt.Sub(now).Seconds()), 0)
+				}
 				maxAdditional := max(h.cfg.PublicHost.TTLLimit-remaining, 0)
 				actualLife = min(req.Life, maxAdditional)
 			}
 		}
 
 		res = vm
-		if vm.TTLKind == consts.Forever {
+		if vm.ExpiredAt == nil {
 			return nil
 		}
 
-		expiredAt := vm.CreatedAt.Add(time.Duration(vm.TTL) * time.Second)
-		if expiredAt.Before(time.Now()) {
+		if vm.ExpiredAt.Before(time.Now()) {
 			return errcode.ErrVMExpired
 		}
 
+		expiredAt := vm.ExpiredAt.Add(time.Duration(actualLife) * time.Second)
 		vm, err = tx.VirtualMachine.UpdateOneID(vm.ID).
-			AddTTL(actualLife).
+			SetExpiredAt(expiredAt).
 			Save(ctx)
 		if err != nil {
 			return errcode.ErrDatabaseOperation.Wrap(err)

@@ -12,7 +12,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -212,34 +211,6 @@ func (_c *VirtualMachineCreate) SetNillableInternalIP(v *string) *VirtualMachine
 	return _c
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (_c *VirtualMachineCreate) SetTTLKind(v consts.VirtualmachineTTLKind) *VirtualMachineCreate {
-	_c.mutation.SetTTLKind(v)
-	return _c
-}
-
-// SetNillableTTLKind sets the "ttl_kind" field if the given value is not nil.
-func (_c *VirtualMachineCreate) SetNillableTTLKind(v *consts.VirtualmachineTTLKind) *VirtualMachineCreate {
-	if v != nil {
-		_c.SetTTLKind(*v)
-	}
-	return _c
-}
-
-// SetTTL sets the "ttl" field.
-func (_c *VirtualMachineCreate) SetTTL(v int64) *VirtualMachineCreate {
-	_c.mutation.SetTTL(v)
-	return _c
-}
-
-// SetNillableTTL sets the "ttl" field if the given value is not nil.
-func (_c *VirtualMachineCreate) SetNillableTTL(v *int64) *VirtualMachineCreate {
-	if v != nil {
-		_c.SetTTL(*v)
-	}
-	return _c
-}
-
 // SetVersion sets the "version" field.
 func (_c *VirtualMachineCreate) SetVersion(v string) *VirtualMachineCreate {
 	_c.mutation.SetVersion(v)
@@ -341,6 +312,20 @@ func (_c *VirtualMachineCreate) SetNillableIsRecycled(v *bool) *VirtualMachineCr
 // SetConditions sets the "conditions" field.
 func (_c *VirtualMachineCreate) SetConditions(v *types.VirtualMachineCondition) *VirtualMachineCreate {
 	_c.mutation.SetConditions(v)
+	return _c
+}
+
+// SetExpiredAt sets the "expired_at" field.
+func (_c *VirtualMachineCreate) SetExpiredAt(v time.Time) *VirtualMachineCreate {
+	_c.mutation.SetExpiredAt(v)
+	return _c
+}
+
+// SetNillableExpiredAt sets the "expired_at" field if the given value is not nil.
+func (_c *VirtualMachineCreate) SetNillableExpiredAt(v *time.Time) *VirtualMachineCreate {
+	if v != nil {
+		_c.SetExpiredAt(*v)
+	}
 	return _c
 }
 
@@ -579,14 +564,6 @@ func (_c *VirtualMachineCreate) createSpec() (*VirtualMachine, *sqlgraph.CreateS
 		_spec.SetField(virtualmachine.FieldInternalIP, field.TypeString, value)
 		_node.InternalIP = value
 	}
-	if value, ok := _c.mutation.TTLKind(); ok {
-		_spec.SetField(virtualmachine.FieldTTLKind, field.TypeString, value)
-		_node.TTLKind = value
-	}
-	if value, ok := _c.mutation.TTL(); ok {
-		_spec.SetField(virtualmachine.FieldTTL, field.TypeInt64, value)
-		_node.TTL = value
-	}
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(virtualmachine.FieldVersion, field.TypeString, value)
 		_node.Version = value
@@ -614,6 +591,10 @@ func (_c *VirtualMachineCreate) createSpec() (*VirtualMachine, *sqlgraph.CreateS
 	if value, ok := _c.mutation.Conditions(); ok {
 		_spec.SetField(virtualmachine.FieldConditions, field.TypeJSON, value)
 		_node.Conditions = value
+	}
+	if value, ok := _c.mutation.ExpiredAt(); ok {
+		_spec.SetField(virtualmachine.FieldExpiredAt, field.TypeTime, value)
+		_node.ExpiredAt = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(virtualmachine.FieldCreatedAt, field.TypeTime, value)
@@ -1031,48 +1012,6 @@ func (u *VirtualMachineUpsert) ClearInternalIP() *VirtualMachineUpsert {
 	return u
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (u *VirtualMachineUpsert) SetTTLKind(v consts.VirtualmachineTTLKind) *VirtualMachineUpsert {
-	u.Set(virtualmachine.FieldTTLKind, v)
-	return u
-}
-
-// UpdateTTLKind sets the "ttl_kind" field to the value that was provided on create.
-func (u *VirtualMachineUpsert) UpdateTTLKind() *VirtualMachineUpsert {
-	u.SetExcluded(virtualmachine.FieldTTLKind)
-	return u
-}
-
-// ClearTTLKind clears the value of the "ttl_kind" field.
-func (u *VirtualMachineUpsert) ClearTTLKind() *VirtualMachineUpsert {
-	u.SetNull(virtualmachine.FieldTTLKind)
-	return u
-}
-
-// SetTTL sets the "ttl" field.
-func (u *VirtualMachineUpsert) SetTTL(v int64) *VirtualMachineUpsert {
-	u.Set(virtualmachine.FieldTTL, v)
-	return u
-}
-
-// UpdateTTL sets the "ttl" field to the value that was provided on create.
-func (u *VirtualMachineUpsert) UpdateTTL() *VirtualMachineUpsert {
-	u.SetExcluded(virtualmachine.FieldTTL)
-	return u
-}
-
-// AddTTL adds v to the "ttl" field.
-func (u *VirtualMachineUpsert) AddTTL(v int64) *VirtualMachineUpsert {
-	u.Add(virtualmachine.FieldTTL, v)
-	return u
-}
-
-// ClearTTL clears the value of the "ttl" field.
-func (u *VirtualMachineUpsert) ClearTTL() *VirtualMachineUpsert {
-	u.SetNull(virtualmachine.FieldTTL)
-	return u
-}
-
 // SetVersion sets the "version" field.
 func (u *VirtualMachineUpsert) SetVersion(v string) *VirtualMachineUpsert {
 	u.Set(virtualmachine.FieldVersion, v)
@@ -1214,6 +1153,24 @@ func (u *VirtualMachineUpsert) UpdateConditions() *VirtualMachineUpsert {
 // ClearConditions clears the value of the "conditions" field.
 func (u *VirtualMachineUpsert) ClearConditions() *VirtualMachineUpsert {
 	u.SetNull(virtualmachine.FieldConditions)
+	return u
+}
+
+// SetExpiredAt sets the "expired_at" field.
+func (u *VirtualMachineUpsert) SetExpiredAt(v time.Time) *VirtualMachineUpsert {
+	u.Set(virtualmachine.FieldExpiredAt, v)
+	return u
+}
+
+// UpdateExpiredAt sets the "expired_at" field to the value that was provided on create.
+func (u *VirtualMachineUpsert) UpdateExpiredAt() *VirtualMachineUpsert {
+	u.SetExcluded(virtualmachine.FieldExpiredAt)
+	return u
+}
+
+// ClearExpiredAt clears the value of the "expired_at" field.
+func (u *VirtualMachineUpsert) ClearExpiredAt() *VirtualMachineUpsert {
+	u.SetNull(virtualmachine.FieldExpiredAt)
 	return u
 }
 
@@ -1583,55 +1540,6 @@ func (u *VirtualMachineUpsertOne) ClearInternalIP() *VirtualMachineUpsertOne {
 	})
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (u *VirtualMachineUpsertOne) SetTTLKind(v consts.VirtualmachineTTLKind) *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.SetTTLKind(v)
-	})
-}
-
-// UpdateTTLKind sets the "ttl_kind" field to the value that was provided on create.
-func (u *VirtualMachineUpsertOne) UpdateTTLKind() *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.UpdateTTLKind()
-	})
-}
-
-// ClearTTLKind clears the value of the "ttl_kind" field.
-func (u *VirtualMachineUpsertOne) ClearTTLKind() *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.ClearTTLKind()
-	})
-}
-
-// SetTTL sets the "ttl" field.
-func (u *VirtualMachineUpsertOne) SetTTL(v int64) *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.SetTTL(v)
-	})
-}
-
-// AddTTL adds v to the "ttl" field.
-func (u *VirtualMachineUpsertOne) AddTTL(v int64) *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.AddTTL(v)
-	})
-}
-
-// UpdateTTL sets the "ttl" field to the value that was provided on create.
-func (u *VirtualMachineUpsertOne) UpdateTTL() *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.UpdateTTL()
-	})
-}
-
-// ClearTTL clears the value of the "ttl" field.
-func (u *VirtualMachineUpsertOne) ClearTTL() *VirtualMachineUpsertOne {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.ClearTTL()
-	})
-}
-
 // SetVersion sets the "version" field.
 func (u *VirtualMachineUpsertOne) SetVersion(v string) *VirtualMachineUpsertOne {
 	return u.Update(func(s *VirtualMachineUpsert) {
@@ -1797,6 +1705,27 @@ func (u *VirtualMachineUpsertOne) UpdateConditions() *VirtualMachineUpsertOne {
 func (u *VirtualMachineUpsertOne) ClearConditions() *VirtualMachineUpsertOne {
 	return u.Update(func(s *VirtualMachineUpsert) {
 		s.ClearConditions()
+	})
+}
+
+// SetExpiredAt sets the "expired_at" field.
+func (u *VirtualMachineUpsertOne) SetExpiredAt(v time.Time) *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.SetExpiredAt(v)
+	})
+}
+
+// UpdateExpiredAt sets the "expired_at" field to the value that was provided on create.
+func (u *VirtualMachineUpsertOne) UpdateExpiredAt() *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.UpdateExpiredAt()
+	})
+}
+
+// ClearExpiredAt clears the value of the "expired_at" field.
+func (u *VirtualMachineUpsertOne) ClearExpiredAt() *VirtualMachineUpsertOne {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.ClearExpiredAt()
 	})
 }
 
@@ -2337,55 +2266,6 @@ func (u *VirtualMachineUpsertBulk) ClearInternalIP() *VirtualMachineUpsertBulk {
 	})
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (u *VirtualMachineUpsertBulk) SetTTLKind(v consts.VirtualmachineTTLKind) *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.SetTTLKind(v)
-	})
-}
-
-// UpdateTTLKind sets the "ttl_kind" field to the value that was provided on create.
-func (u *VirtualMachineUpsertBulk) UpdateTTLKind() *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.UpdateTTLKind()
-	})
-}
-
-// ClearTTLKind clears the value of the "ttl_kind" field.
-func (u *VirtualMachineUpsertBulk) ClearTTLKind() *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.ClearTTLKind()
-	})
-}
-
-// SetTTL sets the "ttl" field.
-func (u *VirtualMachineUpsertBulk) SetTTL(v int64) *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.SetTTL(v)
-	})
-}
-
-// AddTTL adds v to the "ttl" field.
-func (u *VirtualMachineUpsertBulk) AddTTL(v int64) *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.AddTTL(v)
-	})
-}
-
-// UpdateTTL sets the "ttl" field to the value that was provided on create.
-func (u *VirtualMachineUpsertBulk) UpdateTTL() *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.UpdateTTL()
-	})
-}
-
-// ClearTTL clears the value of the "ttl" field.
-func (u *VirtualMachineUpsertBulk) ClearTTL() *VirtualMachineUpsertBulk {
-	return u.Update(func(s *VirtualMachineUpsert) {
-		s.ClearTTL()
-	})
-}
-
 // SetVersion sets the "version" field.
 func (u *VirtualMachineUpsertBulk) SetVersion(v string) *VirtualMachineUpsertBulk {
 	return u.Update(func(s *VirtualMachineUpsert) {
@@ -2551,6 +2431,27 @@ func (u *VirtualMachineUpsertBulk) UpdateConditions() *VirtualMachineUpsertBulk 
 func (u *VirtualMachineUpsertBulk) ClearConditions() *VirtualMachineUpsertBulk {
 	return u.Update(func(s *VirtualMachineUpsert) {
 		s.ClearConditions()
+	})
+}
+
+// SetExpiredAt sets the "expired_at" field.
+func (u *VirtualMachineUpsertBulk) SetExpiredAt(v time.Time) *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.SetExpiredAt(v)
+	})
+}
+
+// UpdateExpiredAt sets the "expired_at" field to the value that was provided on create.
+func (u *VirtualMachineUpsertBulk) UpdateExpiredAt() *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.UpdateExpiredAt()
+	})
+}
+
+// ClearExpiredAt clears the value of the "expired_at" field.
+func (u *VirtualMachineUpsertBulk) ClearExpiredAt() *VirtualMachineUpsertBulk {
+	return u.Update(func(s *VirtualMachineUpsert) {
+		s.ClearExpiredAt()
 	})
 }
 

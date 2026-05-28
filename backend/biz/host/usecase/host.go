@@ -86,7 +86,7 @@ func (h *HostUsecase) periodicEnqueueVm() {
 		}
 
 		for _, vm := range vms {
-			if vm.TTL <= 0 {
+			if vm.ExpiredAt == nil {
 				continue
 			}
 
@@ -95,7 +95,7 @@ func (h *HostUsecase) periodicEnqueueVm() {
 				VmID:   vm.ID,
 				HostID: vm.HostID,
 				EnvID:  vm.EnvironmentID,
-			}, vm.CreatedAt.Add(time.Duration(vm.TTL)*time.Second), vm.ID); err != nil {
+			}, *vm.ExpiredAt, vm.ID); err != nil {
 				h.logger.With("error", err, "vm_id", vm.ID, "environment_id", vm.EnvironmentID).Error("failed to enqueue vm")
 			}
 		}
@@ -465,15 +465,16 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 
 		h.logger.InfoContext(ctx, "create vm success", "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID)
 
-		// 手动创建的 VM 使用 TTL 过期逻辑，任务创建的 VM 使用空闲检测逻辑
-		// 通过 Life 参数区分：Life > 0 为手动创建的 VM，使用 TTL 过期逻辑
+		// 手动创建的 VM 使用 expired_at 过期逻辑，任务创建的 VM 使用空闲检测逻辑
+		// 通过 Life 参数区分：Life > 0 为手动创建的 VM，使用过期时间逻辑
 		if req.Life > 0 {
+			expiredAt := req.Now.Add(time.Duration(req.Life) * time.Second)
 			if _, err := h.vmexpireQueue.Enqueue(ctx, VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
 				UID:    user.ID,
 				VmID:   tfvm.ID,
 				HostID: req.HostID,
 				EnvID:  tfvm.EnvironmentID,
-			}, time.Now().Add(time.Duration(req.Life)*time.Second), tfvm.ID); err != nil {
+			}, expiredAt, tfvm.ID); err != nil {
 				h.logger.With("error", err, "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID).ErrorContext(ctx, "failed to enqueue countdown vm")
 			}
 		}
@@ -511,7 +512,7 @@ func (h *HostUsecase) DeleteVM(ctx context.Context, uid uuid.UUID, hostID, vmID 
 			h.logger.ErrorContext(ctx, "failed to delete vm", "error", err)
 		}
 
-		// 清理 TTL 过期队列中的残留任务
+		// 清理 expired_at 过期队列中的残留任务
 		_ = h.vmexpireQueue.Remove(ctx, VM_EXPIRE_QUEUE_KEY, vm.ID)
 
 		return nil
@@ -652,7 +653,7 @@ func (h *HostUsecase) FireExpiredVM(ctx context.Context, fire bool) ([]domain.Fi
 
 	res := make([]domain.FireExpiredVMItem, 0)
 	for _, vm := range vms {
-		if vm.TTL <= 0 {
+		if vm.ExpiredAt == nil {
 			continue
 		}
 
@@ -660,7 +661,7 @@ func (h *HostUsecase) FireExpiredVM(ctx context.Context, fire bool) ([]domain.Fi
 			continue
 		}
 
-		if vm.CreatedAt.Add(time.Duration(vm.TTL) * time.Second).Before(time.Now()) {
+		if vm.ExpiredAt.Before(time.Now()) {
 			item := domain.FireExpiredVMItem{
 				ID:      vm.ID,
 				Message: "checked",
@@ -671,7 +672,7 @@ func (h *HostUsecase) FireExpiredVM(ctx context.Context, fire bool) ([]domain.Fi
 					VmID:   vm.ID,
 					HostID: vm.HostID,
 					EnvID:  vm.EnvironmentID,
-				}, vm.CreatedAt.Add(time.Duration(vm.TTL)*time.Second), vm.ID); err != nil {
+				}, *vm.ExpiredAt, vm.ID); err != nil {
 					h.logger.With("error", err, "vm_id", vm.ID, "environment_id", vm.EnvironmentID).Error("failed to enqueue vm")
 					item.Message = err.Error()
 				} else {
@@ -695,7 +696,7 @@ func (h *HostUsecase) EnqueueAllCountDownVM(ctx context.Context) ([]string, erro
 	res := make([]string, 0)
 
 	for _, vm := range vms {
-		if vm.TTL <= 0 {
+		if vm.ExpiredAt == nil {
 			continue
 		}
 
@@ -704,7 +705,7 @@ func (h *HostUsecase) EnqueueAllCountDownVM(ctx context.Context) ([]string, erro
 			VmID:   vm.ID,
 			HostID: vm.HostID,
 			EnvID:  vm.EnvironmentID,
-		}, vm.CreatedAt.Add(time.Duration(vm.TTL)*time.Second), vm.ID); err != nil {
+		}, *vm.ExpiredAt, vm.ID); err != nil {
 			h.logger.With("error", err, "vm_id", vm.ID, "environment_id", vm.EnvironmentID).Error("failed to enqueue vm")
 		} else {
 			h.logger.With("vm_id", vm.ID, "environment_id", vm.EnvironmentID).Info("enqueued vm")
@@ -717,16 +718,16 @@ func (h *HostUsecase) EnqueueAllCountDownVM(ctx context.Context) ([]string, erro
 // UpdateVM implements domain.HostUsecase.
 func (h *HostUsecase) UpdateVM(ctx context.Context, req domain.UpdateVMReq) (*domain.VirtualMachine, error) {
 	vm, _, err := h.repo.UpdateVM(ctx, req, func(vm *db.VirtualMachine) error {
-		newExpiresAt := vm.CreatedAt.Add(time.Duration(vm.TTL) * time.Second)
+		newExpiresAt := vm.ExpiredAt
 
-		// 更新回收队列（仅针对 CountDown 类型的 VM）
-		if vm.TTLKind == consts.CountDown {
+		// 更新回收队列（仅针对有过期时间的 VM）
+		if newExpiresAt != nil {
 			if _, err := h.vmexpireQueue.Enqueue(ctx, VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
 				UID:    vm.UserID,
 				VmID:   vm.ID,
 				HostID: vm.HostID,
 				EnvID:  vm.EnvironmentID,
-			}, newExpiresAt, vm.ID); err != nil {
+			}, *newExpiresAt, vm.ID); err != nil {
 				return err
 			}
 		}

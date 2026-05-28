@@ -67,6 +67,21 @@ func TestProjectTaskFromDoesNotExposeModelCredentials(t *testing.T) {
 	assertNoModelCredentials(t, string(payload))
 }
 
+func TestVirtualMachineFromUsesExpiredAtForLifeTimeSeconds(t *testing.T) {
+	expiredAt := time.Now().Add(2 * time.Hour)
+
+	vm := (&domain.VirtualMachine{}).From(&db.VirtualMachine{
+		ID:        "vm-expiring",
+		Name:      "vm",
+		CreatedAt: time.Now().Add(-time.Hour),
+		ExpiredAt: &expiredAt,
+	})
+
+	if vm.LifeTimeSeconds < 7190 || vm.LifeTimeSeconds > 7200 {
+		t.Fatalf("life_time_seconds = %d, want about 7200", vm.LifeTimeSeconds)
+	}
+}
+
 func TestTaskFromDoesNotExposeModelCredentials(t *testing.T) {
 	task := (&domain.Task{}).From(&db.Task{
 		ID:        uuid.New(),

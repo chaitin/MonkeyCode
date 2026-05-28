@@ -10,7 +10,6 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -53,10 +52,6 @@ type VirtualMachine struct {
 	ExternalIP string `json:"external_ip,omitempty"`
 	// InternalIP holds the value of the "internal_ip" field.
 	InternalIP string `json:"internal_ip,omitempty"`
-	// TTLKind holds the value of the "ttl_kind" field.
-	TTLKind consts.VirtualmachineTTLKind `json:"ttl_kind,omitempty"`
-	// TTL holds the value of the "ttl" field.
-	TTL int64 `json:"ttl,omitempty"`
 	// Version holds the value of the "version" field.
 	Version string `json:"version,omitempty"`
 	// MachineID holds the value of the "machine_id" field.
@@ -73,6 +68,8 @@ type VirtualMachine struct {
 	IsRecycled bool `json:"is_recycled,omitempty"`
 	// Conditions holds the value of the "conditions" field.
 	Conditions *types.VirtualMachineCondition `json:"conditions,omitempty"`
+	// ExpiredAt holds the value of the "expired_at" field.
+	ExpiredAt *time.Time `json:"expired_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -173,11 +170,11 @@ func (*VirtualMachine) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case virtualmachine.FieldIsRecycled:
 			values[i] = new(sql.NullBool)
-		case virtualmachine.FieldCores, virtualmachine.FieldMemory, virtualmachine.FieldTTL:
+		case virtualmachine.FieldCores, virtualmachine.FieldMemory:
 			values[i] = new(sql.NullInt64)
-		case virtualmachine.FieldID, virtualmachine.FieldAccessToken, virtualmachine.FieldHostID, virtualmachine.FieldEnvironmentID, virtualmachine.FieldName, virtualmachine.FieldHostname, virtualmachine.FieldArch, virtualmachine.FieldOs, virtualmachine.FieldExternalIP, virtualmachine.FieldInternalIP, virtualmachine.FieldTTLKind, virtualmachine.FieldVersion, virtualmachine.FieldMachineID, virtualmachine.FieldRepoURL, virtualmachine.FieldRepoFilename, virtualmachine.FieldBranch:
+		case virtualmachine.FieldID, virtualmachine.FieldAccessToken, virtualmachine.FieldHostID, virtualmachine.FieldEnvironmentID, virtualmachine.FieldName, virtualmachine.FieldHostname, virtualmachine.FieldArch, virtualmachine.FieldOs, virtualmachine.FieldExternalIP, virtualmachine.FieldInternalIP, virtualmachine.FieldVersion, virtualmachine.FieldMachineID, virtualmachine.FieldRepoURL, virtualmachine.FieldRepoFilename, virtualmachine.FieldBranch:
 			values[i] = new(sql.NullString)
-		case virtualmachine.FieldDeletedAt, virtualmachine.FieldCreatedAt, virtualmachine.FieldUpdatedAt:
+		case virtualmachine.FieldDeletedAt, virtualmachine.FieldExpiredAt, virtualmachine.FieldCreatedAt, virtualmachine.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case virtualmachine.FieldUserID, virtualmachine.FieldModelID, virtualmachine.FieldGitIdentityID:
 			values[i] = new(uuid.UUID)
@@ -286,18 +283,6 @@ func (_m *VirtualMachine) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.InternalIP = value.String
 			}
-		case virtualmachine.FieldTTLKind:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field ttl_kind", values[i])
-			} else if value.Valid {
-				_m.TTLKind = consts.VirtualmachineTTLKind(value.String)
-			}
-		case virtualmachine.FieldTTL:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field ttl", values[i])
-			} else if value.Valid {
-				_m.TTL = value.Int64
-			}
 		case virtualmachine.FieldVersion:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field version", values[i])
@@ -347,6 +332,13 @@ func (_m *VirtualMachine) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.Conditions); err != nil {
 					return fmt.Errorf("unmarshal field conditions: %w", err)
 				}
+			}
+		case virtualmachine.FieldExpiredAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field expired_at", values[i])
+			} else if value.Valid {
+				_m.ExpiredAt = new(time.Time)
+				*_m.ExpiredAt = value.Time
 			}
 		case virtualmachine.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -468,12 +460,6 @@ func (_m *VirtualMachine) String() string {
 	builder.WriteString("internal_ip=")
 	builder.WriteString(_m.InternalIP)
 	builder.WriteString(", ")
-	builder.WriteString("ttl_kind=")
-	builder.WriteString(fmt.Sprintf("%v", _m.TTLKind))
-	builder.WriteString(", ")
-	builder.WriteString("ttl=")
-	builder.WriteString(fmt.Sprintf("%v", _m.TTL))
-	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(_m.Version)
 	builder.WriteString(", ")
@@ -497,6 +483,11 @@ func (_m *VirtualMachine) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("conditions=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Conditions))
+	builder.WriteString(", ")
+	if v := _m.ExpiredAt; v != nil {
+		builder.WriteString("expired_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

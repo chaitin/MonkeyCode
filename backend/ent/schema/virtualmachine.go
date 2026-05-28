@@ -10,7 +10,6 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 
-	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
@@ -49,8 +48,6 @@ func (VirtualMachine) Fields() []ent.Field {
 		field.String("os").Optional(),
 		field.String("external_ip").Optional(),
 		field.String("internal_ip").Optional(),
-		field.String("ttl_kind").GoType(consts.VirtualmachineTTLKind("")).Optional(),
-		field.Int64("ttl").Optional(),
 		field.String("version").Optional(),
 		field.String("machine_id").Optional(),
 		field.String("repo_url").Optional(),
@@ -59,6 +56,7 @@ func (VirtualMachine) Fields() []ent.Field {
 		field.UUID("git_identity_id", uuid.UUID{}).Optional(),
 		field.Bool("is_recycled").Optional(),
 		field.JSON("conditions", &types.VirtualMachineCondition{}).Optional(),
+		field.Time("expired_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now),
 	}

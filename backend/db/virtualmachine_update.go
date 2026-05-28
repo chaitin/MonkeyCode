@@ -11,7 +11,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/gitidentity"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -320,53 +319,6 @@ func (_u *VirtualMachineUpdate) ClearInternalIP() *VirtualMachineUpdate {
 	return _u
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (_u *VirtualMachineUpdate) SetTTLKind(v consts.VirtualmachineTTLKind) *VirtualMachineUpdate {
-	_u.mutation.SetTTLKind(v)
-	return _u
-}
-
-// SetNillableTTLKind sets the "ttl_kind" field if the given value is not nil.
-func (_u *VirtualMachineUpdate) SetNillableTTLKind(v *consts.VirtualmachineTTLKind) *VirtualMachineUpdate {
-	if v != nil {
-		_u.SetTTLKind(*v)
-	}
-	return _u
-}
-
-// ClearTTLKind clears the value of the "ttl_kind" field.
-func (_u *VirtualMachineUpdate) ClearTTLKind() *VirtualMachineUpdate {
-	_u.mutation.ClearTTLKind()
-	return _u
-}
-
-// SetTTL sets the "ttl" field.
-func (_u *VirtualMachineUpdate) SetTTL(v int64) *VirtualMachineUpdate {
-	_u.mutation.ResetTTL()
-	_u.mutation.SetTTL(v)
-	return _u
-}
-
-// SetNillableTTL sets the "ttl" field if the given value is not nil.
-func (_u *VirtualMachineUpdate) SetNillableTTL(v *int64) *VirtualMachineUpdate {
-	if v != nil {
-		_u.SetTTL(*v)
-	}
-	return _u
-}
-
-// AddTTL adds value to the "ttl" field.
-func (_u *VirtualMachineUpdate) AddTTL(v int64) *VirtualMachineUpdate {
-	_u.mutation.AddTTL(v)
-	return _u
-}
-
-// ClearTTL clears the value of the "ttl" field.
-func (_u *VirtualMachineUpdate) ClearTTL() *VirtualMachineUpdate {
-	_u.mutation.ClearTTL()
-	return _u
-}
-
 // SetVersion sets the "version" field.
 func (_u *VirtualMachineUpdate) SetVersion(v string) *VirtualMachineUpdate {
 	_u.mutation.SetVersion(v)
@@ -516,6 +468,26 @@ func (_u *VirtualMachineUpdate) SetConditions(v *types.VirtualMachineCondition) 
 // ClearConditions clears the value of the "conditions" field.
 func (_u *VirtualMachineUpdate) ClearConditions() *VirtualMachineUpdate {
 	_u.mutation.ClearConditions()
+	return _u
+}
+
+// SetExpiredAt sets the "expired_at" field.
+func (_u *VirtualMachineUpdate) SetExpiredAt(v time.Time) *VirtualMachineUpdate {
+	_u.mutation.SetExpiredAt(v)
+	return _u
+}
+
+// SetNillableExpiredAt sets the "expired_at" field if the given value is not nil.
+func (_u *VirtualMachineUpdate) SetNillableExpiredAt(v *time.Time) *VirtualMachineUpdate {
+	if v != nil {
+		_u.SetExpiredAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiredAt clears the value of the "expired_at" field.
+func (_u *VirtualMachineUpdate) ClearExpiredAt() *VirtualMachineUpdate {
+	_u.mutation.ClearExpiredAt()
 	return _u
 }
 
@@ -790,21 +762,6 @@ func (_u *VirtualMachineUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.InternalIPCleared() {
 		_spec.ClearField(virtualmachine.FieldInternalIP, field.TypeString)
 	}
-	if value, ok := _u.mutation.TTLKind(); ok {
-		_spec.SetField(virtualmachine.FieldTTLKind, field.TypeString, value)
-	}
-	if _u.mutation.TTLKindCleared() {
-		_spec.ClearField(virtualmachine.FieldTTLKind, field.TypeString)
-	}
-	if value, ok := _u.mutation.TTL(); ok {
-		_spec.SetField(virtualmachine.FieldTTL, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedTTL(); ok {
-		_spec.AddField(virtualmachine.FieldTTL, field.TypeInt64, value)
-	}
-	if _u.mutation.TTLCleared() {
-		_spec.ClearField(virtualmachine.FieldTTL, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(virtualmachine.FieldVersion, field.TypeString, value)
 	}
@@ -846,6 +803,12 @@ func (_u *VirtualMachineUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if _u.mutation.ConditionsCleared() {
 		_spec.ClearField(virtualmachine.FieldConditions, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ExpiredAt(); ok {
+		_spec.SetField(virtualmachine.FieldExpiredAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiredAtCleared() {
+		_spec.ClearField(virtualmachine.FieldExpiredAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(virtualmachine.FieldCreatedAt, field.TypeTime, value)
@@ -1375,53 +1338,6 @@ func (_u *VirtualMachineUpdateOne) ClearInternalIP() *VirtualMachineUpdateOne {
 	return _u
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (_u *VirtualMachineUpdateOne) SetTTLKind(v consts.VirtualmachineTTLKind) *VirtualMachineUpdateOne {
-	_u.mutation.SetTTLKind(v)
-	return _u
-}
-
-// SetNillableTTLKind sets the "ttl_kind" field if the given value is not nil.
-func (_u *VirtualMachineUpdateOne) SetNillableTTLKind(v *consts.VirtualmachineTTLKind) *VirtualMachineUpdateOne {
-	if v != nil {
-		_u.SetTTLKind(*v)
-	}
-	return _u
-}
-
-// ClearTTLKind clears the value of the "ttl_kind" field.
-func (_u *VirtualMachineUpdateOne) ClearTTLKind() *VirtualMachineUpdateOne {
-	_u.mutation.ClearTTLKind()
-	return _u
-}
-
-// SetTTL sets the "ttl" field.
-func (_u *VirtualMachineUpdateOne) SetTTL(v int64) *VirtualMachineUpdateOne {
-	_u.mutation.ResetTTL()
-	_u.mutation.SetTTL(v)
-	return _u
-}
-
-// SetNillableTTL sets the "ttl" field if the given value is not nil.
-func (_u *VirtualMachineUpdateOne) SetNillableTTL(v *int64) *VirtualMachineUpdateOne {
-	if v != nil {
-		_u.SetTTL(*v)
-	}
-	return _u
-}
-
-// AddTTL adds value to the "ttl" field.
-func (_u *VirtualMachineUpdateOne) AddTTL(v int64) *VirtualMachineUpdateOne {
-	_u.mutation.AddTTL(v)
-	return _u
-}
-
-// ClearTTL clears the value of the "ttl" field.
-func (_u *VirtualMachineUpdateOne) ClearTTL() *VirtualMachineUpdateOne {
-	_u.mutation.ClearTTL()
-	return _u
-}
-
 // SetVersion sets the "version" field.
 func (_u *VirtualMachineUpdateOne) SetVersion(v string) *VirtualMachineUpdateOne {
 	_u.mutation.SetVersion(v)
@@ -1571,6 +1487,26 @@ func (_u *VirtualMachineUpdateOne) SetConditions(v *types.VirtualMachineConditio
 // ClearConditions clears the value of the "conditions" field.
 func (_u *VirtualMachineUpdateOne) ClearConditions() *VirtualMachineUpdateOne {
 	_u.mutation.ClearConditions()
+	return _u
+}
+
+// SetExpiredAt sets the "expired_at" field.
+func (_u *VirtualMachineUpdateOne) SetExpiredAt(v time.Time) *VirtualMachineUpdateOne {
+	_u.mutation.SetExpiredAt(v)
+	return _u
+}
+
+// SetNillableExpiredAt sets the "expired_at" field if the given value is not nil.
+func (_u *VirtualMachineUpdateOne) SetNillableExpiredAt(v *time.Time) *VirtualMachineUpdateOne {
+	if v != nil {
+		_u.SetExpiredAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiredAt clears the value of the "expired_at" field.
+func (_u *VirtualMachineUpdateOne) ClearExpiredAt() *VirtualMachineUpdateOne {
+	_u.mutation.ClearExpiredAt()
 	return _u
 }
 
@@ -1875,21 +1811,6 @@ func (_u *VirtualMachineUpdateOne) sqlSave(ctx context.Context) (_node *VirtualM
 	if _u.mutation.InternalIPCleared() {
 		_spec.ClearField(virtualmachine.FieldInternalIP, field.TypeString)
 	}
-	if value, ok := _u.mutation.TTLKind(); ok {
-		_spec.SetField(virtualmachine.FieldTTLKind, field.TypeString, value)
-	}
-	if _u.mutation.TTLKindCleared() {
-		_spec.ClearField(virtualmachine.FieldTTLKind, field.TypeString)
-	}
-	if value, ok := _u.mutation.TTL(); ok {
-		_spec.SetField(virtualmachine.FieldTTL, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedTTL(); ok {
-		_spec.AddField(virtualmachine.FieldTTL, field.TypeInt64, value)
-	}
-	if _u.mutation.TTLCleared() {
-		_spec.ClearField(virtualmachine.FieldTTL, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(virtualmachine.FieldVersion, field.TypeString, value)
 	}
@@ -1931,6 +1852,12 @@ func (_u *VirtualMachineUpdateOne) sqlSave(ctx context.Context) (_node *VirtualM
 	}
 	if _u.mutation.ConditionsCleared() {
 		_spec.ClearField(virtualmachine.FieldConditions, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ExpiredAt(); ok {
+		_spec.SetField(virtualmachine.FieldExpiredAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiredAtCleared() {
+		_spec.ClearField(virtualmachine.FieldExpiredAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(virtualmachine.FieldCreatedAt, field.TypeTime, value)

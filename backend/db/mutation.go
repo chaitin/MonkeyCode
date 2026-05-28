@@ -39562,9 +39562,6 @@ type VirtualMachineMutation struct {
 	os                  *string
 	external_ip         *string
 	internal_ip         *string
-	ttl_kind            *consts.VirtualmachineTTLKind
-	ttl                 *int64
-	addttl              *int64
 	version             *string
 	machine_id          *string
 	repo_url            *string
@@ -39572,6 +39569,7 @@ type VirtualMachineMutation struct {
 	branch              *string
 	is_recycled         *bool
 	conditions          **types.VirtualMachineCondition
+	expired_at          *time.Time
 	created_at          *time.Time
 	updated_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -40400,125 +40398,6 @@ func (m *VirtualMachineMutation) ResetInternalIP() {
 	delete(m.clearedFields, virtualmachine.FieldInternalIP)
 }
 
-// SetTTLKind sets the "ttl_kind" field.
-func (m *VirtualMachineMutation) SetTTLKind(ctk consts.VirtualmachineTTLKind) {
-	m.ttl_kind = &ctk
-}
-
-// TTLKind returns the value of the "ttl_kind" field in the mutation.
-func (m *VirtualMachineMutation) TTLKind() (r consts.VirtualmachineTTLKind, exists bool) {
-	v := m.ttl_kind
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTTLKind returns the old "ttl_kind" field's value of the VirtualMachine entity.
-// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *VirtualMachineMutation) OldTTLKind(ctx context.Context) (v consts.VirtualmachineTTLKind, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTTLKind is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTTLKind requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTTLKind: %w", err)
-	}
-	return oldValue.TTLKind, nil
-}
-
-// ClearTTLKind clears the value of the "ttl_kind" field.
-func (m *VirtualMachineMutation) ClearTTLKind() {
-	m.ttl_kind = nil
-	m.clearedFields[virtualmachine.FieldTTLKind] = struct{}{}
-}
-
-// TTLKindCleared returns if the "ttl_kind" field was cleared in this mutation.
-func (m *VirtualMachineMutation) TTLKindCleared() bool {
-	_, ok := m.clearedFields[virtualmachine.FieldTTLKind]
-	return ok
-}
-
-// ResetTTLKind resets all changes to the "ttl_kind" field.
-func (m *VirtualMachineMutation) ResetTTLKind() {
-	m.ttl_kind = nil
-	delete(m.clearedFields, virtualmachine.FieldTTLKind)
-}
-
-// SetTTL sets the "ttl" field.
-func (m *VirtualMachineMutation) SetTTL(i int64) {
-	m.ttl = &i
-	m.addttl = nil
-}
-
-// TTL returns the value of the "ttl" field in the mutation.
-func (m *VirtualMachineMutation) TTL() (r int64, exists bool) {
-	v := m.ttl
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTTL returns the old "ttl" field's value of the VirtualMachine entity.
-// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *VirtualMachineMutation) OldTTL(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTTL is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTTL requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTTL: %w", err)
-	}
-	return oldValue.TTL, nil
-}
-
-// AddTTL adds i to the "ttl" field.
-func (m *VirtualMachineMutation) AddTTL(i int64) {
-	if m.addttl != nil {
-		*m.addttl += i
-	} else {
-		m.addttl = &i
-	}
-}
-
-// AddedTTL returns the value that was added to the "ttl" field in this mutation.
-func (m *VirtualMachineMutation) AddedTTL() (r int64, exists bool) {
-	v := m.addttl
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearTTL clears the value of the "ttl" field.
-func (m *VirtualMachineMutation) ClearTTL() {
-	m.ttl = nil
-	m.addttl = nil
-	m.clearedFields[virtualmachine.FieldTTL] = struct{}{}
-}
-
-// TTLCleared returns if the "ttl" field was cleared in this mutation.
-func (m *VirtualMachineMutation) TTLCleared() bool {
-	_, ok := m.clearedFields[virtualmachine.FieldTTL]
-	return ok
-}
-
-// ResetTTL resets all changes to the "ttl" field.
-func (m *VirtualMachineMutation) ResetTTL() {
-	m.ttl = nil
-	m.addttl = nil
-	delete(m.clearedFields, virtualmachine.FieldTTL)
-}
-
 // SetVersion sets the "version" field.
 func (m *VirtualMachineMutation) SetVersion(s string) {
 	m.version = &s
@@ -40911,6 +40790,55 @@ func (m *VirtualMachineMutation) ResetConditions() {
 	delete(m.clearedFields, virtualmachine.FieldConditions)
 }
 
+// SetExpiredAt sets the "expired_at" field.
+func (m *VirtualMachineMutation) SetExpiredAt(t time.Time) {
+	m.expired_at = &t
+}
+
+// ExpiredAt returns the value of the "expired_at" field in the mutation.
+func (m *VirtualMachineMutation) ExpiredAt() (r time.Time, exists bool) {
+	v := m.expired_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiredAt returns the old "expired_at" field's value of the VirtualMachine entity.
+// If the VirtualMachine object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *VirtualMachineMutation) OldExpiredAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiredAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiredAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiredAt: %w", err)
+	}
+	return oldValue.ExpiredAt, nil
+}
+
+// ClearExpiredAt clears the value of the "expired_at" field.
+func (m *VirtualMachineMutation) ClearExpiredAt() {
+	m.expired_at = nil
+	m.clearedFields[virtualmachine.FieldExpiredAt] = struct{}{}
+}
+
+// ExpiredAtCleared returns if the "expired_at" field was cleared in this mutation.
+func (m *VirtualMachineMutation) ExpiredAtCleared() bool {
+	_, ok := m.clearedFields[virtualmachine.FieldExpiredAt]
+	return ok
+}
+
+// ResetExpiredAt resets all changes to the "expired_at" field.
+func (m *VirtualMachineMutation) ResetExpiredAt() {
+	m.expired_at = nil
+	delete(m.clearedFields, virtualmachine.FieldExpiredAt)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *VirtualMachineMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -41233,7 +41161,7 @@ func (m *VirtualMachineMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *VirtualMachineMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 25)
 	if m.deleted_at != nil {
 		fields = append(fields, virtualmachine.FieldDeletedAt)
 	}
@@ -41276,12 +41204,6 @@ func (m *VirtualMachineMutation) Fields() []string {
 	if m.internal_ip != nil {
 		fields = append(fields, virtualmachine.FieldInternalIP)
 	}
-	if m.ttl_kind != nil {
-		fields = append(fields, virtualmachine.FieldTTLKind)
-	}
-	if m.ttl != nil {
-		fields = append(fields, virtualmachine.FieldTTL)
-	}
 	if m.version != nil {
 		fields = append(fields, virtualmachine.FieldVersion)
 	}
@@ -41305,6 +41227,9 @@ func (m *VirtualMachineMutation) Fields() []string {
 	}
 	if m.conditions != nil {
 		fields = append(fields, virtualmachine.FieldConditions)
+	}
+	if m.expired_at != nil {
+		fields = append(fields, virtualmachine.FieldExpiredAt)
 	}
 	if m.created_at != nil {
 		fields = append(fields, virtualmachine.FieldCreatedAt)
@@ -41348,10 +41273,6 @@ func (m *VirtualMachineMutation) Field(name string) (ent.Value, bool) {
 		return m.ExternalIP()
 	case virtualmachine.FieldInternalIP:
 		return m.InternalIP()
-	case virtualmachine.FieldTTLKind:
-		return m.TTLKind()
-	case virtualmachine.FieldTTL:
-		return m.TTL()
 	case virtualmachine.FieldVersion:
 		return m.Version()
 	case virtualmachine.FieldMachineID:
@@ -41368,6 +41289,8 @@ func (m *VirtualMachineMutation) Field(name string) (ent.Value, bool) {
 		return m.IsRecycled()
 	case virtualmachine.FieldConditions:
 		return m.Conditions()
+	case virtualmachine.FieldExpiredAt:
+		return m.ExpiredAt()
 	case virtualmachine.FieldCreatedAt:
 		return m.CreatedAt()
 	case virtualmachine.FieldUpdatedAt:
@@ -41409,10 +41332,6 @@ func (m *VirtualMachineMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldExternalIP(ctx)
 	case virtualmachine.FieldInternalIP:
 		return m.OldInternalIP(ctx)
-	case virtualmachine.FieldTTLKind:
-		return m.OldTTLKind(ctx)
-	case virtualmachine.FieldTTL:
-		return m.OldTTL(ctx)
 	case virtualmachine.FieldVersion:
 		return m.OldVersion(ctx)
 	case virtualmachine.FieldMachineID:
@@ -41429,6 +41348,8 @@ func (m *VirtualMachineMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldIsRecycled(ctx)
 	case virtualmachine.FieldConditions:
 		return m.OldConditions(ctx)
+	case virtualmachine.FieldExpiredAt:
+		return m.OldExpiredAt(ctx)
 	case virtualmachine.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case virtualmachine.FieldUpdatedAt:
@@ -41540,20 +41461,6 @@ func (m *VirtualMachineMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetInternalIP(v)
 		return nil
-	case virtualmachine.FieldTTLKind:
-		v, ok := value.(consts.VirtualmachineTTLKind)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTTLKind(v)
-		return nil
-	case virtualmachine.FieldTTL:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTTL(v)
-		return nil
 	case virtualmachine.FieldVersion:
 		v, ok := value.(string)
 		if !ok {
@@ -41610,6 +41517,13 @@ func (m *VirtualMachineMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetConditions(v)
 		return nil
+	case virtualmachine.FieldExpiredAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiredAt(v)
+		return nil
 	case virtualmachine.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -41638,9 +41552,6 @@ func (m *VirtualMachineMutation) AddedFields() []string {
 	if m.addmemory != nil {
 		fields = append(fields, virtualmachine.FieldMemory)
 	}
-	if m.addttl != nil {
-		fields = append(fields, virtualmachine.FieldTTL)
-	}
 	return fields
 }
 
@@ -41653,8 +41564,6 @@ func (m *VirtualMachineMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedCores()
 	case virtualmachine.FieldMemory:
 		return m.AddedMemory()
-	case virtualmachine.FieldTTL:
-		return m.AddedTTL()
 	}
 	return nil, false
 }
@@ -41677,13 +41586,6 @@ func (m *VirtualMachineMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMemory(v)
-		return nil
-	case virtualmachine.FieldTTL:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddTTL(v)
 		return nil
 	}
 	return fmt.Errorf("unknown VirtualMachine numeric field %s", name)
@@ -41729,12 +41631,6 @@ func (m *VirtualMachineMutation) ClearedFields() []string {
 	if m.FieldCleared(virtualmachine.FieldInternalIP) {
 		fields = append(fields, virtualmachine.FieldInternalIP)
 	}
-	if m.FieldCleared(virtualmachine.FieldTTLKind) {
-		fields = append(fields, virtualmachine.FieldTTLKind)
-	}
-	if m.FieldCleared(virtualmachine.FieldTTL) {
-		fields = append(fields, virtualmachine.FieldTTL)
-	}
 	if m.FieldCleared(virtualmachine.FieldVersion) {
 		fields = append(fields, virtualmachine.FieldVersion)
 	}
@@ -41758,6 +41654,9 @@ func (m *VirtualMachineMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(virtualmachine.FieldConditions) {
 		fields = append(fields, virtualmachine.FieldConditions)
+	}
+	if m.FieldCleared(virtualmachine.FieldExpiredAt) {
+		fields = append(fields, virtualmachine.FieldExpiredAt)
 	}
 	return fields
 }
@@ -41809,12 +41708,6 @@ func (m *VirtualMachineMutation) ClearField(name string) error {
 	case virtualmachine.FieldInternalIP:
 		m.ClearInternalIP()
 		return nil
-	case virtualmachine.FieldTTLKind:
-		m.ClearTTLKind()
-		return nil
-	case virtualmachine.FieldTTL:
-		m.ClearTTL()
-		return nil
 	case virtualmachine.FieldVersion:
 		m.ClearVersion()
 		return nil
@@ -41838,6 +41731,9 @@ func (m *VirtualMachineMutation) ClearField(name string) error {
 		return nil
 	case virtualmachine.FieldConditions:
 		m.ClearConditions()
+		return nil
+	case virtualmachine.FieldExpiredAt:
+		m.ClearExpiredAt()
 		return nil
 	}
 	return fmt.Errorf("unknown VirtualMachine nullable field %s", name)
@@ -41889,12 +41785,6 @@ func (m *VirtualMachineMutation) ResetField(name string) error {
 	case virtualmachine.FieldInternalIP:
 		m.ResetInternalIP()
 		return nil
-	case virtualmachine.FieldTTLKind:
-		m.ResetTTLKind()
-		return nil
-	case virtualmachine.FieldTTL:
-		m.ResetTTL()
-		return nil
 	case virtualmachine.FieldVersion:
 		m.ResetVersion()
 		return nil
@@ -41918,6 +41808,9 @@ func (m *VirtualMachineMutation) ResetField(name string) error {
 		return nil
 	case virtualmachine.FieldConditions:
 		m.ResetConditions()
+		return nil
+	case virtualmachine.FieldExpiredAt:
+		m.ResetExpiredAt()
 		return nil
 	case virtualmachine.FieldCreatedAt:
 		m.ResetCreatedAt()
