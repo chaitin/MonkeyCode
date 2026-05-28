@@ -73,7 +73,7 @@ func NewCenterEnv(input CenterEnvInput) (CenterEnv, error) {
 		NginxPort:      fallback(input.NginxPort, "80"),
 		PostgresDB:     "monkeycode-ai",
 		PostgresUser:   "monkeycode-ai",
-		ClickHouseDB:   "monkeycode-ai",
+		ClickHouseDB:   "monkeycode_ai",
 		ClickHouseUser: "monkeycode-ai",
 		TeamEmail:      input.TeamEmail,
 		TeamName:       fallback(input.TeamName, "MonkeyCode"),

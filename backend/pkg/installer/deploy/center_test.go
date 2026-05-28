@@ -24,6 +24,16 @@ func TestNewCenterEnvGeneratesRelaySecretUUID(t *testing.T) {
 	}
 }
 
+func TestNewCenterEnvUsesClickHouseSafeDatabaseName(t *testing.T) {
+	env, err := NewCenterEnv(CenterEnvInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(env.ClickHouseDB) {
+		t.Fatalf("ClickHouseDB = %q, want identifier safe for clickhouse entrypoint", env.ClickHouseDB)
+	}
+}
+
 func TestRenderCenterEnvWritesRelaySecret(t *testing.T) {
 	rendered := RenderCenterEnv("RELAY_SECRET=\nTEAM_NAME=\n", CenterEnv{
 		RelaySecret: "11111111-1111-4111-8111-111111111111",
