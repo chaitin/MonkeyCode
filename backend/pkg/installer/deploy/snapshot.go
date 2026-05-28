@@ -49,12 +49,15 @@ func centerSnapshotPaths() []string {
 }
 
 func copyPathIfExists(src, dst string) error {
-	info, err := os.Stat(src)
+	info, err := os.Lstat(src)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return copySymlink(src, dst)
 	}
 	if info.IsDir() {
 		return copyDir(src, dst)
@@ -77,11 +80,28 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return copySymlink(path, target)
+		}
 		if entry.IsDir() {
 			return os.MkdirAll(target, info.Mode())
 		}
 		return copyFileMode(path, target, info.Mode())
 	})
+}
+
+func copySymlink(src, dst string) error {
+	link, err := os.Readlink(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	return os.Symlink(link, dst)
 }
 
 func copyFileMode(src, dst string, mode os.FileMode) error {
