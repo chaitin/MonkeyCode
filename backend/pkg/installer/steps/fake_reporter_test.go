@@ -28,9 +28,9 @@ func (r *fakeReporter) SetStep(title, hint string) {
 	r.StepCalls = append(r.StepCalls, title)
 }
 
-func (r *fakeReporter) StartProgress(label string)               {}
-func (r *fakeReporter) UpdateProgress(downloaded, total int64)   {}
-func (r *fakeReporter) EndProgress()                              {}
+func (r *fakeReporter) StartProgress(label string)             {}
+func (r *fakeReporter) UpdateProgress(downloaded, total int64) {}
+func (r *fakeReporter) EndProgress()                           {}
 
 func (r *fakeReporter) AskInput(label, def string, password bool, v Validator) (string, error) {
 	if r.inputIdx >= len(r.InputAns) {
