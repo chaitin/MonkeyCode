@@ -94,6 +94,14 @@ func buildApp(m mode, logger *logging.Logger) *app.App {
 					&steps.ServiceForm{},
 					&steps.InstallService{},
 				}},
+				{Label: "升级", Value: "upgrade", Steps: []steps.Step{
+					&steps.CheckDocker{},
+					&steps.CenterUpgrade{},
+				}},
+				{Label: "回滚", Value: "rollback", Steps: []steps.Step{
+					&steps.CheckDocker{},
+					&steps.CenterRollback{},
+				}},
 			},
 		}
 	default:
@@ -105,6 +113,10 @@ func buildApp(m mode, logger *logging.Logger) *app.App {
 				{Label: "安装", Value: "install", Steps: []steps.Step{
 					&steps.CheckDocker{},
 					&steps.HostInstall{},
+				}},
+				{Label: "升级", Value: "upgrade", Steps: []steps.Step{
+					&steps.CheckDocker{},
+					&steps.HostUpgrade{},
 				}},
 				{Label: "卸载", Value: "uninstall", Steps: []steps.Step{
 					&steps.HostUninstall{},

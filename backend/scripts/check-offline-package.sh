@@ -9,6 +9,7 @@ installer
 docker.tgz
 docker-compose.yml
 .env.example
+manifest.json
 images/backend.tar.gz
 images/frontend.tar.gz
 images/taskflow.tar.gz
@@ -31,6 +32,15 @@ static/installer/aarch64/host.tgz
 for file in $required; do
   if [ ! -f "$ROOT/$file" ]; then
     echo "missing $file"
+    exit 1
+  fi
+done
+
+python3 -m json.tool "$ROOT/manifest.json" >/dev/null
+
+for file in static/installer/x86_64/host.tgz static/installer/aarch64/host.tgz; do
+  if ! grep -q "\"path\":\"$file\"" "$ROOT/manifest.json" && ! grep -q "\"path\": \"$file\"" "$ROOT/manifest.json"; then
+    echo "manifest missing $file"
     exit 1
   fi
 done

@@ -192,6 +192,43 @@ build_host_bundle() {
 build_host_bundle x86_64
 build_host_bundle aarch64
 
+file_sha256() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+write_manifest() {
+  manifest="$PACKAGE_DIR/manifest.json"
+  compose_sha="$(file_sha256 "$PACKAGE_DIR/docker-compose.yml")"
+  static_sha="$(tar -C "$PACKAGE_DIR" -cf - static | sha256sum | awk '{print $1}')"
+  cat > "$manifest" <<EOF
+{
+  "version": "$IMAGE_TAG",
+  "commit": "$REPO_COMMIT",
+  "built_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "arch": "$ARCH",
+  "min_upgrade_from": "legacy",
+  "compose_sha256": "$compose_sha",
+  "static_sha256": "$static_sha",
+  "images": [
+    {"name":"backend","archive":"images/backend.tar.gz","image":"$BACKEND_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/backend.tar.gz")"},
+    {"name":"frontend","archive":"images/frontend.tar.gz","image":"$FRONTEND_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/frontend.tar.gz")"},
+    {"name":"ingress","archive":"images/ingress.tar.gz","image":"$INGRESS_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/ingress.tar.gz")"},
+    {"name":"taskflow","archive":"images/taskflow.tar.gz","image":"$TASKFLOW_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/taskflow.tar.gz")"},
+    {"name":"preview","archive":"images/preview.tar.gz","image":"$PREVIEW_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/preview.tar.gz")"},
+    {"name":"postgres","archive":"images/postgres.tar.gz","image":"$POSTGRES_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/postgres.tar.gz")"},
+    {"name":"redis","archive":"images/redis.tar.gz","image":"$REDIS_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/redis.tar.gz")"},
+    {"name":"clickhouse","archive":"images/clickhouse.tar.gz","image":"$CLICKHOUSE_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/clickhouse.tar.gz")"},
+    {"name":"rustfs","archive":"images/rustfs.tar.gz","image":"$RUSTFS_IMAGE","sha256":"$(file_sha256 "$PACKAGE_DIR/images/rustfs.tar.gz")"}
+  ],
+  "host_bundles": [
+    {"arch":"x86_64","path":"static/installer/x86_64/host.tgz","sha256":"$(file_sha256 "$PACKAGE_DIR/static/installer/x86_64/host.tgz")"},
+    {"arch":"aarch64","path":"static/installer/aarch64/host.tgz","sha256":"$(file_sha256 "$PACKAGE_DIR/static/installer/aarch64/host.tgz")"}
+  ]
+}
+EOF
+}
+
+write_manifest
 scripts/check-offline-package.sh "$PACKAGE_DIR"
 if [ "$PACKAGE_TGZ" = "true" ]; then
   tar -C "$OUT_DIR" -czf "$OUT_DIR/$PACKAGE_NAME.tgz" "$PACKAGE_NAME"

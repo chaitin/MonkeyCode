@@ -130,6 +130,24 @@ func TestOfflinePackageCheckRequiresPreviewImage(t *testing.T) {
 	}
 }
 
+func TestOfflinePackageBuildWritesManifest(t *testing.T) {
+	content := readFile(t, "../build-offline-package.sh")
+	for _, want := range []string{"manifest.json", "host_bundles", "sha256sum"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("build-offline-package.sh missing %q", want)
+		}
+	}
+}
+
+func TestOfflinePackageCheckRequiresManifest(t *testing.T) {
+	content := readFile(t, "../check-offline-package.sh")
+	for _, want := range []string{"manifest.json", "static/installer/x86_64/host.tgz", "static/installer/aarch64/host.tgz"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("check-offline-package.sh missing %q", want)
+		}
+	}
+}
+
 func TestCenterEnvExampleIncludesPreviewRelaySettings(t *testing.T) {
 	content := readFile(t, "../../installation/center/.env.example")
 	for _, want := range []string{
