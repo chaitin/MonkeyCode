@@ -23,7 +23,29 @@ func New() (*Logger, error) {
 	return &Logger{file: f, path: path}, nil
 }
 
-func (l *Logger) Path() string     { return l.path }
-func (l *Logger) Plain() io.Writer { return l.file }
-func (l *Logger) Sync() error      { return l.file.Sync() }
-func (l *Logger) Close() error     { return l.file.Close() }
+func NewDiscard() *Logger {
+	return &Logger{path: "/dev/null"}
+}
+
+func (l *Logger) Path() string { return l.path }
+
+func (l *Logger) Plain() io.Writer {
+	if l.file == nil {
+		return io.Discard
+	}
+	return l.file
+}
+
+func (l *Logger) Sync() error {
+	if l.file == nil {
+		return nil
+	}
+	return l.file.Sync()
+}
+
+func (l *Logger) Close() error {
+	if l.file == nil {
+		return nil
+	}
+	return l.file.Close()
+}
