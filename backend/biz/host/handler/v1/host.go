@@ -27,6 +27,19 @@ type HostHandler struct {
 	logger      *slog.Logger
 }
 
+type terminalWriter interface {
+	WriteJSON(any) error
+}
+
+func writeTerminalMessage(ctx context.Context, cancel context.CancelFunc, w terminalWriter, msg domain.VMTerminalMessage, logger *slog.Logger) bool {
+	if err := w.WriteJSON(msg); err != nil {
+		logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+		cancel()
+		return false
+	}
+	return true
+}
+
 func NewHostHandler(i *do.Injector) (*HostHandler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
@@ -217,7 +230,10 @@ func (h *HostHandler) JoinTerminal(c *web.Context, req domain.JoinTerminalReq) e
 
 	h.logger.InfoContext(c.Request().Context(), "websocket connection established", "col", col, "row", row)
 
-	shell, shared, err := h.usecase.JoinTerminal(c.Request().Context(), &req)
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
+
+	shell, shared, err := h.usecase.JoinTerminal(ctx, &req)
 	if err != nil {
 		h.logger.With("req", req).ErrorContext(c.Request().Context(), "failed to connect to vm terminal 验证密码失败", "error", err)
 		wsConn.WriteJSON(domain.VMTerminalMessage{
@@ -228,8 +244,6 @@ func (h *HostHandler) JoinTerminal(c *web.Context, req domain.JoinTerminalReq) e
 	}
 	defer shell.Stop()
 
-	ctx, cancel := context.WithCancel(c.Request().Context())
-	defer cancel()
 	go h.terminalPing(ctx, cancel, wsConn, req.TerminalID)
 
 	go func() {
@@ -294,10 +308,12 @@ func (h *HostHandler) JoinTerminal(c *web.Context, req domain.JoinTerminalReq) e
 				b = fmt.Appendf(nil, `{"username": "%s"}`, shared.User.Name)
 			}
 
-			wsConn.WriteJSON(domain.VMTerminalMessage{
+			if !writeTerminalMessage(ctx, cancel, wsConn, domain.VMTerminalMessage{
 				Type: domain.VMTerminalMessageTypeConnected,
 				Data: string(b),
-			})
+			}, h.logger) {
+				return
+			}
 		}
 
 		if len(td.Data) > 0 {
@@ -306,8 +322,8 @@ func (h *HostHandler) JoinTerminal(c *web.Context, req domain.JoinTerminalReq) e
 				Type: domain.VMTerminalMessageTypeData,
 				Data: data,
 			}
-			if err := wsConn.WriteJSON(msg); err != nil {
-				h.logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+			if !writeTerminalMessage(ctx, cancel, wsConn, *msg, h.logger) {
+				return
 			}
 		}
 
@@ -320,8 +336,8 @@ func (h *HostHandler) JoinTerminal(c *web.Context, req domain.JoinTerminalReq) e
 					Type: domain.VMTerminalMessageTypeResize,
 					Data: string(b),
 				}
-				if err := wsConn.WriteJSON(msg); err != nil {
-					h.logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+				if !writeTerminalMessage(ctx, cancel, wsConn, *msg, h.logger) {
+					return
 				}
 			}
 		}
@@ -331,8 +347,8 @@ func (h *HostHandler) JoinTerminal(c *web.Context, req domain.JoinTerminalReq) e
 				Type: domain.VMTerminalMessageTypeError,
 				Data: *td.Error,
 			}
-			if err := wsConn.WriteJSON(msg); err != nil {
-				h.logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+			if !writeTerminalMessage(ctx, cancel, wsConn, *msg, h.logger) {
+				return
 			}
 			cancel()
 		}
@@ -472,10 +488,12 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 				logger.ErrorContext(ctx, "failed to marshal success message", "error", err)
 				b = fmt.Appendf(nil, `{"username": "%s"}`, user.Name)
 			}
-			wsConn.WriteJSON(domain.VMTerminalMessage{
+			if !writeTerminalMessage(ctx, cancel, wsConn, domain.VMTerminalMessage{
 				Type: domain.VMTerminalMessageTypeConnected,
 				Data: string(b),
-			})
+			}, logger) {
+				return
+			}
 		}
 
 		if len(td.Data) > 0 {
@@ -484,8 +502,8 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 				Type: domain.VMTerminalMessageTypeData,
 				Data: data,
 			}
-			if err := wsConn.WriteJSON(msg); err != nil {
-				logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+			if !writeTerminalMessage(ctx, cancel, wsConn, *msg, logger) {
+				return
 			}
 		}
 
@@ -498,8 +516,8 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 					Type: domain.VMTerminalMessageTypeResize,
 					Data: string(b),
 				}
-				if err := wsConn.WriteJSON(msg); err != nil {
-					logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+				if !writeTerminalMessage(ctx, cancel, wsConn, *msg, logger) {
+					return
 				}
 			}
 		}
@@ -508,8 +526,8 @@ func (h *HostHandler) ConnectVMTerminal(c *web.Context, req domain.TerminalReq) 
 				Type: domain.VMTerminalMessageTypeError,
 				Data: *td.Error,
 			}
-			if err := wsConn.WriteJSON(msg); err != nil {
-				logger.With("error", err).ErrorContext(ctx, "failed to write message to frontend")
+			if !writeTerminalMessage(ctx, cancel, wsConn, *msg, logger) {
+				return
 			}
 
 			cancel()
