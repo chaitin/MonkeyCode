@@ -576,8 +576,8 @@ export default function WalletDialog() {
                   className={cn(
                     "text-right tabular-nums",
                     getTransactionDirection(transaction.kind) >= 0
-                      ? "text-red-600"
-                      : "text-green-600",
+                      ? "text-danger"
+                      : "text-success",
                   )}
                 >
                   {formatSignedAmount(transaction.amount || ((transaction.amount_balance || 0) + (transaction.amount_daily || 0)), transaction.kind)}

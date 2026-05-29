@@ -140,7 +140,7 @@ export default function TerminalPage() {
         </>
       } else if (connectionStatus === 'disconnected') {
         return <>
-          <IconXboxXFilled className="w-4 h-4 min-w-4 min-h-4 text-red-500" />
+          <IconXboxXFilled className="w-4 h-4 min-w-4 min-h-4 text-danger" />
           连接已断开
         </>
       } else if (connectionStatus === 'connected') {

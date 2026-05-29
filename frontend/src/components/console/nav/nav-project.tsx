@@ -73,7 +73,7 @@ function SidebarTaskItem({ task, isActive, onStop, onDelete, onRenameSuccess }: 
             className={cn(
               "size-3.5 shrink-0",
               isPending && "animate-spin text-primary",
-              isProcessing && "text-green-500",
+              isProcessing && "text-success",
               isFinished && "text-muted-foreground/40"
             )}
           />

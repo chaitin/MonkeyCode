@@ -64,11 +64,11 @@ function clampTokenBalance(value: number, total: number) {
 
 function getQuotaProgressClassName(progress: number) {
   if (progress > 80) {
-    return "bg-red-500"
+    return "bg-danger"
   }
 
   if (progress >= 50) {
-    return "bg-yellow-500"
+    return "bg-warning"
   }
 
   return "bg-muted-foreground"
@@ -76,11 +76,11 @@ function getQuotaProgressClassName(progress: number) {
 
 function getQuotaCircularProgressClassName(progress: number) {
   if (progress > 80) {
-    return "text-red-500"
+    return "text-danger"
   }
 
   if (progress >= 50) {
-    return "text-yellow-500"
+    return "text-warning"
   }
 
   return "text-muted-foreground"

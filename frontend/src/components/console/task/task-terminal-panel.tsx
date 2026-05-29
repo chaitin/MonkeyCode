@@ -140,9 +140,9 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
       return <Spinner className="size-3.5 shrink-0" />
     }
     if (connectionStatus === "connected") {
-      return <IconTerminal2 className="size-3.5 text-green-500 shrink-0" />
+      return <IconTerminal2 className="size-3.5 text-success shrink-0" />
     }
-    return <IconAlertCircle className="size-3.5 text-red-500 shrink-0" />
+    return <IconAlertCircle className="size-3.5 text-danger shrink-0" />
   }
 
   const sidebar = (
@@ -191,7 +191,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="hidden size-5 shrink-0 group-hover:flex hover:bg-destructive/10 hover:text-primary"
+                    className="hidden size-5 shrink-0 group-hover:flex hover:bg-destructive/10 hover:text-danger"
                     onClick={(e) => handleCloseTab(e, sid)}
                   >
                     <IconX className="size-3.5" />
