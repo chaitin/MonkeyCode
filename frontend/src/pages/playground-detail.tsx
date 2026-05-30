@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/dialog";
 import AceEditor from "react-ace";
 import "ace-builds";
-import "ace-builds/src-noconflict/theme-tomorrow";
 import "ace-builds/src-noconflict/mode-text";
 import "ace-builds/src-noconflict/mode-javascript";
 import "ace-builds/src-noconflict/mode-typescript";
@@ -33,8 +32,7 @@ import "ace-builds/src-noconflict/mode-golang";
 import "ace-builds/src-noconflict/mode-rust";
 import "ace-builds/src-noconflict/mode-java";
 import "ace-builds/src-noconflict/mode-c_cpp";
-import "ace-builds/src-noconflict/theme-github";
-import "ace-builds/src-noconflict/theme-monokai";
+import "@/utils/ace-theme"
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
@@ -300,9 +298,9 @@ const PlaygroundDetailPage = () => {
             onClick={() => toggleDir(node.path)}
           >
             {isExpanded ? (
-              <IconFolderOpen className="size-4 text-amber-500 shrink-0" />
+              <IconFolderOpen className="size-4 text-primary shrink-0" />
             ) : (
-              <IconFolder className="size-4 text-amber-500 shrink-0" />
+              <IconFolder className="size-4 text-primary shrink-0" />
             )}
             <span className="truncate font-medium" title={node.path}>
               {node.name}
@@ -439,14 +437,14 @@ const PlaygroundDetailPage = () => {
           <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col sm:max-w-[60vw]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 font-mono text-sm">
-                <IconFile className="size-4 text-blue-500" />
+                <IconFile className="size-4 text-primary" />
                 {selectedFile?.path}
               </DialogTitle>
             </DialogHeader>
             <div className="border rounded-md h-[60vh] overflow-hidden">
               <AceEditor
                 mode={getLanguageMode(selectedFile?.name || '')}
-                theme={'tomorrow'}
+                theme="monkeycode"
                 value={selectedFile?.content || ''}
                 readOnly={true}
                 width="100%"

@@ -208,7 +208,7 @@ const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh,
       </div>
       <div className="relative size-5 shrink-0 flex items-center justify-center">
         {hasChanges && (
-          <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity">●</span>
+          <span className="text-[10px] font-medium text-warning group-hover:opacity-0 transition-opacity">●</span>
         )}
         <div className="absolute inset-0 flex items-center justify-center">
           <FileActionsDropdown file={file} envid={envid} onRefresh={onRefresh} onSuccess={onRefresh} />
@@ -359,7 +359,7 @@ const DirNode = forwardRef<DirNodeRef, {
           </div>
         </CollapsibleTrigger>
         <div className="relative size-5 shrink-0 flex items-center justify-center">
-          {hasChangesInChildren && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500 group-hover:opacity-0 transition-opacity">●</span>}
+          {hasChangesInChildren && <span className="text-[10px] font-medium text-warning group-hover:opacity-0 transition-opacity">●</span>}
           <div className="absolute inset-0 flex items-center justify-center">
             <FileActionsDropdown file={file} envid={envid} onRefresh={async () => { await refresh(); onRefresh?.() }} onSuccess={async () => { await refresh(); onRefresh?.() }} />
           </div>
@@ -763,13 +763,13 @@ export const TaskFileExplorer = ({
               </div>
               <div className="flex items-center gap-1 shrink-0 tabular-nums text-xs font-medium">
                 {additions > 0 && (
-                  <span className="text-green-700 dark:text-green-400">+{additions}</span>
+                  <span className="text-success">+{additions}</span>
                 )}
                 {deletions > 0 && (
-                  <span className="text-red-700 dark:text-red-400">-{deletions}</span>
+                  <span className="text-danger">-{deletions}</span>
                 )}
                 {additions === 0 && deletions === 0 && change?.status && (
-                  <span className="text-amber-600 dark:text-amber-500">{change.status}</span>
+                  <span className="text-warning">{change.status}</span>
                 )}
               </div>
             </div>

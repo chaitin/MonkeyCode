@@ -23,6 +23,7 @@ import "ace-builds/src-noconflict/mode-css"
 import "ace-builds/src-noconflict/mode-sql"
 import "ace-builds/src-noconflict/mode-sh"
 import "ace-builds/src-noconflict/mode-dockerfile"
+import "@/utils/ace-theme"
 import dayjs from "dayjs"
 
 type TreeEntry = DomainProjectTreeEntry
@@ -97,12 +98,12 @@ const getFileIcon = (entry: TreeEntry, isOpen?: boolean, loading?: boolean) => {
   switch (entry.mode) {
     case FileMode.DIRECTORY:
       return isOpen
-        ? <IconFolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
-        : <IconFolder className="h-4 w-4 text-amber-500 shrink-0" />
+        ? <IconFolderOpen className="h-4 w-4 text-primary shrink-0" />
+        : <IconFolder className="h-4 w-4 text-primary shrink-0" />
     case FileMode.SYMLINK:
       return <IconFileSymlink className="h-4 w-4 text-muted-foreground shrink-0" />
     case FileMode.SUBMODULE:
-      return <IconGitBranch className="h-4 w-4 text-amber-500 shrink-0" />
+      return <IconGitBranch className="h-4 w-4 text-primary shrink-0" />
     case FileMode.REGULAR:
     case FileMode.EXECUTABLE:
     default:
