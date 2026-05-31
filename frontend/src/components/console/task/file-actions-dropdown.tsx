@@ -101,7 +101,13 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
 
     if (!nextFileHandle) {
       if (!envid) return
-      nativeDownloadFile(envid, filePath, downloadFilename)
+
+      try {
+        await nativeDownloadFile(envid, filePath, downloadFilename)
+      } catch (error) {
+        toast.error('下载失败：' + (error instanceof Error ? error.message : '未知错误'))
+      }
+
       return
     }
 

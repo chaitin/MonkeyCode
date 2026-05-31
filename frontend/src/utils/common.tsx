@@ -8,6 +8,7 @@ import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIs
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
+import { downloadFileWithAndroidPlugin } from "@/utils/android-downloader"
 
 /** GitHub App 安装地址：https://monkeycode-ai.com 用正式环境，其他域名用开发环境 */
 export function getGithubAppInstallUrl(): string {
@@ -812,11 +813,17 @@ export function getDownloadFileUrl(envid: string, path: string, filename?: strin
   return `/api/v1/users/files/download?${params.toString()}`
 }
 
-export function nativeDownloadFile(envid: string, path: string, filename?: string): void {
+export async function nativeDownloadFile(envid: string, path: string, filename?: string): Promise<void> {
   const downloadFilename = filename || getFileName(path)
+  const url = new URL(getDownloadFileUrl(envid, path, downloadFilename), window.location.origin).toString()
+
+  if (await downloadFileWithAndroidPlugin(url, downloadFilename)) {
+    return
+  }
+
   const link = document.createElement('a')
 
-  link.href = getDownloadFileUrl(envid, path, downloadFilename)
+  link.href = url
   link.download = downloadFilename
   link.style.display = 'none'
 
@@ -842,7 +849,7 @@ export async function downloadFile(
       throw new DOMException('Aborted', 'AbortError')
     }
 
-    nativeDownloadFile(envid, path, downloadFilename)
+    await nativeDownloadFile(envid, path, downloadFilename)
     return
   }
 
