@@ -10,6 +10,7 @@ func TestObjectStorageDefaults(t *testing.T) {
 	t.Setenv("MCAI_OBJECT_STORAGE_MAX_SIZE", "")
 	t.Setenv("MCAI_OBJECT_STORAGE_TEMP_PREFIX", "")
 	t.Setenv("MCAI_TASKFLOW_GRPC_URL", "")
+	t.Setenv("MCAI_TASK_CREATE_REQ_TTL_SECONDS", "")
 
 	cfg, err := Init(t.TempDir())
 	if err != nil {
@@ -42,6 +43,9 @@ func TestObjectStorageDefaults(t *testing.T) {
 	if cfg.TaskFlow.GrpcURL != "" {
 		t.Fatalf("taskflow.grpc_url = %q, want empty", cfg.TaskFlow.GrpcURL)
 	}
+	if cfg.Task.CreateReqTTLSeconds != 600 {
+		t.Fatalf("task.create_req_ttl_seconds = %d, want 600", cfg.Task.CreateReqTTLSeconds)
+	}
 	if !cfg.StaticFiles.Enabled {
 		t.Fatal("static_files.enabled default = false, want true")
 	}
@@ -56,5 +60,17 @@ func TestObjectStorageDefaults(t *testing.T) {
 	}
 	if cfg.HostInstaller.BundlePath != "installer/{{.arch}}/host.tgz" {
 		t.Fatalf("host_installer.bundle_path = %q", cfg.HostInstaller.BundlePath)
+	}
+}
+
+func TestTaskCreateReqTTLCanBeConfiguredByEnv(t *testing.T) {
+	t.Setenv("MCAI_TASK_CREATE_REQ_TTL_SECONDS", "3600")
+
+	cfg, err := Init(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Task.CreateReqTTLSeconds != 3600 {
+		t.Fatalf("task.create_req_ttl_seconds = %d, want 3600", cfg.Task.CreateReqTTLSeconds)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -123,7 +122,7 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 			return vm, err
 		}
 		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
-		if err := g.redis.Set(ctx, reqKey, string(b), 10*time.Minute).Err(); err != nil {
+		if err := g.redis.Set(ctx, reqKey, string(b), createReqTTL(g.cfg)).Err(); err != nil {
 			g.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
 		}
 

@@ -284,7 +284,7 @@ mgr := lifecycle.NewManager[string, OrderState, OrderMetadata](
 1. TaskUsecase.Create()
    ├─ 创建任务记录（数据库）
    ├─ 创建 VM（taskflow）
-   ├─ 存储 CreateTaskReq 到 Redis（10 分钟过期）
+   ├─ 存储 CreateTaskReq 到 Redis（按 task.create_req_ttl_seconds 配置过期，默认 10 分钟）
    │   key: task:create_req:{taskID}
    ├─ taskMgr.Transition(taskID, TaskStatePending, meta)
    └─ vmMgr.Transition(vmID, VMStatePending, meta)
@@ -310,9 +310,9 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
         // 2. 创建 VM
         vm := a.taskflow.VirtualMachiner().Create(...)
 
-        // 3. 临时存储 CreateTaskReq（10 分钟过期）
+        // 3. 临时存储 CreateTaskReq（按 task.create_req_ttl_seconds 配置过期）
         reqKey := fmt.Sprintf("task:create_req:%s", task.ID)
-        a.redis.Set(ctx, reqKey, createReq, 10*time.Minute)
+        a.redis.Set(ctx, reqKey, createReq, createReqTTL(a.cfg))
 
         // 4. 初始化状态（Transition 会自动触发 Hook）
         taskMeta := lifecycle.TaskMetadata{TaskID: t.ID, UserID: user.ID.String()}

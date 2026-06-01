@@ -144,6 +144,7 @@ services:
       MCAI_SERVER_BASE_URL: http://${REMOTE_IP}:${NGINX_PORT:-80}
       MCAI_LLM_PROXY_BASE_URL: http://${REMOTE_IP}:${NGINX_PORT:-80}
       MCAI_HOST_INSTALLER_MODE: offline
+      MCAI_TASK_CREATE_REQ_TTL_SECONDS: 3600
       MCAI_DATABASE_MASTER: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@monkeycode-ai-db:5432/${POSTGRES_DB}?sslmode=disable&timezone=Asia/Shanghai
       MCAI_REDIS_HOST: monkeycode-ai-redis
       MCAI_REDIS_PASS: ${REDIS_PASSWORD}

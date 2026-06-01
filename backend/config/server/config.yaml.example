@@ -54,6 +54,9 @@ vm_idle:
   # VM 回收前，非微信公众号渠道（钉钉/飞书等）的提前预警时长（秒），<=0 视为禁用；省略则使用 3600（1h）
   recycle_warn_default_lead_seconds: 3600
 
+task:
+  create_req_ttl_seconds: 600
+
 clickhouse:
   addr: ""
   database: ""
