@@ -160,7 +160,6 @@ type LLMProviderReq struct {
 	ApiKey       string      `json:"api_key"`
 	BaseURL      string      `json:"base_url"`
 	Model        string      `json:"model"`
-	SupportImage bool        `json:"support_image"`
 	Temperature  *float32    `json:"temperature,omitempty"`
 }
 
@@ -568,7 +567,6 @@ type LLM struct {
 	BaseURL      string   `json:"base_url"`
 	Model        string   `json:"model"`
 	ApiType      string   `json:"api_type,omitempty"` // 接口类型 anthropic | openai
-	SupportImage bool     `json:"support_image"`
 	Temperature  *float32 `json:"temperature,omitempty"`
 }
 
