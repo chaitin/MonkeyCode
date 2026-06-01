@@ -42,6 +42,8 @@ type Model struct {
 	Weight int `json:"weight,omitempty"`
 	// ThinkingEnabled holds the value of the "thinking_enabled" field.
 	ThinkingEnabled bool `json:"thinking_enabled,omitempty"`
+	// SupportImage holds the value of the "support_image" field.
+	SupportImage bool `json:"support_image,omitempty"`
 	// ContextLimit holds the value of the "context_limit" field.
 	ContextLimit int `json:"context_limit,omitempty"`
 	// OutputLimit holds the value of the "output_limit" field.
@@ -199,7 +201,7 @@ func (*Model) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case model.FieldThinkingEnabled, model.FieldLastCheckSuccess:
+		case model.FieldThinkingEnabled, model.FieldSupportImage, model.FieldLastCheckSuccess:
 			values[i] = new(sql.NullBool)
 		case model.FieldTemperature:
 			values[i] = new(sql.NullFloat64)
@@ -297,6 +299,12 @@ func (_m *Model) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field thinking_enabled", values[i])
 			} else if value.Valid {
 				_m.ThinkingEnabled = value.Bool
+			}
+		case model.FieldSupportImage:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field support_image", values[i])
+			} else if value.Valid {
+				_m.SupportImage = value.Bool
 			}
 		case model.FieldContextLimit:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -463,6 +471,9 @@ func (_m *Model) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("thinking_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ThinkingEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("support_image=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SupportImage))
 	builder.WriteString(", ")
 	builder.WriteString("context_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ContextLimit))

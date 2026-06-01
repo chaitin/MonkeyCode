@@ -156,11 +156,11 @@ const (
 
 // LLMProviderReq 模型提供商配置
 type LLMProviderReq struct {
-	Provider    LLMProvider `json:"provider"`
-	ApiKey      string      `json:"api_key"`
-	BaseURL     string      `json:"base_url"`
-	Model       string      `json:"model"`
-	Temperature *float32    `json:"temperature,omitempty"`
+	Provider     LLMProvider `json:"provider"`
+	ApiKey       string      `json:"api_key"`
+	BaseURL      string      `json:"base_url"`
+	Model        string      `json:"model"`
+	Temperature  *float32    `json:"temperature,omitempty"`
 }
 
 // DeleteVirtualMachineReq 删除虚拟机请求
@@ -563,11 +563,11 @@ const (
 
 // LLM 模型配置
 type LLM struct {
-	ApiKey      string   `json:"api_key"`
-	BaseURL     string   `json:"base_url"`
-	Model       string   `json:"model"`
-	ApiType     string   `json:"api_type,omitempty"` // 接口类型 anthropic | openai
-	Temperature *float32 `json:"temperature,omitempty"`
+	ApiKey       string   `json:"api_key"`
+	BaseURL      string   `json:"base_url"`
+	Model        string   `json:"model"`
+	ApiType      string   `json:"api_type,omitempty"` // 接口类型 anthropic | openai
+	Temperature  *float32 `json:"temperature,omitempty"`
 }
 
 // ConfigFile 配置文件

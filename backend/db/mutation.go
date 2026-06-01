@@ -12129,6 +12129,7 @@ type ModelMutation struct {
 	weight                   *int
 	addweight                *int
 	thinking_enabled         *bool
+	support_image            *bool
 	context_limit            *int
 	addcontext_limit         *int
 	output_limit             *int
@@ -12766,6 +12767,42 @@ func (m *ModelMutation) OldThinkingEnabled(ctx context.Context) (v bool, err err
 // ResetThinkingEnabled resets all changes to the "thinking_enabled" field.
 func (m *ModelMutation) ResetThinkingEnabled() {
 	m.thinking_enabled = nil
+}
+
+// SetSupportImage sets the "support_image" field.
+func (m *ModelMutation) SetSupportImage(b bool) {
+	m.support_image = &b
+}
+
+// SupportImage returns the value of the "support_image" field in the mutation.
+func (m *ModelMutation) SupportImage() (r bool, exists bool) {
+	v := m.support_image
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSupportImage returns the old "support_image" field's value of the Model entity.
+// If the Model object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelMutation) OldSupportImage(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSupportImage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSupportImage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSupportImage: %w", err)
+	}
+	return oldValue.SupportImage, nil
+}
+
+// ResetSupportImage resets all changes to the "support_image" field.
+func (m *ModelMutation) ResetSupportImage() {
+	m.support_image = nil
 }
 
 // SetContextLimit sets the "context_limit" field.
@@ -13685,7 +13722,7 @@ func (m *ModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.deleted_at != nil {
 		fields = append(fields, model.FieldDeletedAt)
 	}
@@ -13718,6 +13755,9 @@ func (m *ModelMutation) Fields() []string {
 	}
 	if m.thinking_enabled != nil {
 		fields = append(fields, model.FieldThinkingEnabled)
+	}
+	if m.support_image != nil {
+		fields = append(fields, model.FieldSupportImage)
 	}
 	if m.context_limit != nil {
 		fields = append(fields, model.FieldContextLimit)
@@ -13770,6 +13810,8 @@ func (m *ModelMutation) Field(name string) (ent.Value, bool) {
 		return m.Weight()
 	case model.FieldThinkingEnabled:
 		return m.ThinkingEnabled()
+	case model.FieldSupportImage:
+		return m.SupportImage()
 	case model.FieldContextLimit:
 		return m.ContextLimit()
 	case model.FieldOutputLimit:
@@ -13815,6 +13857,8 @@ func (m *ModelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldWeight(ctx)
 	case model.FieldThinkingEnabled:
 		return m.OldThinkingEnabled(ctx)
+	case model.FieldSupportImage:
+		return m.OldSupportImage(ctx)
 	case model.FieldContextLimit:
 		return m.OldContextLimit(ctx)
 	case model.FieldOutputLimit:
@@ -13914,6 +13958,13 @@ func (m *ModelMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetThinkingEnabled(v)
+		return nil
+	case model.FieldSupportImage:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSupportImage(v)
 		return nil
 	case model.FieldContextLimit:
 		v, ok := value.(int)
@@ -14141,6 +14192,9 @@ func (m *ModelMutation) ResetField(name string) error {
 		return nil
 	case model.FieldThinkingEnabled:
 		m.ResetThinkingEnabled()
+		return nil
+	case model.FieldSupportImage:
+		m.ResetSupportImage()
 		return nil
 	case model.FieldContextLimit:
 		m.ResetContextLimit()

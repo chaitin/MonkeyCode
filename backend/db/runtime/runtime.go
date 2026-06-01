@@ -393,20 +393,24 @@ func init() {
 	modelDescThinkingEnabled := modelFields[10].Descriptor()
 	// model.DefaultThinkingEnabled holds the default value on creation for the thinking_enabled field.
 	model.DefaultThinkingEnabled = modelDescThinkingEnabled.Default.(bool)
+	// modelDescSupportImage is the schema descriptor for support_image field.
+	modelDescSupportImage := modelFields[11].Descriptor()
+	// model.DefaultSupportImage holds the default value on creation for the support_image field.
+	model.DefaultSupportImage = modelDescSupportImage.Default.(bool)
 	// modelDescContextLimit is the schema descriptor for context_limit field.
-	modelDescContextLimit := modelFields[11].Descriptor()
+	modelDescContextLimit := modelFields[12].Descriptor()
 	// model.DefaultContextLimit holds the default value on creation for the context_limit field.
 	model.DefaultContextLimit = modelDescContextLimit.Default.(int)
 	// modelDescOutputLimit is the schema descriptor for output_limit field.
-	modelDescOutputLimit := modelFields[12].Descriptor()
+	modelDescOutputLimit := modelFields[13].Descriptor()
 	// model.DefaultOutputLimit holds the default value on creation for the output_limit field.
 	model.DefaultOutputLimit = modelDescOutputLimit.Default.(int)
 	// modelDescCreatedAt is the schema descriptor for created_at field.
-	modelDescCreatedAt := modelFields[16].Descriptor()
+	modelDescCreatedAt := modelFields[17].Descriptor()
 	// model.DefaultCreatedAt holds the default value on creation for the created_at field.
 	model.DefaultCreatedAt = modelDescCreatedAt.Default.(func() time.Time)
 	// modelDescUpdatedAt is the schema descriptor for updated_at field.
-	modelDescUpdatedAt := modelFields[17].Descriptor()
+	modelDescUpdatedAt := modelFields[18].Descriptor()
 	// model.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	model.DefaultUpdatedAt = modelDescUpdatedAt.Default.(func() time.Time)
 	// model.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

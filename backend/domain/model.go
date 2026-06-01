@@ -52,6 +52,7 @@ type Model struct {
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
 	ThinkingEnabled  bool                 `json:"thinking_enabled"`
+	SupportImage     bool                 `json:"support_image"`
 	ContextLimit     int                  `json:"context_limit"`
 	OutputLimit      int                  `json:"output_limit"`
 }
@@ -73,6 +74,7 @@ func (m *Model) From(src *db.Model) *Model {
 	m.LastCheckSuccess = src.LastCheckSuccess
 	m.LastCheckError = src.LastCheckError
 	m.ThinkingEnabled = src.ThinkingEnabled
+	m.SupportImage = src.SupportImage
 	m.ContextLimit = src.ContextLimit
 	m.OutputLimit = src.OutputLimit
 	m.CreatedAt = src.CreatedAt.Unix()
@@ -142,6 +144,7 @@ type ModelBrief struct {
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
 	ThinkingEnabled  bool                 `json:"thinking_enabled"`
+	SupportImage     bool                 `json:"support_image"`
 	ContextLimit     int                  `json:"context_limit"`
 	OutputLimit      int                  `json:"output_limit"`
 }
@@ -167,6 +170,7 @@ func (m *ModelBrief) From(src *db.Model) *ModelBrief {
 	m.LastCheckSuccess = full.LastCheckSuccess
 	m.LastCheckError = full.LastCheckError
 	m.ThinkingEnabled = full.ThinkingEnabled
+	m.SupportImage = full.SupportImage
 	m.ContextLimit = full.ContextLimit
 	m.OutputLimit = full.OutputLimit
 	return m
@@ -198,6 +202,7 @@ type CreateModelReq struct {
 	IsDefault       bool                 `json:"is_default"`
 	InterfaceType   consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
 	ThinkingEnabled *bool                `json:"thinking_enabled"`
+	SupportImage    *bool                `json:"support_image"`
 	ContextLimit    *int                 `json:"context_limit"`
 	OutputLimit     *int                 `json:"output_limit"`
 }
@@ -244,6 +249,7 @@ type UpdateModelReq struct {
 	IsDefault       *bool                 `json:"is_default,omitempty"`
 	InterfaceType   *consts.InterfaceType `json:"interface_type,omitempty" validate:"omitempty,oneof=openai_chat openai_responses anthropic"`
 	ThinkingEnabled *bool                 `json:"thinking_enabled,omitempty"`
+	SupportImage    *bool                 `json:"support_image,omitempty"`
 	ContextLimit    *int                  `json:"context_limit,omitempty"`
 	OutputLimit     *int                  `json:"output_limit,omitempty"`
 }

@@ -754,6 +754,7 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		"api_key":          m.APIKey,
 		"npm_package":      npmPackage,
 		"thinking_enabled": thinkingEnabled,
+		"support_image":    m.SupportImage,
 		"force_reasoning":  strings.HasPrefix(m.Model, "monkeycode-ultra"),
 		"context_limit":    contextLimit,
 		"output_limit":     outputLimit,
