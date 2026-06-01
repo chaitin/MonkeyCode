@@ -406,11 +406,12 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 		var LLMConfig taskflow.LLMProviderReq
 		if model != nil {
 			LLMConfig = taskflow.LLMProviderReq{
-				Provider:    taskflow.LlmProviderOpenAI,
-				ApiKey:      model.APIKey,
-				Model:       model.Model,
-				Temperature: temperature,
-				BaseURL:     model.BaseURL,
+				Provider:     taskflow.LlmProviderOpenAI,
+				ApiKey:       model.APIKey,
+				Model:        model.Model,
+				SupportImage: model.SupportImage,
+				Temperature:  temperature,
+				BaseURL:      model.BaseURL,
 			}
 		}
 
