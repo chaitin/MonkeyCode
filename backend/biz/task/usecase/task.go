@@ -36,6 +36,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/templates"
 )
 
+const defaultCreateReqTTL = 10 * time.Minute
+
 // TaskUsecase 任务业务逻辑实现
 type TaskUsecase struct {
 	cfg                   *config.Config
@@ -547,7 +549,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 
 		mcps := a.buildMCPConfigs(t.ID, token)
 
-		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
+		// 存储 CreateTaskReq 到 Redis，供 Lifecycle Manager 消费
 		createTaskReq := &taskflow.CreateTaskReq{
 			ID:           t.ID,
 			VMID:         vm.ID,
@@ -570,7 +572,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			return vm, err
 		}
 		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
-		if err := a.redis.Set(ctx, reqKey, string(b), 10*time.Minute).Err(); err != nil {
+		if err := a.redis.Set(ctx, reqKey, string(b), createReqTTL(a.cfg)).Err(); err != nil {
 			a.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
 		}
 
@@ -619,6 +621,13 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 
 	return result, nil
+}
+
+func createReqTTL(cfg *config.Config) time.Duration {
+	if cfg == nil || cfg.Task.CreateReqTTLSeconds <= 0 {
+		return defaultCreateReqTTL
+	}
+	return time.Duration(cfg.Task.CreateReqTTLSeconds) * time.Second
 }
 
 func (a *TaskUsecase) refreshCreatedTaskState(ctx context.Context, taskID uuid.UUID, vmID string) {

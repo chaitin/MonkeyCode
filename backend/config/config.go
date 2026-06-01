@@ -153,11 +153,12 @@ type HostInstaller struct {
 
 // Task 任务相关配置
 type Task struct {
-	LogLimit         int    `mapstructure:"log_limit"`          // Loki tail 日志 limit
-	TaskerTTLSeconds int    `mapstructure:"tasker_ttl_seconds"` // Tasker 状态机 TTL（秒）
-	ImageID          string `mapstructure:"image_id"`           // 默认镜像 ID
-	Core             int    `mapstructure:"core"`               // VM CPU 核数
-	Memory           uint64 `mapstructure:"memory"`             // VM 内存（字节）
+	LogLimit            int    `mapstructure:"log_limit"`              // Loki tail 日志 limit
+	TaskerTTLSeconds    int    `mapstructure:"tasker_ttl_seconds"`     // Tasker 状态机 TTL（秒）
+	CreateReqTTLSeconds int    `mapstructure:"create_req_ttl_seconds"` // 创建任务请求 Redis TTL（秒）
+	ImageID             string `mapstructure:"image_id"`               // 默认镜像 ID
+	Core                int    `mapstructure:"core"`                   // VM CPU 核数
+	Memory              uint64 `mapstructure:"memory"`                 // VM 内存（字节）
 }
 
 // TaskSummary 任务摘要生成配置
@@ -281,6 +282,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("taskflow.grpc_url", "")
 	v.SetDefault("task.at_keyword", "")
 	v.SetDefault("task.host_ids", []string{})
+	v.SetDefault("task.create_req_ttl_seconds", 600)
 	v.SetDefault("mcp_hub.enabled", false)
 	v.SetDefault("mcp_hub.url", "")
 	v.SetDefault("mcp_hub.token", "")
