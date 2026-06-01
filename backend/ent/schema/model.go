@@ -45,6 +45,7 @@ func (Model) Fields() []ent.Field {
 		field.String("interface_type").Optional(),
 		field.Int("weight").Default(1),
 		field.Bool("thinking_enabled").Default(true),
+		field.Bool("is_multimodal").Default(false),
 		field.Int("context_limit").Default(200000),
 		field.Int("output_limit").Default(32000),
 		field.Time("last_check_at").Optional(),

@@ -148,6 +148,20 @@ func (_c *ModelCreate) SetNillableThinkingEnabled(v *bool) *ModelCreate {
 	return _c
 }
 
+// SetIsMultimodal sets the "is_multimodal" field.
+func (_c *ModelCreate) SetIsMultimodal(v bool) *ModelCreate {
+	_c.mutation.SetIsMultimodal(v)
+	return _c
+}
+
+// SetNillableIsMultimodal sets the "is_multimodal" field if the given value is not nil.
+func (_c *ModelCreate) SetNillableIsMultimodal(v *bool) *ModelCreate {
+	if v != nil {
+		_c.SetIsMultimodal(*v)
+	}
+	return _c
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (_c *ModelCreate) SetContextLimit(v int) *ModelCreate {
 	_c.mutation.SetContextLimit(v)
@@ -456,6 +470,10 @@ func (_c *ModelCreate) defaults() error {
 		v := model.DefaultThinkingEnabled
 		_c.mutation.SetThinkingEnabled(v)
 	}
+	if _, ok := _c.mutation.IsMultimodal(); !ok {
+		v := model.DefaultIsMultimodal
+		_c.mutation.SetIsMultimodal(v)
+	}
 	if _, ok := _c.mutation.ContextLimit(); !ok {
 		v := model.DefaultContextLimit
 		_c.mutation.SetContextLimit(v)
@@ -523,6 +541,9 @@ func (_c *ModelCreate) check() error {
 	}
 	if _, ok := _c.mutation.ThinkingEnabled(); !ok {
 		return &ValidationError{Name: "thinking_enabled", err: errors.New(`db: missing required field "Model.thinking_enabled"`)}
+	}
+	if _, ok := _c.mutation.IsMultimodal(); !ok {
+		return &ValidationError{Name: "is_multimodal", err: errors.New(`db: missing required field "Model.is_multimodal"`)}
 	}
 	if _, ok := _c.mutation.ContextLimit(); !ok {
 		return &ValidationError{Name: "context_limit", err: errors.New(`db: missing required field "Model.context_limit"`)}
@@ -614,6 +635,10 @@ func (_c *ModelCreate) createSpec() (*Model, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ThinkingEnabled(); ok {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
 		_node.ThinkingEnabled = value
+	}
+	if value, ok := _c.mutation.IsMultimodal(); ok {
+		_spec.SetField(model.FieldIsMultimodal, field.TypeBool, value)
+		_node.IsMultimodal = value
 	}
 	if value, ok := _c.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
@@ -1048,6 +1073,18 @@ func (u *ModelUpsert) UpdateThinkingEnabled() *ModelUpsert {
 	return u
 }
 
+// SetIsMultimodal sets the "is_multimodal" field.
+func (u *ModelUpsert) SetIsMultimodal(v bool) *ModelUpsert {
+	u.Set(model.FieldIsMultimodal, v)
+	return u
+}
+
+// UpdateIsMultimodal sets the "is_multimodal" field to the value that was provided on create.
+func (u *ModelUpsert) UpdateIsMultimodal() *ModelUpsert {
+	u.SetExcluded(model.FieldIsMultimodal)
+	return u
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (u *ModelUpsert) SetContextLimit(v int) *ModelUpsert {
 	u.Set(model.FieldContextLimit, v)
@@ -1403,6 +1440,20 @@ func (u *ModelUpsertOne) SetThinkingEnabled(v bool) *ModelUpsertOne {
 func (u *ModelUpsertOne) UpdateThinkingEnabled() *ModelUpsertOne {
 	return u.Update(func(s *ModelUpsert) {
 		s.UpdateThinkingEnabled()
+	})
+}
+
+// SetIsMultimodal sets the "is_multimodal" field.
+func (u *ModelUpsertOne) SetIsMultimodal(v bool) *ModelUpsertOne {
+	return u.Update(func(s *ModelUpsert) {
+		s.SetIsMultimodal(v)
+	})
+}
+
+// UpdateIsMultimodal sets the "is_multimodal" field to the value that was provided on create.
+func (u *ModelUpsertOne) UpdateIsMultimodal() *ModelUpsertOne {
+	return u.Update(func(s *ModelUpsert) {
+		s.UpdateIsMultimodal()
 	})
 }
 
@@ -1947,6 +1998,20 @@ func (u *ModelUpsertBulk) SetThinkingEnabled(v bool) *ModelUpsertBulk {
 func (u *ModelUpsertBulk) UpdateThinkingEnabled() *ModelUpsertBulk {
 	return u.Update(func(s *ModelUpsert) {
 		s.UpdateThinkingEnabled()
+	})
+}
+
+// SetIsMultimodal sets the "is_multimodal" field.
+func (u *ModelUpsertBulk) SetIsMultimodal(v bool) *ModelUpsertBulk {
+	return u.Update(func(s *ModelUpsert) {
+		s.SetIsMultimodal(v)
+	})
+}
+
+// UpdateIsMultimodal sets the "is_multimodal" field to the value that was provided on create.
+func (u *ModelUpsertBulk) UpdateIsMultimodal() *ModelUpsertBulk {
+	return u.Update(func(s *ModelUpsert) {
+		s.UpdateIsMultimodal()
 	})
 }
 

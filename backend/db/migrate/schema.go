@@ -357,6 +357,7 @@ var (
 		{Name: "interface_type", Type: field.TypeString, Nullable: true},
 		{Name: "weight", Type: field.TypeInt, Default: 1},
 		{Name: "thinking_enabled", Type: field.TypeBool, Default: true},
+		{Name: "is_multimodal", Type: field.TypeBool, Default: false},
 		{Name: "context_limit", Type: field.TypeInt, Default: 200000},
 		{Name: "output_limit", Type: field.TypeInt, Default: 32000},
 		{Name: "last_check_at", Type: field.TypeTime, Nullable: true},
@@ -374,7 +375,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "models_users_models",
-				Columns:    []*schema.Column{ModelsColumns[18]},
+				Columns:    []*schema.Column{ModelsColumns[19]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

@@ -197,6 +197,50 @@ func TestGetCodingConfigsOpenCodeRendersUltraForceReasoning(t *testing.T) {
 	}
 }
 
+func TestGetCodingConfigsOpenCodeRendersMultimodal(t *testing.T) {
+	uc := &TaskUsecase{}
+	model := &db.Model{
+		BaseURL:       "https://example.com/v1",
+		Model:         "gpt-4.1",
+		APIKey:        "sk-test",
+		InterfaceType: string(consts.InterfaceTypeOpenAIResponse),
+		IsMultimodal:  true,
+	}
+
+	_, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+
+	config := opencodeConfig(t, cfs)
+	provider := opencodeProvider(t, config)
+	renderedModel := opencodeModel(t, provider, "gpt-4.1")
+	if got := renderedModel["attachment"]; got != true {
+		t.Fatalf("attachment = %v, want true", got)
+	}
+	modalities, ok := renderedModel["modalities"].(map[string]any)
+	if !ok {
+		t.Fatalf("modalities = %v, want object", renderedModel["modalities"])
+	}
+	assertStringSlice(t, modalities["input"], []string{"text", "image"})
+	assertStringSlice(t, modalities["output"], []string{"text"})
+
+	model.IsMultimodal = false
+	_, cfs, err = uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	if err != nil {
+		t.Fatalf("getCodingConfigs() error = %v", err)
+	}
+	config = opencodeConfig(t, cfs)
+	provider = opencodeProvider(t, config)
+	renderedModel = opencodeModel(t, provider, "gpt-4.1")
+	if _, ok := renderedModel["attachment"]; ok {
+		t.Fatalf("attachment = %v, want absent", renderedModel["attachment"])
+	}
+	if _, ok := renderedModel["modalities"]; ok {
+		t.Fatalf("modalities = %v, want absent", renderedModel["modalities"])
+	}
+}
+
 func TestGetCodingConfigsNilModel(t *testing.T) {
 	uc := &TaskUsecase{}
 	_, _, err := uc.getCodingConfigs(consts.CliNameOpencode, nil, nil)
@@ -217,6 +261,22 @@ func opencodeAuthConfig(t *testing.T, cfs []taskflow.ConfigFile) taskflow.Config
 	}
 	t.Fatal("opencode auth file not found")
 	return taskflow.ConfigFile{}
+}
+
+func assertStringSlice(t *testing.T, got any, want []string) {
+	t.Helper()
+	values, ok := got.([]any)
+	if !ok {
+		t.Fatalf("value = %v, want array", got)
+	}
+	if len(values) != len(want) {
+		t.Fatalf("value length = %d, want %d", len(values), len(want))
+	}
+	for i, wantValue := range want {
+		if values[i] != wantValue {
+			t.Fatalf("value[%d] = %v, want %q", i, values[i], wantValue)
+		}
+	}
 }
 
 func opencodeConfig(t *testing.T, cfs []taskflow.ConfigFile) map[string]any {

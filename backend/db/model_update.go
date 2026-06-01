@@ -232,6 +232,20 @@ func (_u *ModelUpdate) SetNillableThinkingEnabled(v *bool) *ModelUpdate {
 	return _u
 }
 
+// SetIsMultimodal sets the "is_multimodal" field.
+func (_u *ModelUpdate) SetIsMultimodal(v bool) *ModelUpdate {
+	_u.mutation.SetIsMultimodal(v)
+	return _u
+}
+
+// SetNillableIsMultimodal sets the "is_multimodal" field if the given value is not nil.
+func (_u *ModelUpdate) SetNillableIsMultimodal(v *bool) *ModelUpdate {
+	if v != nil {
+		_u.SetIsMultimodal(*v)
+	}
+	return _u
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (_u *ModelUpdate) SetContextLimit(v int) *ModelUpdate {
 	_u.mutation.ResetContextLimit()
@@ -854,6 +868,9 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ThinkingEnabled(); ok {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IsMultimodal(); ok {
+		_spec.SetField(model.FieldIsMultimodal, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
@@ -1592,6 +1609,20 @@ func (_u *ModelUpdateOne) SetNillableThinkingEnabled(v *bool) *ModelUpdateOne {
 	return _u
 }
 
+// SetIsMultimodal sets the "is_multimodal" field.
+func (_u *ModelUpdateOne) SetIsMultimodal(v bool) *ModelUpdateOne {
+	_u.mutation.SetIsMultimodal(v)
+	return _u
+}
+
+// SetNillableIsMultimodal sets the "is_multimodal" field if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillableIsMultimodal(v *bool) *ModelUpdateOne {
+	if v != nil {
+		_u.SetIsMultimodal(*v)
+	}
+	return _u
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (_u *ModelUpdateOne) SetContextLimit(v int) *ModelUpdateOne {
 	_u.mutation.ResetContextLimit()
@@ -2244,6 +2275,9 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 	}
 	if value, ok := _u.mutation.ThinkingEnabled(); ok {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IsMultimodal(); ok {
+		_spec.SetField(model.FieldIsMultimodal, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)

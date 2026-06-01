@@ -75,7 +75,7 @@ func (r *teamModelRepo) Create(ctx context.Context, teamID uuid.UUID, userID uui
 			return tg.ID
 		})
 
-		newModel, err := tx.Model.Create().
+		create := tx.Model.Create().
 			SetProvider(req.Provider).
 			SetAPIKey(req.APIKey).
 			SetBaseURL(req.BaseURL).
@@ -83,8 +83,12 @@ func (r *teamModelRepo) Create(ctx context.Context, teamID uuid.UUID, userID uui
 			SetRemark(req.Remark).
 			SetUserID(userID).
 			SetTemperature(req.Temperature).
-			SetInterfaceType(string(req.InterfaceType)).
-			Save(ctx)
+			SetInterfaceType(string(req.InterfaceType))
+		if req.IsMultimodal != nil {
+			create.SetIsMultimodal(*req.IsMultimodal)
+		}
+
+		newModel, err := create.Save(ctx)
 		if err != nil {
 			return err
 		}
@@ -149,6 +153,9 @@ func (r *teamModelRepo) Update(ctx context.Context, teamID uuid.UUID, req *domai
 		}
 		if req.InterfaceType != "" {
 			upt.SetInterfaceType(string(req.InterfaceType))
+		}
+		if req.IsMultimodal != nil {
+			upt.SetIsMultimodal(*req.IsMultimodal)
 		}
 		err := upt.Exec(ctx)
 		if err != nil {

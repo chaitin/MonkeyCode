@@ -25,6 +25,13 @@
           },
 {{- end }}
           "name": "{{.model}}",
+{{- if .is_multimodal }}
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+{{- end }}
           "limit": {"context": {{.context_limit}}, "output": {{.output_limit}}}
         }
       }

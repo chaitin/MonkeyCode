@@ -111,6 +111,11 @@ func ThinkingEnabled(v bool) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldThinkingEnabled, v))
 }
 
+// IsMultimodal applies equality check predicate on the "is_multimodal" field. It's identical to IsMultimodalEQ.
+func IsMultimodal(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldIsMultimodal, v))
+}
+
 // ContextLimit applies equality check predicate on the "context_limit" field. It's identical to ContextLimitEQ.
 func ContextLimit(v int) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldContextLimit, v))
@@ -724,6 +729,16 @@ func ThinkingEnabledEQ(v bool) predicate.Model {
 // ThinkingEnabledNEQ applies the NEQ predicate on the "thinking_enabled" field.
 func ThinkingEnabledNEQ(v bool) predicate.Model {
 	return predicate.Model(sql.FieldNEQ(FieldThinkingEnabled, v))
+}
+
+// IsMultimodalEQ applies the EQ predicate on the "is_multimodal" field.
+func IsMultimodalEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldIsMultimodal, v))
+}
+
+// IsMultimodalNEQ applies the NEQ predicate on the "is_multimodal" field.
+func IsMultimodalNEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldNEQ(FieldIsMultimodal, v))
 }
 
 // ContextLimitEQ applies the EQ predicate on the "context_limit" field.

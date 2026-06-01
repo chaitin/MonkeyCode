@@ -12129,6 +12129,7 @@ type ModelMutation struct {
 	weight                   *int
 	addweight                *int
 	thinking_enabled         *bool
+	is_multimodal            *bool
 	context_limit            *int
 	addcontext_limit         *int
 	output_limit             *int
@@ -12766,6 +12767,42 @@ func (m *ModelMutation) OldThinkingEnabled(ctx context.Context) (v bool, err err
 // ResetThinkingEnabled resets all changes to the "thinking_enabled" field.
 func (m *ModelMutation) ResetThinkingEnabled() {
 	m.thinking_enabled = nil
+}
+
+// SetIsMultimodal sets the "is_multimodal" field.
+func (m *ModelMutation) SetIsMultimodal(b bool) {
+	m.is_multimodal = &b
+}
+
+// IsMultimodal returns the value of the "is_multimodal" field in the mutation.
+func (m *ModelMutation) IsMultimodal() (r bool, exists bool) {
+	v := m.is_multimodal
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsMultimodal returns the old "is_multimodal" field's value of the Model entity.
+// If the Model object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelMutation) OldIsMultimodal(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsMultimodal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsMultimodal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsMultimodal: %w", err)
+	}
+	return oldValue.IsMultimodal, nil
+}
+
+// ResetIsMultimodal resets all changes to the "is_multimodal" field.
+func (m *ModelMutation) ResetIsMultimodal() {
+	m.is_multimodal = nil
 }
 
 // SetContextLimit sets the "context_limit" field.
@@ -13685,7 +13722,7 @@ func (m *ModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.deleted_at != nil {
 		fields = append(fields, model.FieldDeletedAt)
 	}
@@ -13718,6 +13755,9 @@ func (m *ModelMutation) Fields() []string {
 	}
 	if m.thinking_enabled != nil {
 		fields = append(fields, model.FieldThinkingEnabled)
+	}
+	if m.is_multimodal != nil {
+		fields = append(fields, model.FieldIsMultimodal)
 	}
 	if m.context_limit != nil {
 		fields = append(fields, model.FieldContextLimit)
@@ -13770,6 +13810,8 @@ func (m *ModelMutation) Field(name string) (ent.Value, bool) {
 		return m.Weight()
 	case model.FieldThinkingEnabled:
 		return m.ThinkingEnabled()
+	case model.FieldIsMultimodal:
+		return m.IsMultimodal()
 	case model.FieldContextLimit:
 		return m.ContextLimit()
 	case model.FieldOutputLimit:
@@ -13815,6 +13857,8 @@ func (m *ModelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldWeight(ctx)
 	case model.FieldThinkingEnabled:
 		return m.OldThinkingEnabled(ctx)
+	case model.FieldIsMultimodal:
+		return m.OldIsMultimodal(ctx)
 	case model.FieldContextLimit:
 		return m.OldContextLimit(ctx)
 	case model.FieldOutputLimit:
@@ -13914,6 +13958,13 @@ func (m *ModelMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetThinkingEnabled(v)
+		return nil
+	case model.FieldIsMultimodal:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsMultimodal(v)
 		return nil
 	case model.FieldContextLimit:
 		v, ok := value.(int)
@@ -14141,6 +14192,9 @@ func (m *ModelMutation) ResetField(name string) error {
 		return nil
 	case model.FieldThinkingEnabled:
 		m.ResetThinkingEnabled()
+		return nil
+	case model.FieldIsMultimodal:
+		m.ResetIsMultimodal()
 		return nil
 	case model.FieldContextLimit:
 		m.ResetContextLimit()
