@@ -393,10 +393,10 @@ func init() {
 	modelDescThinkingEnabled := modelFields[10].Descriptor()
 	// model.DefaultThinkingEnabled holds the default value on creation for the thinking_enabled field.
 	model.DefaultThinkingEnabled = modelDescThinkingEnabled.Default.(bool)
-	// modelDescIsMultimodal is the schema descriptor for is_multimodal field.
-	modelDescIsMultimodal := modelFields[11].Descriptor()
-	// model.DefaultIsMultimodal holds the default value on creation for the is_multimodal field.
-	model.DefaultIsMultimodal = modelDescIsMultimodal.Default.(bool)
+	// modelDescSupportImage is the schema descriptor for support_image field.
+	modelDescSupportImage := modelFields[11].Descriptor()
+	// model.DefaultSupportImage holds the default value on creation for the support_image field.
+	model.DefaultSupportImage = modelDescSupportImage.Default.(bool)
 	// modelDescContextLimit is the schema descriptor for context_limit field.
 	modelDescContextLimit := modelFields[12].Descriptor()
 	// model.DefaultContextLimit holds the default value on creation for the context_limit field.

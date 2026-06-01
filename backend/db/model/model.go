@@ -37,8 +37,8 @@ const (
 	FieldWeight = "weight"
 	// FieldThinkingEnabled holds the string denoting the thinking_enabled field in the database.
 	FieldThinkingEnabled = "thinking_enabled"
-	// FieldIsMultimodal holds the string denoting the is_multimodal field in the database.
-	FieldIsMultimodal = "is_multimodal"
+	// FieldSupportImage holds the string denoting the support_image field in the database.
+	FieldSupportImage = "support_image"
 	// FieldContextLimit holds the string denoting the context_limit field in the database.
 	FieldContextLimit = "context_limit"
 	// FieldOutputLimit holds the string denoting the output_limit field in the database.
@@ -166,7 +166,7 @@ var Columns = []string{
 	FieldInterfaceType,
 	FieldWeight,
 	FieldThinkingEnabled,
-	FieldIsMultimodal,
+	FieldSupportImage,
 	FieldContextLimit,
 	FieldOutputLimit,
 	FieldLastCheckAt,
@@ -215,8 +215,8 @@ var (
 	DefaultWeight int
 	// DefaultThinkingEnabled holds the default value on creation for the "thinking_enabled" field.
 	DefaultThinkingEnabled bool
-	// DefaultIsMultimodal holds the default value on creation for the "is_multimodal" field.
-	DefaultIsMultimodal bool
+	// DefaultSupportImage holds the default value on creation for the "support_image" field.
+	DefaultSupportImage bool
 	// DefaultContextLimit holds the default value on creation for the "context_limit" field.
 	DefaultContextLimit int
 	// DefaultOutputLimit holds the default value on creation for the "output_limit" field.
@@ -292,9 +292,9 @@ func ByThinkingEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldThinkingEnabled, opts...).ToFunc()
 }
 
-// ByIsMultimodal orders the results by the is_multimodal field.
-func ByIsMultimodal(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldIsMultimodal, opts...).ToFunc()
+// BySupportImage orders the results by the support_image field.
+func BySupportImage(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSupportImage, opts...).ToFunc()
 }
 
 // ByContextLimit orders the results by the context_limit field.

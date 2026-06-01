@@ -84,8 +84,8 @@ func (r *teamModelRepo) Create(ctx context.Context, teamID uuid.UUID, userID uui
 			SetUserID(userID).
 			SetTemperature(req.Temperature).
 			SetInterfaceType(string(req.InterfaceType))
-		if req.IsMultimodal != nil {
-			create.SetIsMultimodal(*req.IsMultimodal)
+		if req.SupportImage != nil {
+			create.SetSupportImage(*req.SupportImage)
 		}
 
 		newModel, err := create.Save(ctx)
@@ -154,8 +154,8 @@ func (r *teamModelRepo) Update(ctx context.Context, teamID uuid.UUID, req *domai
 		if req.InterfaceType != "" {
 			upt.SetInterfaceType(string(req.InterfaceType))
 		}
-		if req.IsMultimodal != nil {
-			upt.SetIsMultimodal(*req.IsMultimodal)
+		if req.SupportImage != nil {
+			upt.SetSupportImage(*req.SupportImage)
 		}
 		err := upt.Exec(ctx)
 		if err != nil {

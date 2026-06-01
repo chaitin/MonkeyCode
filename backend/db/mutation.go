@@ -12129,7 +12129,7 @@ type ModelMutation struct {
 	weight                   *int
 	addweight                *int
 	thinking_enabled         *bool
-	is_multimodal            *bool
+	support_image            *bool
 	context_limit            *int
 	addcontext_limit         *int
 	output_limit             *int
@@ -12769,40 +12769,40 @@ func (m *ModelMutation) ResetThinkingEnabled() {
 	m.thinking_enabled = nil
 }
 
-// SetIsMultimodal sets the "is_multimodal" field.
-func (m *ModelMutation) SetIsMultimodal(b bool) {
-	m.is_multimodal = &b
+// SetSupportImage sets the "support_image" field.
+func (m *ModelMutation) SetSupportImage(b bool) {
+	m.support_image = &b
 }
 
-// IsMultimodal returns the value of the "is_multimodal" field in the mutation.
-func (m *ModelMutation) IsMultimodal() (r bool, exists bool) {
-	v := m.is_multimodal
+// SupportImage returns the value of the "support_image" field in the mutation.
+func (m *ModelMutation) SupportImage() (r bool, exists bool) {
+	v := m.support_image
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldIsMultimodal returns the old "is_multimodal" field's value of the Model entity.
+// OldSupportImage returns the old "support_image" field's value of the Model entity.
 // If the Model object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ModelMutation) OldIsMultimodal(ctx context.Context) (v bool, err error) {
+func (m *ModelMutation) OldSupportImage(ctx context.Context) (v bool, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldIsMultimodal is only allowed on UpdateOne operations")
+		return v, errors.New("OldSupportImage is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldIsMultimodal requires an ID field in the mutation")
+		return v, errors.New("OldSupportImage requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldIsMultimodal: %w", err)
+		return v, fmt.Errorf("querying old value for OldSupportImage: %w", err)
 	}
-	return oldValue.IsMultimodal, nil
+	return oldValue.SupportImage, nil
 }
 
-// ResetIsMultimodal resets all changes to the "is_multimodal" field.
-func (m *ModelMutation) ResetIsMultimodal() {
-	m.is_multimodal = nil
+// ResetSupportImage resets all changes to the "support_image" field.
+func (m *ModelMutation) ResetSupportImage() {
+	m.support_image = nil
 }
 
 // SetContextLimit sets the "context_limit" field.
@@ -13756,8 +13756,8 @@ func (m *ModelMutation) Fields() []string {
 	if m.thinking_enabled != nil {
 		fields = append(fields, model.FieldThinkingEnabled)
 	}
-	if m.is_multimodal != nil {
-		fields = append(fields, model.FieldIsMultimodal)
+	if m.support_image != nil {
+		fields = append(fields, model.FieldSupportImage)
 	}
 	if m.context_limit != nil {
 		fields = append(fields, model.FieldContextLimit)
@@ -13810,8 +13810,8 @@ func (m *ModelMutation) Field(name string) (ent.Value, bool) {
 		return m.Weight()
 	case model.FieldThinkingEnabled:
 		return m.ThinkingEnabled()
-	case model.FieldIsMultimodal:
-		return m.IsMultimodal()
+	case model.FieldSupportImage:
+		return m.SupportImage()
 	case model.FieldContextLimit:
 		return m.ContextLimit()
 	case model.FieldOutputLimit:
@@ -13857,8 +13857,8 @@ func (m *ModelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldWeight(ctx)
 	case model.FieldThinkingEnabled:
 		return m.OldThinkingEnabled(ctx)
-	case model.FieldIsMultimodal:
-		return m.OldIsMultimodal(ctx)
+	case model.FieldSupportImage:
+		return m.OldSupportImage(ctx)
 	case model.FieldContextLimit:
 		return m.OldContextLimit(ctx)
 	case model.FieldOutputLimit:
@@ -13959,12 +13959,12 @@ func (m *ModelMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetThinkingEnabled(v)
 		return nil
-	case model.FieldIsMultimodal:
+	case model.FieldSupportImage:
 		v, ok := value.(bool)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetIsMultimodal(v)
+		m.SetSupportImage(v)
 		return nil
 	case model.FieldContextLimit:
 		v, ok := value.(int)
@@ -14193,8 +14193,8 @@ func (m *ModelMutation) ResetField(name string) error {
 	case model.FieldThinkingEnabled:
 		m.ResetThinkingEnabled()
 		return nil
-	case model.FieldIsMultimodal:
-		m.ResetIsMultimodal()
+	case model.FieldSupportImage:
+		m.ResetSupportImage()
 		return nil
 	case model.FieldContextLimit:
 		m.ResetContextLimit()

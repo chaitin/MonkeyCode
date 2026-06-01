@@ -409,7 +409,7 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 				Provider:     taskflow.LlmProviderOpenAI,
 				ApiKey:       model.APIKey,
 				Model:        model.Model,
-				IsMultimodal: model.IsMultimodal,
+				SupportImage: model.SupportImage,
 				Temperature:  temperature,
 				BaseURL:      model.BaseURL,
 			}

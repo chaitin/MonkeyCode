@@ -46,7 +46,7 @@ type TeamModel struct {
 	LastCheckAt      int64                `json:"last_check_at"`
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
-	IsMultimodal     bool                 `json:"is_multimodal"`
+	SupportImage     bool                 `json:"support_image"`
 }
 
 // From 从数据库模型转换为领域模型
@@ -67,7 +67,7 @@ func (t *TeamModel) From(src *db.Model) *TeamModel {
 	t.InterfaceType = consts.InterfaceType(src.InterfaceType)
 	t.LastCheckSuccess = src.LastCheckSuccess
 	t.LastCheckError = src.LastCheckError
-	t.IsMultimodal = src.IsMultimodal
+	t.SupportImage = src.SupportImage
 	t.CreatedAt = src.CreatedAt.Unix()
 	t.UpdatedAt = src.UpdatedAt.Unix()
 	t.LastCheckAt = src.LastCheckAt.Unix()
@@ -84,7 +84,7 @@ type AddTeamModelReq struct {
 	Temperature   float64              `json:"temperature"`
 	GroupIDs      []uuid.UUID          `json:"group_ids" validate:"required"`
 	InterfaceType consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
-	IsMultimodal  *bool                `json:"is_multimodal"`
+	SupportImage  *bool                `json:"support_image"`
 }
 
 // ListTeamModelsResp 获取团队模型配置列表响应
@@ -103,7 +103,7 @@ type UpdateTeamModelReq struct {
 	Temperature   float64              `json:"temperature" validate:"omitempty"`
 	GroupIDs      []uuid.UUID          `json:"group_ids" validate:"omitempty"`
 	InterfaceType consts.InterfaceType `json:"interface_type" validate:"omitempty,oneof=openai_chat openai_responses anthropic"`
-	IsMultimodal  *bool                `json:"is_multimodal,omitempty"`
+	SupportImage  *bool                `json:"support_image,omitempty"`
 }
 
 // DeleteTeamModelReq 删除团队模型配置请求

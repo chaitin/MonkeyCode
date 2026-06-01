@@ -25,7 +25,7 @@
           },
 {{- end }}
           "name": "{{.model}}",
-{{- if .is_multimodal }}
+{{- if .support_image }}
           "attachment": true,
           "modalities": {
             "input": ["text", "image"],

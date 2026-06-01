@@ -197,14 +197,14 @@ func TestGetCodingConfigsOpenCodeRendersUltraForceReasoning(t *testing.T) {
 	}
 }
 
-func TestGetCodingConfigsOpenCodeRendersMultimodal(t *testing.T) {
+func TestGetCodingConfigsOpenCodeRendersSupportImage(t *testing.T) {
 	uc := &TaskUsecase{}
 	model := &db.Model{
 		BaseURL:       "https://example.com/v1",
 		Model:         "gpt-4.1",
 		APIKey:        "sk-test",
 		InterfaceType: string(consts.InterfaceTypeOpenAIResponse),
-		IsMultimodal:  true,
+		SupportImage:  true,
 	}
 
 	_, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
@@ -225,7 +225,7 @@ func TestGetCodingConfigsOpenCodeRendersMultimodal(t *testing.T) {
 	assertStringSlice(t, modalities["input"], []string{"text", "image"})
 	assertStringSlice(t, modalities["output"], []string{"text"})
 
-	model.IsMultimodal = false
+	model.SupportImage = false
 	_, cfs, err = uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
 	if err != nil {
 		t.Fatalf("getCodingConfigs() error = %v", err)

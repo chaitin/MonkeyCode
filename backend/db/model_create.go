@@ -148,16 +148,16 @@ func (_c *ModelCreate) SetNillableThinkingEnabled(v *bool) *ModelCreate {
 	return _c
 }
 
-// SetIsMultimodal sets the "is_multimodal" field.
-func (_c *ModelCreate) SetIsMultimodal(v bool) *ModelCreate {
-	_c.mutation.SetIsMultimodal(v)
+// SetSupportImage sets the "support_image" field.
+func (_c *ModelCreate) SetSupportImage(v bool) *ModelCreate {
+	_c.mutation.SetSupportImage(v)
 	return _c
 }
 
-// SetNillableIsMultimodal sets the "is_multimodal" field if the given value is not nil.
-func (_c *ModelCreate) SetNillableIsMultimodal(v *bool) *ModelCreate {
+// SetNillableSupportImage sets the "support_image" field if the given value is not nil.
+func (_c *ModelCreate) SetNillableSupportImage(v *bool) *ModelCreate {
 	if v != nil {
-		_c.SetIsMultimodal(*v)
+		_c.SetSupportImage(*v)
 	}
 	return _c
 }
@@ -470,9 +470,9 @@ func (_c *ModelCreate) defaults() error {
 		v := model.DefaultThinkingEnabled
 		_c.mutation.SetThinkingEnabled(v)
 	}
-	if _, ok := _c.mutation.IsMultimodal(); !ok {
-		v := model.DefaultIsMultimodal
-		_c.mutation.SetIsMultimodal(v)
+	if _, ok := _c.mutation.SupportImage(); !ok {
+		v := model.DefaultSupportImage
+		_c.mutation.SetSupportImage(v)
 	}
 	if _, ok := _c.mutation.ContextLimit(); !ok {
 		v := model.DefaultContextLimit
@@ -542,8 +542,8 @@ func (_c *ModelCreate) check() error {
 	if _, ok := _c.mutation.ThinkingEnabled(); !ok {
 		return &ValidationError{Name: "thinking_enabled", err: errors.New(`db: missing required field "Model.thinking_enabled"`)}
 	}
-	if _, ok := _c.mutation.IsMultimodal(); !ok {
-		return &ValidationError{Name: "is_multimodal", err: errors.New(`db: missing required field "Model.is_multimodal"`)}
+	if _, ok := _c.mutation.SupportImage(); !ok {
+		return &ValidationError{Name: "support_image", err: errors.New(`db: missing required field "Model.support_image"`)}
 	}
 	if _, ok := _c.mutation.ContextLimit(); !ok {
 		return &ValidationError{Name: "context_limit", err: errors.New(`db: missing required field "Model.context_limit"`)}
@@ -636,9 +636,9 @@ func (_c *ModelCreate) createSpec() (*Model, *sqlgraph.CreateSpec) {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
 		_node.ThinkingEnabled = value
 	}
-	if value, ok := _c.mutation.IsMultimodal(); ok {
-		_spec.SetField(model.FieldIsMultimodal, field.TypeBool, value)
-		_node.IsMultimodal = value
+	if value, ok := _c.mutation.SupportImage(); ok {
+		_spec.SetField(model.FieldSupportImage, field.TypeBool, value)
+		_node.SupportImage = value
 	}
 	if value, ok := _c.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
@@ -1073,15 +1073,15 @@ func (u *ModelUpsert) UpdateThinkingEnabled() *ModelUpsert {
 	return u
 }
 
-// SetIsMultimodal sets the "is_multimodal" field.
-func (u *ModelUpsert) SetIsMultimodal(v bool) *ModelUpsert {
-	u.Set(model.FieldIsMultimodal, v)
+// SetSupportImage sets the "support_image" field.
+func (u *ModelUpsert) SetSupportImage(v bool) *ModelUpsert {
+	u.Set(model.FieldSupportImage, v)
 	return u
 }
 
-// UpdateIsMultimodal sets the "is_multimodal" field to the value that was provided on create.
-func (u *ModelUpsert) UpdateIsMultimodal() *ModelUpsert {
-	u.SetExcluded(model.FieldIsMultimodal)
+// UpdateSupportImage sets the "support_image" field to the value that was provided on create.
+func (u *ModelUpsert) UpdateSupportImage() *ModelUpsert {
+	u.SetExcluded(model.FieldSupportImage)
 	return u
 }
 
@@ -1443,17 +1443,17 @@ func (u *ModelUpsertOne) UpdateThinkingEnabled() *ModelUpsertOne {
 	})
 }
 
-// SetIsMultimodal sets the "is_multimodal" field.
-func (u *ModelUpsertOne) SetIsMultimodal(v bool) *ModelUpsertOne {
+// SetSupportImage sets the "support_image" field.
+func (u *ModelUpsertOne) SetSupportImage(v bool) *ModelUpsertOne {
 	return u.Update(func(s *ModelUpsert) {
-		s.SetIsMultimodal(v)
+		s.SetSupportImage(v)
 	})
 }
 
-// UpdateIsMultimodal sets the "is_multimodal" field to the value that was provided on create.
-func (u *ModelUpsertOne) UpdateIsMultimodal() *ModelUpsertOne {
+// UpdateSupportImage sets the "support_image" field to the value that was provided on create.
+func (u *ModelUpsertOne) UpdateSupportImage() *ModelUpsertOne {
 	return u.Update(func(s *ModelUpsert) {
-		s.UpdateIsMultimodal()
+		s.UpdateSupportImage()
 	})
 }
 
@@ -2001,17 +2001,17 @@ func (u *ModelUpsertBulk) UpdateThinkingEnabled() *ModelUpsertBulk {
 	})
 }
 
-// SetIsMultimodal sets the "is_multimodal" field.
-func (u *ModelUpsertBulk) SetIsMultimodal(v bool) *ModelUpsertBulk {
+// SetSupportImage sets the "support_image" field.
+func (u *ModelUpsertBulk) SetSupportImage(v bool) *ModelUpsertBulk {
 	return u.Update(func(s *ModelUpsert) {
-		s.SetIsMultimodal(v)
+		s.SetSupportImage(v)
 	})
 }
 
-// UpdateIsMultimodal sets the "is_multimodal" field to the value that was provided on create.
-func (u *ModelUpsertBulk) UpdateIsMultimodal() *ModelUpsertBulk {
+// UpdateSupportImage sets the "support_image" field to the value that was provided on create.
+func (u *ModelUpsertBulk) UpdateSupportImage() *ModelUpsertBulk {
 	return u.Update(func(s *ModelUpsert) {
-		s.UpdateIsMultimodal()
+		s.UpdateSupportImage()
 	})
 }
 
