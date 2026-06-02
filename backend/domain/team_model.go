@@ -47,6 +47,7 @@ type TeamModel struct {
 	LastCheckSuccess bool                 `json:"last_check_success"`
 	LastCheckError   string               `json:"last_check_error"`
 	SupportImage     bool                 `json:"support_image"`
+	IsHidden         bool                 `json:"is_hidden"`
 }
 
 // From 从数据库模型转换为领域模型
@@ -68,6 +69,7 @@ func (t *TeamModel) From(src *db.Model) *TeamModel {
 	t.LastCheckSuccess = src.LastCheckSuccess
 	t.LastCheckError = src.LastCheckError
 	t.SupportImage = src.SupportImage
+	t.IsHidden = src.IsHidden
 	t.CreatedAt = src.CreatedAt.Unix()
 	t.UpdatedAt = src.UpdatedAt.Unix()
 	t.LastCheckAt = src.LastCheckAt.Unix()

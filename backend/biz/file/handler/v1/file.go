@@ -385,9 +385,9 @@ func (f *FileHandler) Upload(c *web.Context) error {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Param			param	query		domain.FilePathReq	false	"参数"
+//	@Param			param		query		domain.FilePathReq	false	"参数"
 //	@Param			filename	query		string				false	"下载文件名"
-//	@Success		200		{object}	web.Resp{}			"成功"
+//	@Success		200			{object}	web.Resp{}			"成功"
 //	@Router			/api/v1/users/files/download [get]
 func (f *FileHandler) Download(c *web.Context, req domain.FilePathReq) error {
 	user := middleware.GetUser(c)

@@ -12130,6 +12130,7 @@ type ModelMutation struct {
 	addweight                *int
 	thinking_enabled         *bool
 	support_image            *bool
+	is_hidden                *bool
 	context_limit            *int
 	addcontext_limit         *int
 	output_limit             *int
@@ -12803,6 +12804,42 @@ func (m *ModelMutation) OldSupportImage(ctx context.Context) (v bool, err error)
 // ResetSupportImage resets all changes to the "support_image" field.
 func (m *ModelMutation) ResetSupportImage() {
 	m.support_image = nil
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (m *ModelMutation) SetIsHidden(b bool) {
+	m.is_hidden = &b
+}
+
+// IsHidden returns the value of the "is_hidden" field in the mutation.
+func (m *ModelMutation) IsHidden() (r bool, exists bool) {
+	v := m.is_hidden
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIsHidden returns the old "is_hidden" field's value of the Model entity.
+// If the Model object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelMutation) OldIsHidden(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsHidden is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsHidden requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsHidden: %w", err)
+	}
+	return oldValue.IsHidden, nil
+}
+
+// ResetIsHidden resets all changes to the "is_hidden" field.
+func (m *ModelMutation) ResetIsHidden() {
+	m.is_hidden = nil
 }
 
 // SetContextLimit sets the "context_limit" field.
@@ -13722,7 +13759,7 @@ func (m *ModelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 20)
 	if m.deleted_at != nil {
 		fields = append(fields, model.FieldDeletedAt)
 	}
@@ -13758,6 +13795,9 @@ func (m *ModelMutation) Fields() []string {
 	}
 	if m.support_image != nil {
 		fields = append(fields, model.FieldSupportImage)
+	}
+	if m.is_hidden != nil {
+		fields = append(fields, model.FieldIsHidden)
 	}
 	if m.context_limit != nil {
 		fields = append(fields, model.FieldContextLimit)
@@ -13812,6 +13852,8 @@ func (m *ModelMutation) Field(name string) (ent.Value, bool) {
 		return m.ThinkingEnabled()
 	case model.FieldSupportImage:
 		return m.SupportImage()
+	case model.FieldIsHidden:
+		return m.IsHidden()
 	case model.FieldContextLimit:
 		return m.ContextLimit()
 	case model.FieldOutputLimit:
@@ -13859,6 +13901,8 @@ func (m *ModelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldThinkingEnabled(ctx)
 	case model.FieldSupportImage:
 		return m.OldSupportImage(ctx)
+	case model.FieldIsHidden:
+		return m.OldIsHidden(ctx)
 	case model.FieldContextLimit:
 		return m.OldContextLimit(ctx)
 	case model.FieldOutputLimit:
@@ -13965,6 +14009,13 @@ func (m *ModelMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSupportImage(v)
+		return nil
+	case model.FieldIsHidden:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIsHidden(v)
 		return nil
 	case model.FieldContextLimit:
 		v, ok := value.(int)
@@ -14195,6 +14246,9 @@ func (m *ModelMutation) ResetField(name string) error {
 		return nil
 	case model.FieldSupportImage:
 		m.ResetSupportImage()
+		return nil
+	case model.FieldIsHidden:
+		m.ResetIsHidden()
 		return nil
 	case model.FieldContextLimit:
 		m.ResetContextLimit()

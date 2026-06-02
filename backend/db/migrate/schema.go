@@ -358,6 +358,7 @@ var (
 		{Name: "weight", Type: field.TypeInt, Default: 1},
 		{Name: "thinking_enabled", Type: field.TypeBool, Default: true},
 		{Name: "support_image", Type: field.TypeBool, Default: false},
+		{Name: "is_hidden", Type: field.TypeBool, Default: false},
 		{Name: "context_limit", Type: field.TypeInt, Default: 200000},
 		{Name: "output_limit", Type: field.TypeInt, Default: 32000},
 		{Name: "last_check_at", Type: field.TypeTime, Nullable: true},
@@ -375,7 +376,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "models_users_models",
-				Columns:    []*schema.Column{ModelsColumns[19]},
+				Columns:    []*schema.Column{ModelsColumns[20]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
