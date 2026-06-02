@@ -18,7 +18,7 @@ import { useTheme } from "@/components/theme-provider"
 mermaid.initialize({
   startOnLoad: false,
   theme: "default",
-  securityLevel: "loose",
+  securityLevel: "strict",
   suppressErrorRendering: true,
 })
 
