@@ -39,6 +39,8 @@ const (
 	FieldThinkingEnabled = "thinking_enabled"
 	// FieldSupportImage holds the string denoting the support_image field in the database.
 	FieldSupportImage = "support_image"
+	// FieldIsHidden holds the string denoting the is_hidden field in the database.
+	FieldIsHidden = "is_hidden"
 	// FieldContextLimit holds the string denoting the context_limit field in the database.
 	FieldContextLimit = "context_limit"
 	// FieldOutputLimit holds the string denoting the output_limit field in the database.
@@ -167,6 +169,7 @@ var Columns = []string{
 	FieldWeight,
 	FieldThinkingEnabled,
 	FieldSupportImage,
+	FieldIsHidden,
 	FieldContextLimit,
 	FieldOutputLimit,
 	FieldLastCheckAt,
@@ -217,6 +220,8 @@ var (
 	DefaultThinkingEnabled bool
 	// DefaultSupportImage holds the default value on creation for the "support_image" field.
 	DefaultSupportImage bool
+	// DefaultIsHidden holds the default value on creation for the "is_hidden" field.
+	DefaultIsHidden bool
 	// DefaultContextLimit holds the default value on creation for the "context_limit" field.
 	DefaultContextLimit int
 	// DefaultOutputLimit holds the default value on creation for the "output_limit" field.
@@ -295,6 +300,11 @@ func ByThinkingEnabled(opts ...sql.OrderTermOption) OrderOption {
 // BySupportImage orders the results by the support_image field.
 func BySupportImage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSupportImage, opts...).ToFunc()
+}
+
+// ByIsHidden orders the results by the is_hidden field.
+func ByIsHidden(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIsHidden, opts...).ToFunc()
 }
 
 // ByContextLimit orders the results by the context_limit field.
