@@ -44,7 +44,7 @@ import { Spinner } from "@/components/ui/spinner"
 import Icon from "@/components/common/Icon"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
-import { canUseModelBySubscription, formatTokens, getBrandFromModelName, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName } from "@/utils/common"
+import { canUseModelBySubscription, formatTokens, getBrandFromModel, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName, isBuiltinPublicModelPackage, stripBuiltinPublicModelPackagePrefix } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
@@ -268,6 +268,7 @@ export default function TaskDetailPage() {
     ))
     const paidModels = supportedModels.filter((model) => (
       model.owner?.type === ConstsOwnerType.OwnerTypePublic
+      && !isBuiltinPublicModelPackage(model.model)
     ))
     const teamModelGroups = Array.from(
       supportedModels
@@ -728,7 +729,7 @@ export default function TaskDetailPage() {
   const getModelOptionDisplayName = React.useCallback((model: DomainModel, nested = false) => {
     const remark = model.remark?.trim()
     if (remark) {
-      return remark
+      return stripBuiltinPublicModelPackagePrefix(remark)
     }
 
     return nested ? getNestedModelDisplayName(model.model) : getModelDisplayName(model.model)
@@ -795,7 +796,7 @@ export default function TaskDetailPage() {
         )}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Icon name={getBrandFromModelName(modelName)} className="size-4" />
+          <Icon name={getBrandFromModel(model)} className="size-4" />
           <span className="truncate">{displayName}</span>
         </div>
         <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">

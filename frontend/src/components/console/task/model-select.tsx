@@ -14,10 +14,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  getBrandFromModelName,
+  getBrandFromModel,
   getBuiltinModelName,
   getModelDisplayName,
   getOwnerTypeBadge,
+  isBuiltinPublicModelPackage,
+  stripBuiltinPublicModelPackagePrefix,
   canUseModelBySubscription,
 } from "@/utils/common"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
@@ -93,6 +95,7 @@ export default function ModelSelect({
   const otherPaidModels = useMemo(
     () => supportedModels.filter((model) => (
       model.owner?.type === ConstsOwnerType.OwnerTypePublic
+      && !isBuiltinPublicModelPackage(model.model)
     )),
     [supportedModels],
   )
@@ -157,7 +160,7 @@ export default function ModelSelect({
   const getModelOptionDisplayName = (model: DomainModel, nested = false) => {
     const remark = model.remark?.trim()
     if (remark) {
-      return remark
+      return stripBuiltinPublicModelPackagePrefix(remark)
     }
 
     return nested ? getNestedModelDisplayName(model.model) : getModelDisplayName(model.model)
@@ -211,7 +214,7 @@ export default function ModelSelect({
         disabled={!model.id || !canUseModelBySubscription(model, subscription)}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Icon name={getBrandFromModelName(model.model || "")} className="size-4" />
+          <Icon name={getBrandFromModel(model)} className="size-4" />
           <span className="truncate">{displayName}</span>
         </div>
         <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
@@ -298,7 +301,7 @@ export default function ModelSelect({
             >
               {selectedModel ? (
                 <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <Icon name={getBrandFromModelName(selectedModel.model || "")} className="size-4 shrink-0" />
+                  <Icon name={getBrandFromModel(selectedModel)} className="size-4 shrink-0" />
                   <span className="truncate">{getSelectedModelDisplayName()}</span>
                 </span>
               ) : (

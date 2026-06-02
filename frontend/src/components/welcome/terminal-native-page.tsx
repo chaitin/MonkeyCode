@@ -45,7 +45,7 @@ const featureItems = [
     key: "03",
     cmd: "--models --all-major",
     title: "全量主流模型",
-    body: "GPT、Claude、GLM、Kimi、MiniMax、Qwen、DeepSeek 等都已接入，按任务类型切换，也能手动指定。",
+    body: "GLM、Kimi、MiniMax、Qwen、DeepSeek 等都已接入，按任务类型切换，也能手动指定。",
   },
   {
     key: "04",

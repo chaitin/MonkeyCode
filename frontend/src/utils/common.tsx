@@ -121,6 +121,18 @@ export function getBrandFromModelName(modelName: string): string {
   return 'openai';
 }
 
+export function getBrandFromModel(model?: Pick<DomainModel, 'model' | 'owner'> | null): string {
+  const modelName = model?.model || '';
+  if (
+    model?.owner?.type === ConstsOwnerType.OwnerTypePublic
+    && modelName.toLowerCase().includes('gpt')
+  ) {
+    return 'model';
+  }
+
+  return getBrandFromModelName(modelName);
+}
+
 export function getModelDisplayName(modelName?: string | null): string {
   if (!modelName) {
     return modelName || '';
@@ -142,10 +154,14 @@ export function getModelDisplayName(modelName?: string | null): string {
   return modelName;
 }
 
+export function stripBuiltinPublicModelPackagePrefix(modelName?: string | null): string {
+  return modelName?.trim().replace(/^monkeycode-[^/]+\//, '') || '';
+}
+
 export function getModelDisplayNameForModel(model?: Pick<DomainModel, 'model' | 'remark'> | null): string {
   const remark = model?.remark?.trim();
   if (remark) {
-    return remark;
+    return stripBuiltinPublicModelPackagePrefix(remark);
   }
 
   return getModelDisplayName(model?.model);
@@ -170,6 +186,10 @@ export function getBuiltinModelName(modelName?: string | null): "monkeycode-basi
   }
 
   return undefined;
+}
+
+export function isBuiltinPublicModelPackage(modelName?: string | null): boolean {
+  return stripBuiltinPublicModelPackagePrefix(modelName) !== (modelName?.trim() || '');
 }
 
 export type ModelPricingItem = {

@@ -36,7 +36,7 @@ import { ConstsOwnerType, type DomainModel } from "@/api/Api"
 import AddModel from "../settings/add-model"
 import EditModel from "../settings/edit-model"
 import Icon from "@/components/common/Icon"
-import { getBrandFromModelName, getInterfaceTypeBadge, getModelDisplayNameForModel, getOwnerTypeBadge } from "@/utils/common"
+import { getBrandFromModel, getInterfaceTypeBadge, getModelDisplayNameForModel, getOwnerTypeBadge } from "@/utils/common"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
@@ -114,7 +114,7 @@ export default function Models() {
           <ItemMedia className="hidden md:flex">
             <Avatar>
               <AvatarFallback>
-                <Icon name={getBrandFromModelName(model.model || '')} className="size-4" />
+                <Icon name={getBrandFromModel(model)} className="size-4" />
               </AvatarFallback>
             </Avatar> 
           </ItemMedia>

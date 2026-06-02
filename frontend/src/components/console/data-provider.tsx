@@ -167,14 +167,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await apiRequest('v1UsersModelsList', {}, [], (resp) => {
       if (resp.code === 0) {
         const modelsList = (resp.data?.models || []).filter((model: DomainModel) => (
-          model.model !== 'monkeycode-basic'
-          && model.model !== 'monkeycode-pro'
-          && model.model !== 'monkeycode-ultra'
-          && model.is_hidden !== true
-          && (
-            model.owner?.type !== ConstsOwnerType.OwnerTypePublic
-            || /^monkeycode-[^/]+\//.test(model.model || '')
-          )
+          model.is_hidden !== true
         ));
         
         // 排序：先按 owner.type (private > team > public)，然后按名字
