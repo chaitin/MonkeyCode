@@ -147,6 +147,12 @@ func (r *modelRepo) Create(ctx context.Context, uid uuid.UUID, req *domain.Creat
 		if req.ThinkingEnabled != nil {
 			create.SetThinkingEnabled(*req.ThinkingEnabled)
 		}
+		if req.SupportImage != nil {
+			create.SetSupportImage(*req.SupportImage)
+		}
+		if req.IsHidden != nil {
+			create.SetIsHidden(*req.IsHidden)
+		}
 		if req.ContextLimit != nil {
 			create.SetContextLimit(*req.ContextLimit)
 		}
@@ -230,6 +236,12 @@ func (r *modelRepo) Update(ctx context.Context, uid, id uuid.UUID, req *domain.U
 		}
 		if req.ThinkingEnabled != nil {
 			update.SetThinkingEnabled(*req.ThinkingEnabled)
+		}
+		if req.SupportImage != nil {
+			update.SetSupportImage(*req.SupportImage)
+		}
+		if req.IsHidden != nil {
+			update.SetIsHidden(*req.IsHidden)
 		}
 		if req.ContextLimit != nil {
 			update.SetContextLimit(*req.ContextLimit)

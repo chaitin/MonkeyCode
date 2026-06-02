@@ -2466,6 +2466,12 @@
                         "name": "path",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "下载文件名",
+                        "name": "filename",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -8109,114 +8115,6 @@
                     }
                 }
             }
-        },
-        "/api/v1/wechat/callback": {
-            "get": {
-                "description": "接收微信服务器配置校验、关注/取消关注、扫码等事件回调；该接口无需登录鉴权",
-                "consumes": [
-                    "text/xml"
-                ],
-                "produces": [
-                    "text/plain"
-                ],
-                "tags": [
-                    "【用户】微信公众号推送"
-                ],
-                "summary": "微信公众号回调",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "微信签名",
-                        "name": "signature",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "时间戳",
-                        "name": "timestamp",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "随机数",
-                        "name": "nonce",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "微信服务器配置校验字符串，仅 GET 请求使用",
-                        "name": "echostr",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "安全模式消息签名",
-                        "name": "msg_signature",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "微信回调处理结果",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "接收微信服务器配置校验、关注/取消关注、扫码等事件回调；该接口无需登录鉴权",
-                "consumes": [
-                    "text/xml"
-                ],
-                "produces": [
-                    "text/plain"
-                ],
-                "tags": [
-                    "【用户】微信公众号推送"
-                ],
-                "summary": "微信公众号回调",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "微信签名",
-                        "name": "signature",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "时间戳",
-                        "name": "timestamp",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "随机数",
-                        "name": "nonce",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "微信服务器配置校验字符串，仅 GET 请求使用",
-                        "name": "echostr",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "安全模式消息签名",
-                        "name": "msg_signature",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "微信回调处理结果",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
@@ -8334,12 +8232,20 @@
             "enum": [
                 "task.created",
                 "task.ended",
-                "vm.expiring_soon"
+                "vm.expiring_soon",
+                "quota.refreshed",
+                "quota.basic_exhausted",
+                "quota.pro_exhausted",
+                "quota.ultra_exhausted"
             ],
             "x-enum-varnames": [
                 "NotifyEventTaskCreated",
                 "NotifyEventTaskEnded",
-                "NotifyEventVMExpiringSoon"
+                "NotifyEventVMExpiringSoon",
+                "NotifyEventQuotaRefreshed",
+                "NotifyEventQuotaBasicExhausted",
+                "NotifyEventQuotaProExhausted",
+                "NotifyEventQuotaUltraExhausted"
             ]
         },
         "consts.NotifyEventTypeInfo": {
@@ -8748,6 +8654,12 @@
                 "provider": {
                     "type": "string"
                 },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
+                },
                 "temperature": {
                     "type": "number"
                 }
@@ -9112,6 +9024,9 @@
                 "is_default": {
                     "type": "boolean"
                 },
+                "is_hidden": {
+                    "type": "boolean"
+                },
                 "model": {
                     "type": "string"
                 },
@@ -9120,6 +9035,12 @@
                 },
                 "provider": {
                     "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
                 },
                 "temperature": {
                     "type": "number"
@@ -9988,6 +9909,9 @@
                 "is_free": {
                     "type": "boolean"
                 },
+                "is_hidden": {
+                    "type": "boolean"
+                },
                 "last_check_at": {
                     "type": "integer"
                 },
@@ -10008,6 +9932,12 @@
                 },
                 "provider": {
                     "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
                 },
                 "temperature": {
                     "type": "number"
@@ -10044,6 +9974,9 @@
                 "is_free": {
                     "type": "boolean"
                 },
+                "is_hidden": {
+                    "type": "boolean"
+                },
                 "last_check_at": {
                     "type": "integer"
                 },
@@ -10064,6 +9997,12 @@
                 },
                 "provider": {
                     "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
                 },
                 "temperature": {
                     "type": "number"
@@ -10969,6 +10908,9 @@
                 "interface_type": {
                     "$ref": "#/definitions/consts.InterfaceType"
                 },
+                "is_hidden": {
+                    "type": "boolean"
+                },
                 "last_check_at": {
                     "type": "integer"
                 },
@@ -10983,6 +10925,12 @@
                 },
                 "provider": {
                     "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
                 },
                 "temperature": {
                     "type": "number"
@@ -11170,6 +11118,9 @@
                 "is_default": {
                     "type": "boolean"
                 },
+                "is_hidden": {
+                    "type": "boolean"
+                },
                 "model": {
                     "type": "string"
                 },
@@ -11178,6 +11129,12 @@
                 },
                 "provider": {
                     "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
                 },
                 "temperature": {
                     "type": "number"
@@ -11322,6 +11279,12 @@
                 },
                 "provider": {
                     "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "support_image": {
+                    "type": "boolean"
                 },
                 "temperature": {
                     "type": "number"

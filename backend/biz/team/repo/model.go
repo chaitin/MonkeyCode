@@ -82,7 +82,7 @@ func (r *teamModelRepo) Create(ctx context.Context, teamID uuid.UUID, userID uui
 			}
 		}
 
-		newModel, err := tx.Model.Create().
+		create := tx.Model.Create().
 			SetID(uuid.New()).
 			SetProvider(req.Provider).
 			SetAPIKey(req.APIKey).
@@ -91,8 +91,12 @@ func (r *teamModelRepo) Create(ctx context.Context, teamID uuid.UUID, userID uui
 			SetRemark(req.Remark).
 			SetUserID(userID).
 			SetTemperature(req.Temperature).
-			SetInterfaceType(string(req.InterfaceType)).
-			Save(ctx)
+			SetInterfaceType(string(req.InterfaceType))
+		if req.SupportImage != nil {
+			create.SetSupportImage(*req.SupportImage)
+		}
+
+		newModel, err := create.Save(ctx)
 		if err != nil {
 			return err
 		}
@@ -159,6 +163,9 @@ func (r *teamModelRepo) Update(ctx context.Context, teamID uuid.UUID, req *domai
 		}
 		if req.InterfaceType != "" {
 			upt.SetInterfaceType(string(req.InterfaceType))
+		}
+		if req.SupportImage != nil {
+			upt.SetSupportImage(*req.SupportImage)
 		}
 		err := upt.Exec(ctx)
 		if err != nil {
