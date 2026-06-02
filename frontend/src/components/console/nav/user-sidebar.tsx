@@ -2,6 +2,8 @@ import * as React from "react"
 import NavBalance from "./nav-balance"
 import NavCheckin from "./nav-checkin"
 import NavCommunity from "./nav-community"
+import NavEssay from "./nav-essay"
+import NavInvite from "./nav-invite"
 import NavProject from "./nav-project"
 import {
   Sidebar,
@@ -42,7 +44,13 @@ export default function UserSidebar({
         <NavProject />
       </SidebarContent>
       <SidebarFooter className="md:p-0">
-        <NavCheckin />
+        {IS_ONLINE_EDITION && (
+          <>
+            <NavCheckin />
+            <NavInvite />
+            <NavEssay />
+          </>
+        )}
         <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
           {IS_ONLINE_EDITION && (
             <NavCommunity
