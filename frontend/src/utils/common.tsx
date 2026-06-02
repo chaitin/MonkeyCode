@@ -142,6 +142,15 @@ export function getModelDisplayName(modelName?: string | null): string {
   return modelName;
 }
 
+export function getModelDisplayNameForModel(model?: Pick<DomainModel, 'model' | 'remark'> | null): string {
+  const remark = model?.remark?.trim();
+  if (remark) {
+    return remark;
+  }
+
+  return getModelDisplayName(model?.model);
+}
+
 export function getBuiltinModelName(modelName?: string | null): "monkeycode-basic" | "monkeycode-pro" | "monkeycode-ultra" | undefined {
   const normalizedModelName = modelName?.trim().toLowerCase();
   if (!normalizedModelName) {
@@ -171,6 +180,7 @@ export type ModelPricingItem = {
 }
 
 export const modelPricingList: readonly ModelPricingItem[] = [
+  { model: "minimax-m3", credits: 250, score: 637, tags: [] },
   { model: "minimax-m2.7", credits: 250, score: 637, tags: [] },
   { model: "minimax-m2.5", credits: 150, score: 513, tags: [] },
   { model: "deepseek-v4-pro", credits: 600, score: 852, tags: [] },
@@ -976,31 +986,31 @@ export function deepMerge<T extends Record<string, any>>(target: T, source: Part
 
 export const modelProviderList: Record<string, DomainProviderModelListItem[]> = {
   "https://api.minimax.io/v1": [
+    {"model": "MiniMax-M3"},
     {"model": "MiniMax-M2.7"},
     {"model": "MiniMax-M2.5"},
     {"model": "MiniMax-M2.1"},
-    {"model": "MiniMax-M2.1-lightning"},
     {"model": "MiniMax-M2"}
   ],
   "https://api.minimax.io/anthropic": [
+    {"model": "MiniMax-M3"},
     {"model": "MiniMax-M2.7"},
     {"model": "MiniMax-M2.5"},
     {"model": "MiniMax-M2.1"},
-    {"model": "MiniMax-M2.1-lightning"},
     {"model": "MiniMax-M2"}
   ],
   "https://api.minimaxi.com/v1": [
+    {"model": "MiniMax-M3"},
     {"model": "MiniMax-M2.7"},
     {"model": "MiniMax-M2.5"},
     {"model": "MiniMax-M2.1"},
-    {"model": "MiniMax-M2.1-lightning"},
     {"model": "MiniMax-M2"}
   ],
   "https://api.minimaxi.com/anthropic": [
+    {"model": "MiniMax-M3"},
     {"model": "MiniMax-M2.7"},
     {"model": "MiniMax-M2.5"},
     {"model": "MiniMax-M2.1"},
-    {"model": "MiniMax-M2.1-lightning"},
     {"model": "MiniMax-M2"}
   ]
 }

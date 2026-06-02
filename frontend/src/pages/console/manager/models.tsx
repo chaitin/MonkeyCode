@@ -53,7 +53,7 @@ import type { DomainTeamModel } from "@/api/Api"
 import AddModel from "@/components/manager/add-model"
 import EditModel from "@/components/manager/edit-model"
 import Icon from "@/components/common/Icon"
-import { getBrandFromModelName, getInterfaceTypeBadge, getModelDisplayName } from "@/utils/common"
+import { getBrandFromModelName, getInterfaceTypeBadge, getModelDisplayNameForModel } from "@/utils/common"
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
@@ -182,7 +182,7 @@ export default function TeamManagerModels() {
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle className="break-all">
-                    {getModelDisplayName(model.model || '未知模型')}
+                    {getModelDisplayNameForModel(model) || '未知模型'}
                     {getInterfaceTypeBadge(model.interface_type)}
                   </ItemTitle>
                 </ItemContent>
@@ -216,7 +216,7 @@ export default function TeamManagerModels() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>确认移除</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要移除模型 "{getModelDisplayName(model.model || '未知模型')}" 吗？此操作不可撤销。
+                              确定要移除模型 "{getModelDisplayNameForModel(model) || '未知模型'}" 吗？此操作不可撤销。
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

@@ -268,7 +268,6 @@ export default function TaskDetailPage() {
     ))
     const paidModels = supportedModels.filter((model) => (
       model.owner?.type === ConstsOwnerType.OwnerTypePublic
-      && !getBuiltinModelName(model.model)
     ))
     const teamModelGroups = Array.from(
       supportedModels
@@ -727,7 +726,7 @@ export default function TaskDetailPage() {
   }, [])
 
   const getModelOptionDisplayName = React.useCallback((model: DomainModel, nested = false) => {
-    const remark = model.owner?.type !== ConstsOwnerType.OwnerTypePublic ? model.remark?.trim() : ""
+    const remark = model.remark?.trim()
     if (remark) {
       return remark
     }
