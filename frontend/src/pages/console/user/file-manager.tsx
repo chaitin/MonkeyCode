@@ -121,7 +121,7 @@ const getFileIcon = (file: TaskflowFile) => {
   const kind = file.kind === TaskflowFileKind.FileKindSymlink ? file.symlink_kind : file.kind
   switch (kind) {
     case TaskflowFileKind.FileKindDir:
-      return <IconFolderFilled className="h-4 w-4 text-amber-500" />
+      return <IconFolderFilled className="h-4 w-4 text-primary" />
     case TaskflowFileKind.FileKindSymlink:
       return <LinkIcon className="h-4 w-4" />
     case TaskflowFileKind.FileKindFile:

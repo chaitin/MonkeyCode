@@ -281,8 +281,8 @@ export default function FilePickerDialog({
     switch (kind) {
       case 'dir':
         return isExpanded 
-          ? <IconFolderOpen className="h-4 w-4 text-yellow-500" />
-          : <IconFolder className="h-4 w-4 text-yellow-500" />
+          ? <IconFolderOpen className="h-4 w-4 text-primary" />
+          : <IconFolder className="h-4 w-4 text-primary" />
       case 'file':
       default:
         return <IconFile className="h-4 w-4" />

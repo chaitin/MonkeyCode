@@ -117,6 +117,110 @@ const cssText = `
 .ace-monkeycode .ace_comment {
   color: #8E908C;
 }
+
+.dark .ace-monkeycode {
+  background-color: #0d1117;
+  color: #c9d1d9;
+}
+
+.dark .ace-monkeycode .ace_gutter {
+  background: #161b22;
+  color: #8b949e;
+}
+
+.dark .ace-monkeycode .ace_cursor {
+  color: #c9d1d9;
+}
+
+.dark .ace-monkeycode .ace_marker-layer .ace_selection {
+  background: #264f78;
+}
+
+.dark .ace-monkeycode.ace_multiselect .ace_selection.ace_start {
+  box-shadow: 0 0 3px 0 #0d1117;
+}
+
+.dark .ace-monkeycode .ace_marker-layer .ace_step {
+  background: #4b3f16;
+}
+
+.dark .ace-monkeycode .ace_marker-layer .ace_bracket {
+  border-color: #6e7681;
+}
+
+.dark .ace-monkeycode .ace_marker-layer .ace_active-line,
+.dark .ace-monkeycode .ace_gutter-active-line {
+  background: #161b22;
+}
+
+.dark .ace-monkeycode .ace_marker-layer .ace_selected-word {
+  border-color: #6e7681;
+}
+
+.dark .ace-monkeycode .ace_invisible {
+  color: #484f58;
+}
+
+.dark .ace-monkeycode .ace_keyword,
+.dark .ace-monkeycode .ace_meta,
+.dark .ace-monkeycode .ace_storage,
+.dark .ace-monkeycode .ace_storage.ace_type,
+.dark .ace-monkeycode .ace_support.ace_type {
+  color: #ff7b72;
+}
+
+.dark .ace-monkeycode .ace_keyword.ace_operator {
+  color: #79c0ff;
+}
+
+.dark .ace-monkeycode .ace_constant.ace_character,
+.dark .ace-monkeycode .ace_constant.ace_language,
+.dark .ace-monkeycode .ace_constant.ace_numeric,
+.dark .ace-monkeycode .ace_keyword.ace_other.ace_unit,
+.dark .ace-monkeycode .ace_support.ace_constant,
+.dark .ace-monkeycode .ace_variable.ace_parameter {
+  color: #79c0ff;
+}
+
+.dark .ace-monkeycode .ace_constant.ace_other {
+  color: #a5d6ff;
+}
+
+.dark .ace-monkeycode .ace_invalid {
+  color: #ffdcd7;
+  background-color: #da3633;
+}
+
+.dark .ace-monkeycode .ace_invalid.ace_deprecated {
+  color: #ffdcd7;
+  background-color: #8957e5;
+}
+
+.dark .ace-monkeycode .ace_fold {
+  background-color: #58a6ff;
+  border-color: #c9d1d9;
+}
+
+.dark .ace-monkeycode .ace_entity.ace_name.ace_function,
+.dark .ace-monkeycode .ace_support.ace_function,
+.dark .ace-monkeycode .ace_variable,
+.dark .ace-monkeycode .ace_support.ace_class,
+.dark .ace-monkeycode .ace_support.ace_type {
+  color: #d2a8ff;
+}
+
+.dark .ace-monkeycode .ace_string,
+.dark .ace-monkeycode .ace_heading {
+  color: #a5d6ff;
+}
+
+.dark .ace-monkeycode .ace_markup {
+  color: #7ee787 !important;
+}
+
+.dark .ace-monkeycode .ace_comment {
+  color: #8b949e;
+}
 `;
 
 
