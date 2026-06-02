@@ -68,6 +68,7 @@ func (r *teamImageRepo) Get(ctx context.Context, teamID, imageID uuid.UUID) (*db
 func (r *teamImageRepo) Create(ctx context.Context, teamID, userID uuid.UUID, req *domain.AddTeamImageReq) (*db.Image, error) {
 	var imgID uuid.UUID
 	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+		useDefaultGroup := len(req.GroupIDs) == 0
 		tgs, err := tx.TeamGroup.Query().
 			Where(teamgroup.IDIn(req.GroupIDs...)).
 			All(ctx)
@@ -76,8 +77,15 @@ func (r *teamImageRepo) Create(ctx context.Context, teamID, userID uuid.UUID, re
 		}
 
 		req.GroupIDs = cvt.Iter(tgs, func(_ int, tg *db.TeamGroup) uuid.UUID { return tg.ID })
+		if useDefaultGroup {
+			req.GroupIDs, err = ensureDefaultGroupIDs(ctx, tx, teamID, req.GroupIDs)
+			if err != nil {
+				return err
+			}
+		}
 
 		img, err := tx.Image.Create().
+			SetID(uuid.New()).
 			SetUserID(userID).
 			SetName(req.Name).
 			SetRemark(req.Remark).
@@ -88,6 +96,7 @@ func (r *teamImageRepo) Create(ctx context.Context, teamID, userID uuid.UUID, re
 		imgID = img.ID
 
 		if err := tx.TeamImage.Create().
+			SetID(uuid.New()).
 			SetImageID(img.ID).
 			SetTeamID(teamID).
 			Exec(ctx); err != nil {
@@ -97,6 +106,7 @@ func (r *teamImageRepo) Create(ctx context.Context, teamID, userID uuid.UUID, re
 		builders := make([]*db.TeamGroupImageCreate, 0)
 		for _, gid := range req.GroupIDs {
 			builders = append(builders, tx.TeamGroupImage.Create().
+				SetID(uuid.New()).
 				SetGroupID(gid).
 				SetImageID(img.ID))
 		}

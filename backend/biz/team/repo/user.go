@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
@@ -342,6 +343,21 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 }
 
 func (r *TeamGroupUserRepo) ensureDefaultTeamGroup(ctx context.Context, tx *db.Tx, teamID uuid.UUID) (*db.TeamGroup, error) {
+	return ensureDefaultTeamGroupTx(ctx, tx, teamID)
+}
+
+func ensureDefaultGroupIDs(ctx context.Context, tx *db.Tx, teamID uuid.UUID, groupIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(groupIDs) > 0 {
+		return groupIDs, nil
+	}
+	group, err := ensureDefaultTeamGroupTx(ctx, tx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	return []uuid.UUID{group.ID}, nil
+}
+
+func ensureDefaultTeamGroupTx(ctx context.Context, tx *db.Tx, teamID uuid.UUID) (*db.TeamGroup, error) {
 	group, err := tx.TeamGroup.Query().
 		Where(teamgroup.TeamIDEQ(teamID), teamgroup.NameEQ(defaultTeamGroupName)).
 		First(ctx)
@@ -356,6 +372,24 @@ func (r *TeamGroupUserRepo) ensureDefaultTeamGroup(ctx context.Context, tx *db.T
 		SetTeamID(teamID).
 		SetName(defaultTeamGroupName).
 		Save(ctx)
+}
+
+func addDefaultGroupHost(ctx context.Context, tx *db.Tx, teamID uuid.UUID, hostID string) error {
+	group, err := ensureDefaultTeamGroupTx(ctx, tx, teamID)
+	if err != nil {
+		return err
+	}
+	exists, err := tx.TeamGroupHost.Query().
+		Where(teamgrouphost.GroupIDEQ(group.ID), teamgrouphost.HostIDEQ(hostID)).
+		Exist(ctx)
+	if err != nil || exists {
+		return err
+	}
+	return tx.TeamGroupHost.Create().
+		SetID(uuid.New()).
+		SetGroupID(group.ID).
+		SetHostID(hostID).
+		Exec(ctx)
 }
 
 func (r *TeamGroupUserRepo) initTeamImage(ctx context.Context, tx *db.Tx, teamID, groupID, userID uuid.UUID, imageName string) error {

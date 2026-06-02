@@ -170,9 +170,14 @@ func (r *TeamHostRepo) UpsertHost(ctx context.Context, user *domain.User, info *
 		}, 10*time.Minute)
 
 		if err := tx.TeamHost.Create().
+			SetID(uuid.New()).
 			SetTeamID(user.Team.ID).
 			SetHostID(info.ID).
 			Exec(ctx); err != nil {
+			return err
+		}
+
+		if err := addDefaultGroupHost(ctx, tx, user.Team.ID, info.ID); err != nil {
 			return err
 		}
 

@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
+	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 func newTeamRepoTestDB(t *testing.T) *db.Client {
@@ -200,4 +201,54 @@ func TestResetPasswordStoresHashedPassword(t *testing.T) {
 	if err := crypto.VerifyPassword(updated.Password, "old-password"); err == nil {
 		t.Fatal("old password should not remain valid")
 	}
+}
+
+func TestEnsureDefaultTeamGroupReturnsExistingGroup(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamRepoTestTeam(t, client)
+	existing, err := client.TeamGroup.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetName(defaultTeamGroupName).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var group *db.TeamGroup
+	if err := entx.WithTx2(ctx, client, func(tx *db.Tx) error {
+		var err error
+		group, err = repo.ensureDefaultTeamGroup(ctx, tx, teamID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if group.ID != existing.ID {
+		t.Fatalf("group id = %s, want %s", group.ID, existing.ID)
+	}
+	if count, err := client.TeamGroup.Query().
+		Where(teamgroup.TeamIDEQ(teamID), teamgroup.NameEQ(defaultTeamGroupName)).
+		Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("default group count = %d, want 1", count)
+	}
+}
+
+func createTeamRepoTestTeam(t *testing.T, client *db.Client) uuid.UUID {
+	t.Helper()
+	team, err := client.Team.Create().
+		SetID(uuid.New()).
+		SetName("team").
+		SetMemberLimit(5).
+		Save(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return team.ID
 }

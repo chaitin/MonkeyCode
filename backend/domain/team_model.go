@@ -80,7 +80,7 @@ type AddTeamModelReq struct {
 	Model         string               `json:"model" validate:"required"`
 	Remark        string               `json:"remark,omitempty"`
 	Temperature   float64              `json:"temperature"`
-	GroupIDs      []uuid.UUID          `json:"group_ids" validate:"required"`
+	GroupIDs      []uuid.UUID          `json:"group_ids" validate:"omitempty"`
 	InterfaceType consts.InterfaceType `json:"interface_type" validate:"required,oneof=openai_chat openai_responses anthropic"`
 }
 

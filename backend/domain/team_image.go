@@ -57,7 +57,7 @@ func (t *TeamImage) From(src *db.Image) *TeamImage {
 type AddTeamImageReq struct {
 	Name     string      `json:"name" validate:"required"`
 	Remark   string      `json:"remark"`
-	GroupIDs []uuid.UUID `json:"group_ids" validate:"required"`
+	GroupIDs []uuid.UUID `json:"group_ids" validate:"omitempty"`
 }
 
 // ListTeamImagesResp 获取团队镜像列表响应
