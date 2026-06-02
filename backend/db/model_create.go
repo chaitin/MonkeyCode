@@ -148,6 +148,34 @@ func (_c *ModelCreate) SetNillableThinkingEnabled(v *bool) *ModelCreate {
 	return _c
 }
 
+// SetSupportImage sets the "support_image" field.
+func (_c *ModelCreate) SetSupportImage(v bool) *ModelCreate {
+	_c.mutation.SetSupportImage(v)
+	return _c
+}
+
+// SetNillableSupportImage sets the "support_image" field if the given value is not nil.
+func (_c *ModelCreate) SetNillableSupportImage(v *bool) *ModelCreate {
+	if v != nil {
+		_c.SetSupportImage(*v)
+	}
+	return _c
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (_c *ModelCreate) SetIsHidden(v bool) *ModelCreate {
+	_c.mutation.SetIsHidden(v)
+	return _c
+}
+
+// SetNillableIsHidden sets the "is_hidden" field if the given value is not nil.
+func (_c *ModelCreate) SetNillableIsHidden(v *bool) *ModelCreate {
+	if v != nil {
+		_c.SetIsHidden(*v)
+	}
+	return _c
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (_c *ModelCreate) SetContextLimit(v int) *ModelCreate {
 	_c.mutation.SetContextLimit(v)
@@ -456,6 +484,14 @@ func (_c *ModelCreate) defaults() error {
 		v := model.DefaultThinkingEnabled
 		_c.mutation.SetThinkingEnabled(v)
 	}
+	if _, ok := _c.mutation.SupportImage(); !ok {
+		v := model.DefaultSupportImage
+		_c.mutation.SetSupportImage(v)
+	}
+	if _, ok := _c.mutation.IsHidden(); !ok {
+		v := model.DefaultIsHidden
+		_c.mutation.SetIsHidden(v)
+	}
 	if _, ok := _c.mutation.ContextLimit(); !ok {
 		v := model.DefaultContextLimit
 		_c.mutation.SetContextLimit(v)
@@ -523,6 +559,12 @@ func (_c *ModelCreate) check() error {
 	}
 	if _, ok := _c.mutation.ThinkingEnabled(); !ok {
 		return &ValidationError{Name: "thinking_enabled", err: errors.New(`db: missing required field "Model.thinking_enabled"`)}
+	}
+	if _, ok := _c.mutation.SupportImage(); !ok {
+		return &ValidationError{Name: "support_image", err: errors.New(`db: missing required field "Model.support_image"`)}
+	}
+	if _, ok := _c.mutation.IsHidden(); !ok {
+		return &ValidationError{Name: "is_hidden", err: errors.New(`db: missing required field "Model.is_hidden"`)}
 	}
 	if _, ok := _c.mutation.ContextLimit(); !ok {
 		return &ValidationError{Name: "context_limit", err: errors.New(`db: missing required field "Model.context_limit"`)}
@@ -614,6 +656,14 @@ func (_c *ModelCreate) createSpec() (*Model, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ThinkingEnabled(); ok {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
 		_node.ThinkingEnabled = value
+	}
+	if value, ok := _c.mutation.SupportImage(); ok {
+		_spec.SetField(model.FieldSupportImage, field.TypeBool, value)
+		_node.SupportImage = value
+	}
+	if value, ok := _c.mutation.IsHidden(); ok {
+		_spec.SetField(model.FieldIsHidden, field.TypeBool, value)
+		_node.IsHidden = value
 	}
 	if value, ok := _c.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
@@ -1048,6 +1098,30 @@ func (u *ModelUpsert) UpdateThinkingEnabled() *ModelUpsert {
 	return u
 }
 
+// SetSupportImage sets the "support_image" field.
+func (u *ModelUpsert) SetSupportImage(v bool) *ModelUpsert {
+	u.Set(model.FieldSupportImage, v)
+	return u
+}
+
+// UpdateSupportImage sets the "support_image" field to the value that was provided on create.
+func (u *ModelUpsert) UpdateSupportImage() *ModelUpsert {
+	u.SetExcluded(model.FieldSupportImage)
+	return u
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (u *ModelUpsert) SetIsHidden(v bool) *ModelUpsert {
+	u.Set(model.FieldIsHidden, v)
+	return u
+}
+
+// UpdateIsHidden sets the "is_hidden" field to the value that was provided on create.
+func (u *ModelUpsert) UpdateIsHidden() *ModelUpsert {
+	u.SetExcluded(model.FieldIsHidden)
+	return u
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (u *ModelUpsert) SetContextLimit(v int) *ModelUpsert {
 	u.Set(model.FieldContextLimit, v)
@@ -1403,6 +1477,34 @@ func (u *ModelUpsertOne) SetThinkingEnabled(v bool) *ModelUpsertOne {
 func (u *ModelUpsertOne) UpdateThinkingEnabled() *ModelUpsertOne {
 	return u.Update(func(s *ModelUpsert) {
 		s.UpdateThinkingEnabled()
+	})
+}
+
+// SetSupportImage sets the "support_image" field.
+func (u *ModelUpsertOne) SetSupportImage(v bool) *ModelUpsertOne {
+	return u.Update(func(s *ModelUpsert) {
+		s.SetSupportImage(v)
+	})
+}
+
+// UpdateSupportImage sets the "support_image" field to the value that was provided on create.
+func (u *ModelUpsertOne) UpdateSupportImage() *ModelUpsertOne {
+	return u.Update(func(s *ModelUpsert) {
+		s.UpdateSupportImage()
+	})
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (u *ModelUpsertOne) SetIsHidden(v bool) *ModelUpsertOne {
+	return u.Update(func(s *ModelUpsert) {
+		s.SetIsHidden(v)
+	})
+}
+
+// UpdateIsHidden sets the "is_hidden" field to the value that was provided on create.
+func (u *ModelUpsertOne) UpdateIsHidden() *ModelUpsertOne {
+	return u.Update(func(s *ModelUpsert) {
+		s.UpdateIsHidden()
 	})
 }
 
@@ -1947,6 +2049,34 @@ func (u *ModelUpsertBulk) SetThinkingEnabled(v bool) *ModelUpsertBulk {
 func (u *ModelUpsertBulk) UpdateThinkingEnabled() *ModelUpsertBulk {
 	return u.Update(func(s *ModelUpsert) {
 		s.UpdateThinkingEnabled()
+	})
+}
+
+// SetSupportImage sets the "support_image" field.
+func (u *ModelUpsertBulk) SetSupportImage(v bool) *ModelUpsertBulk {
+	return u.Update(func(s *ModelUpsert) {
+		s.SetSupportImage(v)
+	})
+}
+
+// UpdateSupportImage sets the "support_image" field to the value that was provided on create.
+func (u *ModelUpsertBulk) UpdateSupportImage() *ModelUpsertBulk {
+	return u.Update(func(s *ModelUpsert) {
+		s.UpdateSupportImage()
+	})
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (u *ModelUpsertBulk) SetIsHidden(v bool) *ModelUpsertBulk {
+	return u.Update(func(s *ModelUpsert) {
+		s.SetIsHidden(v)
+	})
+}
+
+// UpdateIsHidden sets the "is_hidden" field to the value that was provided on create.
+func (u *ModelUpsertBulk) UpdateIsHidden() *ModelUpsertBulk {
+	return u.Update(func(s *ModelUpsert) {
+		s.UpdateIsHidden()
 	})
 }
 

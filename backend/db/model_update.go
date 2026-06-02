@@ -232,6 +232,34 @@ func (_u *ModelUpdate) SetNillableThinkingEnabled(v *bool) *ModelUpdate {
 	return _u
 }
 
+// SetSupportImage sets the "support_image" field.
+func (_u *ModelUpdate) SetSupportImage(v bool) *ModelUpdate {
+	_u.mutation.SetSupportImage(v)
+	return _u
+}
+
+// SetNillableSupportImage sets the "support_image" field if the given value is not nil.
+func (_u *ModelUpdate) SetNillableSupportImage(v *bool) *ModelUpdate {
+	if v != nil {
+		_u.SetSupportImage(*v)
+	}
+	return _u
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (_u *ModelUpdate) SetIsHidden(v bool) *ModelUpdate {
+	_u.mutation.SetIsHidden(v)
+	return _u
+}
+
+// SetNillableIsHidden sets the "is_hidden" field if the given value is not nil.
+func (_u *ModelUpdate) SetNillableIsHidden(v *bool) *ModelUpdate {
+	if v != nil {
+		_u.SetIsHidden(*v)
+	}
+	return _u
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (_u *ModelUpdate) SetContextLimit(v int) *ModelUpdate {
 	_u.mutation.ResetContextLimit()
@@ -854,6 +882,12 @@ func (_u *ModelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ThinkingEnabled(); ok {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SupportImage(); ok {
+		_spec.SetField(model.FieldSupportImage, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IsHidden(); ok {
+		_spec.SetField(model.FieldIsHidden, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)
@@ -1592,6 +1626,34 @@ func (_u *ModelUpdateOne) SetNillableThinkingEnabled(v *bool) *ModelUpdateOne {
 	return _u
 }
 
+// SetSupportImage sets the "support_image" field.
+func (_u *ModelUpdateOne) SetSupportImage(v bool) *ModelUpdateOne {
+	_u.mutation.SetSupportImage(v)
+	return _u
+}
+
+// SetNillableSupportImage sets the "support_image" field if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillableSupportImage(v *bool) *ModelUpdateOne {
+	if v != nil {
+		_u.SetSupportImage(*v)
+	}
+	return _u
+}
+
+// SetIsHidden sets the "is_hidden" field.
+func (_u *ModelUpdateOne) SetIsHidden(v bool) *ModelUpdateOne {
+	_u.mutation.SetIsHidden(v)
+	return _u
+}
+
+// SetNillableIsHidden sets the "is_hidden" field if the given value is not nil.
+func (_u *ModelUpdateOne) SetNillableIsHidden(v *bool) *ModelUpdateOne {
+	if v != nil {
+		_u.SetIsHidden(*v)
+	}
+	return _u
+}
+
 // SetContextLimit sets the "context_limit" field.
 func (_u *ModelUpdateOne) SetContextLimit(v int) *ModelUpdateOne {
 	_u.mutation.ResetContextLimit()
@@ -2244,6 +2306,12 @@ func (_u *ModelUpdateOne) sqlSave(ctx context.Context) (_node *Model, err error)
 	}
 	if value, ok := _u.mutation.ThinkingEnabled(); ok {
 		_spec.SetField(model.FieldThinkingEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SupportImage(); ok {
+		_spec.SetField(model.FieldSupportImage, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IsHidden(); ok {
+		_spec.SetField(model.FieldIsHidden, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ContextLimit(); ok {
 		_spec.SetField(model.FieldContextLimit, field.TypeInt, value)

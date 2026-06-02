@@ -111,6 +111,16 @@ func ThinkingEnabled(v bool) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldThinkingEnabled, v))
 }
 
+// SupportImage applies equality check predicate on the "support_image" field. It's identical to SupportImageEQ.
+func SupportImage(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldSupportImage, v))
+}
+
+// IsHidden applies equality check predicate on the "is_hidden" field. It's identical to IsHiddenEQ.
+func IsHidden(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldIsHidden, v))
+}
+
 // ContextLimit applies equality check predicate on the "context_limit" field. It's identical to ContextLimitEQ.
 func ContextLimit(v int) predicate.Model {
 	return predicate.Model(sql.FieldEQ(FieldContextLimit, v))
@@ -724,6 +734,26 @@ func ThinkingEnabledEQ(v bool) predicate.Model {
 // ThinkingEnabledNEQ applies the NEQ predicate on the "thinking_enabled" field.
 func ThinkingEnabledNEQ(v bool) predicate.Model {
 	return predicate.Model(sql.FieldNEQ(FieldThinkingEnabled, v))
+}
+
+// SupportImageEQ applies the EQ predicate on the "support_image" field.
+func SupportImageEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldSupportImage, v))
+}
+
+// SupportImageNEQ applies the NEQ predicate on the "support_image" field.
+func SupportImageNEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldNEQ(FieldSupportImage, v))
+}
+
+// IsHiddenEQ applies the EQ predicate on the "is_hidden" field.
+func IsHiddenEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldEQ(FieldIsHidden, v))
+}
+
+// IsHiddenNEQ applies the NEQ predicate on the "is_hidden" field.
+func IsHiddenNEQ(v bool) predicate.Model {
+	return predicate.Model(sql.FieldNEQ(FieldIsHidden, v))
 }
 
 // ContextLimitEQ applies the EQ predicate on the "context_limit" field.
