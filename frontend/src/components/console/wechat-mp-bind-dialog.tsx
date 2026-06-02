@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { apiRequest } from "@/utils/requestUtils"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -19,6 +20,7 @@ export function WechatMpBindDialog({ open, onOpenChange }: WechatMpBindDialogPro
   const [qrcodeUrl, setQrcodeUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const effectiveOpen = !IS_OFFLINE_EDITION && open
 
   const fetchQrcode = useCallback(async () => {
     setLoading(true)
@@ -42,15 +44,15 @@ export function WechatMpBindDialog({ open, onOpenChange }: WechatMpBindDialogPro
   }, [])
 
   useEffect(() => {
-    if (!open || qrcodeUrl || loading) {
+    if (!effectiveOpen || qrcodeUrl || loading) {
       return
     }
 
     fetchQrcode()
-  }, [fetchQrcode, loading, open, qrcodeUrl])
+  }, [effectiveOpen, fetchQrcode, loading, qrcodeUrl])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={effectiveOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>订阅重要通知</DialogTitle>

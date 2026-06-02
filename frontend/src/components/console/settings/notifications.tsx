@@ -58,6 +58,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { WechatMpBindDialog } from "@/components/console/wechat-mp-bind-dialog"
 import { useCommonData } from "@/components/console/data-provider"
+import { IS_ONLINE_EDITION } from "@/utils/edition"
 
 /** 接收端类型（UI 用，wechat_work 映射到 API 的 wecom） */
 export type ReceiverType = "dingtalk" | "feishu" | "wechat_work" | "webhook"
@@ -128,6 +129,11 @@ export default function Notifications() {
   const api = new Api()
 
   const loadChannels = async () => {
+    if (!IS_ONLINE_EDITION) {
+      setLoadingChannels(false)
+      return
+    }
+
     setLoadingChannels(true)
     try {
       const res = await api.api.v1UsersNotifyChannelsList()
@@ -142,6 +148,11 @@ export default function Notifications() {
   }
 
   const loadEventTypes = async () => {
+    if (!IS_ONLINE_EDITION) {
+      setLoadingEventTypes(false)
+      return
+    }
+
     setLoadingEventTypes(true)
     try {
       const res = await api.api.v1UsersNotifyEventTypesList()
@@ -443,7 +454,7 @@ export default function Notifications() {
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-        {wechatMpStatusCard}
+        {IS_ONLINE_EDITION && wechatMpStatusCard}
         {loadingChannels ? (
           loadingContent
         ) : channels.length > 0 ? (
@@ -592,33 +603,37 @@ export default function Notifications() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <WechatMpBindDialog
-        open={wechatMpBindDialogOpen}
-        onOpenChange={(open) => {
-          setWechatMpBindDialogOpen(open)
-          if (!open) {
-            reloadUser()
-          }
-        }}
-      />
-      <AlertDialog open={wechatMpUnbindDialogOpen} onOpenChange={setWechatMpUnbindDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>确认解绑微信公众号</AlertDialogTitle>
-            <AlertDialogDescription>
-              解绑后将无法通过微信公众号接收任务通知。确定要继续吗？
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={unbindingWechatMp}>
-              取消
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleUnbindWechatMp} disabled={unbindingWechatMp}>
-              {unbindingWechatMp ? <Spinner className="size-4" /> : "确认解绑"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {IS_ONLINE_EDITION && (
+        <>
+          <WechatMpBindDialog
+            open={wechatMpBindDialogOpen}
+            onOpenChange={(open) => {
+              setWechatMpBindDialogOpen(open)
+              if (!open) {
+                reloadUser()
+              }
+            }}
+          />
+          <AlertDialog open={wechatMpUnbindDialogOpen} onOpenChange={setWechatMpUnbindDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>确认解绑微信公众号</AlertDialogTitle>
+                <AlertDialogDescription>
+                  解绑后将无法通过微信公众号接收任务通知。确定要继续吗？
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={unbindingWechatMp}>
+                  取消
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={handleUnbindWechatMp} disabled={unbindingWechatMp}>
+                  {unbindingWechatMp ? <Spinner className="size-4" /> : "确认解绑"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </div>
   )
 }

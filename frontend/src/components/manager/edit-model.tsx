@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
 
 interface EditModelProps {
   open: boolean
@@ -50,6 +51,7 @@ export default function EditModel({
   const [saving, setSaving] = useState(false)
   const [modelListFetchFailed, setModelListFetchFailed] = useState(false)
   const [modelListAttempted, setModelListAttempted] = useState(false)
+  const [supportImage, setSupportImage] = useState(false)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
   const [groups, setGroups] = useState<DomainTeamGroup[]>([])
   const [selectOpen, setSelectOpen] = useState(false)
@@ -79,6 +81,7 @@ export default function EditModel({
       setBaseUrl(model.base_url || "https://model-square.app.baizhi.cloud/v1")
       setSelectedModel(model.model || "")
       setInterfaceType(model.interface_type || ConstsInterfaceType.InterfaceTypeOpenAIChat)
+      setSupportImage(model.support_image === true)
       resetModelListState()
       // 初始化已选中的分组
       setSelectedGroupIds(model.groups?.map(g => g.id || "").filter(id => id) || [])
@@ -197,6 +200,7 @@ export default function EditModel({
             model: selectedModel.trim(),
             base_url: baseUrl.trim(),
             interface_type: interfaceType,
+            support_image: supportImage,
             group_ids: selectedGroupIds
           }
 
@@ -212,6 +216,7 @@ export default function EditModel({
               setBaseUrl("")
               setSelectedModel("")
               setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+              setSupportImage(false)
               resetModelListState()
               setSelectedGroupIds([])
               setSelectOpen(false)
@@ -235,6 +240,7 @@ export default function EditModel({
     setBaseUrl("")
     setSelectedModel("")
     setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+    setSupportImage(false)
     resetModelListState()
     setSelectedGroupIds([])
     setSelectOpen(false)
@@ -449,6 +455,22 @@ export default function EditModel({
                 )}
               </div>
             </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>图片识别</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  {supportImage ? "支持" : "不支持"}
+                </span>
+                <Switch
+                  checked={supportImage}
+                  onCheckedChange={setSupportImage}
+                  disabled={saving}
+                />
+              </div>
+            </FieldContent>
+            <FieldDescription>开启后，该模型可接收图片输入用于识别和分析。</FieldDescription>
           </Field>
         </div>
         <DialogFooter>

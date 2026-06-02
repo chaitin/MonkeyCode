@@ -47,6 +47,7 @@ export default function AddModel({
   const [contextLimit, setContextLimit] = useState("200000")
   const [outputLimit, setOutputLimit] = useState("32000")
   const [thinkingEnabled, setThinkingEnabled] = useState(true)
+  const [supportImage, setSupportImage] = useState(false)
   const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -168,6 +169,7 @@ export default function AddModel({
             context_limit: parsedContextLimit,
             output_limit: parsedOutputLimit,
             thinking_enabled: thinkingEnabled,
+            support_image: supportImage,
           }
 
           await apiRequest('v1UsersModelsCreate', requestData, [], (resp) => {
@@ -181,6 +183,7 @@ export default function AddModel({
               setContextLimit("200000")
               setOutputLimit("32000")
               setThinkingEnabled(true)
+              setSupportImage(false)
               resetModelListState()
               onOpenChange(false)
               onRefresh?.()
@@ -206,6 +209,7 @@ export default function AddModel({
     setContextLimit("200000")
     setOutputLimit("32000")
     setThinkingEnabled(true)
+    setSupportImage(false)
     resetModelListState()
     onOpenChange(false)
   }
@@ -429,6 +433,22 @@ export default function AddModel({
                 />
               </div>
             </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>图片识别</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  {supportImage ? "支持" : "不支持"}
+                </span>
+                <Switch
+                  checked={supportImage}
+                  onCheckedChange={setSupportImage}
+                  disabled={saving}
+                />
+              </div>
+            </FieldContent>
+            <FieldDescription>开启后，该模型可接收图片输入用于识别和分析。</FieldDescription>
           </Field>
         </div>
         <DialogFooter>

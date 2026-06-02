@@ -60,6 +60,10 @@ export enum ConstsNotifyEventType {
   NotifyEventTaskCreated = "task.created",
   NotifyEventTaskEnded = "task.ended",
   NotifyEventVMExpiringSoon = "vm.expiring_soon",
+  NotifyEventQuotaRefreshed = "quota.refreshed",
+  NotifyEventQuotaBasicExhausted = "quota.basic_exhausted",
+  NotifyEventQuotaProExhausted = "quota.pro_exhausted",
+  NotifyEventQuotaUltraExhausted = "quota.ultra_exhausted",
 }
 
 export interface ConstsNotifyEventTypeInfo {
@@ -270,6 +274,7 @@ export interface DomainAddTeamModelReq {
   model: string;
   provider: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
 }
 
@@ -338,9 +343,11 @@ export interface DomainAvailableModelResp {
   /** 积分/1K input tokens（账面值） */
   input_price?: number;
   is_free?: boolean;
+  is_hidden?: boolean;
   name?: string;
   /** 积分/1K output tokens（账面值） */
   output_price?: number;
+  support_image?: boolean;
 }
 
 export interface DomainBindQRCodeResp {
@@ -457,6 +464,7 @@ export interface DomainCreateModelReq {
   output_limit?: number;
   provider: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
   thinking_enabled?: boolean;
 }
@@ -901,6 +909,7 @@ export interface DomainModel {
   interface_type?: ConstsInterfaceType;
   is_default?: boolean;
   is_free?: boolean;
+  is_hidden?: boolean;
   last_check_at?: number;
   last_check_error?: string;
   last_check_success?: boolean;
@@ -909,6 +918,7 @@ export interface DomainModel {
   owner?: DomainOwner;
   provider?: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
   thinking_enabled?: boolean;
   updated_at?: number;
@@ -922,6 +932,7 @@ export interface DomainModelBrief {
   id?: string;
   interface_type?: ConstsInterfaceType;
   is_free?: boolean;
+  is_hidden?: boolean;
   last_check_at?: number;
   last_check_error?: string;
   last_check_success?: boolean;
@@ -930,6 +941,7 @@ export interface DomainModelBrief {
   owner?: DomainOwner;
   provider?: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
   thinking_enabled?: boolean;
   updated_at?: number;
@@ -1532,12 +1544,14 @@ export interface DomainTeamModel {
   groups?: DomainTeamGroup[];
   id?: string;
   interface_type?: ConstsInterfaceType;
+  is_hidden?: boolean;
   last_check_at?: number;
   last_check_error?: string;
   last_check_success?: boolean;
   model?: string;
   provider?: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
   updated_at?: number;
 }
@@ -1662,6 +1676,7 @@ export interface DomainUpdateModelReq {
   output_limit?: number;
   provider?: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
   thinking_enabled?: boolean;
 }
@@ -1715,6 +1730,7 @@ export interface DomainUpdateTeamModelReq {
   model?: string;
   provider?: string;
   remark?: string;
+  support_image?: boolean;
   temperature?: number;
 }
 
@@ -3883,6 +3899,8 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         id: string;
         /** 文件/目录路径 */
         path: string;
+        /** 下载文件名 */
+        filename?: string;
       },
       params: RequestParams = {},
     ) =>

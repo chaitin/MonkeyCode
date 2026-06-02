@@ -48,6 +48,7 @@ export default function EditModel({
   const [contextLimit, setContextLimit] = useState("")
   const [outputLimit, setOutputLimit] = useState("")
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [supportImage, setSupportImage] = useState(false)
   const [modelList, setModelList] = useState<DomainProviderModelListItem[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -76,6 +77,7 @@ export default function EditModel({
       setContextLimit(model.context_limit ? String(model.context_limit) : "")
       setOutputLimit(model.output_limit ? String(model.output_limit) : "")
       setThinkingEnabled(model.thinking_enabled === true)
+      setSupportImage(model.support_image === true)
       resetModelListState()
     }
   }, [model, open])
@@ -183,6 +185,7 @@ export default function EditModel({
             base_url: baseUrl.trim(),
             interface_type: interfaceType,
             thinking_enabled: thinkingEnabled,
+            support_image: supportImage,
           }
 
           if (parsedContextLimit !== undefined) {
@@ -209,6 +212,7 @@ export default function EditModel({
               setContextLimit("")
               setOutputLimit("")
               setThinkingEnabled(false)
+              setSupportImage(false)
               resetModelListState()
               onOpenChange(false)
               onRefresh?.()
@@ -232,6 +236,7 @@ export default function EditModel({
     setContextLimit("")
     setOutputLimit("")
     setThinkingEnabled(false)
+    setSupportImage(false)
     resetModelListState()
     onOpenChange(false)
   }
@@ -444,6 +449,22 @@ export default function EditModel({
                 />
               </div>
             </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>图片识别</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  {supportImage ? "支持" : "不支持"}
+                </span>
+                <Switch
+                  checked={supportImage}
+                  onCheckedChange={setSupportImage}
+                  disabled={saving}
+                />
+              </div>
+            </FieldContent>
+            <FieldDescription>开启后，该模型可接收图片输入用于识别和分析。</FieldDescription>
           </Field>
         </div>
         <DialogFooter>

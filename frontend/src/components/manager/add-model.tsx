@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { CircleQuestionMark } from 'lucide-react'
+import { Switch } from "@/components/ui/switch"
 
 interface AddModelProps {
   open: boolean
@@ -50,6 +51,7 @@ export default function AddModel({
   const [saving, setSaving] = useState(false)
   const [modelListFetchFailed, setModelListFetchFailed] = useState(false)
   const [modelListAttempted, setModelListAttempted] = useState(false)
+  const [supportImage, setSupportImage] = useState(false)
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
   const [groups, setGroups] = useState<DomainTeamGroup[]>([])
   const [selectOpen, setSelectOpen] = useState(false)
@@ -183,6 +185,7 @@ export default function AddModel({
             base_url: baseUrl.trim(),
             api_key: apiToken.trim(),
             interface_type: interfaceType,
+            support_image: supportImage,
             group_ids: selectedGroupIds
           }
 
@@ -193,6 +196,7 @@ export default function AddModel({
               setApiToken("")
               setBaseUrl("https://model-square.app.baizhi.cloud/v1")
               setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+              setSupportImage(false)
               resetModelListState()
               setSelectedGroupIds([])
               setSelectOpen(false)
@@ -216,6 +220,7 @@ export default function AddModel({
     setApiToken("")
     setBaseUrl("https://model-square.app.baizhi.cloud/v1")
     setInterfaceType(ConstsInterfaceType.InterfaceTypeOpenAIChat)
+    setSupportImage(false)
     resetModelListState()
     setSelectedGroupIds([])
     setSelectOpen(false)
@@ -440,6 +445,22 @@ export default function AddModel({
                 )}
               </div>
             </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>图片识别</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm text-muted-foreground">
+                  {supportImage ? "支持" : "不支持"}
+                </span>
+                <Switch
+                  checked={supportImage}
+                  onCheckedChange={setSupportImage}
+                  disabled={saving}
+                />
+              </div>
+            </FieldContent>
+            <FieldDescription>开启后，该模型可接收图片输入用于识别和分析。</FieldDescription>
           </Field>
         </div>
         <DialogFooter>
