@@ -22,6 +22,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
+	"github.com/chaitin/MonkeyCode/backend/pkg/asr"
 	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
@@ -39,7 +40,8 @@ type TaskHandler struct {
 	logger        *slog.Logger
 	taskflow      taskflow.Clienter
 	tasklog       *tasklog.Gateway
-	nls           *nls.NLS
+	nls           *nls.NLS         // 一段录音的 POST 接口 (SpeechToText) 仍走阿里云 NLS
+	asr           asr.Transcriber  // 流式 WS 接口 (SpeechToTextStream) 走豆包等中性 ASR
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
@@ -76,6 +78,12 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		nlsSvc = n
 	}
 
+	// asr 用于流式 WS 接口,配置未填时 Provider 返回 nil,handler 内部判空降级
+	var asrSvc asr.Transcriber
+	if a, err := do.Invoke[asr.Transcriber](i); err == nil {
+		asrSvc = a
+	}
+
 	activeRepo := do.MustInvoke[domain.UserActiveRepo](i)
 
 	h := &TaskHandler{
@@ -87,6 +95,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		taskflow:      tf,
 		tasklog:       gw,
 		nls:           nlsSvc,
+		asr:           asrSvc,
 		taskConns:     tc,
 		controlConns:  cc,
 		taskSummary:   ts,
