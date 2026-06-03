@@ -1,12 +1,26 @@
 import { FilePenLine } from "lucide-react"
+import * as React from "react"
 
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
+import {
+  markPointsActivityOpened,
+  POINTS_ACTIVITY_STORAGE_KEYS,
+  shouldHidePointsActivity,
+} from "./points-activity-visibility"
 
 const ESSAY_ACTIVITY_URL = "https://monkeycode.docs.baizhi.cloud/node/019d8bcf-5bcc-7b38-afcf-6b9d180a0096"
 
 export default function NavEssay() {
+  const [hidden, setHidden] = React.useState(() => shouldHidePointsActivity(POINTS_ACTIVITY_STORAGE_KEYS.essay))
+
   const handleOpenEssayActivity = () => {
+    markPointsActivityOpened(POINTS_ACTIVITY_STORAGE_KEYS.essay)
+    setHidden(true)
     window.open(ESSAY_ACTIVITY_URL, "_blank", "noopener,noreferrer")
+  }
+
+  if (hidden) {
+    return null
   }
 
   return (
