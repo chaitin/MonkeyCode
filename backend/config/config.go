@@ -74,8 +74,11 @@ type Config struct {
 
 	InitTeam InitTeam `mapstructure:"init_team"`
 
-	// 语音识别配置（阿里云 NLS）
+	// 语音识别配置（阿里云 NLS，用于一段录音 POST 接口）
 	NLS NLS `mapstructure:"nls"`
+
+	// 流式语音识别配置（豆包 SAUC bigmodel，用于 WS 实时流式接口）
+	Doubao Doubao `mapstructure:"doubao"`
 
 	ReviewAgent ReviewAgent `mapstructure:"review_agent"`
 }
@@ -90,6 +93,17 @@ type NLS struct {
 	AppKey string `mapstructure:"app_key"`
 	AkID   string `mapstructure:"ak_id"`
 	AkKey  string `mapstructure:"ak_key"`
+}
+
+// Doubao 豆包流式语音识别 2.0 配置 (火山引擎 SAUC bigmodel)。
+// 新版控制台:只需 AppKey 一个鉴权字段 (作为 X-Api-Key header)。
+type Doubao struct {
+	// 火山控制台获取的 App Key,作为 X-Api-Key header 发送
+	AppKey string `mapstructure:"app_key"`
+	// 资源 ID;ASR 2.0 取值: volc.seedasr.sauc.duration (按时长) 或 volc.seedasr.sauc.concurrent (按并发)
+	ResourceID string `mapstructure:"resource_id"`
+	// WebSocket URL,默认 wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async
+	URL string `mapstructure:"url"`
 }
 
 type InitTeam struct {

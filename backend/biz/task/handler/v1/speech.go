@@ -14,7 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
-	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
+	"github.com/chaitin/MonkeyCode/backend/pkg/asr"
 	"github.com/chaitin/MonkeyCode/backend/pkg/ws"
 )
 
@@ -146,35 +146,28 @@ func (h *TaskHandler) sendSSEEvent(c *web.Context, flusher http.Flusher, event d
 	flusher.Flush()
 }
 
-var (
-	speechStreamAllowedFormats = map[string]struct{}{
-		"":      {},
-		"pcm":   {},
-		"wav":   {},
-		"opus":  {},
-		"speex": {},
-		"amr":   {},
-		"mp3":   {},
-		"aac":   {},
-	}
-	speechStreamAllowedSampleRates = map[int]struct{}{
-		0:     {},
-		8000:  {},
-		16000: {},
-	}
-)
+// speechStreamAllowedFormats 豆包 SAUC bigmodel 支持的音频容器格式白名单。
+// "" 表示客户端未传,后端默认按 pcm 处理。
+var speechStreamAllowedFormats = map[string]struct{}{
+	"":    {},
+	"pcm": {},
+	"wav": {},
+	"ogg": {},
+	"mp3": {},
+}
 
 // SpeechToTextStream 实时语音转写(WebSocket 流式)
 //
 //	@Summary		实时语音转写(WebSocket 流式)
-//	@Description	通过 WebSocket 上传实时音频流并实时返回识别结果。完整协议见 docs/speech-to-text-stream.md。
+//	@Description	通过 WebSocket 上传实时音频流并实时返回识别结果。
+//	@Description	后端使用豆包流式语音识别 2.0 (bigmodel_async)。完整协议见 docs/speech-to-text-stream.md。
 //	@Description
 //	@Description	## 帧类型约定
 //	@Description	| 方向 | 帧类型 | 用途 |
 //	@Description	|---|---|---|
 //	@Description	| C → S | Text(JSON) | 控制消息:start / stop |
-//	@Description	| C → S | Binary | 音频字节流,直接透传给阿里云 NLS,服务端不缓冲 |
-//	@Description	| S → C | Text(JSON) | 所有事件(ready / sentence_begin / partial / final / done / error) |
+//	@Description	| C → S | Binary | 音频字节流,服务端封装为豆包帧透传 |
+//	@Description	| S → C | Text(JSON) | 所有事件(ready / partial / final / done / error) |
 //	@Description
 //	@Description	## 客户端 → 服务端
 //	@Description
@@ -183,25 +176,24 @@ var (
 //	@Description	{
 //	@Description	  "type": "start",
 //	@Description	  "format": "pcm",
-//	@Description	  "sample_rate": 16000,
 //	@Description	  "disfluency": false
 //	@Description	}
 //	@Description	```
-//	@Description	- `format` 可选,默认 `pcm`。支持 `pcm` / `wav` / `opus` / `speex` / `amr` / `mp3` / `aac`,单声道、16-bit
-//	@Description	- `sample_rate` 可选,默认 `16000`。仅支持 `8000` 或 `16000`
-//	@Description	- `disfluency` 可选,默认 `false`。`true` 时过滤"嗯""啊"等口头禅
-//	@Description	- 服务端校验通过 → 启动 NLS session → 收到 `TranscriptionStarted` 后向客户端下发 `ready` 事件
+//	@Description	- `format` 可选,默认 `pcm`。支持 `pcm` / `wav` / `ogg` / `mp3`,单声道、16-bit、采样率固定 16000Hz
+//	@Description	  - `pcm` / `wav` 内部音频流必须是 `pcm_s16le`;`ogg` 必须为 `opus` 编码;`mp3` 由远端解码
+//	@Description	- `disfluency` 可选,默认 `false`。`true` 时启用语义顺滑(过滤"嗯/啊"等口头禅、语义重复词)
+//	@Description	- 服务端校验通过 → 与豆包建立 WSS → 收到首个响应后向客户端下发 `ready` 事件(带 `logid`)
 //	@Description	- **客户端必须在收到 `ready` 之后才能发 Binary 音频帧**
-//	@Description	- 以下能力默认开启且不可关闭:中间结果、标点预测、ITN(中文数字转阿拉伯数字)
+//	@Description	- 以下能力默认开启:中间结果(双向流式天然有)、标点预测、ITN(中文数字转阿拉伯数字)
 //	@Description
 //	@Description	### 2) Binary 音频帧
-//	@Description	`ready` 之后,客户端以任意大小(建议 20–100ms / 帧)持续发 Binary 帧,服务端原样透传 NLS
+//	@Description	`ready` 之后,客户端持续发 Binary 帧。**建议每帧 200ms**(豆包推荐值,过碎会影响性能)。
 //	@Description
 //	@Description	### 3) stop (主动结束)
 //	@Description	```json
 //	@Description	{ "type": "stop" }
 //	@Description	```
-//	@Description	服务端收到后停止 NLS,等待 `TranscriptionCompleted` 后下发 `done` 事件并关闭 WS。客户端直接 close WS 亦可。
+//	@Description	服务端收到后向豆包发送"最后一包"标志,等待豆包最终响应后下发 `done` 事件并关闭 WS。客户端直接 close WS 亦可。
 //	@Description
 //	@Description	## 服务端 → 客户端
 //	@Description
@@ -210,17 +202,12 @@ var (
 //	@Description	{ "type": "<event_type>", "timestamp": 1733299200000, ... }
 //	@Description	```
 //	@Description
-//	@Description	### ready — NLS 已就绪
+//	@Description	### ready — 远端已就绪
 //	@Description	```json
-//	@Description	{ "type": "ready", "timestamp": 1733299200000 }
+//	@Description	{ "type": "ready", "logid": "202407261553070FACFE6D19421815D605", "timestamp": 1733299200000 }
 //	@Description	```
-//	@Description	仅推送一次。客户端收到后开始发 Binary 音频帧。
-//	@Description
-//	@Description	### sentence_begin — 一句话开始
-//	@Description	```json
-//	@Description	{ "type": "sentence_begin", "index": 1, "timestamp": 1733299201000 }
-//	@Description	```
-//	@Description	- `index`:句子序号,从 1 开始,session 内单调递增
+//	@Description	仅推送一次。客户端收到后开始发 Binary 音频帧。`logid` 是豆包返回的 `X-Tt-Logid`,排障必备,
+//	@Description	建议前端在 session 期间一直打印它,跟后续 error 事件可以关联。
 //	@Description
 //	@Description	### partial — 中间结果(实时滚动,会反复推送)
 //	@Description	```json
@@ -234,83 +221,77 @@ var (
 //	@Description	{ "type": "final", "index": 1, "text": "今天天气真不错。", "timestamp": 1733299202800 }
 //	@Description	```
 //	@Description	- 该句识别完成、内容固化,后续不会再变;客户端用 `text` 覆盖 `index` 对应位置
-//	@Description	- `final` 之后可能立刻收到下一句的 `sentence_begin`
+//	@Description	- `final` 之后可能立刻有下一句的 `partial`(`index+1`)
 //	@Description
 //	@Description	### done — 整个 session 结束
 //	@Description	```json
-//	@Description	{ "type": "done", "timestamp": 1733299210000 }
+//	@Description	{ "type": "done", "logid": "...", "timestamp": 1733299210000 }
 //	@Description	```
-//	@Description	- 服务端已停止识别、释放资源,即将关闭 WS;`done` 之后不会再有任何事件
+//	@Description	- 服务端已收到豆包最后一包响应、释放资源,即将关闭 WS;`done` 之后不会再有任何事件
 //	@Description
-//	@Description	### error — 错误(透传阿里云 header)
-//	@Description	阿里云 NLS 触发的错误:
+//	@Description	### error — 错误
+//	@Description	豆包远端错误:
 //	@Description	```json
 //	@Description	{
 //	@Description	  "type": "error",
-//	@Description	  "header": {
-//	@Description	    "namespace": "SpeechTranscriber",
-//	@Description	    "name": "TaskFailed",
-//	@Description	    "status": 40000001,
-//	@Description	    "status_text": "Gateway:TOKEN_INVALID:Token is invalid.",
-//	@Description	    "task_id": "5ec521b5aa104e3abccf3d361822****",
-//	@Description	    "message_id": "c3a9ae4b231649d5ae05d4af36fd****"
+//	@Description	  "logid": "202407261553070FACFE6D19421815D605",
+//	@Description	  "error": {
+//	@Description	    "code": 45000001,
+//	@Description	    "message": "请求参数无效",
+//	@Description	    "request_id": "67ee89ba-7050-4c04-a3d7-ac61a63499b3",
+//	@Description	    "logid": "202407261553070FACFE6D19421815D605"
 //	@Description	  },
 //	@Description	  "timestamp": 1733299205000
 //	@Description	}
 //	@Description	```
-//	@Description	本服务前置校验错误(NLS 未建立时):`status=0`,在 `status_text` 描述原因:
+//	@Description	本服务前置校验错误(远端连接前):`code=0`,在 `message` 描述原因:
 //	@Description	```json
 //	@Description	{
 //	@Description	  "type": "error",
-//	@Description	  "header": { "status": 0, "status_text": "first message must be a 'start' control message" },
+//	@Description	  "error": { "code": 0, "message": "first message must be a 'start' control message" },
 //	@Description	  "timestamp": 1733299205000
 //	@Description	}
 //	@Description	```
 //	@Description
-//	@Description	## 阿里云常见错误码速查
-//	@Description	| status | 含义 | 典型原因 |
+//	@Description	## 豆包常见错误码速查
+//	@Description	| code | 含义 | 典型原因 |
 //	@Description	|---|---|---|
-//	@Description	| `40000001` | Token 过期/失效 | 重连即可,后端会自动刷新 token |
-//	@Description	| `40000004` | 空闲超时(10s 没发音频) | 提示用户继续说话或主动关闭 |
-//	@Description	| `40000005` | 并发超限 | 退避重试,联系运维扩容 |
-//	@Description	| `40000010` | 试用过期/欠费 | 联系运维 |
-//	@Description	| `40270002` | 无有效语音 | 检查麦克风/录音环境 |
-//	@Description	| `40270003` | 音频解码失败 | `format` 参数与实际音频不匹配 |
-//	@Description	| `41010101` | 不支持的采样率 | `sample_rate` 必须是 8000 或 16000 |
-//	@Description	| `41040201` | 数据未连续发送 | 前端帧节奏过慢 |
-//	@Description	| `5xxxxxxx` | 服务端瞬时错误 | 直接重试 |
-//	@Description	完整列表见 https://help.aliyun.com/zh/isi/developer-reference/api-reference
+//	@Description	| `45000001` | 请求参数无效 | 缺字段 / 字段值无效 / 重复请求 |
+//	@Description	| `45000002` | 空音频 | 录音未采集到声音 |
+//	@Description	| `45000081` | 等包超时 | 前端没在期限内连续发送音频帧 |
+//	@Description	| `45000151` | 音频格式不正确 | `format` 与实际音频不匹配 |
+//	@Description	| `55000031` | 服务器繁忙 | 退避重试 |
+//	@Description	| `550xxxxx` | 服务内部错误 | 直接重试,持续失败时带 `logid` 联系运维 |
 //	@Description
 //	@Description	## 时序示例
 //	@Description	```
 //	@Description	C → S: WS upgrade (带鉴权)
-//	@Description	C → S: {"type":"start","sample_rate":16000}
-//	@Description	S → C: {"type":"ready"}
-//	@Description	C → S: <binary> <binary>
-//	@Description	S → C: {"type":"sentence_begin","index":1}
+//	@Description	C → S: {"type":"start","format":"pcm"}
+//	@Description	S → C: {"type":"ready","logid":"..."}
+//	@Description	C → S: <binary 200ms> <binary 200ms> ...
 //	@Description	S → C: {"type":"partial","index":1,"text":"今天"}
 //	@Description	S → C: {"type":"partial","index":1,"text":"今天天气真"}
 //	@Description	S → C: {"type":"final","index":1,"text":"今天天气真不错。"}
 //	@Description	C → S: {"type":"stop"}
-//	@Description	S → C: {"type":"done"}
+//	@Description	S → C: {"type":"done","logid":"..."}
 //	@Description	WS close
 //	@Description	```
 //	@Description
 //	@Description	## 与 POST /speech-to-text 的差异
-//	@Description	- 旧 POST 接口:整段录音 → SSE 单段结果,适合短语音 ≤60s(PC 客户端)
+//	@Description	- POST /speech-to-text:整段录音 → SSE 单段结果,适合短语音 ≤60s
 //	@Description	- 本接口:WS 双向实时流,支持长语音、句级 final、可被打断,适合 Web/移动端边说边显示
 //	@Description
 //	@Tags			【用户】任务管理
 //	@Security		MonkeyCodeAIAuth
 //	@Success		101	{object}	domain.SpeechStreamEvent	"WebSocket 升级成功;此后通过 WS 帧通信,事件结构见上方说明"
 //	@Failure		401	{object}	web.Resp					"未授权"
-//	@Failure		500	{object}	web.Resp					"服务器内部错误(NLS 服务未配置等)"
+//	@Failure		500	{object}	web.Resp					"服务器内部错误(ASR 服务未配置等)"
 //	@Router			/api/v1/users/tasks/speech-to-text-stream [get]
 func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 	logger := h.logger.With("fn", "task.speech_to_text_stream")
 
-	if h.nls == nil {
-		logger.ErrorContext(c.Request().Context(), "nls service not initialized")
+	if h.asr == nil {
+		logger.ErrorContext(c.Request().Context(), "asr service not initialized")
 		return errcode.ErrInternalServer
 	}
 
@@ -329,39 +310,30 @@ func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 	// 1. 等待客户端首帧:必须是 {"type":"start"}
 	startReq, err := h.readSpeechStartFrame(ctx, wsConn)
 	if err != nil {
-		h.writeSpeechError(wsConn, 0, err.Error())
+		h.writeSpeechError(wsConn, 0, err.Error(), "", "")
 		return nil
 	}
 
-	// 2. 启动 NLS session(阻塞至 ready 或失败)
-	session, err := h.nls.NewTranscriptionSession(ctx, user.ID, nls.TranscriptionParam{
+	// 2. 启动 ASR session(阻塞至 ready 或失败)
+	session, err := h.asr.NewSession(ctx, user.ID, asr.Param{
 		Format:     startReq.Format,
-		SampleRate: startReq.SampleRate,
 		Disfluency: startReq.Disfluency,
 	})
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to start nls transcription", "error", err)
-		h.writeSpeechError(wsConn, 0, "nls start failed: "+err.Error())
+		logger.ErrorContext(ctx, "failed to start asr session", "error", err)
+		h.writeSpeechError(wsConn, 0, "asr start failed: "+err.Error(), "", "")
 		return nil
 	}
-	logger = logger.With("session_id", session.SessionID())
+	logger = logger.With("session_id", session.SessionID(), "logid", session.Logid())
 	defer func() {
 		if stopErr := session.Stop(); stopErr != nil {
 			logger.WarnContext(ctx, "stop session failed", "error", stopErr)
 		}
 	}()
 
-	// 3. 通知客户端 ready
-	if err := h.writeSpeechEvent(wsConn, domain.SpeechStreamEvent{
-		Type:      string(nls.EventReady),
-		Timestamp: time.Now().UnixMilli(),
-	}); err != nil {
-		logger.WarnContext(ctx, "write ready failed", "error", err)
-		return nil
-	}
-
-	// 4. goroutine:NLS 事件 → WS
+	// 3. goroutine:ASR 事件 → WS
 	// session.Events() 通道永不关闭,这里靠 EventDone / EventError 或 ctx.Done 退出。
+	// ready 事件由 session 在 NewSession 内立刻 emit,这里统一从 Events() 拿出后下发。
 	go func() {
 		defer cancel(fmt.Errorf("event pump exit"))
 		for {
@@ -373,14 +345,14 @@ func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 					logger.WarnContext(ctx, "write ws event failed", "error", err, "type", ev.Type)
 					return
 				}
-				if ev.Type == nls.EventDone || ev.Type == nls.EventError {
+				if ev.Type == asr.EventDone || ev.Type == asr.EventError {
 					return
 				}
 			}
 		}
 	}()
 
-	// 5. 主循环:WS → NLS
+	// 4. 主循环:WS → ASR
 	for {
 		msgType, data, err := wsConn.Conn().Read(ctx)
 		if err != nil {
@@ -392,14 +364,14 @@ func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 		case websocket.MessageBinary:
 			if err := session.SendAudio(data); err != nil {
 				logger.WarnContext(ctx, "send audio failed", "error", err)
-				h.writeSpeechError(wsConn, 0, "send audio failed: "+err.Error())
+				h.writeSpeechError(wsConn, 0, "send audio failed: "+err.Error(), "", session.Logid())
 				return nil
 			}
 
 		case websocket.MessageText:
 			var ctrl domain.SpeechStreamControl
 			if err := json.Unmarshal(data, &ctrl); err != nil {
-				h.writeSpeechError(wsConn, 0, "invalid control message: "+err.Error())
+				h.writeSpeechError(wsConn, 0, "invalid control message: "+err.Error(), "", session.Logid())
 				return nil
 			}
 			switch ctrl.Type {
@@ -407,10 +379,10 @@ func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 				// session.Stop 由 defer 兜底;此处直接返回,等事件 goroutine 把 done 推给客户端
 				return nil
 			case "start":
-				h.writeSpeechError(wsConn, 0, "duplicate start message")
+				h.writeSpeechError(wsConn, 0, "duplicate start message", "", session.Logid())
 				return nil
 			default:
-				h.writeSpeechError(wsConn, 0, "unknown control type: "+ctrl.Type)
+				h.writeSpeechError(wsConn, 0, "unknown control type: "+ctrl.Type, "", session.Logid())
 				return nil
 			}
 		}
@@ -435,9 +407,6 @@ func (h *TaskHandler) readSpeechStartFrame(ctx context.Context, wsConn *ws.Webso
 	if _, ok := speechStreamAllowedFormats[req.Format]; !ok {
 		return nil, fmt.Errorf("unsupported format: %s", req.Format)
 	}
-	if _, ok := speechStreamAllowedSampleRates[req.SampleRate]; !ok {
-		return nil, fmt.Errorf("unsupported sample_rate: %d", req.SampleRate)
-	}
 	return &req, nil
 }
 
@@ -448,32 +417,36 @@ func (h *TaskHandler) writeSpeechEvent(wsConn *ws.WebsocketManager, ev domain.Sp
 	return wsConn.WriteJSON(ev)
 }
 
-func (h *TaskHandler) writeSpeechError(wsConn *ws.WebsocketManager, status int, statusText string) {
+// writeSpeechError 给客户端下发一个 error 事件。code=0 表示本服务前置校验错误。
+// requestID / logid 在远端会话已建立时填入,前置错误时可传空字符串。
+func (h *TaskHandler) writeSpeechError(wsConn *ws.WebsocketManager, code int, message, requestID, logid string) {
 	_ = h.writeSpeechEvent(wsConn, domain.SpeechStreamEvent{
-		Type: string(nls.EventError),
-		Header: &domain.SpeechStreamErrorHeader{
-			Status:     status,
-			StatusText: statusText,
+		Type:  string(asr.EventError),
+		Logid: logid,
+		Error: &domain.SpeechStreamError{
+			Code:      code,
+			Message:   message,
+			RequestID: requestID,
+			Logid:     logid,
 		},
 		Timestamp: time.Now().UnixMilli(),
 	})
 }
 
-func toSpeechStreamEvent(ev nls.TranscriptionEvent) domain.SpeechStreamEvent {
+func toSpeechStreamEvent(ev asr.Event) domain.SpeechStreamEvent {
 	out := domain.SpeechStreamEvent{
 		Type:      string(ev.Type),
 		Index:     ev.Index,
 		Text:      ev.Text,
+		Logid:     ev.Logid,
 		Timestamp: ev.Timestamp,
 	}
-	if ev.Header != nil {
-		out.Header = &domain.SpeechStreamErrorHeader{
-			Namespace:  ev.Header.Namespace,
-			Name:       ev.Header.Name,
-			Status:     ev.Header.Status,
-			StatusText: ev.Header.StatusText,
-			TaskID:     ev.Header.TaskID,
-			MessageID:  ev.Header.MessageID,
+	if ev.Error != nil {
+		out.Error = &domain.SpeechStreamError{
+			Code:      ev.Error.Code,
+			Message:   ev.Error.Message,
+			RequestID: ev.Error.RequestID,
+			Logid:     ev.Error.Logid,
 		}
 	}
 	return out

@@ -386,11 +386,10 @@ type SpeechRecognitionData struct {
 type SpeechStreamStartReq struct {
 	// 消息类型,固定为 "start"
 	Type string `json:"type" example:"start" binding:"required"`
-	// 音频编码格式,单声道、16-bit。支持 pcm / wav / opus / speex / amr / mp3 / aac,默认 pcm
-	Format string `json:"format,omitempty" example:"pcm" enums:"pcm,wav,opus,speex,amr,mp3,aac"`
-	// 采样率,仅支持 8000 或 16000,默认 16000
-	SampleRate int `json:"sample_rate,omitempty" example:"16000" enums:"8000,16000"`
-	// 是否过滤"嗯/啊"等口头禅,默认 false
+	// 音频容器格式,单声道、16-bit、采样率固定 16000Hz。
+	// pcm / wav 内部音频流必须是 pcm_s16le;ogg 必须为 opus 编码;mp3 由服务端解码。
+	Format string `json:"format,omitempty" example:"pcm" enums:"pcm,wav,ogg,mp3"`
+	// 是否启用语义顺滑(过滤"嗯/啊"等口头禅、语义重复词),默认 false
 	Disfluency bool `json:"disfluency,omitempty" example:"false"`
 }
 
@@ -400,33 +399,32 @@ type SpeechStreamControl struct {
 	Type string `json:"type" example:"stop" enums:"stop"`
 }
 
-// SpeechStreamErrorHeader 实时语音转写 error 事件中的 header;
-// 阿里云 NLS 触发的错误原样透传 NLS 的 header,本服务前置校验错误时 status=0、其余字段为空。
-type SpeechStreamErrorHeader struct {
-	// 命名空间,阿里云透传时为 "SpeechTranscriber",本地错误为空
-	Namespace string `json:"namespace,omitempty" example:"SpeechTranscriber"`
-	// 事件名,阿里云透传时为 "TaskFailed",本地错误为空
-	Name string `json:"name,omitempty" example:"TaskFailed"`
-	// 状态码;阿里云透传时为 NLS 错误码(如 40000001),本服务前置校验错误为 0
-	Status int `json:"status" example:"40000001"`
-	// 错误描述,阿里云透传时为 NLS 的 status_text,本地错误为可读原因
-	StatusText string `json:"status_text" example:"Gateway:TOKEN_INVALID:Token is invalid."`
-	// 阿里云任务 ID,报障必备
-	TaskID string `json:"task_id,omitempty" example:"5ec521b5aa104e3abccf3d361822****"`
-	// 阿里云消息 ID,报障必备
-	MessageID string `json:"message_id,omitempty" example:"c3a9ae4b231649d5ae05d4af36fd****"`
+// SpeechStreamError 实时语音转写 error 事件中的错误详情。
+// Code 为远端 ASR 服务返回的错误码;本服务前置校验错误 (远端连接前) 时 Code=0,
+// 由 Message 描述原因。RequestID / Logid 用于排障时跟运维/厂商客服关联日志。
+type SpeechStreamError struct {
+	// 错误码;远端 ASR 错误码 (如豆包 45000001),本地校验错误为 0
+	Code int `json:"code" example:"45000001"`
+	// 错误描述,远端错误为远端 message,本地校验错误为可读原因
+	Message string `json:"message" example:"请求参数无效"`
+	// 后端发给远端 ASR 的 X-Api-Request-Id (UUID),便于跟单次请求关联日志
+	RequestID string `json:"request_id,omitempty" example:"67ee89ba-7050-4c04-a3d7-ac61a63499b3"`
+	// 远端 ASR 服务返回的 trace id (如豆包 X-Tt-Logid),报障必备
+	Logid string `json:"logid,omitempty" example:"202407261553070FACFE6D19421815D605"`
 }
 
 // SpeechStreamEvent 实时语音转写 WebSocket 服务端→客户端事件(所有事件统一外层结构)
 type SpeechStreamEvent struct {
-	// 事件类型:ready / sentence_begin / partial / final / done / error
-	Type string `json:"type" example:"partial" enums:"ready,sentence_begin,partial,final,done,error"`
-	// 句子序号,从 1 开始;sentence_begin / partial / final 携带,其余事件省略
+	// 事件类型:ready / partial / final / done / error
+	Type string `json:"type" example:"partial" enums:"ready,partial,final,done,error"`
+	// 句子序号,从 1 开始;partial / final 携带,其余事件省略
 	Index int `json:"index,omitempty" example:"1"`
 	// 识别文本;partial(中间结果,会反复变化)/ final(本句定稿)携带
 	Text string `json:"text,omitempty" example:"今天天气真不错。"`
-	// 错误 header;仅 error 事件携带
-	Header *SpeechStreamErrorHeader `json:"header,omitempty"`
+	// 远端 ASR 服务的 trace id;ready / error 事件携带,便于全程关联日志
+	Logid string `json:"logid,omitempty" example:"202407261553070FACFE6D19421815D605"`
+	// 错误详情;仅 error 事件携带
+	Error *SpeechStreamError `json:"error,omitempty"`
 	// 服务端时间(毫秒),所有事件都有
 	Timestamp int64 `json:"timestamp" example:"1733299200000"`
 }
