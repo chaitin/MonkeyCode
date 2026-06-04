@@ -35,10 +35,10 @@ func NewTeamDashboardHandler(i *do.Injector) (*TeamDashboardHandler, error) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAITeamAuth
-//	@Param			range	query		string								false	"时间范围：today、7d、30d"
+//	@Param			range	query		string									false	"时间范围：today、7d、30d"
 //	@Success		200		{object}	web.Resp{data=domain.TeamDashboardResp}	"成功"
-//	@Failure		401		{object}	web.Resp							"未授权"
-//	@Failure		500		{object}	web.Resp							"服务器内部错误"
+//	@Failure		401		{object}	web.Resp								"未授权"
+//	@Failure		500		{object}	web.Resp								"服务器内部错误"
 //	@Router			/api/v1/teams/dashboard [get]
 func (h *TeamDashboardHandler) Overview(c *web.Context, req domain.TeamDashboardReq) error {
 	teamUser := middleware.GetTeamUser(c)
