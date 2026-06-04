@@ -323,3 +323,47 @@ func TestQueryModelUsageSummaryAggregatesByTeamAndTime(t *testing.T) {
 		t.Fatalf("summary = %#v", summary)
 	}
 }
+
+func TestQueryModelUsageTopUsersOrdersByTokens(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE model_usage_events_test (
+		event_time timestamp,
+		team_id text,
+		user_id text,
+		total_tokens integer,
+		request_count integer
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
+	_, err = db.Exec(`INSERT INTO model_usage_events_test
+		(event_time, team_id, user_id, total_tokens, request_count)
+		VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+		start.Add(time.Hour), "team-1", "user-low", 100, 1,
+		start.Add(time.Hour), "team-1", "user-high", 300, 2,
+		start.Add(time.Hour), "team-2", "user-other", 900, 1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewWithDBTables(db, "task_logs_test", "model_usage_events_test")
+	users, err := client.QueryModelUsageTopUsers(context.Background(), ModelUsageQuery{
+		TeamID: "team-1",
+		Start:  start,
+		End:    start.AddDate(0, 0, 1),
+	}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("top users length = %d, want 2", len(users))
+	}
+	if users[0].UserID != "user-high" || users[0].TotalTokens != 300 || users[0].Requests != 2 {
+		t.Fatalf("first user = %#v", users[0])
+	}
+}

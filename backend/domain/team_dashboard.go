@@ -41,8 +41,12 @@ type TeamDashboardMetrics struct {
 	RunningTaskCount  int     `json:"running_task_count"`
 	FinishedTaskCount int     `json:"finished_task_count"`
 	AverageDuration   int64   `json:"average_duration"`
+	InputTokens       int64   `json:"input_tokens"`
+	OutputTokens      int64   `json:"output_tokens"`
+	CachedTokens      int64   `json:"cached_tokens"`
 	TotalTokens       int64   `json:"total_tokens"`
 	LLMRequests       int64   `json:"llm_requests"`
+	CacheHitRate      float64 `json:"cache_hit_rate"`
 }
 
 type TeamDashboardTrends struct {

@@ -17,6 +17,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/clickhouse"
 )
 
 func newDashboardRepoTestDB(t *testing.T) *db.Client {
@@ -29,13 +30,23 @@ func newDashboardRepoTestDB(t *testing.T) *db.Client {
 func TestTeamDashboardOverviewAggregatesMetrics(t *testing.T) {
 	ctx := context.Background()
 	client := newDashboardRepoTestDB(t)
-	repo := &TeamDashboardRepo{db: client, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
 	teamID := uuid.New()
 	userA := uuid.New()
 	userB := uuid.New()
 	taskA := uuid.New()
 	taskB := uuid.New()
+	repo := &TeamDashboardRepo{
+		db: client,
+		usageReader: &dashboardUsageReaderStub{
+			summary: clickhouse.ModelUsageSummary{TotalTokens: 3000, Requests: 2},
+			topUsers: []clickhouse.ModelUsageTopUser{
+				{UserID: userB.String(), TotalTokens: 2000, Requests: 1},
+				{UserID: userA.String(), TotalTokens: 1000, Requests: 1},
+			},
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
 
 	createDashboardTeamUser(t, client, teamID, userA, "林航", "前端组")
 	createDashboardTeamUser(t, client, teamID, userB, "周宁", "平台组")
@@ -86,11 +97,18 @@ func TestTeamDashboardOverviewAggregatesMetrics(t *testing.T) {
 func TestTeamDashboardOverviewAggregatesUsageByTask(t *testing.T) {
 	ctx := context.Background()
 	client := newDashboardRepoTestDB(t)
-	repo := &TeamDashboardRepo{db: client, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
 	teamID := uuid.New()
 	userID := uuid.New()
 	taskID := uuid.New()
+	repo := &TeamDashboardRepo{
+		db: client,
+		usageReader: &dashboardUsageReaderStub{
+			summary:  clickhouse.ModelUsageSummary{TotalTokens: 1200, Requests: 1},
+			topUsers: []clickhouse.ModelUsageTopUser{{UserID: userID.String(), TotalTokens: 1200, Requests: 1}},
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
 
 	createDashboardTeamUser(t, client, teamID, userID, "林航", "前端组")
 	createDashboardTask(t, client, taskID, userID, "统计 token", consts.TaskStatusFinished, now.Add(-2*time.Hour), now.Add(-90*time.Minute), now.Add(-30*time.Minute))
@@ -112,6 +130,63 @@ func TestTeamDashboardOverviewAggregatesUsageByTask(t *testing.T) {
 	if len(resp.Insights.HighConsumption) != 1 || resp.Insights.HighConsumption[0].ID != userID.String() || resp.Insights.HighConsumption[0].TotalTokens != 1200 {
 		t.Fatalf("high consumption = %#v, want task owner with 1200 tokens", resp.Insights.HighConsumption)
 	}
+}
+
+func TestTeamDashboardOverviewUsesClickHouseUsageSummary(t *testing.T) {
+	ctx := context.Background()
+	client := newDashboardRepoTestDB(t)
+	ch := &dashboardUsageReaderStub{
+		summary: clickhouse.ModelUsageSummary{
+			InputTokens:  100,
+			OutputTokens: 40,
+			CachedTokens: 25,
+			TotalTokens:  140,
+			Requests:     2,
+		},
+		topUsers: []clickhouse.ModelUsageTopUser{
+			{UserID: "", TotalTokens: 140, Requests: 2},
+		},
+	}
+	repo := &TeamDashboardRepo{db: client, usageReader: ch, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
+	teamID := uuid.New()
+	userID := uuid.New()
+	taskID := uuid.New()
+	ch.topUsers[0].UserID = userID.String()
+
+	createDashboardTeamUser(t, client, teamID, userID, "林航", "前端组")
+	createDashboardTask(t, client, taskID, userID, "统计 token", consts.TaskStatusFinished, now.Add(-2*time.Hour), now.Add(-90*time.Minute), now.Add(-30*time.Minute))
+	createDashboardUsage(t, client, taskID, userID, "postgres-old", 9999, now.Add(-30*time.Minute))
+
+	resp, err := repo.Overview(ctx, teamID, domain.TeamDashboardQuery{
+		Start: now.Add(-24 * time.Hour),
+		End:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Metrics.TotalTokens != 140 || resp.Metrics.LLMRequests != 2 {
+		t.Fatalf("metrics = %#v, want clickhouse token summary", resp.Metrics)
+	}
+	if resp.Metrics.CachedTokens != 25 || resp.Metrics.CacheHitRate != 25 {
+		t.Fatalf("cache metrics = %#v, want cached_tokens 25 and hit rate 25", resp.Metrics)
+	}
+	if len(resp.Insights.HighConsumption) != 1 || resp.Insights.HighConsumption[0].TotalTokens != 140 {
+		t.Fatalf("high consumption = %#v, want clickhouse top user", resp.Insights.HighConsumption)
+	}
+}
+
+type dashboardUsageReaderStub struct {
+	summary  clickhouse.ModelUsageSummary
+	topUsers []clickhouse.ModelUsageTopUser
+}
+
+func (s *dashboardUsageReaderStub) QueryModelUsageSummary(ctx context.Context, q clickhouse.ModelUsageQuery) (clickhouse.ModelUsageSummary, error) {
+	return s.summary, nil
+}
+
+func (s *dashboardUsageReaderStub) QueryModelUsageTopUsers(ctx context.Context, q clickhouse.ModelUsageQuery, limit int) ([]clickhouse.ModelUsageTopUser, error) {
+	return s.topUsers, nil
 }
 
 func TestTeamDashboardRepoAvoidsSQLiteOnlyTimeFunction(t *testing.T) {

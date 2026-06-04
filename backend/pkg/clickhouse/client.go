@@ -175,6 +175,12 @@ type ModelUsageSummary struct {
 	Requests     int64
 }
 
+type ModelUsageTopUser struct {
+	UserID      string
+	TotalTokens int64
+	Requests    int64
+}
+
 func (c *Client) InsertModelUsageEvent(ctx context.Context, event ModelUsageEvent) error {
 	if c == nil || c.db == nil {
 		return fmt.Errorf("clickhouse client is nil")
@@ -232,6 +238,45 @@ WHERE team_id = ? AND event_time >= ? AND event_time < ?`, tableIdentifier)
 		&summary.Requests,
 	)
 	return summary, err
+}
+
+func (c *Client) QueryModelUsageTopUsers(ctx context.Context, q ModelUsageQuery, limit int) ([]ModelUsageTopUser, error) {
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("clickhouse client is nil")
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	tableIdentifier, err := quoteIdentifier(c.ModelUsageTable())
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf(`SELECT
+	user_id,
+	coalesce(sum(total_tokens), 0) AS total_tokens,
+	coalesce(sum(request_count), 0) AS requests
+FROM %s
+WHERE team_id = ? AND event_time >= ? AND event_time < ?
+GROUP BY user_id
+ORDER BY total_tokens DESC
+LIMIT ?`, tableIdentifier)
+	rows, err := c.db.QueryContext(ctx, query, q.TeamID, q.Start, q.End, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []ModelUsageTopUser
+	for rows.Next() {
+		var user ModelUsageTopUser
+		if err := rows.Scan(&user.UserID, &user.TotalTokens, &user.Requests); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
 }
 
 func applyPoolOptions(db *sql.DB, cfg config.ClickHouse) {
