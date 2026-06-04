@@ -2,6 +2,7 @@ package doubao
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 
@@ -10,6 +11,10 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/pkg/asr"
 )
+
+// defaultEndWindowSize 二遍识别 VAD 强制判停时间 (ms)。
+// 豆包默认 800ms 偏慢,500ms 上屏更跟手;最小允许 200。
+const defaultEndWindowSize = 500
 
 // DefaultURL 双向流式优化版接口 (bigmodel_async),性能 + 首尾字延迟最优,推荐生产使用。
 const DefaultURL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
@@ -42,6 +47,11 @@ func (d *Doubao) NewSession(ctx context.Context, userID uuid.UUID, p asr.Param) 
 		return nil, errors.New("doubao: unsupported format: " + format)
 	}
 
+	corpus, err := buildCorpus(d.cfg, p.HotWords)
+	if err != nil {
+		return nil, err
+	}
+
 	payload := fullClientPayload{
 		User: userMeta{Uid: userID.String()},
 		Audio: audioMeta{
@@ -52,11 +62,14 @@ func (d *Doubao) NewSession(ctx context.Context, userID uuid.UUID, p asr.Param) 
 			Channel: 1,
 		},
 		Request: requestMeta{
-			ModelName:      "bigmodel",
-			EnableITN:      true,
-			EnablePUNC:     true,
-			EnableDDC:      p.Disfluency, // 顺滑映射
-			ShowUtterances: true,
+			ModelName:       "bigmodel",
+			EnableNonstream: true, // 二遍识别:流式实时上屏 + nostream 重识别提升准确率
+			EnableITN:       true,
+			EnablePUNC:      true,
+			EnableDDC:       p.Disfluency, // 顺滑映射
+			ShowUtterances:  true,
+			EndWindowSize:   defaultEndWindowSize, // 与 EnableNonstream 配套,缩短 VAD 判停时长
+			Corpus:          corpus,
 		},
 	}
 
@@ -87,6 +100,49 @@ func isSupportedFormat(f string) bool {
 		return true
 	}
 	return false
+}
+
+// buildCorpus 把 config 里的热词词表 ID/Name 与运行时直传热词合并成 corpusMeta。
+// 三者全空时返回 nil,让 corpus 字段在 JSON 中通过 omitempty 整段省略。
+func buildCorpus(cfg config.Doubao, hotWords []string) (*corpusMeta, error) {
+	ctxStr, err := buildHotwordsContext(hotWords)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.BoostingTableID == "" && cfg.BoostingTableName == "" && ctxStr == "" {
+		return nil, nil
+	}
+	return &corpusMeta{
+		BoostingTableID:   cfg.BoostingTableID,
+		BoostingTableName: cfg.BoostingTableName,
+		Context:           ctxStr,
+	}, nil
+}
+
+// buildHotwordsContext 把 []string 热词序列化成豆包要求的 context JSON 字符串。
+// 格式: {"hotwords":[{"word":"xxx"},...]} ;双向流式优化版限 100 tokens,超量厂商端截断。
+// 入参为空或全是空串时返回空字符串,调用方据此决定是否带 context。
+func buildHotwordsContext(words []string) (string, error) {
+	type hotword struct {
+		Word string `json:"word"`
+	}
+	payload := struct {
+		Hotwords []hotword `json:"hotwords"`
+	}{}
+	for _, w := range words {
+		if w == "" {
+			continue
+		}
+		payload.Hotwords = append(payload.Hotwords, hotword{Word: w})
+	}
+	if len(payload.Hotwords) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // 编译期断言: *Doubao 实现 asr.Transcriber

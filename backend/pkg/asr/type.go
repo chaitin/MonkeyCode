@@ -35,6 +35,7 @@ type Error struct {
 
 // Param 用户可配的启动参数子集
 type Param struct {
-	Format     string // 音频容器格式,具体厂商支持差异由实现层校验
-	Disfluency bool   // 顺滑(过滤"嗯/啊"等)
+	Format     string   // 音频容器格式,具体厂商支持差异由实现层校验
+	Disfluency bool     // 顺滑(过滤"嗯/啊"等)
+	HotWords   []string // 运行时动态热词,直传通道(双向流式优化版限 100 tokens,超量厂商端会截断)
 }

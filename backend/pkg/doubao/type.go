@@ -72,11 +72,29 @@ type audioMeta struct {
 }
 
 type requestMeta struct {
-	ModelName      string `json:"model_name"`
-	EnableITN      bool   `json:"enable_itn"`
-	EnablePUNC     bool   `json:"enable_punc"`
-	EnableDDC      bool   `json:"enable_ddc"`
-	ShowUtterances bool   `json:"show_utterances"`
+	ModelName string `json:"model_name"`
+	// EnableNonstream 开启二遍识别 (流式实时上屏 + nostream 重识别提升准确率)。
+	// 仅双向流式优化版 (bigmodel_async) 支持;开启后会默认开启 VAD 分句 (end_window_size 控制判停)。
+	EnableNonstream bool `json:"enable_nonstream,omitempty"`
+	EnableITN       bool `json:"enable_itn"`
+	EnablePUNC      bool `json:"enable_punc"`
+	EnableDDC       bool `json:"enable_ddc"`
+	ShowUtterances  bool `json:"show_utterances"`
+	// EndWindowSize 强制判停时间 (ms),静音超此值直接判停输出 definite 分句。
+	// 文档默认 800,最小 200;0 表示走豆包默认 (即不传字段)。
+	EndWindowSize int `json:"end_window_size,omitempty"`
+	// Corpus 热词/上下文配置,空指针时不发送 corpus 字段
+	Corpus *corpusMeta `json:"corpus,omitempty"`
+}
+
+// corpusMeta request.corpus 子结构,承载热词词表 ID/Name 与运行时直传热词上下文。
+// 三个字段都可选,任意组合;同时配置词表和直传时,豆包侧直传优先级更高。
+type corpusMeta struct {
+	BoostingTableID   string `json:"boosting_table_id,omitempty"`
+	BoostingTableName string `json:"boosting_table_name,omitempty"`
+	// Context 热词或对话上下文,JSON 字符串 (注意是序列化后的 string,不是嵌套对象)。
+	// 热词形态: {"hotwords":[{"word":"xxx"},...]} ;双向流式限 100 tokens。
+	Context string `json:"context,omitempty"`
 }
 
 // serverRespPayload Server Full Response 的 JSON 解析结构(我们只关心识别结果部分)。

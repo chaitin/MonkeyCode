@@ -104,6 +104,11 @@ type Doubao struct {
 	ResourceID string `mapstructure:"resource_id"`
 	// WebSocket URL,默认 wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async
 	URL string `mapstructure:"url"`
+	// 自学习平台上预建的热词词表 ID (单表最多 5000 个热词)。
+	// BoostingTableID 与 BoostingTableName 二选一即可,同时配置时豆包优先用 ID。
+	BoostingTableID string `mapstructure:"boosting_table_id"`
+	// 自学习平台上预建的热词词表名称,可替代 BoostingTableID 使用 (改名会失效,推荐用 ID)
+	BoostingTableName string `mapstructure:"boosting_table_name"`
 }
 
 type InitTeam struct {
