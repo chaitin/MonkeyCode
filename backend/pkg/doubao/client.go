@@ -21,7 +21,10 @@ func dialDoubao(ctx context.Context, url, apiKey, resourceID string, payload ful
 	requestID = uuid.NewString()
 
 	hdr := http.Header{}
+	// 新版控制台支持两种鉴权 header 写法,部分服务期望 X-Api-Key,
+	// 部分新版豆包服务统一走 Authorization: Bearer。同时发两份,匹配到哪个走哪个。
 	hdr.Set("X-Api-Key", apiKey)
+	hdr.Set("Authorization", "Bearer "+apiKey)
 	hdr.Set("X-Api-Resource-Id", resourceID)
 	hdr.Set("X-Api-Request-Id", requestID)
 	hdr.Set("X-Api-Connect-Id", requestID)

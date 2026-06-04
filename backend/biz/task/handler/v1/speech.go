@@ -376,8 +376,16 @@ func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 			}
 			switch ctrl.Type {
 			case "stop":
-				// session.Stop 由 defer 兜底;此处直接返回,等事件 goroutine 把 done 推给客户端
-				return nil
+				// 主动发送最后一包给豆包(session.Stop 非阻塞,只 write 一帧就返回)。
+				// **不能在此 return** —— 否则 defer 立刻 wsConn.Close(),
+				// 之后 recvLoop 收到豆包 last 响应再 emit done 时,WS 已关,客户端永远收不到 done。
+				// 改为 continue 回到 Read,等 event pump 把 done 写出去后 cancel ctx,
+				// Read 才会返回 err,我们再退出 → defer 关 WS。
+				if err := session.Stop(); err != nil {
+					logger.WarnContext(ctx, "session stop failed", "error", err)
+					return nil
+				}
+				continue
 			case "start":
 				h.writeSpeechError(wsConn, 0, "duplicate start message", "", session.Logid())
 				return nil
