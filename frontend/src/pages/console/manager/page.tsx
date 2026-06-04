@@ -26,6 +26,9 @@ export default function ManagerConsolePage() {
     string,
     { label: string; href?: string }[]
   > = {
+    "/manager/overview": [
+      { label: "概览", href: "/manager/overview" },
+    ],
     "/manager/members": [
       { label: "成员管理", href: "/manager/members" },
     ],
