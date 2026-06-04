@@ -21,6 +21,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
 	"github.com/chaitin/MonkeyCode/backend/pkg/logger"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
+	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 	"github.com/chaitin/MonkeyCode/backend/pkg/msgpush"
 	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/channel"
@@ -134,6 +135,13 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		cfg := do.MustInvoke[*config.Config](i)
 		l := do.MustInvoke[*slog.Logger](i)
 		return clickhouse.New(cfg.ClickHouse, l)
+	})
+
+	do.Provide(i, func(i *do.Injector) (*modelusage.Recorder, error) {
+		clickhouseClient := do.MustInvoke[*clickhouse.Client](i)
+		dbClient := do.MustInvoke[*db.Client](i)
+		logger := do.MustInvoke[*slog.Logger](i)
+		return modelusage.NewRecorder(clickhouseClient, modelusage.NewEntContextRepo(dbClient), logger), nil
 	})
 
 	do.Provide(i, func(i *do.Injector) (*tasklog.Gateway, error) {

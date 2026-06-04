@@ -66,7 +66,7 @@ func TestChatAnthropicUsesSDKClient(t *testing.T) {
 				{"type":"text","text":"hello "},
 				{"type":"text","text":"world"}
 			],
-			"usage":{"input_tokens":7,"output_tokens":5}
+			"usage":{"input_tokens":7,"output_tokens":5,"cache_read_input_tokens":3}
 		}`))
 	}))
 	defer server.Close()
@@ -96,7 +96,53 @@ func TestChatAnthropicUsesSDKClient(t *testing.T) {
 	if resp.Content != "hello world" {
 		t.Fatalf("content = %q", resp.Content)
 	}
-	if resp.Usage.PromptTokens != 7 || resp.Usage.CompletionTokens != 5 || resp.Usage.TotalTokens != 12 {
+	if resp.Usage.PromptTokens != 7 || resp.Usage.CompletionTokens != 5 || resp.Usage.TotalTokens != 12 || resp.Usage.CachedTokens != 3 {
+		t.Fatalf("usage = %+v", resp.Usage)
+	}
+}
+
+func TestChatOpenAIResponsesParsesCachedTokens(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if r.URL.Path != "/responses" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"resp_1",
+			"output":[
+				{"type":"message","content":[{"type":"output_text","text":"ok"}]}
+			],
+			"usage":{
+				"input_tokens":100,
+				"output_tokens":20,
+				"total_tokens":120,
+				"input_tokens_details":{"cached_tokens":30}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		BaseURL:       server.URL,
+		APIKey:        "test-key",
+		Model:         "gpt-4o",
+		InterfaceType: InterfaceOpenAIResponses,
+	})
+
+	resp, err := client.Chat(context.Background(), ChatRequest{
+		Messages:  []Message{{Role: "user", Content: "hello"}},
+		MaxTokens: 8,
+	})
+	if err != nil {
+		t.Fatalf("Chat returned error: %v", err)
+	}
+	if resp.Content != "ok" {
+		t.Fatalf("content = %q", resp.Content)
+	}
+	if resp.Usage.PromptTokens != 100 || resp.Usage.CompletionTokens != 20 || resp.Usage.TotalTokens != 120 || resp.Usage.CachedTokens != 30 {
 		t.Fatalf("usage = %+v", resp.Usage)
 	}
 }
