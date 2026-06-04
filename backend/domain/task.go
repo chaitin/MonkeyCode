@@ -381,3 +381,50 @@ type SpeechRecognitionData struct {
 	Timestamp int64  `json:"timestamp,omitempty" example:"1640995200000"` // 时间戳 (仅result类型)
 	Error     string `json:"error,omitempty" example:"识别失败"`              // 错误信息 (仅error类型)
 }
+
+// SpeechStreamStartReq 实时语音转写 WebSocket 的 start 控制消息(客户端首帧必须为本结构)
+type SpeechStreamStartReq struct {
+	// 消息类型,固定为 "start"
+	Type string `json:"type" example:"start" binding:"required"`
+	// 音频容器格式,单声道、16-bit、采样率固定 16000Hz。
+	// pcm / wav 内部音频流必须是 pcm_s16le;ogg 必须为 opus 编码;mp3 由服务端解码。
+	Format string `json:"format,omitempty" example:"pcm" enums:"pcm,wav,ogg,mp3"`
+	// 是否启用语义顺滑(过滤"嗯/啊"等口头禅、语义重复词),默认 false
+	Disfluency bool `json:"disfluency,omitempty" example:"false"`
+}
+
+// SpeechStreamControl 实时语音转写 WebSocket 的通用控制消息(用于 stop,或解析首帧 type)
+type SpeechStreamControl struct {
+	// 控制消息类型,目前支持 "stop"
+	Type string `json:"type" example:"stop" enums:"stop"`
+}
+
+// SpeechStreamError 实时语音转写 error 事件中的错误详情。
+// Code 为远端 ASR 服务返回的错误码;本服务前置校验错误 (远端连接前) 时 Code=0,
+// 由 Message 描述原因。RequestID / Logid 用于排障时跟运维/厂商客服关联日志。
+type SpeechStreamError struct {
+	// 错误码;远端 ASR 错误码 (如豆包 45000001),本地校验错误为 0
+	Code int `json:"code" example:"45000001"`
+	// 错误描述,远端错误为远端 message,本地校验错误为可读原因
+	Message string `json:"message" example:"请求参数无效"`
+	// 后端发给远端 ASR 的 X-Api-Request-Id (UUID),便于跟单次请求关联日志
+	RequestID string `json:"request_id,omitempty" example:"67ee89ba-7050-4c04-a3d7-ac61a63499b3"`
+	// 远端 ASR 服务返回的 trace id (如豆包 X-Tt-Logid),报障必备
+	Logid string `json:"logid,omitempty" example:"202407261553070FACFE6D19421815D605"`
+}
+
+// SpeechStreamEvent 实时语音转写 WebSocket 服务端→客户端事件(所有事件统一外层结构)
+type SpeechStreamEvent struct {
+	// 事件类型:ready / partial / final / done / error
+	Type string `json:"type" example:"partial" enums:"ready,partial,final,done,error"`
+	// 句子序号,从 1 开始;partial / final 携带,其余事件省略
+	Index int `json:"index,omitempty" example:"1"`
+	// 识别文本;partial(中间结果,会反复变化)/ final(本句定稿)携带
+	Text string `json:"text,omitempty" example:"今天天气真不错。"`
+	// 远端 ASR 服务的 trace id;ready / error 事件携带,便于全程关联日志
+	Logid string `json:"logid,omitempty" example:"202407261553070FACFE6D19421815D605"`
+	// 错误详情;仅 error 事件携带
+	Error *SpeechStreamError `json:"error,omitempty"`
+	// 服务端时间(毫秒),所有事件都有
+	Timestamp int64 `json:"timestamp" example:"1733299200000"`
+}

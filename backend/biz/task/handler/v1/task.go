@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +22,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
+	"github.com/chaitin/MonkeyCode/backend/pkg/asr"
 	"github.com/chaitin/MonkeyCode/backend/pkg/nls"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 	"github.com/chaitin/MonkeyCode/backend/pkg/tasklog"
@@ -41,7 +40,8 @@ type TaskHandler struct {
 	logger        *slog.Logger
 	taskflow      taskflow.Clienter
 	tasklog       *tasklog.Gateway
-	nls           *nls.NLS
+	nls           *nls.NLS         // 一段录音的 POST 接口 (SpeechToText) 仍走阿里云 NLS
+	asr           asr.Transcriber  // 流式 WS 接口 (SpeechToTextStream) 走豆包等中性 ASR
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
@@ -78,6 +78,12 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		nlsSvc = n
 	}
 
+	// asr 用于流式 WS 接口,配置未填时 Provider 返回 nil,handler 内部判空降级
+	var asrSvc asr.Transcriber
+	if a, err := do.Invoke[asr.Transcriber](i); err == nil {
+		asrSvc = a
+	}
+
 	activeRepo := do.MustInvoke[domain.UserActiveRepo](i)
 
 	h := &TaskHandler{
@@ -89,6 +95,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 		taskflow:      tf,
 		tasklog:       gw,
 		nls:           nlsSvc,
+		asr:           asrSvc,
 		taskConns:     tc,
 		controlConns:  cc,
 		taskSummary:   ts,
@@ -116,6 +123,8 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	v1.PUT("/:id", web.BindHandler(h.Update))
 	// 语音识别文字接口
 	v1.POST("/speech-to-text", web.BaseHandler(h.SpeechToText))
+	// 实时语音转写(WebSocket 流式),见 docs/speech-to-text-stream.md
+	v1.GET("/speech-to-text-stream", web.BaseHandler(h.SpeechToTextStream))
 
 	return h, nil
 }
@@ -837,130 +846,3 @@ func validateSkillID(skillID string) error {
 	return nil
 }
 
-// SpeechToText 语音转文字
-//
-//	@Summary		语音转文字
-//	@Description	上传音频数据进行语音识别，返回Server-Sent Events流式文字结果。响应格式为SSE，每个事件包含event和data字段。
-//	@Tags			【用户】任务管理
-//	@Accept			application/octet-stream
-//	@Produce		text/event-stream
-//	@Security		MonkeyCodeAIAuth
-//	@Success		200	{object}	domain.SpeechRecognitionEvent	"Server-Sent Events流，包含recognition(识别结果)、end(结束)和error(错误)事件"
-//	@Failure		400	{object}	web.Resp						"参数错误"
-//	@Failure		500	{object}	web.Resp						"服务器内部错误"
-//	@Router			/api/v1/users/tasks/speech-to-text [post]
-func (h *TaskHandler) SpeechToText(c *web.Context) error {
-	user := middleware.GetUser(c)
-
-	if h.nls == nil {
-		h.logger.ErrorContext(c.Request().Context(), "speech recognition service not initialized")
-		return errcode.ErrInternalServer
-	}
-
-	audioData, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "failed to read audio data", "error", err)
-		return errcode.ErrInternalServer
-	}
-	if len(audioData) == 0 {
-		h.logger.ErrorContext(c.Request().Context(), "no audio data provided")
-		return errcode.ErrInvalidParameter
-	}
-
-	c.Response().Header().Set("Content-Type", "text/event-stream")
-	c.Response().Header().Set("Cache-Control", "no-cache")
-	c.Response().Header().Set("Connection", "keep-alive")
-	c.Response().Header().Set("Access-Control-Allow-Origin", "*")
-
-	flusher, ok := c.Response().Writer.(http.Flusher)
-	if !ok {
-		h.logger.ErrorContext(c.Request().Context(), "streaming not supported")
-		http.Error(c.Response().Writer, "Streaming not supported", http.StatusInternalServerError)
-		return errcode.ErrInternalServer
-	}
-
-	resultCh, errorCh := h.nls.SpeechRecognition(c.Request().Context(), user.ID, audioData)
-
-	timeout := time.After(2 * time.Minute)
-	for {
-		select {
-		case result, ok := <-resultCh:
-			if !ok {
-				endEvent := domain.SpeechRecognitionEvent{
-					Event: "end",
-					Data:  domain.SpeechRecognitionData{Type: "end"},
-				}
-				h.sendSSEEvent(c, flusher, endEvent)
-				return nil
-			}
-			recognitionEvent := domain.SpeechRecognitionEvent{
-				Event: "recognition",
-				Data: domain.SpeechRecognitionData{
-					Type:      "result",
-					Text:      result.Text,
-					IsFinal:   result.IsFinal,
-					UserID:    result.UserID,
-					Timestamp: result.Timestamp,
-				},
-			}
-			h.sendSSEEvent(c, flusher, recognitionEvent)
-
-		case err := <-errorCh:
-			if err != nil {
-				h.logger.ErrorContext(c.Request().Context(), "speech recognition error", "error", err)
-				errorEvent := domain.SpeechRecognitionEvent{
-					Event: "error",
-					Data: domain.SpeechRecognitionData{
-						Type:  "error",
-						Error: err.Error(),
-					},
-				}
-				h.sendSSEEvent(c, flusher, errorEvent)
-				return nil
-			}
-			return nil
-
-		case <-timeout:
-			h.logger.WarnContext(c.Request().Context(), "speech recognition timeout")
-			timeoutEvent := domain.SpeechRecognitionEvent{
-				Event: "error",
-				Data: domain.SpeechRecognitionData{
-					Type:  "error",
-					Error: "speech recognition timeout",
-				},
-			}
-			h.sendSSEEvent(c, flusher, timeoutEvent)
-			return nil
-
-		case <-c.Request().Context().Done():
-			h.logger.InfoContext(c.Request().Context(), "client disconnected from speech recognition")
-			return nil
-		}
-	}
-}
-
-func (h *TaskHandler) sendSSEEvent(c *web.Context, flusher http.Flusher, event domain.SpeechRecognitionEvent) {
-	eventData := domain.SpeechRecognitionData{
-		Type: event.Data.Type,
-	}
-
-	switch event.Data.Type {
-	case "result":
-		eventData.Text = event.Data.Text
-		eventData.IsFinal = event.Data.IsFinal
-		eventData.UserID = event.Data.UserID
-		eventData.Timestamp = event.Data.Timestamp
-	case "error":
-		eventData.Error = event.Data.Error
-	case "end":
-	}
-
-	jsonData, err := json.Marshal(eventData)
-	if err != nil {
-		h.logger.ErrorContext(c.Request().Context(), "failed to marshal SSE event data", "error", err, "event", event.Event)
-		return
-	}
-
-	fmt.Fprintf(c.Response().Writer, "event: %s\ndata: %s\n\n", event.Event, jsonData)
-	flusher.Flush()
-}
