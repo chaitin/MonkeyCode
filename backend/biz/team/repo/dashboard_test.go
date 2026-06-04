@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +80,16 @@ func TestTeamDashboardOverviewAggregatesMetrics(t *testing.T) {
 	}
 	if resp.Insights.LongRunningTasks[0].Title != "排查移动端登录" {
 		t.Fatalf("long running task title = %q", resp.Insights.LongRunningTasks[0].Title)
+	}
+}
+
+func TestTeamDashboardRepoAvoidsSQLiteOnlyTimeFunction(t *testing.T) {
+	content, err := os.ReadFile("dashboard.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "strftime") {
+		t.Fatal("dashboard repo must not use SQLite-only strftime in shared queries")
 	}
 }
 

@@ -93,13 +93,20 @@ func (r *TeamDashboardRepo) fillMetrics(ctx context.Context, resp *domain.TeamDa
 	var durationRows []struct {
 		AvgDuration float64 `json:"avg_duration"`
 	}
-	if err := r.db.Task.Query().
+	finishedTasks, err := r.db.Task.Query().
 		Where(task.UserIDIn(memberIDs...), task.CreatedAtGTE(req.Start), task.CreatedAtLT(req.End), task.StatusEQ(consts.TaskStatusFinished), task.CompletedAtNotNil()).
-		Modify(func(s *sql.Selector) {
-			s.Select(sql.As("AVG(strftime('%s', completed_at) - strftime('%s', created_at))", "avg_duration"))
-		}).
-		Scan(ctx, &durationRows); err != nil {
+		All(ctx)
+	if err != nil {
 		return err
+	}
+	if len(finishedTasks) > 0 {
+		var totalDuration time.Duration
+		for _, tk := range finishedTasks {
+			totalDuration += tk.CompletedAt.Sub(tk.CreatedAt)
+		}
+		durationRows = append(durationRows, struct {
+			AvgDuration float64 `json:"avg_duration"`
+		}{AvgDuration: totalDuration.Seconds() / float64(len(finishedTasks))})
 	}
 	var usageRows []struct {
 		TotalTokens int64 `json:"total_tokens"`
