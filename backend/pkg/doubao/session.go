@@ -82,12 +82,14 @@ func (s *session) Stop() error {
 			s.shutdown()
 			return
 		}
-		// 用上一个 audio seq 的负数作为最后一包标志 (与豆包 demo 一致)。
-		// 若一帧音频都没发过 (audioSeq 仍是 2),用 -2 也合法。
-		lastSeq := -(s.audioSeq.Load() - 1)
-		if lastSeq >= 0 {
-			lastSeq = -2
-		}
+		// 最后一包 seq = "下一个要发的 seq" 取负。
+		// audioSeq 始终保存的是下一帧的 seq (Add(1) 后才用,所以 Load() 拿到的就是 next),
+		// 直接取负即可。例:已发 N 帧 (seq=2..N+1) → audioSeq=N+2 → lastSeq=-(N+2)。
+		// 一帧音频都没发过时 audioSeq 仍是初始的 2 → lastSeq=-2,合法。
+		//
+		// 之前用 -(audioSeq-1) 会比豆包 autoAssignedSequence 小 1,触发
+		// "autoAssignedSequence (-X) mismatch sequence in request (-X+1)" 错误。
+		lastSeq := -s.audioSeq.Load()
 		frame := encodeAudioRequest(lastSeq, nil)
 		s.mu.Lock()
 		writeErr := s.conn.WriteMessage(websocket.BinaryMessage, frame)
