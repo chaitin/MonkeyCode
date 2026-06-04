@@ -13,9 +13,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
+	"github.com/chaitin/MonkeyCode/backend/pkg/asr"
 	"github.com/chaitin/MonkeyCode/backend/pkg/captcha"
 	"github.com/chaitin/MonkeyCode/backend/pkg/clickhouse"
 	"github.com/chaitin/MonkeyCode/backend/pkg/delayqueue"
+	"github.com/chaitin/MonkeyCode/backend/pkg/doubao"
 	"github.com/chaitin/MonkeyCode/backend/pkg/email"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/llm"
@@ -220,7 +222,7 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		return ws.NewControlConn(), nil
 	})
 
-	// NLS 语音识别（可选，配置为空时不注册）
+	// NLS 语音识别（可选，配置为空时不注册）—— 仅供一段录音 POST 接口使用
 	do.Provide(i, func(i *do.Injector) (*nls.NLS, error) {
 		cfg := do.MustInvoke[*config.Config](i)
 		if cfg.NLS.AppKey == "" || cfg.NLS.AkID == "" || cfg.NLS.AkKey == "" {
@@ -229,6 +231,18 @@ func RegisterInfra(i *do.Injector, w ...*web.Web) error {
 		l := do.MustInvoke[*slog.Logger](i)
 		r := do.MustInvoke[*redis.Client](i)
 		return nls.NewNLS(cfg, l, r), nil
+	})
+
+	// 豆包流式 ASR（可选，配置为空时不注册）—— 流式 WS 接口使用
+	// 通过 asr.Transcriber interface 暴露,handler 不依赖具体厂商。
+	do.Provide(i, func(i *do.Injector) (asr.Transcriber, error) {
+		cfg := do.MustInvoke[*config.Config](i)
+		l := do.MustInvoke[*slog.Logger](i)
+		d := doubao.NewDoubao(cfg, l)
+		if d == nil {
+			return nil, nil
+		}
+		return d, nil
 	})
 
 	// 任务生命周期管理

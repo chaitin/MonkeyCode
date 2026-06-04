@@ -20,6 +20,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/google/go-github/v74 v74.0.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.22
@@ -79,7 +80,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v75 v75.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
