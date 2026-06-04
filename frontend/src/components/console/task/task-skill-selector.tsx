@@ -1,19 +1,31 @@
 import type { DomainSkill } from "@/api/Api"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { getSkillTagIcon } from "@/utils/common"
 import { defaultSkills } from "@/utils/config"
 import { IconChevronLeft, IconChevronRight, IconPuzzle } from "@tabler/icons-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
+/**
+ * SkillForPicker augments the swagger-generated DomainSkill with the
+ * `is_force_delivery` flag returned by /api/v1/skills (see
+ * lib/agent-resources-api.ts SkillListItem). The picker treats
+ * force-delivered skills as visible-but-disabled chips so the user
+ * knows about the admin-mandated dependency without being able to
+ * un-tick it (the backend re-injects these IDs server-side).
+ */
+type SkillForPicker = DomainSkill & { is_force_delivery?: boolean }
+
 interface TaskSkillSelectorProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedSkills: string[]
-  skills: DomainSkill[]
+  skills: SkillForPicker[]
   skillTags: string[]
   activeSkillTag: string
   onActiveSkillTagChange: (tag: string) => void
@@ -23,7 +35,7 @@ interface TaskSkillSelectorProps {
 }
 
 interface SkillItemProps {
-  skill: DomainSkill
+  skill: SkillForPicker
   selectedSkills: string[]
   onSkillChange: (skillId: string, checked: boolean) => void
 }
@@ -33,16 +45,51 @@ function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
     return null
   }
 
-  const isChecked = selectedSkills.includes(skill.id)
+  const isForceDelivery = !!skill.is_force_delivery
+  // Force-delivered + hard-coded legacy default skills are both shown as
+  // checked-and-disabled. Force-delivered skills are presented as "checked"
+  // regardless of the parent's selectedSkills state because the backend
+  // injects them server-side and we do not want users to see an unchecked
+  // tickbox for something they cannot opt out of.
+  const isLegacyDefault = defaultSkills.includes(skill.id)
+  const isDisabled = isLegacyDefault || isForceDelivery
+  const isChecked = isForceDelivery || selectedSkills.includes(skill.id)
 
   return (
     <div
-      className="flex cursor-pointer flex-row items-center gap-2 rounded-md px-2 py-1 hover:bg-accent"
-      onClick={() => onSkillChange(skill.id!, !isChecked)}
+      className={cn(
+        "flex flex-row items-center gap-2 rounded-md px-2 py-1",
+        isDisabled
+          ? "cursor-not-allowed opacity-80"
+          : "cursor-pointer hover:bg-accent"
+      )}
+      onClick={() => {
+        if (isDisabled) {
+          return
+        }
+        onSkillChange(skill.id!, !isChecked)
+      }}
     >
-      <Checkbox checked={isChecked} disabled={defaultSkills.includes(skill.id)} />
-      <div className="min-w-0">
-        <div className="text-sm">{skill.name}</div>
+      <Checkbox checked={isChecked} disabled={isDisabled} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="truncate">{skill.name}</span>
+          {isForceDelivery && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 px-1.5 py-0 text-[10px] leading-4"
+                >
+                  强制下发
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                由管理员强制下发，无需选择
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         <div className="line-clamp-1 break-all text-xs text-muted-foreground">
           {skill.description}
         </div>
@@ -176,6 +223,7 @@ export function TaskSkillSelector({
               className="mt-0 min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1"
             >
               {skills
+                .filter((skill) => !skill.is_force_delivery)
                 .filter((skill) => tag === "全部" || (skill.tags || []).includes(tag))
                 .map((skill) => (
                   <SkillItem
