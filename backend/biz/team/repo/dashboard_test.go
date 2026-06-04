@@ -83,6 +83,37 @@ func TestTeamDashboardOverviewAggregatesMetrics(t *testing.T) {
 	}
 }
 
+func TestTeamDashboardOverviewAggregatesUsageByTask(t *testing.T) {
+	ctx := context.Background()
+	client := newDashboardRepoTestDB(t)
+	repo := &TeamDashboardRepo{db: client, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
+	teamID := uuid.New()
+	userID := uuid.New()
+	taskID := uuid.New()
+
+	createDashboardTeamUser(t, client, teamID, userID, "林航", "前端组")
+	createDashboardTask(t, client, taskID, userID, "统计 token", consts.TaskStatusFinished, now.Add(-2*time.Hour), now.Add(-90*time.Minute), now.Add(-30*time.Minute))
+	createDashboardUsage(t, client, taskID, uuid.New(), "gpt-4o", 1200, now.Add(-48*time.Hour))
+
+	resp, err := repo.Overview(ctx, teamID, domain.TeamDashboardQuery{
+		Start: now.Add(-24 * time.Hour),
+		End:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Metrics.TotalTokens != 1200 || resp.Metrics.LLMRequests != 1 {
+		t.Fatalf("token metrics = %#v, want total_tokens 1200 and llm_requests 1", resp.Metrics)
+	}
+	if len(resp.Trends.TokenUsage) == 0 || resp.Trends.TokenUsage[len(resp.Trends.TokenUsage)-1].Value != 1200 {
+		t.Fatalf("token trend = %#v, want last value 1200", resp.Trends.TokenUsage)
+	}
+	if len(resp.Insights.HighConsumption) != 1 || resp.Insights.HighConsumption[0].ID != userID.String() || resp.Insights.HighConsumption[0].TotalTokens != 1200 {
+		t.Fatalf("high consumption = %#v, want task owner with 1200 tokens", resp.Insights.HighConsumption)
+	}
+}
+
 func TestTeamDashboardRepoAvoidsSQLiteOnlyTimeFunction(t *testing.T) {
 	content, err := os.ReadFile("dashboard.go")
 	if err != nil {

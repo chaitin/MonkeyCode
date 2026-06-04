@@ -64,6 +64,12 @@ func (r *TeamDashboardRepo) teamMemberIDs(ctx context.Context, teamID uuid.UUID)
 }
 
 func (r *TeamDashboardRepo) fillMetrics(ctx context.Context, resp *domain.TeamDashboardResp, memberIDs []uuid.UUID, req domain.TeamDashboardQuery) error {
+	periodTaskIDs, err := r.db.Task.Query().
+		Where(task.UserIDIn(memberIDs...), task.CreatedAtGTE(req.Start), task.CreatedAtLT(req.End)).
+		IDs(ctx)
+	if err != nil {
+		return err
+	}
 	taskCount, err := r.db.Task.Query().
 		Where(task.UserIDIn(memberIDs...), task.CreatedAtGTE(req.Start), task.CreatedAtLT(req.End)).
 		Count(ctx)
@@ -108,17 +114,8 @@ func (r *TeamDashboardRepo) fillMetrics(ctx context.Context, resp *domain.TeamDa
 			AvgDuration float64 `json:"avg_duration"`
 		}{AvgDuration: totalDuration.Seconds() / float64(len(finishedTasks))})
 	}
-	var usageRows []struct {
-		TotalTokens int64 `json:"total_tokens"`
-		LLMRequests int64 `json:"llm_requests"`
-	}
-	if err := r.db.TaskUsageStat.Query().
-		Where(taskusagestat.UserIDIn(memberIDs...), taskusagestat.CreatedAtGTE(req.Start), taskusagestat.CreatedAtLT(req.End)).
-		Aggregate(
-			db.As(db.Sum(taskusagestat.FieldTotalTokens), "total_tokens"),
-			db.As(db.Count(), "llm_requests"),
-		).
-		Scan(ctx, &usageRows); err != nil {
+	usage, err := r.usageSummaryByTaskIDs(ctx, periodTaskIDs)
+	if err != nil {
 		return err
 	}
 	resp.Metrics.TaskCount = taskCount
@@ -131,10 +128,8 @@ func (r *TeamDashboardRepo) fillMetrics(ctx context.Context, resp *domain.TeamDa
 	if len(durationRows) > 0 {
 		resp.Metrics.AverageDuration = int64(durationRows[0].AvgDuration)
 	}
-	if len(usageRows) > 0 {
-		resp.Metrics.TotalTokens = usageRows[0].TotalTokens
-		resp.Metrics.LLMRequests = usageRows[0].LLMRequests
-	}
+	resp.Metrics.TotalTokens = usage.totalTokens
+	resp.Metrics.LLMRequests = usage.requests
 	return nil
 }
 
@@ -147,9 +142,9 @@ func (r *TeamDashboardRepo) fillTrends(ctx context.Context, resp *domain.TeamDas
 		start := day
 		end := day.AddDate(0, 0, 1)
 		date := day.Format("2006-01-02")
-		taskCount, err := r.db.Task.Query().
+		dayTaskIDs, err := r.db.Task.Query().
 			Where(task.UserIDIn(memberIDs...), task.CreatedAtGTE(start), task.CreatedAtLT(end)).
-			Count(ctx)
+			IDs(ctx)
 		if err != nil {
 			return err
 		}
@@ -161,22 +156,13 @@ func (r *TeamDashboardRepo) fillTrends(ctx context.Context, resp *domain.TeamDas
 		if err != nil {
 			return err
 		}
-		var usageRows []struct {
-			TotalTokens int64 `json:"total_tokens"`
-		}
-		if err := r.db.TaskUsageStat.Query().
-			Where(taskusagestat.UserIDIn(memberIDs...), taskusagestat.CreatedAtGTE(start), taskusagestat.CreatedAtLT(end)).
-			Aggregate(db.As(db.Sum(taskusagestat.FieldTotalTokens), "total_tokens")).
-			Scan(ctx, &usageRows); err != nil {
+		usage, err := r.usageSummaryByTaskIDs(ctx, dayTaskIDs)
+		if err != nil {
 			return err
 		}
-		var tokens int64
-		if len(usageRows) > 0 {
-			tokens = usageRows[0].TotalTokens
-		}
-		resp.Trends.TaskCounts = append(resp.Trends.TaskCounts, domain.TeamDashboardTrendPoint{Date: date, Value: int64(taskCount)})
+		resp.Trends.TaskCounts = append(resp.Trends.TaskCounts, domain.TeamDashboardTrendPoint{Date: date, Value: int64(len(dayTaskIDs))})
 		resp.Trends.ActiveMembers = append(resp.Trends.ActiveMembers, domain.TeamDashboardTrendPoint{Date: date, Value: int64(active)})
-		resp.Trends.TokenUsage = append(resp.Trends.TokenUsage, domain.TeamDashboardTrendPoint{Date: date, Value: tokens})
+		resp.Trends.TokenUsage = append(resp.Trends.TokenUsage, domain.TeamDashboardTrendPoint{Date: date, Value: usage.totalTokens})
 	}
 	return nil
 }
@@ -233,9 +219,7 @@ func (r *TeamDashboardRepo) fillInsights(ctx context.Context, resp *domain.TeamD
 		})
 	}
 
-	usageItems, err := r.db.TaskUsageStat.Query().
-		Where(taskusagestat.UserIDIn(memberIDs...), taskusagestat.CreatedAtGTE(req.Start), taskusagestat.CreatedAtLT(req.End)).
-		All(ctx)
+	usageByTask, err := r.usageByTaskIDs(ctx, dashboardTaskIDs(tasks))
 	if err != nil {
 		return err
 	}
@@ -246,15 +230,19 @@ func (r *TeamDashboardRepo) fillInsights(ctx context.Context, resp *domain.TeamD
 	}
 	consumptionByUser := make(map[uuid.UUID]*consumptionItem)
 	var allTokens int64
-	for _, usage := range usageItems {
-		item := consumptionByUser[usage.UserID]
-		if item == nil {
-			item = &consumptionItem{userID: usage.UserID}
-			consumptionByUser[usage.UserID] = item
+	for _, tk := range tasks {
+		usage := usageByTask[tk.ID]
+		if usage.totalTokens == 0 && usage.requests == 0 {
+			continue
 		}
-		item.totalTokens += usage.TotalTokens
-		item.requests++
-		allTokens += usage.TotalTokens
+		item := consumptionByUser[tk.UserID]
+		if item == nil {
+			item = &consumptionItem{userID: tk.UserID}
+			consumptionByUser[tk.UserID] = item
+		}
+		item.totalTokens += usage.totalTokens
+		item.requests += usage.requests
+		allTokens += usage.totalTokens
 	}
 	consumptionItems := make([]*consumptionItem, 0, len(consumptionByUser))
 	for _, item := range consumptionByUser {
@@ -333,6 +321,72 @@ func (r *TeamDashboardRepo) fillInsights(ctx context.Context, resp *domain.TeamD
 		})
 	}
 	return nil
+}
+
+type dashboardUsageSummary struct {
+	totalTokens int64
+	requests    int64
+}
+
+type dashboardUsageRow struct {
+	ID          uuid.UUID `json:"task_id"`
+	TotalTokens int64     `json:"total_tokens"`
+	LLMRequests int64     `json:"llm_requests"`
+}
+
+func (r *TeamDashboardRepo) usageSummaryByTaskIDs(ctx context.Context, taskIDs []uuid.UUID) (dashboardUsageSummary, error) {
+	if len(taskIDs) == 0 {
+		return dashboardUsageSummary{}, nil
+	}
+	var rows []struct {
+		TotalTokens int64 `json:"total_tokens"`
+		LLMRequests int64 `json:"llm_requests"`
+	}
+	if err := r.db.TaskUsageStat.Query().
+		Where(taskusagestat.TaskIDIn(taskIDs...)).
+		Aggregate(
+			db.As(db.Sum(taskusagestat.FieldTotalTokens), "total_tokens"),
+			db.As(db.Count(), "llm_requests"),
+		).
+		Scan(ctx, &rows); err != nil {
+		return dashboardUsageSummary{}, err
+	}
+	if len(rows) == 0 {
+		return dashboardUsageSummary{}, nil
+	}
+	return dashboardUsageSummary{totalTokens: rows[0].TotalTokens, requests: rows[0].LLMRequests}, nil
+}
+
+func (r *TeamDashboardRepo) usageByTaskIDs(ctx context.Context, taskIDs []uuid.UUID) (map[uuid.UUID]dashboardUsageSummary, error) {
+	result := make(map[uuid.UUID]dashboardUsageSummary)
+	if len(taskIDs) == 0 {
+		return result, nil
+	}
+	var rows []dashboardUsageRow
+	if err := r.db.TaskUsageStat.Query().
+		Where(taskusagestat.TaskIDIn(taskIDs...)).
+		Modify(func(s *sql.Selector) {
+			s.Select(
+				taskusagestat.FieldTaskID,
+				sql.As(sql.Sum(s.C(taskusagestat.FieldTotalTokens)), "total_tokens"),
+				sql.As(sql.Count("*"), "llm_requests"),
+			).GroupBy(s.C(taskusagestat.FieldTaskID))
+		}).
+		Scan(ctx, &rows); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.ID] = dashboardUsageSummary{totalTokens: row.TotalTokens, requests: row.LLMRequests}
+	}
+	return result, nil
+}
+
+func dashboardTaskIDs(tasks []*db.Task) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(tasks))
+	for _, tk := range tasks {
+		ids = append(ids, tk.ID)
+	}
+	return ids
 }
 
 func (r *TeamDashboardRepo) firstGroupName(ctx context.Context, userID uuid.UUID) string {
