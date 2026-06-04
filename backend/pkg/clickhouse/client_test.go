@@ -1,6 +1,7 @@
 package clickhouse
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"testing"
@@ -63,6 +64,23 @@ func TestNormalizeTableRejectsUnsafeTableName(t *testing.T) {
 	_, err := NormalizeTable("task_logs; DROP TABLE task_logs")
 	if err == nil {
 		t.Fatal("expected unsafe table name error")
+	}
+}
+
+func TestNormalizeModelUsageTableDefaults(t *testing.T) {
+	table, err := NormalizeModelUsageTable("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if table != ModelUsageTable {
+		t.Fatalf("table = %q, want %s", table, ModelUsageTable)
+	}
+}
+
+func TestNormalizeModelUsageTableRejectsUnsafeName(t *testing.T) {
+	_, err := NormalizeModelUsageTable("model_usage_events; DROP TABLE task_logs")
+	if err == nil {
+		t.Fatal("expected unsafe model usage table name error")
 	}
 }
 
@@ -175,5 +193,133 @@ func TestBuildTaskLogTableSQLUsesConfiguredTable(t *testing.T) {
 	}
 	if !strings.Contains(query, "ENGINE = MergeTree") {
 		t.Fatalf("query = %q, want MergeTree engine", query)
+	}
+}
+
+func TestBuildModelUsageTableSQLIncludesCachedTokens(t *testing.T) {
+	query, err := buildModelUsageTableSQL("model_usage_events_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"CREATE TABLE IF NOT EXISTS `model_usage_events_test`",
+		"team_id String",
+		"user_id String",
+		"task_id String",
+		"project_id String",
+		"cached_tokens UInt64",
+		"ORDER BY (team_id, event_time, user_id, task_id, model_id)",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("query missing %q:\n%s", want, query)
+		}
+	}
+}
+
+func TestInsertModelUsageEventWritesCachedTokens(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE model_usage_events_test (
+		event_time timestamp,
+		team_id text,
+		user_id text,
+		task_id text,
+		project_id text,
+		provider text,
+		model_id text,
+		model_name text,
+		input_tokens integer,
+		output_tokens integer,
+		cached_tokens integer,
+		total_tokens integer,
+		request_count integer,
+		success integer,
+		duration_ms integer,
+		trace_id text,
+		request_id text,
+		source text
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewWithDBTables(db, "task_logs_test", "model_usage_events_test")
+	event := ModelUsageEvent{
+		EventTime:    time.Date(2026, 6, 4, 19, 0, 0, 0, time.UTC),
+		TeamID:       "team-1",
+		UserID:       "user-1",
+		TaskID:       "task-1",
+		ProjectID:    "project-1",
+		Provider:     "openai",
+		ModelID:      "model-1",
+		ModelName:    "gpt-4o",
+		InputTokens:  100,
+		OutputTokens: 40,
+		CachedTokens: 25,
+		TotalTokens:  140,
+		RequestCount: 1,
+		Success:      true,
+		DurationMS:   1234,
+		TraceID:      "trace-1",
+		RequestID:    "request-1",
+		Source:       "runtime",
+	}
+	if err := client.InsertModelUsageEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	var cached int64
+	if err := db.QueryRow("SELECT cached_tokens FROM model_usage_events_test WHERE request_id = ?", "request-1").Scan(&cached); err != nil {
+		t.Fatal(err)
+	}
+	if cached != 25 {
+		t.Fatalf("cached_tokens = %d, want 25", cached)
+	}
+}
+
+func TestQueryModelUsageSummaryAggregatesByTeamAndTime(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`CREATE TABLE model_usage_events_test (
+		event_time timestamp,
+		team_id text,
+		user_id text,
+		task_id text,
+		project_id text,
+		model_id text,
+		total_tokens integer,
+		input_tokens integer,
+		output_tokens integer,
+		cached_tokens integer,
+		request_count integer
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
+	_, err = db.Exec(`INSERT INTO model_usage_events_test
+		(event_time, team_id, user_id, task_id, project_id, model_id, total_tokens, input_tokens, output_tokens, cached_tokens, request_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		start.Add(time.Hour), "team-1", "user-1", "task-1", "", "m1", 100, 60, 40, 20, 1,
+		start.Add(time.Hour), "team-2", "user-2", "task-2", "", "m1", 900, 500, 400, 0, 1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewWithDBTables(db, "task_logs_test", "model_usage_events_test")
+	summary, err := client.QueryModelUsageSummary(context.Background(), ModelUsageQuery{
+		TeamID: "team-1",
+		Start:  start,
+		End:    start.AddDate(0, 0, 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.TotalTokens != 100 || summary.CachedTokens != 20 || summary.Requests != 1 {
+		t.Fatalf("summary = %#v", summary)
 	}
 }
