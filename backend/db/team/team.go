@@ -21,6 +21,14 @@ const (
 	FieldName = "name"
 	// FieldMemberLimit holds the string denoting the member_limit field in the database.
 	FieldMemberLimit = "member_limit"
+	// FieldTaskVMSleepEnabled holds the string denoting the task_vm_sleep_enabled field in the database.
+	FieldTaskVMSleepEnabled = "task_vm_sleep_enabled"
+	// FieldTaskVMSleepSeconds holds the string denoting the task_vm_sleep_seconds field in the database.
+	FieldTaskVMSleepSeconds = "task_vm_sleep_seconds"
+	// FieldTaskVMRecycleEnabled holds the string denoting the task_vm_recycle_enabled field in the database.
+	FieldTaskVMRecycleEnabled = "task_vm_recycle_enabled"
+	// FieldTaskVMRecycleSeconds holds the string denoting the task_vm_recycle_seconds field in the database.
+	FieldTaskVMRecycleSeconds = "task_vm_recycle_seconds"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -92,6 +100,10 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldName,
 	FieldMemberLimit,
+	FieldTaskVMSleepEnabled,
+	FieldTaskVMSleepSeconds,
+	FieldTaskVMRecycleEnabled,
+	FieldTaskVMRecycleSeconds,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -128,6 +140,14 @@ var (
 	Interceptors [1]ent.Interceptor
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultTaskVMSleepEnabled holds the default value on creation for the "task_vm_sleep_enabled" field.
+	DefaultTaskVMSleepEnabled bool
+	// DefaultTaskVMSleepSeconds holds the default value on creation for the "task_vm_sleep_seconds" field.
+	DefaultTaskVMSleepSeconds int
+	// DefaultTaskVMRecycleEnabled holds the default value on creation for the "task_vm_recycle_enabled" field.
+	DefaultTaskVMRecycleEnabled bool
+	// DefaultTaskVMRecycleSeconds holds the default value on creation for the "task_vm_recycle_seconds" field.
+	DefaultTaskVMRecycleSeconds int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -155,6 +175,26 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByMemberLimit orders the results by the member_limit field.
 func ByMemberLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMemberLimit, opts...).ToFunc()
+}
+
+// ByTaskVMSleepEnabled orders the results by the task_vm_sleep_enabled field.
+func ByTaskVMSleepEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTaskVMSleepEnabled, opts...).ToFunc()
+}
+
+// ByTaskVMSleepSeconds orders the results by the task_vm_sleep_seconds field.
+func ByTaskVMSleepSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTaskVMSleepSeconds, opts...).ToFunc()
+}
+
+// ByTaskVMRecycleEnabled orders the results by the task_vm_recycle_enabled field.
+func ByTaskVMRecycleEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTaskVMRecycleEnabled, opts...).ToFunc()
+}
+
+// ByTaskVMRecycleSeconds orders the results by the task_vm_recycle_seconds field.
+func ByTaskVMRecycleSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTaskVMRecycleSeconds, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

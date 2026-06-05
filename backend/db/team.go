@@ -24,6 +24,14 @@ type Team struct {
 	Name string `json:"name,omitempty"`
 	// MemberLimit holds the value of the "member_limit" field.
 	MemberLimit int `json:"member_limit,omitempty"`
+	// TaskVMSleepEnabled holds the value of the "task_vm_sleep_enabled" field.
+	TaskVMSleepEnabled bool `json:"task_vm_sleep_enabled,omitempty"`
+	// TaskVMSleepSeconds holds the value of the "task_vm_sleep_seconds" field.
+	TaskVMSleepSeconds int `json:"task_vm_sleep_seconds,omitempty"`
+	// TaskVMRecycleEnabled holds the value of the "task_vm_recycle_enabled" field.
+	TaskVMRecycleEnabled bool `json:"task_vm_recycle_enabled,omitempty"`
+	// TaskVMRecycleSeconds holds the value of the "task_vm_recycle_seconds" field.
+	TaskVMRecycleSeconds int `json:"task_vm_recycle_seconds,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -123,7 +131,9 @@ func (*Team) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case team.FieldMemberLimit:
+		case team.FieldTaskVMSleepEnabled, team.FieldTaskVMRecycleEnabled:
+			values[i] = new(sql.NullBool)
+		case team.FieldMemberLimit, team.FieldTaskVMSleepSeconds, team.FieldTaskVMRecycleSeconds:
 			values[i] = new(sql.NullInt64)
 		case team.FieldName:
 			values[i] = new(sql.NullString)
@@ -169,6 +179,30 @@ func (_m *Team) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field member_limit", values[i])
 			} else if value.Valid {
 				_m.MemberLimit = int(value.Int64)
+			}
+		case team.FieldTaskVMSleepEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field task_vm_sleep_enabled", values[i])
+			} else if value.Valid {
+				_m.TaskVMSleepEnabled = value.Bool
+			}
+		case team.FieldTaskVMSleepSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field task_vm_sleep_seconds", values[i])
+			} else if value.Valid {
+				_m.TaskVMSleepSeconds = int(value.Int64)
+			}
+		case team.FieldTaskVMRecycleEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field task_vm_recycle_enabled", values[i])
+			} else if value.Valid {
+				_m.TaskVMRecycleEnabled = value.Bool
+			}
+		case team.FieldTaskVMRecycleSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field task_vm_recycle_seconds", values[i])
+			} else if value.Valid {
+				_m.TaskVMRecycleSeconds = int(value.Int64)
 			}
 		case team.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -261,6 +295,18 @@ func (_m *Team) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("member_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MemberLimit))
+	builder.WriteString(", ")
+	builder.WriteString("task_vm_sleep_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TaskVMSleepEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("task_vm_sleep_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TaskVMSleepSeconds))
+	builder.WriteString(", ")
+	builder.WriteString("task_vm_recycle_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TaskVMRecycleEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("task_vm_recycle_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TaskVMRecycleSeconds))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

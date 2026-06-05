@@ -92,6 +92,76 @@ func (_u *TeamUpdate) AddMemberLimit(v int) *TeamUpdate {
 	return _u
 }
 
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (_u *TeamUpdate) SetTaskVMSleepEnabled(v bool) *TeamUpdate {
+	_u.mutation.SetTaskVMSleepEnabled(v)
+	return _u
+}
+
+// SetNillableTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableTaskVMSleepEnabled(v *bool) *TeamUpdate {
+	if v != nil {
+		_u.SetTaskVMSleepEnabled(*v)
+	}
+	return _u
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (_u *TeamUpdate) SetTaskVMSleepSeconds(v int) *TeamUpdate {
+	_u.mutation.ResetTaskVMSleepSeconds()
+	_u.mutation.SetTaskVMSleepSeconds(v)
+	return _u
+}
+
+// SetNillableTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableTaskVMSleepSeconds(v *int) *TeamUpdate {
+	if v != nil {
+		_u.SetTaskVMSleepSeconds(*v)
+	}
+	return _u
+}
+
+// AddTaskVMSleepSeconds adds value to the "task_vm_sleep_seconds" field.
+func (_u *TeamUpdate) AddTaskVMSleepSeconds(v int) *TeamUpdate {
+	_u.mutation.AddTaskVMSleepSeconds(v)
+	return _u
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (_u *TeamUpdate) SetTaskVMRecycleEnabled(v bool) *TeamUpdate {
+	_u.mutation.SetTaskVMRecycleEnabled(v)
+	return _u
+}
+
+// SetNillableTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableTaskVMRecycleEnabled(v *bool) *TeamUpdate {
+	if v != nil {
+		_u.SetTaskVMRecycleEnabled(*v)
+	}
+	return _u
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (_u *TeamUpdate) SetTaskVMRecycleSeconds(v int) *TeamUpdate {
+	_u.mutation.ResetTaskVMRecycleSeconds()
+	_u.mutation.SetTaskVMRecycleSeconds(v)
+	return _u
+}
+
+// SetNillableTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableTaskVMRecycleSeconds(v *int) *TeamUpdate {
+	if v != nil {
+		_u.SetTaskVMRecycleSeconds(*v)
+	}
+	return _u
+}
+
+// AddTaskVMRecycleSeconds adds value to the "task_vm_recycle_seconds" field.
+func (_u *TeamUpdate) AddTaskVMRecycleSeconds(v int) *TeamUpdate {
+	_u.mutation.AddTaskVMRecycleSeconds(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TeamUpdate) SetCreatedAt(v time.Time) *TeamUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -446,6 +516,24 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedMemberLimit(); ok {
 		_spec.AddField(team.FieldMemberLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TaskVMSleepEnabled(); ok {
+		_spec.SetField(team.FieldTaskVMSleepEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TaskVMSleepSeconds(); ok {
+		_spec.SetField(team.FieldTaskVMSleepSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedTaskVMSleepSeconds(); ok {
+		_spec.AddField(team.FieldTaskVMSleepSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TaskVMRecycleEnabled(); ok {
+		_spec.SetField(team.FieldTaskVMRecycleEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TaskVMRecycleSeconds(); ok {
+		_spec.SetField(team.FieldTaskVMRecycleSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedTaskVMRecycleSeconds(); ok {
+		_spec.AddField(team.FieldTaskVMRecycleSeconds, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(team.FieldCreatedAt, field.TypeTime, value)
@@ -881,6 +969,76 @@ func (_u *TeamUpdateOne) AddMemberLimit(v int) *TeamUpdateOne {
 	return _u
 }
 
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (_u *TeamUpdateOne) SetTaskVMSleepEnabled(v bool) *TeamUpdateOne {
+	_u.mutation.SetTaskVMSleepEnabled(v)
+	return _u
+}
+
+// SetNillableTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableTaskVMSleepEnabled(v *bool) *TeamUpdateOne {
+	if v != nil {
+		_u.SetTaskVMSleepEnabled(*v)
+	}
+	return _u
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (_u *TeamUpdateOne) SetTaskVMSleepSeconds(v int) *TeamUpdateOne {
+	_u.mutation.ResetTaskVMSleepSeconds()
+	_u.mutation.SetTaskVMSleepSeconds(v)
+	return _u
+}
+
+// SetNillableTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableTaskVMSleepSeconds(v *int) *TeamUpdateOne {
+	if v != nil {
+		_u.SetTaskVMSleepSeconds(*v)
+	}
+	return _u
+}
+
+// AddTaskVMSleepSeconds adds value to the "task_vm_sleep_seconds" field.
+func (_u *TeamUpdateOne) AddTaskVMSleepSeconds(v int) *TeamUpdateOne {
+	_u.mutation.AddTaskVMSleepSeconds(v)
+	return _u
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (_u *TeamUpdateOne) SetTaskVMRecycleEnabled(v bool) *TeamUpdateOne {
+	_u.mutation.SetTaskVMRecycleEnabled(v)
+	return _u
+}
+
+// SetNillableTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableTaskVMRecycleEnabled(v *bool) *TeamUpdateOne {
+	if v != nil {
+		_u.SetTaskVMRecycleEnabled(*v)
+	}
+	return _u
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (_u *TeamUpdateOne) SetTaskVMRecycleSeconds(v int) *TeamUpdateOne {
+	_u.mutation.ResetTaskVMRecycleSeconds()
+	_u.mutation.SetTaskVMRecycleSeconds(v)
+	return _u
+}
+
+// SetNillableTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableTaskVMRecycleSeconds(v *int) *TeamUpdateOne {
+	if v != nil {
+		_u.SetTaskVMRecycleSeconds(*v)
+	}
+	return _u
+}
+
+// AddTaskVMRecycleSeconds adds value to the "task_vm_recycle_seconds" field.
+func (_u *TeamUpdateOne) AddTaskVMRecycleSeconds(v int) *TeamUpdateOne {
+	_u.mutation.AddTaskVMRecycleSeconds(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TeamUpdateOne) SetCreatedAt(v time.Time) *TeamUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -1265,6 +1423,24 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 	}
 	if value, ok := _u.mutation.AddedMemberLimit(); ok {
 		_spec.AddField(team.FieldMemberLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TaskVMSleepEnabled(); ok {
+		_spec.SetField(team.FieldTaskVMSleepEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TaskVMSleepSeconds(); ok {
+		_spec.SetField(team.FieldTaskVMSleepSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedTaskVMSleepSeconds(); ok {
+		_spec.AddField(team.FieldTaskVMSleepSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TaskVMRecycleEnabled(); ok {
+		_spec.SetField(team.FieldTaskVMRecycleEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.TaskVMRecycleSeconds(); ok {
+		_spec.SetField(team.FieldTaskVMRecycleSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedTaskVMRecycleSeconds(); ok {
+		_spec.AddField(team.FieldTaskVMRecycleSeconds, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(team.FieldCreatedAt, field.TypeTime, value)

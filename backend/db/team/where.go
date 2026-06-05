@@ -71,6 +71,26 @@ func MemberLimit(v int) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldMemberLimit, v))
 }
 
+// TaskVMSleepEnabled applies equality check predicate on the "task_vm_sleep_enabled" field. It's identical to TaskVMSleepEnabledEQ.
+func TaskVMSleepEnabled(v bool) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMSleepEnabled, v))
+}
+
+// TaskVMSleepSeconds applies equality check predicate on the "task_vm_sleep_seconds" field. It's identical to TaskVMSleepSecondsEQ.
+func TaskVMSleepSeconds(v int) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMRecycleEnabled applies equality check predicate on the "task_vm_recycle_enabled" field. It's identical to TaskVMRecycleEnabledEQ.
+func TaskVMRecycleEnabled(v bool) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMRecycleEnabled, v))
+}
+
+// TaskVMRecycleSeconds applies equality check predicate on the "task_vm_recycle_seconds" field. It's identical to TaskVMRecycleSecondsEQ.
+func TaskVMRecycleSeconds(v int) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMRecycleSeconds, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Team {
 	return predicate.Team(sql.FieldEQ(FieldCreatedAt, v))
@@ -234,6 +254,106 @@ func MemberLimitLT(v int) predicate.Team {
 // MemberLimitLTE applies the LTE predicate on the "member_limit" field.
 func MemberLimitLTE(v int) predicate.Team {
 	return predicate.Team(sql.FieldLTE(FieldMemberLimit, v))
+}
+
+// TaskVMSleepEnabledEQ applies the EQ predicate on the "task_vm_sleep_enabled" field.
+func TaskVMSleepEnabledEQ(v bool) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMSleepEnabled, v))
+}
+
+// TaskVMSleepEnabledNEQ applies the NEQ predicate on the "task_vm_sleep_enabled" field.
+func TaskVMSleepEnabledNEQ(v bool) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldTaskVMSleepEnabled, v))
+}
+
+// TaskVMSleepSecondsEQ applies the EQ predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsEQ(v int) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMSleepSecondsNEQ applies the NEQ predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsNEQ(v int) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMSleepSecondsIn applies the In predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsIn(vs ...int) predicate.Team {
+	return predicate.Team(sql.FieldIn(FieldTaskVMSleepSeconds, vs...))
+}
+
+// TaskVMSleepSecondsNotIn applies the NotIn predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsNotIn(vs ...int) predicate.Team {
+	return predicate.Team(sql.FieldNotIn(FieldTaskVMSleepSeconds, vs...))
+}
+
+// TaskVMSleepSecondsGT applies the GT predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsGT(v int) predicate.Team {
+	return predicate.Team(sql.FieldGT(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMSleepSecondsGTE applies the GTE predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsGTE(v int) predicate.Team {
+	return predicate.Team(sql.FieldGTE(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMSleepSecondsLT applies the LT predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsLT(v int) predicate.Team {
+	return predicate.Team(sql.FieldLT(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMSleepSecondsLTE applies the LTE predicate on the "task_vm_sleep_seconds" field.
+func TaskVMSleepSecondsLTE(v int) predicate.Team {
+	return predicate.Team(sql.FieldLTE(FieldTaskVMSleepSeconds, v))
+}
+
+// TaskVMRecycleEnabledEQ applies the EQ predicate on the "task_vm_recycle_enabled" field.
+func TaskVMRecycleEnabledEQ(v bool) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMRecycleEnabled, v))
+}
+
+// TaskVMRecycleEnabledNEQ applies the NEQ predicate on the "task_vm_recycle_enabled" field.
+func TaskVMRecycleEnabledNEQ(v bool) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldTaskVMRecycleEnabled, v))
+}
+
+// TaskVMRecycleSecondsEQ applies the EQ predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsEQ(v int) predicate.Team {
+	return predicate.Team(sql.FieldEQ(FieldTaskVMRecycleSeconds, v))
+}
+
+// TaskVMRecycleSecondsNEQ applies the NEQ predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsNEQ(v int) predicate.Team {
+	return predicate.Team(sql.FieldNEQ(FieldTaskVMRecycleSeconds, v))
+}
+
+// TaskVMRecycleSecondsIn applies the In predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsIn(vs ...int) predicate.Team {
+	return predicate.Team(sql.FieldIn(FieldTaskVMRecycleSeconds, vs...))
+}
+
+// TaskVMRecycleSecondsNotIn applies the NotIn predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsNotIn(vs ...int) predicate.Team {
+	return predicate.Team(sql.FieldNotIn(FieldTaskVMRecycleSeconds, vs...))
+}
+
+// TaskVMRecycleSecondsGT applies the GT predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsGT(v int) predicate.Team {
+	return predicate.Team(sql.FieldGT(FieldTaskVMRecycleSeconds, v))
+}
+
+// TaskVMRecycleSecondsGTE applies the GTE predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsGTE(v int) predicate.Team {
+	return predicate.Team(sql.FieldGTE(FieldTaskVMRecycleSeconds, v))
+}
+
+// TaskVMRecycleSecondsLT applies the LT predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsLT(v int) predicate.Team {
+	return predicate.Team(sql.FieldLT(FieldTaskVMRecycleSeconds, v))
+}
+
+// TaskVMRecycleSecondsLTE applies the LTE predicate on the "task_vm_recycle_seconds" field.
+func TaskVMRecycleSecondsLTE(v int) predicate.Team {
+	return predicate.Team(sql.FieldLTE(FieldTaskVMRecycleSeconds, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
