@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Line,
-  LineChart,
+  Area,
+  AreaChart,
+  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts"
+import {
+  Activity,
+  FolderKanban,
+  MessageSquareText,
+  Target,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import type { DomainTeamDashboardResp } from "@/api/Api"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { InsightTable } from "@/components/manager/dashboard/insight-table"
 import { MetricCard } from "@/components/manager/dashboard/metric-card"
 import {
@@ -35,11 +44,220 @@ function formatTokens(value?: number) {
 }
 
 function InsightEmpty() {
-  return <div className="text-muted-foreground text-sm">暂无数据</div>
+  return (
+    <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+      当前周期暂无数据
+    </div>
+  )
 }
 
 function formatCount(value?: number) {
   return String(value || 0)
+}
+
+function formatRate(value?: number) {
+  return `${value || 0}%`
+}
+
+function formatChartDate(value?: string) {
+  if (!value) return ""
+  const parts = value.split("-")
+  if (parts.length >= 3) return `${parts[1]}/${parts[2]}`
+  return value
+}
+
+function ChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: { value?: number }[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+
+  return (
+    <div className="rounded-md border border-[var(--dashboard-brand-border)] bg-popover px-4 py-2 text-sm shadow-sm">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="mt-2 font-medium text-[var(--dashboard-brand)]">
+        {formatCount(payload[0]?.value)}
+      </div>
+    </div>
+  )
+}
+
+function DashboardLineChart({
+  data,
+  stroke,
+}: {
+  data: { date?: string; value?: number }[]
+  stroke: string
+}) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id="dashboardTrendArea" x1="0" x2="0" y1="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor="var(--dashboard-brand)"
+              stopOpacity={0.18}
+            />
+            <stop
+              offset="55%"
+              stopColor="var(--dashboard-brand)"
+              stopOpacity={0.08}
+            />
+            <stop
+              offset="100%"
+              stopColor="var(--dashboard-brand)"
+              stopOpacity={0}
+            />
+          </linearGradient>
+        </defs>
+        <CartesianGrid
+          stroke="currentColor"
+          strokeDasharray="4 8"
+          strokeOpacity={0.1}
+          vertical={false}
+        />
+        <XAxis
+          dataKey="date"
+          interval="preserveStartEnd"
+          minTickGap={32}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tickFormatter={formatChartDate}
+          tick={{ fontSize: 11, fill: "currentColor", opacity: 0.36 }}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          width={40}
+          tick={{ fontSize: 11, fill: "currentColor", opacity: 0.36 }}
+        />
+        <Tooltip
+          content={<ChartTooltip />}
+          cursor={{ stroke: "var(--dashboard-brand)", strokeOpacity: 0.14 }}
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={stroke}
+          strokeWidth={2}
+          fill="url(#dashboardTrendArea)"
+          fillOpacity={1}
+          dot={false}
+          activeDot={{ r: 3.5, strokeWidth: 0 }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+function InsightRow({
+  title,
+  subtitle,
+  value,
+  badge,
+}: {
+  title: string
+  subtitle: string
+  value: string
+  badge?: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-md px-2 py-2 text-sm hover:bg-muted/60">
+      <div className="min-w-0">
+        <div className="truncate font-medium">{title}</div>
+        <div className="mt-2 flex items-center gap-2 text-muted-foreground">
+          {badge && (
+            <Badge variant="outline" className="h-6 px-2 text-xs">
+              {badge}
+            </Badge>
+          )}
+          <span className="truncate">{subtitle}</span>
+        </div>
+      </div>
+      <div className="shrink-0 font-medium text-[var(--dashboard-brand)]">
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function TaskStatsPanel({
+  running,
+  finished,
+  averageDuration,
+  tokens,
+  requests,
+}: {
+  running: number
+  finished: number
+  averageDuration?: number
+  tokens?: number
+  requests?: number
+}) {
+  const total = running + finished
+  const finishedRate = total > 0 ? Math.round((finished / total) * 100) : 0
+
+  return (
+    <Card className="gap-0 rounded-lg shadow-none">
+      <CardHeader className="gap-2 px-6 pb-4">
+        <CardTitle className="text-base font-semibold">任务统计</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          运行状态、耗时与模型调用
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-lg bg-muted/60 p-4">
+            <div className="text-sm text-muted-foreground">运行中</div>
+            <div className="mt-2 text-2xl font-semibold leading-none">
+              {running}
+            </div>
+          </div>
+          <div className="rounded-lg bg-muted/60 p-4">
+            <div className="text-sm text-muted-foreground">已结束</div>
+            <div className="mt-2 text-2xl font-semibold leading-none">
+              {finished}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">完成占比</span>
+            <span className="font-medium">{finishedRate}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-[var(--dashboard-brand-muted)]">
+            <div
+              className="h-2 rounded-full bg-[var(--dashboard-brand)]"
+              style={{ width: `${finishedRate}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">平均耗时</span>
+            <span className="font-medium">{formatDuration(averageDuration)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Token 消耗</span>
+            <span className="font-medium">{formatTokens(tokens)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">模型调用</span>
+            <span className="font-medium">{requests || 0} 次</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function TeamManagerOverview() {
@@ -74,17 +292,33 @@ export default function TeamManagerOverview() {
   const projectTrend = useMemo(() => projectStats?.daily_created || [], [projectStats])
   const taskTrend = useMemo(() => taskStats?.daily_created || [], [taskStats])
   const conversationTrend = useMemo(() => conversationStats?.daily_created || [], [conversationStats])
+  const hasTrendData =
+    projectTrend.length > 0 || taskTrend.length > 0 || conversationTrend.length > 0
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-normal">
-            团队管理概览
-          </h1>
-          <p className="text-muted-foreground text-sm">项目、任务与对话统计</p>
+    <div
+      className="flex flex-col gap-6 [--dashboard-brand:oklch(0.555_0.163_48.998)] [--dashboard-brand-border:oklch(0.555_0.163_48.998_/_28%)] [--dashboard-brand-muted:oklch(0.555_0.163_48.998_/_12%)]"
+    >
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-normal">
+              团队管理概览
+            </h1>
+            {loading && data && (
+              <Badge variant="outline" className="font-normal">
+                刷新中
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            项目、任务、对话与资源消耗
+          </p>
         </div>
-        <TimeRangeTabs value={range} onChange={setRange} />
+        <div className="flex shrink-0 flex-col gap-2">
+          <div className="text-sm font-medium">统计周期</div>
+          <TimeRangeTabs value={range} onChange={setRange} />
+        </div>
       </div>
 
       {loading && !data ? (
@@ -98,175 +332,155 @@ export default function TeamManagerOverview() {
         </Empty>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-3">
-            <MetricCard
-              title="项目总数"
-              value={formatCount(projectStats?.total)}
-              description={`近 7 天活动 ${projectStats?.active_7d || 0} · 今日活动 ${projectStats?.active_today || 0}`}
-            />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               title="任务总数"
               value={formatCount(taskStats?.total)}
-              description={`近 7 天活动 ${taskStats?.active_7d || 0} · 今日活动 ${taskStats?.active_today || 0}`}
+              stats={[
+                { label: "近 7 天活动", value: formatCount(taskStats?.active_7d) },
+                { label: "今日活动", value: formatCount(taskStats?.active_today) },
+              ]}
+              icon={<Target />}
+            />
+            <MetricCard
+              title="项目总数"
+              value={formatCount(projectStats?.total)}
+              stats={[
+                { label: "近 7 天活动", value: formatCount(projectStats?.active_7d) },
+                { label: "今日活动", value: formatCount(projectStats?.active_today) },
+              ]}
+              icon={<FolderKanban />}
             />
             <MetricCard
               title="对话总数"
               value={formatCount(conversationStats?.total)}
-              description={`近 7 天 ${conversationStats?.count_7d || 0} · 今日 ${conversationStats?.count_today || 0}`}
+              stats={[
+                { label: "近 7 天", value: formatCount(conversationStats?.count_7d) },
+                { label: "今日", value: formatCount(conversationStats?.count_today) },
+              ]}
+              icon={<MessageSquareText />}
             />
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-3">
-            <TrendCard title="每天创建项目数">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={projectTrend}>
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} width={32} />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </TrendCard>
-            <TrendCard title="每天创建任务数">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={taskTrend}>
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} width={32} />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#059669"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </TrendCard>
-            <TrendCard title="每天创建对话数">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={conversationTrend}>
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} width={40} />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#0891b2"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </TrendCard>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               title="活跃成员"
               value={`${metrics?.active_members || 0} / ${metrics?.total_members || 0}`}
-              description={`活跃率 ${metrics?.active_rate || 0}%`}
+              stats={[
+                { label: "活跃率", value: formatRate(metrics?.active_rate) },
+                { label: "总成员", value: formatCount(metrics?.total_members) },
+              ]}
+              icon={<Activity />}
             />
-            <MetricCard
-              title="周期任务"
-              value={String(metrics?.task_count || 0)}
-              description={`运行中 ${metrics?.running_task_count || 0} · 已结束 ${metrics?.finished_task_count || 0}`}
-            />
-            <MetricCard
-              title="平均耗时"
-              value={formatDuration(metrics?.average_duration)}
-              description="仅统计已完成任务"
-            />
-            <MetricCard
-              title="Token 消耗"
-              value={formatTokens(metrics?.total_tokens)}
-              description={`模型调用 ${metrics?.llm_requests || 0} 次`}
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+            <div className="grid gap-4">
+              <TrendCard
+                title="任务创建趋势"
+                description="按日期统计新增任务"
+                contentClassName="h-72"
+              >
+                {taskTrend.length > 0 ? (
+                  <DashboardLineChart
+                    data={taskTrend}
+                    stroke="var(--dashboard-brand)"
+                  />
+                ) : (
+                  <InsightEmpty />
+                )}
+              </TrendCard>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <TrendCard
+                  title="项目创建趋势"
+                  description="按日期统计新增项目"
+                  contentClassName="h-52"
+                >
+                  {projectTrend.length > 0 ? (
+                    <DashboardLineChart
+                      data={projectTrend}
+                      stroke="var(--dashboard-brand)"
+                    />
+                  ) : (
+                    <InsightEmpty />
+                  )}
+                </TrendCard>
+                <TrendCard
+                  title="对话创建趋势"
+                  description="按日期统计新增对话"
+                  contentClassName="h-52"
+                >
+                  {conversationTrend.length > 0 ? (
+                    <DashboardLineChart
+                      data={conversationTrend}
+                      stroke="var(--dashboard-brand)"
+                    />
+                  ) : (
+                    <InsightEmpty />
+                  )}
+                </TrendCard>
+              </div>
+            </div>
+            <TaskStatsPanel
+              running={metrics?.running_task_count || 0}
+              finished={metrics?.finished_task_count || 0}
+              averageDuration={metrics?.average_duration}
+              tokens={metrics?.total_tokens}
+              requests={metrics?.llm_requests}
             />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <InsightTable title="高活跃成员 Top 5">
-              <div className="space-y-3">
+            <InsightTable title="高活跃成员" description="按任务数量排序">
+              <div className="space-y-2">
                 {(data?.insights?.active_members || []).length === 0 && (
                   <InsightEmpty />
                 )}
                 {(data?.insights?.active_members || []).map((item) => (
-                  <div
+                  <InsightRow
                     key={item.user_id}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {item.name || item.email || "未命名成员"}
-                      </div>
-                      <div className="text-muted-foreground truncate">
-                        {item.group_name || "未分组"}
-                      </div>
-                    </div>
-                    <div className="text-muted-foreground shrink-0">
-                      {item.task_count || 0} 个任务
-                    </div>
-                  </div>
+                    title={item.name || item.email || "未命名成员"}
+                    subtitle={item.group_name || "未分组"}
+                    value={`${item.task_count || 0} 个任务`}
+                  />
                 ))}
               </div>
             </InsightTable>
-            <InsightTable title="高消耗成员 / 项目 Top 5">
-              <div className="space-y-3">
+            <InsightTable title="高消耗对象" description="按 Token 消耗排序">
+              <div className="space-y-2">
                 {(data?.insights?.high_consumption || []).length === 0 && (
                   <InsightEmpty />
                 )}
                 {(data?.insights?.high_consumption || []).map((item) => (
-                  <div
+                  <InsightRow
                     key={item.id}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {item.name || "未知对象"}
-                      </div>
-                      <div className="text-muted-foreground truncate">
-                        {item.type === "project" ? "项目" : "成员"}
-                      </div>
-                    </div>
-                    <div className="text-muted-foreground shrink-0">
-                      {formatTokens(item.total_tokens)}
-                    </div>
-                  </div>
+                    title={item.name || "未知对象"}
+                    subtitle="Token 消耗"
+                    value={formatTokens(item.total_tokens)}
+                    badge={item.type === "project" ? "项目" : "成员"}
+                  />
                 ))}
               </div>
             </InsightTable>
-            <InsightTable title="长时间运行任务">
-              <div className="space-y-3">
+            <InsightTable title="长时间运行任务" description="按运行时长排序">
+              <div className="space-y-2">
                 {(data?.insights?.long_running_tasks || []).length === 0 && (
                   <InsightEmpty />
                 )}
                 {(data?.insights?.long_running_tasks || []).map((item) => (
-                  <div
+                  <InsightRow
                     key={item.task_id}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {item.title || "未命名任务"}
-                      </div>
-                      <div className="text-muted-foreground truncate">
-                        {item.creator || item.host_name || "未知创建人"}
-                      </div>
-                    </div>
-                    <div className="text-muted-foreground shrink-0">
-                      {formatDuration(item.duration)}
-                    </div>
-                  </div>
+                    title={item.title || "未命名任务"}
+                    subtitle={item.creator || item.host_name || "未知创建人"}
+                    value={formatDuration(item.duration)}
+                  />
                 ))}
               </div>
             </InsightTable>
           </div>
+
+          {!hasTrendData && (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              当前周期还没有足够趋势数据，创建项目或任务后这里会展示增长曲线。
+            </div>
+          )}
         </>
       )}
     </div>
