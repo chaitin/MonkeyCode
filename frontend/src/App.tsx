@@ -16,6 +16,7 @@ import TeamManagerModels from "@/pages/console/manager/models"
 import TeamManagerImages from "@/pages/console/manager/images"
 import TeamManagerLogs from "@/pages/console/manager/logs"
 import TeamManagerHosts from "./pages/console/manager/hosts"
+import TeamManagerOverview from "./pages/console/manager/overview"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
 import TeamManagerManager from "./pages/console/manager/manager"
@@ -64,7 +65,8 @@ function App() {
             <Route path="/console/files" element={<FileManagerPage />} />
             <Route path="/sharedterminal" element={<SharedTerminalPage />} />
             <Route path="/manager" element={<ManagerConsolePage />}>
-              <Route index element={<Navigate to="/manager/members" replace />} />
+              <Route index element={<Navigate to="/manager/overview" replace />} />
+              <Route path="overview" element={<TeamManagerOverview />} />
               <Route path="members" element={<TeamManagerMembers />} />
               <Route path="hosts" element={<TeamManagerHosts />} />
               <Route path="images" element={<TeamManagerImages />} />

@@ -202,6 +202,7 @@ type ClickHouse struct {
 	Addr            string `mapstructure:"addr"`
 	Database        string `mapstructure:"database"`
 	Table           string `mapstructure:"table"`
+	ModelUsageTable string `mapstructure:"model_usage_table"`
 	InitEnabled     bool   `mapstructure:"init_enabled"`
 	Username        string `mapstructure:"username"`
 	Password        string `mapstructure:"password"`
@@ -266,6 +267,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("clickhouse.addr", "")
 	v.SetDefault("clickhouse.database", "")
 	v.SetDefault("clickhouse.table", "task_logs")
+	v.SetDefault("clickhouse.model_usage_table", "model_usage_events")
 	v.SetDefault("clickhouse.init_enabled", false)
 	v.SetDefault("clickhouse.username", "")
 	v.SetDefault("clickhouse.password", "")

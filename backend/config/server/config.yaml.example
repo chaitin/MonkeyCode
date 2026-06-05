@@ -61,6 +61,7 @@ clickhouse:
   addr: ""
   database: ""
   table: "task_logs"
+  model_usage_table: "model_usage_events"
   init_enabled: false
   username: ""
   password: ""

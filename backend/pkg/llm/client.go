@@ -226,6 +226,7 @@ func (c *Client) chatOpenAIResponses(ctx context.Context, req ChatRequest) (*Cha
 		Usage: Usage{
 			PromptTokens:     apiResp.Usage.InputTokens,
 			CompletionTokens: apiResp.Usage.OutputTokens,
+			CachedTokens:     apiResp.Usage.InputTokensDetails.CachedTokens,
 			TotalTokens:      apiResp.Usage.TotalTokens,
 		},
 	}, nil
@@ -293,6 +294,7 @@ func (c *Client) chatAnthropic(ctx context.Context, req ChatRequest) (*ChatRespo
 		Usage: Usage{
 			PromptTokens:     int(resp.Usage.InputTokens),
 			CompletionTokens: int(resp.Usage.OutputTokens),
+			CachedTokens:     int(resp.Usage.CacheReadInputTokens),
 			TotalTokens:      int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
 		},
 	}, nil

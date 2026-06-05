@@ -1497,6 +1497,72 @@ export interface DomainTeam {
   name?: string;
 }
 
+export interface DomainTeamDashboardConsumptionInsight {
+  id?: string;
+  llm_requests?: number;
+  name?: string;
+  percent?: number;
+  total_tokens?: number;
+  type?: string;
+}
+
+export interface DomainTeamDashboardInsights {
+  active_members?: DomainTeamDashboardMemberInsight[];
+  high_consumption?: DomainTeamDashboardConsumptionInsight[];
+  long_running_tasks?: DomainTeamDashboardTaskInsight[];
+}
+
+export interface DomainTeamDashboardMemberInsight {
+  email?: string;
+  group_name?: string;
+  last_active_at?: number;
+  name?: string;
+  task_count?: number;
+  user_id?: string;
+}
+
+export interface DomainTeamDashboardMetrics {
+  active_members?: number;
+  active_rate?: number;
+  average_duration?: number;
+  finished_task_count?: number;
+  llm_requests?: number;
+  running_task_count?: number;
+  task_count?: number;
+  total_members?: number;
+  total_tokens?: number;
+}
+
+export interface DomainTeamDashboardResp {
+  end_at?: number;
+  insights?: DomainTeamDashboardInsights;
+  metrics?: DomainTeamDashboardMetrics;
+  range?: string;
+  start_at?: number;
+  trends?: DomainTeamDashboardTrends;
+}
+
+export interface DomainTeamDashboardTaskInsight {
+  created_at?: number;
+  creator?: string;
+  duration?: number;
+  host_name?: string;
+  status?: string;
+  task_id?: string;
+  title?: string;
+}
+
+export interface DomainTeamDashboardTrendPoint {
+  date?: string;
+  value?: number;
+}
+
+export interface DomainTeamDashboardTrends {
+  active_members?: DomainTeamDashboardTrendPoint[];
+  task_counts?: DomainTeamDashboardTrendPoint[];
+  token_usage?: DomainTeamDashboardTrendPoint[];
+}
+
 export interface DomainTeamGroup {
   created_at?: number;
   id?: string;
@@ -2769,6 +2835,37 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     ) =>
       this.request<DomainListAuditsResponse, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/audits`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取团队活跃、任务、耗时、Token 消耗趋势和洞察列表
+     *
+     * @tags 【Team 管理员】团队概览
+     * @name V1TeamsDashboardList
+     * @summary 获取团队管理概览
+     * @request GET:/api/v1/teams/dashboard
+     * @secure
+     */
+    v1TeamsDashboardList: (
+      query?: {
+        /** 时间范围：today、7d、30d */
+        range?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamDashboardResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/dashboard`,
         method: "GET",
         query: query,
         secure: true,

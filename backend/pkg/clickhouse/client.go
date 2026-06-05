@@ -1,27 +1,44 @@
 package clickhouse
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	_ "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/golang-migrate/migrate/v4"
+	migrateclickhouse "github.com/golang-migrate/migrate/v4/database/clickhouse"
+	"github.com/golang-migrate/migrate/v4/source"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
 )
 
-const TaskLogTable = "task_logs"
+const (
+	TaskLogTable    = "task_logs"
+	ModelUsageTable = "model_usage_events"
+
+	clickHouseMigrationRoot        = "migration"
+	clickHouseSingleMigrationPath  = "clickhouse_single"
+	clickHouseClusterMigrationPath = "clickhouse_cluster"
+)
 
 var clickHouseIdentifierRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Client struct {
-	db    *sql.DB
-	table string
+	db              *sql.DB
+	table           string
+	modelUsageTable string
 }
 
 func New(cfg config.ClickHouse, logger *slog.Logger) (*Client, error) {
@@ -29,6 +46,10 @@ func New(cfg config.ClickHouse, logger *slog.Logger) (*Client, error) {
 		return nil, nil
 	}
 	table, err := NormalizeTable(cfg.Table)
+	if err != nil {
+		return nil, err
+	}
+	modelUsageTable, err := NormalizeModelUsageTable(cfg.ModelUsageTable)
 	if err != nil {
 		return nil, err
 	}
@@ -54,19 +75,27 @@ func New(cfg config.ClickHouse, logger *slog.Logger) (*Client, error) {
 	if logger != nil {
 		logger.With("component", "clickhouse").Info("clickhouse connection established")
 	}
-	return NewWithDBAndTable(db, table), nil
+	return NewWithDBTables(db, table, modelUsageTable), nil
 }
 
 func NewWithDB(db *sql.DB) *Client {
-	return &Client{db: db, table: TaskLogTable}
+	return NewWithDBTables(db, TaskLogTable, ModelUsageTable)
 }
 
 func NewWithDBAndTable(db *sql.DB, table string) *Client {
-	table, err := NormalizeTable(table)
+	return NewWithDBTables(db, table, ModelUsageTable)
+}
+
+func NewWithDBTables(db *sql.DB, taskLogTable, modelUsageTable string) *Client {
+	taskLogTable, err := NormalizeTable(taskLogTable)
 	if err != nil {
-		table = TaskLogTable
+		taskLogTable = TaskLogTable
 	}
-	return &Client{db: db, table: table}
+	modelUsageTable, err = NormalizeModelUsageTable(modelUsageTable)
+	if err != nil {
+		modelUsageTable = ModelUsageTable
+	}
+	return &Client{db: db, table: taskLogTable, modelUsageTable: modelUsageTable}
 }
 
 func (c *Client) Table() string {
@@ -74,6 +103,13 @@ func (c *Client) Table() string {
 		return TaskLogTable
 	}
 	return c.table
+}
+
+func (c *Client) ModelUsageTable() string {
+	if c == nil || c.modelUsageTable == "" {
+		return ModelUsageTable
+	}
+	return c.modelUsageTable
 }
 
 func validateClickHouseIdentifier(name, label string) error {
@@ -94,6 +130,17 @@ func NormalizeTable(table string) (string, error) {
 	return table, nil
 }
 
+func NormalizeModelUsageTable(table string) (string, error) {
+	table = strings.TrimSpace(table)
+	if table == "" {
+		table = ModelUsageTable
+	}
+	if err := validateClickHouseIdentifier(table, "model usage table"); err != nil {
+		return "", err
+	}
+	return table, nil
+}
+
 func (c *Client) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return c.db.QueryContext(ctx, query, args...)
 }
@@ -104,6 +151,145 @@ func (c *Client) QueryRowContext(ctx context.Context, query string, args ...any)
 
 func (c *Client) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return c.db.ExecContext(ctx, query, args...)
+}
+
+type ModelUsageEvent struct {
+	EventTime    time.Time
+	TeamID       string
+	UserID       string
+	TaskID       string
+	ProjectID    string
+	Provider     string
+	ModelID      string
+	ModelName    string
+	InputTokens  uint64
+	OutputTokens uint64
+	CachedTokens uint64
+	TotalTokens  uint64
+	RequestCount uint64
+	Success      bool
+	DurationMS   uint64
+	TraceID      string
+	RequestID    string
+	Source       string
+}
+
+type ModelUsageQuery struct {
+	TeamID string
+	Start  time.Time
+	End    time.Time
+}
+
+type ModelUsageSummary struct {
+	InputTokens  int64
+	OutputTokens int64
+	CachedTokens int64
+	TotalTokens  int64
+	Requests     int64
+}
+
+type ModelUsageTopUser struct {
+	UserID      string
+	TotalTokens int64
+	Requests    int64
+}
+
+func (c *Client) InsertModelUsageEvent(ctx context.Context, event ModelUsageEvent) error {
+	if c == nil || c.db == nil {
+		return fmt.Errorf("clickhouse client is nil")
+	}
+	tableIdentifier, err := quoteIdentifier(c.ModelUsageTable())
+	if err != nil {
+		return err
+	}
+	success := uint8(0)
+	if event.Success {
+		success = 1
+	}
+	if event.RequestCount == 0 {
+		event.RequestCount = 1
+	}
+	query := fmt.Sprintf(`INSERT INTO %s (
+	event_time, team_id, user_id, task_id, project_id,
+	provider, model_id, model_name,
+	input_tokens, output_tokens, cached_tokens, total_tokens,
+	request_count, success, duration_ms,
+	trace_id, request_id, source
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tableIdentifier)
+	_, err = c.db.ExecContext(ctx, query,
+		event.EventTime, event.TeamID, event.UserID, event.TaskID, event.ProjectID,
+		event.Provider, event.ModelID, event.ModelName,
+		event.InputTokens, event.OutputTokens, event.CachedTokens, event.TotalTokens,
+		event.RequestCount, success, event.DurationMS,
+		event.TraceID, event.RequestID, event.Source,
+	)
+	return err
+}
+
+func (c *Client) QueryModelUsageSummary(ctx context.Context, q ModelUsageQuery) (ModelUsageSummary, error) {
+	var summary ModelUsageSummary
+	if c == nil || c.db == nil {
+		return summary, fmt.Errorf("clickhouse client is nil")
+	}
+	tableIdentifier, err := quoteIdentifier(c.ModelUsageTable())
+	if err != nil {
+		return summary, err
+	}
+	query := fmt.Sprintf(`SELECT
+	coalesce(sum(input_tokens), 0) AS input_tokens,
+	coalesce(sum(output_tokens), 0) AS output_tokens,
+	coalesce(sum(cached_tokens), 0) AS cached_tokens,
+	coalesce(sum(total_tokens), 0) AS total_tokens,
+	coalesce(sum(request_count), 0) AS requests
+FROM %s
+WHERE team_id = ? AND event_time >= ? AND event_time < ?`, tableIdentifier)
+	err = c.db.QueryRowContext(ctx, query, q.TeamID, q.Start, q.End).Scan(
+		&summary.InputTokens,
+		&summary.OutputTokens,
+		&summary.CachedTokens,
+		&summary.TotalTokens,
+		&summary.Requests,
+	)
+	return summary, err
+}
+
+func (c *Client) QueryModelUsageTopUsers(ctx context.Context, q ModelUsageQuery, limit int) ([]ModelUsageTopUser, error) {
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("clickhouse client is nil")
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	tableIdentifier, err := quoteIdentifier(c.ModelUsageTable())
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf(`SELECT
+	user_id,
+	coalesce(sum(total_tokens), 0) AS total_tokens,
+	coalesce(sum(request_count), 0) AS requests
+FROM %s
+WHERE team_id = ? AND event_time >= ? AND event_time < ?
+GROUP BY user_id
+ORDER BY total_tokens DESC
+LIMIT ?`, tableIdentifier)
+	rows, err := c.db.QueryContext(ctx, query, q.TeamID, q.Start, q.End, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []ModelUsageTopUser
+	for rows.Next() {
+		var user ModelUsageTopUser
+		if err := rows.Scan(&user.UserID, &user.TotalTokens, &user.Requests); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
 }
 
 func applyPoolOptions(db *sql.DB, cfg config.ClickHouse) {
@@ -213,12 +399,7 @@ func ensureSchema(cfg config.ClickHouse) error {
 	if err := databaseDB.Ping(); err != nil {
 		return err
 	}
-	query, err := buildTaskLogTableSQL(cfg.Table)
-	if err != nil {
-		return err
-	}
-	_, err = databaseDB.ExecContext(context.Background(), query)
-	return err
+	return migrateSingleSchema(databaseDB, cfg)
 }
 
 func quoteIdentifier(identifier string) (string, error) {
@@ -229,31 +410,160 @@ func quoteIdentifier(identifier string) (string, error) {
 	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`", nil
 }
 
-func buildTaskLogTableSQL(table string) (string, error) {
-	table, err := NormalizeTable(table)
+func migrateSingleSchema(db *sql.DB, cfg config.ClickHouse) error {
+	source, err := newSingleMigrationSource(cfg.Table, cfg.ModelUsageTable)
+	if err != nil {
+		return err
+	}
+	driver, err := migrateclickhouse.WithInstance(db, &migrateclickhouse.Config{
+		DatabaseName:          cfg.Database,
+		MigrationsTable:       "schema_migrations",
+		MigrationsTableEngine: "MergeTree",
+	})
+	if err != nil {
+		_ = source.Close()
+		return err
+	}
+	m, err := migrate.NewWithInstance("clickhouse_single", source, "clickhouse", driver)
+	if err != nil {
+		_ = source.Close()
+		_ = driver.Close()
+		return err
+	}
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		_ = sourceErr
+		_ = databaseErr
+	}()
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+	return nil
+}
+
+func newSingleMigrationSource(taskLogTable, modelUsageTable string) (source.Driver, error) {
+	return newClickHouseMigrationSource(clickHouseSingleMigrationPath, taskLogTable, modelUsageTable)
+}
+
+func newClusterMigrationSource(taskLogTable, modelUsageTable string) (source.Driver, error) {
+	return newClickHouseMigrationSource(clickHouseClusterMigrationPath, taskLogTable, modelUsageTable)
+}
+
+func newClickHouseMigrationSource(path, taskLogTable, modelUsageTable string) (source.Driver, error) {
+	table, err := NormalizeTable(taskLogTable)
+	if err != nil {
+		return nil, err
+	}
+	modelUsageTable, err = NormalizeModelUsageTable(modelUsageTable)
+	if err != nil {
+		return nil, err
+	}
+	root, err := findClickHouseMigrationRoot()
+	if err != nil {
+		return nil, err
+	}
+	base, err := iofs.New(os.DirFS(root), path)
+	if err != nil {
+		return nil, err
+	}
+	taskLogIdentifier, err := quoteIdentifier(table)
+	if err != nil {
+		_ = base.Close()
+		return nil, err
+	}
+	modelUsageIdentifier, err := quoteIdentifier(modelUsageTable)
+	if err != nil {
+		_ = base.Close()
+		return nil, err
+	}
+	return &templateSource{
+		base: base,
+		replacements: map[string]string{
+			"{{TASK_LOG_TABLE}}":        taskLogIdentifier,
+			"{{TASK_LOG_TABLE_RAW}}":    table,
+			"{{MODEL_USAGE_TABLE}}":     modelUsageIdentifier,
+			"{{MODEL_USAGE_TABLE_RAW}}": modelUsageTable,
+		},
+	}, nil
+}
+
+func findClickHouseMigrationRoot() (string, error) {
+	wd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	tableIdentifier, err := quoteIdentifier(table)
-	if err != nil {
-		return "", err
+	for {
+		candidate := filepath.Join(wd, clickHouseMigrationRoot)
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(wd)
+		if parent == wd {
+			return "", fmt.Errorf("clickhouse migration root %q not found", clickHouseMigrationRoot)
+		}
+		wd = parent
 	}
-	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s
-(
-	task_id UUID,
-	ts DateTime64(9, 'UTC'),
-	event LowCardinality(String),
-	kind LowCardinality(String),
-	turn_seq UInt32,
-	data String CODEC(ZSTD(3)),
-	msg_seq_start UInt64,
-	msg_seq_end UInt64,
-	source LowCardinality(String),
-	log_version UInt16,
-	ingest_id UUID
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(ts)
-ORDER BY (task_id, turn_seq, ts, msg_seq_start, ingest_id)
-TTL ts + INTERVAL 60 DAY`, tableIdentifier), nil
+}
+
+type templateSource struct {
+	base         source.Driver
+	replacements map[string]string
+}
+
+func (s *templateSource) Open(url string) (source.Driver, error) {
+	return nil, fmt.Errorf("template source does not support Open")
+}
+
+func (s *templateSource) Close() error {
+	return s.base.Close()
+}
+
+func (s *templateSource) First() (uint, error) {
+	return s.base.First()
+}
+
+func (s *templateSource) Prev(version uint) (uint, error) {
+	return s.base.Prev(version)
+}
+
+func (s *templateSource) Next(version uint) (uint, error) {
+	return s.base.Next(version)
+}
+
+func (s *templateSource) ReadUp(version uint) (io.ReadCloser, string, error) {
+	body, identifier, err := s.base.ReadUp(version)
+	if err != nil {
+		return nil, "", err
+	}
+	rendered, err := s.render(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return rendered, identifier, nil
+}
+
+func (s *templateSource) ReadDown(version uint) (io.ReadCloser, string, error) {
+	body, identifier, err := s.base.ReadDown(version)
+	if err != nil {
+		return nil, "", err
+	}
+	rendered, err := s.render(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return rendered, identifier, nil
+}
+
+func (s *templateSource) render(body io.ReadCloser) (io.ReadCloser, error) {
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+	query := string(data)
+	for placeholder, value := range s.replacements {
+		query = strings.ReplaceAll(query, placeholder, value)
+	}
+	return io.NopCloser(bytes.NewBufferString(query)), nil
 }

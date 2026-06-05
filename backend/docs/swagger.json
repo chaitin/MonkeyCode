@@ -216,6 +216,66 @@
                 }
             }
         },
+        "/api/v1/teams/dashboard": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取团队活跃、任务、耗时、Token 消耗趋势和洞察列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】团队概览"
+                ],
+                "summary": "获取团队管理概览",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "时间范围：today、7d、30d",
+                        "name": "range",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamDashboardResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/groups": {
             "get": {
                 "security": [
@@ -8415,13 +8475,6 @@
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
             },
-            "x-enum-descriptions": [
-                "百智云平台",
-                "",
-                "",
-                "",
-                ""
-            ],
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
                 "UserPlatformGithub",
@@ -8446,13 +8499,6 @@
                 "UserRoleIndividual": "个人用户",
                 "UserRoleSubAccount": "企业子账户"
             },
-            "x-enum-descriptions": [
-                "个人用户",
-                "企业用户",
-                "企业子账户",
-                "MonkeyCode-AI 管理员账号，用来配置公共资源. 如公共宿主机等",
-                "全自动 git 任务插入的用户"
-            ],
             "x-enum-varnames": [
                 "UserRoleIndividual",
                 "UserRoleEnterprise",
@@ -8595,7 +8641,6 @@
         "domain.AddTeamImageReq": {
             "type": "object",
             "required": [
-                "group_ids",
                 "name"
             ],
             "properties": {
@@ -8618,7 +8663,6 @@
             "required": [
                 "api_key",
                 "base_url",
-                "group_ids",
                 "interface_type",
                 "model",
                 "provider"
@@ -10780,6 +10824,190 @@
                 }
             }
         },
+        "domain.TeamDashboardConsumptionInsight": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "llm_requests": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "percent": {
+                    "type": "number"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamDashboardInsights": {
+            "type": "object",
+            "properties": {
+                "active_members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardMemberInsight"
+                    }
+                },
+                "high_consumption": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardConsumptionInsight"
+                    }
+                },
+                "long_running_tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTaskInsight"
+                    }
+                }
+            }
+        },
+        "domain.TeamDashboardMemberInsight": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "last_active_at": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "task_count": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamDashboardMetrics": {
+            "type": "object",
+            "properties": {
+                "active_members": {
+                    "type": "integer"
+                },
+                "active_rate": {
+                    "type": "number"
+                },
+                "average_duration": {
+                    "type": "integer"
+                },
+                "finished_task_count": {
+                    "type": "integer"
+                },
+                "llm_requests": {
+                    "type": "integer"
+                },
+                "running_task_count": {
+                    "type": "integer"
+                },
+                "task_count": {
+                    "type": "integer"
+                },
+                "total_members": {
+                    "type": "integer"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TeamDashboardResp": {
+            "type": "object",
+            "properties": {
+                "end_at": {
+                    "type": "integer"
+                },
+                "insights": {
+                    "$ref": "#/definitions/domain.TeamDashboardInsights"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/domain.TeamDashboardMetrics"
+                },
+                "range": {
+                    "type": "string"
+                },
+                "start_at": {
+                    "type": "integer"
+                },
+                "trends": {
+                    "$ref": "#/definitions/domain.TeamDashboardTrends"
+                }
+            }
+        },
+        "domain.TeamDashboardTaskInsight": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "integer"
+                },
+                "creator": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "integer"
+                },
+                "host_name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamDashboardTrendPoint": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TeamDashboardTrends": {
+            "type": "object",
+            "properties": {
+                "active_members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTrendPoint"
+                    }
+                },
+                "task_counts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTrendPoint"
+                    }
+                },
+                "token_usage": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTrendPoint"
+                    }
+                }
+            }
+        },
         "domain.TeamGroup": {
             "type": "object",
             "properties": {
@@ -11708,7 +11936,6 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
-            "format": "int32",
             "enum": [
                 0,
                 1,
