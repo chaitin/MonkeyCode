@@ -69,7 +69,7 @@ func (h *TeamPolicyHandler) Get(c *web.Context) error {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAITeamAuth
-//	@Param			req	body		domain.UpdateTeamTaskVMIdlePolicyReq	true	"请求参数"
+//	@Param			req	body		domain.UpdateTeamTaskVMIdlePolicyReq		true	"请求参数"
 //	@Success		200	{object}	web.Resp{data=domain.TeamTaskVMIdlePolicy}	"成功"
 //	@Router			/api/v1/teams/task-vm-idle-policy [put]
 func (h *TeamPolicyHandler) Update(c *web.Context, req domain.UpdateTeamTaskVMIdlePolicyReq) error {

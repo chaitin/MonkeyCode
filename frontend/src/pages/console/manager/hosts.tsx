@@ -2,11 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Box, MoreVertical } from "lucide-react";
+import { Box, Clock3, MoreVertical, Save } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/utils/requestUtils";
 import { toast } from "sonner";
-import { TaskflowVirtualMachineStatus, type DomainHost, type DomainTeamGroup, type DomainVirtualMachine } from "@/api/Api";
+import { TaskflowVirtualMachineStatus, type DomainHost, type DomainTeamGroup, type DomainTeamTaskVMIdlePolicy, type DomainVirtualMachine } from "@/api/Api";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemTitle } from "@/components/ui/item";
@@ -17,7 +17,32 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import EditHost from "@/components/manager/edit-host";
 import { formatMemory, getHostStatusBadge } from "@/utils/common";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
+const secondsToHours = (seconds?: number) => {
+  if (!seconds) {
+    return ""
+  }
+  return String(Math.round((seconds / 3600) * 100) / 100)
+}
+
+const hoursToSeconds = (hours: string) => {
+  const value = Number(hours)
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0
+  }
+  return Math.round(value * 3600)
+}
+
+const formatPolicyDuration = (seconds?: number) => {
+  if (!seconds) {
+    return "未配置"
+  }
+  const hours = seconds / 3600
+  return Number.isInteger(hours) ? `${hours} 小时` : `${Math.round(hours * 100) / 100} 小时`
+}
 
 export default function TeamManagerHosts() {
   const [open, setOpen] = useState(false)
@@ -29,6 +54,13 @@ export default function TeamManagerHosts() {
   
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingHost, setEditingHost] = useState<DomainHost | null>(null)
+  const [policy, setPolicy] = useState<DomainTeamTaskVMIdlePolicy | null>(null)
+  const [loadingPolicy, setLoadingPolicy] = useState(false)
+  const [savingPolicy, setSavingPolicy] = useState(false)
+  const [sleepEnabled, setSleepEnabled] = useState(true)
+  const [sleepHours, setSleepHours] = useState("")
+  const [recycleEnabled, setRecycleEnabled] = useState(true)
+  const [recycleHours, setRecycleHours] = useState("")
   
 
 
@@ -42,6 +74,26 @@ export default function TeamManagerHosts() {
       }
     })
     setLoadingHosts(false)
+  }
+
+  const syncPolicyForm = (nextPolicy: DomainTeamTaskVMIdlePolicy) => {
+    setPolicy(nextPolicy)
+    setSleepEnabled(nextPolicy.sleep_enabled ?? true)
+    setSleepHours(secondsToHours(nextPolicy.sleep_seconds))
+    setRecycleEnabled(nextPolicy.recycle_enabled ?? true)
+    setRecycleHours(secondsToHours(nextPolicy.recycle_seconds))
+  }
+
+  const fetchPolicy = async () => {
+    setLoadingPolicy(true)
+    await apiRequest('v1TeamsTaskVmIdlePolicyList', {}, [], (resp) => {
+      if (resp.code === 0 && resp.data) {
+        syncPolicyForm(resp.data)
+      } else {
+        toast.error("获取任务开发环境策略失败: " + resp.message)
+      }
+    })
+    setLoadingPolicy(false)
   }
 
   const fetchInstallCommand = async () => {
@@ -64,7 +116,26 @@ export default function TeamManagerHosts() {
 
   useEffect(() => {
     fetchHosts()
+    fetchPolicy()
   }, [])
+
+  const handleSavePolicy = async () => {
+    setSavingPolicy(true)
+    await apiRequest('v1TeamsTaskVmIdlePolicyUpdate', {
+      sleep_enabled: sleepEnabled,
+      sleep_seconds: hoursToSeconds(sleepHours),
+      recycle_enabled: recycleEnabled,
+      recycle_seconds: hoursToSeconds(recycleHours),
+    }, [], (resp) => {
+      if (resp.code === 0 && resp.data) {
+        syncPolicyForm(resp.data)
+        toast.success("任务开发环境策略已保存")
+      } else {
+        toast.error("保存任务开发环境策略失败: " + resp.message)
+      }
+    })
+    setSavingPolicy(false)
+  }
 
   const handleCopyCommand = async () => {
     try {
@@ -101,6 +172,101 @@ export default function TeamManagerHosts() {
 
   return (
     <div className="flex flex-col gap-4">
+      <Card className="w-full shadow-none">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock3 />
+            任务开发环境策略
+          </CardTitle>
+          <CardDescription>
+            只影响通过任务创建的开发环境，手动创建的开发环境不受此配置影响
+          </CardDescription>
+          <CardAction>
+            <Button size="sm" onClick={handleSavePolicy} disabled={savingPolicy || loadingPolicy}>
+              {savingPolicy ? <Spinner className="size-4" /> : <Save className="size-4" />}
+              保存
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {loadingPolicy ? (
+            <Empty className="bg-muted">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Spinner className="size-6" />
+                </EmptyMedia>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="task-vm-sleep-enabled">自动休眠</Label>
+                    <p className="text-sm text-muted-foreground">
+                      空闲达到设置时长后休眠任务开发环境
+                    </p>
+                  </div>
+                  <Switch
+                    id="task-vm-sleep-enabled"
+                    checked={sleepEnabled}
+                    onCheckedChange={setSleepEnabled}
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <Label htmlFor="task-vm-sleep-hours">休眠时长（小时）</Label>
+                  <Input
+                    id="task-vm-sleep-hours"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={sleepHours}
+                    disabled={!sleepEnabled}
+                    placeholder={policy?.sleep_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_sleep_seconds)}` : "继承全局默认"}
+                    onChange={(e) => setSleepHours(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    留空或填 0 表示继承全局默认，当前生效：{sleepEnabled ? formatPolicyDuration(policy?.effective_sleep_seconds) : "已关闭"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="task-vm-recycle-enabled">自动回收</Label>
+                    <p className="text-sm text-muted-foreground">
+                      空闲达到设置时长后回收任务开发环境
+                    </p>
+                  </div>
+                  <Switch
+                    id="task-vm-recycle-enabled"
+                    checked={recycleEnabled}
+                    onCheckedChange={setRecycleEnabled}
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <Label htmlFor="task-vm-recycle-hours">回收时长（小时）</Label>
+                  <Input
+                    id="task-vm-recycle-hours"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={recycleHours}
+                    disabled={!recycleEnabled}
+                    placeholder={policy?.recycle_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_recycle_seconds)}` : "继承全局默认"}
+                    onChange={(e) => setRecycleHours(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    留空或填 0 表示继承全局默认，当前生效：{recycleEnabled ? formatPolicyDuration(policy?.effective_recycle_seconds) : "已关闭"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="w-full shadow-none">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

@@ -1647,6 +1647,18 @@ export interface DomainTeamTaskStats {
   total?: number;
 }
 
+export interface DomainTeamTaskVMIdlePolicy {
+  effective_recycle_seconds?: number;
+  effective_sleep_seconds?: number;
+  recycle_enabled?: boolean;
+  recycle_inherited?: boolean;
+  recycle_seconds?: number;
+  sleep_enabled?: boolean;
+  sleep_inherited?: boolean;
+  sleep_seconds?: number;
+  team_id?: string;
+}
+
 export interface DomainTeamImage {
   created_at?: number;
   groups?: DomainTeamGroup[];
@@ -1874,6 +1886,13 @@ export interface DomainUpdateTeamModelReq {
   remark?: string;
   support_image?: boolean;
   temperature?: number;
+}
+
+export interface DomainUpdateTeamTaskVMIdlePolicyReq {
+  recycle_enabled?: boolean;
+  recycle_seconds?: number;
+  sleep_enabled?: boolean;
+  sleep_seconds?: number;
 }
 
 export interface DomainUpdateTeamOAuthSiteReq {
@@ -3183,6 +3202,55 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/groups/${groupId}/users`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队任务创建开发环境的空闲休眠和回收策略
+     *
+     * @tags 【Team 管理员】开发环境管理
+     * @name V1TeamsTaskVmIdlePolicyList
+     * @summary 获取任务开发环境空闲策略
+     * @request GET:/api/v1/teams/task-vm-idle-policy
+     * @secure
+     */
+    v1TeamsTaskVmIdlePolicyList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamTaskVMIdlePolicy;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/task-vm-idle-policy`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新当前团队任务创建开发环境的空闲休眠和回收策略
+     *
+     * @tags 【Team 管理员】开发环境管理
+     * @name V1TeamsTaskVmIdlePolicyUpdate
+     * @summary 更新任务开发环境空闲策略
+     * @request PUT:/api/v1/teams/task-vm-idle-policy
+     * @secure
+     */
+    v1TeamsTaskVmIdlePolicyUpdate: (req: DomainUpdateTeamTaskVMIdlePolicyReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamTaskVMIdlePolicy;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/task-vm-idle-policy`,
         method: "PUT",
         body: req,
         secure: true,
