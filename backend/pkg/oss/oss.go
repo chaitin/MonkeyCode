@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -58,6 +59,16 @@ func NewS3Compatible(ctx context.Context, cfg config.ObjectStorageConfig, opt S3
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(cfg.Endpoint)
 		o.UsePathStyle = opt.ForcePathStyle
+		// Aliyun OSS compatibility for aws-sdk-go-v2 >= v1.66:
+		// disable the default CRC32 trailer (which forces aws-chunked
+		// Content-Encoding) and switch the x-amz-content-sha256 header
+		// from the streaming STREAMING-AWS4-HMAC-SHA256-PAYLOAD value
+		// to UNSIGNED-PAYLOAD, both of which Aliyun OSS rejects with
+		// 400 "aws-chunked encoding is not supported with the specified
+		// x-amz-content-sha256 value".
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+		o.APIOptions = append(o.APIOptions, v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware)
 	})
 	c := &Client{
 		cfg:       cfg,
@@ -161,6 +172,23 @@ func (c *Client) HeadFile(ctx context.Context, prefix, filename string) (bool, e
 		return false, nil
 	}
 	return false, err
+}
+
+// GetObject fetches the object body at the given key (relative to the bucket).
+// Used by the agent-resources read path (skill / plugin zip download).
+// The key is passed through verbatim — callers already build the full path
+// (e.g. "agent-resources/skills/global/global/{repoID}/{name}/{version}.zip")
+// and no implicit prefix is added.
+// Caller must close the returned io.ReadCloser.
+func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.cfg.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("oss: get %q: %w", key, err)
+	}
+	return out.Body, nil
 }
 
 func (c *Client) WithAccessEndpoint(endpoint string) *Client {
