@@ -38,6 +38,10 @@ function InsightEmpty() {
   return <div className="text-muted-foreground text-sm">暂无数据</div>
 }
 
+function formatCount(value?: number) {
+  return String(value || 0)
+}
+
 export default function TeamManagerOverview() {
   const [range, setRange] = useState<DashboardRange>("7d")
   const [data, setData] = useState<DomainTeamDashboardResp | null>(null)
@@ -64,9 +68,12 @@ export default function TeamManagerOverview() {
   }, [range])
 
   const metrics = data?.metrics
-  const taskTrend = useMemo(() => data?.trends?.task_counts || [], [data])
-  const activeTrend = useMemo(() => data?.trends?.active_members || [], [data])
-  const tokenTrend = useMemo(() => data?.trends?.token_usage || [], [data])
+  const projectStats = data?.project_stats
+  const taskStats = data?.task_stats
+  const conversationStats = data?.conversation_stats
+  const projectTrend = useMemo(() => projectStats?.daily_created || [], [projectStats])
+  const taskTrend = useMemo(() => taskStats?.daily_created || [], [taskStats])
+  const conversationTrend = useMemo(() => conversationStats?.daily_created || [], [conversationStats])
 
   return (
     <div className="flex flex-col gap-4">
@@ -75,7 +82,7 @@ export default function TeamManagerOverview() {
           <h1 className="text-2xl font-semibold tracking-normal">
             团队管理概览
           </h1>
-          <p className="text-muted-foreground text-sm">团队使用与模型消耗</p>
+          <p className="text-muted-foreground text-sm">项目、任务与对话统计</p>
         </div>
         <TimeRangeTabs value={range} onChange={setRange} />
       </div>
@@ -91,33 +98,28 @@ export default function TeamManagerOverview() {
         </Empty>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-3">
             <MetricCard
-              title="活跃成员"
-              value={`${metrics?.active_members || 0} / ${metrics?.total_members || 0}`}
-              description={`活跃率 ${metrics?.active_rate || 0}%`}
+              title="项目总数"
+              value={formatCount(projectStats?.total)}
+              description={`近 7 天活动 ${projectStats?.active_7d || 0} · 今日活动 ${projectStats?.active_today || 0}`}
             />
             <MetricCard
-              title="本周任务"
-              value={String(metrics?.task_count || 0)}
-              description={`运行中 ${metrics?.running_task_count || 0} · 已结束 ${metrics?.finished_task_count || 0}`}
+              title="任务总数"
+              value={formatCount(taskStats?.total)}
+              description={`近 7 天活动 ${taskStats?.active_7d || 0} · 今日活动 ${taskStats?.active_today || 0}`}
             />
             <MetricCard
-              title="平均耗时"
-              value={formatDuration(metrics?.average_duration)}
-              description="仅统计已完成任务"
-            />
-            <MetricCard
-              title="Token 消耗"
-              value={formatTokens(metrics?.total_tokens)}
-              description={`模型调用 ${metrics?.llm_requests || 0} 次`}
+              title="对话总数"
+              value={formatCount(conversationStats?.total)}
+              description={`近 7 天 ${conversationStats?.count_7d || 0} · 今日 ${conversationStats?.count_today || 0}`}
             />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <TrendCard title="任务量趋势">
+            <TrendCard title="每天创建项目数">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={taskTrend}>
+                <LineChart data={projectTrend}>
                   <XAxis dataKey="date" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} width={32} />
                   <Tooltip />
@@ -131,9 +133,9 @@ export default function TeamManagerOverview() {
                 </LineChart>
               </ResponsiveContainer>
             </TrendCard>
-            <TrendCard title="活跃成员趋势">
+            <TrendCard title="每天创建任务数">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={activeTrend}>
+                <LineChart data={taskTrend}>
                   <XAxis dataKey="date" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} width={32} />
                   <Tooltip />
@@ -147,9 +149,9 @@ export default function TeamManagerOverview() {
                 </LineChart>
               </ResponsiveContainer>
             </TrendCard>
-            <TrendCard title="Token 消耗趋势">
+            <TrendCard title="每天创建对话数">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={tokenTrend}>
+                <LineChart data={conversationTrend}>
                   <XAxis dataKey="date" tickLine={false} axisLine={false} />
                   <YAxis tickLine={false} axisLine={false} width={40} />
                   <Tooltip />
@@ -163,6 +165,29 @@ export default function TeamManagerOverview() {
                 </LineChart>
               </ResponsiveContainer>
             </TrendCard>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              title="活跃成员"
+              value={`${metrics?.active_members || 0} / ${metrics?.total_members || 0}`}
+              description={`活跃率 ${metrics?.active_rate || 0}%`}
+            />
+            <MetricCard
+              title="周期任务"
+              value={String(metrics?.task_count || 0)}
+              description={`运行中 ${metrics?.running_task_count || 0} · 已结束 ${metrics?.finished_task_count || 0}`}
+            />
+            <MetricCard
+              title="平均耗时"
+              value={formatDuration(metrics?.average_duration)}
+              description="仅统计已完成任务"
+            />
+            <MetricCard
+              title="Token 消耗"
+              value={formatTokens(metrics?.total_tokens)}
+              description={`模型调用 ${metrics?.llm_requests || 0} 次`}
+            />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">

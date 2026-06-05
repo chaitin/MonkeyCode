@@ -194,6 +194,49 @@ type ModelUsageTopUser struct {
 	Requests    int64
 }
 
+type TeamConversationQuery struct {
+	TaskIDs    []string
+	Start7d    time.Time
+	TodayStart time.Time
+	TrendStart time.Time
+	End        time.Time
+}
+
+type TeamConversationStats struct {
+	Total        int64
+	Count7d      int64
+	CountToday   int64
+	DailyCreated []TeamConversationDailyCount
+}
+
+type TeamConversationDailyCount struct {
+	Date  string
+	Count int64
+}
+
+type TeamConversationListQuery struct {
+	TaskIDs []string
+	Cursor  string
+	Limit   int
+}
+
+type TeamConversationRow struct {
+	TaskID    string
+	TS        time.Time
+	Event     string
+	Kind      string
+	TurnSeq   uint32
+	Data      string
+	MsgSeqStart uint64
+	MsgSeqEnd   uint64
+}
+
+type TeamConversationListResult struct {
+	Rows        []TeamConversationRow
+	NextCursor  string
+	HasNextPage bool
+}
+
 func (c *Client) InsertModelUsageEvent(ctx context.Context, event ModelUsageEvent) error {
 	if c == nil || c.db == nil {
 		return fmt.Errorf("clickhouse client is nil")
@@ -290,6 +333,124 @@ LIMIT ?`, tableIdentifier)
 		return nil, err
 	}
 	return users, nil
+}
+
+func (c *Client) QueryTeamConversationStats(ctx context.Context, q TeamConversationQuery) (TeamConversationStats, error) {
+	var stats TeamConversationStats
+	if c == nil || c.db == nil {
+		return stats, fmt.Errorf("clickhouse client is nil")
+	}
+	if len(q.TaskIDs) == 0 {
+		return stats, nil
+	}
+	tableIdentifier, err := quoteIdentifier(c.Table())
+	if err != nil {
+		return stats, err
+	}
+	inClause, args := buildInClause(q.TaskIDs)
+	query := fmt.Sprintf(`SELECT
+	coalesce(count(), 0) AS total,
+	coalesce(countIf(ts >= ? AND ts < ?), 0) AS count_7d,
+	coalesce(countIf(ts >= ? AND ts < ?), 0) AS count_today
+FROM %s
+WHERE task_id IN (%s) AND event = 'user-input'`, tableIdentifier, inClause)
+	countArgs := append([]any{q.Start7d, q.End, q.TodayStart, q.End}, args...)
+	if err := c.db.QueryRowContext(ctx, query, countArgs...).Scan(&stats.Total, &stats.Count7d, &stats.CountToday); err != nil {
+		return stats, err
+	}
+
+	dailyQuery := fmt.Sprintf(`SELECT toString(toDate(ts)) AS date, count() AS count
+FROM %s
+WHERE task_id IN (%s) AND event = 'user-input' AND ts >= ? AND ts < ?
+GROUP BY date
+ORDER BY date ASC`, tableIdentifier, inClause)
+	dailyArgs := append([]any{}, args...)
+	dailyArgs = append(dailyArgs, q.TrendStart, q.End)
+	rows, err := c.db.QueryContext(ctx, dailyQuery, dailyArgs...)
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item TeamConversationDailyCount
+		if err := rows.Scan(&item.Date, &item.Count); err != nil {
+			return stats, err
+		}
+		stats.DailyCreated = append(stats.DailyCreated, item)
+	}
+	if err := rows.Err(); err != nil {
+		return stats, err
+	}
+	return stats, nil
+}
+
+func (c *Client) QueryTeamConversations(ctx context.Context, q TeamConversationListQuery) (*TeamConversationListResult, error) {
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("clickhouse client is nil")
+	}
+	if len(q.TaskIDs) == 0 {
+		return &TeamConversationListResult{}, nil
+	}
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	tableIdentifier, err := quoteIdentifier(c.Table())
+	if err != nil {
+		return nil, err
+	}
+	inClause, args := buildInClause(q.TaskIDs)
+	cursorFilter := ""
+	if q.Cursor != "" {
+		cursorAt, err := time.Parse(time.RFC3339Nano, q.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		cursorFilter = "AND ts < ?"
+		args = append(args, cursorAt)
+	}
+	args = append(args, q.Limit+1)
+	query := fmt.Sprintf(`SELECT task_id, ts, event, kind, turn_seq, data, msg_seq_start, msg_seq_end
+FROM %s
+WHERE task_id IN (%s) AND event = 'user-input' %s
+ORDER BY ts DESC, task_id DESC, turn_seq DESC, msg_seq_start DESC
+LIMIT ?`, tableIdentifier, inClause, cursorFilter)
+	rows, err := c.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := &TeamConversationListResult{}
+	for rows.Next() {
+		var row TeamConversationRow
+		if err := rows.Scan(&row.TaskID, &row.TS, &row.Event, &row.Kind, &row.TurnSeq, &row.Data, &row.MsgSeqStart, &row.MsgSeqEnd); err != nil {
+			return nil, err
+		}
+		result.Rows = append(result.Rows, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(result.Rows) > q.Limit {
+		result.HasNextPage = true
+		result.Rows = result.Rows[:q.Limit]
+	}
+	if len(result.Rows) > 0 {
+		result.NextCursor = result.Rows[len(result.Rows)-1].TS.UTC().Format(time.RFC3339Nano)
+	}
+	return result, nil
+}
+
+func buildInClause(values []string) (string, []any) {
+	placeholders := make([]string, 0, len(values))
+	args := make([]any, 0, len(values))
+	for _, value := range values {
+		placeholders = append(placeholders, "?")
+		args = append(args, value)
+	}
+	return strings.Join(placeholders, ","), args
 }
 
 func applyPoolOptions(db *sql.DB, cfg config.ClickHouse) {
