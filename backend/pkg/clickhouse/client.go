@@ -1,16 +1,25 @@
 package clickhouse
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	_ "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/golang-migrate/migrate/v4"
+	migrateclickhouse "github.com/golang-migrate/migrate/v4/database/clickhouse"
+	"github.com/golang-migrate/migrate/v4/source"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
 )
@@ -18,6 +27,10 @@ import (
 const (
 	TaskLogTable    = "task_logs"
 	ModelUsageTable = "model_usage_events"
+
+	clickHouseMigrationRoot        = "migration"
+	clickHouseSingleMigrationPath  = "clickhouse_single"
+	clickHouseClusterMigrationPath = "clickhouse_cluster"
 )
 
 var clickHouseIdentifierRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -386,19 +399,7 @@ func ensureSchema(cfg config.ClickHouse) error {
 	if err := databaseDB.Ping(); err != nil {
 		return err
 	}
-	query, err := buildTaskLogTableSQL(cfg.Table)
-	if err != nil {
-		return err
-	}
-	if _, err := databaseDB.ExecContext(context.Background(), query); err != nil {
-		return err
-	}
-	query, err = buildModelUsageTableSQL(cfg.ModelUsageTable)
-	if err != nil {
-		return err
-	}
-	_, err = databaseDB.ExecContext(context.Background(), query)
-	return err
+	return migrateSingleSchema(databaseDB, cfg)
 }
 
 func quoteIdentifier(identifier string) (string, error) {
@@ -409,68 +410,160 @@ func quoteIdentifier(identifier string) (string, error) {
 	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`", nil
 }
 
-func buildTaskLogTableSQL(table string) (string, error) {
-	table, err := NormalizeTable(table)
+func migrateSingleSchema(db *sql.DB, cfg config.ClickHouse) error {
+	source, err := newSingleMigrationSource(cfg.Table, cfg.ModelUsageTable)
 	if err != nil {
-		return "", err
+		return err
 	}
-	tableIdentifier, err := quoteIdentifier(table)
+	driver, err := migrateclickhouse.WithInstance(db, &migrateclickhouse.Config{
+		DatabaseName:          cfg.Database,
+		MigrationsTable:       "schema_migrations",
+		MigrationsTableEngine: "MergeTree",
+	})
 	if err != nil {
-		return "", err
+		_ = source.Close()
+		return err
 	}
-	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s
-(
-	task_id UUID,
-	ts DateTime64(9, 'UTC'),
-	event LowCardinality(String),
-	kind LowCardinality(String),
-	turn_seq UInt32,
-	data String CODEC(ZSTD(3)),
-	msg_seq_start UInt64,
-	msg_seq_end UInt64,
-	source LowCardinality(String),
-	log_version UInt16,
-	ingest_id UUID
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(ts)
-ORDER BY (task_id, turn_seq, ts, msg_seq_start, ingest_id)
-TTL ts + INTERVAL 60 DAY`, tableIdentifier), nil
+	m, err := migrate.NewWithInstance("clickhouse_single", source, "clickhouse", driver)
+	if err != nil {
+		_ = source.Close()
+		_ = driver.Close()
+		return err
+	}
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		_ = sourceErr
+		_ = databaseErr
+	}()
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+	return nil
 }
 
-func buildModelUsageTableSQL(table string) (string, error) {
-	table, err := NormalizeModelUsageTable(table)
+func newSingleMigrationSource(taskLogTable, modelUsageTable string) (source.Driver, error) {
+	return newClickHouseMigrationSource(clickHouseSingleMigrationPath, taskLogTable, modelUsageTable)
+}
+
+func newClusterMigrationSource(taskLogTable, modelUsageTable string) (source.Driver, error) {
+	return newClickHouseMigrationSource(clickHouseClusterMigrationPath, taskLogTable, modelUsageTable)
+}
+
+func newClickHouseMigrationSource(path, taskLogTable, modelUsageTable string) (source.Driver, error) {
+	table, err := NormalizeTable(taskLogTable)
+	if err != nil {
+		return nil, err
+	}
+	modelUsageTable, err = NormalizeModelUsageTable(modelUsageTable)
+	if err != nil {
+		return nil, err
+	}
+	root, err := findClickHouseMigrationRoot()
+	if err != nil {
+		return nil, err
+	}
+	base, err := iofs.New(os.DirFS(root), path)
+	if err != nil {
+		return nil, err
+	}
+	taskLogIdentifier, err := quoteIdentifier(table)
+	if err != nil {
+		_ = base.Close()
+		return nil, err
+	}
+	modelUsageIdentifier, err := quoteIdentifier(modelUsageTable)
+	if err != nil {
+		_ = base.Close()
+		return nil, err
+	}
+	return &templateSource{
+		base: base,
+		replacements: map[string]string{
+			"{{TASK_LOG_TABLE}}":        taskLogIdentifier,
+			"{{TASK_LOG_TABLE_RAW}}":    table,
+			"{{MODEL_USAGE_TABLE}}":     modelUsageIdentifier,
+			"{{MODEL_USAGE_TABLE_RAW}}": modelUsageTable,
+		},
+	}, nil
+}
+
+func findClickHouseMigrationRoot() (string, error) {
+	wd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	tableIdentifier, err := quoteIdentifier(table)
-	if err != nil {
-		return "", err
+	for {
+		candidate := filepath.Join(wd, clickHouseMigrationRoot)
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(wd)
+		if parent == wd {
+			return "", fmt.Errorf("clickhouse migration root %q not found", clickHouseMigrationRoot)
+		}
+		wd = parent
 	}
-	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s
-(
-	event_time DateTime64(3, 'Asia/Shanghai'),
-	team_id String,
-	user_id String,
-	task_id String,
-	project_id String,
-	provider String,
-	model_id String,
-	model_name String,
-	input_tokens UInt64,
-	output_tokens UInt64,
-	cached_tokens UInt64,
-	total_tokens UInt64,
-	request_count UInt64 DEFAULT 1,
-	success UInt8,
-	duration_ms UInt64,
-	trace_id String,
-	request_id String,
-	source String,
-	created_at DateTime64(3, 'Asia/Shanghai') DEFAULT now64(3)
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(event_time)
-ORDER BY (team_id, event_time, user_id, task_id, model_id)
-TTL toDateTime(event_time) + INTERVAL 400 DAY`, tableIdentifier), nil
+}
+
+type templateSource struct {
+	base         source.Driver
+	replacements map[string]string
+}
+
+func (s *templateSource) Open(url string) (source.Driver, error) {
+	return nil, fmt.Errorf("template source does not support Open")
+}
+
+func (s *templateSource) Close() error {
+	return s.base.Close()
+}
+
+func (s *templateSource) First() (uint, error) {
+	return s.base.First()
+}
+
+func (s *templateSource) Prev(version uint) (uint, error) {
+	return s.base.Prev(version)
+}
+
+func (s *templateSource) Next(version uint) (uint, error) {
+	return s.base.Next(version)
+}
+
+func (s *templateSource) ReadUp(version uint) (io.ReadCloser, string, error) {
+	body, identifier, err := s.base.ReadUp(version)
+	if err != nil {
+		return nil, "", err
+	}
+	rendered, err := s.render(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return rendered, identifier, nil
+}
+
+func (s *templateSource) ReadDown(version uint) (io.ReadCloser, string, error) {
+	body, identifier, err := s.base.ReadDown(version)
+	if err != nil {
+		return nil, "", err
+	}
+	rendered, err := s.render(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return rendered, identifier, nil
+}
+
+func (s *templateSource) render(body io.ReadCloser) (io.ReadCloser, error) {
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+	query := string(data)
+	for placeholder, value := range s.replacements {
+		query = strings.ReplaceAll(query, placeholder, value)
+	}
+	return io.NopCloser(bytes.NewBufferString(query)), nil
 }

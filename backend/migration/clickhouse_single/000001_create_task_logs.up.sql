@@ -1,5 +1,4 @@
-CREATE TABLE IF NOT EXISTS task_logs
-ON CLUSTER mcai_cluster
+CREATE TABLE IF NOT EXISTS {{TASK_LOG_TABLE}}
 (
 	task_id UUID,
 	ts DateTime64(9, 'UTC'),
@@ -13,8 +12,7 @@ ON CLUSTER mcai_cluster
 	log_version UInt16,
 	ingest_id UUID
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/mcai/task_logs', '{replica}')
+ENGINE = MergeTree
 PARTITION BY toYYYYMM(ts)
 ORDER BY (task_id, turn_seq, ts, msg_seq_start, ingest_id)
-TTL ts + INTERVAL 60 DAY TO VOLUME 'warm'
-SETTINGS storage_policy = 'hot_warm';
+TTL ts + INTERVAL 60 DAY;

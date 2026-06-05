@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"database/sql"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -183,24 +184,54 @@ func TestQuoteIdentifierEscapesDatabaseName(t *testing.T) {
 	}
 }
 
-func TestBuildTaskLogTableSQLUsesConfiguredTable(t *testing.T) {
-	query, err := buildTaskLogTableSQL("task_logs_test")
+func TestBuildSingleMigrationSourceUsesConfiguredTables(t *testing.T) {
+	source, err := newSingleMigrationSource("task_logs_test", "model_usage_events_test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(query, "CREATE TABLE IF NOT EXISTS `task_logs_test`") {
-		t.Fatalf("query = %q, want configured table", query)
+	t.Cleanup(func() { _ = source.Close() })
+	first, err := source.First()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(query, "ENGINE = MergeTree") {
-		t.Fatalf("query = %q, want MergeTree engine", query)
+	body, _, err := source.ReadUp(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(data)
+	if !strings.Contains(query, "CREATE TABLE IF NOT EXISTS `task_logs_test`") {
+		t.Fatalf("query = %q, want configured task log table", query)
+	}
+	if strings.Contains(query, "ON CLUSTER") || strings.Contains(query, "ReplicatedMergeTree") {
+		t.Fatalf("single migration query contains cluster ddl:\n%s", query)
 	}
 }
 
-func TestBuildModelUsageTableSQLIncludesCachedTokens(t *testing.T) {
-	query, err := buildModelUsageTableSQL("model_usage_events_test")
+func TestBuildSingleMigrationSourceIncludesModelUsageCachedTokens(t *testing.T) {
+	source, err := newSingleMigrationSource("task_logs_test", "model_usage_events_test")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = source.Close() })
+	next, err := source.Next(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := source.ReadUp(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(data)
 	for _, want := range []string{
 		"CREATE TABLE IF NOT EXISTS `model_usage_events_test`",
 		"team_id String",
@@ -213,6 +244,31 @@ func TestBuildModelUsageTableSQLIncludesCachedTokens(t *testing.T) {
 		if !strings.Contains(query, want) {
 			t.Fatalf("query missing %q:\n%s", want, query)
 		}
+	}
+}
+
+func TestClusterMigrationSourceKeepsClusterDDL(t *testing.T) {
+	source, err := newClusterMigrationSource("task_logs", "model_usage_events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	first, err := source.First()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := source.ReadUp(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(data)
+	if !strings.Contains(query, "ON CLUSTER mcai_cluster") || !strings.Contains(query, "ReplicatedMergeTree") {
+		t.Fatalf("cluster migration query missing cluster ddl:\n%s", query)
 	}
 }
 

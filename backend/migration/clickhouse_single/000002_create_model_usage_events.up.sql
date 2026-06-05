@@ -1,5 +1,4 @@
-CREATE TABLE IF NOT EXISTS model_usage_events
-ON CLUSTER mcai_cluster
+CREATE TABLE IF NOT EXISTS {{MODEL_USAGE_TABLE}}
 (
 	event_time DateTime64(3, 'Asia/Shanghai'),
 	team_id String,
@@ -21,7 +20,7 @@ ON CLUSTER mcai_cluster
 	source LowCardinality(String),
 	created_at DateTime64(3, 'Asia/Shanghai') DEFAULT now64(3)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/mcai/model_usage_events', '{replica}')
+ENGINE = MergeTree
 PARTITION BY toYYYYMM(event_time)
 ORDER BY (team_id, event_time, user_id, task_id, model_id)
 TTL toDateTime(event_time) + INTERVAL 400 DAY;
