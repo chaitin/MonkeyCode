@@ -100,11 +100,24 @@ type vmIdleRefresher struct {
 	logger           *slog.Logger
 	hostRepo         domain.HostRepo
 	taskRepo         domain.TaskRepo
+	teamPolicyRepo   domain.TeamPolicyRepo
 	notifyDispatcher *dispatcher.Dispatcher
 	sleepQueue       *delayqueue.VMSleepQueue
 	notifyQueue      *delayqueue.VMNotifyQueue
 	recycleQueue     *delayqueue.VMRecycleQueue
 	schedules        []notifySchedule
+}
+
+type vmIdleNotifyJob struct {
+	MemberSuffix string
+	RunAt        time.Time
+	LeadSeconds  int
+}
+
+type vmIdleSchedulePlan struct {
+	SleepAt    *time.Time
+	RecycleAt  *time.Time
+	NotifyJobs []vmIdleNotifyJob
 }
 
 func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
@@ -116,6 +129,7 @@ func NewVMIdleRefresher(i *do.Injector) (VMIdleRefresher, error) {
 		logger:           do.MustInvoke[*slog.Logger](i).With("module", "VMIdleRefresher"),
 		hostRepo:         do.MustInvoke[domain.HostRepo](i),
 		taskRepo:         do.MustInvoke[domain.TaskRepo](i),
+		teamPolicyRepo:   do.MustInvoke[domain.TeamPolicyRepo](i),
 		notifyDispatcher: do.MustInvoke[*dispatcher.Dispatcher](i),
 		sleepQueue:       do.MustInvoke[*delayqueue.VMSleepQueue](i),
 		notifyQueue:      do.MustInvoke[*delayqueue.VMNotifyQueue](i),
@@ -165,6 +179,46 @@ func (r *vmIdleRefresher) notifyRemainingFor(lead time.Duration) time.Duration {
 	return lead
 }
 
+func (r *vmIdleRefresher) resolvePolicyForVM(ctx context.Context, vm *db.VirtualMachine) (*domain.TeamTaskVMIdlePolicy, error) {
+	if r.teamPolicyRepo == nil || vm == nil || vm.UserID == uuid.Nil {
+		return domain.ResolveTeamTaskVMIdlePolicy(nil, r.cfg.VMIdle)
+	}
+	team, err := r.teamPolicyRepo.GetTeamByUserID(ctx, vm.UserID)
+	if err != nil {
+		if db.IsNotFound(err) {
+			return domain.ResolveTeamTaskVMIdlePolicy(nil, r.cfg.VMIdle)
+		}
+		r.logger.ErrorContext(ctx, "failed to get team policy, fallback to global", "vm_id", vm.ID, "user_id", vm.UserID, "error", err)
+		return domain.ResolveTeamTaskVMIdlePolicy(nil, r.cfg.VMIdle)
+	}
+	return domain.ResolveTeamTaskVMIdlePolicy(team, r.cfg.VMIdle)
+}
+
+func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []notifySchedule) vmIdleSchedulePlan {
+	now := time.Now()
+	var plan vmIdleSchedulePlan
+	if policy.SleepEnabled {
+		sleepAt := now.Add(time.Duration(policy.EffectiveSleepSeconds) * time.Second)
+		plan.SleepAt = &sleepAt
+	}
+	if policy.RecycleEnabled {
+		recycleAt := now.Add(time.Duration(policy.EffectiveRecycleSeconds) * time.Second)
+		plan.RecycleAt = &recycleAt
+		for _, s := range schedules {
+			delay := time.Duration(policy.EffectiveRecycleSeconds)*time.Second - s.lead
+			if delay < 0 {
+				delay = 0
+			}
+			plan.NotifyJobs = append(plan.NotifyJobs, vmIdleNotifyJob{
+				MemberSuffix: s.name,
+				RunAt:        now.Add(delay),
+				LeadSeconds:  s.leadSeconds,
+			})
+		}
+	}
+	return plan
+}
+
 func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 	vm, err := r.hostRepo.GetVirtualMachine(ctx, vmID)
 	if err != nil {
@@ -187,8 +241,15 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 		return nil
 	}
 
-	now := time.Now()
-	recycleAt := now.Add(r.recycleDelay())
+	policy, err := r.resolvePolicyForVM(ctx, vm)
+	if err != nil {
+		return err
+	}
+	plan := buildVMIdleSchedulePlan(policy, r.schedules)
+	recycleAt := time.Time{}
+	if plan.RecycleAt != nil {
+		recycleAt = *plan.RecycleAt
+	}
 	payload := &domain.VmIdleInfo{
 		UID:       vm.UserID,
 		VmID:      vm.ID,
@@ -198,32 +259,46 @@ func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
 	}
 
 	var errs []error
-	if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, now.Add(r.sleepDelay()), vmID); err != nil {
-		r.logger.ErrorContext(ctx, "failed to enqueue sleep", "error", err, "vmID", vmID)
-		errs = append(errs, fmt.Errorf("enqueue sleep: %w", err))
+	if plan.SleepAt != nil {
+		if _, err := r.sleepQueue.Enqueue(ctx, sleepQueueKey, payload, *plan.SleepAt, vmID); err != nil {
+			r.logger.ErrorContext(ctx, "failed to enqueue sleep", "error", err, "vmID", vmID)
+			errs = append(errs, fmt.Errorf("enqueue sleep: %w", err))
+		}
+	} else if err := r.sleepQueue.Remove(ctx, sleepQueueKey, vmID); err != nil {
+		r.logger.ErrorContext(ctx, "failed to remove sleep", "error", err, "vmID", vmID)
+		errs = append(errs, fmt.Errorf("remove sleep: %w", err))
 	}
 	for _, s := range r.schedules {
-		// member key 带 tier name 后缀，让同一 VM 的不同档作业互不覆盖。
-		// 同档再次 Enqueue 会用新 runAt + 新 payload(含新 RecycleAt) 覆盖旧作业，
-		// 实现"每次 Refresh 重新计时"。
 		member := fmt.Sprintf("%s:%s", vmID, s.name)
-		delay := r.notifyDelayFor(s.lead)
-		runAt := now.Add(delay)
-		if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, runAt, member); err != nil {
-			r.logger.ErrorContext(ctx, "failed to enqueue notify", "error", err, "vm_id", vmID, "tier", s.name)
-			errs = append(errs, fmt.Errorf("enqueue notify %s: %w", s.name, err))
+		if !policy.RecycleEnabled {
+			if err := r.notifyQueue.Remove(ctx, notifyQueueKey, member); err != nil {
+				r.logger.ErrorContext(ctx, "failed to remove notify", "error", err, "vm_id", vmID, "tier", s.name)
+				errs = append(errs, fmt.Errorf("remove notify %s: %w", s.name, err))
+			}
+		}
+	}
+	for _, job := range plan.NotifyJobs {
+		// member key 带 tier name 后缀，让同一 VM 的不同档作业互不覆盖。
+		member := fmt.Sprintf("%s:%s", vmID, job.MemberSuffix)
+		if _, err := r.notifyQueue.Enqueue(ctx, notifyQueueKey, payload, job.RunAt, member); err != nil {
+			r.logger.ErrorContext(ctx, "failed to enqueue notify", "error", err, "vm_id", vmID, "tier", job.MemberSuffix)
+			errs = append(errs, fmt.Errorf("enqueue notify %s: %w", job.MemberSuffix, err))
 			continue
 		}
 		r.logger.DebugContext(ctx, "notify tier scheduled",
 			"vm_id", vmID,
-			"tier", s.name,
-			"lead_seconds", s.leadSeconds,
-			"delay_seconds", int(delay.Seconds()),
-			"fire_at", runAt.Format(time.RFC3339))
+			"tier", job.MemberSuffix,
+			"lead_seconds", job.LeadSeconds,
+			"fire_at", job.RunAt.Format(time.RFC3339))
 	}
-	if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, now.Add(r.recycleDelay()), vmID); err != nil {
-		r.logger.ErrorContext(ctx, "failed to enqueue recycle", "error", err, "vmID", vmID)
-		errs = append(errs, fmt.Errorf("enqueue recycle: %w", err))
+	if plan.RecycleAt != nil {
+		if _, err := r.recycleQueue.Enqueue(ctx, recycleQueueKey, payload, *plan.RecycleAt, vmID); err != nil {
+			r.logger.ErrorContext(ctx, "failed to enqueue recycle", "error", err, "vmID", vmID)
+			errs = append(errs, fmt.Errorf("enqueue recycle: %w", err))
+		}
+	} else if err := r.recycleQueue.Remove(ctx, recycleQueueKey, vmID); err != nil {
+		r.logger.ErrorContext(ctx, "failed to remove recycle", "error", err, "vmID", vmID)
+		errs = append(errs, fmt.Errorf("remove recycle: %w", err))
 	}
 	return errors.Join(errs...)
 }

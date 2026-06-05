@@ -941,6 +941,10 @@ var (
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString},
 		{Name: "member_limit", Type: field.TypeInt},
+		{Name: "task_vm_sleep_enabled", Type: field.TypeBool, Default: true},
+		{Name: "task_vm_sleep_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "task_vm_recycle_enabled", Type: field.TypeBool, Default: true},
+		{Name: "task_vm_recycle_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}

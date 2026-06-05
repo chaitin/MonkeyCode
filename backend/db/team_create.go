@@ -57,6 +57,62 @@ func (_c *TeamCreate) SetMemberLimit(v int) *TeamCreate {
 	return _c
 }
 
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (_c *TeamCreate) SetTaskVMSleepEnabled(v bool) *TeamCreate {
+	_c.mutation.SetTaskVMSleepEnabled(v)
+	return _c
+}
+
+// SetNillableTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableTaskVMSleepEnabled(v *bool) *TeamCreate {
+	if v != nil {
+		_c.SetTaskVMSleepEnabled(*v)
+	}
+	return _c
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (_c *TeamCreate) SetTaskVMSleepSeconds(v int) *TeamCreate {
+	_c.mutation.SetTaskVMSleepSeconds(v)
+	return _c
+}
+
+// SetNillableTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableTaskVMSleepSeconds(v *int) *TeamCreate {
+	if v != nil {
+		_c.SetTaskVMSleepSeconds(*v)
+	}
+	return _c
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (_c *TeamCreate) SetTaskVMRecycleEnabled(v bool) *TeamCreate {
+	_c.mutation.SetTaskVMRecycleEnabled(v)
+	return _c
+}
+
+// SetNillableTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableTaskVMRecycleEnabled(v *bool) *TeamCreate {
+	if v != nil {
+		_c.SetTaskVMRecycleEnabled(*v)
+	}
+	return _c
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (_c *TeamCreate) SetTaskVMRecycleSeconds(v int) *TeamCreate {
+	_c.mutation.SetTaskVMRecycleSeconds(v)
+	return _c
+}
+
+// SetNillableTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableTaskVMRecycleSeconds(v *int) *TeamCreate {
+	if v != nil {
+		_c.SetTaskVMRecycleSeconds(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TeamCreate) SetCreatedAt(v time.Time) *TeamCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -233,6 +289,22 @@ func (_c *TeamCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *TeamCreate) defaults() error {
+	if _, ok := _c.mutation.TaskVMSleepEnabled(); !ok {
+		v := team.DefaultTaskVMSleepEnabled
+		_c.mutation.SetTaskVMSleepEnabled(v)
+	}
+	if _, ok := _c.mutation.TaskVMSleepSeconds(); !ok {
+		v := team.DefaultTaskVMSleepSeconds
+		_c.mutation.SetTaskVMSleepSeconds(v)
+	}
+	if _, ok := _c.mutation.TaskVMRecycleEnabled(); !ok {
+		v := team.DefaultTaskVMRecycleEnabled
+		_c.mutation.SetTaskVMRecycleEnabled(v)
+	}
+	if _, ok := _c.mutation.TaskVMRecycleSeconds(); !ok {
+		v := team.DefaultTaskVMRecycleSeconds
+		_c.mutation.SetTaskVMRecycleSeconds(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		if team.DefaultCreatedAt == nil {
 			return fmt.Errorf("db: uninitialized team.DefaultCreatedAt (forgotten import db/runtime?)")
@@ -262,6 +334,18 @@ func (_c *TeamCreate) check() error {
 	}
 	if _, ok := _c.mutation.MemberLimit(); !ok {
 		return &ValidationError{Name: "member_limit", err: errors.New(`db: missing required field "Team.member_limit"`)}
+	}
+	if _, ok := _c.mutation.TaskVMSleepEnabled(); !ok {
+		return &ValidationError{Name: "task_vm_sleep_enabled", err: errors.New(`db: missing required field "Team.task_vm_sleep_enabled"`)}
+	}
+	if _, ok := _c.mutation.TaskVMSleepSeconds(); !ok {
+		return &ValidationError{Name: "task_vm_sleep_seconds", err: errors.New(`db: missing required field "Team.task_vm_sleep_seconds"`)}
+	}
+	if _, ok := _c.mutation.TaskVMRecycleEnabled(); !ok {
+		return &ValidationError{Name: "task_vm_recycle_enabled", err: errors.New(`db: missing required field "Team.task_vm_recycle_enabled"`)}
+	}
+	if _, ok := _c.mutation.TaskVMRecycleSeconds(); !ok {
+		return &ValidationError{Name: "task_vm_recycle_seconds", err: errors.New(`db: missing required field "Team.task_vm_recycle_seconds"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`db: missing required field "Team.created_at"`)}
@@ -316,6 +400,22 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MemberLimit(); ok {
 		_spec.SetField(team.FieldMemberLimit, field.TypeInt, value)
 		_node.MemberLimit = value
+	}
+	if value, ok := _c.mutation.TaskVMSleepEnabled(); ok {
+		_spec.SetField(team.FieldTaskVMSleepEnabled, field.TypeBool, value)
+		_node.TaskVMSleepEnabled = value
+	}
+	if value, ok := _c.mutation.TaskVMSleepSeconds(); ok {
+		_spec.SetField(team.FieldTaskVMSleepSeconds, field.TypeInt, value)
+		_node.TaskVMSleepSeconds = value
+	}
+	if value, ok := _c.mutation.TaskVMRecycleEnabled(); ok {
+		_spec.SetField(team.FieldTaskVMRecycleEnabled, field.TypeBool, value)
+		_node.TaskVMRecycleEnabled = value
+	}
+	if value, ok := _c.mutation.TaskVMRecycleSeconds(); ok {
+		_spec.SetField(team.FieldTaskVMRecycleSeconds, field.TypeInt, value)
+		_node.TaskVMRecycleSeconds = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(team.FieldCreatedAt, field.TypeTime, value)
@@ -549,6 +649,66 @@ func (u *TeamUpsert) AddMemberLimit(v int) *TeamUpsert {
 	return u
 }
 
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (u *TeamUpsert) SetTaskVMSleepEnabled(v bool) *TeamUpsert {
+	u.Set(team.FieldTaskVMSleepEnabled, v)
+	return u
+}
+
+// UpdateTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateTaskVMSleepEnabled() *TeamUpsert {
+	u.SetExcluded(team.FieldTaskVMSleepEnabled)
+	return u
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (u *TeamUpsert) SetTaskVMSleepSeconds(v int) *TeamUpsert {
+	u.Set(team.FieldTaskVMSleepSeconds, v)
+	return u
+}
+
+// UpdateTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateTaskVMSleepSeconds() *TeamUpsert {
+	u.SetExcluded(team.FieldTaskVMSleepSeconds)
+	return u
+}
+
+// AddTaskVMSleepSeconds adds v to the "task_vm_sleep_seconds" field.
+func (u *TeamUpsert) AddTaskVMSleepSeconds(v int) *TeamUpsert {
+	u.Add(team.FieldTaskVMSleepSeconds, v)
+	return u
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (u *TeamUpsert) SetTaskVMRecycleEnabled(v bool) *TeamUpsert {
+	u.Set(team.FieldTaskVMRecycleEnabled, v)
+	return u
+}
+
+// UpdateTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateTaskVMRecycleEnabled() *TeamUpsert {
+	u.SetExcluded(team.FieldTaskVMRecycleEnabled)
+	return u
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (u *TeamUpsert) SetTaskVMRecycleSeconds(v int) *TeamUpsert {
+	u.Set(team.FieldTaskVMRecycleSeconds, v)
+	return u
+}
+
+// UpdateTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateTaskVMRecycleSeconds() *TeamUpsert {
+	u.SetExcluded(team.FieldTaskVMRecycleSeconds)
+	return u
+}
+
+// AddTaskVMRecycleSeconds adds v to the "task_vm_recycle_seconds" field.
+func (u *TeamUpsert) AddTaskVMRecycleSeconds(v int) *TeamUpsert {
+	u.Add(team.FieldTaskVMRecycleSeconds, v)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *TeamUpsert) SetCreatedAt(v time.Time) *TeamUpsert {
 	u.Set(team.FieldCreatedAt, v)
@@ -674,6 +834,76 @@ func (u *TeamUpsertOne) AddMemberLimit(v int) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateMemberLimit() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateMemberLimit()
+	})
+}
+
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (u *TeamUpsertOne) SetTaskVMSleepEnabled(v bool) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMSleepEnabled(v)
+	})
+}
+
+// UpdateTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateTaskVMSleepEnabled() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMSleepEnabled()
+	})
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (u *TeamUpsertOne) SetTaskVMSleepSeconds(v int) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMSleepSeconds(v)
+	})
+}
+
+// AddTaskVMSleepSeconds adds v to the "task_vm_sleep_seconds" field.
+func (u *TeamUpsertOne) AddTaskVMSleepSeconds(v int) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.AddTaskVMSleepSeconds(v)
+	})
+}
+
+// UpdateTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateTaskVMSleepSeconds() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMSleepSeconds()
+	})
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (u *TeamUpsertOne) SetTaskVMRecycleEnabled(v bool) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMRecycleEnabled(v)
+	})
+}
+
+// UpdateTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateTaskVMRecycleEnabled() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMRecycleEnabled()
+	})
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (u *TeamUpsertOne) SetTaskVMRecycleSeconds(v int) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMRecycleSeconds(v)
+	})
+}
+
+// AddTaskVMRecycleSeconds adds v to the "task_vm_recycle_seconds" field.
+func (u *TeamUpsertOne) AddTaskVMRecycleSeconds(v int) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.AddTaskVMRecycleSeconds(v)
+	})
+}
+
+// UpdateTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateTaskVMRecycleSeconds() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMRecycleSeconds()
 	})
 }
 
@@ -973,6 +1203,76 @@ func (u *TeamUpsertBulk) AddMemberLimit(v int) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateMemberLimit() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateMemberLimit()
+	})
+}
+
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (u *TeamUpsertBulk) SetTaskVMSleepEnabled(v bool) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMSleepEnabled(v)
+	})
+}
+
+// UpdateTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateTaskVMSleepEnabled() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMSleepEnabled()
+	})
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (u *TeamUpsertBulk) SetTaskVMSleepSeconds(v int) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMSleepSeconds(v)
+	})
+}
+
+// AddTaskVMSleepSeconds adds v to the "task_vm_sleep_seconds" field.
+func (u *TeamUpsertBulk) AddTaskVMSleepSeconds(v int) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.AddTaskVMSleepSeconds(v)
+	})
+}
+
+// UpdateTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateTaskVMSleepSeconds() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMSleepSeconds()
+	})
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (u *TeamUpsertBulk) SetTaskVMRecycleEnabled(v bool) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMRecycleEnabled(v)
+	})
+}
+
+// UpdateTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateTaskVMRecycleEnabled() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMRecycleEnabled()
+	})
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (u *TeamUpsertBulk) SetTaskVMRecycleSeconds(v int) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskVMRecycleSeconds(v)
+	})
+}
+
+// AddTaskVMRecycleSeconds adds v to the "task_vm_recycle_seconds" field.
+func (u *TeamUpsertBulk) AddTaskVMRecycleSeconds(v int) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.AddTaskVMRecycleSeconds(v)
+	})
+}
+
+// UpdateTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateTaskVMRecycleSeconds() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskVMRecycleSeconds()
 	})
 }
 

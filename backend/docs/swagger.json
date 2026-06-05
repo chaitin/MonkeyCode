@@ -1911,6 +1911,95 @@
                 }
             }
         },
+        "/api/v1/teams/task-vm-idle-policy": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取当前团队任务创建开发环境的空闲休眠和回收策略",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】开发环境管理"
+                ],
+                "summary": "获取任务开发环境空闲策略",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamTaskVMIdlePolicy"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "更新当前团队任务创建开发环境的空闲休眠和回收策略",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】开发环境管理"
+                ],
+                "summary": "更新任务开发环境空闲策略",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateTeamTaskVMIdlePolicyReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamTaskVMIdlePolicy"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/tasks": {
             "get": {
                 "security": [
@@ -11695,6 +11784,38 @@
                 }
             }
         },
+        "domain.TeamTaskVMIdlePolicy": {
+            "type": "object",
+            "properties": {
+                "effective_recycle_seconds": {
+                    "type": "integer"
+                },
+                "effective_sleep_seconds": {
+                    "type": "integer"
+                },
+                "recycle_enabled": {
+                    "type": "boolean"
+                },
+                "recycle_inherited": {
+                    "type": "boolean"
+                },
+                "recycle_seconds": {
+                    "type": "integer"
+                },
+                "sleep_enabled": {
+                    "type": "boolean"
+                },
+                "sleep_inherited": {
+                    "type": "boolean"
+                },
+                "sleep_seconds": {
+                    "type": "integer"
+                },
+                "team_id": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.TeamUser": {
             "type": "object",
             "properties": {
@@ -12043,6 +12164,23 @@
                 },
                 "temperature": {
                     "type": "number"
+                }
+            }
+        },
+        "domain.UpdateTeamTaskVMIdlePolicyReq": {
+            "type": "object",
+            "properties": {
+                "recycle_enabled": {
+                    "type": "boolean"
+                },
+                "recycle_seconds": {
+                    "type": "integer"
+                },
+                "sleep_enabled": {
+                    "type": "boolean"
+                },
+                "sleep_seconds": {
+                    "type": "integer"
                 }
             }
         },

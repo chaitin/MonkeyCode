@@ -29173,40 +29173,46 @@ func (m *TaskVirtualMachineMutation) ResetEdge(name string) error {
 // TeamMutation represents an operation that mutates the Team nodes in the graph.
 type TeamMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *uuid.UUID
-	deleted_at          *time.Time
-	name                *string
-	member_limit        *int
-	addmember_limit     *int
-	created_at          *time.Time
-	updated_at          *time.Time
-	clearedFields       map[string]struct{}
-	groups              map[uuid.UUID]struct{}
-	removedgroups       map[uuid.UUID]struct{}
-	clearedgroups       bool
-	members             map[uuid.UUID]struct{}
-	removedmembers      map[uuid.UUID]struct{}
-	clearedmembers      bool
-	models              map[uuid.UUID]struct{}
-	removedmodels       map[uuid.UUID]struct{}
-	clearedmodels       bool
-	images              map[uuid.UUID]struct{}
-	removedimages       map[uuid.UUID]struct{}
-	clearedimages       bool
-	team_members        map[uuid.UUID]struct{}
-	removedteam_members map[uuid.UUID]struct{}
-	clearedteam_members bool
-	team_models         map[uuid.UUID]struct{}
-	removedteam_models  map[uuid.UUID]struct{}
-	clearedteam_models  bool
-	team_images         map[uuid.UUID]struct{}
-	removedteam_images  map[uuid.UUID]struct{}
-	clearedteam_images  bool
-	done                bool
-	oldValue            func(context.Context) (*Team, error)
-	predicates          []predicate.Team
+	op                         Op
+	typ                        string
+	id                         *uuid.UUID
+	deleted_at                 *time.Time
+	name                       *string
+	member_limit               *int
+	addmember_limit            *int
+	task_vm_sleep_enabled      *bool
+	task_vm_sleep_seconds      *int
+	addtask_vm_sleep_seconds   *int
+	task_vm_recycle_enabled    *bool
+	task_vm_recycle_seconds    *int
+	addtask_vm_recycle_seconds *int
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	clearedFields              map[string]struct{}
+	groups                     map[uuid.UUID]struct{}
+	removedgroups              map[uuid.UUID]struct{}
+	clearedgroups              bool
+	members                    map[uuid.UUID]struct{}
+	removedmembers             map[uuid.UUID]struct{}
+	clearedmembers             bool
+	models                     map[uuid.UUID]struct{}
+	removedmodels              map[uuid.UUID]struct{}
+	clearedmodels              bool
+	images                     map[uuid.UUID]struct{}
+	removedimages              map[uuid.UUID]struct{}
+	clearedimages              bool
+	team_members               map[uuid.UUID]struct{}
+	removedteam_members        map[uuid.UUID]struct{}
+	clearedteam_members        bool
+	team_models                map[uuid.UUID]struct{}
+	removedteam_models         map[uuid.UUID]struct{}
+	clearedteam_models         bool
+	team_images                map[uuid.UUID]struct{}
+	removedteam_images         map[uuid.UUID]struct{}
+	clearedteam_images         bool
+	done                       bool
+	oldValue                   func(context.Context) (*Team, error)
+	predicates                 []predicate.Team
 }
 
 var _ ent.Mutation = (*TeamMutation)(nil)
@@ -29452,6 +29458,190 @@ func (m *TeamMutation) AddedMemberLimit() (r int, exists bool) {
 func (m *TeamMutation) ResetMemberLimit() {
 	m.member_limit = nil
 	m.addmember_limit = nil
+}
+
+// SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
+func (m *TeamMutation) SetTaskVMSleepEnabled(b bool) {
+	m.task_vm_sleep_enabled = &b
+}
+
+// TaskVMSleepEnabled returns the value of the "task_vm_sleep_enabled" field in the mutation.
+func (m *TeamMutation) TaskVMSleepEnabled() (r bool, exists bool) {
+	v := m.task_vm_sleep_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskVMSleepEnabled returns the old "task_vm_sleep_enabled" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldTaskVMSleepEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskVMSleepEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskVMSleepEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskVMSleepEnabled: %w", err)
+	}
+	return oldValue.TaskVMSleepEnabled, nil
+}
+
+// ResetTaskVMSleepEnabled resets all changes to the "task_vm_sleep_enabled" field.
+func (m *TeamMutation) ResetTaskVMSleepEnabled() {
+	m.task_vm_sleep_enabled = nil
+}
+
+// SetTaskVMSleepSeconds sets the "task_vm_sleep_seconds" field.
+func (m *TeamMutation) SetTaskVMSleepSeconds(i int) {
+	m.task_vm_sleep_seconds = &i
+	m.addtask_vm_sleep_seconds = nil
+}
+
+// TaskVMSleepSeconds returns the value of the "task_vm_sleep_seconds" field in the mutation.
+func (m *TeamMutation) TaskVMSleepSeconds() (r int, exists bool) {
+	v := m.task_vm_sleep_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskVMSleepSeconds returns the old "task_vm_sleep_seconds" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldTaskVMSleepSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskVMSleepSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskVMSleepSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskVMSleepSeconds: %w", err)
+	}
+	return oldValue.TaskVMSleepSeconds, nil
+}
+
+// AddTaskVMSleepSeconds adds i to the "task_vm_sleep_seconds" field.
+func (m *TeamMutation) AddTaskVMSleepSeconds(i int) {
+	if m.addtask_vm_sleep_seconds != nil {
+		*m.addtask_vm_sleep_seconds += i
+	} else {
+		m.addtask_vm_sleep_seconds = &i
+	}
+}
+
+// AddedTaskVMSleepSeconds returns the value that was added to the "task_vm_sleep_seconds" field in this mutation.
+func (m *TeamMutation) AddedTaskVMSleepSeconds() (r int, exists bool) {
+	v := m.addtask_vm_sleep_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTaskVMSleepSeconds resets all changes to the "task_vm_sleep_seconds" field.
+func (m *TeamMutation) ResetTaskVMSleepSeconds() {
+	m.task_vm_sleep_seconds = nil
+	m.addtask_vm_sleep_seconds = nil
+}
+
+// SetTaskVMRecycleEnabled sets the "task_vm_recycle_enabled" field.
+func (m *TeamMutation) SetTaskVMRecycleEnabled(b bool) {
+	m.task_vm_recycle_enabled = &b
+}
+
+// TaskVMRecycleEnabled returns the value of the "task_vm_recycle_enabled" field in the mutation.
+func (m *TeamMutation) TaskVMRecycleEnabled() (r bool, exists bool) {
+	v := m.task_vm_recycle_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskVMRecycleEnabled returns the old "task_vm_recycle_enabled" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldTaskVMRecycleEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskVMRecycleEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskVMRecycleEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskVMRecycleEnabled: %w", err)
+	}
+	return oldValue.TaskVMRecycleEnabled, nil
+}
+
+// ResetTaskVMRecycleEnabled resets all changes to the "task_vm_recycle_enabled" field.
+func (m *TeamMutation) ResetTaskVMRecycleEnabled() {
+	m.task_vm_recycle_enabled = nil
+}
+
+// SetTaskVMRecycleSeconds sets the "task_vm_recycle_seconds" field.
+func (m *TeamMutation) SetTaskVMRecycleSeconds(i int) {
+	m.task_vm_recycle_seconds = &i
+	m.addtask_vm_recycle_seconds = nil
+}
+
+// TaskVMRecycleSeconds returns the value of the "task_vm_recycle_seconds" field in the mutation.
+func (m *TeamMutation) TaskVMRecycleSeconds() (r int, exists bool) {
+	v := m.task_vm_recycle_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskVMRecycleSeconds returns the old "task_vm_recycle_seconds" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldTaskVMRecycleSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskVMRecycleSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskVMRecycleSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskVMRecycleSeconds: %w", err)
+	}
+	return oldValue.TaskVMRecycleSeconds, nil
+}
+
+// AddTaskVMRecycleSeconds adds i to the "task_vm_recycle_seconds" field.
+func (m *TeamMutation) AddTaskVMRecycleSeconds(i int) {
+	if m.addtask_vm_recycle_seconds != nil {
+		*m.addtask_vm_recycle_seconds += i
+	} else {
+		m.addtask_vm_recycle_seconds = &i
+	}
+}
+
+// AddedTaskVMRecycleSeconds returns the value that was added to the "task_vm_recycle_seconds" field in this mutation.
+func (m *TeamMutation) AddedTaskVMRecycleSeconds() (r int, exists bool) {
+	v := m.addtask_vm_recycle_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTaskVMRecycleSeconds resets all changes to the "task_vm_recycle_seconds" field.
+func (m *TeamMutation) ResetTaskVMRecycleSeconds() {
+	m.task_vm_recycle_seconds = nil
+	m.addtask_vm_recycle_seconds = nil
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -29938,7 +30128,7 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 9)
 	if m.deleted_at != nil {
 		fields = append(fields, team.FieldDeletedAt)
 	}
@@ -29947,6 +30137,18 @@ func (m *TeamMutation) Fields() []string {
 	}
 	if m.member_limit != nil {
 		fields = append(fields, team.FieldMemberLimit)
+	}
+	if m.task_vm_sleep_enabled != nil {
+		fields = append(fields, team.FieldTaskVMSleepEnabled)
+	}
+	if m.task_vm_sleep_seconds != nil {
+		fields = append(fields, team.FieldTaskVMSleepSeconds)
+	}
+	if m.task_vm_recycle_enabled != nil {
+		fields = append(fields, team.FieldTaskVMRecycleEnabled)
+	}
+	if m.task_vm_recycle_seconds != nil {
+		fields = append(fields, team.FieldTaskVMRecycleSeconds)
 	}
 	if m.created_at != nil {
 		fields = append(fields, team.FieldCreatedAt)
@@ -29968,6 +30170,14 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case team.FieldMemberLimit:
 		return m.MemberLimit()
+	case team.FieldTaskVMSleepEnabled:
+		return m.TaskVMSleepEnabled()
+	case team.FieldTaskVMSleepSeconds:
+		return m.TaskVMSleepSeconds()
+	case team.FieldTaskVMRecycleEnabled:
+		return m.TaskVMRecycleEnabled()
+	case team.FieldTaskVMRecycleSeconds:
+		return m.TaskVMRecycleSeconds()
 	case team.FieldCreatedAt:
 		return m.CreatedAt()
 	case team.FieldUpdatedAt:
@@ -29987,6 +30197,14 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldName(ctx)
 	case team.FieldMemberLimit:
 		return m.OldMemberLimit(ctx)
+	case team.FieldTaskVMSleepEnabled:
+		return m.OldTaskVMSleepEnabled(ctx)
+	case team.FieldTaskVMSleepSeconds:
+		return m.OldTaskVMSleepSeconds(ctx)
+	case team.FieldTaskVMRecycleEnabled:
+		return m.OldTaskVMRecycleEnabled(ctx)
+	case team.FieldTaskVMRecycleSeconds:
+		return m.OldTaskVMRecycleSeconds(ctx)
 	case team.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case team.FieldUpdatedAt:
@@ -30021,6 +30239,34 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetMemberLimit(v)
 		return nil
+	case team.FieldTaskVMSleepEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskVMSleepEnabled(v)
+		return nil
+	case team.FieldTaskVMSleepSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskVMSleepSeconds(v)
+		return nil
+	case team.FieldTaskVMRecycleEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskVMRecycleEnabled(v)
+		return nil
+	case team.FieldTaskVMRecycleSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskVMRecycleSeconds(v)
+		return nil
 	case team.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -30046,6 +30292,12 @@ func (m *TeamMutation) AddedFields() []string {
 	if m.addmember_limit != nil {
 		fields = append(fields, team.FieldMemberLimit)
 	}
+	if m.addtask_vm_sleep_seconds != nil {
+		fields = append(fields, team.FieldTaskVMSleepSeconds)
+	}
+	if m.addtask_vm_recycle_seconds != nil {
+		fields = append(fields, team.FieldTaskVMRecycleSeconds)
+	}
 	return fields
 }
 
@@ -30056,6 +30308,10 @@ func (m *TeamMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case team.FieldMemberLimit:
 		return m.AddedMemberLimit()
+	case team.FieldTaskVMSleepSeconds:
+		return m.AddedTaskVMSleepSeconds()
+	case team.FieldTaskVMRecycleSeconds:
+		return m.AddedTaskVMRecycleSeconds()
 	}
 	return nil, false
 }
@@ -30071,6 +30327,20 @@ func (m *TeamMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMemberLimit(v)
+		return nil
+	case team.FieldTaskVMSleepSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTaskVMSleepSeconds(v)
+		return nil
+	case team.FieldTaskVMRecycleSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTaskVMRecycleSeconds(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Team numeric field %s", name)
@@ -30116,6 +30386,18 @@ func (m *TeamMutation) ResetField(name string) error {
 		return nil
 	case team.FieldMemberLimit:
 		m.ResetMemberLimit()
+		return nil
+	case team.FieldTaskVMSleepEnabled:
+		m.ResetTaskVMSleepEnabled()
+		return nil
+	case team.FieldTaskVMSleepSeconds:
+		m.ResetTaskVMSleepSeconds()
+		return nil
+	case team.FieldTaskVMRecycleEnabled:
+		m.ResetTaskVMRecycleEnabled()
+		return nil
+	case team.FieldTaskVMRecycleSeconds:
+		m.ResetTaskVMRecycleSeconds()
 		return nil
 	case team.FieldCreatedAt:
 		m.ResetCreatedAt()
