@@ -63,7 +63,7 @@ func (u *TeamHostUsecase) GetInstallCommand(ctx context.Context, teamUser *domai
 	values.Add("token", token)
 	baseurl.RawQuery = values.Encode()
 
-	return fmt.Sprintf(`bash -c "$(curl -fsSL '%s')"`, baseurl.String()), nil
+	return fmt.Sprintf(`bash -c "$(curl -kfsSL '%s')"`, baseurl.String()), nil
 }
 
 // List 获取团队宿主机列表

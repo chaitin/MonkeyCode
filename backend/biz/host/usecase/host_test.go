@@ -54,6 +54,32 @@ func TestInstallScriptDefaultsToOnlineInstaller(t *testing.T) {
 	}
 }
 
+func TestGetInstallCommandSkipsTLSVerification(t *testing.T) {
+	t.Parallel()
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	u := &HostUsecase{
+		cfg: &config.Config{
+			Server: struct {
+				Addr    string `mapstructure:"addr"`
+				BaseURL string `mapstructure:"base_url"`
+			}{BaseURL: "https://monkeycode.local"},
+		},
+		redis: rdb,
+	}
+
+	command, err := u.GetInstallCommand(context.Background(), &domain.User{ID: uuid.New()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(command, "curl -kfsSL ") {
+		t.Fatalf("command should skip tls verification: %s", command)
+	}
+}
+
 func TestInstallScriptUsesOfflineBundle(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +136,47 @@ func TestInstallScriptUsesOfflineBundle(t *testing.T) {
 	}
 	if strings.Contains(script, "release.baizhi.cloud") {
 		t.Fatalf("script should not download public installer: %s", script)
+	}
+}
+
+func TestInstallScriptUsesHTTPForInternalInstallerResources(t *testing.T) {
+	t.Parallel()
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	token := "install-token"
+	if err := rdb.Set(context.Background(), "host:token:"+token, "1", time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	u := &HostUsecase{
+		cfg: &config.Config{
+			Server: struct {
+				Addr    string `mapstructure:"addr"`
+				BaseURL string `mapstructure:"base_url"`
+			}{BaseURL: "https://47.111.27.120"},
+			TaskFlow: config.TaskFlow{GrpcURL: "121.41.208.82:50443"},
+			StaticFiles: config.StaticFilesConfig{
+				RoutePrefix: "/static",
+			},
+			HostInstaller: config.HostInstaller{
+				Mode:       "offline",
+				BundlePath: "installer/{{.arch}}/host.tgz",
+			},
+		},
+		redis: rdb,
+	}
+
+	script, err := u.InstallScript(context.Background(), &domain.InstallReq{Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `BASE_URL="http://47.111.27.120"`) || !strings.Contains(script, `MCAI_BASE_URL="$BASE_URL"`) {
+		t.Fatalf("script should pass internal http base url: %s", script)
+	}
+	if !strings.Contains(script, `INSTALLER_URL="http://47.111.27.120/static/installer/{{.arch}}/installer"`) {
+		t.Fatalf("script should download installer through internal http url: %s", script)
 	}
 }
 

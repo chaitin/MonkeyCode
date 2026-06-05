@@ -189,7 +189,7 @@ func (h *HostUsecase) GetInstallCommand(ctx context.Context, user *domain.User) 
 	values.Add("token", token)
 	baseurl.RawQuery = values.Encode()
 
-	return fmt.Sprintf(`bash -c "$(curl -fsSL '%s')"`, baseurl.String()), nil
+	return fmt.Sprintf(`bash -c "$(curl -kfsSL '%s')"`, baseurl.String()), nil
 }
 
 // InstallScript implements domain.HostUsecase.
@@ -214,7 +214,7 @@ func (h *HostUsecase) InstallScript(ctx context.Context, token *domain.InstallRe
 	param := map[string]any{
 		"token":              token.Token,
 		"grpc_url":           h.cfg.TaskFlow.GrpcURL,
-		"base_url":           h.cfg.Server.BaseURL,
+		"base_url":           internalHTTPURL(h.cfg.Server.BaseURL),
 		"installer_url":      h.installerURL(),
 		"docker_bundle_path": h.installerBundlePath("docker.tgz"),
 		"host_bundle_path":   h.hostBundlePath(),
@@ -229,7 +229,7 @@ func (h *HostUsecase) installerURL() string {
 	if h.cfg.Server.BaseURL == "" {
 		return ""
 	}
-	baseurl, err := url.Parse(h.cfg.Server.BaseURL)
+	baseurl, err := url.Parse(internalHTTPURL(h.cfg.Server.BaseURL))
 	if err != nil {
 		return ""
 	}
@@ -247,6 +247,15 @@ func (h *HostUsecase) hostBundlePath() string {
 
 func (h *HostUsecase) installerBundlePath(name string) string {
 	return "/" + strings.Trim(h.cfg.StaticFiles.RoutePrefix, "/") + "/installer/{{.arch}}/" + name
+}
+
+func internalHTTPURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" {
+		return raw
+	}
+	u.Scheme = "http"
+	return u.String()
 }
 
 // List implements domain.HostUsecase.
