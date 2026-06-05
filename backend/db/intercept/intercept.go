@@ -8,6 +8,15 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/agentplugin"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
+	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
@@ -105,6 +114,249 @@ func (f TraverseFunc) Traverse(ctx context.Context, q db.Query) error {
 		return err
 	}
 	return f(ctx, query)
+}
+
+// The AgentPluginFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentPluginFunc func(context.Context, *db.AgentPluginQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentPluginFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentPluginQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentPluginQuery", q)
+}
+
+// The TraverseAgentPlugin type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentPlugin func(context.Context, *db.AgentPluginQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentPlugin) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentPlugin) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentPluginQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentPluginQuery", q)
+}
+
+// The AgentPluginRepoFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentPluginRepoFunc func(context.Context, *db.AgentPluginRepoQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentPluginRepoFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentPluginRepoQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentPluginRepoQuery", q)
+}
+
+// The TraverseAgentPluginRepo type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentPluginRepo func(context.Context, *db.AgentPluginRepoQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentPluginRepo) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentPluginRepo) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentPluginRepoQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentPluginRepoQuery", q)
+}
+
+// The AgentPluginVersionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentPluginVersionFunc func(context.Context, *db.AgentPluginVersionQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentPluginVersionFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentPluginVersionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentPluginVersionQuery", q)
+}
+
+// The TraverseAgentPluginVersion type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentPluginVersion func(context.Context, *db.AgentPluginVersionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentPluginVersion) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentPluginVersion) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentPluginVersionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentPluginVersionQuery", q)
+}
+
+// The AgentRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentRuleFunc func(context.Context, *db.AgentRuleQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentRuleFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentRuleQuery", q)
+}
+
+// The TraverseAgentRule type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentRule func(context.Context, *db.AgentRuleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentRule) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentRule) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentRuleQuery", q)
+}
+
+// The AgentRuleVersionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentRuleVersionFunc func(context.Context, *db.AgentRuleVersionQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentRuleVersionFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentRuleVersionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentRuleVersionQuery", q)
+}
+
+// The TraverseAgentRuleVersion type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentRuleVersion func(context.Context, *db.AgentRuleVersionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentRuleVersion) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentRuleVersion) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentRuleVersionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentRuleVersionQuery", q)
+}
+
+// The AgentSkillFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentSkillFunc func(context.Context, *db.AgentSkillQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentSkillFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentSkillQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentSkillQuery", q)
+}
+
+// The TraverseAgentSkill type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentSkill func(context.Context, *db.AgentSkillQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentSkill) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentSkill) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentSkillQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentSkillQuery", q)
+}
+
+// The AgentSkillRepoFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentSkillRepoFunc func(context.Context, *db.AgentSkillRepoQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentSkillRepoFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentSkillRepoQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentSkillRepoQuery", q)
+}
+
+// The TraverseAgentSkillRepo type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentSkillRepo func(context.Context, *db.AgentSkillRepoQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentSkillRepo) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentSkillRepo) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentSkillRepoQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentSkillRepoQuery", q)
+}
+
+// The AgentSkillVersionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentSkillVersionFunc func(context.Context, *db.AgentSkillVersionQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentSkillVersionFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentSkillVersionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentSkillVersionQuery", q)
+}
+
+// The TraverseAgentSkillVersion type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentSkillVersion func(context.Context, *db.AgentSkillVersionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentSkillVersion) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentSkillVersion) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentSkillVersionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentSkillVersionQuery", q)
+}
+
+// The AgentSyncJobFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AgentSyncJobFunc func(context.Context, *db.AgentSyncJobQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f AgentSyncJobFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.AgentSyncJobQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.AgentSyncJobQuery", q)
+}
+
+// The TraverseAgentSyncJob type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAgentSyncJob func(context.Context, *db.AgentSyncJobQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAgentSyncJob) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAgentSyncJob) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.AgentSyncJobQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.AgentSyncJobQuery", q)
 }
 
 // The AuditFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1190,6 +1442,24 @@ func (f TraverseVirtualMachine) Traverse(ctx context.Context, q db.Query) error 
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q db.Query) (Query, error) {
 	switch q := q.(type) {
+	case *db.AgentPluginQuery:
+		return &query[*db.AgentPluginQuery, predicate.AgentPlugin, agentplugin.OrderOption]{typ: db.TypeAgentPlugin, tq: q}, nil
+	case *db.AgentPluginRepoQuery:
+		return &query[*db.AgentPluginRepoQuery, predicate.AgentPluginRepo, agentpluginrepo.OrderOption]{typ: db.TypeAgentPluginRepo, tq: q}, nil
+	case *db.AgentPluginVersionQuery:
+		return &query[*db.AgentPluginVersionQuery, predicate.AgentPluginVersion, agentpluginversion.OrderOption]{typ: db.TypeAgentPluginVersion, tq: q}, nil
+	case *db.AgentRuleQuery:
+		return &query[*db.AgentRuleQuery, predicate.AgentRule, agentrule.OrderOption]{typ: db.TypeAgentRule, tq: q}, nil
+	case *db.AgentRuleVersionQuery:
+		return &query[*db.AgentRuleVersionQuery, predicate.AgentRuleVersion, agentruleversion.OrderOption]{typ: db.TypeAgentRuleVersion, tq: q}, nil
+	case *db.AgentSkillQuery:
+		return &query[*db.AgentSkillQuery, predicate.AgentSkill, agentskill.OrderOption]{typ: db.TypeAgentSkill, tq: q}, nil
+	case *db.AgentSkillRepoQuery:
+		return &query[*db.AgentSkillRepoQuery, predicate.AgentSkillRepo, agentskillrepo.OrderOption]{typ: db.TypeAgentSkillRepo, tq: q}, nil
+	case *db.AgentSkillVersionQuery:
+		return &query[*db.AgentSkillVersionQuery, predicate.AgentSkillVersion, agentskillversion.OrderOption]{typ: db.TypeAgentSkillVersion, tq: q}, nil
+	case *db.AgentSyncJobQuery:
+		return &query[*db.AgentSyncJobQuery, predicate.AgentSyncJob, agentsyncjob.OrderOption]{typ: db.TypeAgentSyncJob, tq: q}, nil
 	case *db.AuditQuery:
 		return &query[*db.AuditQuery, predicate.Audit, audit.OrderOption]{typ: db.TypeAudit, tq: q}, nil
 	case *db.GitBotQuery:

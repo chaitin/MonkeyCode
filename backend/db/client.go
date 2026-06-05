@@ -16,6 +16,15 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/chaitin/MonkeyCode/backend/db/agentplugin"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
+	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
@@ -65,6 +74,24 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AgentPlugin is the client for interacting with the AgentPlugin builders.
+	AgentPlugin *AgentPluginClient
+	// AgentPluginRepo is the client for interacting with the AgentPluginRepo builders.
+	AgentPluginRepo *AgentPluginRepoClient
+	// AgentPluginVersion is the client for interacting with the AgentPluginVersion builders.
+	AgentPluginVersion *AgentPluginVersionClient
+	// AgentRule is the client for interacting with the AgentRule builders.
+	AgentRule *AgentRuleClient
+	// AgentRuleVersion is the client for interacting with the AgentRuleVersion builders.
+	AgentRuleVersion *AgentRuleVersionClient
+	// AgentSkill is the client for interacting with the AgentSkill builders.
+	AgentSkill *AgentSkillClient
+	// AgentSkillRepo is the client for interacting with the AgentSkillRepo builders.
+	AgentSkillRepo *AgentSkillRepoClient
+	// AgentSkillVersion is the client for interacting with the AgentSkillVersion builders.
+	AgentSkillVersion *AgentSkillVersionClient
+	// AgentSyncJob is the client for interacting with the AgentSyncJob builders.
+	AgentSyncJob *AgentSyncJobClient
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
 	// GitBot is the client for interacting with the GitBot builders.
@@ -156,6 +183,15 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AgentPlugin = NewAgentPluginClient(c.config)
+	c.AgentPluginRepo = NewAgentPluginRepoClient(c.config)
+	c.AgentPluginVersion = NewAgentPluginVersionClient(c.config)
+	c.AgentRule = NewAgentRuleClient(c.config)
+	c.AgentRuleVersion = NewAgentRuleVersionClient(c.config)
+	c.AgentSkill = NewAgentSkillClient(c.config)
+	c.AgentSkillRepo = NewAgentSkillRepoClient(c.config)
+	c.AgentSkillVersion = NewAgentSkillVersionClient(c.config)
+	c.AgentSyncJob = NewAgentSyncJobClient(c.config)
 	c.Audit = NewAuditClient(c.config)
 	c.GitBot = NewGitBotClient(c.config)
 	c.GitBotTask = NewGitBotTaskClient(c.config)
@@ -288,6 +324,15 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:                 ctx,
 		config:              cfg,
+		AgentPlugin:         NewAgentPluginClient(cfg),
+		AgentPluginRepo:     NewAgentPluginRepoClient(cfg),
+		AgentPluginVersion:  NewAgentPluginVersionClient(cfg),
+		AgentRule:           NewAgentRuleClient(cfg),
+		AgentRuleVersion:    NewAgentRuleVersionClient(cfg),
+		AgentSkill:          NewAgentSkillClient(cfg),
+		AgentSkillRepo:      NewAgentSkillRepoClient(cfg),
+		AgentSkillVersion:   NewAgentSkillVersionClient(cfg),
+		AgentSyncJob:        NewAgentSyncJobClient(cfg),
 		Audit:               NewAuditClient(cfg),
 		GitBot:              NewGitBotClient(cfg),
 		GitBotTask:          NewGitBotTaskClient(cfg),
@@ -347,6 +392,15 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:                 ctx,
 		config:              cfg,
+		AgentPlugin:         NewAgentPluginClient(cfg),
+		AgentPluginRepo:     NewAgentPluginRepoClient(cfg),
+		AgentPluginVersion:  NewAgentPluginVersionClient(cfg),
+		AgentRule:           NewAgentRuleClient(cfg),
+		AgentRuleVersion:    NewAgentRuleVersionClient(cfg),
+		AgentSkill:          NewAgentSkillClient(cfg),
+		AgentSkillRepo:      NewAgentSkillRepoClient(cfg),
+		AgentSkillVersion:   NewAgentSkillVersionClient(cfg),
+		AgentSyncJob:        NewAgentSyncJobClient(cfg),
 		Audit:               NewAuditClient(cfg),
 		GitBot:              NewGitBotClient(cfg),
 		GitBotTask:          NewGitBotTaskClient(cfg),
@@ -393,7 +447,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Audit.
+//		AgentPlugin.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -416,9 +470,11 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host,
-		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
-		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.AgentPlugin, c.AgentPluginRepo, c.AgentPluginVersion, c.AgentRule,
+		c.AgentRuleVersion, c.AgentSkill, c.AgentSkillRepo, c.AgentSkillVersion,
+		c.AgentSyncJob, c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity,
+		c.GitTask, c.Host, c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting,
+		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
 		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
 		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
@@ -434,9 +490,11 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity, c.GitTask, c.Host,
-		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
-		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
+		c.AgentPlugin, c.AgentPluginRepo, c.AgentPluginVersion, c.AgentRule,
+		c.AgentRuleVersion, c.AgentSkill, c.AgentSkillRepo, c.AgentSkillVersion,
+		c.AgentSyncJob, c.Audit, c.GitBot, c.GitBotTask, c.GitBotUser, c.GitIdentity,
+		c.GitTask, c.Host, c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting,
+		c.Model, c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
 		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
 		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
@@ -451,6 +509,24 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AgentPluginMutation:
+		return c.AgentPlugin.mutate(ctx, m)
+	case *AgentPluginRepoMutation:
+		return c.AgentPluginRepo.mutate(ctx, m)
+	case *AgentPluginVersionMutation:
+		return c.AgentPluginVersion.mutate(ctx, m)
+	case *AgentRuleMutation:
+		return c.AgentRule.mutate(ctx, m)
+	case *AgentRuleVersionMutation:
+		return c.AgentRuleVersion.mutate(ctx, m)
+	case *AgentSkillMutation:
+		return c.AgentSkill.mutate(ctx, m)
+	case *AgentSkillRepoMutation:
+		return c.AgentSkillRepo.mutate(ctx, m)
+	case *AgentSkillVersionMutation:
+		return c.AgentSkillVersion.mutate(ctx, m)
+	case *AgentSyncJobMutation:
+		return c.AgentSyncJob.mutate(ctx, m)
 	case *AuditMutation:
 		return c.Audit.mutate(ctx, m)
 	case *GitBotMutation:
@@ -533,6 +609,1363 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.VirtualMachine.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("db: unknown mutation type %T", m)
+	}
+}
+
+// AgentPluginClient is a client for the AgentPlugin schema.
+type AgentPluginClient struct {
+	config
+}
+
+// NewAgentPluginClient returns a client for the AgentPlugin from the given config.
+func NewAgentPluginClient(c config) *AgentPluginClient {
+	return &AgentPluginClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentplugin.Hooks(f(g(h())))`.
+func (c *AgentPluginClient) Use(hooks ...Hook) {
+	c.hooks.AgentPlugin = append(c.hooks.AgentPlugin, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentplugin.Intercept(f(g(h())))`.
+func (c *AgentPluginClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentPlugin = append(c.inters.AgentPlugin, interceptors...)
+}
+
+// Create returns a builder for creating a AgentPlugin entity.
+func (c *AgentPluginClient) Create() *AgentPluginCreate {
+	mutation := newAgentPluginMutation(c.config, OpCreate)
+	return &AgentPluginCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentPlugin entities.
+func (c *AgentPluginClient) CreateBulk(builders ...*AgentPluginCreate) *AgentPluginCreateBulk {
+	return &AgentPluginCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentPluginClient) MapCreateBulk(slice any, setFunc func(*AgentPluginCreate, int)) *AgentPluginCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentPluginCreateBulk{err: fmt.Errorf("calling to AgentPluginClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentPluginCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentPluginCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentPlugin.
+func (c *AgentPluginClient) Update() *AgentPluginUpdate {
+	mutation := newAgentPluginMutation(c.config, OpUpdate)
+	return &AgentPluginUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentPluginClient) UpdateOne(_m *AgentPlugin) *AgentPluginUpdateOne {
+	mutation := newAgentPluginMutation(c.config, OpUpdateOne, withAgentPlugin(_m))
+	return &AgentPluginUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentPluginClient) UpdateOneID(id uuid.UUID) *AgentPluginUpdateOne {
+	mutation := newAgentPluginMutation(c.config, OpUpdateOne, withAgentPluginID(id))
+	return &AgentPluginUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentPlugin.
+func (c *AgentPluginClient) Delete() *AgentPluginDelete {
+	mutation := newAgentPluginMutation(c.config, OpDelete)
+	return &AgentPluginDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentPluginClient) DeleteOne(_m *AgentPlugin) *AgentPluginDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentPluginClient) DeleteOneID(id uuid.UUID) *AgentPluginDeleteOne {
+	builder := c.Delete().Where(agentplugin.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentPluginDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentPlugin.
+func (c *AgentPluginClient) Query() *AgentPluginQuery {
+	return &AgentPluginQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentPlugin},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentPlugin entity by its id.
+func (c *AgentPluginClient) Get(ctx context.Context, id uuid.UUID) (*AgentPlugin, error) {
+	return c.Query().Where(agentplugin.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentPluginClient) GetX(ctx context.Context, id uuid.UUID) *AgentPlugin {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRepo queries the repo edge of a AgentPlugin.
+func (c *AgentPluginClient) QueryRepo(_m *AgentPlugin) *AgentPluginRepoQuery {
+	query := (&AgentPluginRepoClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentplugin.Table, agentplugin.FieldID, id),
+			sqlgraph.To(agentpluginrepo.Table, agentpluginrepo.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentplugin.RepoTable, agentplugin.RepoColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryVersions queries the versions edge of a AgentPlugin.
+func (c *AgentPluginClient) QueryVersions(_m *AgentPlugin) *AgentPluginVersionQuery {
+	query := (&AgentPluginVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentplugin.Table, agentplugin.FieldID, id),
+			sqlgraph.To(agentpluginversion.Table, agentpluginversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, agentplugin.VersionsTable, agentplugin.VersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentPluginClient) Hooks() []Hook {
+	return c.hooks.AgentPlugin
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentPluginClient) Interceptors() []Interceptor {
+	return c.inters.AgentPlugin
+}
+
+func (c *AgentPluginClient) mutate(ctx context.Context, m *AgentPluginMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentPluginCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentPluginUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentPluginUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentPluginDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentPlugin mutation op: %q", m.Op())
+	}
+}
+
+// AgentPluginRepoClient is a client for the AgentPluginRepo schema.
+type AgentPluginRepoClient struct {
+	config
+}
+
+// NewAgentPluginRepoClient returns a client for the AgentPluginRepo from the given config.
+func NewAgentPluginRepoClient(c config) *AgentPluginRepoClient {
+	return &AgentPluginRepoClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentpluginrepo.Hooks(f(g(h())))`.
+func (c *AgentPluginRepoClient) Use(hooks ...Hook) {
+	c.hooks.AgentPluginRepo = append(c.hooks.AgentPluginRepo, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentpluginrepo.Intercept(f(g(h())))`.
+func (c *AgentPluginRepoClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentPluginRepo = append(c.inters.AgentPluginRepo, interceptors...)
+}
+
+// Create returns a builder for creating a AgentPluginRepo entity.
+func (c *AgentPluginRepoClient) Create() *AgentPluginRepoCreate {
+	mutation := newAgentPluginRepoMutation(c.config, OpCreate)
+	return &AgentPluginRepoCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentPluginRepo entities.
+func (c *AgentPluginRepoClient) CreateBulk(builders ...*AgentPluginRepoCreate) *AgentPluginRepoCreateBulk {
+	return &AgentPluginRepoCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentPluginRepoClient) MapCreateBulk(slice any, setFunc func(*AgentPluginRepoCreate, int)) *AgentPluginRepoCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentPluginRepoCreateBulk{err: fmt.Errorf("calling to AgentPluginRepoClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentPluginRepoCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentPluginRepoCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentPluginRepo.
+func (c *AgentPluginRepoClient) Update() *AgentPluginRepoUpdate {
+	mutation := newAgentPluginRepoMutation(c.config, OpUpdate)
+	return &AgentPluginRepoUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentPluginRepoClient) UpdateOne(_m *AgentPluginRepo) *AgentPluginRepoUpdateOne {
+	mutation := newAgentPluginRepoMutation(c.config, OpUpdateOne, withAgentPluginRepo(_m))
+	return &AgentPluginRepoUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentPluginRepoClient) UpdateOneID(id uuid.UUID) *AgentPluginRepoUpdateOne {
+	mutation := newAgentPluginRepoMutation(c.config, OpUpdateOne, withAgentPluginRepoID(id))
+	return &AgentPluginRepoUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentPluginRepo.
+func (c *AgentPluginRepoClient) Delete() *AgentPluginRepoDelete {
+	mutation := newAgentPluginRepoMutation(c.config, OpDelete)
+	return &AgentPluginRepoDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentPluginRepoClient) DeleteOne(_m *AgentPluginRepo) *AgentPluginRepoDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentPluginRepoClient) DeleteOneID(id uuid.UUID) *AgentPluginRepoDeleteOne {
+	builder := c.Delete().Where(agentpluginrepo.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentPluginRepoDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentPluginRepo.
+func (c *AgentPluginRepoClient) Query() *AgentPluginRepoQuery {
+	return &AgentPluginRepoQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentPluginRepo},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentPluginRepo entity by its id.
+func (c *AgentPluginRepoClient) Get(ctx context.Context, id uuid.UUID) (*AgentPluginRepo, error) {
+	return c.Query().Where(agentpluginrepo.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentPluginRepoClient) GetX(ctx context.Context, id uuid.UUID) *AgentPluginRepo {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPlugins queries the plugins edge of a AgentPluginRepo.
+func (c *AgentPluginRepoClient) QueryPlugins(_m *AgentPluginRepo) *AgentPluginQuery {
+	query := (&AgentPluginClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentpluginrepo.Table, agentpluginrepo.FieldID, id),
+			sqlgraph.To(agentplugin.Table, agentplugin.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, agentpluginrepo.PluginsTable, agentpluginrepo.PluginsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentPluginRepoClient) Hooks() []Hook {
+	return c.hooks.AgentPluginRepo
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentPluginRepoClient) Interceptors() []Interceptor {
+	return c.inters.AgentPluginRepo
+}
+
+func (c *AgentPluginRepoClient) mutate(ctx context.Context, m *AgentPluginRepoMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentPluginRepoCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentPluginRepoUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentPluginRepoUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentPluginRepoDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentPluginRepo mutation op: %q", m.Op())
+	}
+}
+
+// AgentPluginVersionClient is a client for the AgentPluginVersion schema.
+type AgentPluginVersionClient struct {
+	config
+}
+
+// NewAgentPluginVersionClient returns a client for the AgentPluginVersion from the given config.
+func NewAgentPluginVersionClient(c config) *AgentPluginVersionClient {
+	return &AgentPluginVersionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentpluginversion.Hooks(f(g(h())))`.
+func (c *AgentPluginVersionClient) Use(hooks ...Hook) {
+	c.hooks.AgentPluginVersion = append(c.hooks.AgentPluginVersion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentpluginversion.Intercept(f(g(h())))`.
+func (c *AgentPluginVersionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentPluginVersion = append(c.inters.AgentPluginVersion, interceptors...)
+}
+
+// Create returns a builder for creating a AgentPluginVersion entity.
+func (c *AgentPluginVersionClient) Create() *AgentPluginVersionCreate {
+	mutation := newAgentPluginVersionMutation(c.config, OpCreate)
+	return &AgentPluginVersionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentPluginVersion entities.
+func (c *AgentPluginVersionClient) CreateBulk(builders ...*AgentPluginVersionCreate) *AgentPluginVersionCreateBulk {
+	return &AgentPluginVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentPluginVersionClient) MapCreateBulk(slice any, setFunc func(*AgentPluginVersionCreate, int)) *AgentPluginVersionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentPluginVersionCreateBulk{err: fmt.Errorf("calling to AgentPluginVersionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentPluginVersionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentPluginVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentPluginVersion.
+func (c *AgentPluginVersionClient) Update() *AgentPluginVersionUpdate {
+	mutation := newAgentPluginVersionMutation(c.config, OpUpdate)
+	return &AgentPluginVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentPluginVersionClient) UpdateOne(_m *AgentPluginVersion) *AgentPluginVersionUpdateOne {
+	mutation := newAgentPluginVersionMutation(c.config, OpUpdateOne, withAgentPluginVersion(_m))
+	return &AgentPluginVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentPluginVersionClient) UpdateOneID(id uuid.UUID) *AgentPluginVersionUpdateOne {
+	mutation := newAgentPluginVersionMutation(c.config, OpUpdateOne, withAgentPluginVersionID(id))
+	return &AgentPluginVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentPluginVersion.
+func (c *AgentPluginVersionClient) Delete() *AgentPluginVersionDelete {
+	mutation := newAgentPluginVersionMutation(c.config, OpDelete)
+	return &AgentPluginVersionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentPluginVersionClient) DeleteOne(_m *AgentPluginVersion) *AgentPluginVersionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentPluginVersionClient) DeleteOneID(id uuid.UUID) *AgentPluginVersionDeleteOne {
+	builder := c.Delete().Where(agentpluginversion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentPluginVersionDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentPluginVersion.
+func (c *AgentPluginVersionClient) Query() *AgentPluginVersionQuery {
+	return &AgentPluginVersionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentPluginVersion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentPluginVersion entity by its id.
+func (c *AgentPluginVersionClient) Get(ctx context.Context, id uuid.UUID) (*AgentPluginVersion, error) {
+	return c.Query().Where(agentpluginversion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentPluginVersionClient) GetX(ctx context.Context, id uuid.UUID) *AgentPluginVersion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryPlugin queries the plugin edge of a AgentPluginVersion.
+func (c *AgentPluginVersionClient) QueryPlugin(_m *AgentPluginVersion) *AgentPluginQuery {
+	query := (&AgentPluginClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentpluginversion.Table, agentpluginversion.FieldID, id),
+			sqlgraph.To(agentplugin.Table, agentplugin.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentpluginversion.PluginTable, agentpluginversion.PluginColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentPluginVersionClient) Hooks() []Hook {
+	return c.hooks.AgentPluginVersion
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentPluginVersionClient) Interceptors() []Interceptor {
+	return c.inters.AgentPluginVersion
+}
+
+func (c *AgentPluginVersionClient) mutate(ctx context.Context, m *AgentPluginVersionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentPluginVersionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentPluginVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentPluginVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentPluginVersionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentPluginVersion mutation op: %q", m.Op())
+	}
+}
+
+// AgentRuleClient is a client for the AgentRule schema.
+type AgentRuleClient struct {
+	config
+}
+
+// NewAgentRuleClient returns a client for the AgentRule from the given config.
+func NewAgentRuleClient(c config) *AgentRuleClient {
+	return &AgentRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentrule.Hooks(f(g(h())))`.
+func (c *AgentRuleClient) Use(hooks ...Hook) {
+	c.hooks.AgentRule = append(c.hooks.AgentRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentrule.Intercept(f(g(h())))`.
+func (c *AgentRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentRule = append(c.inters.AgentRule, interceptors...)
+}
+
+// Create returns a builder for creating a AgentRule entity.
+func (c *AgentRuleClient) Create() *AgentRuleCreate {
+	mutation := newAgentRuleMutation(c.config, OpCreate)
+	return &AgentRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentRule entities.
+func (c *AgentRuleClient) CreateBulk(builders ...*AgentRuleCreate) *AgentRuleCreateBulk {
+	return &AgentRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentRuleClient) MapCreateBulk(slice any, setFunc func(*AgentRuleCreate, int)) *AgentRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentRuleCreateBulk{err: fmt.Errorf("calling to AgentRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentRule.
+func (c *AgentRuleClient) Update() *AgentRuleUpdate {
+	mutation := newAgentRuleMutation(c.config, OpUpdate)
+	return &AgentRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentRuleClient) UpdateOne(_m *AgentRule) *AgentRuleUpdateOne {
+	mutation := newAgentRuleMutation(c.config, OpUpdateOne, withAgentRule(_m))
+	return &AgentRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentRuleClient) UpdateOneID(id uuid.UUID) *AgentRuleUpdateOne {
+	mutation := newAgentRuleMutation(c.config, OpUpdateOne, withAgentRuleID(id))
+	return &AgentRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentRule.
+func (c *AgentRuleClient) Delete() *AgentRuleDelete {
+	mutation := newAgentRuleMutation(c.config, OpDelete)
+	return &AgentRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentRuleClient) DeleteOne(_m *AgentRule) *AgentRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentRuleClient) DeleteOneID(id uuid.UUID) *AgentRuleDeleteOne {
+	builder := c.Delete().Where(agentrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentRule.
+func (c *AgentRuleClient) Query() *AgentRuleQuery {
+	return &AgentRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentRule entity by its id.
+func (c *AgentRuleClient) Get(ctx context.Context, id uuid.UUID) (*AgentRule, error) {
+	return c.Query().Where(agentrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentRuleClient) GetX(ctx context.Context, id uuid.UUID) *AgentRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryVersions queries the versions edge of a AgentRule.
+func (c *AgentRuleClient) QueryVersions(_m *AgentRule) *AgentRuleVersionQuery {
+	query := (&AgentRuleVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentrule.Table, agentrule.FieldID, id),
+			sqlgraph.To(agentruleversion.Table, agentruleversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, agentrule.VersionsTable, agentrule.VersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentRuleClient) Hooks() []Hook {
+	return c.hooks.AgentRule
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentRuleClient) Interceptors() []Interceptor {
+	return c.inters.AgentRule
+}
+
+func (c *AgentRuleClient) mutate(ctx context.Context, m *AgentRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentRule mutation op: %q", m.Op())
+	}
+}
+
+// AgentRuleVersionClient is a client for the AgentRuleVersion schema.
+type AgentRuleVersionClient struct {
+	config
+}
+
+// NewAgentRuleVersionClient returns a client for the AgentRuleVersion from the given config.
+func NewAgentRuleVersionClient(c config) *AgentRuleVersionClient {
+	return &AgentRuleVersionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentruleversion.Hooks(f(g(h())))`.
+func (c *AgentRuleVersionClient) Use(hooks ...Hook) {
+	c.hooks.AgentRuleVersion = append(c.hooks.AgentRuleVersion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentruleversion.Intercept(f(g(h())))`.
+func (c *AgentRuleVersionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentRuleVersion = append(c.inters.AgentRuleVersion, interceptors...)
+}
+
+// Create returns a builder for creating a AgentRuleVersion entity.
+func (c *AgentRuleVersionClient) Create() *AgentRuleVersionCreate {
+	mutation := newAgentRuleVersionMutation(c.config, OpCreate)
+	return &AgentRuleVersionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentRuleVersion entities.
+func (c *AgentRuleVersionClient) CreateBulk(builders ...*AgentRuleVersionCreate) *AgentRuleVersionCreateBulk {
+	return &AgentRuleVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentRuleVersionClient) MapCreateBulk(slice any, setFunc func(*AgentRuleVersionCreate, int)) *AgentRuleVersionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentRuleVersionCreateBulk{err: fmt.Errorf("calling to AgentRuleVersionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentRuleVersionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentRuleVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentRuleVersion.
+func (c *AgentRuleVersionClient) Update() *AgentRuleVersionUpdate {
+	mutation := newAgentRuleVersionMutation(c.config, OpUpdate)
+	return &AgentRuleVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentRuleVersionClient) UpdateOne(_m *AgentRuleVersion) *AgentRuleVersionUpdateOne {
+	mutation := newAgentRuleVersionMutation(c.config, OpUpdateOne, withAgentRuleVersion(_m))
+	return &AgentRuleVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentRuleVersionClient) UpdateOneID(id uuid.UUID) *AgentRuleVersionUpdateOne {
+	mutation := newAgentRuleVersionMutation(c.config, OpUpdateOne, withAgentRuleVersionID(id))
+	return &AgentRuleVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentRuleVersion.
+func (c *AgentRuleVersionClient) Delete() *AgentRuleVersionDelete {
+	mutation := newAgentRuleVersionMutation(c.config, OpDelete)
+	return &AgentRuleVersionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentRuleVersionClient) DeleteOne(_m *AgentRuleVersion) *AgentRuleVersionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentRuleVersionClient) DeleteOneID(id uuid.UUID) *AgentRuleVersionDeleteOne {
+	builder := c.Delete().Where(agentruleversion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentRuleVersionDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentRuleVersion.
+func (c *AgentRuleVersionClient) Query() *AgentRuleVersionQuery {
+	return &AgentRuleVersionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentRuleVersion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentRuleVersion entity by its id.
+func (c *AgentRuleVersionClient) Get(ctx context.Context, id uuid.UUID) (*AgentRuleVersion, error) {
+	return c.Query().Where(agentruleversion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentRuleVersionClient) GetX(ctx context.Context, id uuid.UUID) *AgentRuleVersion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRule queries the rule edge of a AgentRuleVersion.
+func (c *AgentRuleVersionClient) QueryRule(_m *AgentRuleVersion) *AgentRuleQuery {
+	query := (&AgentRuleClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentruleversion.Table, agentruleversion.FieldID, id),
+			sqlgraph.To(agentrule.Table, agentrule.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentruleversion.RuleTable, agentruleversion.RuleColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentRuleVersionClient) Hooks() []Hook {
+	return c.hooks.AgentRuleVersion
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentRuleVersionClient) Interceptors() []Interceptor {
+	return c.inters.AgentRuleVersion
+}
+
+func (c *AgentRuleVersionClient) mutate(ctx context.Context, m *AgentRuleVersionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentRuleVersionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentRuleVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentRuleVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentRuleVersionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentRuleVersion mutation op: %q", m.Op())
+	}
+}
+
+// AgentSkillClient is a client for the AgentSkill schema.
+type AgentSkillClient struct {
+	config
+}
+
+// NewAgentSkillClient returns a client for the AgentSkill from the given config.
+func NewAgentSkillClient(c config) *AgentSkillClient {
+	return &AgentSkillClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentskill.Hooks(f(g(h())))`.
+func (c *AgentSkillClient) Use(hooks ...Hook) {
+	c.hooks.AgentSkill = append(c.hooks.AgentSkill, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentskill.Intercept(f(g(h())))`.
+func (c *AgentSkillClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentSkill = append(c.inters.AgentSkill, interceptors...)
+}
+
+// Create returns a builder for creating a AgentSkill entity.
+func (c *AgentSkillClient) Create() *AgentSkillCreate {
+	mutation := newAgentSkillMutation(c.config, OpCreate)
+	return &AgentSkillCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentSkill entities.
+func (c *AgentSkillClient) CreateBulk(builders ...*AgentSkillCreate) *AgentSkillCreateBulk {
+	return &AgentSkillCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentSkillClient) MapCreateBulk(slice any, setFunc func(*AgentSkillCreate, int)) *AgentSkillCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentSkillCreateBulk{err: fmt.Errorf("calling to AgentSkillClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentSkillCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentSkillCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentSkill.
+func (c *AgentSkillClient) Update() *AgentSkillUpdate {
+	mutation := newAgentSkillMutation(c.config, OpUpdate)
+	return &AgentSkillUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentSkillClient) UpdateOne(_m *AgentSkill) *AgentSkillUpdateOne {
+	mutation := newAgentSkillMutation(c.config, OpUpdateOne, withAgentSkill(_m))
+	return &AgentSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentSkillClient) UpdateOneID(id uuid.UUID) *AgentSkillUpdateOne {
+	mutation := newAgentSkillMutation(c.config, OpUpdateOne, withAgentSkillID(id))
+	return &AgentSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentSkill.
+func (c *AgentSkillClient) Delete() *AgentSkillDelete {
+	mutation := newAgentSkillMutation(c.config, OpDelete)
+	return &AgentSkillDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentSkillClient) DeleteOne(_m *AgentSkill) *AgentSkillDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentSkillClient) DeleteOneID(id uuid.UUID) *AgentSkillDeleteOne {
+	builder := c.Delete().Where(agentskill.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentSkillDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentSkill.
+func (c *AgentSkillClient) Query() *AgentSkillQuery {
+	return &AgentSkillQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentSkill},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentSkill entity by its id.
+func (c *AgentSkillClient) Get(ctx context.Context, id uuid.UUID) (*AgentSkill, error) {
+	return c.Query().Where(agentskill.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentSkillClient) GetX(ctx context.Context, id uuid.UUID) *AgentSkill {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRepo queries the repo edge of a AgentSkill.
+func (c *AgentSkillClient) QueryRepo(_m *AgentSkill) *AgentSkillRepoQuery {
+	query := (&AgentSkillRepoClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentskill.Table, agentskill.FieldID, id),
+			sqlgraph.To(agentskillrepo.Table, agentskillrepo.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentskill.RepoTable, agentskill.RepoColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryVersions queries the versions edge of a AgentSkill.
+func (c *AgentSkillClient) QueryVersions(_m *AgentSkill) *AgentSkillVersionQuery {
+	query := (&AgentSkillVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentskill.Table, agentskill.FieldID, id),
+			sqlgraph.To(agentskillversion.Table, agentskillversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, agentskill.VersionsTable, agentskill.VersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentSkillClient) Hooks() []Hook {
+	return c.hooks.AgentSkill
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentSkillClient) Interceptors() []Interceptor {
+	return c.inters.AgentSkill
+}
+
+func (c *AgentSkillClient) mutate(ctx context.Context, m *AgentSkillMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentSkillCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentSkillUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentSkillDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentSkill mutation op: %q", m.Op())
+	}
+}
+
+// AgentSkillRepoClient is a client for the AgentSkillRepo schema.
+type AgentSkillRepoClient struct {
+	config
+}
+
+// NewAgentSkillRepoClient returns a client for the AgentSkillRepo from the given config.
+func NewAgentSkillRepoClient(c config) *AgentSkillRepoClient {
+	return &AgentSkillRepoClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentskillrepo.Hooks(f(g(h())))`.
+func (c *AgentSkillRepoClient) Use(hooks ...Hook) {
+	c.hooks.AgentSkillRepo = append(c.hooks.AgentSkillRepo, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentskillrepo.Intercept(f(g(h())))`.
+func (c *AgentSkillRepoClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentSkillRepo = append(c.inters.AgentSkillRepo, interceptors...)
+}
+
+// Create returns a builder for creating a AgentSkillRepo entity.
+func (c *AgentSkillRepoClient) Create() *AgentSkillRepoCreate {
+	mutation := newAgentSkillRepoMutation(c.config, OpCreate)
+	return &AgentSkillRepoCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentSkillRepo entities.
+func (c *AgentSkillRepoClient) CreateBulk(builders ...*AgentSkillRepoCreate) *AgentSkillRepoCreateBulk {
+	return &AgentSkillRepoCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentSkillRepoClient) MapCreateBulk(slice any, setFunc func(*AgentSkillRepoCreate, int)) *AgentSkillRepoCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentSkillRepoCreateBulk{err: fmt.Errorf("calling to AgentSkillRepoClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentSkillRepoCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentSkillRepoCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentSkillRepo.
+func (c *AgentSkillRepoClient) Update() *AgentSkillRepoUpdate {
+	mutation := newAgentSkillRepoMutation(c.config, OpUpdate)
+	return &AgentSkillRepoUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentSkillRepoClient) UpdateOne(_m *AgentSkillRepo) *AgentSkillRepoUpdateOne {
+	mutation := newAgentSkillRepoMutation(c.config, OpUpdateOne, withAgentSkillRepo(_m))
+	return &AgentSkillRepoUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentSkillRepoClient) UpdateOneID(id uuid.UUID) *AgentSkillRepoUpdateOne {
+	mutation := newAgentSkillRepoMutation(c.config, OpUpdateOne, withAgentSkillRepoID(id))
+	return &AgentSkillRepoUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentSkillRepo.
+func (c *AgentSkillRepoClient) Delete() *AgentSkillRepoDelete {
+	mutation := newAgentSkillRepoMutation(c.config, OpDelete)
+	return &AgentSkillRepoDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentSkillRepoClient) DeleteOne(_m *AgentSkillRepo) *AgentSkillRepoDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentSkillRepoClient) DeleteOneID(id uuid.UUID) *AgentSkillRepoDeleteOne {
+	builder := c.Delete().Where(agentskillrepo.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentSkillRepoDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentSkillRepo.
+func (c *AgentSkillRepoClient) Query() *AgentSkillRepoQuery {
+	return &AgentSkillRepoQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentSkillRepo},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentSkillRepo entity by its id.
+func (c *AgentSkillRepoClient) Get(ctx context.Context, id uuid.UUID) (*AgentSkillRepo, error) {
+	return c.Query().Where(agentskillrepo.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentSkillRepoClient) GetX(ctx context.Context, id uuid.UUID) *AgentSkillRepo {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySkills queries the skills edge of a AgentSkillRepo.
+func (c *AgentSkillRepoClient) QuerySkills(_m *AgentSkillRepo) *AgentSkillQuery {
+	query := (&AgentSkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentskillrepo.Table, agentskillrepo.FieldID, id),
+			sqlgraph.To(agentskill.Table, agentskill.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, agentskillrepo.SkillsTable, agentskillrepo.SkillsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentSkillRepoClient) Hooks() []Hook {
+	return c.hooks.AgentSkillRepo
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentSkillRepoClient) Interceptors() []Interceptor {
+	return c.inters.AgentSkillRepo
+}
+
+func (c *AgentSkillRepoClient) mutate(ctx context.Context, m *AgentSkillRepoMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentSkillRepoCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentSkillRepoUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentSkillRepoUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentSkillRepoDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentSkillRepo mutation op: %q", m.Op())
+	}
+}
+
+// AgentSkillVersionClient is a client for the AgentSkillVersion schema.
+type AgentSkillVersionClient struct {
+	config
+}
+
+// NewAgentSkillVersionClient returns a client for the AgentSkillVersion from the given config.
+func NewAgentSkillVersionClient(c config) *AgentSkillVersionClient {
+	return &AgentSkillVersionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentskillversion.Hooks(f(g(h())))`.
+func (c *AgentSkillVersionClient) Use(hooks ...Hook) {
+	c.hooks.AgentSkillVersion = append(c.hooks.AgentSkillVersion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentskillversion.Intercept(f(g(h())))`.
+func (c *AgentSkillVersionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentSkillVersion = append(c.inters.AgentSkillVersion, interceptors...)
+}
+
+// Create returns a builder for creating a AgentSkillVersion entity.
+func (c *AgentSkillVersionClient) Create() *AgentSkillVersionCreate {
+	mutation := newAgentSkillVersionMutation(c.config, OpCreate)
+	return &AgentSkillVersionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentSkillVersion entities.
+func (c *AgentSkillVersionClient) CreateBulk(builders ...*AgentSkillVersionCreate) *AgentSkillVersionCreateBulk {
+	return &AgentSkillVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentSkillVersionClient) MapCreateBulk(slice any, setFunc func(*AgentSkillVersionCreate, int)) *AgentSkillVersionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentSkillVersionCreateBulk{err: fmt.Errorf("calling to AgentSkillVersionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentSkillVersionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentSkillVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentSkillVersion.
+func (c *AgentSkillVersionClient) Update() *AgentSkillVersionUpdate {
+	mutation := newAgentSkillVersionMutation(c.config, OpUpdate)
+	return &AgentSkillVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentSkillVersionClient) UpdateOne(_m *AgentSkillVersion) *AgentSkillVersionUpdateOne {
+	mutation := newAgentSkillVersionMutation(c.config, OpUpdateOne, withAgentSkillVersion(_m))
+	return &AgentSkillVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentSkillVersionClient) UpdateOneID(id uuid.UUID) *AgentSkillVersionUpdateOne {
+	mutation := newAgentSkillVersionMutation(c.config, OpUpdateOne, withAgentSkillVersionID(id))
+	return &AgentSkillVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentSkillVersion.
+func (c *AgentSkillVersionClient) Delete() *AgentSkillVersionDelete {
+	mutation := newAgentSkillVersionMutation(c.config, OpDelete)
+	return &AgentSkillVersionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentSkillVersionClient) DeleteOne(_m *AgentSkillVersion) *AgentSkillVersionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentSkillVersionClient) DeleteOneID(id uuid.UUID) *AgentSkillVersionDeleteOne {
+	builder := c.Delete().Where(agentskillversion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentSkillVersionDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentSkillVersion.
+func (c *AgentSkillVersionClient) Query() *AgentSkillVersionQuery {
+	return &AgentSkillVersionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentSkillVersion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentSkillVersion entity by its id.
+func (c *AgentSkillVersionClient) Get(ctx context.Context, id uuid.UUID) (*AgentSkillVersion, error) {
+	return c.Query().Where(agentskillversion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentSkillVersionClient) GetX(ctx context.Context, id uuid.UUID) *AgentSkillVersion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySkill queries the skill edge of a AgentSkillVersion.
+func (c *AgentSkillVersionClient) QuerySkill(_m *AgentSkillVersion) *AgentSkillQuery {
+	query := (&AgentSkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(agentskillversion.Table, agentskillversion.FieldID, id),
+			sqlgraph.To(agentskill.Table, agentskill.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, agentskillversion.SkillTable, agentskillversion.SkillColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AgentSkillVersionClient) Hooks() []Hook {
+	return c.hooks.AgentSkillVersion
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentSkillVersionClient) Interceptors() []Interceptor {
+	return c.inters.AgentSkillVersion
+}
+
+func (c *AgentSkillVersionClient) mutate(ctx context.Context, m *AgentSkillVersionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentSkillVersionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentSkillVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentSkillVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentSkillVersionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentSkillVersion mutation op: %q", m.Op())
+	}
+}
+
+// AgentSyncJobClient is a client for the AgentSyncJob schema.
+type AgentSyncJobClient struct {
+	config
+}
+
+// NewAgentSyncJobClient returns a client for the AgentSyncJob from the given config.
+func NewAgentSyncJobClient(c config) *AgentSyncJobClient {
+	return &AgentSyncJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `agentsyncjob.Hooks(f(g(h())))`.
+func (c *AgentSyncJobClient) Use(hooks ...Hook) {
+	c.hooks.AgentSyncJob = append(c.hooks.AgentSyncJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `agentsyncjob.Intercept(f(g(h())))`.
+func (c *AgentSyncJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AgentSyncJob = append(c.inters.AgentSyncJob, interceptors...)
+}
+
+// Create returns a builder for creating a AgentSyncJob entity.
+func (c *AgentSyncJobClient) Create() *AgentSyncJobCreate {
+	mutation := newAgentSyncJobMutation(c.config, OpCreate)
+	return &AgentSyncJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AgentSyncJob entities.
+func (c *AgentSyncJobClient) CreateBulk(builders ...*AgentSyncJobCreate) *AgentSyncJobCreateBulk {
+	return &AgentSyncJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AgentSyncJobClient) MapCreateBulk(slice any, setFunc func(*AgentSyncJobCreate, int)) *AgentSyncJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AgentSyncJobCreateBulk{err: fmt.Errorf("calling to AgentSyncJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AgentSyncJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AgentSyncJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AgentSyncJob.
+func (c *AgentSyncJobClient) Update() *AgentSyncJobUpdate {
+	mutation := newAgentSyncJobMutation(c.config, OpUpdate)
+	return &AgentSyncJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AgentSyncJobClient) UpdateOne(_m *AgentSyncJob) *AgentSyncJobUpdateOne {
+	mutation := newAgentSyncJobMutation(c.config, OpUpdateOne, withAgentSyncJob(_m))
+	return &AgentSyncJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AgentSyncJobClient) UpdateOneID(id uuid.UUID) *AgentSyncJobUpdateOne {
+	mutation := newAgentSyncJobMutation(c.config, OpUpdateOne, withAgentSyncJobID(id))
+	return &AgentSyncJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AgentSyncJob.
+func (c *AgentSyncJobClient) Delete() *AgentSyncJobDelete {
+	mutation := newAgentSyncJobMutation(c.config, OpDelete)
+	return &AgentSyncJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AgentSyncJobClient) DeleteOne(_m *AgentSyncJob) *AgentSyncJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AgentSyncJobClient) DeleteOneID(id uuid.UUID) *AgentSyncJobDeleteOne {
+	builder := c.Delete().Where(agentsyncjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AgentSyncJobDeleteOne{builder}
+}
+
+// Query returns a query builder for AgentSyncJob.
+func (c *AgentSyncJobClient) Query() *AgentSyncJobQuery {
+	return &AgentSyncJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAgentSyncJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AgentSyncJob entity by its id.
+func (c *AgentSyncJobClient) Get(ctx context.Context, id uuid.UUID) (*AgentSyncJob, error) {
+	return c.Query().Where(agentsyncjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AgentSyncJobClient) GetX(ctx context.Context, id uuid.UUID) *AgentSyncJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AgentSyncJobClient) Hooks() []Hook {
+	return c.hooks.AgentSyncJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *AgentSyncJobClient) Interceptors() []Interceptor {
+	return c.inters.AgentSyncJob
+}
+
+func (c *AgentSyncJobClient) mutate(ctx context.Context, m *AgentSyncJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AgentSyncJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AgentSyncJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AgentSyncJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AgentSyncJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown AgentSyncJob mutation op: %q", m.Op())
 	}
 }
 
@@ -8235,8 +9668,10 @@ func (c *VirtualMachineClient) mutate(ctx context.Context, m *VirtualMachineMuta
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
-		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
+		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
+		AgentSkill, AgentSkillRepo, AgentSkillVersion, AgentSyncJob, Audit, GitBot,
+		GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image, MCPTool,
+		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
@@ -8244,8 +9679,10 @@ type (
 		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
-		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
-		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
+		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
+		AgentSkill, AgentSkillRepo, AgentSkillVersion, AgentSyncJob, Audit, GitBot,
+		GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image, MCPTool,
+		MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,

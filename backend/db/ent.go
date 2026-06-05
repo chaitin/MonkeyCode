@@ -12,6 +12,15 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/chaitin/MonkeyCode/backend/db/agentplugin"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
+	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
@@ -112,6 +121,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			agentplugin.Table:         agentplugin.ValidColumn,
+			agentpluginrepo.Table:     agentpluginrepo.ValidColumn,
+			agentpluginversion.Table:  agentpluginversion.ValidColumn,
+			agentrule.Table:           agentrule.ValidColumn,
+			agentruleversion.Table:    agentruleversion.ValidColumn,
+			agentskill.Table:          agentskill.ValidColumn,
+			agentskillrepo.Table:      agentskillrepo.ValidColumn,
+			agentskillversion.Table:   agentskillversion.ValidColumn,
+			agentsyncjob.Table:        agentsyncjob.ValidColumn,
 			audit.Table:               audit.ValidColumn,
 			gitbot.Table:              gitbot.ValidColumn,
 			gitbottask.Table:          gitbottask.ValidColumn,

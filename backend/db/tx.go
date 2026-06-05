@@ -14,6 +14,24 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// AgentPlugin is the client for interacting with the AgentPlugin builders.
+	AgentPlugin *AgentPluginClient
+	// AgentPluginRepo is the client for interacting with the AgentPluginRepo builders.
+	AgentPluginRepo *AgentPluginRepoClient
+	// AgentPluginVersion is the client for interacting with the AgentPluginVersion builders.
+	AgentPluginVersion *AgentPluginVersionClient
+	// AgentRule is the client for interacting with the AgentRule builders.
+	AgentRule *AgentRuleClient
+	// AgentRuleVersion is the client for interacting with the AgentRuleVersion builders.
+	AgentRuleVersion *AgentRuleVersionClient
+	// AgentSkill is the client for interacting with the AgentSkill builders.
+	AgentSkill *AgentSkillClient
+	// AgentSkillRepo is the client for interacting with the AgentSkillRepo builders.
+	AgentSkillRepo *AgentSkillRepoClient
+	// AgentSkillVersion is the client for interacting with the AgentSkillVersion builders.
+	AgentSkillVersion *AgentSkillVersionClient
+	// AgentSyncJob is the client for interacting with the AgentSyncJob builders.
+	AgentSyncJob *AgentSyncJobClient
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
 	// GitBot is the client for interacting with the GitBot builders.
@@ -225,6 +243,15 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.AgentPlugin = NewAgentPluginClient(tx.config)
+	tx.AgentPluginRepo = NewAgentPluginRepoClient(tx.config)
+	tx.AgentPluginVersion = NewAgentPluginVersionClient(tx.config)
+	tx.AgentRule = NewAgentRuleClient(tx.config)
+	tx.AgentRuleVersion = NewAgentRuleVersionClient(tx.config)
+	tx.AgentSkill = NewAgentSkillClient(tx.config)
+	tx.AgentSkillRepo = NewAgentSkillRepoClient(tx.config)
+	tx.AgentSkillVersion = NewAgentSkillVersionClient(tx.config)
+	tx.AgentSyncJob = NewAgentSyncJobClient(tx.config)
 	tx.Audit = NewAuditClient(tx.config)
 	tx.GitBot = NewGitBotClient(tx.config)
 	tx.GitBotTask = NewGitBotTaskClient(tx.config)
@@ -274,7 +301,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Audit.QueryXXX(), the query will be executed
+// applies a query, for example: AgentPlugin.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

@@ -6,6 +6,33 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// AgentPlugin is the predicate function for agentplugin builders.
+type AgentPlugin func(*sql.Selector)
+
+// AgentPluginRepo is the predicate function for agentpluginrepo builders.
+type AgentPluginRepo func(*sql.Selector)
+
+// AgentPluginVersion is the predicate function for agentpluginversion builders.
+type AgentPluginVersion func(*sql.Selector)
+
+// AgentRule is the predicate function for agentrule builders.
+type AgentRule func(*sql.Selector)
+
+// AgentRuleVersion is the predicate function for agentruleversion builders.
+type AgentRuleVersion func(*sql.Selector)
+
+// AgentSkill is the predicate function for agentskill builders.
+type AgentSkill func(*sql.Selector)
+
+// AgentSkillRepo is the predicate function for agentskillrepo builders.
+type AgentSkillRepo func(*sql.Selector)
+
+// AgentSkillVersion is the predicate function for agentskillversion builders.
+type AgentSkillVersion func(*sql.Selector)
+
+// AgentSyncJob is the predicate function for agentsyncjob builders.
+type AgentSyncJob func(*sql.Selector)
+
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 

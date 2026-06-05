@@ -6,6 +6,15 @@ import (
 	"time"
 
 	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db/agentplugin"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
+	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
@@ -54,6 +63,246 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	agentpluginFields := schema.AgentPlugin{}.Fields()
+	_ = agentpluginFields
+	// agentpluginDescName is the schema descriptor for name field.
+	agentpluginDescName := agentpluginFields[2].Descriptor()
+	// agentplugin.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	agentplugin.NameValidator = agentpluginDescName.Validators[0].(func(string) error)
+	// agentpluginDescScopeID is the schema descriptor for scope_id field.
+	agentpluginDescScopeID := agentpluginFields[5].Descriptor()
+	// agentplugin.DefaultScopeID holds the default value on creation for the scope_id field.
+	agentplugin.DefaultScopeID = agentpluginDescScopeID.Default.(string)
+	// agentpluginDescIsForceDelivery is the schema descriptor for is_force_delivery field.
+	agentpluginDescIsForceDelivery := agentpluginFields[8].Descriptor()
+	// agentplugin.DefaultIsForceDelivery holds the default value on creation for the is_force_delivery field.
+	agentplugin.DefaultIsForceDelivery = agentpluginDescIsForceDelivery.Default.(bool)
+	// agentpluginDescIsOrphan is the schema descriptor for is_orphan field.
+	agentpluginDescIsOrphan := agentpluginFields[9].Descriptor()
+	// agentplugin.DefaultIsOrphan holds the default value on creation for the is_orphan field.
+	agentplugin.DefaultIsOrphan = agentpluginDescIsOrphan.Default.(bool)
+	// agentpluginDescIsDeleted is the schema descriptor for is_deleted field.
+	agentpluginDescIsDeleted := agentpluginFields[10].Descriptor()
+	// agentplugin.DefaultIsDeleted holds the default value on creation for the is_deleted field.
+	agentplugin.DefaultIsDeleted = agentpluginDescIsDeleted.Default.(bool)
+	// agentpluginDescCreatedAt is the schema descriptor for created_at field.
+	agentpluginDescCreatedAt := agentpluginFields[11].Descriptor()
+	// agentplugin.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentplugin.DefaultCreatedAt = agentpluginDescCreatedAt.Default.(func() time.Time)
+	// agentpluginDescUpdatedAt is the schema descriptor for updated_at field.
+	agentpluginDescUpdatedAt := agentpluginFields[12].Descriptor()
+	// agentplugin.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentplugin.DefaultUpdatedAt = agentpluginDescUpdatedAt.Default.(func() time.Time)
+	// agentplugin.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentplugin.UpdateDefaultUpdatedAt = agentpluginDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentpluginDescID is the schema descriptor for id field.
+	agentpluginDescID := agentpluginFields[0].Descriptor()
+	// agentplugin.DefaultID holds the default value on creation for the id field.
+	agentplugin.DefaultID = agentpluginDescID.Default.(func() uuid.UUID)
+	agentpluginrepoFields := schema.AgentPluginRepo{}.Fields()
+	_ = agentpluginrepoFields
+	// agentpluginrepoDescName is the schema descriptor for name field.
+	agentpluginrepoDescName := agentpluginrepoFields[1].Descriptor()
+	// agentpluginrepo.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	agentpluginrepo.NameValidator = agentpluginrepoDescName.Validators[0].(func(string) error)
+	// agentpluginrepoDescScopeID is the schema descriptor for scope_id field.
+	agentpluginrepoDescScopeID := agentpluginrepoFields[3].Descriptor()
+	// agentpluginrepo.DefaultScopeID holds the default value on creation for the scope_id field.
+	agentpluginrepo.DefaultScopeID = agentpluginrepoDescScopeID.Default.(string)
+	// agentpluginrepoDescPluginDiscoveryAutoPackageJSON is the schema descriptor for plugin_discovery_auto_package_json field.
+	agentpluginrepoDescPluginDiscoveryAutoPackageJSON := agentpluginrepoFields[11].Descriptor()
+	// agentpluginrepo.DefaultPluginDiscoveryAutoPackageJSON holds the default value on creation for the plugin_discovery_auto_package_json field.
+	agentpluginrepo.DefaultPluginDiscoveryAutoPackageJSON = agentpluginrepoDescPluginDiscoveryAutoPackageJSON.Default.(bool)
+	// agentpluginrepoDescIsDeleted is the schema descriptor for is_deleted field.
+	agentpluginrepoDescIsDeleted := agentpluginrepoFields[16].Descriptor()
+	// agentpluginrepo.DefaultIsDeleted holds the default value on creation for the is_deleted field.
+	agentpluginrepo.DefaultIsDeleted = agentpluginrepoDescIsDeleted.Default.(bool)
+	// agentpluginrepoDescCreatedAt is the schema descriptor for created_at field.
+	agentpluginrepoDescCreatedAt := agentpluginrepoFields[17].Descriptor()
+	// agentpluginrepo.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentpluginrepo.DefaultCreatedAt = agentpluginrepoDescCreatedAt.Default.(func() time.Time)
+	// agentpluginrepoDescUpdatedAt is the schema descriptor for updated_at field.
+	agentpluginrepoDescUpdatedAt := agentpluginrepoFields[18].Descriptor()
+	// agentpluginrepo.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentpluginrepo.DefaultUpdatedAt = agentpluginrepoDescUpdatedAt.Default.(func() time.Time)
+	// agentpluginrepo.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentpluginrepo.UpdateDefaultUpdatedAt = agentpluginrepoDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentpluginrepoDescID is the schema descriptor for id field.
+	agentpluginrepoDescID := agentpluginrepoFields[0].Descriptor()
+	// agentpluginrepo.DefaultID holds the default value on creation for the id field.
+	agentpluginrepo.DefaultID = agentpluginrepoDescID.Default.(func() uuid.UUID)
+	agentpluginversionFields := schema.AgentPluginVersion{}.Fields()
+	_ = agentpluginversionFields
+	// agentpluginversionDescVersion is the schema descriptor for version field.
+	agentpluginversionDescVersion := agentpluginversionFields[2].Descriptor()
+	// agentpluginversion.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	agentpluginversion.VersionValidator = agentpluginversionDescVersion.Validators[0].(func(string) error)
+	// agentpluginversionDescS3Key is the schema descriptor for s3_key field.
+	agentpluginversionDescS3Key := agentpluginversionFields[3].Descriptor()
+	// agentpluginversion.S3KeyValidator is a validator for the "s3_key" field. It is called by the builders before save.
+	agentpluginversion.S3KeyValidator = agentpluginversionDescS3Key.Validators[0].(func(string) error)
+	// agentpluginversionDescCreatedAt is the schema descriptor for created_at field.
+	agentpluginversionDescCreatedAt := agentpluginversionFields[5].Descriptor()
+	// agentpluginversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentpluginversion.DefaultCreatedAt = agentpluginversionDescCreatedAt.Default.(func() time.Time)
+	// agentpluginversionDescID is the schema descriptor for id field.
+	agentpluginversionDescID := agentpluginversionFields[0].Descriptor()
+	// agentpluginversion.DefaultID holds the default value on creation for the id field.
+	agentpluginversion.DefaultID = agentpluginversionDescID.Default.(func() uuid.UUID)
+	agentruleFields := schema.AgentRule{}.Fields()
+	_ = agentruleFields
+	// agentruleDescName is the schema descriptor for name field.
+	agentruleDescName := agentruleFields[1].Descriptor()
+	// agentrule.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	agentrule.NameValidator = agentruleDescName.Validators[0].(func(string) error)
+	// agentruleDescScopeID is the schema descriptor for scope_id field.
+	agentruleDescScopeID := agentruleFields[4].Descriptor()
+	// agentrule.DefaultScopeID holds the default value on creation for the scope_id field.
+	agentrule.DefaultScopeID = agentruleDescScopeID.Default.(string)
+	// agentruleDescIsDeleted is the schema descriptor for is_deleted field.
+	agentruleDescIsDeleted := agentruleFields[7].Descriptor()
+	// agentrule.DefaultIsDeleted holds the default value on creation for the is_deleted field.
+	agentrule.DefaultIsDeleted = agentruleDescIsDeleted.Default.(bool)
+	// agentruleDescCreatedAt is the schema descriptor for created_at field.
+	agentruleDescCreatedAt := agentruleFields[8].Descriptor()
+	// agentrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentrule.DefaultCreatedAt = agentruleDescCreatedAt.Default.(func() time.Time)
+	// agentruleDescUpdatedAt is the schema descriptor for updated_at field.
+	agentruleDescUpdatedAt := agentruleFields[9].Descriptor()
+	// agentrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentrule.DefaultUpdatedAt = agentruleDescUpdatedAt.Default.(func() time.Time)
+	// agentrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentrule.UpdateDefaultUpdatedAt = agentruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentruleDescID is the schema descriptor for id field.
+	agentruleDescID := agentruleFields[0].Descriptor()
+	// agentrule.DefaultID holds the default value on creation for the id field.
+	agentrule.DefaultID = agentruleDescID.Default.(func() uuid.UUID)
+	agentruleversionFields := schema.AgentRuleVersion{}.Fields()
+	_ = agentruleversionFields
+	// agentruleversionDescVersion is the schema descriptor for version field.
+	agentruleversionDescVersion := agentruleversionFields[2].Descriptor()
+	// agentruleversion.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	agentruleversion.VersionValidator = func() func(string) error {
+		validators := agentruleversionDescVersion.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(version string) error {
+			for _, fn := range fns {
+				if err := fn(version); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// agentruleversionDescCreatedAt is the schema descriptor for created_at field.
+	agentruleversionDescCreatedAt := agentruleversionFields[4].Descriptor()
+	// agentruleversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentruleversion.DefaultCreatedAt = agentruleversionDescCreatedAt.Default.(func() time.Time)
+	// agentruleversionDescID is the schema descriptor for id field.
+	agentruleversionDescID := agentruleversionFields[0].Descriptor()
+	// agentruleversion.DefaultID holds the default value on creation for the id field.
+	agentruleversion.DefaultID = agentruleversionDescID.Default.(func() uuid.UUID)
+	agentskillFields := schema.AgentSkill{}.Fields()
+	_ = agentskillFields
+	// agentskillDescName is the schema descriptor for name field.
+	agentskillDescName := agentskillFields[2].Descriptor()
+	// agentskill.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	agentskill.NameValidator = agentskillDescName.Validators[0].(func(string) error)
+	// agentskillDescScopeID is the schema descriptor for scope_id field.
+	agentskillDescScopeID := agentskillFields[5].Descriptor()
+	// agentskill.DefaultScopeID holds the default value on creation for the scope_id field.
+	agentskill.DefaultScopeID = agentskillDescScopeID.Default.(string)
+	// agentskillDescIsForceDelivery is the schema descriptor for is_force_delivery field.
+	agentskillDescIsForceDelivery := agentskillFields[8].Descriptor()
+	// agentskill.DefaultIsForceDelivery holds the default value on creation for the is_force_delivery field.
+	agentskill.DefaultIsForceDelivery = agentskillDescIsForceDelivery.Default.(bool)
+	// agentskillDescIsOrphan is the schema descriptor for is_orphan field.
+	agentskillDescIsOrphan := agentskillFields[9].Descriptor()
+	// agentskill.DefaultIsOrphan holds the default value on creation for the is_orphan field.
+	agentskill.DefaultIsOrphan = agentskillDescIsOrphan.Default.(bool)
+	// agentskillDescIsDeleted is the schema descriptor for is_deleted field.
+	agentskillDescIsDeleted := agentskillFields[10].Descriptor()
+	// agentskill.DefaultIsDeleted holds the default value on creation for the is_deleted field.
+	agentskill.DefaultIsDeleted = agentskillDescIsDeleted.Default.(bool)
+	// agentskillDescCreatedAt is the schema descriptor for created_at field.
+	agentskillDescCreatedAt := agentskillFields[11].Descriptor()
+	// agentskill.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentskill.DefaultCreatedAt = agentskillDescCreatedAt.Default.(func() time.Time)
+	// agentskillDescUpdatedAt is the schema descriptor for updated_at field.
+	agentskillDescUpdatedAt := agentskillFields[12].Descriptor()
+	// agentskill.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentskill.DefaultUpdatedAt = agentskillDescUpdatedAt.Default.(func() time.Time)
+	// agentskill.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentskill.UpdateDefaultUpdatedAt = agentskillDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentskillDescID is the schema descriptor for id field.
+	agentskillDescID := agentskillFields[0].Descriptor()
+	// agentskill.DefaultID holds the default value on creation for the id field.
+	agentskill.DefaultID = agentskillDescID.Default.(func() uuid.UUID)
+	agentskillrepoFields := schema.AgentSkillRepo{}.Fields()
+	_ = agentskillrepoFields
+	// agentskillrepoDescName is the schema descriptor for name field.
+	agentskillrepoDescName := agentskillrepoFields[1].Descriptor()
+	// agentskillrepo.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	agentskillrepo.NameValidator = agentskillrepoDescName.Validators[0].(func(string) error)
+	// agentskillrepoDescScopeID is the schema descriptor for scope_id field.
+	agentskillrepoDescScopeID := agentskillrepoFields[3].Descriptor()
+	// agentskillrepo.DefaultScopeID holds the default value on creation for the scope_id field.
+	agentskillrepo.DefaultScopeID = agentskillrepoDescScopeID.Default.(string)
+	// agentskillrepoDescIsDeleted is the schema descriptor for is_deleted field.
+	agentskillrepoDescIsDeleted := agentskillrepoFields[11].Descriptor()
+	// agentskillrepo.DefaultIsDeleted holds the default value on creation for the is_deleted field.
+	agentskillrepo.DefaultIsDeleted = agentskillrepoDescIsDeleted.Default.(bool)
+	// agentskillrepoDescCreatedAt is the schema descriptor for created_at field.
+	agentskillrepoDescCreatedAt := agentskillrepoFields[12].Descriptor()
+	// agentskillrepo.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentskillrepo.DefaultCreatedAt = agentskillrepoDescCreatedAt.Default.(func() time.Time)
+	// agentskillrepoDescUpdatedAt is the schema descriptor for updated_at field.
+	agentskillrepoDescUpdatedAt := agentskillrepoFields[13].Descriptor()
+	// agentskillrepo.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentskillrepo.DefaultUpdatedAt = agentskillrepoDescUpdatedAt.Default.(func() time.Time)
+	// agentskillrepo.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentskillrepo.UpdateDefaultUpdatedAt = agentskillrepoDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentskillrepoDescID is the schema descriptor for id field.
+	agentskillrepoDescID := agentskillrepoFields[0].Descriptor()
+	// agentskillrepo.DefaultID holds the default value on creation for the id field.
+	agentskillrepo.DefaultID = agentskillrepoDescID.Default.(func() uuid.UUID)
+	agentskillversionFields := schema.AgentSkillVersion{}.Fields()
+	_ = agentskillversionFields
+	// agentskillversionDescVersion is the schema descriptor for version field.
+	agentskillversionDescVersion := agentskillversionFields[2].Descriptor()
+	// agentskillversion.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	agentskillversion.VersionValidator = agentskillversionDescVersion.Validators[0].(func(string) error)
+	// agentskillversionDescS3Key is the schema descriptor for s3_key field.
+	agentskillversionDescS3Key := agentskillversionFields[3].Descriptor()
+	// agentskillversion.S3KeyValidator is a validator for the "s3_key" field. It is called by the builders before save.
+	agentskillversion.S3KeyValidator = agentskillversionDescS3Key.Validators[0].(func(string) error)
+	// agentskillversionDescCreatedAt is the schema descriptor for created_at field.
+	agentskillversionDescCreatedAt := agentskillversionFields[5].Descriptor()
+	// agentskillversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentskillversion.DefaultCreatedAt = agentskillversionDescCreatedAt.Default.(func() time.Time)
+	// agentskillversionDescID is the schema descriptor for id field.
+	agentskillversionDescID := agentskillversionFields[0].Descriptor()
+	// agentskillversion.DefaultID holds the default value on creation for the id field.
+	agentskillversion.DefaultID = agentskillversionDescID.Default.(func() uuid.UUID)
+	agentsyncjobFields := schema.AgentSyncJob{}.Fields()
+	_ = agentsyncjobFields
+	// agentsyncjobDescCreatedAt is the schema descriptor for created_at field.
+	agentsyncjobDescCreatedAt := agentsyncjobFields[12].Descriptor()
+	// agentsyncjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	agentsyncjob.DefaultCreatedAt = agentsyncjobDescCreatedAt.Default.(func() time.Time)
+	// agentsyncjobDescUpdatedAt is the schema descriptor for updated_at field.
+	agentsyncjobDescUpdatedAt := agentsyncjobFields[13].Descriptor()
+	// agentsyncjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	agentsyncjob.DefaultUpdatedAt = agentsyncjobDescUpdatedAt.Default.(func() time.Time)
+	// agentsyncjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	agentsyncjob.UpdateDefaultUpdatedAt = agentsyncjobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// agentsyncjobDescID is the schema descriptor for id field.
+	agentsyncjobDescID := agentsyncjobFields[0].Descriptor()
+	// agentsyncjob.DefaultID holds the default value on creation for the id field.
+	agentsyncjob.DefaultID = agentsyncjobDescID.Default.(func() uuid.UUID)
 	auditFields := schema.Audit{}.Fields()
 	_ = auditFields
 	// auditDescCreatedAt is the schema descriptor for created_at field.

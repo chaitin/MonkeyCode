@@ -9,6 +9,325 @@ import (
 )
 
 var (
+	// AgentPluginsColumns holds the columns for the "agent_plugins" table.
+	AgentPluginsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "scope_type", Type: field.TypeEnum, Enums: []string{"global"}, Default: "global"},
+		{Name: "scope_id", Type: field.TypeString, Default: "global"},
+		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "active_version_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "is_force_delivery", Type: field.TypeBool, Default: false},
+		{Name: "is_orphan", Type: field.TypeBool, Default: false},
+		{Name: "is_deleted", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "repo_id", Type: field.TypeUUID},
+	}
+	// AgentPluginsTable holds the schema information for the "agent_plugins" table.
+	AgentPluginsTable = &schema.Table{
+		Name:       "agent_plugins",
+		Columns:    AgentPluginsColumns,
+		PrimaryKey: []*schema.Column{AgentPluginsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "agent_plugins_agent_plugin_repos_plugins",
+				Columns:    []*schema.Column{AgentPluginsColumns[12]},
+				RefColumns: []*schema.Column{AgentPluginReposColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentplugin_repo_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{AgentPluginsColumns[12], AgentPluginsColumns[1]},
+			},
+			{
+				Name:    "agentplugin_scope_type_scope_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentPluginsColumns[3], AgentPluginsColumns[4]},
+			},
+			{
+				Name:    "agentplugin_active_version_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentPluginsColumns[6]},
+			},
+		},
+	}
+	// AgentPluginReposColumns holds the columns for the "agent_plugin_repos" table.
+	AgentPluginReposColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "scope_type", Type: field.TypeEnum, Enums: []string{"global"}, Default: "global"},
+		{Name: "scope_id", Type: field.TypeString, Default: "global"},
+		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "source_type", Type: field.TypeEnum, Enums: []string{"github", "upload", "npm"}},
+		{Name: "github_url", Type: field.TypeString, Nullable: true},
+		{Name: "ref_type", Type: field.TypeEnum, Nullable: true, Enums: []string{"branch", "tag", "commit"}},
+		{Name: "ref_value", Type: field.TypeString, Nullable: true},
+		{Name: "last_upload_filename", Type: field.TypeString, Nullable: true},
+		{Name: "last_upload_at", Type: field.TypeTime, Nullable: true},
+		{Name: "plugin_discovery_auto_package_json", Type: field.TypeBool, Default: true},
+		{Name: "plugin_manual_entries", Type: field.TypeJSON, Nullable: true},
+		{Name: "npm_package_name", Type: field.TypeString, Nullable: true},
+		{Name: "npm_version_spec", Type: field.TypeString, Nullable: true},
+		{Name: "npm_registry_url", Type: field.TypeString, Nullable: true},
+		{Name: "is_deleted", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AgentPluginReposTable holds the schema information for the "agent_plugin_repos" table.
+	AgentPluginReposTable = &schema.Table{
+		Name:       "agent_plugin_repos",
+		Columns:    AgentPluginReposColumns,
+		PrimaryKey: []*schema.Column{AgentPluginReposColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentpluginrepo_scope_type_scope_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentPluginReposColumns[2], AgentPluginReposColumns[3]},
+			},
+		},
+	}
+	// AgentPluginVersionsColumns holds the columns for the "agent_plugin_versions" table.
+	AgentPluginVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "version", Type: field.TypeString},
+		{Name: "s3_key", Type: field.TypeString},
+		{Name: "parsed_meta", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "resource_id", Type: field.TypeUUID},
+	}
+	// AgentPluginVersionsTable holds the schema information for the "agent_plugin_versions" table.
+	AgentPluginVersionsTable = &schema.Table{
+		Name:       "agent_plugin_versions",
+		Columns:    AgentPluginVersionsColumns,
+		PrimaryKey: []*schema.Column{AgentPluginVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "agent_plugin_versions_agent_plugins_versions",
+				Columns:    []*schema.Column{AgentPluginVersionsColumns[5]},
+				RefColumns: []*schema.Column{AgentPluginsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentpluginversion_resource_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentPluginVersionsColumns[5]},
+			},
+		},
+	}
+	// AgentRulesColumns holds the columns for the "agent_rules" table.
+	AgentRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "scope_type", Type: field.TypeEnum, Enums: []string{"global"}, Default: "global"},
+		{Name: "scope_id", Type: field.TypeString, Default: "global"},
+		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "active_version_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "is_deleted", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AgentRulesTable holds the schema information for the "agent_rules" table.
+	AgentRulesTable = &schema.Table{
+		Name:       "agent_rules",
+		Columns:    AgentRulesColumns,
+		PrimaryKey: []*schema.Column{AgentRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentrule_scope_type_scope_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentRulesColumns[3], AgentRulesColumns[4]},
+			},
+			{
+				Name:    "agentrule_active_version_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentRulesColumns[6]},
+			},
+		},
+	}
+	// AgentRuleVersionsColumns holds the columns for the "agent_rule_versions" table.
+	AgentRuleVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "version", Type: field.TypeString, Size: 14},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "rule_id", Type: field.TypeUUID},
+	}
+	// AgentRuleVersionsTable holds the schema information for the "agent_rule_versions" table.
+	AgentRuleVersionsTable = &schema.Table{
+		Name:       "agent_rule_versions",
+		Columns:    AgentRuleVersionsColumns,
+		PrimaryKey: []*schema.Column{AgentRuleVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "agent_rule_versions_agent_rules_versions",
+				Columns:    []*schema.Column{AgentRuleVersionsColumns[4]},
+				RefColumns: []*schema.Column{AgentRulesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentruleversion_rule_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentRuleVersionsColumns[4]},
+			},
+		},
+	}
+	// AgentSkillsColumns holds the columns for the "agent_skills" table.
+	AgentSkillsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "scope_type", Type: field.TypeEnum, Enums: []string{"global"}, Default: "global"},
+		{Name: "scope_id", Type: field.TypeString, Default: "global"},
+		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "active_version_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "is_force_delivery", Type: field.TypeBool, Default: false},
+		{Name: "is_orphan", Type: field.TypeBool, Default: false},
+		{Name: "is_deleted", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "repo_id", Type: field.TypeUUID},
+	}
+	// AgentSkillsTable holds the schema information for the "agent_skills" table.
+	AgentSkillsTable = &schema.Table{
+		Name:       "agent_skills",
+		Columns:    AgentSkillsColumns,
+		PrimaryKey: []*schema.Column{AgentSkillsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "agent_skills_agent_skill_repos_skills",
+				Columns:    []*schema.Column{AgentSkillsColumns[12]},
+				RefColumns: []*schema.Column{AgentSkillReposColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentskill_repo_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{AgentSkillsColumns[12], AgentSkillsColumns[1]},
+			},
+			{
+				Name:    "agentskill_scope_type_scope_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSkillsColumns[3], AgentSkillsColumns[4]},
+			},
+			{
+				Name:    "agentskill_active_version_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSkillsColumns[6]},
+			},
+		},
+	}
+	// AgentSkillReposColumns holds the columns for the "agent_skill_repos" table.
+	AgentSkillReposColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "scope_type", Type: field.TypeEnum, Enums: []string{"global"}, Default: "global"},
+		{Name: "scope_id", Type: field.TypeString, Default: "global"},
+		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "source_type", Type: field.TypeEnum, Enums: []string{"github", "upload"}},
+		{Name: "github_url", Type: field.TypeString, Nullable: true},
+		{Name: "ref_type", Type: field.TypeEnum, Nullable: true, Enums: []string{"branch", "tag", "commit"}},
+		{Name: "ref_value", Type: field.TypeString, Nullable: true},
+		{Name: "last_upload_filename", Type: field.TypeString, Nullable: true},
+		{Name: "last_upload_at", Type: field.TypeTime, Nullable: true},
+		{Name: "is_deleted", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AgentSkillReposTable holds the schema information for the "agent_skill_repos" table.
+	AgentSkillReposTable = &schema.Table{
+		Name:       "agent_skill_repos",
+		Columns:    AgentSkillReposColumns,
+		PrimaryKey: []*schema.Column{AgentSkillReposColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentskillrepo_scope_type_scope_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSkillReposColumns[2], AgentSkillReposColumns[3]},
+			},
+		},
+	}
+	// AgentSkillVersionsColumns holds the columns for the "agent_skill_versions" table.
+	AgentSkillVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "version", Type: field.TypeString},
+		{Name: "s3_key", Type: field.TypeString},
+		{Name: "parsed_meta", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "resource_id", Type: field.TypeUUID},
+	}
+	// AgentSkillVersionsTable holds the schema information for the "agent_skill_versions" table.
+	AgentSkillVersionsTable = &schema.Table{
+		Name:       "agent_skill_versions",
+		Columns:    AgentSkillVersionsColumns,
+		PrimaryKey: []*schema.Column{AgentSkillVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "agent_skill_versions_agent_skills_versions",
+				Columns:    []*schema.Column{AgentSkillVersionsColumns[5]},
+				RefColumns: []*schema.Column{AgentSkillsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentskillversion_resource_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSkillVersionsColumns[5]},
+			},
+		},
+	}
+	// AgentSyncJobsColumns holds the columns for the "agent_sync_jobs" table.
+	AgentSyncJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "resource_kind", Type: field.TypeEnum, Enums: []string{"rule", "skill", "plugin"}},
+		{Name: "rule_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "repo_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "source_type", Type: field.TypeEnum, Enums: []string{"github", "upload", "npm", "rule_inline"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "fetching", "parsing", "uploading", "done", "failed"}, Default: "pending"},
+		{Name: "trigger_type", Type: field.TypeEnum, Enums: []string{"manual", "upload", "rule_save"}},
+		{Name: "triggered_by", Type: field.TypeUUID, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "errors", Type: field.TypeJSON, Nullable: true},
+		{Name: "result_summary", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AgentSyncJobsTable holds the schema information for the "agent_sync_jobs" table.
+	AgentSyncJobsTable = &schema.Table{
+		Name:       "agent_sync_jobs",
+		Columns:    AgentSyncJobsColumns,
+		PrimaryKey: []*schema.Column{AgentSyncJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "agentsyncjob_status_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSyncJobsColumns[5], AgentSyncJobsColumns[12]},
+			},
+			{
+				Name:    "agentsyncjob_rule_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSyncJobsColumns[2]},
+			},
+			{
+				Name:    "agentsyncjob_repo_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentSyncJobsColumns[3]},
+			},
+		},
+	}
 	// AuditsColumns holds the columns for the "audits" table.
 	AuditsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1354,6 +1673,15 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AgentPluginsTable,
+		AgentPluginReposTable,
+		AgentPluginVersionsTable,
+		AgentRulesTable,
+		AgentRuleVersionsTable,
+		AgentSkillsTable,
+		AgentSkillReposTable,
+		AgentSkillVersionsTable,
+		AgentSyncJobsTable,
 		AuditsTable,
 		GitBotsTable,
 		GitBotTasksTable,
@@ -1398,6 +1726,38 @@ var (
 )
 
 func init() {
+	AgentPluginsTable.ForeignKeys[0].RefTable = AgentPluginReposTable
+	AgentPluginsTable.Annotation = &entsql.Annotation{
+		Table: "agent_plugins",
+	}
+	AgentPluginReposTable.Annotation = &entsql.Annotation{
+		Table: "agent_plugin_repos",
+	}
+	AgentPluginVersionsTable.ForeignKeys[0].RefTable = AgentPluginsTable
+	AgentPluginVersionsTable.Annotation = &entsql.Annotation{
+		Table: "agent_plugin_versions",
+	}
+	AgentRulesTable.Annotation = &entsql.Annotation{
+		Table: "agent_rules",
+	}
+	AgentRuleVersionsTable.ForeignKeys[0].RefTable = AgentRulesTable
+	AgentRuleVersionsTable.Annotation = &entsql.Annotation{
+		Table: "agent_rule_versions",
+	}
+	AgentSkillsTable.ForeignKeys[0].RefTable = AgentSkillReposTable
+	AgentSkillsTable.Annotation = &entsql.Annotation{
+		Table: "agent_skills",
+	}
+	AgentSkillReposTable.Annotation = &entsql.Annotation{
+		Table: "agent_skill_repos",
+	}
+	AgentSkillVersionsTable.ForeignKeys[0].RefTable = AgentSkillsTable
+	AgentSkillVersionsTable.Annotation = &entsql.Annotation{
+		Table: "agent_skill_versions",
+	}
+	AgentSyncJobsTable.Annotation = &entsql.Annotation{
+		Table: "agent_sync_jobs",
+	}
 	AuditsTable.ForeignKeys[0].RefTable = UsersTable
 	AuditsTable.Annotation = &entsql.Annotation{
 		Table: "audits",
