@@ -35,6 +35,11 @@ type TeamGroupUserUsecase interface {
 	UpdateUser(ctx context.Context, req *UpdateTeamUserReq) (*UpdateTeamUserResp, error)
 }
 
+type TeamPolicyUsecase interface {
+	GetTaskVMIdlePolicy(ctx context.Context, teamUser *TeamUser) (*TeamTaskVMIdlePolicy, error)
+	UpdateTaskVMIdlePolicy(ctx context.Context, teamUser *TeamUser, req *UpdateTeamTaskVMIdlePolicyReq) (*TeamTaskVMIdlePolicy, error)
+}
+
 // TeamGroupUserRepo 团队分组成员数据访问接口
 type TeamGroupUserRepo interface {
 	List(ctx context.Context, teamID uuid.UUID) ([]*db.TeamGroup, error)
@@ -54,6 +59,13 @@ type TeamGroupUserRepo interface {
 	GetMembersByIDs(ctx context.Context, teamID uuid.UUID, userIDs []uuid.UUID) ([]*db.TeamMember, error)
 	GetMember(ctx context.Context, teamID, userID uuid.UUID) (*db.TeamMember, error)
 	InitTeam(ctx context.Context, email, name, password, image string) error
+}
+
+type TeamPolicyRepo interface {
+	GetTeam(ctx context.Context, teamID uuid.UUID) (*db.Team, error)
+	GetTeamByUserID(ctx context.Context, userID uuid.UUID) (*db.Team, error)
+	UpdateTaskVMIdlePolicy(ctx context.Context, teamID uuid.UUID, req *UpdateTeamTaskVMIdlePolicyReq) (*db.Team, error)
+	GetMember(ctx context.Context, teamID, userID uuid.UUID) (*db.TeamMember, error)
 }
 
 type Team struct {
