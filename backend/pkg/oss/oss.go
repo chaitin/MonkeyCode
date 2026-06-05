@@ -212,6 +212,23 @@ func (c *Client) GetURL(prefix, filename string) string {
 	return appendURLPath(base, objectKey(prefix, filename))
 }
 
+// PresignGet returns a presigned GET URL for the given object key. Unlike
+// Presign() (which presigns under a {prefix,filename} pair tied to upload
+// flows), PresignGet takes the full object key verbatim — callers building
+// agent-resource references already have the full S3 key from the version
+// row (e.g. "agent-resources/skills/global/global/{repoID}/{name}/{ver}.zip").
+func (c *Client) PresignGet(ctx context.Context, key string, expires time.Duration) (string, error) {
+	expires = normalizeExpires(expires)
+	getURL, err := c.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.cfg.Bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(expires))
+	if err != nil {
+		return "", fmt.Errorf("presign get %q: %w", key, err)
+	}
+	return c.publicPresignURL(getURL.URL, key), nil
+}
+
 func (c *Client) Presign(ctx context.Context, prefix, filename string, expires time.Duration) (*Presign, error) {
 	expires = normalizeExpires(expires)
 	key := objectKey(prefix, filename)

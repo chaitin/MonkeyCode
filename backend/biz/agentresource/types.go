@@ -95,3 +95,24 @@ type MaterializedAsset struct {
 	Entry string
 	Files []MaterializedFile
 }
+
+// SkillRef is a skill addressed by a presigned GET URL — the resolver no
+// longer downloads + unzips the skill itself; the codingmatrix agent does
+// that inside the task VM. This is the replacement for MaterializedAsset on
+// the skill dispatch path and exists to keep the gRPC PushTasks payload
+// under the 4MiB ceiling regardless of how many skills are in scope.
+type SkillRef struct {
+	Name    string
+	Version string
+	ZipURL  string // presigned GET URL (TTL bound by the resolver)
+}
+
+// PluginRef is the plugin counterpart of SkillRef. EntryFilename comes from
+// parsed_meta.entry and is needed by mcai-backend to write the
+// opencode.json `plugin` array — the agent itself does not consume it.
+type PluginRef struct {
+	Name          string
+	Version       string
+	ZipURL        string
+	EntryFilename string
+}

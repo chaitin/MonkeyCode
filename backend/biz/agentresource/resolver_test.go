@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -47,6 +48,18 @@ func (f *fakeObjectStore) GetObject(_ context.Context, key string) (io.ReadClose
 		return nil, errors.New("fake: key not found: " + key)
 	}
 	return io.NopCloser(bytes.NewReader(body)), nil
+}
+
+// PresignGet returns a deterministic fake URL ("https://fake/<key>") so
+// SkillRefs / PluginRefs tests can assert without touching real S3. Keys
+// registered in errFor return that error instead.
+func (f *fakeObjectStore) PresignGet(_ context.Context, key string, _ time.Duration) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err, ok := f.errFor[key]; ok {
+		return "", err
+	}
+	return "https://fake/" + key, nil
 }
 
 // ---- fake Repo ------------------------------------------------------------

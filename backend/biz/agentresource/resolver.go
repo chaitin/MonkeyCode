@@ -5,9 +5,16 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+// defaultPresignTTL is the lifetime baked into skill / plugin presigned GET
+// URLs we hand off to the codingmatrix agent. 24h is the ceiling on task
+// VM lifetime, so any URL minted at task-create time stays usable for the
+// entire task run.
+const defaultPresignTTL = 24 * time.Hour
 
 // ObjectStore is the minimal read-only surface the Resolver needs from an
 // object store. *pkg/oss.Client implements this implicitly, but the interface
@@ -15,6 +22,11 @@ import (
 // SDK dependencies.
 type ObjectStore interface {
 	GetObject(ctx context.Context, key string) (io.ReadCloser, error)
+	// PresignGet returns a presigned GET URL for the given full object key.
+	// Used by SkillRefs / PluginRefs so the dispatch path can hand the URL
+	// down to the codingmatrix agent (which fetches + unzips in-VM)
+	// instead of round-tripping the zip through the gRPC PushTasks call.
+	PresignGet(ctx context.Context, key string, expires time.Duration) (string, error)
 }
 
 // ResolverInterface is the abstract surface consumed by the task dispatch
@@ -24,6 +36,11 @@ type ResolverInterface interface {
 	Rules(ctx context.Context) ([]MaterializedRule, error)
 	Skills(ctx context.Context, userSelectedIDs []uuid.UUID) ([]MaterializedAsset, error)
 	Plugins(ctx context.Context, userSelectedIDs []uuid.UUID) ([]MaterializedAsset, error)
+	// SkillRefs / PluginRefs are the presigned-URL counterparts used by
+	// the AgentResources dispatch path. The legacy MaterializedAsset
+	// methods stay so callers we have not migrated keep compiling.
+	SkillRefs(ctx context.Context, userSelectedIDs []uuid.UUID) ([]SkillRef, error)
+	PluginRefs(ctx context.Context, userSelectedIDs []uuid.UUID) ([]PluginRef, error)
 }
 
 // Resolver glues the read-only Repo together with the read-only ObjectStore.
@@ -137,6 +154,81 @@ func (r *Resolver) Plugins(ctx context.Context, userSelectedIDs []uuid.UUID) ([]
 			slog.Int("files", len(files)),
 		)
 		out = append(out, MaterializedAsset{Name: p.Name, Entry: p.Entry, Files: files})
+	}
+	return out, nil
+}
+
+// SkillRefs is the presigned-URL alternative to Skills. The repo query and
+// {user-selected ∪ force-delivery} union logic are identical; only the
+// per-skill payload differs: instead of downloading + unzipping in-process,
+// the resolver presigns the S3 key so the codingmatrix agent fetches the
+// zip itself inside the task VM.
+//
+// Per-skill presign failures are warn-logged and skipped to preserve the
+// "one bad skill never breaks dispatch" contract that Skills() upholds.
+func (r *Resolver) SkillRefs(ctx context.Context, userSelectedIDs []uuid.UUID) ([]SkillRef, error) {
+	skills, err := r.repo.ListActiveSkills(ctx, userSelectedIDs)
+	if err != nil {
+		return nil, fmt.Errorf("agentresource: list skills: %w", err)
+	}
+	out := make([]SkillRef, 0, len(skills))
+	for _, s := range skills {
+		url, err := r.objstore.PresignGet(ctx, s.S3Key, defaultPresignTTL)
+		if err != nil {
+			r.logger.WarnContext(ctx, "agentresource: skip skill, presign failed",
+				slog.String("skill", s.Name),
+				slog.String("s3_key", s.S3Key),
+				slog.Any("err", err),
+			)
+			continue
+		}
+		r.logger.InfoContext(ctx, "agentresource: skill ref resolved",
+			slog.String("skill", s.Name),
+			slog.String("version", s.Version),
+			slog.String("s3_key", s.S3Key),
+			slog.String("zip_url", url),
+		)
+		out = append(out, SkillRef{
+			Name:    s.Name,
+			Version: s.Version,
+			ZipURL:  url,
+		})
+	}
+	return out, nil
+}
+
+// PluginRefs mirrors SkillRefs for plugins and additionally carries the
+// plugin entry filename — the mcai-backend task dispatcher needs that to
+// patch the opencode.json `plugin` array with the right file:// URL.
+func (r *Resolver) PluginRefs(ctx context.Context, userSelectedIDs []uuid.UUID) ([]PluginRef, error) {
+	plugins, err := r.repo.ListActivePlugins(ctx, userSelectedIDs)
+	if err != nil {
+		return nil, fmt.Errorf("agentresource: list plugins: %w", err)
+	}
+	out := make([]PluginRef, 0, len(plugins))
+	for _, p := range plugins {
+		url, err := r.objstore.PresignGet(ctx, p.S3Key, defaultPresignTTL)
+		if err != nil {
+			r.logger.WarnContext(ctx, "agentresource: skip plugin, presign failed",
+				slog.String("plugin", p.Name),
+				slog.String("s3_key", p.S3Key),
+				slog.Any("err", err),
+			)
+			continue
+		}
+		r.logger.InfoContext(ctx, "agentresource: plugin ref resolved",
+			slog.String("plugin", p.Name),
+			slog.String("version", p.Version),
+			slog.String("entry", p.Entry),
+			slog.String("s3_key", p.S3Key),
+			slog.String("zip_url", url),
+		)
+		out = append(out, PluginRef{
+			Name:          p.Name,
+			Version:       p.Version,
+			ZipURL:        url,
+			EntryFilename: p.Entry,
+		})
 	}
 	return out, nil
 }
