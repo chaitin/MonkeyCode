@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react"
-import { ListTodo } from "lucide-react"
+import { IconListCheck } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import type { Dbv2Cursor, DomainTeamTaskItem } from "@/api/Api"
+import {
+  ManagerListEmpty,
+  ManagerListLoading,
+  ManagerListCard,
+} from "@/components/manager/manager-list-page"
 import { TeamDataTablePagination } from "@/components/manager/team-data-table-pagination"
 import { Badge } from "@/components/ui/badge"
-import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
-import { Spinner } from "@/components/ui/spinner"
 import {
   Table,
   TableBody,
@@ -15,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 
 function formatTime(value?: number) {
@@ -24,6 +28,75 @@ function formatTime(value?: number) {
 
 function taskTitle(task: DomainTeamTaskItem) {
   return task.title || task.content || "未命名任务"
+}
+
+function creatorName(task: DomainTeamTaskItem) {
+  return task.creator?.name || task.creator?.email || "-"
+}
+
+function taskStatusMeta(status?: string) {
+  switch (status) {
+    case "pending":
+      return {
+        label: "准备中",
+        className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
+      }
+    case "processing":
+      return {
+        label: "运行中",
+        className: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300",
+      }
+    case "finished":
+      return {
+        label: "已完成",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
+      }
+    case "error":
+      return {
+        label: "失败",
+        className: "border-destructive/20 bg-destructive/10 text-destructive",
+      }
+    default:
+      return {
+        label: status || "-",
+        className: "text-muted-foreground",
+      }
+  }
+}
+
+function taskKindText(kind?: string) {
+  switch (kind) {
+    case "develop":
+      return "开发"
+    case "design":
+      return "设计"
+    case "review":
+      return "评审"
+    case "generate_docs":
+      return "生成文档"
+    case "generate_requirement":
+      return "生成需求"
+    case "generate_design":
+      return "生成设计"
+    case "generate_tasklist":
+      return "生成任务"
+    case "execute_task":
+      return "执行任务"
+    case "pr_review":
+      return "PR 评审"
+    default:
+      return kind || "-"
+  }
+}
+
+function TaskStatusBadge({ status }: { status?: string }) {
+  const meta = taskStatusMeta(status)
+
+  return (
+    <Badge variant="outline" className={cn(meta.className)}>
+      {meta.label}
+    </Badge>
+  )
 }
 
 export default function TeamManagerTasks() {
@@ -82,71 +155,80 @@ export default function TeamManagerTasks() {
   }
 
   if (loading && tasks.length === 0) {
-    return (
-      <Empty className="bg-muted">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Spinner className="size-6" />
-          </EmptyMedia>
-        </EmptyHeader>
-      </Empty>
-    )
+    return <ManagerListLoading title="正在加载任务" />
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex items-center gap-2">
-        <ListTodo className="size-5" />
-        <h1 className="text-xl font-semibold">任务</h1>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>任务</TableHead>
-              <TableHead>项目</TableHead>
-              <TableHead>创建人</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>创建时间</TableHead>
-              <TableHead>最后活动</TableHead>
+    <ManagerListCard
+      title="任务"
+      description="查看团队任务的状态、归属项目、创建人和最后活动时间。"
+      icon={<IconListCheck />}
+      count={tasks.length}
+      pagination={
+        <TeamDataTablePagination
+          page={cursorHistory.length}
+          pageSize={pageSize}
+          loading={loading}
+          hasNextPage={hasNextPage}
+          canPrevPage={cursorHistory.length > 1}
+          onFirstPage={goFirst}
+          onPrevPage={goPrev}
+          onNextPage={goNext}
+          onPageSizeChange={changePageSize}
+        />
+      }
+    >
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableHead className="px-6">任务</TableHead>
+            <TableHead>状态</TableHead>
+            <TableHead>类型</TableHead>
+            <TableHead>创建人</TableHead>
+            <TableHead>最后活动</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {!loading && tasks.length === 0 && (
+            <ManagerListEmpty
+              colSpan={5}
+              title="暂无任务"
+              description="团队成员创建任务后，这里会显示任务状态和活动时间。"
+            />
+          )}
+          {tasks.map((task) => (
+            <TableRow key={task.id}>
+              <TableCell className="px-6">
+                <div className="max-w-[520px] space-y-1">
+                  <div className="truncate font-medium">{taskTitle(task)}</div>
+                  <div className="truncate text-xs leading-4 text-muted-foreground">
+                    {task.project_name || "未关联项目"}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <TaskStatusBadge status={task.status} />
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {taskKindText(task.kind)}
+              </TableCell>
+              <TableCell>
+                <div className="max-w-[180px] truncate text-sm">
+                  {creatorName(task)}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <div className="text-sm">{formatTime(task.last_active_at)}</div>
+                  <div className="text-xs leading-4 text-muted-foreground">
+                    创建于 {formatTime(task.created_at)}
+                  </div>
+                </div>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {!loading && tasks.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-3.5 text-center">
-                  无数据
-                </TableCell>
-              </TableRow>
-            )}
-            {tasks.map((task) => (
-              <TableRow key={task.id}>
-                <TableCell className="max-w-[360px] truncate font-medium">{taskTitle(task)}</TableCell>
-                <TableCell>{task.project_name || "-"}</TableCell>
-                <TableCell>{task.creator?.name || task.creator?.email || "-"}</TableCell>
-                <TableCell>
-                  <Badge variant="outline">{task.status || "-"}</Badge>
-                </TableCell>
-                <TableCell>{task.kind || "-"}</TableCell>
-                <TableCell>{formatTime(task.created_at)}</TableCell>
-                <TableCell>{formatTime(task.last_active_at)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <TeamDataTablePagination
-        page={cursorHistory.length}
-        pageSize={pageSize}
-        loading={loading}
-        hasNextPage={hasNextPage}
-        canPrevPage={cursorHistory.length > 1}
-        onFirstPage={goFirst}
-        onPrevPage={goPrev}
-        onNextPage={goNext}
-        onPageSizeChange={changePageSize}
-      />
-    </div>
+          ))}
+        </TableBody>
+      </Table>
+    </ManagerListCard>
   )
 }
