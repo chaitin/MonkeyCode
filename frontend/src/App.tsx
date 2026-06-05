@@ -17,6 +17,9 @@ import TeamManagerImages from "@/pages/console/manager/images"
 import TeamManagerLogs from "@/pages/console/manager/logs"
 import TeamManagerHosts from "./pages/console/manager/hosts"
 import TeamManagerOverview from "./pages/console/manager/overview"
+import TeamManagerProjects from "./pages/console/manager/projects"
+import TeamManagerTasks from "./pages/console/manager/tasks"
+import TeamManagerConversations from "./pages/console/manager/conversations"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
 import TeamManagerManager from "./pages/console/manager/manager"
@@ -67,6 +70,9 @@ function App() {
             <Route path="/manager" element={<ManagerConsolePage />}>
               <Route index element={<Navigate to="/manager/overview" replace />} />
               <Route path="overview" element={<TeamManagerOverview />} />
+              <Route path="projects" element={<TeamManagerProjects />} />
+              <Route path="tasks" element={<TeamManagerTasks />} />
+              <Route path="conversations" element={<TeamManagerConversations />} />
               <Route path="members" element={<TeamManagerMembers />} />
               <Route path="hosts" element={<TeamManagerHosts />} />
               <Route path="images" element={<TeamManagerImages />} />

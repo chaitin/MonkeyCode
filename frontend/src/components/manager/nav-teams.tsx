@@ -8,7 +8,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
-import { Bot, Box, LayoutDashboard, MonitorCloud, User } from "lucide-react"
+import { Bot, Box, FolderGit2, LayoutDashboard, ListTodo, MessagesSquare, MonitorCloud, User } from "lucide-react"
 
 export default function NavTeams() {
   const location = useLocation()
@@ -25,6 +25,39 @@ export default function NavTeams() {
             <Link to="/manager/overview">
               <LayoutDashboard />
               <span>概览</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/projects"}
+            asChild
+          >
+            <Link to="/manager/projects">
+              <FolderGit2 />
+              <span>项目</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/tasks"}
+            asChild
+          >
+            <Link to="/manager/tasks">
+              <ListTodo />
+              <span>任务</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/conversations"}
+            asChild
+          >
+            <Link to="/manager/conversations">
+              <MessagesSquare />
+              <span>对话</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

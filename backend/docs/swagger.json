@@ -216,6 +216,60 @@
                 }
             }
         },
+        "/api/v1/teams/conversations": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取当前团队任务日志中的 user-input 对话列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】团队对话"
+                ],
+                "summary": "获取团队对话列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "分页游标",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamConversationListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/dashboard": {
             "get": {
                 "security": [
@@ -1798,6 +1852,114 @@
                         "description": "服务器内部错误",
                         "schema": {
                             "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/projects": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取当前团队成员创建的项目列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】团队项目"
+                ],
+                "summary": "获取团队项目列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "分页游标",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamProjectListResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/tasks": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取当前团队成员创建的任务列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】团队任务"
+                ],
+                "summary": "获取团队任务列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "分页游标",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamTaskListResp"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -7850,6 +8012,50 @@
                 }
             }
         },
+        "/api/v1/users/tasks/speech-to-text-stream": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "通过 WebSocket 上传实时音频流并实时返回识别结果。\n后端使用豆包流式语音识别 2.0 (bigmodel_async)。完整协议见 docs/speech-to-text-stream.md。\n\n## 帧类型约定\n| 方向 | 帧类型 | 用途 |\n|---|---|---|\n| C → S | Text(JSON) | 控制消息:start / stop |\n| C → S | Binary | 音频字节流,服务端封装为豆包帧透传 |\n| S → C | Text(JSON) | 所有事件(ready / partial / final / done / error) |\n\n## 客户端 → 服务端\n\n### 1) start (第一帧必须是它)\n```json\n{\n\"type\": \"start\",\n\"format\": \"pcm\",\n\"disfluency\": false\n}\n```\n- `format` 可选,默认 `pcm`。支持 `pcm` / `wav` / `ogg` / `mp3`,单声道、16-bit、采样率固定 16000Hz\n- `pcm` / `wav` 内部音频流必须是 `pcm_s16le`;`ogg` 必须为 `opus` 编码;`mp3` 由远端解码\n- `disfluency` 可选,默认 `false`。`true` 时启用语义顺滑(过滤\"嗯/啊\"等口头禅、语义重复词)\n- 服务端校验通过 → 与豆包建立 WSS → 收到首个响应后向客户端下发 `ready` 事件(带 `logid`)\n- **客户端必须在收到 `ready` 之后才能发 Binary 音频帧**\n- 以下能力默认开启:中间结果(双向流式天然有)、标点预测、ITN(中文数字转阿拉伯数字)\n\n### 2) Binary 音频帧\n`ready` 之后,客户端持续发 Binary 帧。**建议每帧 200ms**(豆包推荐值,过碎会影响性能)。\n\n### 3) stop (主动结束)\n```json\n{ \"type\": \"stop\" }\n```\n服务端收到后向豆包发送\"最后一包\"标志,等待豆包最终响应后下发 `done` 事件并关闭 WS。客户端直接 close WS 亦可。\n\n## 服务端 → 客户端\n\n所有事件统一外层结构:\n```json\n{ \"type\": \"\u003cevent_type\u003e\", \"timestamp\": 1733299200000, ... }\n```\n\n### ready — 远端已就绪\n```json\n{ \"type\": \"ready\", \"logid\": \"202407261553070FACFE6D19421815D605\", \"timestamp\": 1733299200000 }\n```\n仅推送一次。客户端收到后开始发 Binary 音频帧。`logid` 是豆包返回的 `X-Tt-Logid`,排障必备,\n建议前端在 session 期间一直打印它,跟后续 error 事件可以关联。\n\n### partial — 中间结果(实时滚动,会反复推送)\n```json\n{ \"type\": \"partial\", \"index\": 1, \"text\": \"今天天气真\", \"timestamp\": 1733299201500 }\n```\n- 同一 `index` 的 `partial` 会反复推送,`text` 通常逐渐变长\n- **客户端必须用 `text` 覆盖该句显示内容,不要追加**\n\n### final — 一句话定稿\n```json\n{ \"type\": \"final\", \"index\": 1, \"text\": \"今天天气真不错。\", \"timestamp\": 1733299202800 }\n```\n- 该句识别完成、内容固化,后续不会再变;客户端用 `text` 覆盖 `index` 对应位置\n- `final` 之后可能立刻有下一句的 `partial`(`index+1`)\n\n### done — 整个 session 结束\n```json\n{ \"type\": \"done\", \"logid\": \"...\", \"timestamp\": 1733299210000 }\n```\n- 服务端已收到豆包最后一包响应、释放资源,即将关闭 WS;`done` 之后不会再有任何事件\n\n### error — 错误\n豆包远端错误:\n```json\n{\n\"type\": \"error\",\n\"logid\": \"202407261553070FACFE6D19421815D605\",\n\"error\": {\n\"code\": 45000001,\n\"message\": \"请求参数无效\",\n\"request_id\": \"67ee89ba-7050-4c04-a3d7-ac61a63499b3\",\n\"logid\": \"202407261553070FACFE6D19421815D605\"\n},\n\"timestamp\": 1733299205000\n}\n```\n本服务前置校验错误(远端连接前):`code=0`,在 `message` 描述原因:\n```json\n{\n\"type\": \"error\",\n\"error\": { \"code\": 0, \"message\": \"first message must be a 'start' control message\" },\n\"timestamp\": 1733299205000\n}\n```\n\n## 豆包常见错误码速查\n| code | 含义 | 典型原因 |\n|---|---|---|\n| `45000001` | 请求参数无效 | 缺字段 / 字段值无效 / 重复请求 |\n| `45000002` | 空音频 | 录音未采集到声音 |\n| `45000081` | 等包超时 | 前端没在期限内连续发送音频帧 |\n| `45000151` | 音频格式不正确 | `format` 与实际音频不匹配 |\n| `55000031` | 服务器繁忙 | 退避重试 |\n| `550xxxxx` | 服务内部错误 | 直接重试,持续失败时带 `logid` 联系运维 |\n\n## 时序示例\n```\nC → S: WS upgrade (带鉴权)\nC → S: {\"type\":\"start\",\"format\":\"pcm\"}\nS → C: {\"type\":\"ready\",\"logid\":\"...\"}\nC → S: \u003cbinary 200ms\u003e \u003cbinary 200ms\u003e ...\nS → C: {\"type\":\"partial\",\"index\":1,\"text\":\"今天\"}\nS → C: {\"type\":\"partial\",\"index\":1,\"text\":\"今天天气真\"}\nS → C: {\"type\":\"final\",\"index\":1,\"text\":\"今天天气真不错。\"}\nC → S: {\"type\":\"stop\"}\nS → C: {\"type\":\"done\",\"logid\":\"...\"}\nWS close\n```\n\n## 与 POST /speech-to-text 的差异\n- POST /speech-to-text:整段录音 → SSE 单段结果,适合短语音 ≤60s\n- 本接口:WS 双向实时流,支持长语音、句级 final、可被打断,适合 Web/移动端边说边显示\n",
+                "tags": [
+                    "【用户】任务管理"
+                ],
+                "summary": "实时语音转写(WebSocket 流式)",
+                "parameters": [
+                    {
+                        "description": "[WS 协议] 客户端连接后首帧 JSON Text 控制消息 schema;不是 HTTP body,仅供前端代码生成 TS 类型,实际通过 WS Text 帧发送",
+                        "name": "start",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/domain.SpeechStreamStartReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "101": {
+                        "description": "WebSocket 升级成功;此后通过 WS 帧通信,事件结构见上方说明",
+                        "schema": {
+                            "$ref": "#/definitions/domain.SpeechStreamEvent"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误(ASR 服务未配置等)",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/tasks/stop": {
             "put": {
                 "security": [
@@ -10619,6 +10825,105 @@
                 }
             }
         },
+        "domain.SpeechStreamError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "错误码;远端 ASR 错误码 (如豆包 45000001),本地校验错误为 0",
+                    "type": "integer",
+                    "example": 45000001
+                },
+                "logid": {
+                    "description": "远端 ASR 服务返回的 trace id (如豆包 X-Tt-Logid),报障必备",
+                    "type": "string",
+                    "example": "202407261553070FACFE6D19421815D605"
+                },
+                "message": {
+                    "description": "错误描述,远端错误为远端 message,本地校验错误为可读原因",
+                    "type": "string",
+                    "example": "请求参数无效"
+                },
+                "request_id": {
+                    "description": "后端发给远端 ASR 的 X-Api-Request-Id (UUID),便于跟单次请求关联日志",
+                    "type": "string",
+                    "example": "67ee89ba-7050-4c04-a3d7-ac61a63499b3"
+                }
+            }
+        },
+        "domain.SpeechStreamEvent": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "错误详情;仅 error 事件携带",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.SpeechStreamError"
+                        }
+                    ]
+                },
+                "index": {
+                    "description": "句子序号,从 1 开始;partial / final 携带,其余事件省略",
+                    "type": "integer",
+                    "example": 1
+                },
+                "logid": {
+                    "description": "远端 ASR 服务的 trace id;ready / error 事件携带,便于全程关联日志",
+                    "type": "string",
+                    "example": "202407261553070FACFE6D19421815D605"
+                },
+                "text": {
+                    "description": "识别文本;partial(中间结果,会反复变化)/ final(本句定稿)携带",
+                    "type": "string",
+                    "example": "今天天气真不错。"
+                },
+                "timestamp": {
+                    "description": "服务端时间(毫秒),所有事件都有",
+                    "type": "integer",
+                    "example": 1733299200000
+                },
+                "type": {
+                    "description": "事件类型:ready / partial / final / done / error",
+                    "type": "string",
+                    "enum": [
+                        "ready",
+                        "partial",
+                        "final",
+                        "done",
+                        "error"
+                    ],
+                    "example": "partial"
+                }
+            }
+        },
+        "domain.SpeechStreamStartReq": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "disfluency": {
+                    "description": "是否启用语义顺滑(过滤\"嗯/啊\"等口头禅、语义重复词),默认 false",
+                    "type": "boolean",
+                    "example": false
+                },
+                "format": {
+                    "description": "音频容器格式,单声道、16-bit、采样率固定 16000Hz。\npcm / wav 内部音频流必须是 pcm_s16le;ogg 必须为 opus 编码;mp3 由服务端解码。",
+                    "type": "string",
+                    "enum": [
+                        "pcm",
+                        "wav",
+                        "ogg",
+                        "mp3"
+                    ],
+                    "example": "pcm"
+                },
+                "type": {
+                    "description": "消息类型,固定为 \"start\"",
+                    "type": "string",
+                    "example": "start"
+                }
+            }
+        },
         "domain.SubscriptionResp": {
             "type": "object",
             "properties": {
@@ -10824,6 +11129,72 @@
                 }
             }
         },
+        "domain.TeamConversationItem": {
+            "type": "object",
+            "properties": {
+                "attachment_count": {
+                    "type": "integer"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "creator": {
+                    "$ref": "#/definitions/domain.User"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "project_name": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "task_title": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamConversationListResp": {
+            "type": "object",
+            "properties": {
+                "conversations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamConversationItem"
+                    }
+                },
+                "page": {
+                    "$ref": "#/definitions/db.Cursor"
+                }
+            }
+        },
+        "domain.TeamConversationStats": {
+            "type": "object",
+            "properties": {
+                "count_7d": {
+                    "type": "integer"
+                },
+                "count_today": {
+                    "type": "integer"
+                },
+                "daily_created": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTrendPoint"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "domain.TeamDashboardConsumptionInsight": {
             "type": "object",
             "properties": {
@@ -10905,10 +11276,22 @@
                 "average_duration": {
                     "type": "integer"
                 },
+                "cache_hit_rate": {
+                    "type": "number"
+                },
+                "cached_tokens": {
+                    "type": "integer"
+                },
                 "finished_task_count": {
                     "type": "integer"
                 },
+                "input_tokens": {
+                    "type": "integer"
+                },
                 "llm_requests": {
+                    "type": "integer"
+                },
+                "output_tokens": {
                     "type": "integer"
                 },
                 "running_task_count": {
@@ -10928,6 +11311,9 @@
         "domain.TeamDashboardResp": {
             "type": "object",
             "properties": {
+                "conversation_stats": {
+                    "$ref": "#/definitions/domain.TeamConversationStats"
+                },
                 "end_at": {
                     "type": "integer"
                 },
@@ -10937,11 +11323,17 @@
                 "metrics": {
                     "$ref": "#/definitions/domain.TeamDashboardMetrics"
                 },
+                "project_stats": {
+                    "$ref": "#/definitions/domain.TeamProjectStats"
+                },
                 "range": {
                     "type": "string"
                 },
                 "start_at": {
                     "type": "integer"
+                },
+                "task_stats": {
+                    "$ref": "#/definitions/domain.TeamTaskStats"
                 },
                 "trends": {
                     "$ref": "#/definitions/domain.TeamDashboardTrends"
@@ -11164,6 +11556,141 @@
                     "type": "number"
                 },
                 "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TeamProjectItem": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "creator": {
+                    "$ref": "#/definitions/domain.User"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issue_count": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "repo_url": {
+                    "type": "string"
+                },
+                "task_count": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TeamProjectListResp": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "$ref": "#/definitions/db.Cursor"
+                },
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamProjectItem"
+                    }
+                }
+            }
+        },
+        "domain.TeamProjectStats": {
+            "type": "object",
+            "properties": {
+                "active_7d": {
+                    "type": "integer"
+                },
+                "active_today": {
+                    "type": "integer"
+                },
+                "daily_created": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTrendPoint"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TeamTaskItem": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "creator": {
+                    "$ref": "#/definitions/domain.User"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "last_active_at": {
+                    "type": "integer"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "project_name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamTaskListResp": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "$ref": "#/definitions/db.Cursor"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamTaskItem"
+                    }
+                }
+            }
+        },
+        "domain.TeamTaskStats": {
+            "type": "object",
+            "properties": {
+                "active_7d": {
+                    "type": "integer"
+                },
+                "active_today": {
+                    "type": "integer"
+                },
+                "daily_created": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamDashboardTrendPoint"
+                    }
+                },
+                "total": {
                     "type": "integer"
                 }
             }

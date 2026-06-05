@@ -29,6 +29,15 @@ export default function ManagerConsolePage() {
     "/manager/overview": [
       { label: "概览", href: "/manager/overview" },
     ],
+    "/manager/projects": [
+      { label: "项目", href: "/manager/projects" },
+    ],
+    "/manager/tasks": [
+      { label: "任务", href: "/manager/tasks" },
+    ],
+    "/manager/conversations": [
+      { label: "对话", href: "/manager/conversations" },
+    ],
     "/manager/members": [
       { label: "成员管理", href: "/manager/members" },
     ],

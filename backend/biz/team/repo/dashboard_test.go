@@ -176,6 +176,82 @@ func TestTeamDashboardOverviewUsesClickHouseUsageSummary(t *testing.T) {
 	}
 }
 
+func TestTeamDashboardOverviewIncludesProjectTaskConversationMetrics(t *testing.T) {
+	ctx := context.Background()
+	client := newDashboardRepoTestDB(t)
+	now := time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC)
+	teamID := uuid.New()
+	userID := uuid.New()
+	projectID := uuid.New()
+	taskID := uuid.New()
+	repo := &TeamDashboardRepo{
+		db:          client,
+		usageReader: &dashboardUsageReaderStub{},
+		conversationReader: &dashboardConversationReaderStub{
+			summary: clickhouse.TeamConversationStats{
+				Total:      3,
+				Count7d:    2,
+				CountToday: 1,
+				DailyCreated: []clickhouse.TeamConversationDailyCount{
+					{Date: "2026-06-05", Count: 1},
+				},
+			},
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	createDashboardTeamUser(t, client, teamID, userID, "林航", "前端组")
+	createDashboardProject(t, client, projectID, userID, "控制台", now.AddDate(0, 0, -2), now.Add(-2*time.Hour))
+	createDashboardTask(t, client, taskID, userID, "继续处理", consts.TaskStatusProcessing, now.Add(-3*time.Hour), now.Add(-30*time.Minute), time.Time{})
+	createDashboardProjectTask(t, client, taskID, projectID, now.Add(-3*time.Hour))
+
+	resp, err := repo.Overview(ctx, teamID, domain.TeamDashboardQuery{
+		Start:      now.AddDate(0, 0, -7),
+		End:        now,
+		TrendStart: now.AddDate(0, 0, -179),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.ProjectStats.Total != 1 || resp.ProjectStats.Active7d != 1 || resp.ProjectStats.ActiveToday != 1 {
+		t.Fatalf("project stats = %#v", resp.ProjectStats)
+	}
+	if resp.TaskStats.Total != 1 || resp.TaskStats.Active7d != 1 || resp.TaskStats.ActiveToday != 1 {
+		t.Fatalf("task stats = %#v", resp.TaskStats)
+	}
+	if resp.ConversationStats.Total != 3 || resp.ConversationStats.Count7d != 2 || resp.ConversationStats.CountToday != 1 {
+		t.Fatalf("conversation stats = %#v", resp.ConversationStats)
+	}
+}
+
+func TestTeamDashboardListsOnlyCurrentTeamData(t *testing.T) {
+	ctx := context.Background()
+	client := newDashboardRepoTestDB(t)
+	now := time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC)
+	teamID := uuid.New()
+	otherTeamID := uuid.New()
+	userID := uuid.New()
+	otherUserID := uuid.New()
+	repo := &TeamDashboardRepo{
+		db:          client,
+		usageReader: &dashboardUsageReaderStub{},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	createDashboardTeamUser(t, client, teamID, userID, "林航", "前端组")
+	createDashboardTeamUser(t, client, otherTeamID, otherUserID, "周宁", "平台组")
+	createDashboardProject(t, client, uuid.New(), userID, "团队项目", now, now)
+	createDashboardProject(t, client, uuid.New(), otherUserID, "其他项目", now, now)
+
+	projects, err := repo.ListProjects(ctx, teamID, domain.TeamDashboardListReq{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects.Projects) != 1 || projects.Projects[0].Name != "团队项目" {
+		t.Fatalf("projects = %#v", projects.Projects)
+	}
+}
+
 type dashboardUsageReaderStub struct {
 	summary  clickhouse.ModelUsageSummary
 	topUsers []clickhouse.ModelUsageTopUser
@@ -187,6 +263,18 @@ func (s *dashboardUsageReaderStub) QueryModelUsageSummary(ctx context.Context, q
 
 func (s *dashboardUsageReaderStub) QueryModelUsageTopUsers(ctx context.Context, q clickhouse.ModelUsageQuery, limit int) ([]clickhouse.ModelUsageTopUser, error) {
 	return s.topUsers, nil
+}
+
+type dashboardConversationReaderStub struct {
+	summary clickhouse.TeamConversationStats
+}
+
+func (s *dashboardConversationReaderStub) QueryTeamConversationStats(ctx context.Context, q clickhouse.TeamConversationQuery) (clickhouse.TeamConversationStats, error) {
+	return s.summary, nil
+}
+
+func (s *dashboardConversationReaderStub) QueryTeamConversations(ctx context.Context, q clickhouse.TeamConversationListQuery) (*clickhouse.TeamConversationListResult, error) {
+	return &clickhouse.TeamConversationListResult{}, nil
 }
 
 func TestTeamDashboardRepoAvoidsSQLiteOnlyTimeFunction(t *testing.T) {
@@ -241,6 +329,64 @@ func createDashboardTask(t *testing.T, client *db.Client, taskID, userID uuid.UU
 		create.SetCompletedAt(completedAt)
 	}
 	if _, err := create.Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createDashboardProject(t *testing.T, client *db.Client, projectID, userID uuid.UUID, name string, createdAt, updatedAt time.Time) {
+	t.Helper()
+	if _, err := client.Project.Create().
+		SetID(projectID).
+		SetUserID(userID).
+		SetName(name).
+		SetRepoURL("https://example.com/" + name + ".git").
+		SetCreatedAt(createdAt).
+		SetUpdatedAt(updatedAt).
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createDashboardProjectTask(t *testing.T, client *db.Client, taskID, projectID uuid.UUID, createdAt time.Time) {
+	t.Helper()
+	userID := uuid.New()
+	modelID := uuid.New()
+	imageID := uuid.New()
+	if _, err := client.User.Create().
+		SetID(userID).
+		SetName("资源用户").
+		SetEmail(userID.String() + "@example.com").
+		SetRole(consts.UserRoleEnterprise).
+		SetStatus(consts.UserStatusActive).
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Model.Create().
+		SetID(modelID).
+		SetUserID(userID).
+		SetProvider("openai").
+		SetAPIKey("sk-test").
+		SetBaseURL("https://example.com").
+		SetModel("gpt-test").
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Image.Create().
+		SetID(imageID).
+		SetUserID(userID).
+		SetName("ubuntu").
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.ProjectTask.Create().
+		SetID(uuid.New()).
+		SetTaskID(taskID).
+		SetProjectID(projectID).
+		SetModelID(modelID).
+		SetImageID(imageID).
+		SetCliName(consts.CliNameOpencode).
+		SetCreatedAt(createdAt).
+		Save(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }

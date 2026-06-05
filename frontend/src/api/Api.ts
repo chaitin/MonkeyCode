@@ -1497,6 +1497,30 @@ export interface DomainTeam {
   name?: string;
 }
 
+export interface DomainTeamConversationItem {
+  attachment_count?: number;
+  content?: string;
+  created_at?: number;
+  creator?: DomainUser;
+  id?: string;
+  project_id?: string;
+  project_name?: string;
+  task_id?: string;
+  task_title?: string;
+}
+
+export interface DomainTeamConversationListResp {
+  conversations?: DomainTeamConversationItem[];
+  page?: Dbv2Cursor;
+}
+
+export interface DomainTeamConversationStats {
+  count_7d?: number;
+  count_today?: number;
+  daily_created?: DomainTeamDashboardTrendPoint[];
+  total?: number;
+}
+
 export interface DomainTeamDashboardConsumptionInsight {
   id?: string;
   llm_requests?: number;
@@ -1534,11 +1558,14 @@ export interface DomainTeamDashboardMetrics {
 }
 
 export interface DomainTeamDashboardResp {
+  conversation_stats?: DomainTeamConversationStats;
   end_at?: number;
   insights?: DomainTeamDashboardInsights;
   metrics?: DomainTeamDashboardMetrics;
+  project_stats?: DomainTeamProjectStats;
   range?: string;
   start_at?: number;
+  task_stats?: DomainTeamTaskStats;
   trends?: DomainTeamDashboardTrends;
 }
 
@@ -1569,6 +1596,55 @@ export interface DomainTeamGroup {
   name?: string;
   updated_at?: number;
   users?: DomainUser[];
+}
+
+export interface DomainTeamProjectItem {
+  branch?: string;
+  created_at?: number;
+  creator?: DomainUser;
+  id?: string;
+  issue_count?: number;
+  name?: string;
+  repo_url?: string;
+  task_count?: number;
+  updated_at?: number;
+}
+
+export interface DomainTeamProjectListResp {
+  page?: Dbv2Cursor;
+  projects?: DomainTeamProjectItem[];
+}
+
+export interface DomainTeamProjectStats {
+  active_7d?: number;
+  active_today?: number;
+  daily_created?: DomainTeamDashboardTrendPoint[];
+  total?: number;
+}
+
+export interface DomainTeamTaskItem {
+  content?: string;
+  created_at?: number;
+  creator?: DomainUser;
+  id?: string;
+  kind?: string;
+  last_active_at?: number;
+  project_id?: string;
+  project_name?: string;
+  status?: string;
+  title?: string;
+}
+
+export interface DomainTeamTaskListResp {
+  page?: Dbv2Cursor;
+  tasks?: DomainTeamTaskItem[];
+}
+
+export interface DomainTeamTaskStats {
+  active_7d?: number;
+  active_today?: number;
+  daily_created?: DomainTeamDashboardTrendPoint[];
+  total?: number;
 }
 
 export interface DomainTeamImage {
@@ -2866,6 +2942,105 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         GithubComGoYokoWebResp
       >({
         path: `/api/v1/teams/dashboard`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队任务日志中的 user-input 对话列表
+     *
+     * @tags 【Team 管理员】团队对话
+     * @name V1TeamsConversationsList
+     * @summary 获取团队对话列表
+     * @request GET:/api/v1/teams/conversations
+     * @secure
+     */
+    v1TeamsConversationsList: (
+      query?: {
+        /** 分页游标 */
+        cursor?: string;
+        /** 每页数量 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamConversationListResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/conversations`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队成员创建的项目列表
+     *
+     * @tags 【Team 管理员】团队项目
+     * @name V1TeamsProjectsList
+     * @summary 获取团队项目列表
+     * @request GET:/api/v1/teams/projects
+     * @secure
+     */
+    v1TeamsProjectsList: (
+      query?: {
+        /** 分页游标 */
+        cursor?: string;
+        /** 每页数量 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamProjectListResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/projects`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队成员创建的任务列表
+     *
+     * @tags 【Team 管理员】团队任务
+     * @name V1TeamsTasksList
+     * @summary 获取团队任务列表
+     * @request GET:/api/v1/teams/tasks
+     * @secure
+     */
+    v1TeamsTasksList: (
+      query?: {
+        /** 分页游标 */
+        cursor?: string;
+        /** 每页数量 */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamTaskListResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/tasks`,
         method: "GET",
         query: query,
         secure: true,
