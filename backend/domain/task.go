@@ -77,6 +77,7 @@ type TaskExtraConfig struct {
 	ProjectID uuid.UUID `json:"project_id" validate:"omitempty"`
 	IssueID   uuid.UUID `json:"issue_id" validate:"omitempty"`
 	SkillIDs  []string  `json:"skill_ids" validate:"omitempty"`
+	PluginIDs []string  `json:"plugin_ids" validate:"omitempty"` // Plugin IDs 数组（仅 OpenCode 真正下发）
 }
 
 // CreateTaskReq 创建任务请求

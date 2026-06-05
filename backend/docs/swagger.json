@@ -11144,6 +11144,13 @@
                 "issue_id": {
                     "type": "string"
                 },
+                "plugin_ids": {
+                    "description": "Plugin IDs 数组（仅 OpenCode 真正下发）",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "project_id": {
                     "type": "string"
                 },
