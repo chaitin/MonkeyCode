@@ -17,6 +17,7 @@ import (
 	"github.com/samber/do"
 
 	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
+	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -45,6 +46,7 @@ type InternalHostHandler struct {
 	taskConns      *ws.TaskConn
 	projectUsecase domain.ProjectUsecase
 	tokenProvider  *gituc.TokenProvider
+	idleRefresher  vmidle.VMIdleRefresher
 }
 
 type taskLogStoreRepo interface {
@@ -72,6 +74,7 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 		taskConns:      do.MustInvoke[*ws.TaskConn](i),
 		projectUsecase: do.MustInvoke[domain.ProjectUsecase](i),
 		tokenProvider:  do.MustInvoke[*gituc.TokenProvider](i),
+		idleRefresher:  do.MustInvoke[vmidle.VMIdleRefresher](i),
 	}
 
 	g := w.Group("/internal")
@@ -85,10 +88,16 @@ func NewInternalHostHandler(i *do.Injector) (*InternalHostHandler, error) {
 	g.POST("/git-credential", web.BindHandler(h.GitCredential))
 	g.GET("/vm/list", web.BaseHandler(h.VMList))
 	g.POST("/vm/batch-env-vm", web.BindHandler(h.BatchGetVmIDsByEnvIDs))
+	g.POST("/vm/activity", web.BindHandler(h.VMActivity))
 	g.POST("/task-log-store", web.BindHandler(h.GetTaskLogStore))
 	g.POST("/task-stream-ips", web.BindHandler(h.GetTaskStreamIPs))
 
 	return h, nil
+}
+
+type VMActivityReq struct {
+	VMID         string `json:"vm_id"`
+	LastActiveAt int64  `json:"last_active_at"`
 }
 
 // ReportHostInfo 上报宿主机信息
@@ -104,6 +113,17 @@ func (h *InternalHostHandler) ReportHostInfo(c *web.Context, host taskflow.Host)
 func (h *InternalHostHandler) ReportVirtualMachine(c *web.Context, vm taskflow.VirtualMachine) error {
 	if err := h.repo.UpsertVirtualMachine(context.Background(), &vm); err != nil {
 		h.logger.ErrorContext(context.Background(), "upsert virtual machine failed", "error", err)
+		return err
+	}
+	return c.Success(nil)
+}
+
+func (h *InternalHostHandler) VMActivity(c *web.Context, req VMActivityReq) error {
+	if strings.TrimSpace(req.VMID) == "" {
+		return errors.New("vm_id is required")
+	}
+	if err := h.idleRefresher.Refresh(c.Request().Context(), req.VMID); err != nil {
+		h.logger.WarnContext(c.Request().Context(), "failed to refresh vm idle timers on activity", "vm_id", req.VMID, "error", err)
 		return err
 	}
 	return c.Success(nil)
