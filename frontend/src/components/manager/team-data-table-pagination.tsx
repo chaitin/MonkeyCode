@@ -31,9 +31,9 @@ export function TeamDataTablePagination({
   onPageSizeChange: (size: number) => void
 }) {
   return (
-    <div className="flex shrink-0 flex-col items-start justify-between gap-4 border-t bg-background px-4 py-4 sm:flex-row sm:items-center">
+    <div className="flex shrink-0 flex-col items-start justify-between gap-4 border-t bg-background px-6 py-4 sm:flex-row sm:items-center">
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground text-sm whitespace-nowrap">每页显示：</span>
+        <span className="whitespace-nowrap text-sm text-muted-foreground">每页显示：</span>
         <Select value={pageSize.toString()} onValueChange={(value) => onPageSizeChange(Number(value))}>
           <SelectTrigger className="h-8 w-[80px]">
             <SelectValue />
@@ -48,7 +48,7 @@ export function TeamDataTablePagination({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="text-muted-foreground mr-2 text-sm">
+        <div className="mr-2 text-sm text-muted-foreground">
           第 <span className="font-medium text-foreground">{page}</span> 页
         </div>
         <Button variant="outline" size="sm" onClick={onFirstPage} disabled={!canPrevPage || loading} title="首页">

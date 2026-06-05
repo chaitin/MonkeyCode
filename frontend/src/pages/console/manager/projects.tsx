@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react"
-import { FolderGit2 } from "lucide-react"
+import { IconFolder } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import type { Dbv2Cursor, DomainTeamProjectItem } from "@/api/Api"
+import {
+  ManagerListEmpty,
+  ManagerListLoading,
+  ManagerListCard,
+} from "@/components/manager/manager-list-page"
 import { TeamDataTablePagination } from "@/components/manager/team-data-table-pagination"
-import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
-import { Spinner } from "@/components/ui/spinner"
 import {
   Table,
   TableBody,
@@ -19,6 +22,10 @@ import { apiRequest } from "@/utils/requestUtils"
 function formatTime(value?: number) {
   if (!value) return "-"
   return new Date(value * 1000).toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")
+}
+
+function creatorName(project: DomainTeamProjectItem) {
+  return project.creator?.name || project.creator?.email || "-"
 }
 
 export default function TeamManagerProjects() {
@@ -77,69 +84,82 @@ export default function TeamManagerProjects() {
   }
 
   if (loading && projects.length === 0) {
-    return (
-      <Empty className="bg-muted">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Spinner className="size-6" />
-          </EmptyMedia>
-        </EmptyHeader>
-      </Empty>
-    )
+    return <ManagerListLoading title="正在加载项目" />
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex items-center gap-2">
-        <FolderGit2 className="size-5" />
-        <h1 className="text-xl font-semibold">项目</h1>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>项目</TableHead>
-              <TableHead>仓库</TableHead>
-              <TableHead>创建人</TableHead>
-              <TableHead>任务</TableHead>
-              <TableHead>需求</TableHead>
-              <TableHead>创建时间</TableHead>
-              <TableHead>更新时间</TableHead>
+    <ManagerListCard
+      title="项目"
+      description="查看团队内项目、仓库来源、创建人和任务规模。"
+      icon={<IconFolder />}
+      count={projects.length}
+      pagination={
+        <TeamDataTablePagination
+          page={cursorHistory.length}
+          pageSize={pageSize}
+          loading={loading}
+          hasNextPage={hasNextPage}
+          canPrevPage={cursorHistory.length > 1}
+          onFirstPage={goFirst}
+          onPrevPage={goPrev}
+          onNextPage={goNext}
+          onPageSizeChange={changePageSize}
+        />
+      }
+    >
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableHead className="px-6">项目</TableHead>
+            <TableHead>创建人</TableHead>
+            <TableHead className="text-right">任务</TableHead>
+            <TableHead className="text-right">需求</TableHead>
+            <TableHead>更新时间</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {!loading && projects.length === 0 && (
+            <ManagerListEmpty
+              colSpan={5}
+              title="暂无项目"
+              description="团队创建项目后，这里会显示项目、仓库和任务规模。"
+            />
+          )}
+          {projects.map((project) => (
+            <TableRow key={project.id}>
+              <TableCell className="px-6">
+                <div className="max-w-[480px] space-y-1">
+                  <div className="truncate font-medium">
+                    {project.name || "-"}
+                  </div>
+                  <div className="truncate text-xs leading-4 text-muted-foreground">
+                    {project.repo_url || "暂无仓库地址"}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="max-w-[180px] truncate text-sm">
+                  {creatorName(project)}
+                </div>
+              </TableCell>
+              <TableCell className="text-right font-medium">
+                {project.task_count || 0}
+              </TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {project.issue_count || 0}
+              </TableCell>
+              <TableCell>
+                <div className="space-y-1">
+                  <div className="text-sm">{formatTime(project.updated_at)}</div>
+                  <div className="text-xs leading-4 text-muted-foreground">
+                    创建于 {formatTime(project.created_at)}
+                  </div>
+                </div>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {!loading && projects.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="py-3.5 text-center">
-                  无数据
-                </TableCell>
-              </TableRow>
-            )}
-            {projects.map((project) => (
-              <TableRow key={project.id}>
-                <TableCell className="font-medium">{project.name || "-"}</TableCell>
-                <TableCell className="max-w-[360px] truncate">{project.repo_url || "-"}</TableCell>
-                <TableCell>{project.creator?.name || project.creator?.email || "-"}</TableCell>
-                <TableCell>{project.task_count || 0}</TableCell>
-                <TableCell>{project.issue_count || 0}</TableCell>
-                <TableCell>{formatTime(project.created_at)}</TableCell>
-                <TableCell>{formatTime(project.updated_at)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <TeamDataTablePagination
-        page={cursorHistory.length}
-        pageSize={pageSize}
-        loading={loading}
-        hasNextPage={hasNextPage}
-        canPrevPage={cursorHistory.length > 1}
-        onFirstPage={goFirst}
-        onPrevPage={goPrev}
-        onNextPage={goNext}
-        onPageSizeChange={changePageSize}
-      />
-    </div>
+          ))}
+        </TableBody>
+      </Table>
+    </ManagerListCard>
   )
 }
