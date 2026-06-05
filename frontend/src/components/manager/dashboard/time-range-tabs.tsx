@@ -19,6 +19,7 @@ export function TimeRangeTabs({
     <ToggleGroup
       type="single"
       value={value}
+      className="justify-start"
       onValueChange={(next) => {
         if (next === "today" || next === "7d" || next === "30d") {
           onChange(next)
