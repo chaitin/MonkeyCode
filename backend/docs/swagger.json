@@ -4,6 +4,55 @@
         "contact": {}
     },
     "paths": {
+        "/api/v1/plugins": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "获取所有未删除、非孤儿且具备 active_version 的 Plugins，供任务创建器选用（仅 OpenCode 真正下发）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【公共】plugin"
+                ],
+                "summary": "获取已启用的 Plugins 列表",
+                "responses": {
+                    "200": {
+                        "description": "获取成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.PluginListItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/public/captcha/challenge": {
             "post": {
                 "description": "CreateCaptcha",
@@ -56,6 +105,55 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/gocap.VerificationResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "获取所有未删除、非孤儿且具备 active_version 的 Skills，供任务创建器选用",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【公共】skill"
+                ],
+                "summary": "获取已启用的 Skills 列表",
+                "responses": {
+                    "200": {
+                        "description": "获取成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.SkillListItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
                         }
                     }
                 }
@@ -10420,6 +10518,29 @@
                 }
             }
         },
+        "domain.PluginListItem": {
+            "type": "object",
+            "properties": {
+                "active_version": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entry": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.Project": {
             "type": "object",
             "properties": {
@@ -10858,6 +10979,26 @@
             "type": "object",
             "properties": {
                 "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SkillListItem": {
+            "type": "object",
+            "properties": {
+                "active_version": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
+                "name": {
                     "type": "string"
                 }
             }
@@ -12608,6 +12749,7 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
+            "format": "int32",
             "enum": [
                 0,
                 1,

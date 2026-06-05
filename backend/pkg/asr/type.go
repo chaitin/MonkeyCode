@@ -19,7 +19,7 @@ type Event struct {
 	Type      EventType
 	Index     int    // partial / final 携带,句子序号,从 1 开始
 	Text      string // partial / final 携带
-	Logid    string // ready / error 携带,远端 trace id,排障必备
+	Logid     string // ready / error 携带,远端 trace id,排障必备
 	Error     *Error // error 携带
 	Timestamp int64  // 服务端时间(ms)
 }

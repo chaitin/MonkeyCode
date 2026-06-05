@@ -221,12 +221,12 @@ type TeamConversationListQuery struct {
 }
 
 type TeamConversationRow struct {
-	TaskID    string
-	TS        time.Time
-	Event     string
-	Kind      string
-	TurnSeq   uint32
-	Data      string
+	TaskID      string
+	TS          time.Time
+	Event       string
+	Kind        string
+	TurnSeq     uint32
+	Data        string
 	MsgSeqStart uint64
 	MsgSeqEnd   uint64
 }
