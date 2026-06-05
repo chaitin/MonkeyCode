@@ -63,6 +63,3 @@ const (
 
 // TaskSummaryQueueKey 任务摘要队列 Redis key
 const TaskSummaryQueueKey = "tasksummary:queue"
-
-// SkillBaseDir 技能文件存储基目录
-const SkillBaseDir = "/app/skills"

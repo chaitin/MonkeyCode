@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -101,7 +102,7 @@ func TestGetCodingConfigsOpenCodeRendersRuntimeConfigEnabled(t *testing.T) {
 		OutputLimit:     16000,
 	}
 
-	coding, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	coding, cfs, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, model, nil, nil)
 	if err != nil {
 		t.Fatalf("getCodingConfigs() error = %v", err)
 	}
@@ -141,7 +142,7 @@ func TestGetCodingConfigsOpenCodeRendersThinkingDisabled(t *testing.T) {
 		ThinkingEnabled: false,
 	}
 
-	_, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	_, cfs, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, model, nil, nil)
 	if err != nil {
 		t.Fatalf("getCodingConfigs() error = %v", err)
 	}
@@ -177,7 +178,7 @@ func TestGetCodingConfigsOpenCodeRendersUltraForceReasoning(t *testing.T) {
 		ThinkingEnabled: true,
 	}
 
-	_, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	_, cfs, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, model, nil, nil)
 	if err != nil {
 		t.Fatalf("getCodingConfigs() error = %v", err)
 	}
@@ -207,7 +208,7 @@ func TestGetCodingConfigsOpenCodeRendersSupportImage(t *testing.T) {
 		SupportImage:  true,
 	}
 
-	_, cfs, err := uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	_, cfs, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, model, nil, nil)
 	if err != nil {
 		t.Fatalf("getCodingConfigs() error = %v", err)
 	}
@@ -226,7 +227,7 @@ func TestGetCodingConfigsOpenCodeRendersSupportImage(t *testing.T) {
 	assertStringSlice(t, modalities["output"], []string{"text"})
 
 	model.SupportImage = false
-	_, cfs, err = uc.getCodingConfigs(consts.CliNameOpencode, model, nil)
+	_, cfs, err = uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, model, nil, nil)
 	if err != nil {
 		t.Fatalf("getCodingConfigs() error = %v", err)
 	}
@@ -243,7 +244,7 @@ func TestGetCodingConfigsOpenCodeRendersSupportImage(t *testing.T) {
 
 func TestGetCodingConfigsNilModel(t *testing.T) {
 	uc := &TaskUsecase{}
-	_, _, err := uc.getCodingConfigs(consts.CliNameOpencode, nil, nil)
+	_, _, err := uc.getCodingConfigs(context.Background(), consts.CliNameOpencode, nil, nil, nil)
 	if err == nil {
 		t.Fatal("getCodingConfigs() error is nil")
 	}

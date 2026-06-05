@@ -57,6 +57,10 @@ type Config struct {
 	VMIdle        VMIdle              `mapstructure:"vm_idle"`
 	Attachment    Attachment          `mapstructure:"attachment"`
 	ObjectStorage ObjectStorageConfig `mapstructure:"object_storage"`
+	// Aliyun mirrors mcai-backend's aliyun.public_oss block so the agent-
+	// resources Resolver can fall back to that bucket when ObjectStorage is
+	// disabled (the same OSS that admin-new writes assets into). Optional.
+	Aliyun        AliyunConfig        `mapstructure:"aliyun"`
 	StaticFiles   StaticFilesConfig   `mapstructure:"static_files"`
 	HostInstaller HostInstaller       `mapstructure:"host_installer"`
 
@@ -86,6 +90,31 @@ type Config struct {
 type ReviewAgent struct {
 	ModelID string `mapstructure:"model_id"`
 	Image   string `mapstructure:"image"`
+}
+
+// AliyunOSSConfig is structurally identical to mcai-backend's config.OSSConfig
+// so the same aliyun.public_oss yaml block can be pasted into mcai-gh/backend
+// deploys. Only Endpoint / Bucket / AccessKey / AccessKeySecret / Region are
+// read by the agent-resources Resolver; the *Prefix fields are accepted for
+// shape parity but unused on this side.
+type AliyunOSSConfig struct {
+	AvatarPrefix    string `mapstructure:"avatar_prefix"`
+	SpecPrefix      string `mapstructure:"spec_prefix"`
+	RepoPrefix      string `mapstructure:"repo_prefix"`
+	TempPrefix      string `mapstructure:"temp_prefix"`
+	Endpoint        string `mapstructure:"endpoint"`
+	AccessEndpoint  string `mapstructure:"access_endpoint"`
+	AccessKey       string `mapstructure:"access_key"`
+	AccessKeySecret string `mapstructure:"access_key_secret"`
+	Bucket          string `mapstructure:"bucket"`
+	Region          string `mapstructure:"region"`
+	MaxSize         int64  `mapstructure:"max_size"`
+}
+
+// AliyunConfig mirrors mcai-backend's config.AliyunConfig.
+type AliyunConfig struct {
+	PublicOSS  AliyunOSSConfig `mapstructure:"public_oss"`
+	PrivateOSS AliyunOSSConfig `mapstructure:"private_oss"`
 }
 
 // NLS 阿里云语音识别配置

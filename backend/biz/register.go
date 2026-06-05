@@ -6,14 +6,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
 	"github.com/chaitin/MonkeyCode/backend/biz/file"
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
 	"github.com/chaitin/MonkeyCode/backend/biz/llmproxy"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
+	"github.com/chaitin/MonkeyCode/backend/biz/plugin"
 	"github.com/chaitin/MonkeyCode/backend/biz/project"
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
 	"github.com/chaitin/MonkeyCode/backend/biz/setting"
+	"github.com/chaitin/MonkeyCode/backend/biz/skill"
 	"github.com/chaitin/MonkeyCode/backend/biz/static"
 	"github.com/chaitin/MonkeyCode/backend/biz/subscription"
 	"github.com/chaitin/MonkeyCode/backend/biz/task"
@@ -34,11 +37,14 @@ func RegisterAll(i *do.Injector) error {
 	setting.ProvideSetting(i)
 	team.ProvideTeam(i)
 	host.ProvideHost(i)
+	agentresource.ProvideAgentResource(i)
 	task.ProvideTask(i)
 	git.ProvideGit(i)
 	project.ProvideProject(i)
 	file.ProvideFile(i)
 	vmidle.ProvideVMIdle(i)
+	skill.ProvideSkill(i)
+	plugin.ProvidePlugin(i)
 	return nil
 }
 
@@ -54,6 +60,8 @@ func InvokeAll(i *do.Injector) {
 	project.InvokeProject(i)
 	file.InvokeFile(i)
 	vmidle.InvokeVMIdle(i)
+	skill.InvokeSkill(i)
+	plugin.InvokePlugin(i)
 }
 
 // RegisterOpenSource 注册仅在开源项目中使用的模块

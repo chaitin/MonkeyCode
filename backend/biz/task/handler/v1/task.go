@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/GoYoko/web"
@@ -40,8 +37,8 @@ type TaskHandler struct {
 	logger        *slog.Logger
 	taskflow      taskflow.Clienter
 	tasklog       *tasklog.Gateway
-	nls           *nls.NLS         // 一段录音的 POST 接口 (SpeechToText) 仍走阿里云 NLS
-	asr           asr.Transcriber  // 流式 WS 接口 (SpeechToTextStream) 走豆包等中性 ASR
+	nls           *nls.NLS        // 一段录音的 POST 接口 (SpeechToText) 仍走阿里云 NLS
+	asr           asr.Transcriber // 流式 WS 接口 (SpeechToTextStream) 走豆包等中性 ASR
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
@@ -257,12 +254,8 @@ func (h *TaskHandler) Info(c *web.Context, req domain.IDReq[uuid.UUID]) error {
 func (h *TaskHandler) Create(c *web.Context, req domain.CreateTaskReq) error {
 	user := middleware.GetUser(c)
 
-	// 校验 skill_ids
-	for _, skillID := range req.Extra.SkillIDs {
-		if err := validateSkillID(skillID); err != nil {
-			return errcode.ErrBadRequest.Wrap(err)
-		}
-	}
+	// skill_ids / plugin_ids 的 UUID 校验放到 usecase 层做，单条非法时跳过
+	// 该 ID 并打 WARN 日志，避免脏数据把整个任务创建打挂。
 
 	// 公共主机处理
 	if req.HostID == consts.PUBLIC_HOST_ID {
@@ -828,21 +821,5 @@ func (h *TaskHandler) ping(
 			}
 		}
 	}
-}
-
-// validateSkillID 验证 skillID 是否安全，防止路径遍历攻击
-func validateSkillID(skillID string) error {
-	if skillID == "" {
-		return fmt.Errorf("skill id cannot be empty")
-	}
-	cleanID := filepath.Clean(skillID)
-	if strings.Contains(cleanID, "..") || strings.HasPrefix(cleanID, "/") {
-		return fmt.Errorf("invalid skill id")
-	}
-	skilldir := filepath.Join(consts.SkillBaseDir, cleanID)
-	if !strings.HasPrefix(skilldir, consts.SkillBaseDir+string(os.PathSeparator)) {
-		return fmt.Errorf("skill path escape")
-	}
-	return nil
 }
 
