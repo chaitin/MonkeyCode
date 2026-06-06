@@ -601,31 +601,6 @@ type McpServerConfig struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
-// AgentResourceRuleSource mirrors codingmatrix proto
-// agent.AgentResources_Rule_Source. We do not import the proto package here
-// because mcai-gh/backend keeps a local taskflow client mirror; the integer
-// values must stay aligned with the proto enum below (UNSPECIFIED=0, SYSTEM=1,
-// AGENT=2).
-type AgentResourceRuleSource int32
-
-const (
-	AgentResourceRuleSourceUnspecified AgentResourceRuleSource = 0
-	AgentResourceRuleSourceSystem      AgentResourceRuleSource = 1
-	AgentResourceRuleSourceAgent       AgentResourceRuleSource = 2
-)
-
-// AgentResourceRule is the JSON-tag mirror of codingmatrix proto
-// agent.AgentResources_Rule. Field order + json tags MUST stay in lock-step
-// with the proto generated struct because mcai-taskflow unmarshals our HTTP
-// body directly into that proto type.
-type AgentResourceRule struct {
-	Name     string                  `json:"name,omitempty"`
-	Version  string                  `json:"version,omitempty"`
-	Content  string                  `json:"content,omitempty"`
-	Filename string                  `json:"filename,omitempty"`
-	Source   AgentResourceRuleSource `json:"source,omitempty"`
-}
-
 // AgentResourceAssetRef mirrors codingmatrix proto
 // agent.AgentResources_AssetRef. Skills + plugins share the same shape.
 type AgentResourceAssetRef struct {
@@ -635,15 +610,14 @@ type AgentResourceAssetRef struct {
 	EntryFilename string `json:"entry_filename,omitempty"`
 }
 
-// AgentResources mirrors codingmatrix proto agent.AgentResources. Only the
-// fields mcai-gh/backend actually populates are serialized. Rules / Skills /
+// AgentResources mirrors codingmatrix proto agent.AgentResources. Skills /
 // Plugins are pointer slices so a nil AgentResources or nil sub-slice
 // serializes as JSON null / "absent" — matching the proto wire behaviour.
+// Rules and opencode.json travel on the legacy ConfigFile inline channel,
+// not here.
 type AgentResources struct {
-	Rules          []*AgentResourceRule     `json:"rules,omitempty"`
-	Skills         []*AgentResourceAssetRef `json:"skills,omitempty"`
-	Plugins        []*AgentResourceAssetRef `json:"plugins,omitempty"`
-	OpencodeConfig string                   `json:"opencode_config,omitempty"`
+	Skills  []*AgentResourceAssetRef `json:"skills,omitempty"`
+	Plugins []*AgentResourceAssetRef `json:"plugins,omitempty"`
 }
 
 // CreateTaskReq 创建任务请求
