@@ -10,6 +10,7 @@ require (
 	github.com/ackcoder/go-cap v1.1.3
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1
+	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/anthropics/anthropic-sdk-go v1.40.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17

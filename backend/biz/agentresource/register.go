@@ -17,65 +17,61 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/pkg/oss"
 )
 
-// ProvideAgentResource 注册 agentresource 模块。oss.Client 仅在 ObjectStorage
-// 已启用时构造；未启用时 Resolver 会拿到 nil ObjectStore，调用 Skills/Plugins
-// 时各自返回的 fetch 错误会被 resolver 内部 warn-and-skip 掉，dispatch 不会失败。
+// ProvideAgentResource wires the agent-resource module. The ObjectStore is
+// picked from whichever bucket block is configured:
+//
+//   - object_storage.enabled = true  → AWS-SDK-v2 client (any S3-compatible
+//     store: MinIO, RustFS, real AWS). Reuses the same client avatar / repo /
+//     spec / temp uploads use, so single SDK in the binary.
+//   - aliyun.public_oss.bucket set    → aliyun-oss-go-sdk client. AWS SDK's
+//     SigV4 signer is incompatible with Aliyun OSS (SignatureDoesNotMatch +
+//     bucket double-prefix in path-style URLs), so we wire a native client
+//     just for this code path. Existing pkg/oss.Client is untouched; avatar
+//     etc. still go through the AWS SDK path when object_storage is on.
+//   - neither configured              → nil ObjectStore. Resolver downgrades
+//     to noopObjectStore; fetch/presign each fail and the per-asset skip
+//     pipeline keeps the task creating without rule/skill/plugin assets.
 func ProvideAgentResource(i *do.Injector) {
 	do.Provide(i, func(i *do.Injector) (Repo, error) {
 		return NewRepo(do.MustInvoke[*db.Client](i)), nil
 	})
 
-	do.Provide(i, func(i *do.Injector) (*oss.Client, error) {
+	do.Provide(i, func(i *do.Injector) (ObjectStore, error) {
 		cfg := do.MustInvoke[*config.Config](i)
 		logger := do.MustInvoke[*slog.Logger](i)
 
-		// Primary: ObjectStorage block (shared with avatar/repo/spec/temp).
+		// Primary: ObjectStorage block — AWS-SDK-v2 client.
 		if cfg.ObjectStorage.Enabled {
 			opt := oss.S3Option{
 				ForcePathStyle: cfg.ObjectStorage.ForcePathStyle,
 				InitBucket:     cfg.ObjectStorage.InitBucket,
 			}
-			return oss.NewS3Compatible(context.Background(), cfg.ObjectStorage, opt)
+			client, err := oss.NewS3Compatible(context.Background(), cfg.ObjectStorage, opt)
+			if err != nil {
+				return nil, err
+			}
+			return client, nil
 		}
 
-		// Fallback: aliyun.public_oss block — same shape mcai-backend +
-		// admin-new use. Lets ops paste a single OSS block into all three
-		// deploys rather than duplicating credentials.
+		// Fallback: aliyun.public_oss — native aliyun-oss-go-sdk client.
 		if pub := cfg.Aliyun.PublicOSS; pub.Bucket != "" && pub.Endpoint != "" {
-			logger.Info("agentresource: ObjectStorage disabled, falling back to aliyun.public_oss",
+			logger.Info("agentresource: using aliyun.public_oss (native SDK)",
 				"endpoint", pub.Endpoint, "bucket", pub.Bucket)
-			return oss.NewS3Compatible(context.Background(), config.ObjectStorageConfig{
-				Enabled:         true,
-				Endpoint:        pub.Endpoint,
-				AccessEndpoint:  pub.AccessEndpoint,
-				AccessKey:       pub.AccessKey,
-				AccessKeySecret: pub.AccessKeySecret,
-				Bucket:          pub.Bucket,
-				Region:          pub.Region,
-				// Aliyun OSS uses virtual-hosted style; not path style.
-				ForcePathStyle: false,
-				MaxSize:        pub.MaxSize,
-			}, oss.S3Option{})
+			client, err := oss.NewAliyunOSS(pub)
+			if err != nil {
+				return nil, err
+			}
+			return client, nil
 		}
 
-		// Neither block configured — Resolver will downgrade to noopObjectStore.
-		return nil, nil
+		// Neither block configured — Resolver downgrades to noopObjectStore.
+		return noopObjectStore{}, nil
 	})
 
 	do.Provide(i, func(i *do.Injector) (ResolverInterface, error) {
 		repo := do.MustInvoke[Repo](i)
-		client, _ := do.Invoke[*oss.Client](i)
+		store := do.MustInvoke[ObjectStore](i)
 		logger := do.MustInvoke[*slog.Logger](i)
-		// *oss.Client 隐式实现 ObjectStore（有 GetObject(ctx, key) 方法）。
-		// 当 client==nil 时 wrap 一个 nil store 即可；resolver fetch 时会
-		// 走到 nil-deref 之前已被外层 err 捕获——但为避免 panic，统一在这
-		// 里把 nil 显式包成 noopObjectStore。
-		var store ObjectStore
-		if client != nil {
-			store = client
-		} else {
-			store = noopObjectStore{}
-		}
 		return NewResolver(repo, store, logger), nil
 	})
 }
