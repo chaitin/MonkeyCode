@@ -822,4 +822,3 @@ func (h *TaskHandler) ping(
 		}
 	}
 }
-

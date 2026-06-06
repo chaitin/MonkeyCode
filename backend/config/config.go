@@ -60,9 +60,9 @@ type Config struct {
 	// Aliyun mirrors mcai-backend's aliyun.public_oss block so the agent-
 	// resources Resolver can fall back to that bucket when ObjectStorage is
 	// disabled (the same OSS that admin-new writes assets into). Optional.
-	Aliyun        AliyunConfig        `mapstructure:"aliyun"`
-	StaticFiles   StaticFilesConfig   `mapstructure:"static_files"`
-	HostInstaller HostInstaller       `mapstructure:"host_installer"`
+	Aliyun        AliyunConfig      `mapstructure:"aliyun"`
+	StaticFiles   StaticFilesConfig `mapstructure:"static_files"`
+	HostInstaller HostInstaller     `mapstructure:"host_installer"`
 
 	// Context7 API 配置
 	Context7ApiKey string `mapstructure:"context7_api_key"`

@@ -281,13 +281,13 @@ var speechStreamAllowedFormats = map[string]struct{}{
 //	@Description	- POST /speech-to-text:整段录音 → SSE 单段结果,适合短语音 ≤60s
 //	@Description	- 本接口:WS 双向实时流,支持长语音、句级 final、可被打断,适合 Web/移动端边说边显示
 //	@Description
-//	@Tags			【用户】任务管理
-//	@Security		MonkeyCodeAIAuth
-//	@Param			start	body		domain.SpeechStreamStartReq	false	"[WS 协议] 客户端连接后首帧 JSON Text 控制消息 schema;不是 HTTP body,仅供前端代码生成 TS 类型,实际通过 WS Text 帧发送"
-//	@Success		101		{object}	domain.SpeechStreamEvent	"WebSocket 升级成功;此后通过 WS 帧通信,事件结构见上方说明"
-//	@Failure		401		{object}	web.Resp					"未授权"
-//	@Failure		500		{object}	web.Resp					"服务器内部错误(ASR 服务未配置等)"
-//	@Router			/api/v1/users/tasks/speech-to-text-stream [get]
+//	@Tags		【用户】任务管理
+//	@Security	MonkeyCodeAIAuth
+//	@Param		start	body		domain.SpeechStreamStartReq	false	"[WS 协议] 客户端连接后首帧 JSON Text 控制消息 schema;不是 HTTP body,仅供前端代码生成 TS 类型,实际通过 WS Text 帧发送"
+//	@Success	101		{object}	domain.SpeechStreamEvent	"WebSocket 升级成功;此后通过 WS 帧通信,事件结构见上方说明"
+//	@Failure	401		{object}	web.Resp					"未授权"
+//	@Failure	500		{object}	web.Resp					"服务器内部错误(ASR 服务未配置等)"
+//	@Router		/api/v1/users/tasks/speech-to-text-stream [get]
 func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 	logger := h.logger.With("fn", "task.speech_to_text_stream")
 

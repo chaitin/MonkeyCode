@@ -32,10 +32,11 @@ func gzipDecompress(in []byte) ([]byte, error) {
 }
 
 // buildHeader 拼装 4 字节固定头。
-//   byte0: ProtocolVersion(4b) | HeaderSize(4b)
-//   byte1: MessageType(4b) | MessageTypeSpecificFlags(4b)
-//   byte2: Serialization(4b) | Compression(4b)
-//   byte3: Reserved (0x00)
+//
+//	byte0: ProtocolVersion(4b) | HeaderSize(4b)
+//	byte1: MessageType(4b) | MessageTypeSpecificFlags(4b)
+//	byte2: Serialization(4b) | Compression(4b)
+//	byte3: Reserved (0x00)
 func buildHeader(msgType, flags byte) []byte {
 	return []byte{
 		(protocolVersion << 4) | headerSizeValue,
@@ -79,11 +80,14 @@ func encodeAudioRequest(seq int32, audio []byte) []byte {
 // parseFrame 解析服务端下发的 frame。
 //
 // 通用 frame 结构:
-//   header(4) + [sequence(4)?] + payload_size_or_error_code(4) + [error_size(4)?] + payload
+//
+//	header(4) + [sequence(4)?] + payload_size_or_error_code(4) + [error_size(4)?] + payload
 //
 // flag 位决定后续字段:
-//   bit0 set → 有 sequence (4B int32 BE)
-//   bit1 set → 是最后一包
+//
+//	bit0 set → 有 sequence (4B int32 BE)
+//	bit1 set → 是最后一包
+//
 // messageType=msgTypeServerError 时 payload 之前先有 error_code(4) + error_size(4)。
 func parseFrame(msg []byte) (*parsedFrame, error) {
 	if len(msg) < 4 {
