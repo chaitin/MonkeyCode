@@ -245,9 +245,9 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 	if !ok || ctx == nil || ctx.model == nil {
 		return nil
 	}
-	resp.Body = NewBilling(p.logger, resp.Body, &BillingContext{
+	resp.Body = NewUsageCapture(p.logger, resp.Body, &UsageCaptureContext{
 		ctx:      resp.Request.Context(),
-		path:     normalizeBillingPath(resp.Request.URL.Path),
+		path:     normalizeUsageCapturePath(resp.Request.URL.Path),
 		stream:   ctx.stream,
 		proxyCtx: ctx,
 		proxy:    p,
@@ -255,7 +255,7 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 	return nil
 }
 
-func normalizeBillingPath(path string) string {
+func normalizeUsageCapturePath(path string) string {
 	switch {
 	case strings.HasSuffix(path, "/chat/completions"):
 		return "/v1/chat/completions"
@@ -268,7 +268,7 @@ func normalizeBillingPath(path string) string {
 	}
 }
 
-func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result tokenResult) {
+func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result usageResult) {
 	event, ok := p.buildUsageEvent(ctx, proxyCtx, result)
 	if !ok {
 		return
@@ -278,7 +278,7 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result 
 	}
 }
 
-func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, result tokenResult) (modelusage.Event, bool) {
+func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, result usageResult) (modelusage.Event, bool) {
 	if p.recorder == nil || proxyCtx == nil || proxyCtx.model == nil {
 		return modelusage.Event{}, false
 	}

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-type tokenResult struct {
+type usageResult struct {
 	InputTokens              uint64
 	OutputTokens             uint64
 	CacheReadInputTokens     uint64
@@ -20,15 +20,15 @@ type tokenResult struct {
 	ResponseID               string
 }
 
-func (r tokenResult) totalTokens() uint64 {
+func (r usageResult) totalTokens() uint64 {
 	return r.InputTokens + r.OutputTokens + r.CacheReadInputTokens
 }
 
-func (r tokenResult) hasTokens() bool {
+func (r usageResult) hasTokens() bool {
 	return r.totalTokens() > 0
 }
 
-type BillingContext struct {
+type UsageCaptureContext struct {
 	ctx      context.Context
 	path     string
 	stream   bool
@@ -36,19 +36,19 @@ type BillingContext struct {
 	proxy    *Proxy
 }
 
-type Billing struct {
+type UsageCapture struct {
 	logger *slog.Logger
 	src    io.ReadCloser
-	ctx    *BillingContext
+	ctx    *UsageCaptureContext
 	pr     *io.PipeReader
 	pw     *io.PipeWriter
 }
 
-var _ io.ReadCloser = &Billing{}
+var _ io.ReadCloser = &UsageCapture{}
 
-func NewBilling(logger *slog.Logger, src io.ReadCloser, ctx *BillingContext) *Billing {
+func NewUsageCapture(logger *slog.Logger, src io.ReadCloser, ctx *UsageCaptureContext) *UsageCapture {
 	pr, pw := io.Pipe()
-	b := &Billing{
+	b := &UsageCapture{
 		logger: logger,
 		src:    src,
 		ctx:    ctx,
@@ -59,8 +59,8 @@ func NewBilling(logger *slog.Logger, src io.ReadCloser, ctx *BillingContext) *Bi
 	return b
 }
 
-func (b *Billing) handleStream() tokenResult {
-	var result tokenResult
+func (b *UsageCapture) handleStream() usageResult {
+	var result usageResult
 	decoder := newSSEDecoder(b.pr)
 	logger := b.logger.With("path", b.ctx.path)
 	for decoder.Next() {
@@ -121,13 +121,13 @@ func (b *Billing) handleStream() tokenResult {
 	return result
 }
 
-func (b *Billing) handleShadow() {
+func (b *UsageCapture) handleShadow() {
 	defer func() {
 		if b.pr != nil {
 			_ = b.pr.Close()
 		}
 	}()
-	var result tokenResult
+	var result usageResult
 	if b.ctx.stream {
 		result = b.handleStream()
 	} else {
@@ -138,8 +138,8 @@ func (b *Billing) handleShadow() {
 	}
 }
 
-func (b *Billing) handleNonStream() tokenResult {
-	var result tokenResult
+func (b *UsageCapture) handleNonStream() usageResult {
+	var result usageResult
 	logger := b.logger.With("path", b.ctx.path)
 	data, err := io.ReadAll(b.pr)
 	if err != nil {
@@ -185,14 +185,14 @@ func (b *Billing) handleNonStream() tokenResult {
 	return result
 }
 
-func (b *Billing) Close() error {
+func (b *UsageCapture) Close() error {
 	if b.pw != nil {
 		_ = b.pw.Close()
 	}
 	return b.src.Close()
 }
 
-func (b *Billing) Read(p []byte) (int, error) {
+func (b *UsageCapture) Read(p []byte) (int, error) {
 	n, err := b.src.Read(p)
 	if n > 0 {
 		data := make([]byte, n)

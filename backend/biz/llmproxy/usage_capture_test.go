@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func newBillingForTest(path string, stream bool, body string) *Billing {
+func newUsageCaptureForTest(path string, stream bool, body string) *UsageCapture {
 	pr, pw := io.Pipe()
-	b := &Billing{
+	b := &UsageCapture{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		ctx: &BillingContext{
+		ctx: &UsageCaptureContext{
 			ctx:    context.Background(),
 			path:   path,
 			stream: stream,
@@ -27,8 +27,8 @@ func newBillingForTest(path string, stream bool, body string) *Billing {
 	return b
 }
 
-func TestBillingParsesOpenAIResponsesUsage(t *testing.T) {
-	b := newBillingForTest("/v1/responses", false, `{
+func TestUsageCaptureParsesOpenAIResponsesUsage(t *testing.T) {
+	b := newUsageCaptureForTest("/v1/responses", false, `{
 		"type":"response.completed",
 		"response":{
 			"id":"resp_test",
@@ -48,8 +48,8 @@ func TestBillingParsesOpenAIResponsesUsage(t *testing.T) {
 	}
 }
 
-func TestBillingParsesOpenAIResponsesStreamUsage(t *testing.T) {
-	b := newBillingForTest("/v1/responses", true, strings.Join([]string{
+func TestUsageCaptureParsesOpenAIResponsesStreamUsage(t *testing.T) {
+	b := newUsageCaptureForTest("/v1/responses", true, strings.Join([]string{
 		"event: response.output_text.delta",
 		`data: {"delta":"hello"}`,
 		"",
@@ -65,8 +65,8 @@ func TestBillingParsesOpenAIResponsesStreamUsage(t *testing.T) {
 	}
 }
 
-func TestBillingParsesOpenAIChatCompletionStreamUsage(t *testing.T) {
-	b := newBillingForTest("/v1/chat/completions", true, strings.Join([]string{
+func TestUsageCaptureParsesOpenAIChatCompletionStreamUsage(t *testing.T) {
+	b := newUsageCaptureForTest("/v1/chat/completions", true, strings.Join([]string{
 		`data: {"choices":[{"delta":{"content":"hi"}}]}`,
 		"",
 		`data: {"id":"chat_stream","usage":{"prompt_tokens":4,"completion_tokens":6,"total_tokens":10,"prompt_tokens_details":{"cached_tokens":2}}}`,
@@ -82,8 +82,8 @@ func TestBillingParsesOpenAIChatCompletionStreamUsage(t *testing.T) {
 	}
 }
 
-func TestBillingParsesAnthropicUsageIncludesCacheReadTokens(t *testing.T) {
-	b := newBillingForTest("/v1/messages", false, `{
+func TestUsageCaptureParsesAnthropicUsageIncludesCacheReadTokens(t *testing.T) {
+	b := newUsageCaptureForTest("/v1/messages", false, `{
 		"id":"msg_test",
 		"usage":{
 			"input_tokens":7,
@@ -100,8 +100,8 @@ func TestBillingParsesAnthropicUsageIncludesCacheReadTokens(t *testing.T) {
 	}
 }
 
-func TestBillingParsesAnthropicStreamUsage(t *testing.T) {
-	b := newBillingForTest("/v1/messages", true, strings.Join([]string{
+func TestUsageCaptureParsesAnthropicStreamUsage(t *testing.T) {
+	b := newUsageCaptureForTest("/v1/messages", true, strings.Join([]string{
 		"event: message_start",
 		`data: {"type":"message_start","message":{"id":"msg_stream","usage":{"input_tokens":7,"cache_read_input_tokens":3,"cache_creation_input_tokens":2}}}`,
 		"",
@@ -117,16 +117,16 @@ func TestBillingParsesAnthropicStreamUsage(t *testing.T) {
 	}
 }
 
-func TestBillingReadCopiesResponseToShadowPipe(t *testing.T) {
-	var result tokenResult
+func TestUsageCaptureReadCopiesResponseToShadowPipe(t *testing.T) {
+	var result usageResult
 	pr, pw := io.Pipe()
-	b := &Billing{
+	b := &UsageCapture{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		src: io.NopCloser(strings.NewReader(`{
 			"id":"chat_test",
 			"usage":{"prompt_tokens":4,"completion_tokens":6}
 		}`)),
-		ctx: &BillingContext{
+		ctx: &UsageCaptureContext{
 			ctx:    context.Background(),
 			path:   "/v1/chat/completions",
 			stream: false,
