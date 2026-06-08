@@ -1,7 +1,9 @@
 # 打 tag（如 v1.2.3）后自动构建 Windows / macOS 桌面与 Android APK，并发布到 GitHub Release。
 # 手动运行 workflow 仅上传 Actions Artifact，不创建 Release（便于试打）。
-# Android 产物为 release APK，需在仓库 Secrets 配置签名密钥：
+# Android 为 Expo 客户端（mobile/）的 release APK，需在仓库 Secrets 配置签名密钥：
 #   ANDROID_KEYSTORE_BASE64 / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD / ANDROID_STORE_PASSWORD
+# iOS 为 Expo 客户端（mobile/）的 release IPA（xcodebuild archive+export），需在 Secrets 配置：
+#   IOS_CERTIFICATE_BASE64 / IOS_CERTIFICATE_PASSWORD / IOS_PROVISIONING_PROFILE_BASE64 / IOS_TEAM_ID
 
 name: Client Release
 
@@ -22,9 +24,7 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
-  RUBY_VERSION: "3.3"
   CSC_IDENTITY_AUTO_DISCOVERY: false
-  IOS_BUNDLE_ID: "com.monkeycode.mobile"
 
 jobs:
   electron-windows:
@@ -171,71 +171,62 @@ jobs:
             desktop/release/MonkeyCode-macos-x86.dmg
           if-no-files-found: error
 
-  capacitor-android:
+  mobile-android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: |
-            frontend/pnpm-lock.yaml
-            mobile/pnpm-lock.yaml
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
 
       - uses: actions/setup-java@v4
         with:
           distribution: "temurin"
-          java-version: "21"
+          java-version: "17"
 
-      - name: Set versions (tag / CI)
+      - name: Set versions (from tag, e.g. v26060901)
+        working-directory: mobile
         shell: bash
         run: |
           set -euo pipefail
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            V="${GITHUB_REF_NAME#v}"
+            V="${GITHUB_REF_NAME#v}"            # 你打的 tag 形如 v<YYMMDD><2位序号>，自己保证唯一递增
           else
-            V="0.0.0-ci.${{ github.run_number }}"
+            V="${{ github.run_number }}"        # 非 tag 的手动试打：用 run_number
           fi
-          if [[ "$V" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            V="${V}.0"
-          fi
-          CODE=${{ github.run_number }}
-          node -e "const fs=require('fs');const p='mobile/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
-          sed -i 's/versionCode [0-9][0-9]*/versionCode '"$CODE"'/' mobile/android/app/build.gradle
-          sed -i 's/versionName ".*"/versionName "'"$V"'"/' mobile/android/app/build.gradle
-
-      - name: Install frontend deps
-        working-directory: frontend
-        run: pnpm install --frozen-lockfile
+          # versionName 与 versionCode 都取 V → 装机版本可直接对应到 tag / CI run。
+          # versionCode 必须是整数且 < 2,100,000,000；YYMMDDNN（如 26060901）恒满足，每天最多 99 次。
+          node -e "const fs=require('fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.expo.version=String(process.argv[1]);j.expo.android=j.expo.android||{};j.expo.android.versionCode=Number(process.argv[1]);fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
 
       - name: Install mobile deps
         working-directory: mobile
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
-      - name: Build web + Capacitor sync
-        run: |
-          set -euxo pipefail
-          (cd frontend && ELECTRON=true pnpm run build:online)
-          (cd mobile && pnpm exec cap sync)
+      - name: Expo prebuild (generate android project)
+        working-directory: mobile
+        run: npx expo prebuild -p android --no-install
 
-      - name: Build Android APK (release)
+      - name: Build Android APK (release, signed)
         working-directory: mobile/android
         env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          set -euxo pipefail
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$ANDROID_KEYSTORE_PATH"
+          set -euo pipefail
+          KS="$RUNNER_TEMP/release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4096m
+          # 用 AGP 注入签名（无需改 build.gradle）：release APK 直接用 keystore 签名
+          ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4096m \
+            -Pandroid.injected.signing.store.file="$KS" \
+            -Pandroid.injected.signing.store.password="$ANDROID_STORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
 
       - name: Stage APK for artifact / release
         shell: bash
@@ -246,69 +237,51 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: capacitor-android-apk
+          name: mobile-android-apk
           path: mobile/release-apk/*.apk
           if-no-files-found: error
 
-  capacitor-ios:
+  # iOS（Expo）：用 xcodebuild archive+export，复用与原 CI 相同的签名 Secrets：
+  #   IOS_CERTIFICATE_BASE64 / IOS_CERTIFICATE_PASSWORD / IOS_PROVISIONING_PROFILE_BASE64 / IOS_TEAM_ID
+  # 证书的 bundleId 必须是 com.chaitin.baizhi.monkeycode；导出方式默认 app-store（上 TestFlight/商店），
+  # 想直接装真机改成 ad-hoc。RCT_USE_PREBUILT_RNCORE=1 用预编译 React，Release 与之匹配，避免从源码编译（CI 上慢）。
+  mobile-ios:
     runs-on: macos-latest
+    env:
+      RCT_USE_PREBUILT_RNCORE: "1"
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: |
-            frontend/pnpm-lock.yaml
-            mobile/pnpm-lock.yaml
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
 
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: ${{ env.RUBY_VERSION }}
-
-      - name: Install fastlane gems
-        working-directory: mobile/ios
-        run: bundle install --jobs 4 --retry 3
-
-      - name: Set versions (tag / CI)
+      - name: Set versions (from tag, e.g. v26060901)
+        working-directory: mobile
         shell: bash
         run: |
           set -euo pipefail
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
           else
-            V="0.0.0-ci.${{ github.run_number }}"
+            V="${{ github.run_number }}"
           fi
-          if [[ "$V" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            V="${V}.0"
-          fi
-          BUILD_NUMBER="${{ github.run_number }}"
-          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
-          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
-          echo "IPA_NAME=MonkeyCode-ios.ipa" >> "$GITHUB_ENV"
-          node -e "const fs=require('fs');const p='mobile/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
-          perl -0pi -e "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${V};/g; s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${BUILD_NUMBER};/g" mobile/ios/App/App.xcodeproj/project.pbxproj
-
-      - name: Install frontend deps
-        working-directory: frontend
-        run: pnpm install --frozen-lockfile
+          # CFBundleShortVersionString(version) 与 CFBundleVersion(build) 都取 V → 可对应 tag / CI run。
+          node -e "const fs=require('fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.expo.version=String(process.argv[1]);j.expo.ios=j.expo.ios||{};j.expo.ios.buildNumber=String(process.argv[1]);fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');" "$V"
 
       - name: Install mobile deps
         working-directory: mobile
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
-      - name: Build frontend
-        working-directory: frontend
-        run: pnpm run build:online
-
-      - name: Capacitor sync iOS
+      - name: Expo prebuild (generate ios project)
         working-directory: mobile
-        run: pnpm exec cap sync ios
+        run: npx expo prebuild -p ios --no-install
+
+      - name: Pod install
+        working-directory: mobile/ios
+        run: pod install
 
       - name: Install signing assets
         shell: bash
@@ -342,25 +315,54 @@ jobs:
           echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
-      - name: Build iOS IPA
+      - name: Archive & export IPA
         working-directory: mobile/ios
         env:
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-          IOS_BUNDLE_ID: ${{ env.IOS_BUNDLE_ID }}
-          IOS_PROFILE_NAME: ${{ env.IOS_PROFILE_NAME }}
-          IOS_OUTPUT_NAME: ${{ env.IPA_NAME }}
-        run: bundle exec fastlane ios build_release
+        run: |
+          set -euo pipefail
+          BUNDLE_ID="com.chaitin.baizhi.monkeycode"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+          <key>method</key><string>app-store</string>
+          <key>teamID</key><string>${IOS_TEAM_ID}</string>
+          <key>signingStyle</key><string>manual</string>
+          <key>provisioningProfiles</key>
+          <dict><key>${BUNDLE_ID}</key><string>${IOS_PROFILE_NAME}</string></dict>
+          <key>stripSwiftSymbols</key><true/>
+          <key>uploadBitcode</key><false/>
+          <key>compileBitcode</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -workspace MonkeyCode.xcworkspace -scheme MonkeyCode \
+            -configuration Release -sdk iphoneos -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/MonkeyCode.xcarchive" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            archive
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/MonkeyCode.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+          ls -lh "$RUNNER_TEMP/export"
 
       - name: Stage IPA for artifact / release
         shell: bash
         run: |
-          test -f "mobile/ios/App/output/${IPA_NAME}"
+          set -euxo pipefail
           mkdir -p mobile/release-ios
-          cp "mobile/ios/App/output/${IPA_NAME}" "mobile/release-ios/${IPA_NAME}"
+          IPA="$(find "$RUNNER_TEMP/export" -name '*.ipa' | head -1)"
+          test -n "$IPA"
+          cp "$IPA" mobile/release-ios/MonkeyCode-ios.ipa
+          ls -lh mobile/release-ios/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: capacitor-ios-ipa
+          name: mobile-ios-ipa
           path: mobile/release-ios/*.ipa
           if-no-files-found: error
 
@@ -371,7 +373,7 @@ jobs:
           security delete-keychain "$IOS_KEYCHAIN_PATH" || true
 
   publish-release:
-    needs: [electron-windows, electron-macos, capacitor-android, capacitor-ios]
+    needs: [electron-windows, electron-macos, mobile-android, mobile-ios]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -387,12 +389,12 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: capacitor-android-apk
+          name: mobile-android-apk
           path: release-assets/android
 
       - uses: actions/download-artifact@v4
         with:
-          name: capacitor-ios-ipa
+          name: mobile-ios-ipa
           path: release-assets/ios
 
       - name: List release files
@@ -411,50 +413,3 @@ jobs:
             release-assets/ios/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  ios-distribute:
-    needs: [capacitor-ios, publish-release]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: ${{ env.RUBY_VERSION }}
-
-      - name: Install fastlane gems
-        working-directory: mobile/ios
-        run: bundle install --jobs 4 --retry 3
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: capacitor-ios-ipa
-          path: mobile/release-ios
-
-      - name: Resolve IPA path
-        shell: bash
-        run: |
-          set -euo pipefail
-          IPA_PATH="$(find "$GITHUB_WORKSPACE/mobile/release-ios" -name '*.ipa' | head -1)"
-          test -n "$IPA_PATH"
-          test -f "$IPA_PATH"
-          echo "IOS_IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
-
-      - name: Upload to TestFlight
-        working-directory: mobile/ios
-        env:
-          IOS_IPA_PATH: ${{ env.IOS_IPA_PATH }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
-        run: bundle exec fastlane ios upload_testflight ipa:"$IOS_IPA_PATH"
-
-      - name: Submit to App Store
-        working-directory: mobile/ios
-        env:
-          IOS_IPA_PATH: ${{ env.IOS_IPA_PATH }}
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
-        run: bundle exec fastlane ios submit_app_store ipa:"$IOS_IPA_PATH"

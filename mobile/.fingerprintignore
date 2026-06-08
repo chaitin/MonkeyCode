@@ -1,0 +1,5 @@
+# CNG（prebuild 生成）的原生目录不入库，也不参与 runtimeVersion 指纹计算。
+# 指纹改由原生依赖 / config plugins / app 配置推导，保证本地与 CI 可复现、
+# 不因 prebuild 生成结果的细微差异而漂移。原生模块/插件/SDK 变化仍会改变指纹。
+android/
+ios/

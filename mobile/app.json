@@ -1,0 +1,82 @@
+{
+  "expo": {
+    "name": "MonkeyCode",
+    "slug": "monkeycode",
+    "version": "260608",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "monkeycode",
+    "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://monkeycode-ai.com/mobile/app/manifest",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chaitin.baizhi.monkeycode",
+      "buildNumber": "1",
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png"
+      },
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "用于语音输入，将你的语音实时转写为文字",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.chaitin.baizhi.monkeycode",
+      "versionCode": 1,
+      "permissions": [
+        "RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/splash-dark.png",
+            "backgroundColor": "#0b0b0e"
+          }
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "ios": { "buildReactNativeFromSource": true }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "updatesServer": "https://release.monkeycode-ai.com"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "最新原生安装包版本。每次发布新 APK/IPA 时更新这里的 version 和 url。客户端用它和已装版本比较：更大就引导用户去装新包（OTA 推不动原生）。version 用与 app.json 一致的可比较格式（如日期 260606）。",
+  "android": { "version": "260606", "url": "https://YOUR-DOWNLOAD/monkeycode-latest.apk" },
+  "ios": { "version": "260606", "url": "https://apps.apple.com/app/idYOURAPPID" }
+}
