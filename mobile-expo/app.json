@@ -7,6 +7,15 @@
     "icon": "./assets/icon.png",
     "scheme": "monkeycode",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "http://127.0.0.1:4747/manifest",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.chaitin.baizhi.monkeycode",
@@ -38,7 +47,6 @@
       "expo-router",
       "expo-font",
       "expo-asset",
-      "./plugins/withFmtFix",
       [
         "expo-splash-screen",
         {
@@ -52,10 +60,19 @@
           }
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "ios": { "buildReactNativeFromSource": true }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "updatesServer": "http://127.0.0.1:4747"
     }
   }
 }

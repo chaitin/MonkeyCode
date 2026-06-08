@@ -1,10 +1,10 @@
 import * as Clipboard from 'expo-clipboard';
-import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCheckinStatus, getSubscription, getWallet, listInvitations, resolveAssetUrl, submitCheckin } from '@/api/client';
+import { checkAppUpdate, checkOta, currentOtaId, downloadAndApplyOta, installedAppVersion } from '@/updates/useOtaUpdate';
 import { obtainCaptchaToken } from '@/api/captcha';
 import type { InvitationItem, Subscription, Wallet } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
@@ -63,8 +63,47 @@ const ABOUT_LINKS: { icon: string; label: string; sub: string; url: string }[] =
 ];
 
 function About({ t }: { t: Theme }) {
-  const version = Constants.expoConfig?.version || '';
+  // 应用版本 = 原生安装包版本（来自安装包，与 OTA 无关）。对用户只有「版本」一个概念。
+  const appVersion = installedAppVersion();
+  // OTA 版本号(更新 id 短码)作为构建标识附在版本后面，便于排查当前跑的是哪一份。
+  const otaId = currentOtaId();
+  const verLine = `v${appVersion}${otaId ? ` · ${otaId.slice(0, 7)}` : ''}`;
   const open = (url: string) => { void Linking.openURL(url).catch(() => undefined); };
+  const [otaBusy, setOtaBusy] = useState<null | 'checking' | 'downloading'>(null);
+
+  const applyOtaNow = useCallback(() => {
+    setOtaBusy('downloading');
+    void downloadAndApplyOta().catch(() => {
+      setOtaBusy(null);
+      Alert.alert('更新失败', '下载失败，请检查网络后重试。');
+    });
+  }, []);
+
+  // 统一的检查更新：先看有没有新的原生版本（新安装包）→ 引导去装；否则再看 OTA → 直接更新。
+  const onCheck = useCallback(async () => {
+    if (otaBusy) return;
+    setOtaBusy('checking');
+    // 1) 新的原生版本（新安装包）优先 —— OTA 推不动原生，必须装新包
+    const app = await checkAppUpdate();
+    if (app) {
+      setOtaBusy(null);
+      Alert.alert('发现新版本', `新版本 v${app.version} 可用，需前往下载安装新版本。`, [
+        { text: '稍后', style: 'cancel' },
+        { text: '去更新', onPress: () => { if (app.url) open(app.url); } },
+      ]);
+      return;
+    }
+    // 2) 原生已是最新 → 看 OTA（对用户就是「更新」，不提热更新）
+    const r = await checkOta();
+    setOtaBusy(null);
+    if (r.status === 'disabled') { Alert.alert('检查更新', '开发模式下不可用，正式包才会检查更新。'); return; }
+    if (r.status === 'error') { Alert.alert('检查失败', r.message || '请检查网络后重试。'); return; }
+    if (r.status === 'none') { Alert.alert('已是最新', `当前已是最新版本 ${verLine}。`); return; }
+    Alert.alert('发现新版本', '有新版本可用，是否立即更新？\n（更新后将自动重启）', [
+      { text: '取消', style: 'cancel' },
+      { text: '立即更新', onPress: applyOtaNow },
+    ]);
+  }, [otaBusy, appVersion, applyOtaNow]);
   return (
     <Card style={{ padding: 16 }}>
       <Text style={{ fontSize: 12, fontWeight: '700', color: t.tx3, letterSpacing: 0.5, marginBottom: 13 }}>关于</Text>
@@ -76,11 +115,6 @@ function About({ t }: { t: Theme }) {
           <Text style={{ fontSize: 16, fontWeight: '800', color: t.tx }}>MonkeyCode</Text>
           <Text style={{ fontSize: 12.5, color: t.tx3, marginTop: 2 }}>开源 AI 编程助手 · 长亭科技</Text>
         </View>
-        {version ? (
-          <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, backgroundColor: t.bg3 }}>
-            <Text style={{ fontSize: 11.5, color: t.tx2, fontWeight: '700', fontFamily: 'monospace' }}>v{version}</Text>
-          </View>
-        ) : null}
       </View>
       <View style={{ marginTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderColor: t.line }}>
         {ABOUT_LINKS.map((l, i) => {
@@ -96,6 +130,16 @@ function About({ t }: { t: Theme }) {
             </Pressable>
           );
         })}
+        <Pressable onPress={onCheck} disabled={!!otaBusy} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: t.line }, pressed && { opacity: 0.55 }]}>
+          <Icons.refresh size={18} color={t.tx2} sw={1.8} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 14.5, color: t.tx, fontWeight: '500' }}>检查更新</Text>
+            <Text numberOfLines={1} style={{ fontSize: 11.5, color: t.tx3, marginTop: 1 }}>
+              {otaBusy === 'checking' ? '正在检查…' : otaBusy === 'downloading' ? '正在下载更新…' : `当前版本 ${verLine}`}
+            </Text>
+          </View>
+          {otaBusy ? <ActivityIndicator size="small" color={t.tx3} /> : <Icons.arrowRight size={15} color={t.tx3} sw={2} />}
+        </Pressable>
       </View>
     </Card>
   );

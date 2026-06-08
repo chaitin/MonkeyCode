@@ -1,12 +1,14 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
+import { Alert } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { LoadingView } from '@/components/ui';
 import { PreviewProvider } from '@/components/PreviewProvider';
 import { ThemeProvider, useTheme } from '@/theme';
+import { applyOta, useOtaAutoUpdate } from '@/updates/useOtaUpdate';
 
 function RootNav() {
   const { ready, authenticated } = useAuth();
@@ -50,6 +52,13 @@ function RootNav() {
 
 function Themed() {
   const t = useTheme();
+  // OTA：启动/回前台静默检查下载，下载好后提示一次重启生效（不打断当前操作）。
+  useOtaAutoUpdate(useCallback(() => {
+    Alert.alert('发现新版本', '已下载更新，重启应用即可生效。', [
+      { text: '稍后' },
+      { text: '立即重启', onPress: () => { void applyOta(); } },
+    ]);
+  }, []));
   // SDK 56：expo-router 不再基于 react-navigation，导航主题改由各屏 Stack 的 contentStyle 决定。
   return (
     <>
