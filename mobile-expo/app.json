@@ -20,6 +20,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.chaitin.baizhi.monkeycode",
       "buildNumber": "1",
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png"
+      },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "用于语音输入，将你的语音实时转写为文字",
         "NSAppTransportSecurity": {
