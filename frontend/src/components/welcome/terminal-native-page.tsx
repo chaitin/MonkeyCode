@@ -2,7 +2,7 @@ import { useAuth } from "@/components/auth-provider";
 import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { IconArrowRight, IconCheck, IconCoins, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend, IconX } from "@tabler/icons-react";
+import { IconArrowRight, IconBrandAndroid, IconBrandApple, IconCheck, IconCoins, IconDownload, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend, IconX } from "@tabler/icons-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
@@ -110,6 +110,30 @@ const useCaseItems = [
     body: "AI 拉公开资料、跑 benchmark、出对比报告，带引用链接，适合做技术选型和产品预研。",
     stack: ["公开资料聚合", "横向对比", "带引用"],
   },
+];
+
+const mobileClientItems = [
+  {
+    platform: "Android",
+    icon: IconBrandAndroid,
+    href: "https://release.monkeycode-ai.com/public/mobile/app/monkeycode-latest.apk",
+    cta: "下载 Android APK",
+  },
+  {
+    platform: "iOS",
+    icon: IconBrandApple,
+    href: "https://apps.apple.com/app/id6777423440",
+    cta: "前往 App Store",
+  },
+];
+
+const SELF_HOSTING_DOC_LINK = "https://monkeycode.docs.baizhi.cloud/node/019ea70b-10ef-797b-9615-4cc6e4d91ac6";
+
+const selfHostingAdvantages = [
+  "部署在企业内网，代码仓库、任务记录和研发数据留在自己的网络边界内。",
+  "统一管理团队成员、开发环境、AI 模型和任务流程，便于研发负责人做治理和审计。",
+  "支持对接企业已有的大模型、Git 平台和开发环境宿主机，适配内部研发基础设施。",
+  "可按在线或离线方式安装，适合有网络隔离、合规要求或本地算力资源的团队。",
 ];
 
 const compareColumns = ["MonkeyCode", "Cursor", "Claude Code", "Codex"];
@@ -543,6 +567,10 @@ export default function TerminalNativePage() {
                     <IconArrowRight className="size-4" />
                     <span>开始使用</span>
                   </HeaderAction>
+                  <HeaderAction href="#mobile-client">
+                    <IconArrowRight className="size-4" />
+                    <span>手机客户端</span>
+                  </HeaderAction>
                   <HeaderAction href={GITHUB_LINK} external>
                     <Icon name="GitHub-Uncolor" className="size-4 fill-current" />
                     <span>GitHub</span>
@@ -620,8 +648,81 @@ export default function TerminalNativePage() {
         </SectionShell>
 
         <SectionShell
-          id="why"
+          id="mobile-client"
           index="03"
+          label="MOBILE CLIENT"
+          title="移动客户端"
+          subtitle="离开电脑也不必暂停开发。用手机查看任务进度、继续对话、接收结果，让 AI Agent 在你切换场景时继续工作。"
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            {mobileClientItems.map((item) => (
+              <div
+                key={item.platform}
+                className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6 transition-colors hover:border-[rgba(124,242,156,0.32)] hover:bg-[rgba(124,242,156,0.025)]"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex size-11 shrink-0 items-center justify-center rounded border border-[rgba(124,242,156,0.16)] bg-[rgba(124,242,156,0.06)] text-[var(--a-accent)]">
+                    <item.icon className="size-6" />
+                  </span>
+                  <div>
+                    <h3 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--a-accent)]">
+                      {item.platform}
+                    </h3>
+                  </div>
+                </div>
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded border border-[rgba(124,242,156,0.24)] bg-[rgba(124,242,156,0.08)] px-4 py-3 text-sm font-semibold text-[var(--a-accent)] transition-colors hover:bg-[rgba(124,242,156,0.14)] hover:text-[var(--a-fg)]"
+                >
+                  <IconDownload className="size-4" />
+                  {item.cta}
+                </a>
+              </div>
+            ))}
+          </div>
+        </SectionShell>
+
+        <SectionShell
+          id="self-hosting"
+          index="04"
+          label="SELF HOSTING"
+          title="私有化部署"
+          subtitle="当团队需要把 AI 开发能力放进企业内网，MonkeyCode 可以独立部署，统一管理研发团队、开发环境和模型配置。"
+          action={
+            <HeaderAction href={SELF_HOSTING_DOC_LINK} external>
+              <IconArrowRight className="size-4" />
+              <span>查看部署教程</span>
+            </HeaderAction>
+          }
+        >
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
+              <div className="text-[10px] tracking-[0.12em] text-[var(--a-accent)]">$ monkey deploy --self-hosted</div>
+              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-[var(--a-fg)]">
+                给团队一套可控的 AI 研发平台
+              </h3>
+              <p className="mt-4 text-sm leading-7 text-[var(--a-fg-dim)]">
+                私有化部署版适合企业研发团队在内网统一使用。管理员可以集中配置大模型、开发环境宿主机和成员权限，开发者只需要在浏览器里启动任务。
+              </p>
+            </div>
+            <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-line)]">
+              {selfHostingAdvantages.map((item, index) => (
+                <div key={item} className="flex gap-4 bg-[var(--a-panel)] p-5">
+                  <span className="mt-1 text-[11px] tracking-[0.12em] text-[var(--a-accent)]">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <p className="text-sm leading-7 text-[var(--a-fg-dim)]">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionShell>
+
+        <SectionShell
+          id="why"
+          index="05"
           label="WHY MONKEYCODE"
           title="和其他 Coding 工具的区别"
           subtitle="和依赖本地 IDE、CLI 或开发环境的工具不同，MonkeyCode 打开浏览器就能随时开始开发，并支持围绕同一个项目持续迭代、长期管理与协作。"
@@ -692,7 +793,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="testimonials"
-          index="04"
+          index="06"
           label="WHAT DEVS SAY"
           title="用户真实评价"
           subtitle="来自真实用户的使用反馈，覆盖开发、运营、创业、团队协作等不同场景。"
@@ -716,7 +817,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="pricing"
-          index="05"
+          index="07"
           label="PRICING"
           title="套餐与费用"
           subtitle="个人用户可以直接免费使用；需要更高额度或团队能力时，可以按月或按年购买套餐。"
@@ -921,7 +1022,7 @@ export default function TerminalNativePage() {
 
         <SectionShell
           id="faq"
-          index="06"
+          index="08"
           label="FAQ"
           title="常见问题"
           subtitle="没有覆盖到的问题，可以直接进社区或者文档继续查。"

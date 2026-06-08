@@ -8,6 +8,7 @@ const DOCS_LINK = "https://monkeycode.docs.baizhi.cloud/";
 const GITHUB_LINK = "https://github.com/chaitin/MonkeyCode/";
 const FORUM_LINK = "https://bbs.baizhi.cloud/";
 const MODEL_SQUARE_LINK = "https://baizhi.cloud/landing/model-square";
+const SHOWCASE_LINK = "https://showcase.monkeycode-ai.online/";
 const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
 
@@ -96,11 +97,9 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
   const navPrefix = homeAnchors ? "" : "/";
 
   const pageNav = [
-    { label: "介绍", href: `${navPrefix}#hero` },
-    { label: "特色", href: `${navPrefix}#features` },
-    { label: "场景", href: `${navPrefix}#usecases` },
-    { label: "套餐", href: `${navPrefix}#pricing` },
-    { label: "文档", href: DOCS_LINK, external: true },
+    { label: "作品集", href: SHOWCASE_LINK, external: true },
+    { label: "客户端", href: `${navPrefix}#mobile-client` },
+    { label: "私有化", href: `${navPrefix}#self-hosting` },
   ];
 
   React.useEffect(() => {
