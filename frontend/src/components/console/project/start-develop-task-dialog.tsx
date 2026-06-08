@@ -1,5 +1,6 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, type DomainProject, type DomainBranch } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -10,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner"
 import ModelSelect from "@/components/console/task/model-select"
 import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "@/components/console/task/task-content-limit"
 import { TASK_PROMPT_PLACEHOLDER, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
@@ -37,6 +39,7 @@ export default function StartDevelopTaskDialog({
   const [branchFetchFailed, setBranchFetchFailed] = useState<boolean>(false)
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
+  const [selectedHostId, setSelectedHostId] = useState<string>('')
   const { images, models, hosts, subscription } = useCommonData()
   const branchRequestIdRef = useRef(0)
   const branchTouchedRef = useRef(false)
@@ -45,6 +48,14 @@ export default function StartDevelopTaskDialog({
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
   )
+  const selectedPublicModel = selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic
+  const selectDefaultHostId = useCallback(() => {
+    if (IS_OFFLINE_EDITION) {
+      return hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || ""
+    }
+
+    return selectHost(hosts, true)
+  }, [hosts])
   const userMessageLength = userMessage.length
   const userMessageTooLong = userMessageLength > MAX_TASK_CONTENT_LENGTH
   const branchSourceKey = useMemo(() => {
@@ -158,13 +169,40 @@ export default function StartDevelopTaskDialog({
       if (justOpened) {
         setUserMessage('')
         setSelectedModelId(selectPreferredTaskModel(models, subscription))
+        setSelectedHostId(selectDefaultHostId())
         setSelectedBranch('main')
       }
     } else {
       prevOpenRef.current = false
       branchRequestIdRef.current += 1
+      setSelectedHostId('')
     }
-  }, [open, models, subscription])
+  }, [open, models, subscription, selectDefaultHostId])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    if (!selectedHostId) {
+      setSelectedHostId(selectDefaultHostId())
+      return
+    }
+
+    const hostIsValid = selectedHostId === "public_host"
+      ? !IS_OFFLINE_EDITION
+      : hosts.some((host) => host.id === selectedHostId && host.status === ConstsHostStatus.HostStatusOnline)
+
+    if (!hostIsValid) {
+      setSelectedHostId(selectDefaultHostId())
+    }
+  }, [hosts, open, selectedHostId, selectDefaultHostId])
+
+  useEffect(() => {
+    if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId !== "public_host") {
+      setSelectedHostId("public_host")
+    }
+  }, [selectedPublicModel, selectedHostId])
 
   useEffect(() => {
     if (!open || !branchSourceKey) return
@@ -197,6 +235,16 @@ export default function StartDevelopTaskDialog({
       return
     }
 
+    if (!selectedHostId) {
+      toast.error('请选择宿主机')
+      return
+    }
+
+    if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId !== "public_host") {
+      toast.warning('内置模型只能在内置宿主机上使用')
+      return
+    }
+
     setSubmitting(true)
 
     // 创建任务
@@ -205,7 +253,7 @@ export default function StartDevelopTaskDialog({
       cli_name: ConstsCliName.CliNameOpencode,
       model_id: selectedModelId,
       image_id: selectImage(images, false),
-      host_id: selectHost(hosts, false),
+      host_id: selectedHostId,
       repo: {
         branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch.trim(),
       },
@@ -290,6 +338,35 @@ export default function StartDevelopTaskDialog({
               setSelectedModelId={setSelectedModelId}
               subscription={subscription}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>宿主机</Label>
+            <Select value={selectedHostId} onValueChange={setSelectedHostId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="请选择宿主机" />
+              </SelectTrigger>
+              <SelectContent>
+                {!IS_OFFLINE_EDITION && (
+                  <SelectItem value="public_host">
+                    <div className="flex items-center gap-2">
+                      <span>MonkeyCode</span>
+                      <Badge className="!text-primary-foreground">免费</Badge>
+                    </div>
+                  </SelectItem>
+                )}
+                {hosts.map((host) => (
+                  <SelectItem
+                    key={host.id}
+                    value={host.id!}
+                    disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>任务内容</Label>

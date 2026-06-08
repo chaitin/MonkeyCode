@@ -36,8 +36,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { IconPasswordFingerprint, IconPencil, IconPlugConnected, IconTrash } from "@tabler/icons-react"
+import { IconAlertHexagon, IconPasswordFingerprint, IconPencil, IconPlugConnected, IconTrash } from "@tabler/icons-react"
 import { getGitPlatformIcon, getGithubAppInstallUrl } from "@/utils/common"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "../data-provider"
 import { Spinner } from "@/components/ui/spinner"
@@ -66,6 +67,10 @@ export default function Identities() {
   const hasGitLabIdentity = identities.some(
     (identity) => identity.platform === ConstsGitPlatform.GitPlatformGitLab
   )
+  const showPlatformConnectCards = !IS_OFFLINE_EDITION
+  const hasPlatformConnectCards =
+    showPlatformConnectCards &&
+    (!hasGitHubIdentity || !hasGiteeIdentity || !hasGiteaIdentity || !hasGitLabIdentity)
 
   const handleGiteeBind = () => {
     setGiteeBindLoading(true)
@@ -174,6 +179,23 @@ export default function Identities() {
       </Empty>
     )
   } 
+
+  const noIdentities = () => {
+    return (
+      <Empty className="min-h-full border border-dashed">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <IconAlertHexagon />
+          </EmptyMedia>
+        </EmptyHeader>
+        <EmptyContent>
+          <EmptyDescription>
+            暂无配置，请先绑定身份凭证
+          </EmptyDescription>
+        </EmptyContent>
+      </Empty>
+    )
+  }
 
   const githubConnectCard = () => (
     <Item variant="outline" className="hover:border-primary/50 border-dashed" size="sm">
@@ -386,38 +408,42 @@ export default function Identities() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 min-w-48">
-              <DropdownMenuItem
-                className="whitespace-nowrap"
-                onClick={() => githubAppInstallUrl && window.open(githubAppInstallUrl, "_blank")}
-                disabled={!githubAppInstallUrl}
-              >
-                <Icon name="GitHub-Uncolor" className="fill-foreground size-4" />
-                绑定 GitHub 身份
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="whitespace-nowrap"
-                onClick={handleGiteeBind}
-                disabled={giteeBindLoading}
-              >
-                <Icon name="Gitee" className="size-4" />
-                绑定 Gitee 身份
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="whitespace-nowrap"
-                onClick={handleGiteaBind}
-                disabled={giteaBindLoading}
-              >
-                <Icon name="Gitea" className="size-4" />
-                绑定 Gitea 身份
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="whitespace-nowrap"
-                onClick={handleGitLabBind}
-                disabled={gitlabBindLoading}
-              >
-                <Icon name="GitLab" className="size-4" />
-                绑定 GitLab 身份
-              </DropdownMenuItem>
+              {showPlatformConnectCards && (
+                <>
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onClick={() => githubAppInstallUrl && window.open(githubAppInstallUrl, "_blank")}
+                    disabled={!githubAppInstallUrl}
+                  >
+                    <Icon name="GitHub-Uncolor" className="fill-foreground size-4" />
+                    绑定 GitHub 身份
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onClick={handleGiteeBind}
+                    disabled={giteeBindLoading}
+                  >
+                    <Icon name="Gitee" className="size-4" />
+                    绑定 Gitee 身份
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onClick={handleGiteaBind}
+                    disabled={giteaBindLoading}
+                  >
+                    <Icon name="Gitea" className="size-4" />
+                    绑定 Gitea 身份
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onClick={handleGitLabBind}
+                    disabled={gitlabBindLoading}
+                  >
+                    <Icon name="GitLab" className="size-4" />
+                    绑定 GitLab 身份
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuItem className="whitespace-nowrap" onClick={() => setIsDialogOpen(true)}>
                 <IconPlugConnected className="size-4" />
                 绑定其他平台
@@ -434,12 +460,14 @@ export default function Identities() {
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         {loadingIdentities ? (
           loadIdentities()
+        ) : identities.length === 0 && !hasPlatformConnectCards ? (
+          noIdentities()
         ) : (
           <ItemGroup className="flex flex-col gap-4">
-            {!hasGitHubIdentity && githubConnectCard()}
-            {!hasGiteeIdentity && giteeConnectCard()}
-            {!hasGiteaIdentity && giteaConnectCard()}
-            {!hasGitLabIdentity && gitlabConnectCard()}
+            {showPlatformConnectCards && !hasGitHubIdentity && githubConnectCard()}
+            {showPlatformConnectCards && !hasGiteeIdentity && giteeConnectCard()}
+            {showPlatformConnectCards && !hasGiteaIdentity && giteaConnectCard()}
+            {showPlatformConnectCards && !hasGitLabIdentity && gitlabConnectCard()}
             {identityItems()}
           </ItemGroup>
         )}

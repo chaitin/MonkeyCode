@@ -50,6 +50,7 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: env.TARGET,
           changeOrigin: true,
+          secure: false,
           ws: true,
           ...(Object.keys(proxyHeaders).length > 0
             ? {

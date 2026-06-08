@@ -277,6 +277,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [])
 
   const fetchCheckinStatus = async (showLoading = true) => {
+    if (IS_OFFLINE_EDITION) {
+      setCheckedInToday(null)
+      setLoadingCheckinStatus(false)
+      return
+    }
+
     if (showLoading) {
       setLoadingCheckinStatus(true)
     }
