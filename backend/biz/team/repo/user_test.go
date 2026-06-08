@@ -15,8 +15,10 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
+	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/pkg/crypto"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
@@ -115,6 +117,89 @@ func TestInitTeamSkipsImageWhenConfigEmpty(t *testing.T) {
 	}
 }
 
+func TestInitTeamCreatesMemberInDefaultGroup(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	admin, err := client.User.Query().
+		Where(user.EmailEQ("admin@example.com"), user.RoleEQ(consts.UserRoleEnterprise)).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberUser, err := client.User.Query().
+		Where(user.EmailEQ("admin@example.com"), user.RoleEQ(consts.UserRoleSubAccount)).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admin.ID == memberUser.ID {
+		t.Fatal("admin and member should be different users")
+	}
+	if err := crypto.VerifyPassword(memberUser.Password, "password"); err != nil {
+		t.Fatalf("verify member password failed: %v", err)
+	}
+
+	adminMember, err := client.TeamMember.Query().
+		Where(teammember.UserIDEQ(admin.ID), teammember.RoleEQ(consts.TeamMemberRoleAdmin)).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := client.TeamMember.Query().
+		Where(
+			teammember.TeamIDEQ(adminMember.TeamID),
+			teammember.UserIDEQ(memberUser.ID),
+			teammember.RoleEQ(consts.TeamMemberRoleUser),
+		).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, err := client.TeamGroup.Query().
+		Where(teamgroup.TeamIDEQ(member.TeamID), teamgroup.NameEQ(defaultTeamGroupName)).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exists, err := client.TeamGroupMember.Query().
+		Where(teamgroupmember.GroupIDEQ(group.ID), teamgroupmember.UserIDEQ(memberUser.ID)).
+		Exist(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("member was not added to default group")
+	}
+
+	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := client.User.Query().Where(user.EmailEQ("admin@example.com")).Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 2 {
+		t.Fatalf("user count = %d, want 2", count)
+	}
+	if count, err := client.TeamMember.Query().Where(teammember.TeamIDEQ(adminMember.TeamID)).Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 2 {
+		t.Fatalf("team member count = %d, want 2", count)
+	}
+	if count, err := client.TeamGroupMember.Query().Where(teamgroupmember.GroupIDEQ(group.ID)).Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("default group member count = %d, want 1", count)
+	}
+}
+
 func TestInitTeamAddsImageForExistingTeam(t *testing.T) {
 	ctx := context.Background()
 	client := newTeamRepoTestDB(t)
@@ -158,6 +243,35 @@ func TestInitTeamAddsImageForExistingTeam(t *testing.T) {
 		t.Fatal(err)
 	} else if count != 1 {
 		t.Fatalf("team image count = %d, want 1", count)
+	}
+	memberUser, err := client.User.Query().
+		Where(user.EmailEQ("admin@example.com"), user.RoleEQ(consts.UserRoleSubAccount)).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crypto.VerifyPassword(memberUser.Password, "password"); err != nil {
+		t.Fatalf("verify member password failed: %v", err)
+	}
+	if count, err := client.TeamMember.Query().
+		Where(teammember.TeamIDEQ(teamID), teammember.UserIDEQ(memberUser.ID), teammember.RoleEQ(consts.TeamMemberRoleUser)).
+		Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("team member count = %d, want 1", count)
+	}
+	group, err := client.TeamGroup.Query().
+		Where(teamgroup.TeamIDEQ(teamID), teamgroup.NameEQ(defaultTeamGroupName)).
+		First(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, err := client.TeamGroupMember.Query().
+		Where(teamgroupmember.GroupIDEQ(group.ID), teamgroupmember.UserIDEQ(memberUser.ID)).
+		Count(ctx); err != nil {
+		t.Fatal(err)
+	} else if count != 1 {
+		t.Fatalf("default group member count = %d, want 1", count)
 	}
 }
 
