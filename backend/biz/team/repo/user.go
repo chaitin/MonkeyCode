@@ -265,11 +265,17 @@ func (r *TeamGroupUserRepo) GetMember(ctx context.Context, teamID, userID uuid.U
 		First(ctx)
 }
 
-// InitTeam 初始化团队：创建用户（如果不存在）、创建团队、并将用户设为管理员。
+// InitTeam 初始化团队：创建管理员、普通成员、团队和默认资源。
 func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string, imageName string) error {
 	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		// 检查用户是否已存在
-		existingUser, err := tx.User.Query().Where(user.EmailEQ(email)).First(ctx)
+		hashedPassword, err := crypto.HashPassword(password)
+		if err != nil {
+			return err
+		}
+
+		existingUser, err := tx.User.Query().
+			Where(user.EmailEQ(email), user.RoleEQ(consts.UserRoleEnterprise)).
+			First(ctx)
 		if err != nil {
 			if !db.IsNotFound(err) {
 				return err
@@ -279,13 +285,6 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 		var initUser *db.User
 		var initTeam *db.Team
 		if existingUser == nil {
-			// 哈希密码
-			hashedPassword, err := crypto.HashPassword(password)
-			if err != nil {
-				return err
-			}
-
-			// 创建用户
 			initUser, err = tx.User.Create().
 				SetID(uuid.New()).
 				SetName(name).
@@ -338,8 +337,62 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 		if err != nil {
 			return err
 		}
+		if err := r.ensureInitTeamMember(ctx, tx, initTeam.ID, email, name, hashedPassword, defaultGroup.ID); err != nil {
+			return err
+		}
 		return r.initTeamImage(ctx, tx, initTeam.ID, defaultGroup.ID, initUser.ID, imageName)
 	})
+}
+
+func (r *TeamGroupUserRepo) ensureInitTeamMember(ctx context.Context, tx *db.Tx, teamID uuid.UUID, email, name, hashedPassword string, groupID uuid.UUID) error {
+	memberUser, err := tx.User.Query().
+		Where(user.EmailEQ(email), user.RoleEQ(consts.UserRoleSubAccount)).
+		First(ctx)
+	if err != nil {
+		if !db.IsNotFound(err) {
+			return err
+		}
+		memberUser, err = tx.User.Create().
+			SetID(uuid.New()).
+			SetName(name).
+			SetEmail(email).
+			SetStatus(consts.UserStatusActive).
+			SetPassword(hashedPassword).
+			SetRole(consts.UserRoleSubAccount).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
+	exists, err := tx.TeamMember.Query().
+		Where(teammember.TeamIDEQ(teamID), teammember.UserIDEQ(memberUser.ID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := tx.TeamMember.Create().
+			SetID(uuid.New()).
+			SetTeamID(teamID).
+			SetUserID(memberUser.ID).
+			SetRole(consts.TeamMemberRoleUser).
+			Save(ctx); err != nil {
+			return err
+		}
+	}
+
+	exists, err = tx.TeamGroupMember.Query().
+		Where(teamgroupmember.GroupIDEQ(groupID), teamgroupmember.UserIDEQ(memberUser.ID)).
+		Exist(ctx)
+	if err != nil || exists {
+		return err
+	}
+	return tx.TeamGroupMember.Create().
+		SetID(uuid.New()).
+		SetGroupID(groupID).
+		SetUserID(memberUser.ID).
+		Exec(ctx)
 }
 
 func (r *TeamGroupUserRepo) ensureDefaultTeamGroup(ctx context.Context, tx *db.Tx, teamID uuid.UUID) (*db.TeamGroup, error) {
