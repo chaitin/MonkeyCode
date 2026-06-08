@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4/source"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/chaitin/MonkeyCode/backend/config"
@@ -244,6 +245,84 @@ func TestBuildSingleMigrationSourceIncludesModelUsageCachedTokens(t *testing.T) 
 		if !strings.Contains(query, want) {
 			t.Fatalf("query missing %q:\n%s", want, query)
 		}
+	}
+}
+
+func TestBuildMigrationSourcesUseUTCDateTimeColumns(t *testing.T) {
+	tests := []struct {
+		name string
+		new  func() (source.Driver, error)
+	}{
+		{
+			name: "single",
+			new: func() (source.Driver, error) {
+				return newSingleMigrationSource("task_logs_test", "model_usage_events_test")
+			},
+		},
+		{
+			name: "cluster",
+			new: func() (source.Driver, error) {
+				return newClusterMigrationSource("task_logs_test", "model_usage_events_test")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source, err := tt.new()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = source.Close() })
+
+			for version := uint(1); version <= 2; version++ {
+				body, _, err := source.ReadUp(version)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, err := io.ReadAll(body)
+				_ = body.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				query := string(data)
+				if strings.Contains(query, "Asia/Shanghai") {
+					t.Fatalf("migration %d uses non-UTC timezone:\n%s", version, query)
+				}
+			}
+
+			body, _, err := source.ReadUp(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			taskLogData, err := io.ReadAll(body)
+			_ = body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(taskLogData), "ts DateTime64(9, 'UTC')") {
+				t.Fatalf("task log migration missing UTC ts:\n%s", string(taskLogData))
+			}
+
+			body, _, err = source.ReadUp(2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			modelUsageData, err := io.ReadAll(body)
+			_ = body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			query := string(modelUsageData)
+			for _, want := range []string{
+				"event_time DateTime64(3, 'UTC')",
+				"created_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')",
+			} {
+				if !strings.Contains(query, want) {
+					t.Fatalf("model usage migration missing %q:\n%s", want, query)
+				}
+			}
+		})
 	}
 }
 

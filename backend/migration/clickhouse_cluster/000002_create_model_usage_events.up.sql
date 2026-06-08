@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS {{MODEL_USAGE_TABLE}}
 ON CLUSTER mcai_cluster
 (
-	event_time DateTime64(3, 'Asia/Shanghai'),
+	event_time DateTime64(3, 'UTC'),
 	team_id String,
 	user_id String,
 	task_id String,
@@ -19,7 +19,7 @@ ON CLUSTER mcai_cluster
 	trace_id String,
 	request_id String,
 	source LowCardinality(String),
-	created_at DateTime64(3, 'Asia/Shanghai') DEFAULT now64(3)
+	created_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')
 )
 ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/mcai/{{MODEL_USAGE_TABLE_RAW}}', '{replica}')
 PARTITION BY toYYYYMM(event_time)
