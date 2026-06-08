@@ -25,6 +25,9 @@ const { URL } = require('url');
 
 const PORT = Number(process.env.OTA_PORT || 4747);
 const DIST = path.resolve(process.env.OTA_DIST || path.join(__dirname, '..', 'dist'));
+// 设了 OTA_ASSET_BASE_URL（如 OSS 域名）后，manifest 里的 bundle/资源 URL 直接指向它，
+// server 只负责发 manifest，静态资源交给 OSS/CDN。不设则由本 server 自己发（本地联调）。
+const ASSET_BASE = (process.env.OTA_ASSET_BASE_URL || '').replace(/\/$/, '');
 
 const MIME = {
   '.js': 'application/javascript', '.hbc': 'application/javascript', '.bundle': 'application/javascript',
@@ -54,15 +57,14 @@ function readMetadata() {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-function assetEntry(relPath, host) {
+function assetEntry(relPath, host, ext) {
   const abs = path.join(DIST, relPath);
   const buf = fs.readFileSync(abs);
-  return {
-    buf, abs,
-    key: md5(buf),
-    hash: sha256b64url(buf),
-    url: `http://${host}/assets?p=${encodeURIComponent(relPath)}`,
-  };
+  // 有 OSS：直接指向 OSS 上同样路径的文件；没有：本 server 自己发（带 ext 提示 content-type）。
+  const url = ASSET_BASE
+    ? `${ASSET_BASE}/${relPath.split(path.sep).join('/')}`
+    : `http://${host}/assets?p=${encodeURIComponent(relPath)}${ext ? `&ext=${encodeURIComponent(ext)}` : ''}`;
+  return { buf, abs, key: md5(buf), hash: sha256b64url(buf), url };
 }
 
 // 把 app.json 的 expo 配置塞进 manifest.extra.expoClient，
@@ -83,9 +85,8 @@ function buildManifest(platform, runtimeVersion, host) {
 
   const bundle = assetEntry(fm.bundle, host);
   const assets = (fm.assets || []).map((a) => {
-    const e = assetEntry(a.path, host);
-    // 资源文件名是 md5、无扩展名，给下发 URL 带上 ext 提示，便于 /assets 设对 content-type。
-    return { hash: e.hash, key: e.key, contentType: mimeFor(a.ext), fileExtension: '.' + a.ext, url: `${e.url}&ext=${encodeURIComponent(a.ext)}` };
+    const e = assetEntry(a.path, host, a.ext);
+    return { hash: e.hash, key: e.key, contentType: mimeFor(a.ext), fileExtension: '.' + a.ext, url: e.url };
   });
 
   const extra = { expoClient: readExpoClient() };
@@ -152,8 +153,10 @@ function sendManifest(req, res, query) {
 
 // 最新 native 安装包版本（手动维护：每次发新 APK/IPA 就更新 native-release.json）。
 // 客户端拿它和已装版本比较：更大就引导去装新包（OTA 推不动原生）。
-function sendAppVersion(req, res, query) {
-  const platform = req.headers['expo-platform'] || query.get('platform') || '';
+// 客户端按 path 取：/app-version/<platform>.json —— 这样也能直接当静态文件放 OSS。
+function sendAppVersion(req, res, u) {
+  const m = u.pathname.match(/\/app-version\/(ios|android)(?:\.json)?$/);
+  const platform = (m && m[1]) || u.searchParams.get('platform') || '';
   let cfg = {};
   try { cfg = JSON.parse(fs.readFileSync(path.join(__dirname, 'native-release.json'), 'utf8')); } catch { /* none */ }
   const rel = cfg[platform] || {};
@@ -178,7 +181,7 @@ function sendAsset(res, query) {
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   if (u.pathname === '/manifest') return sendManifest(req, res, u.searchParams);
-  if (u.pathname === '/app-version') return sendAppVersion(req, res, u.searchParams);
+  if (u.pathname.startsWith('/app-version')) return sendAppVersion(req, res, u);
   if (u.pathname === '/assets') return sendAsset(res, u.searchParams);
   if (u.pathname === '/') {
     let info = '(dist 尚未导出)';

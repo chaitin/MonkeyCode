@@ -2,7 +2,7 @@
   "expo": {
     "name": "MonkeyCode",
     "slug": "monkeycode",
-    "version": "260606",
+    "version": "260608",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "monkeycode",
@@ -11,7 +11,7 @@
       "policy": "fingerprint"
     },
     "updates": {
-      "url": "http://127.0.0.1:4747/manifest",
+      "url": "https://monkeycode-ai.com/mobile/app/manifest",
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
@@ -76,7 +76,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "updatesServer": "http://127.0.0.1:4747"
+      "updatesServer": "https://release.monkeycode-ai.com"
     }
   }
 }

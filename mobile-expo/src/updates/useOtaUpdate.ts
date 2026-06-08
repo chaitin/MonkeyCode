@@ -68,13 +68,16 @@ export type AppUpdate = { version: string; url: string } | null;
  * 检查是否有更新的「原生版本」（新安装包）。比 OTA 优先：原生改动 OTA 推不动，
  * 必须引导用户去装新包。返回 null 表示原生已是最新（此时再去查 OTA）。
  * 版本比较按 app.json 的可比较格式（如日期 260606）做字符串比较。
+ *
+ * 用 path 而非 query：`<updatesServer>/app-version/<platform>.json` —— 这样可以直接
+ * 作为静态文件托管在 OSS/CDN 上（每个平台一个 JSON，内容为 { version, url }）。
  */
 export async function checkAppUpdate(): Promise<AppUpdate> {
-  const base = (Constants.expoConfig?.extra as { updatesServer?: string } | undefined)?.updatesServer;
+  const base = (Constants.expoConfig?.extra as { updatesServer?: string } | undefined)?.updatesServer?.replace(/\/$/, '');
   const installed = installedAppVersion();
   if (!base || !installed) return null;
   try {
-    const res = await fetch(`${base}/app-version?platform=${Platform.OS}`);
+    const res = await fetch(`${base}/app-version/${Platform.OS}.json`);
     if (!res.ok) return null;
     const j = (await res.json()) as { version?: string; url?: string };
     if (j?.version && String(j.version) > installed) {
