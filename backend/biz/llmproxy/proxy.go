@@ -1,7 +1,6 @@
 package llmproxy
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,7 +14,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,6 +47,7 @@ type modelContext struct {
 type proxyContext struct {
 	model        *modelContext
 	upstreamPath string
+	stream       bool
 }
 
 type Proxy struct {
@@ -124,7 +123,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
 
-	reqModel, err := readRequestModel(body)
+	reqMeta, err := readRequestMeta(body)
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
@@ -135,8 +134,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if reqModel != "" && reqModel != m.modelName {
-		p.logger.WarnContext(r.Context(), "model mismatch", "request_model", reqModel, "expected_model", m.modelName)
+	if reqMeta.Model != "" && reqMeta.Model != m.modelName {
+		p.logger.WarnContext(r.Context(), "model mismatch", "request_model", reqMeta.Model, "expected_model", m.modelName)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -144,6 +143,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithValue(r.Context(), contextKey{}, &proxyContext{
 		model:        m,
 		upstreamPath: upstreamPath,
+		stream:       reqMeta.Stream,
 	})
 	p.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
@@ -245,50 +245,31 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 	if !ok || ctx == nil || ctx.model == nil {
 		return nil
 	}
-	resp.Body = newUsageCaptureBody(resp.Body, func(body []byte) {
-		p.recordUsage(resp.Request.Context(), ctx, body)
+	resp.Body = NewBilling(p.logger, resp.Body, &BillingContext{
+		ctx:      resp.Request.Context(),
+		path:     normalizeBillingPath(resp.Request.URL.Path),
+		stream:   ctx.stream,
+		proxyCtx: ctx,
+		proxy:    p,
 	})
 	return nil
 }
 
-type usageCaptureBody struct {
-	body     io.ReadCloser
-	onFinish func([]byte)
-	buf      bytes.Buffer
-	once     sync.Once
-}
-
-func newUsageCaptureBody(body io.ReadCloser, onFinish func([]byte)) io.ReadCloser {
-	return &usageCaptureBody{body: body, onFinish: onFinish}
-}
-
-func (b *usageCaptureBody) Read(p []byte) (int, error) {
-	n, err := b.body.Read(p)
-	if n > 0 {
-		_, _ = b.buf.Write(p[:n])
+func normalizeBillingPath(path string) string {
+	switch {
+	case strings.HasSuffix(path, "/chat/completions"):
+		return "/v1/chat/completions"
+	case strings.HasSuffix(path, "/responses"):
+		return "/v1/responses"
+	case strings.HasSuffix(path, "/messages"):
+		return "/v1/messages"
+	default:
+		return path
 	}
-	if errors.Is(err, io.EOF) {
-		b.finish()
-	}
-	return n, err
 }
 
-func (b *usageCaptureBody) Close() error {
-	err := b.body.Close()
-	b.finish()
-	return err
-}
-
-func (b *usageCaptureBody) finish() {
-	b.once.Do(func() {
-		if b.onFinish != nil {
-			b.onFinish(b.buf.Bytes())
-		}
-	})
-}
-
-func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, body []byte) {
-	event, ok := p.buildUsageEvent(ctx, proxyCtx, body)
+func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result tokenResult) {
+	event, ok := p.buildUsageEvent(ctx, proxyCtx, result)
 	if !ok {
 		return
 	}
@@ -297,12 +278,11 @@ func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, body []
 	}
 }
 
-func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, body []byte) (modelusage.Event, bool) {
+func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, result tokenResult) (modelusage.Event, bool) {
 	if p.recorder == nil || proxyCtx == nil || proxyCtx.model == nil {
 		return modelusage.Event{}, false
 	}
-	usage, ok := parseUsage(proxyCtx.upstreamPath, body)
-	if !ok {
+	if !result.hasTokens() {
 		return modelusage.Event{}, false
 	}
 	m := proxyCtx.model
@@ -318,12 +298,12 @@ func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, bod
 		Provider:     m.provider,
 		ModelID:      m.modelID.String(),
 		ModelName:    m.modelName,
-		InputTokens:  usage.inputTokens,
-		OutputTokens: usage.outputTokens,
-		CachedTokens: usage.cachedTokens,
-		TotalTokens:  usage.totalTokens,
+		InputTokens:  result.InputTokens + result.CacheReadInputTokens,
+		OutputTokens: result.OutputTokens,
+		CachedTokens: result.CacheReadInputTokens + result.CachedTokens,
+		TotalTokens:  result.totalTokens(),
 		Success:      true,
-		RequestID:    usage.requestID,
+		RequestID:    result.ResponseID,
 		Source:       "llmproxy",
 	}, true
 }
@@ -343,261 +323,6 @@ func (p *Proxy) resolveTaskID(ctx context.Context, vmID string) uuid.UUID {
 	return taskVM.TaskID
 }
 
-type usagePayload struct {
-	requestID    string
-	inputTokens  uint64
-	outputTokens uint64
-	cachedTokens uint64
-	totalTokens  uint64
-}
-
-func parseUsage(path string, body []byte) (usagePayload, bool) {
-	switch path {
-	case "/chat/completions":
-		return parseOpenAIChatUsage(body)
-	case "/responses":
-		return parseOpenAIResponsesUsage(body)
-	case "/messages":
-		return parseAnthropicUsage(body)
-	default:
-		return usagePayload{}, false
-	}
-}
-
-func parseOpenAIChatUsage(body []byte) (usagePayload, bool) {
-	if usage, ok := parseOpenAIChatUsageJSON(body); ok {
-		return usage, true
-	}
-	var usage usagePayload
-	for _, evt := range parseSSE(body) {
-		if evt.data == "" || evt.data == "[DONE]" {
-			continue
-		}
-		if got, ok := parseOpenAIChatUsageJSON([]byte(evt.data)); ok {
-			usage = got
-		}
-	}
-	return usage, usage.hasTokens()
-}
-
-func parseOpenAIResponsesUsage(body []byte) (usagePayload, bool) {
-	if usage, ok := parseOpenAIResponsesUsageJSON(body); ok {
-		return usage, true
-	}
-	var usage usagePayload
-	for _, evt := range parseSSE(body) {
-		if evt.event != "response.completed" || evt.data == "" {
-			continue
-		}
-		if got, ok := parseOpenAIResponsesUsageJSON([]byte(evt.data)); ok {
-			usage = got
-		}
-	}
-	return usage, usage.hasTokens()
-}
-
-func parseAnthropicUsage(body []byte) (usagePayload, bool) {
-	if usage, ok := parseAnthropicUsageJSON(body); ok {
-		return usage, true
-	}
-	var usage usagePayload
-	for _, evt := range parseSSE(body) {
-		if evt.data == "" {
-			continue
-		}
-		switch evt.event {
-		case "message_start":
-			got, ok := parseAnthropicUsageJSON([]byte(evt.data))
-			if !ok {
-				continue
-			}
-			usage.requestID = got.requestID
-			usage.inputTokens = got.inputTokens
-			usage.cachedTokens = got.cachedTokens
-		case "message_delta":
-			got, ok := parseAnthropicUsageJSON([]byte(evt.data))
-			if !ok {
-				continue
-			}
-			if got.inputTokens > 0 {
-				usage.inputTokens = got.inputTokens
-			}
-			if got.cachedTokens > 0 {
-				usage.cachedTokens = got.cachedTokens
-			}
-			usage.outputTokens = got.outputTokens
-		}
-	}
-	if usage.totalTokens == 0 {
-		usage.totalTokens = usage.inputTokens + usage.outputTokens
-	}
-	return usage, usage.hasTokens()
-}
-
-func parseOpenAIChatUsageJSON(body []byte) (usagePayload, bool) {
-	var resp struct {
-		ID    string `json:"id"`
-		Usage struct {
-			PromptTokens        uint64 `json:"prompt_tokens"`
-			CompletionTokens    uint64 `json:"completion_tokens"`
-			TotalTokens         uint64 `json:"total_tokens"`
-			PromptTokensDetails struct {
-				CachedTokens uint64 `json:"cached_tokens"`
-			} `json:"prompt_tokens_details"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return usagePayload{}, false
-	}
-	usage := usagePayload{
-		requestID:    resp.ID,
-		inputTokens:  resp.Usage.PromptTokens,
-		outputTokens: resp.Usage.CompletionTokens,
-		cachedTokens: resp.Usage.PromptTokensDetails.CachedTokens,
-		totalTokens:  resp.Usage.TotalTokens,
-	}
-	if usage.totalTokens == 0 {
-		usage.totalTokens = usage.inputTokens + usage.outputTokens
-	}
-	return usage, usage.hasTokens()
-}
-
-func parseOpenAIResponsesUsageJSON(body []byte) (usagePayload, bool) {
-	var resp struct {
-		ID       string `json:"id"`
-		Response *struct {
-			ID    string `json:"id"`
-			Usage struct {
-				InputTokens        uint64 `json:"input_tokens"`
-				OutputTokens       uint64 `json:"output_tokens"`
-				TotalTokens        uint64 `json:"total_tokens"`
-				InputTokensDetails struct {
-					CachedTokens uint64 `json:"cached_tokens"`
-				} `json:"input_tokens_details"`
-			} `json:"usage"`
-		} `json:"response"`
-		Usage struct {
-			InputTokens        uint64 `json:"input_tokens"`
-			OutputTokens       uint64 `json:"output_tokens"`
-			TotalTokens        uint64 `json:"total_tokens"`
-			InputTokensDetails struct {
-				CachedTokens uint64 `json:"cached_tokens"`
-			} `json:"input_tokens_details"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return usagePayload{}, false
-	}
-	requestID := resp.ID
-	inputTokens := resp.Usage.InputTokens
-	outputTokens := resp.Usage.OutputTokens
-	cachedTokens := resp.Usage.InputTokensDetails.CachedTokens
-	totalTokens := resp.Usage.TotalTokens
-	if resp.Response != nil {
-		requestID = resp.Response.ID
-		inputTokens = resp.Response.Usage.InputTokens
-		outputTokens = resp.Response.Usage.OutputTokens
-		cachedTokens = resp.Response.Usage.InputTokensDetails.CachedTokens
-		totalTokens = resp.Response.Usage.TotalTokens
-	}
-	usage := usagePayload{
-		requestID:    requestID,
-		inputTokens:  inputTokens,
-		outputTokens: outputTokens,
-		cachedTokens: cachedTokens,
-		totalTokens:  totalTokens,
-	}
-	if usage.totalTokens == 0 {
-		usage.totalTokens = usage.inputTokens + usage.outputTokens
-	}
-	return usage, usage.hasTokens()
-}
-
-func parseAnthropicUsageJSON(body []byte) (usagePayload, bool) {
-	var resp struct {
-		ID      string `json:"id"`
-		Message *struct {
-			ID    string `json:"id"`
-			Usage struct {
-				InputTokens              uint64 `json:"input_tokens"`
-				OutputTokens             uint64 `json:"output_tokens"`
-				CacheReadInputTokens     uint64 `json:"cache_read_input_tokens"`
-				CacheCreationInputTokens uint64 `json:"cache_creation_input_tokens"`
-			} `json:"usage"`
-		} `json:"message"`
-		Usage struct {
-			InputTokens              uint64 `json:"input_tokens"`
-			OutputTokens             uint64 `json:"output_tokens"`
-			CacheReadInputTokens     uint64 `json:"cache_read_input_tokens"`
-			CacheCreationInputTokens uint64 `json:"cache_creation_input_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return usagePayload{}, false
-	}
-	requestID := resp.ID
-	inputTokens := resp.Usage.InputTokens
-	outputTokens := resp.Usage.OutputTokens
-	cacheReadTokens := resp.Usage.CacheReadInputTokens
-	if resp.Message != nil {
-		requestID = resp.Message.ID
-		inputTokens = resp.Message.Usage.InputTokens
-		outputTokens = resp.Message.Usage.OutputTokens
-		cacheReadTokens = resp.Message.Usage.CacheReadInputTokens
-	}
-	inputTokens += cacheReadTokens
-	usage := usagePayload{
-		requestID:    requestID,
-		inputTokens:  inputTokens,
-		outputTokens: outputTokens,
-		cachedTokens: cacheReadTokens,
-		totalTokens:  inputTokens + outputTokens,
-	}
-	return usage, usage.hasTokens()
-}
-
-func (u usagePayload) hasTokens() bool {
-	return u.inputTokens > 0 || u.outputTokens > 0 || u.totalTokens > 0
-}
-
-type sseEvent struct {
-	event string
-	data  string
-}
-
-func parseSSE(body []byte) []sseEvent {
-	var events []sseEvent
-	var current sseEvent
-	var data strings.Builder
-	flush := func() {
-		if current.event == "" && data.Len() == 0 {
-			return
-		}
-		current.data = strings.TrimSuffix(data.String(), "\n")
-		events = append(events, current)
-		current = sseEvent{}
-		data.Reset()
-	}
-	scanner := bufio.NewScanner(bytes.NewReader(body))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			flush()
-			continue
-		}
-		if strings.HasPrefix(line, "event:") {
-			current.event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
-			continue
-		}
-		if strings.HasPrefix(line, "data:") {
-			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-			data.WriteByte('\n')
-		}
-	}
-	flush()
-	return events
-}
-
 func extractToken(req *http.Request) (string, bool) {
 	token := strings.TrimSpace(req.Header.Get("X-Api-Key"))
 	if token != "" {
@@ -611,12 +336,18 @@ func extractToken(req *http.Request) (string, bool) {
 	return token, token != ""
 }
 
-func readRequestModel(body []byte) (string, error) {
+type requestMeta struct {
+	Model  string `json:"model"`
+	Stream bool   `json:"stream"`
+}
+
+func readRequestMeta(body []byte) (requestMeta, error) {
 	var payload struct {
-		Model string `json:"model"`
+		Model  string `json:"model"`
+		Stream bool   `json:"stream"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", fmt.Errorf("parse llm request: %w", err)
+		return requestMeta{}, fmt.Errorf("parse llm request: %w", err)
 	}
-	return payload.Model, nil
+	return requestMeta{Model: payload.Model, Stream: payload.Stream}, nil
 }
