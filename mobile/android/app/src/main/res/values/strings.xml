@@ -1,7 +1,6 @@
-<?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">MonkeyCode</string>
-    <string name="title_activity_main">MonkeyCode</string>
-    <string name="package_name">com.monkeycode.mobile</string>
-    <string name="custom_url_scheme">com.monkeycode.mobile</string>
+  <string name="app_name">MonkeyCode</string>
+  <string name="expo_system_ui_user_interface_style" translatable="false">automatic</string>
+  <string name="expo_runtime_version">file:fingerprint</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
 </resources>
