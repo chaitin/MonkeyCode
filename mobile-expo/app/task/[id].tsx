@@ -11,7 +11,7 @@ import type { Model, ProjectTask } from '@/api/types';
 import { Glass } from '@/components/glass';
 import { Icons, Spinner } from '@/components/Icons';
 import { ModelIcon } from '@/components/ModelIcon';
-import { ModelSheet, PreviewSheet, SkillSheet } from '@/components/sheets';
+import { CopySheet, ModelSheet, PreviewSheet, SkillSheet } from '@/components/sheets';
 import { FilesPanel } from '@/components/FilesPanel';
 import { MicButton } from '@/components/MicButton';
 import { usePreview } from '@/components/PreviewProvider';
@@ -286,8 +286,10 @@ export default function TaskDetailScreen() {
   const handleAnswer = useCallback((askId: string, answers: AnswerMap) => { clientRef.current?.sendReplyQuestion(askId, answers); }, []);
 
   const flashToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2400); }, []);
-  // 长按消息复制（倒置列表下原生选中不可用，用长按整条复制 —— 微信/Telegram 同款）。
-  const onCopy = useCallback((text: string) => { void Clipboard.setStringAsync(text); flashToast('已复制'); }, [flashToast]);
+  // 倒置列表里原生选中不可用，长按消息改为弹出可选中文本的面板（在正常层里选词复制 / 复制全部）。
+  const [copyText, setCopyText] = useState<string | null>(null);
+  const onCopy = useCallback((text: string) => setCopyText(text), []);
+  const onCopyAll = useCallback((text: string) => { void Clipboard.setStringAsync(text); flashToast('已复制'); setCopyText(null); }, [flashToast]);
 
   // 本任务是否有一个“已收起”的预览（用于把 composer 的「在线预览」条变成展开入口）
   const previewMinimized = !!preview && preview.taskId === id && preview.minimized;
@@ -560,6 +562,7 @@ export default function TaskDetailScreen() {
       <SkillSheet visible={skillPickerOpen} commands={availableCommands} onPick={pickSkill} onClose={() => setSkillPickerOpen(false)} />
       <FilesPanel visible={filesOpen} onClose={() => setFilesOpen(false)} control={controlRef.current} initialChanges={fileChanges} vmId={task?.virtualmachine?.id} />
       <PreviewSheet visible={previewOpen} ports={previewPorts} refreshing={portsRefreshing} activeUrl={preview && preview.taskId === id ? preview.url : undefined} onOpen={openInBrowser} onRefresh={refreshPorts} onClose={() => setPreviewOpen(false)} />
+      <CopySheet visible={copyText != null} text={copyText ?? ''} onClose={() => setCopyText(null)} onCopyAll={onCopyAll} />
 
       {/* ⋯ 更多操作：低频/破坏性指令，点开后选择，避免误触 */}
       <Modal visible={moreOpen} transparent animationType="slide" onRequestClose={() => setMoreOpen(false)} statusBarTranslucent>

@@ -4,7 +4,7 @@
  *  - SkillSheet：可用斜杠指令（技能）选择。
  */
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Model } from '@/api/types';
 import type { PortForwardInfo } from '@/api/control';
@@ -166,6 +166,40 @@ export function PreviewSheet({ visible, ports, refreshing, activeUrl, onOpen, on
             );
           })
         )}
+      </SheetShell>
+    </Modal>
+  );
+}
+
+/**
+ * 文本选择面板：倒置消息列表里原生选中不可用，长按消息时弹出此面板，
+ * 在正常（非倒置）层里逐词选中复制，或一键复制全部。
+ */
+export function CopySheet({ visible, text, onClose, onCopyAll }: {
+  visible: boolean; text: string; onClose: () => void; onCopyAll: (text: string) => void;
+}) {
+  const t = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <SheetShell
+        title="选择文本"
+        subtitle="长按选词复制，或点右上角复制全部"
+        onClose={onClose}
+        action={
+          <Pressable onPress={() => onCopyAll(text)} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 11, borderRadius: 10, backgroundColor: t.acGhost }}>
+            <Icons.copy size={14} color={t.acTx} />
+            <Text style={{ color: t.acTx, fontSize: 13.5, fontWeight: '600' }}>复制全部</Text>
+          </Pressable>
+        }
+      >
+        <View style={{ paddingHorizontal: 6, paddingTop: 2, paddingBottom: 6 }}>
+          {Platform.OS === 'ios' ? (
+            // iOS 的 <Text selectable> 只能整段拷贝、无法选词；只读 TextInput（底层 UITextView，editable=NO 仍 selectable=YES）才支持原生选词。
+            <TextInput multiline editable={false} scrollEnabled={false} value={text} style={{ color: t.tx, fontSize: 15, lineHeight: 23, padding: 0 }} />
+          ) : (
+            <Text selectable style={{ color: t.tx, fontSize: 15, lineHeight: 23 }}>{text}</Text>
+          )}
+        </View>
       </SheetShell>
     </Modal>
   );
