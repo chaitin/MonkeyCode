@@ -1,6 +1,7 @@
 package llmproxy
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -364,6 +365,76 @@ func parseUsage(path string, body []byte) (usagePayload, bool) {
 }
 
 func parseOpenAIChatUsage(body []byte) (usagePayload, bool) {
+	if usage, ok := parseOpenAIChatUsageJSON(body); ok {
+		return usage, true
+	}
+	var usage usagePayload
+	for _, evt := range parseSSE(body) {
+		if evt.data == "" || evt.data == "[DONE]" {
+			continue
+		}
+		if got, ok := parseOpenAIChatUsageJSON([]byte(evt.data)); ok {
+			usage = got
+		}
+	}
+	return usage, usage.hasTokens()
+}
+
+func parseOpenAIResponsesUsage(body []byte) (usagePayload, bool) {
+	if usage, ok := parseOpenAIResponsesUsageJSON(body); ok {
+		return usage, true
+	}
+	var usage usagePayload
+	for _, evt := range parseSSE(body) {
+		if evt.event != "response.completed" || evt.data == "" {
+			continue
+		}
+		if got, ok := parseOpenAIResponsesUsageJSON([]byte(evt.data)); ok {
+			usage = got
+		}
+	}
+	return usage, usage.hasTokens()
+}
+
+func parseAnthropicUsage(body []byte) (usagePayload, bool) {
+	if usage, ok := parseAnthropicUsageJSON(body); ok {
+		return usage, true
+	}
+	var usage usagePayload
+	for _, evt := range parseSSE(body) {
+		if evt.data == "" {
+			continue
+		}
+		switch evt.event {
+		case "message_start":
+			got, ok := parseAnthropicUsageJSON([]byte(evt.data))
+			if !ok {
+				continue
+			}
+			usage.requestID = got.requestID
+			usage.inputTokens = got.inputTokens
+			usage.cachedTokens = got.cachedTokens
+		case "message_delta":
+			got, ok := parseAnthropicUsageJSON([]byte(evt.data))
+			if !ok {
+				continue
+			}
+			if got.inputTokens > 0 {
+				usage.inputTokens = got.inputTokens
+			}
+			if got.cachedTokens > 0 {
+				usage.cachedTokens = got.cachedTokens
+			}
+			usage.outputTokens = got.outputTokens
+		}
+	}
+	if usage.totalTokens == 0 {
+		usage.totalTokens = usage.inputTokens + usage.outputTokens
+	}
+	return usage, usage.hasTokens()
+}
+
+func parseOpenAIChatUsageJSON(body []byte) (usagePayload, bool) {
 	var resp struct {
 		ID    string `json:"id"`
 		Usage struct {
@@ -388,12 +459,23 @@ func parseOpenAIChatUsage(body []byte) (usagePayload, bool) {
 	if usage.totalTokens == 0 {
 		usage.totalTokens = usage.inputTokens + usage.outputTokens
 	}
-	return usage, usage.inputTokens > 0 || usage.outputTokens > 0 || usage.totalTokens > 0
+	return usage, usage.hasTokens()
 }
 
-func parseOpenAIResponsesUsage(body []byte) (usagePayload, bool) {
+func parseOpenAIResponsesUsageJSON(body []byte) (usagePayload, bool) {
 	var resp struct {
-		ID    string `json:"id"`
+		ID       string `json:"id"`
+		Response *struct {
+			ID    string `json:"id"`
+			Usage struct {
+				InputTokens        uint64 `json:"input_tokens"`
+				OutputTokens       uint64 `json:"output_tokens"`
+				TotalTokens        uint64 `json:"total_tokens"`
+				InputTokensDetails struct {
+					CachedTokens uint64 `json:"cached_tokens"`
+				} `json:"input_tokens_details"`
+			} `json:"usage"`
+		} `json:"response"`
 		Usage struct {
 			InputTokens        uint64 `json:"input_tokens"`
 			OutputTokens       uint64 `json:"output_tokens"`
@@ -406,22 +488,43 @@ func parseOpenAIResponsesUsage(body []byte) (usagePayload, bool) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return usagePayload{}, false
 	}
+	requestID := resp.ID
+	inputTokens := resp.Usage.InputTokens
+	outputTokens := resp.Usage.OutputTokens
+	cachedTokens := resp.Usage.InputTokensDetails.CachedTokens
+	totalTokens := resp.Usage.TotalTokens
+	if resp.Response != nil {
+		requestID = resp.Response.ID
+		inputTokens = resp.Response.Usage.InputTokens
+		outputTokens = resp.Response.Usage.OutputTokens
+		cachedTokens = resp.Response.Usage.InputTokensDetails.CachedTokens
+		totalTokens = resp.Response.Usage.TotalTokens
+	}
 	usage := usagePayload{
-		requestID:    resp.ID,
-		inputTokens:  resp.Usage.InputTokens,
-		outputTokens: resp.Usage.OutputTokens,
-		cachedTokens: resp.Usage.InputTokensDetails.CachedTokens,
-		totalTokens:  resp.Usage.TotalTokens,
+		requestID:    requestID,
+		inputTokens:  inputTokens,
+		outputTokens: outputTokens,
+		cachedTokens: cachedTokens,
+		totalTokens:  totalTokens,
 	}
 	if usage.totalTokens == 0 {
 		usage.totalTokens = usage.inputTokens + usage.outputTokens
 	}
-	return usage, usage.inputTokens > 0 || usage.outputTokens > 0 || usage.totalTokens > 0
+	return usage, usage.hasTokens()
 }
 
-func parseAnthropicUsage(body []byte) (usagePayload, bool) {
+func parseAnthropicUsageJSON(body []byte) (usagePayload, bool) {
 	var resp struct {
-		ID    string `json:"id"`
+		ID      string `json:"id"`
+		Message *struct {
+			ID    string `json:"id"`
+			Usage struct {
+				InputTokens              uint64 `json:"input_tokens"`
+				OutputTokens             uint64 `json:"output_tokens"`
+				CacheReadInputTokens     uint64 `json:"cache_read_input_tokens"`
+				CacheCreationInputTokens uint64 `json:"cache_creation_input_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
 		Usage struct {
 			InputTokens              uint64 `json:"input_tokens"`
 			OutputTokens             uint64 `json:"output_tokens"`
@@ -432,16 +535,67 @@ func parseAnthropicUsage(body []byte) (usagePayload, bool) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return usagePayload{}, false
 	}
-	inputTokens := resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens
+	requestID := resp.ID
+	inputTokens := resp.Usage.InputTokens
 	outputTokens := resp.Usage.OutputTokens
+	cacheReadTokens := resp.Usage.CacheReadInputTokens
+	if resp.Message != nil {
+		requestID = resp.Message.ID
+		inputTokens = resp.Message.Usage.InputTokens
+		outputTokens = resp.Message.Usage.OutputTokens
+		cacheReadTokens = resp.Message.Usage.CacheReadInputTokens
+	}
+	inputTokens += cacheReadTokens
 	usage := usagePayload{
-		requestID:    resp.ID,
+		requestID:    requestID,
 		inputTokens:  inputTokens,
 		outputTokens: outputTokens,
-		cachedTokens: resp.Usage.CacheReadInputTokens,
+		cachedTokens: cacheReadTokens,
 		totalTokens:  inputTokens + outputTokens,
 	}
-	return usage, usage.inputTokens > 0 || usage.outputTokens > 0 || usage.totalTokens > 0
+	return usage, usage.hasTokens()
+}
+
+func (u usagePayload) hasTokens() bool {
+	return u.inputTokens > 0 || u.outputTokens > 0 || u.totalTokens > 0
+}
+
+type sseEvent struct {
+	event string
+	data  string
+}
+
+func parseSSE(body []byte) []sseEvent {
+	var events []sseEvent
+	var current sseEvent
+	var data strings.Builder
+	flush := func() {
+		if current.event == "" && data.Len() == 0 {
+			return
+		}
+		current.data = strings.TrimSuffix(data.String(), "\n")
+		events = append(events, current)
+		current = sseEvent{}
+		data.Reset()
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			current.event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+			data.WriteByte('\n')
+		}
+	}
+	flush()
+	return events
 }
 
 func extractToken(req *http.Request) (string, bool) {
