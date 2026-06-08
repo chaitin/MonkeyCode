@@ -20,6 +20,8 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 )
 
 const upstreamFailureMessage = "连接上游模型失败，请检查模型配置，或重试"
@@ -33,6 +35,10 @@ var allowPaths = map[string]string{
 type contextKey struct{}
 
 type modelContext struct {
+	modelID   uuid.UUID
+	userID    uuid.UUID
+	vmID      string
+	provider  string
 	modelName string
 	baseURL   string
 	apiKey    string
@@ -41,16 +47,30 @@ type modelContext struct {
 type proxyContext struct {
 	model        *modelContext
 	upstreamPath string
+	stream       bool
 }
 
 type Proxy struct {
 	db        *db.Client
 	logger    *slog.Logger
+	recorder  usageRecorder
 	transport *http.Transport
 	proxy     *httputil.ReverseProxy
 }
 
-func NewProxy(db *db.Client, logger *slog.Logger) *Proxy {
+type usageRecorder interface {
+	Record(ctx context.Context, event modelusage.Event) error
+}
+
+type Option func(*Proxy)
+
+func WithUsageRecorder(recorder usageRecorder) Option {
+	return func(p *Proxy) {
+		p.recorder = recorder
+	}
+}
+
+func NewProxy(db *db.Client, logger *slog.Logger, opts ...Option) *Proxy {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -71,11 +91,15 @@ func NewProxy(db *db.Client, logger *slog.Logger) *Proxy {
 			ResponseHeaderTimeout: 300 * time.Second,
 		},
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
 	p.proxy = &httputil.ReverseProxy{
-		Transport:     p.transport,
-		Rewrite:       p.rewrite,
-		ErrorHandler:  p.errorHandler,
-		FlushInterval: 100 * time.Millisecond,
+		Transport:      p.transport,
+		Rewrite:        p.rewrite,
+		ModifyResponse: p.modifyResponse,
+		ErrorHandler:   p.errorHandler,
+		FlushInterval:  100 * time.Millisecond,
 	}
 	return p
 }
@@ -99,7 +123,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
 
-	reqModel, err := readRequestModel(body)
+	reqMeta, err := readRequestMeta(body)
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
@@ -110,8 +134,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if reqModel != "" && reqModel != m.modelName {
-		p.logger.WarnContext(r.Context(), "model mismatch", "request_model", reqModel, "expected_model", m.modelName)
+	if reqMeta.Model != "" && reqMeta.Model != m.modelName {
+		p.logger.WarnContext(r.Context(), "model mismatch", "request_model", reqMeta.Model, "expected_model", m.modelName)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -119,6 +143,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := context.WithValue(r.Context(), contextKey{}, &proxyContext{
 		model:        m,
 		upstreamPath: upstreamPath,
+		stream:       reqMeta.Stream,
 	})
 	p.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
@@ -141,6 +166,10 @@ func (p *Proxy) resolveModel(ctx context.Context, token string) (*modelContext, 
 		return nil, errors.New("model not found")
 	}
 	return &modelContext{
+		modelID:   key.Edges.Model.ID,
+		userID:    key.UserID,
+		vmID:      key.VirtualmachineID,
+		provider:  key.Edges.Model.Provider,
 		modelName: key.Edges.Model.Model,
 		baseURL:   key.Edges.Model.BaseURL,
 		apiKey:    key.Edges.Model.APIKey,
@@ -205,6 +234,95 @@ func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) 
 	_, _ = w.Write([]byte(upstreamFailureMessage))
 }
 
+func (p *Proxy) modifyResponse(resp *http.Response) error {
+	if resp == nil || resp.Body == nil {
+		return nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil
+	}
+	ctx, ok := resp.Request.Context().Value(contextKey{}).(*proxyContext)
+	if !ok || ctx == nil || ctx.model == nil {
+		return nil
+	}
+	resp.Body = NewUsageCapture(p.logger, resp.Body, &UsageCaptureContext{
+		ctx:      resp.Request.Context(),
+		path:     normalizeUsageCapturePath(resp.Request.URL.Path),
+		stream:   ctx.stream,
+		proxyCtx: ctx,
+		proxy:    p,
+	})
+	return nil
+}
+
+func normalizeUsageCapturePath(path string) string {
+	switch {
+	case strings.HasSuffix(path, "/chat/completions"):
+		return "/v1/chat/completions"
+	case strings.HasSuffix(path, "/responses"):
+		return "/v1/responses"
+	case strings.HasSuffix(path, "/messages"):
+		return "/v1/messages"
+	default:
+		return path
+	}
+}
+
+func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, result usageResult) {
+	event, ok := p.buildUsageEvent(ctx, proxyCtx, result)
+	if !ok {
+		return
+	}
+	if err := p.recorder.Record(ctx, event); err != nil {
+		p.logger.WarnContext(ctx, "record model usage failed", "model", proxyCtx.model.modelName, "error", err)
+	}
+}
+
+func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, result usageResult) (modelusage.Event, bool) {
+	if p.recorder == nil || proxyCtx == nil || proxyCtx.model == nil {
+		return modelusage.Event{}, false
+	}
+	if !result.hasTokens() {
+		return modelusage.Event{}, false
+	}
+	m := proxyCtx.model
+	taskID := p.resolveTaskID(ctx, m.vmID)
+	if taskID == uuid.Nil {
+		p.logger.WarnContext(ctx, "skip model usage event without task", "user_id", m.userID, "vm_id", m.vmID, "model_id", m.modelID)
+		return modelusage.Event{}, false
+	}
+	return modelusage.Event{
+		EventTime:    time.Now(),
+		TaskID:       taskID,
+		UserID:       m.userID,
+		Provider:     m.provider,
+		ModelID:      m.modelID.String(),
+		ModelName:    m.modelName,
+		InputTokens:  result.InputTokens + result.CacheReadInputTokens,
+		OutputTokens: result.OutputTokens,
+		CachedTokens: result.CacheReadInputTokens + result.CachedTokens,
+		TotalTokens:  result.totalTokens(),
+		Success:      true,
+		RequestID:    result.ResponseID,
+		Source:       "llmproxy",
+	}, true
+}
+
+func (p *Proxy) resolveTaskID(ctx context.Context, vmID string) uuid.UUID {
+	if p == nil || p.db == nil || vmID == "" {
+		return uuid.Nil
+	}
+	taskVM, err := p.db.TaskVirtualMachine.Query().
+		Where(taskvirtualmachine.VirtualmachineIDEQ(vmID)).
+		Order(db.Desc(taskvirtualmachine.FieldCreatedAt)).
+		First(ctx)
+	if err != nil {
+		p.logger.WarnContext(ctx, "resolve task from vm failed", "vm_id", vmID, "error", err)
+		return uuid.Nil
+	}
+	return taskVM.TaskID
+}
+
 func extractToken(req *http.Request) (string, bool) {
 	token := strings.TrimSpace(req.Header.Get("X-Api-Key"))
 	if token != "" {
@@ -218,12 +336,18 @@ func extractToken(req *http.Request) (string, bool) {
 	return token, token != ""
 }
 
-func readRequestModel(body []byte) (string, error) {
+type requestMeta struct {
+	Model  string `json:"model"`
+	Stream bool   `json:"stream"`
+}
+
+func readRequestMeta(body []byte) (requestMeta, error) {
 	var payload struct {
-		Model string `json:"model"`
+		Model  string `json:"model"`
+		Stream bool   `json:"stream"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", fmt.Errorf("parse llm request: %w", err)
+		return requestMeta{}, fmt.Errorf("parse llm request: %w", err)
 	}
-	return payload.Model, nil
+	return requestMeta{Model: payload.Model, Stream: payload.Stream}, nil
 }
