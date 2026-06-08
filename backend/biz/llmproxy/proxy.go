@@ -14,12 +14,15 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 )
 
 const upstreamFailureMessage = "连接上游模型失败，请检查模型配置，或重试"
@@ -33,6 +36,10 @@ var allowPaths = map[string]string{
 type contextKey struct{}
 
 type modelContext struct {
+	modelID   uuid.UUID
+	userID    uuid.UUID
+	vmID      string
+	provider  string
 	modelName string
 	baseURL   string
 	apiKey    string
@@ -46,11 +53,24 @@ type proxyContext struct {
 type Proxy struct {
 	db        *db.Client
 	logger    *slog.Logger
+	recorder  usageRecorder
 	transport *http.Transport
 	proxy     *httputil.ReverseProxy
 }
 
-func NewProxy(db *db.Client, logger *slog.Logger) *Proxy {
+type usageRecorder interface {
+	Record(ctx context.Context, event modelusage.Event) error
+}
+
+type Option func(*Proxy)
+
+func WithUsageRecorder(recorder usageRecorder) Option {
+	return func(p *Proxy) {
+		p.recorder = recorder
+	}
+}
+
+func NewProxy(db *db.Client, logger *slog.Logger, opts ...Option) *Proxy {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -71,11 +91,15 @@ func NewProxy(db *db.Client, logger *slog.Logger) *Proxy {
 			ResponseHeaderTimeout: 300 * time.Second,
 		},
 	}
+	for _, opt := range opts {
+		opt(p)
+	}
 	p.proxy = &httputil.ReverseProxy{
-		Transport:     p.transport,
-		Rewrite:       p.rewrite,
-		ErrorHandler:  p.errorHandler,
-		FlushInterval: 100 * time.Millisecond,
+		Transport:      p.transport,
+		Rewrite:        p.rewrite,
+		ModifyResponse: p.modifyResponse,
+		ErrorHandler:   p.errorHandler,
+		FlushInterval:  100 * time.Millisecond,
 	}
 	return p
 }
@@ -141,6 +165,10 @@ func (p *Proxy) resolveModel(ctx context.Context, token string) (*modelContext, 
 		return nil, errors.New("model not found")
 	}
 	return &modelContext{
+		modelID:   key.Edges.Model.ID,
+		userID:    key.UserID,
+		vmID:      key.VirtualmachineID,
+		provider:  key.Edges.Model.Provider,
 		modelName: key.Edges.Model.Model,
 		baseURL:   key.Edges.Model.BaseURL,
 		apiKey:    key.Edges.Model.APIKey,
@@ -203,6 +231,217 @@ func (p *Proxy) errorHandler(w http.ResponseWriter, r *http.Request, err error) 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)
 	_, _ = w.Write([]byte(upstreamFailureMessage))
+}
+
+func (p *Proxy) modifyResponse(resp *http.Response) error {
+	if resp == nil || resp.Body == nil {
+		return nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil
+	}
+	ctx, ok := resp.Request.Context().Value(contextKey{}).(*proxyContext)
+	if !ok || ctx == nil || ctx.model == nil {
+		return nil
+	}
+	resp.Body = newUsageCaptureBody(resp.Body, func(body []byte) {
+		p.recordUsage(resp.Request.Context(), ctx, body)
+	})
+	return nil
+}
+
+type usageCaptureBody struct {
+	body     io.ReadCloser
+	onFinish func([]byte)
+	buf      bytes.Buffer
+	once     sync.Once
+}
+
+func newUsageCaptureBody(body io.ReadCloser, onFinish func([]byte)) io.ReadCloser {
+	return &usageCaptureBody{body: body, onFinish: onFinish}
+}
+
+func (b *usageCaptureBody) Read(p []byte) (int, error) {
+	n, err := b.body.Read(p)
+	if n > 0 {
+		_, _ = b.buf.Write(p[:n])
+	}
+	if errors.Is(err, io.EOF) {
+		b.finish()
+	}
+	return n, err
+}
+
+func (b *usageCaptureBody) Close() error {
+	err := b.body.Close()
+	b.finish()
+	return err
+}
+
+func (b *usageCaptureBody) finish() {
+	b.once.Do(func() {
+		if b.onFinish != nil {
+			b.onFinish(b.buf.Bytes())
+		}
+	})
+}
+
+func (p *Proxy) recordUsage(ctx context.Context, proxyCtx *proxyContext, body []byte) {
+	event, ok := p.buildUsageEvent(ctx, proxyCtx, body)
+	if !ok {
+		return
+	}
+	if err := p.recorder.Record(ctx, event); err != nil {
+		p.logger.WarnContext(ctx, "record model usage failed", "model", proxyCtx.model.modelName, "error", err)
+	}
+}
+
+func (p *Proxy) buildUsageEvent(ctx context.Context, proxyCtx *proxyContext, body []byte) (modelusage.Event, bool) {
+	if p.recorder == nil || proxyCtx == nil || proxyCtx.model == nil {
+		return modelusage.Event{}, false
+	}
+	usage, ok := parseUsage(proxyCtx.upstreamPath, body)
+	if !ok {
+		return modelusage.Event{}, false
+	}
+	m := proxyCtx.model
+	taskID := p.resolveTaskID(ctx, m.vmID)
+	if taskID == uuid.Nil {
+		p.logger.WarnContext(ctx, "skip model usage event without task", "user_id", m.userID, "vm_id", m.vmID, "model_id", m.modelID)
+		return modelusage.Event{}, false
+	}
+	return modelusage.Event{
+		EventTime:    time.Now(),
+		TaskID:       taskID,
+		UserID:       m.userID,
+		Provider:     m.provider,
+		ModelID:      m.modelID.String(),
+		ModelName:    m.modelName,
+		InputTokens:  usage.inputTokens,
+		OutputTokens: usage.outputTokens,
+		CachedTokens: usage.cachedTokens,
+		TotalTokens:  usage.totalTokens,
+		Success:      true,
+		RequestID:    usage.requestID,
+		Source:       "llmproxy",
+	}, true
+}
+
+func (p *Proxy) resolveTaskID(ctx context.Context, vmID string) uuid.UUID {
+	if p == nil || p.db == nil || vmID == "" {
+		return uuid.Nil
+	}
+	taskVM, err := p.db.TaskVirtualMachine.Query().
+		Where(taskvirtualmachine.VirtualmachineIDEQ(vmID)).
+		Order(db.Desc(taskvirtualmachine.FieldCreatedAt)).
+		First(ctx)
+	if err != nil {
+		p.logger.WarnContext(ctx, "resolve task from vm failed", "vm_id", vmID, "error", err)
+		return uuid.Nil
+	}
+	return taskVM.TaskID
+}
+
+type usagePayload struct {
+	requestID    string
+	inputTokens  uint64
+	outputTokens uint64
+	cachedTokens uint64
+	totalTokens  uint64
+}
+
+func parseUsage(path string, body []byte) (usagePayload, bool) {
+	switch path {
+	case "/chat/completions":
+		return parseOpenAIChatUsage(body)
+	case "/responses":
+		return parseOpenAIResponsesUsage(body)
+	case "/messages":
+		return parseAnthropicUsage(body)
+	default:
+		return usagePayload{}, false
+	}
+}
+
+func parseOpenAIChatUsage(body []byte) (usagePayload, bool) {
+	var resp struct {
+		ID    string `json:"id"`
+		Usage struct {
+			PromptTokens        uint64 `json:"prompt_tokens"`
+			CompletionTokens    uint64 `json:"completion_tokens"`
+			TotalTokens         uint64 `json:"total_tokens"`
+			PromptTokensDetails struct {
+				CachedTokens uint64 `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return usagePayload{}, false
+	}
+	usage := usagePayload{
+		requestID:    resp.ID,
+		inputTokens:  resp.Usage.PromptTokens,
+		outputTokens: resp.Usage.CompletionTokens,
+		cachedTokens: resp.Usage.PromptTokensDetails.CachedTokens,
+		totalTokens:  resp.Usage.TotalTokens,
+	}
+	if usage.totalTokens == 0 {
+		usage.totalTokens = usage.inputTokens + usage.outputTokens
+	}
+	return usage, usage.inputTokens > 0 || usage.outputTokens > 0 || usage.totalTokens > 0
+}
+
+func parseOpenAIResponsesUsage(body []byte) (usagePayload, bool) {
+	var resp struct {
+		ID    string `json:"id"`
+		Usage struct {
+			InputTokens        uint64 `json:"input_tokens"`
+			OutputTokens       uint64 `json:"output_tokens"`
+			TotalTokens        uint64 `json:"total_tokens"`
+			InputTokensDetails struct {
+				CachedTokens uint64 `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return usagePayload{}, false
+	}
+	usage := usagePayload{
+		requestID:    resp.ID,
+		inputTokens:  resp.Usage.InputTokens,
+		outputTokens: resp.Usage.OutputTokens,
+		cachedTokens: resp.Usage.InputTokensDetails.CachedTokens,
+		totalTokens:  resp.Usage.TotalTokens,
+	}
+	if usage.totalTokens == 0 {
+		usage.totalTokens = usage.inputTokens + usage.outputTokens
+	}
+	return usage, usage.inputTokens > 0 || usage.outputTokens > 0 || usage.totalTokens > 0
+}
+
+func parseAnthropicUsage(body []byte) (usagePayload, bool) {
+	var resp struct {
+		ID    string `json:"id"`
+		Usage struct {
+			InputTokens              uint64 `json:"input_tokens"`
+			OutputTokens             uint64 `json:"output_tokens"`
+			CacheReadInputTokens     uint64 `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens uint64 `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return usagePayload{}, false
+	}
+	inputTokens := resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens
+	outputTokens := resp.Usage.OutputTokens
+	usage := usagePayload{
+		requestID:    resp.ID,
+		inputTokens:  inputTokens,
+		outputTokens: outputTokens,
+		cachedTokens: resp.Usage.CacheReadInputTokens,
+		totalTokens:  inputTokens + outputTokens,
+	}
+	return usage, usage.inputTokens > 0 || usage.outputTokens > 0 || usage.totalTokens > 0
 }
 
 func extractToken(req *http.Request) (string, bool) {

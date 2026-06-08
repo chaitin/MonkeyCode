@@ -7,6 +7,7 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 )
 
 type Handler struct {
@@ -25,8 +26,12 @@ func NewHandler(i *do.Injector) (*Handler, error) {
 	w := do.MustInvoke[*web.Web](i)
 	client := do.MustInvoke[*db.Client](i)
 	logger := do.MustInvoke[*slog.Logger](i)
+	var opts []Option
+	if recorder, err := do.Invoke[*modelusage.Recorder](i); err == nil {
+		opts = append(opts, WithUsageRecorder(recorder))
+	}
 
-	h := &Handler{proxy: NewProxy(client, logger)}
+	h := &Handler{proxy: NewProxy(client, logger, opts...)}
 	g := w.Group("/v1")
 	g.POST("/chat/completions", web.BaseHandler(h.ServeHTTP))
 	g.POST("/responses", web.BaseHandler(h.ServeHTTP))

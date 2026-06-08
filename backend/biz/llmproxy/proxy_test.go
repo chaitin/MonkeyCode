@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -15,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
+	"github.com/chaitin/MonkeyCode/backend/pkg/modelusage"
 )
 
 func newProxyTestDB(t *testing.T) *db.Client {
@@ -26,9 +28,18 @@ func newProxyTestDB(t *testing.T) *db.Client {
 
 func seedProxyModel(t *testing.T, client *db.Client, upstreamURL string) string {
 	t.Helper()
+	key, _, _, _ := seedProxyModelWithTask(t, client, upstreamURL)
+	return key
+}
+
+func seedProxyModelWithTask(t *testing.T, client *db.Client, upstreamURL string) (string, uuid.UUID, uuid.UUID, string) {
+	t.Helper()
 	ctx := context.Background()
 	userID := uuid.New()
 	modelID := uuid.New()
+	taskID := uuid.New()
+	hostID := "host-" + uuid.NewString()
+	vmID := "vm-" + uuid.NewString()
 	key := "runtime-" + uuid.NewString()
 
 	if _, err := client.User.Create().
@@ -49,15 +60,59 @@ func seedProxyModel(t *testing.T, client *db.Client, upstreamURL string) string 
 		Save(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := client.Task.Create().
+		SetID(taskID).
+		SetKind(consts.TaskTypeDevelop).
+		SetContent("hi").
+		SetUserID(userID).
+		SetStatus(consts.TaskStatusProcessing).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Host.Create().
+		SetID(hostID).
+		SetUserID(userID).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.VirtualMachine.Create().
+		SetID(vmID).
+		SetHostID(hostID).
+		SetUserID(userID).
+		SetName(vmID).
+		SetCores(2).
+		SetMemory(8 << 30).
+		SetAccessToken(vmID).
+		SetExpiredAt(time.Now().Add(time.Hour)).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.TaskVirtualMachine.Create().
+		SetID(uuid.New()).
+		SetTaskID(taskID).
+		SetVirtualmachineID(vmID).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := client.ModelApiKey.Create().
 		SetID(uuid.New()).
 		SetUserID(userID).
 		SetModelID(modelID).
+		SetVirtualmachineID(vmID).
 		SetAPIKey(key).
 		Save(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return key
+	return key, userID, taskID, modelID.String()
+}
+
+type usageRecorderStub struct {
+	events []modelusage.Event
+}
+
+func (s *usageRecorderStub) Record(ctx context.Context, event modelusage.Event) error {
+	s.events = append(s.events, event)
+	return nil
 }
 
 func TestProxyForwardsRuntimeKeyToUpstreamModel(t *testing.T) {
@@ -100,6 +155,114 @@ func TestProxyForwardsRuntimeKeyToUpstreamModel(t *testing.T) {
 	}
 	if gotBody != body {
 		t.Fatalf("upstream body = %q", gotBody)
+	}
+}
+
+func TestProxyRecordsChatCompletionUsage(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl_test",
+			"choices":[{"message":{"content":"ok"}}],
+			"usage":{
+				"prompt_tokens":11,
+				"completion_tokens":7,
+				"total_tokens":18,
+				"prompt_tokens_details":{"cached_tokens":5}
+			}
+		}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	client := newProxyTestDB(t)
+	runtimeKey, userID, taskID, modelID := seedProxyModelWithTask(t, client, upstream.URL+"/v1")
+	recorder := &usageRecorderStub{}
+	proxy := NewProxy(client, slog.New(slog.NewTextHandler(io.Discard, nil)), WithUsageRecorder(recorder))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+runtimeKey)
+	rec := httptest.NewRecorder()
+
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if len(recorder.events) != 1 {
+		t.Fatalf("usage events = %d, want 1", len(recorder.events))
+	}
+	event := recorder.events[0]
+	if event.UserID != userID || event.TaskID != taskID {
+		t.Fatalf("event identity = user:%s task:%s, want user:%s task:%s", event.UserID, event.TaskID, userID, taskID)
+	}
+	if event.ModelID != modelID || event.ModelName != "gpt-4o" || event.Provider != "OpenAI" {
+		t.Fatalf("event model = id:%q name:%q provider:%q", event.ModelID, event.ModelName, event.Provider)
+	}
+	if event.InputTokens != 11 || event.OutputTokens != 7 || event.CachedTokens != 5 || event.TotalTokens != 18 {
+		t.Fatalf("event tokens = input:%d output:%d cached:%d total:%d", event.InputTokens, event.OutputTokens, event.CachedTokens, event.TotalTokens)
+	}
+	if !event.Success || event.Source != "llmproxy" || event.RequestID != "chatcmpl_test" {
+		t.Fatalf("event metadata = success:%v source:%q request:%q", event.Success, event.Source, event.RequestID)
+	}
+}
+
+func TestParseOpenAIResponsesUsage(t *testing.T) {
+	usage, ok := parseUsage("/responses", []byte(`{
+		"id":"resp_test",
+		"usage":{
+			"input_tokens":100,
+			"output_tokens":20,
+			"total_tokens":120,
+			"input_tokens_details":{"cached_tokens":30}
+		}
+	}`))
+
+	if !ok {
+		t.Fatal("usage not parsed")
+	}
+	if usage.requestID != "resp_test" || usage.inputTokens != 100 || usage.outputTokens != 20 || usage.cachedTokens != 30 || usage.totalTokens != 120 {
+		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func TestParseAnthropicUsageIncludesCacheReadTokensInInput(t *testing.T) {
+	usage, ok := parseUsage("/messages", []byte(`{
+		"id":"msg_test",
+		"usage":{
+			"input_tokens":7,
+			"output_tokens":5,
+			"cache_read_input_tokens":3,
+			"cache_creation_input_tokens":2
+		}
+	}`))
+
+	if !ok {
+		t.Fatal("usage not parsed")
+	}
+	if usage.requestID != "msg_test" || usage.inputTokens != 10 || usage.outputTokens != 5 || usage.cachedTokens != 3 || usage.totalTokens != 15 {
+		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func TestUsageCaptureBodyRecordsAfterReadEOF(t *testing.T) {
+	var got string
+	body := newUsageCaptureBody(io.NopCloser(strings.NewReader("hello")), func(body []byte) {
+		got = string(body)
+	})
+
+	if got != "" {
+		t.Fatalf("got callback before read: %q", got)
+	}
+	data, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello" {
+		t.Fatalf("body = %q", data)
+	}
+	if got != "hello" {
+		t.Fatalf("captured = %q", got)
 	}
 }
 
