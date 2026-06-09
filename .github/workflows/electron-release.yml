@@ -264,6 +264,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 预编译 RN / ExpoModulesJSI 的 SwiftPM 依赖要求 swift-tools 6.2（Xcode 26）；runner 默认 Xcode 可能只有
+      # Swift 6.1，导致 "Build ExpoModulesJSI xcframework" 报 'using Swift tools version 6.2.0 but installed is 6.1.0'。
+      # 选最新 stable Xcode。若日志里 swift --version 仍是 6.1，说明该 runner 镜像没装 Xcode26，需换更新的 runs-on。
+      - name: Select latest stable Xcode (need Swift 6.2 / Xcode 26)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Xcode / Swift version
+        run: xcodebuild -version && swift --version
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
