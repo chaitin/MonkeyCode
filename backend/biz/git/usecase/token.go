@@ -89,6 +89,8 @@ func (p *TokenProvider) resolveToken(ctx context.Context, gi *db.GitIdentity) (s
 		return p.resolveOAuth(ctx, gi, p.refreshGitea)
 	case consts.GitPlatformGitee:
 		return p.resolveOAuth(ctx, gi, p.refreshGitee)
+	case consts.GitPlatformCnb:
+		return p.resolveOAuth(ctx, gi, p.refreshCnb)
 	default:
 		if gi.AccessToken == "" {
 			return "", 0, fmt.Errorf("git identity %s has no access token", gi.ID)
@@ -209,6 +211,43 @@ func (p *TokenProvider) refreshGitea(ctx context.Context, gi *db.GitIdentity) (s
 
 func (p *TokenProvider) refreshGitee(_ context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
 	resp, err := oauth.RefreshGitee(gi.OauthRefreshToken)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return resp.AccessToken, resp.RefreshToken, time.Unix(resp.ExpiresAt(), 0), nil
+}
+
+// refreshCodeup 走阿里云通用 OAuth2 token endpoint 刷新云效 access_token。
+// site 配置中 BaseURL 视为可选的 token endpoint 覆盖，常规情况下留空走 account.aliyun.com。
+//
+// ⚠️ 暂未启用：云效 OAuth（CreateOAuthToken）官方仍在内测，且响应不返回 refresh_token，
+// 当前 Provide() 已在 case consts.GitPlatformCodeup 处直接拦截 OAuth identity。本函数保留
+// 作为占位，等云效公网 OAuth 放开并补齐响应字段后再启用。
+//
+//nolint:unused // 占位实现，等云效 OAuth 放开后再启用
+func (p *TokenProvider) refreshCodeup(ctx context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
+	site, err := p.resolveSiteConfig(ctx, gi.BaseURL)
+	if err != nil {
+		return "", "", time.Time{}, fmt.Errorf("resolve codeup site: %w", err)
+	}
+	resp, err := oauth.RefreshCodeup(site.BaseURL, site.ClientID, site.ClientSecret, gi.OauthRefreshToken, p.proxies...)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return resp.AccessToken, resp.RefreshToken, time.Unix(resp.ExpiresAt(), 0), nil
+}
+
+// refreshCnb 走 https://cnb.cool/oauth2/token 刷新 access_token。
+//
+// CNB OAuth 走标准 OAuth2: refresh_token (180d) 换 access_token (8h),客户端凭证以
+// HTTP Basic Auth 头传递。site.BaseURL 视为可选的 token endpoint 覆盖, 常规情况下
+// 留空走默认 https://cnb.cool。
+func (p *TokenProvider) refreshCnb(ctx context.Context, gi *db.GitIdentity) (string, string, time.Time, error) {
+	site, err := p.resolveSiteConfig(ctx, gi.BaseURL)
+	if err != nil {
+		return "", "", time.Time{}, fmt.Errorf("resolve cnb site: %w", err)
+	}
+	resp, err := oauth.RefreshCnb(site.BaseURL, site.ClientID, site.ClientSecret, gi.OauthRefreshToken, p.proxies...)
 	if err != nil {
 		return "", "", time.Time{}, err
 	}

@@ -131,6 +131,7 @@ var (
 		{Name: "username", Type: field.TypeString, Nullable: true},
 		{Name: "email", Type: field.TypeString, Nullable: true},
 		{Name: "installation_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "organization_id", Type: field.TypeString, Nullable: true},
 		{Name: "remark", Type: field.TypeString, Nullable: true},
 		{Name: "oauth_refresh_token", Type: field.TypeString, Nullable: true},
 		{Name: "oauth_expires_at", Type: field.TypeTime, Nullable: true},
@@ -146,7 +147,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "git_identities_users_git_identities",
-				Columns:    []*schema.Column{GitIdentitiesColumns[13]},
+				Columns:    []*schema.Column{GitIdentitiesColumns[14]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

@@ -125,6 +125,20 @@ func (_c *GitIdentityCreate) SetNillableInstallationID(v *int64) *GitIdentityCre
 	return _c
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_c *GitIdentityCreate) SetOrganizationID(v string) *GitIdentityCreate {
+	_c.mutation.SetOrganizationID(v)
+	return _c
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_c *GitIdentityCreate) SetNillableOrganizationID(v *string) *GitIdentityCreate {
+	if v != nil {
+		_c.SetOrganizationID(*v)
+	}
+	return _c
+}
+
 // SetRemark sets the "remark" field.
 func (_c *GitIdentityCreate) SetRemark(v string) *GitIdentityCreate {
 	_c.mutation.SetRemark(v)
@@ -385,6 +399,10 @@ func (_c *GitIdentityCreate) createSpec() (*GitIdentity, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.InstallationID(); ok {
 		_spec.SetField(gitidentity.FieldInstallationID, field.TypeInt64, value)
 		_node.InstallationID = value
+	}
+	if value, ok := _c.mutation.OrganizationID(); ok {
+		_spec.SetField(gitidentity.FieldOrganizationID, field.TypeString, value)
+		_node.OrganizationID = value
 	}
 	if value, ok := _c.mutation.Remark(); ok {
 		_spec.SetField(gitidentity.FieldRemark, field.TypeString, value)
@@ -658,6 +676,24 @@ func (u *GitIdentityUpsert) AddInstallationID(v int64) *GitIdentityUpsert {
 // ClearInstallationID clears the value of the "installation_id" field.
 func (u *GitIdentityUpsert) ClearInstallationID() *GitIdentityUpsert {
 	u.SetNull(gitidentity.FieldInstallationID)
+	return u
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *GitIdentityUpsert) SetOrganizationID(v string) *GitIdentityUpsert {
+	u.Set(gitidentity.FieldOrganizationID, v)
+	return u
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *GitIdentityUpsert) UpdateOrganizationID() *GitIdentityUpsert {
+	u.SetExcluded(gitidentity.FieldOrganizationID)
+	return u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *GitIdentityUpsert) ClearOrganizationID() *GitIdentityUpsert {
+	u.SetNull(gitidentity.FieldOrganizationID)
 	return u
 }
 
@@ -945,6 +981,27 @@ func (u *GitIdentityUpsertOne) UpdateInstallationID() *GitIdentityUpsertOne {
 func (u *GitIdentityUpsertOne) ClearInstallationID() *GitIdentityUpsertOne {
 	return u.Update(func(s *GitIdentityUpsert) {
 		s.ClearInstallationID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *GitIdentityUpsertOne) SetOrganizationID(v string) *GitIdentityUpsertOne {
+	return u.Update(func(s *GitIdentityUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *GitIdentityUpsertOne) UpdateOrganizationID() *GitIdentityUpsertOne {
+	return u.Update(func(s *GitIdentityUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *GitIdentityUpsertOne) ClearOrganizationID() *GitIdentityUpsertOne {
+	return u.Update(func(s *GitIdentityUpsert) {
+		s.ClearOrganizationID()
 	})
 }
 
@@ -1412,6 +1469,27 @@ func (u *GitIdentityUpsertBulk) UpdateInstallationID() *GitIdentityUpsertBulk {
 func (u *GitIdentityUpsertBulk) ClearInstallationID() *GitIdentityUpsertBulk {
 	return u.Update(func(s *GitIdentityUpsert) {
 		s.ClearInstallationID()
+	})
+}
+
+// SetOrganizationID sets the "organization_id" field.
+func (u *GitIdentityUpsertBulk) SetOrganizationID(v string) *GitIdentityUpsertBulk {
+	return u.Update(func(s *GitIdentityUpsert) {
+		s.SetOrganizationID(v)
+	})
+}
+
+// UpdateOrganizationID sets the "organization_id" field to the value that was provided on create.
+func (u *GitIdentityUpsertBulk) UpdateOrganizationID() *GitIdentityUpsertBulk {
+	return u.Update(func(s *GitIdentityUpsert) {
+		s.UpdateOrganizationID()
+	})
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (u *GitIdentityUpsertBulk) ClearOrganizationID() *GitIdentityUpsertBulk {
+	return u.Update(func(s *GitIdentityUpsert) {
+		s.ClearOrganizationID()
 	})
 }
 

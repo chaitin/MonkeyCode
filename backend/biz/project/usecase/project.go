@@ -18,6 +18,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/atomgit"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/cnb"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/codeup"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitea"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitee"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/github"
@@ -309,6 +312,39 @@ func (u *ProjectUsecase) getClient(p *db.Project) (domain.GitClienter, *ClientCo
 	case consts.GitPlatformGitee:
 		owner, repo, _ := gitee.ParseRepoPath(p.RepoURL)
 		return u.gte, &ClientContext{
+			Owner: owner, Repo: repo, DefaultBranch: p.Branch, Token: token, IsOAuth: gi.OauthRefreshToken != "",
+		}, nil
+
+	case consts.GitPlatformCodeup:
+		orgID, identity, perr := codeup.ParseRepoPath(p.RepoURL)
+		if perr != nil {
+			return nil, nil, errcode.ErrGitOperation.Wrap(perr)
+		}
+		if gi.OrganizationID == "" {
+			gi.OrganizationID = orgID
+		}
+		client := codeup.NewCodeup(gi.BaseURL, gi.OrganizationID, u.logger)
+		return client, &ClientContext{
+			Owner: "", Repo: identity, DefaultBranch: p.Branch, Token: token, IsOAuth: gi.OauthRefreshToken != "",
+		}, nil
+
+	case consts.GitPlatformCnb:
+		slug, perr := cnb.ParseRepoPath(p.RepoURL)
+		if perr != nil {
+			return nil, nil, errcode.ErrGitOperation.Wrap(perr)
+		}
+		client := cnb.NewCnb(gi.BaseURL, u.logger)
+		return client, &ClientContext{
+			Owner: "", Repo: slug, DefaultBranch: p.Branch, Token: token, IsOAuth: gi.OauthRefreshToken != "",
+		}, nil
+
+	case consts.GitPlatformAtomgit:
+		owner, repo, perr := atomgit.ParseRepoPath(p.RepoURL)
+		if perr != nil {
+			return nil, nil, errcode.ErrGitOperation.Wrap(perr)
+		}
+		client := atomgit.NewAtomgit(gi.BaseURL, u.logger)
+		return client, &ClientContext{
 			Owner: owner, Repo: repo, DefaultBranch: p.Branch, Token: token, IsOAuth: gi.OauthRefreshToken != "",
 		}, nil
 

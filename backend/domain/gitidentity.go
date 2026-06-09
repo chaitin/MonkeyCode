@@ -47,6 +47,7 @@ type GitIdentity struct {
 	Username               string             `json:"username"`
 	Email                  string             `json:"email"`
 	Remark                 string             `json:"remark"`
+	OrganizationID         string             `json:"organization_id,omitempty"` // 云效 Codeup 组织 ID
 	IsInstallationApp      bool               `json:"is_installation_app"`
 	AuthorizedRepositories []AuthRepository   `json:"authorized_repositories"`
 	CreatedAt              time.Time          `json:"created_at"`
@@ -64,6 +65,7 @@ func (g *GitIdentity) From(src *db.GitIdentity) *GitIdentity {
 	g.Username = src.Username
 	g.Email = src.Email
 	g.Remark = src.Remark
+	g.OrganizationID = src.OrganizationID
 	g.CreatedAt = src.CreatedAt
 	g.IsInstallationApp = src.InstallationID != 0
 	return g
@@ -71,12 +73,13 @@ func (g *GitIdentity) From(src *db.GitIdentity) *GitIdentity {
 
 // AddGitIdentityReq 添加 Git 身份认证请求
 type AddGitIdentityReq struct {
-	Platform    consts.GitPlatform `json:"platform" validate:"required"`
-	BaseURL     string             `json:"base_url" validate:"required"`
-	AccessToken string             `json:"access_token" validate:"required"`
-	Username    string             `json:"username" validate:"required"`
-	Email       string             `json:"email" validate:"required"`
-	Remark      string             `json:"remark,omitempty"`
+	Platform       consts.GitPlatform `json:"platform" validate:"required"`
+	BaseURL        string             `json:"base_url" validate:"required"`
+	AccessToken    string             `json:"access_token" validate:"required"`
+	Username       string             `json:"username" validate:"required"`
+	Email          string             `json:"email" validate:"required"`
+	Remark         string             `json:"remark,omitempty"`
+	OrganizationID string             `json:"organization_id,omitempty"` // 云效 Codeup 组织 ID，绑定后自动解析填充
 }
 
 // UpdateGitIdentityReq 更新 Git 身份认证请求
@@ -88,6 +91,7 @@ type UpdateGitIdentityReq struct {
 	Username          *string             `json:"username,omitempty"`
 	Email             *string             `json:"email,omitempty"`
 	Remark            *string             `json:"remark,omitempty"`
+	OrganizationID    *string             `json:"organization_id,omitempty"`
 	OAuthRefreshToken *string             `json:"-"` // 内部使用，OAuth 刷新 token
 	OAuthExpiresAt    *time.Time          `json:"-"` // 内部使用，OAuth 过期时间
 }

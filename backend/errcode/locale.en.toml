@@ -79,6 +79,9 @@ other = "Repository already linked, duplicate binding not allowed"
 [err-git-identity-in-use-by-project]
 other = "This Git identity is in use by project(s), cannot delete"
 
+[err-codeup-oauth-not-supported]
+other = "Codeup OAuth is not supported yet; please bind with a Personal Access Token (PAT) instead"
+
 [err-team-member-limit-exceeded]
 other = "Team member limit exceeded"
 

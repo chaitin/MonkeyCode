@@ -88,6 +88,9 @@ other = "重复绑定仓库"
 [err-git-identity-in-use-by-project]
 other = "该 Git 身份已被项目使用，无法删除"
 
+[err-codeup-oauth-not-supported]
+other = "云效（Codeup）暂不支持 OAuth 接入，请改用个人访问令牌（PAT）绑定"
+
 [err-team-member-limit-exceeded]
 other = "团队成员数量已达上限"
 

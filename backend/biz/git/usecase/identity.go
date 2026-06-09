@@ -18,6 +18,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	gitpkg "github.com/chaitin/MonkeyCode/backend/pkg/git"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/atomgit"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/cnb"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/codeup"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitea"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/gitee"
 	"github.com/chaitin/MonkeyCode/backend/pkg/git/github"
@@ -67,6 +70,12 @@ func (u *GitIdentityUsecase) gitClienter(identity *db.GitIdentity) domain.GitCli
 		inner = gitea.NewGitea(u.logger, identity.BaseURL)
 	case consts.GitPlatformGitee:
 		inner = gitee.NewGitee(identity.BaseURL, u.logger)
+	case consts.GitPlatformCodeup:
+		inner = codeup.NewCodeup(identity.BaseURL, identity.OrganizationID, u.logger)
+	case consts.GitPlatformCnb:
+		inner = cnb.NewCnb(identity.BaseURL, u.logger)
+	case consts.GitPlatformAtomgit:
+		inner = atomgit.NewAtomgit(identity.BaseURL, u.logger)
 	default:
 		return nil
 	}
@@ -136,8 +145,31 @@ func (u *GitIdentityUsecase) Add(ctx context.Context, uid uuid.UUID, req *domain
 		u.logger.ErrorContext(ctx, "failed to create git identity", "error", err, "user_id", uid)
 		return nil, err
 	}
+	// Codeup 绑定时若未提供 organization_id，尝试通过 token 自动解析并回写
+	if identity.Platform == consts.GitPlatformCodeup && identity.OrganizationID == "" && identity.AccessToken != "" {
+		if orgID, rerr := u.resolveCodeupOrgID(ctx, identity); rerr == nil && orgID != "" {
+			if uerr := u.repo.Update(ctx, uid, identity.ID, &domain.UpdateGitIdentityReq{
+				ID:             identity.ID,
+				OrganizationID: &orgID,
+			}); uerr == nil {
+				identity.OrganizationID = orgID
+			} else {
+				u.logger.WarnContext(ctx, "failed to persist resolved codeup org id",
+					"identity_id", identity.ID, "error", uerr)
+			}
+		} else if rerr != nil {
+			u.logger.WarnContext(ctx, "failed to resolve codeup org id",
+				"identity_id", identity.ID, "error", rerr)
+		}
+	}
 	u.prefetchRepositories(identity)
 	return cvt.From(identity, &domain.GitIdentity{}), nil
+}
+
+// resolveCodeupOrgID 用 token 拉取云效组织信息，返回首个可用 orgID
+func (u *GitIdentityUsecase) resolveCodeupOrgID(ctx context.Context, identity *db.GitIdentity) (string, error) {
+	c := codeup.NewCodeup(identity.BaseURL, "", u.logger)
+	return c.ResolveOrgID(ctx, identity.AccessToken)
 }
 
 // Update 更新 Git 身份认证
@@ -225,6 +257,12 @@ func (u *GitIdentityUsecase) ListBranches(ctx context.Context, uid uuid.UUID, id
 		client = gitea.NewGitea(u.logger, identity.BaseURL)
 	case consts.GitPlatformGitee:
 		client = gitee.NewGitee(identity.BaseURL, u.logger)
+	case consts.GitPlatformCodeup:
+		client = codeup.NewCodeup(identity.BaseURL, identity.OrganizationID, u.logger)
+	case consts.GitPlatformCnb:
+		client = cnb.NewCnb(identity.BaseURL, u.logger)
+	case consts.GitPlatformAtomgit:
+		client = atomgit.NewAtomgit(identity.BaseURL, u.logger)
 	default:
 		return nil, errcode.ErrInvalidPlatform
 	}

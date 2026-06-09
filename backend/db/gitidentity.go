@@ -36,6 +36,8 @@ type GitIdentity struct {
 	Email string `json:"email,omitempty"`
 	// InstallationID holds the value of the "installation_id" field.
 	InstallationID int64 `json:"installation_id,omitempty"`
+	// OrganizationID holds the value of the "organization_id" field.
+	OrganizationID string `json:"organization_id,omitempty"`
 	// Remark holds the value of the "remark" field.
 	Remark string `json:"remark,omitempty"`
 	// OauthRefreshToken holds the value of the "oauth_refresh_token" field.
@@ -112,7 +114,7 @@ func (*GitIdentity) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case gitidentity.FieldInstallationID:
 			values[i] = new(sql.NullInt64)
-		case gitidentity.FieldPlatform, gitidentity.FieldBaseURL, gitidentity.FieldAccessToken, gitidentity.FieldUsername, gitidentity.FieldEmail, gitidentity.FieldRemark, gitidentity.FieldOauthRefreshToken:
+		case gitidentity.FieldPlatform, gitidentity.FieldBaseURL, gitidentity.FieldAccessToken, gitidentity.FieldUsername, gitidentity.FieldEmail, gitidentity.FieldOrganizationID, gitidentity.FieldRemark, gitidentity.FieldOauthRefreshToken:
 			values[i] = new(sql.NullString)
 		case gitidentity.FieldDeletedAt, gitidentity.FieldOauthExpiresAt, gitidentity.FieldCreatedAt, gitidentity.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -186,6 +188,12 @@ func (_m *GitIdentity) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field installation_id", values[i])
 			} else if value.Valid {
 				_m.InstallationID = value.Int64
+			}
+		case gitidentity.FieldOrganizationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field organization_id", values[i])
+			} else if value.Valid {
+				_m.OrganizationID = value.String
 			}
 		case gitidentity.FieldRemark:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -297,6 +305,9 @@ func (_m *GitIdentity) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("installation_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.InstallationID))
+	builder.WriteString(", ")
+	builder.WriteString("organization_id=")
+	builder.WriteString(_m.OrganizationID)
 	builder.WriteString(", ")
 	builder.WriteString("remark=")
 	builder.WriteString(_m.Remark)

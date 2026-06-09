@@ -3194,6 +3194,7 @@ type GitIdentityMutation struct {
 	email                *string
 	installation_id      *int64
 	addinstallation_id   *int64
+	organization_id      *string
 	remark               *string
 	oauth_refresh_token  *string
 	oauth_expires_at     *time.Time
@@ -3707,6 +3708,55 @@ func (m *GitIdentityMutation) ResetInstallationID() {
 	delete(m.clearedFields, gitidentity.FieldInstallationID)
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (m *GitIdentityMutation) SetOrganizationID(s string) {
+	m.organization_id = &s
+}
+
+// OrganizationID returns the value of the "organization_id" field in the mutation.
+func (m *GitIdentityMutation) OrganizationID() (r string, exists bool) {
+	v := m.organization_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrganizationID returns the old "organization_id" field's value of the GitIdentity entity.
+// If the GitIdentity object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GitIdentityMutation) OldOrganizationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrganizationID: %w", err)
+	}
+	return oldValue.OrganizationID, nil
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (m *GitIdentityMutation) ClearOrganizationID() {
+	m.organization_id = nil
+	m.clearedFields[gitidentity.FieldOrganizationID] = struct{}{}
+}
+
+// OrganizationIDCleared returns if the "organization_id" field was cleared in this mutation.
+func (m *GitIdentityMutation) OrganizationIDCleared() bool {
+	_, ok := m.clearedFields[gitidentity.FieldOrganizationID]
+	return ok
+}
+
+// ResetOrganizationID resets all changes to the "organization_id" field.
+func (m *GitIdentityMutation) ResetOrganizationID() {
+	m.organization_id = nil
+	delete(m.clearedFields, gitidentity.FieldOrganizationID)
+}
+
 // SetRemark sets the "remark" field.
 func (m *GitIdentityMutation) SetRemark(s string) {
 	m.remark = &s
@@ -4149,7 +4199,7 @@ func (m *GitIdentityMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GitIdentityMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.deleted_at != nil {
 		fields = append(fields, gitidentity.FieldDeletedAt)
 	}
@@ -4173,6 +4223,9 @@ func (m *GitIdentityMutation) Fields() []string {
 	}
 	if m.installation_id != nil {
 		fields = append(fields, gitidentity.FieldInstallationID)
+	}
+	if m.organization_id != nil {
+		fields = append(fields, gitidentity.FieldOrganizationID)
 	}
 	if m.remark != nil {
 		fields = append(fields, gitidentity.FieldRemark)
@@ -4213,6 +4266,8 @@ func (m *GitIdentityMutation) Field(name string) (ent.Value, bool) {
 		return m.Email()
 	case gitidentity.FieldInstallationID:
 		return m.InstallationID()
+	case gitidentity.FieldOrganizationID:
+		return m.OrganizationID()
 	case gitidentity.FieldRemark:
 		return m.Remark()
 	case gitidentity.FieldOauthRefreshToken:
@@ -4248,6 +4303,8 @@ func (m *GitIdentityMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldEmail(ctx)
 	case gitidentity.FieldInstallationID:
 		return m.OldInstallationID(ctx)
+	case gitidentity.FieldOrganizationID:
+		return m.OldOrganizationID(ctx)
 	case gitidentity.FieldRemark:
 		return m.OldRemark(ctx)
 	case gitidentity.FieldOauthRefreshToken:
@@ -4322,6 +4379,13 @@ func (m *GitIdentityMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetInstallationID(v)
+		return nil
+	case gitidentity.FieldOrganizationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrganizationID(v)
 		return nil
 	case gitidentity.FieldRemark:
 		v, ok := value.(string)
@@ -4421,6 +4485,9 @@ func (m *GitIdentityMutation) ClearedFields() []string {
 	if m.FieldCleared(gitidentity.FieldInstallationID) {
 		fields = append(fields, gitidentity.FieldInstallationID)
 	}
+	if m.FieldCleared(gitidentity.FieldOrganizationID) {
+		fields = append(fields, gitidentity.FieldOrganizationID)
+	}
 	if m.FieldCleared(gitidentity.FieldRemark) {
 		fields = append(fields, gitidentity.FieldRemark)
 	}
@@ -4462,6 +4529,9 @@ func (m *GitIdentityMutation) ClearField(name string) error {
 	case gitidentity.FieldInstallationID:
 		m.ClearInstallationID()
 		return nil
+	case gitidentity.FieldOrganizationID:
+		m.ClearOrganizationID()
+		return nil
 	case gitidentity.FieldRemark:
 		m.ClearRemark()
 		return nil
@@ -4502,6 +4572,9 @@ func (m *GitIdentityMutation) ResetField(name string) error {
 		return nil
 	case gitidentity.FieldInstallationID:
 		m.ResetInstallationID()
+		return nil
+	case gitidentity.FieldOrganizationID:
+		m.ResetOrganizationID()
 		return nil
 	case gitidentity.FieldRemark:
 		m.ResetRemark()

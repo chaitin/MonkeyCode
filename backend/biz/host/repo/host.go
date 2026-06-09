@@ -685,7 +685,7 @@ func (h *HostRepo) GetGitCredentialByTask(ctx context.Context, taskID string) (*
 	}
 	if pt.Edges.Task != nil && pt.Edges.Task.Edges.User != nil {
 		info.GitUsername = pt.Edges.Task.Edges.User.Name
-		if gi.Platform == consts.GitPlatformGitee {
+		if gi.Platform == consts.GitPlatformGitee || gi.Platform == consts.GitPlatformCnb {
 			info.GitUsername = gi.Username
 		}
 	}
