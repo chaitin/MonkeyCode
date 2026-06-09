@@ -69,6 +69,12 @@ export default function AddIdentity({
         case ConstsGitPlatform.GitPlatformGitee:
           setBaseUrl("https://gitee.com")
           break
+        case ConstsGitPlatform.GitPlatformCodeup:
+          setBaseUrl("https://openapi-rdc.aliyuncs.com")
+          break
+        case ConstsGitPlatform.GitPlatformCnb:
+          setBaseUrl("https://api.cnb.cool")
+          break
         default:
           setBaseUrl("")
       }
@@ -168,6 +174,12 @@ export default function AddIdentity({
                     </SelectItem>
                     <SelectItem value={ConstsGitPlatform.GitPlatformGitee}>
                       <Icon name="Gitee" />Gitee
+                    </SelectItem>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformCodeup}>
+                      <Icon name="Codeup" />Codeup
+                    </SelectItem>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformCnb}>
+                      <Icon name="Cnb" />CNB
                     </SelectItem>
                   </SelectContent>
                 </Select>

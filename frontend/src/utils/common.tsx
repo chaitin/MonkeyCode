@@ -372,6 +372,10 @@ export function getGitPlatformIcon(platform?: string) {
       return <Icon name="Gitee" className="size-4" />
     case 'gitea':
       return <Icon name="Gitea" className="size-4" />
+    case 'codeup':
+      return <Icon name="Codeup" className="size-4" />
+    case 'cnb':
+      return <Icon name="Cnb" className="size-4" />
     default:
       return <IconHelpHexagon className="size-4" />
   }
