@@ -19,6 +19,7 @@ import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
+const PUBLISH_WEBSITE_PROMPT = "使用 publish-website 技能发布当前应用"
 const PASTED_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -483,6 +484,20 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                           清空当前上下文后，重新启动 Agent 会话。
                         </div>
                       </DropdownMenuItem>
+                      {!IS_OFFLINE_EDITION && (
+                        <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => {
+                          setContent(PUBLISH_WEBSITE_PROMPT)
+                          requestAnimationFrame(() => textareaRef.current?.focus())
+                        }}>
+                          <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
+                            <IconCommand />
+                            <div className="font-bold text-xs">发布 Web 应用</div>
+                          </div>
+                          <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
+                            将你制作的 Web 应用发布到可公开访问的 MonkeyCode 用户作品集。
+                          </div>
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       {commandItems.map((command: AvailableCommand, index: number) => (
                         <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setContent(`/${command.name}`)}>
