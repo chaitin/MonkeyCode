@@ -187,6 +187,12 @@ export default function EditIdentity({
                     <SelectItem value={ConstsGitPlatform.GitPlatformGitee}>
                       <Icon name="Gitee" />Gitee
                     </SelectItem>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformCodeup}>
+                      <Icon name="Codeup" />Codeup
+                    </SelectItem>
+                    <SelectItem value={ConstsGitPlatform.GitPlatformCnb}>
+                      <Icon name="Cnb" />CNB
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </FieldContent>

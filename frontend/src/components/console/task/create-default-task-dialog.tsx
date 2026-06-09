@@ -93,6 +93,8 @@ function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
     ConstsGitPlatform.GitPlatformGitee,
     ConstsGitPlatform.GitPlatformGitea,
     ConstsGitPlatform.GitPlatformGitLab,
+    ConstsGitPlatform.GitPlatformCodeup,
+    ConstsGitPlatform.GitPlatformCnb,
   ].includes(identity.platform as ConstsGitPlatform)
 }
 

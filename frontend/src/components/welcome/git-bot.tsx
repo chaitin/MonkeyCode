@@ -18,7 +18,7 @@ const proofs = [
   {
     icon: IconStack2,
     title: "支持主流 Git 平台",
-    description: "GitHub、GitLab、Gitea、Gitee 等协作链路都可以接入，不让 AI 结果停留在平台内部。",
+    description: "GitHub、GitLab、Gitea、Gitee、Codeup、CNB 等协作链路都可以接入，不让 AI 结果停留在平台内部。",
   },
   {
     icon: IconShare2,
@@ -32,7 +32,7 @@ const proofs = [
   },
 ];
 
-const platformTags = ["GitHub", "GitLab", "Gitea", "Gitee", "远程协助", "离线部署"];
+const platformTags = ["GitHub", "GitLab", "Gitea", "Gitee", "Codeup", "CNB", "远程协助", "离线部署"];
 
 const GitBot = () => {
   const typewriterText = "@monkeycode-ai 你好，请帮我 review 这个 PR";

@@ -38,13 +38,15 @@ interface RepoOption {
   repository: DomainAuthRepository;
 }
 
-/** 支持从仓库列表选择的身份（GitHub、Gitee、Gitea、GitLab） */
+/** 支持从仓库列表选择的身份（GitHub、Gitee、Gitea、GitLab、Codeup、CNB） */
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
   return [
     ConstsGitPlatform.GitPlatformGithub,
     ConstsGitPlatform.GitPlatformGitee,
     ConstsGitPlatform.GitPlatformGitea,
     ConstsGitPlatform.GitPlatformGitLab,
+    ConstsGitPlatform.GitPlatformCodeup,
+    ConstsGitPlatform.GitPlatformCnb,
   ].includes(identity.platform as ConstsGitPlatform);
 }
 
