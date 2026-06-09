@@ -1,0 +1,52 @@
+# 手动把某个 Release 已构建好的 iOS IPA 上传到 TestFlight（App Store Connect），不重新构建。
+# 用途：补传 / 重传 / 上传旧版本。前提：该 Release 已附带 *.ipa（由 Client Release 的 publish-release 附加）。
+# 不自动提审——上传后 build 进入 App Store Connect，要上架在网页选该 build 提交即可。
+# 需配 Secrets：APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY_BASE64（.p8 的 base64）
+name: iOS Upload to TestFlight (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag whose IPA to upload (e.g. v26060901)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    steps:
+      - name: Download IPA from the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p ipa
+          gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --pattern '*.ipa' --dir ipa
+          ls -lh ipa
+          test -n "$(find ipa -name '*.ipa' | head -1)" || { echo "该 Release 没有 *.ipa 资产：${{ inputs.tag }}"; exit 1; }
+
+      - name: Upload to TestFlight (App Store Connect)
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          : "${ASC_KEY_ID:?Missing APP_STORE_CONNECT_KEY_ID}"
+          : "${ASC_ISSUER_ID:?Missing APP_STORE_CONNECT_ISSUER_ID}"
+          : "${ASC_PRIVATE_KEY_BASE64:?Missing APP_STORE_CONNECT_PRIVATE_KEY_BASE64}"
+          # altool 约定：API key(.p8) 须放在 ~/.appstoreconnect/private_keys 且命名 AuthKey_<KEY_ID>.p8
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$KEY_DIR"
+          KEY_FILE="$KEY_DIR/AuthKey_${ASC_KEY_ID}.p8"
+          echo "$ASC_PRIVATE_KEY_BASE64" | base64 -D > "$KEY_FILE"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          IPA="$(find ipa -name '*.ipa' | head -1)"
+          echo "Uploading $(basename "$IPA") (from ${{ inputs.tag }}) to App Store Connect / TestFlight..."
+          # altool --upload-app 仍可用；若某天被移除可改用 xcrun iTMSTransporter / Transporter.app
+          xcrun altool --upload-app -t ios -f "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
