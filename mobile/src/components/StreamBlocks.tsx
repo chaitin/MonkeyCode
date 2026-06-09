@@ -2,10 +2,11 @@
  * Agent 活动流的消息块渲染 —— 对齐设计稿 screen-chat.jsx。
  * 复用 messages/handler 的 ChatMessage 类型（user / agent / thought / tool / error / system / ask）。
  */
-import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import type { AskQuestion, ChatMessage } from '@/messages/handler';
+import { resolveAssetUrl } from '@/api/client';
 import { Icons, Spinner } from '@/components/Icons';
 import { useTheme, type Theme } from '@/theme';
 
@@ -30,6 +31,35 @@ function mdStyles(t: Theme) {
     blockquote: { backgroundColor: t.bg3, borderColor: t.line2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
     hr: { backgroundColor: t.line2, height: 1 },
   } as const;
+}
+
+// markdown 里的图片（AI 常用 ![](url) 返回图）。默认 react-native-markdown-display 用 react-native-fit-image
+// 渲染 → 它把含 key 的 props 展开进 JSX（React19 告警），且 indicator 转圈在新架构上不消失。
+// 这里用普通 <Image> + Image.getSize 自适应比例替代：无转圈、无告警；点按可保存到相册。
+function MarkdownImage({ uri, t, onSave }: { uri: string; t: Theme; onSave?: (url: string) => void }) {
+  const [ratio, setRatio] = useState(1.6);
+  const [failed, setFailed] = useState(false);
+  // uri 变化时重置，避免上一张的失败/比例残留到新图（流式重渲染、列表复用时）。
+  useEffect(() => { setFailed(false); setRatio(1.6); }, [uri]);
+  if (failed || !uri) return null;
+  // 直接用渲染这张图时的 onLoad 拿尺寸（单次加载），不再额外 Image.getSize 探测一遍。
+  return (
+    <Pressable onPress={() => onSave?.(uri)} style={{ marginVertical: 6 }}>
+      <Image source={{ uri }} resizeMode="contain"
+        onLoad={(e) => { const s = e?.nativeEvent?.source; if (s?.width && s?.height) setRatio(s.width / s.height); }}
+        onError={() => setFailed(true)}
+        style={{ width: '100%', aspectRatio: ratio, borderRadius: 10, backgroundColor: t.bg3 }} />
+    </Pressable>
+  );
+}
+
+/** 覆盖 markdown 的 image 规则（修掉永远转圈的 loading + React19 的 key-spread 告警）。 */
+function markdownImageRules(t: Theme, onSave?: (url: string) => void) {
+  return {
+    image: (node: { key: string; attributes?: { src?: string; alt?: string } }) => (
+      <MarkdownImage key={node.key} uri={resolveAssetUrl(node.attributes?.src) ?? node.attributes?.src ?? ''} t={t} onSave={onSave} />
+    ),
+  };
 }
 
 function toolIcon(kind?: string): string {
@@ -189,19 +219,33 @@ function ToolCard({ msg, t, onCopy }: { msg: ToolMsg; t: Theme; onCopy?: (s: str
   );
 }
 
-function StreamBlockBase({ message, canAnswer, onAnswer, onCopy }: { message: ChatMessage; canAnswer?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => void; onCopy?: (text: string) => void }) {
+function StreamBlockBase({ message, canAnswer, onAnswer, onCopy, onSaveImage }: { message: ChatMessage; canAnswer?: boolean; onAnswer?: (askId: string, answers: AnswerMap) => void; onCopy?: (text: string) => void; onSaveImage?: (url: string) => void }) {
   const t = useTheme();
   switch (message.kind) {
-    case 'user':
+    case 'user': {
+      const atts = message.attachments ?? [];
       return (
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-          <Pressable onLongPress={() => onCopy?.(message.text)} style={{ maxWidth: '84%', backgroundColor: t.acGhost, borderWidth: 1, borderColor: t.acLine, borderRadius: 16, borderBottomRightRadius: 5, paddingHorizontal: 14, paddingVertical: 10 }}>
-            <Text style={{ color: t.tx, fontSize: 14.5, lineHeight: 21 }}>{message.text}</Text>
+          <Pressable onPress={() => Keyboard.dismiss()} onLongPress={() => onCopy?.(message.text)} style={{ maxWidth: '84%', backgroundColor: t.acGhost, borderWidth: 1, borderColor: t.acLine, borderRadius: 16, borderBottomRightRadius: 5, paddingHorizontal: 14, paddingVertical: 10 }}>
+            {atts.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginBottom: message.text ? 8 : 0 }}>
+                {atts.map((a, i) => {
+                  const uri = resolveAssetUrl(a.url);
+                  return (
+                    <Pressable key={i} onPress={() => uri && onSaveImage?.(uri)}>
+                      <Image source={{ uri }} resizeMode="cover" style={{ width: 116, height: 116, borderRadius: 10, backgroundColor: t.bg3 }} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+            {message.text ? <Text style={{ color: t.tx, fontSize: 14.5, lineHeight: 21 }}>{message.text}</Text> : null}
           </Pressable>
         </View>
       );
+    }
     case 'agent':
-      return <Pressable onLongPress={() => onCopy?.(message.text)}><Markdown style={mdStyles(t) as any}>{message.text}</Markdown></Pressable>;
+      return <Pressable onPress={() => Keyboard.dismiss()} onLongPress={() => onCopy?.(message.text)}><Markdown style={mdStyles(t) as any} rules={markdownImageRules(t, onSaveImage)}>{message.text}</Markdown></Pressable>;
     case 'thought':
       return <ThoughtBlock text={message.text} t={t} onCopy={onCopy} />;
     case 'tool':
@@ -221,7 +265,7 @@ function StreamBlockBase({ message, canAnswer, onAnswer, onCopy }: { message: Ch
 // 其余 Markdown 块不再反复解析/测量 —— 避免列表中间空白与高度跳动。
 type MsgCmp = { id?: string; kind?: string; text?: string; title?: string; status?: string; questions?: unknown };
 export const StreamBlock = React.memo(StreamBlockBase, (a, b) => {
-  if (a.canAnswer !== b.canAnswer || a.onAnswer !== b.onAnswer || a.onCopy !== b.onCopy) return false;
+  if (a.canAnswer !== b.canAnswer || a.onAnswer !== b.onAnswer || a.onCopy !== b.onCopy || a.onSaveImage !== b.onSaveImage) return false;
   const m = a.message as MsgCmp;
   const n = b.message as MsgCmp;
   return (
