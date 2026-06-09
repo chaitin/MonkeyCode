@@ -256,11 +256,13 @@ jobs:
   # iOS（Expo）：用 xcodebuild archive+export，复用与原 CI 相同的签名 Secrets：
   #   IOS_CERTIFICATE_BASE64 / IOS_CERTIFICATE_PASSWORD / IOS_PROVISIONING_PROFILE_BASE64 / IOS_TEAM_ID
   # 证书的 bundleId 必须是 com.chaitin.baizhi.monkeycode；导出方式默认 app-store（上 TestFlight/商店），
-  # 想直接装真机改成 ad-hoc。RCT_USE_PREBUILT_RNCORE=1 用预编译 React，Release 与之匹配，避免从源码编译（CI 上慢）。
+  # 想直接装真机改成 ad-hoc。
+  # 注意：不要设 RCT_USE_PREBUILT_RNCORE=1。它强制用预编译 React.framework（依赖 ReactNativeDependencies.framework），
+  # 与 app.json 的 ios.buildReactNativeFromSource=true 冲突 → ReactNativeDependencies.framework 没被嵌入 .app，
+  # 真机一启动就 dyld 崩溃（Library not loaded: @rpath/ReactNativeDependencies.framework/...）。
+  # 保持从源码编译（app.json 已配 buildReactNativeFromSource=true），是 RN 官方对该实验特性的建议，能正常过 TestFlight。
   mobile-ios:
     runs-on: macos-latest
-    env:
-      RCT_USE_PREBUILT_RNCORE: "1"
     steps:
       - uses: actions/checkout@v4
 
