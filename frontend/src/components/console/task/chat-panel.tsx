@@ -5,7 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual"
 import { Button } from "@/components/ui/button"
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
-import { IconCircle, IconCircleCheck, IconLoader, IconPlayerStopFilled, IconSubtask } from "@tabler/icons-react"
+import { IconCircle, IconCircleCheck, IconLoader, IconSubtask } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import type { ConstsCliName } from "@/api/Api"
 import { TaskChatInputBox } from "./chat-inputbox"
@@ -166,9 +166,6 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
         <div className="text-xs border rounded-full px-2 py-1 w-fit flex items-center gap-2 text-muted-foreground">
           <IconLoader className="size-4 animate-spin" />
           任务执行耗时 {(timeCost / 1000).toFixed(1)} 秒
-          {!disabled && <Button variant="ghost" size="icon-sm" className="size-5 cursor-pointer" onClick={sendCancelCommand}>
-            <IconPlayerStopFilled className="size-4" />
-          </Button>}
         </div>
       </div>
     } else if (streamStatus === 'waiting') {
@@ -243,6 +240,8 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
                 onSend={sendUserInput}
                 sending={sending}
                 queueSize={queueSize}
+                executionTimeMs={timeCost}
+                onCancel={sendCancelCommand}
               />
             ),
             inputPortalTargetRef.current
@@ -259,6 +258,8 @@ export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPort
               onSend={sendUserInput}
               sending={sending}
               queueSize={queueSize}
+              executionTimeMs={timeCost}
+              onCancel={sendCancelCommand}
             />
           ))}
 

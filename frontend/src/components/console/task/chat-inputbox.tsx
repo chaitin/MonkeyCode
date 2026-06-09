@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconPalette, IconReload, IconTrash, IconPlayerStopFilled, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconCommand, IconLoader, IconPalette, IconReload, IconTrash, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -31,6 +31,12 @@ const PASTED_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
   "image/avif": "avif",
 }
 
+interface QueuedTaskInput {
+  content: string
+  uploadedFiles: TaskUploadedFile[]
+  nextAttachmentFileIndex: number
+}
+
 interface TaskChatInputBoxProps {
   streamStatus: TaskStreamStatus | TaskMessageHandlerStatus
   availableCommands: AvailableCommands | null
@@ -55,20 +61,36 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const [previewFile, setPreviewFile] = useState<TaskUploadedFile | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<TaskUploadedFile[]>([])
   const [slashCommandConfirmOpen, setSlashCommandConfirmOpen] = useState(false)
+  const [queuedInput, setQueuedInput] = useState<QueuedTaskInput | null>(null)
+  const [autoSendingQueuedInput, setAutoSendingQueuedInput] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
   const nextAttachmentFileIndexRef = useRef(1)
-  const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited')
+  const autoSendingQueuedInputRef = useRef(false)
+  const mountedRef = useRef(true)
+  const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited' || streamStatus === 'executing')
   const wasExecutingRef = useRef(isExecuting)
   const restoreSubmittedInputOnIdleRef = useRef(false)
   const lastSubmittedInputRef = useRef<{ content: string; uploadedFiles: TaskUploadedFile[]; nextAttachmentFileIndex: number } | null>(null)
-  const canInput = React.useMemo(() => {
-    return !sending && !isExecuting && queueSize === 0
-  }, [sending, isExecuting, queueSize])
+  const inputLocked = autoSendingQueuedInput
+  const canEditContent = React.useMemo(() => {
+    return !sending && queueSize === 0 && !queuedInput && !inputLocked
+  }, [inputLocked, queueSize, queuedInput, sending])
+  const canUseIdleControls = React.useMemo(() => {
+    return !sending && !isExecuting && queueSize === 0 && !queuedInput && !inputLocked
+  }, [inputLocked, isExecuting, queueSize, queuedInput, sending])
 
   React.useEffect(() => {
-    if (wasExecutingRef.current && !isExecuting && restoreSubmittedInputOnIdleRef.current) {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (wasExecutingRef.current && !isExecuting && queuedInput) {
+      restoreSubmittedInputOnIdleRef.current = false
+    } else if (wasExecutingRef.current && !isExecuting && restoreSubmittedInputOnIdleRef.current) {
       const lastSubmittedInput = lastSubmittedInputRef.current
       if (lastSubmittedInput) {
         setContent(lastSubmittedInput.content)
@@ -79,9 +101,60 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       restoreSubmittedInputOnIdleRef.current = false
     }
     wasExecutingRef.current = isExecuting
-  }, [isExecuting])
+  }, [isExecuting, queuedInput])
+
+  const createCurrentInputSnapshot = (): QueuedTaskInput => ({
+    content,
+    uploadedFiles,
+    nextAttachmentFileIndex: nextAttachmentFileIndexRef.current,
+  })
+
+  const sendInputSnapshot = React.useCallback(async (input: QueuedTaskInput) => {
+    if (input.content.trim() === '') {
+      return false
+    }
+
+    if (input.content.length > MAX_TASK_CONTENT_LENGTH) {
+      toast.error(getTaskContentLimitErrorMessage())
+      return false
+    }
+
+    const payload: TaskUserInputPayload = {
+      content: input.content,
+      attachments: input.uploadedFiles.map((file) => ({
+        url: file.accessUrl,
+        filename: file.name,
+      })),
+    }
+    const result = await onSend(payload)
+    if (result === false) {
+      return false
+    }
+
+    lastSubmittedInputRef.current = input
+    restoreSubmittedInputOnIdleRef.current = false
+    return true
+  }, [onSend])
+
+  const clearCurrentInput = () => {
+    setContent('')
+    setUploadedFiles([])
+    setPreviewFile(null)
+    setWhiteboardFileIndex(1)
+    nextAttachmentFileIndexRef.current = 1
+  }
 
   const sendCurrentInput = async () => {
+    const sent = await sendInputSnapshot(createCurrentInputSnapshot())
+    if (!sent) {
+      return
+    }
+
+    clearCurrentInput()
+  }
+
+  const queueCurrentInput = () => {
+    if (queuedInput) return
     if (content.trim() === '') {
       return
     }
@@ -91,37 +164,78 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return
     }
 
-    const payload: TaskUserInputPayload = {
-      content,
-      attachments: uploadedFiles.map((file) => ({
-        url: file.accessUrl,
-        filename: file.name,
-      })),
-    }
-    const result = await onSend(payload)
-    if (result === false) {
+    setQueuedInput(createCurrentInputSnapshot())
+    setPreviewFile(null)
+  }
+
+  const cancelQueuedInput = () => {
+    if (!queuedInput || autoSendingQueuedInput) return
+    setPreviewFile(null)
+    setQueuedInput(null)
+  }
+
+  React.useEffect(() => {
+    if (!autoSendingQueuedInput || !queuedInput || !isExecuting || sending) {
       return
     }
 
-    lastSubmittedInputRef.current = {
-      content,
-      uploadedFiles,
-      nextAttachmentFileIndex: nextAttachmentFileIndexRef.current,
+    autoSendingQueuedInputRef.current = false
+    setAutoSendingQueuedInput(false)
+    setQueuedInput(null)
+    clearCurrentInput()
+  }, [autoSendingQueuedInput, isExecuting, queuedInput, sending])
+
+  React.useEffect(() => {
+    if (isExecuting || sending || queueSize > 0 || !queuedInput || autoSendingQueuedInputRef.current) {
+      return
     }
-    restoreSubmittedInputOnIdleRef.current = false
-    setContent('')
-    setUploadedFiles([])
-    setPreviewFile(null)
-    setWhiteboardFileIndex(1)
-    nextAttachmentFileIndexRef.current = 1
-  }
+
+    const inputToSend = queuedInput
+    autoSendingQueuedInputRef.current = true
+    setAutoSendingQueuedInput(true)
+
+    void (async () => {
+      let sent = false
+      try {
+        sent = await sendInputSnapshot(inputToSend)
+      } catch (error) {
+        console.error("自动发送等待输入失败:", error)
+      } finally {
+        autoSendingQueuedInputRef.current = false
+        if (mountedRef.current) {
+          setAutoSendingQueuedInput(false)
+        }
+      }
+
+      if (!mountedRef.current) {
+        return
+      }
+
+      if (sent) {
+        setQueuedInput(null)
+        clearCurrentInput()
+        return
+      }
+
+      setContent(inputToSend.content)
+      setUploadedFiles(inputToSend.uploadedFiles)
+      setPreviewFile(null)
+      nextAttachmentFileIndexRef.current = inputToSend.nextAttachmentFileIndex
+      setQueuedInput(null)
+      toast.error("等待发送失败，请手动重试")
+    })()
+  }, [isExecuting, queueSize, queuedInput, sendInputSnapshot, sending])
 
   const handleCancel = () => {
-    restoreSubmittedInputOnIdleRef.current = true
+    restoreSubmittedInputOnIdleRef.current = content.trim() === '' && !queuedInput
     onCancel?.()
   }
 
   const handleSend = () => {
+    if (queuedInput) {
+      return
+    }
+
     if (content.trim() === '') {
       return
     }
@@ -136,6 +250,20 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       return
     }
 
+    if (isExecuting) {
+      queueCurrentInput()
+      return
+    }
+
+    void sendCurrentInput()
+  }
+
+  const handleConfirmSlashCommand = () => {
+    if (isExecuting) {
+      queueCurrentInput()
+      return
+    }
+
     void sendCurrentInput()
   }
 
@@ -144,7 +272,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   }
 
   const handleSelectFile = () => {
-    if (!canInput) return
+    if (!canUseIdleControls) return
     if (uploadedFiles.length >= MAX_UPLOADED_FILES) return
     setShouldAutoUpload(false)
     fileInputRef.current?.click()
@@ -203,7 +331,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   }
 
   const prepareUploadFile = (file: File, options?: { autoUpload?: boolean }) => {
-    if (!canInput) {
+    if (!canUseIdleControls) {
       return
     }
 
@@ -276,7 +404,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   }
 
   const canAcceptUploadFile = () => {
-    return canInput && uploadedFiles.length < MAX_UPLOADED_FILES
+    return canUseIdleControls && uploadedFiles.length < MAX_UPLOADED_FILES
   }
 
   const getClipboardFiles = (clipboardData: DataTransfer) => {
@@ -371,7 +499,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
 
   // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (isExecuting) {
+    if (inputLocked) {
       return
     }
     // 如果正在输入法组合过程中，不触发提交
@@ -407,14 +535,6 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
     setIsComposing(false)
   }
 
-  const inputDisabled = React.useMemo(() => {
-    return !canInput
-  }, [canInput])
-
-  const controlsDisabled = React.useMemo(() => {
-    return !canInput
-  }, [canInput])
-
   const commandItems = availableCommands?.commands ?? []
   const showCommandItems = !isExecuting && commandItems.length > 0
   const contentLength = content.length
@@ -422,6 +542,11 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   const canSend = content.trim() !== '' && !contentTooLong
   const canUploadMoreFiles = uploadedFiles.length < MAX_UPLOADED_FILES
   const whiteboardFileName = `画板-${whiteboardFileIndex}.png`
+  const inputPlaceholder = isExecuting
+    ? "任务执行中，可先输入下一条消息，回车后将等待发送。"
+    : "描述你的需求，Shift+Enter 换行，Enter 发送。"
+  const executionElapsedSeconds = (executionTimeMs / 1000).toFixed(1)
+  const showExecutionStatusPanel = isExecuting
 
   return (
     <div
@@ -430,6 +555,23 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
         isDragActive && "border-primary bg-primary/15"
       )}
     >
+      {showExecutionStatusPanel && (
+        <div className="mb-2 flex min-w-0 items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+          <div className="flex min-w-0 items-center gap-2 font-medium">
+            <IconLoader className="size-4 shrink-0 animate-spin text-primary" />
+            <span className="truncate">任务正在执行，耗时 {executionElapsedSeconds} 秒</span>
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            size="xs"
+            onClick={handleCancel}
+            disabled={!onCancel}
+          >
+            取消
+          </Button>
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -437,18 +579,17 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
         onChange={handleFileChange}
       />
       <InputGroup>
-        {!isExecuting && (
-          <InputGroupTextarea
-            ref={textareaRef}
-            className="min-h-8 max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content]"
-            placeholder="描述你的需求，Shift+Enter 换行，Enter 发送。"
-            value={content}
-            onChange={(e) => setContent(e.target.value)} 
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onCompositionStart={handleCompositionStart}
-            onCompositionEnd={handleCompositionEnd} />
-        )}
+        <InputGroupTextarea
+          ref={textareaRef}
+          className="min-h-8 max-h-36 resize-none overflow-y-auto text-sm break-all [field-sizing:content] disabled:opacity-80"
+          placeholder={inputPlaceholder}
+          value={content}
+          disabled={!canEditContent}
+          onChange={(e) => setContent(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd} />
         <InputGroupAddon align="block-end" className="pb-1.5">
           <div className="flex flex-row justify-between w-full">
             <div className="flex flex-row gap-2 items-center min-w-0">
@@ -456,7 +597,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={controlsDisabled || !showCommandItems}>
+                      <Button variant="outline" size="icon-sm" className="rounded-full" disabled={!canUseIdleControls || !showCommandItems}>
                         <IconTerminal2 />
                       </Button>
                     </DropdownMenuTrigger>
@@ -523,7 +664,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                       variant="outline"
                       size="icon-sm"
                       className="rounded-full"
-                      disabled={controlsDisabled}
+                      disabled={!canUseIdleControls}
                       aria-label="上传附件"
                       onClick={handleSelectFile}
                     >
@@ -540,7 +681,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                     variant="outline"
                     size="icon-sm"
                     className="rounded-full"
-                    disabled={controlsDisabled}
+                    disabled={!canUseIdleControls}
                     aria-label="画板"
                     onClick={() => setWhiteboardDialogOpen(true)}
                   >
@@ -553,6 +694,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
                 <TaskUploadedFileItem
                   key={uploadedFile.accessUrl}
                   file={uploadedFile}
+                  disabled={!!queuedInput || inputLocked}
                   onPreview={() => setPreviewFile(uploadedFile)}
                   onRemove={() => {
                     if (previewFile?.accessUrl === uploadedFile.accessUrl) {
@@ -564,28 +706,53 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
               ))}
             </div>
             <div className="flex flex-row gap-2 items-center min-w-0">
-              {isExecuting && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-                  <IconLoader className="size-4 animate-spin shrink-0" />
-                  <span className="truncate">耗时 {(executionTimeMs / 1000).toFixed(1)} 秒</span>
-                </div>
-              )}
-              {!IS_OFFLINE_EDITION && !isExecuting && (
+              {!IS_OFFLINE_EDITION && (
                 <VoiceInputButton
                   onTextRecognized={handleTextRecognized}
-                  disabled={controlsDisabled}
+                  disabled={!canEditContent || !!queuedInput}
                 />
               )}
-              <InputGroupButton 
-                className={cn("flex flex-row gap-2 items-center", isExecuting && "rounded-full")}
-                variant={isExecuting ? "destructive" : "default"}
-                size={isExecuting ? "icon-sm" : "sm"} 
-                onClick={isExecuting ? handleCancel : handleSend}
-                disabled={isExecuting ? !onCancel : !canSend || inputDisabled}
-              >
-                {isExecuting ? <IconPlayerStopFilled /> : <IconSend />}
-                {!isExecuting && "发送"}
-              </InputGroupButton>
+              {queuedInput ? (
+                <InputGroupButton
+                  className="group/auto-send flex flex-row gap-2 items-center"
+                  variant="outline"
+                  size="sm"
+                  onClick={cancelQueuedInput}
+                  disabled={autoSendingQueuedInput}
+                >
+                  <IconLoader className="size-4 shrink-0 animate-spin" />
+                  {autoSendingQueuedInput ? (
+                    "正在自动发送"
+                  ) : (
+                    <>
+                      <span className="group-hover/auto-send:hidden">等待自动发送</span>
+                      <span className="hidden group-hover/auto-send:inline">取消自动发送</span>
+                    </>
+                  )}
+                </InputGroupButton>
+              ) : isExecuting ? (
+                <InputGroupButton
+                  className="flex flex-row gap-2 items-center"
+                  variant="default"
+                  size="sm"
+                  onClick={handleSend}
+                  disabled={!canSend}
+                >
+                  <IconSend />
+                  发送
+                </InputGroupButton>
+              ) : (
+                <InputGroupButton
+                  className="flex flex-row gap-2 items-center"
+                  variant="default"
+                  size="sm"
+                  onClick={handleSend}
+                  disabled={!canSend || !canUseIdleControls}
+                >
+                  <IconSend />
+                  发送
+                </InputGroupButton>
+              )}
             </div>
           </div>
         </InputGroupAddon>
@@ -635,7 +802,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void sendCurrentInput()}>
+            <AlertDialogAction onClick={handleConfirmSlashCommand}>
               确认发送
             </AlertDialogAction>
           </AlertDialogFooter>

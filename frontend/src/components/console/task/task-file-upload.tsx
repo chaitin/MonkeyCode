@@ -46,6 +46,7 @@ interface TaskUploadedFileItemProps {
   onRemove: () => void
   onPreview?: () => void
   className?: string
+  disabled?: boolean
 }
 
 export function formatFileSize(size: number) {
@@ -164,19 +165,21 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
   )
 }
 
-export function TaskUploadedFileItem({ file, onRemove, onPreview, className }: TaskUploadedFileItemProps) {
+export function TaskUploadedFileItem({ file, onRemove, onPreview, className, disabled = false }: TaskUploadedFileItemProps) {
   return (
     <div
       className={cn(
         "group/uploaded-file flex h-8 w-32 min-w-0 items-center gap-2 rounded-full border bg-background px-2 text-xs text-foreground shadow-xs",
+        disabled && "opacity-70",
         className
       )}
       title={file.name}
     >
       <button
         type="button"
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
-        onClick={onPreview}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left disabled:cursor-not-allowed"
+        disabled={disabled}
+        onClick={disabled ? undefined : onPreview}
         aria-label={`预览附件 ${file.name}`}
       >
         {isTaskImageAttachment(file.name) ? (
@@ -188,7 +191,11 @@ export function TaskUploadedFileItem({ file, onRemove, onPreview, className }: T
       </button>
       <button
         type="button"
-        className="hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover/uploaded-file:flex"
+        className={cn(
+          "hidden size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+          !disabled && "group-hover/uploaded-file:flex"
+        )}
+        disabled={disabled}
         onClick={onRemove}
         aria-label="删除已上传文件"
       >
