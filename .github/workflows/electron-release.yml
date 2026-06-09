@@ -312,8 +312,12 @@ jobs:
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$RUNNER_TEMP/profile.plist")
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$RUNNER_TEMP/profile.plist")
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          # 取出导入证书的签名标识名（如 "Apple Distribution: …"），用于强制手动签名，避免回退到 "iOS Development"
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(.*\)".*/\1/p' | head -1)
+          : "${SIGNING_IDENTITY:?No code-signing identity found in imported certificate}"
           echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "IOS_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Archive & export IPA
         working-directory: mobile/ios
@@ -342,6 +346,7 @@ jobs:
             -configuration Release -sdk iphoneos -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/MonkeyCode.xcarchive" \
             DEVELOPMENT_TEAM="$IOS_TEAM_ID" CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$IOS_SIGNING_IDENTITY" \
             PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
             archive
           xcodebuild -exportArchive \
