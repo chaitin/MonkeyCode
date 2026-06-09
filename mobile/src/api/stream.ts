@@ -6,7 +6,8 @@
  *  - new   ：开启新一轮，连接建立后立即上行 user-input
  *
  * 上行（client -> server）JSON：
- *  - { type:"user-input", data: b64(JSON.stringify({ content: b64(text), attachments:[] })) }
+ *  - { type:"user-input", data: b64(JSON.stringify({ content: b64(text), attachments:[{url,filename}] })) }
+ *    attachments 为图片附件（已上传到对象存储，url 即 presign 的 access_url）。
  *  - { type:"user-cancel" }
  *  - { type:"reply-question", data: b64(JSON.stringify({ request_id, answers_json, cancelled:false })) }
  *
@@ -25,6 +26,12 @@ import {
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'closed';
 export type CloseReason = 'manual' | 'task_ended' | 'unknown' | null;
 export type SendReplyResult = 'sent' | 'queued' | 'rejected';
+
+/** 用户消息携带的图片附件（已上传，url 为对象存储可访问地址）。 */
+export interface UserAttachment {
+  url: string;
+  filename: string;
+}
 
 export interface StreamState extends HandlerState {
   connectionState: ConnectionState;
@@ -51,6 +58,7 @@ export class TaskStreamClient {
   private handler: TaskMessageHandler;
   private socket: WebSocket | null = null;
   private initialUserInput: string | null = null;
+  private initialAttachments: UserAttachment[] = [];
   private manuallyDisconnected = false;
   private hasReceivedTaskEnded = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -73,9 +81,10 @@ export class TaskStreamClient {
     return new TaskStreamClient(taskId, 'attach', true, cb);
   }
 
-  static newRound(taskId: string, userInput: string, cb: Callbacks) {
+  static newRound(taskId: string, userInput: string, attachments: UserAttachment[], cb: Callbacks) {
     const c = new TaskStreamClient(taskId, 'new', false, cb);
     c.initialUserInput = userInput;
+    c.initialAttachments = attachments;
     return c;
   }
 
@@ -159,8 +168,9 @@ export class TaskStreamClient {
       this.emit();
       this.flushQueuedReplies();
       if (this.initialUserInput != null) {
-        this.sendUserInput(this.initialUserInput);
+        this.sendUserInput(this.initialUserInput, this.initialAttachments);
         this.initialUserInput = null;
+        this.initialAttachments = [];
       }
       this.cb.onOpen?.();
     };
@@ -258,10 +268,10 @@ export class TaskStreamClient {
     }
   }
 
-  private sendUserInput(text: string) {
+  private sendUserInput(text: string, attachments: UserAttachment[] = []) {
     this.send({
       type: 'user-input',
-      data: base64Encode(JSON.stringify({ content: base64Encode(text), attachments: [] })),
+      data: base64Encode(JSON.stringify({ content: base64Encode(text), attachments })),
     });
   }
 

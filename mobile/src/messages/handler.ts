@@ -22,8 +22,14 @@ export interface AskQuestion {
   answer?: string | string[];
 }
 
+/** 用户消息里的图片附件（url 为对象存储可访问地址）。 */
+export interface MessageAttachment {
+  url: string;
+  filename?: string;
+}
+
 export type ChatMessage =
-  | { id: string; kind: 'user'; text: string; time?: number }
+  | { id: string; kind: 'user'; text: string; attachments?: MessageAttachment[]; time?: number }
   | { id: string; kind: 'agent'; text: string; time?: number }
   | { id: string; kind: 'thought'; text: string; time?: number }
   | {
@@ -164,16 +170,29 @@ export class TaskMessageHandler {
     switch (chunk.event) {
       case 'user-input': {
         const payload = decodeJSON(chunk.data);
-        if (payload && typeof payload.content === 'string') {
-          let content = payload.content;
-          try {
-            content = base64DecodeToString(payload.content);
-          } catch {
-            /* keep */
-          }
-          if (content.trim().length > 0) {
-            this.messages.push({ id: nextId(), kind: 'user', text: content, time });
-          }
+        if (!payload) break;
+        let content = typeof payload.content === 'string' ? payload.content : '';
+        try {
+          content = base64DecodeToString(content);
+        } catch {
+          /* keep */
+        }
+        const attachments: MessageAttachment[] = Array.isArray(payload.attachments)
+          ? payload.attachments
+              .map((a: any) => ({
+                url: typeof a?.url === 'string' ? a.url : '',
+                filename: typeof a?.filename === 'string' ? a.filename : undefined,
+              }))
+              .filter((a: MessageAttachment) => !!a.url)
+          : [];
+        if (content.trim().length > 0 || attachments.length > 0) {
+          this.messages.push({
+            id: nextId(),
+            kind: 'user',
+            text: content,
+            attachments: attachments.length ? attachments : undefined,
+            time,
+          });
         }
         break;
       }

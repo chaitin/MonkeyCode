@@ -1,12 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { ApiError, getTaskDetail, getTaskRounds, listModels } from '@/api/client';
 import { TaskControlClient, type PortForwardInfo, type RepoFileChange } from '@/api/control';
 import { TaskStreamClient, type StreamState } from '@/api/stream';
+import { MAX_ATTACHMENTS, pickImages, saveImageToAlbum, uploadImage } from '@/api/upload';
 import type { Model, ProjectTask } from '@/api/types';
 import { Glass } from '@/components/glass';
 import { Icons, Spinner } from '@/components/Icons';
@@ -28,6 +29,8 @@ const POLL_INTERVAL = 10000;
 // 指令：继续/压缩 直接发消息；重启/重置 走控制通道 restart(load_session)
 type CmdKey = 'continue' | 'skill' | 'compact' | 'restart' | 'reset';
 type Cmd = { key: CmdKey; label: string; tone: 'ac' | 'neutral' | 'amber' | 'red'; icon?: string; desc?: string };
+// composer 里待发送的图片附件：先本地预览，异步上传；status=done 且有 url 才会随消息发出。
+type PendingAtt = { key: string; localUri: string; name: string; status: 'uploading' | 'done' | 'error'; url?: string };
 // 直接展示的常用指令（使用技能会打开技能选择面板）
 const DIRECT_COMMANDS: Cmd[] = [
   { key: 'skill', label: '使用技能', tone: 'ac' },
@@ -99,6 +102,8 @@ export default function TaskDetailScreen() {
   const [switching, setSwitching] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<PendingAtt[]>([]);
+  const [inputFocused, setInputFocused] = useState(false);
   const [restartBusy, setRestartBusy] = useState<null | 'restart' | 'reset'>(null);
   const [headerH, setHeaderH] = useState(insets.top + 104);
   const [lastCtx, setLastCtx] = useState<{ used: number; size: number } | null>(null); // 最近一次有效上下文用量（跨轮持久）
@@ -115,12 +120,16 @@ export default function TaskDetailScreen() {
   const cursorSeededRef = useRef(false);
   const restSeedingRef = useRef(false); // 防止 REST 兜底取游标时重入
   const controlRef = useRef<TaskControlClient | null>(null);
+  const attachmentsRef = useRef<PendingAtt[]>([]);
+  const attachSeq = useRef(0);
 
   const interactive = task?.status === 'processing';
   const starting = task?.status === 'pending';
   const startCond = starting ? taskConditionInfo(task) : null; // 启动阶段的开发环境准备进度
 
   const setLive = useCallback((s: StreamState | null) => { liveStateRef.current = s; setLiveState(s); }, []);
+  const flashToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2400); }, []);
+  useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
 
   // 拉取开发环境监听端口（用于在线预览）；控制通道未连接时直接返回。
   const refreshPorts = useCallback(async () => {
@@ -267,25 +276,71 @@ export default function TaskDetailScreen() {
     if (cursor && hasMore && !historyLoading && historyMessages.length === 0) void loadEarlier();
   }, [cursor, hasMore, historyLoading, historyMessages.length, loadEarlier]);
 
-  const handleSend = useCallback((text: string) => {
+  // includeAttachments=false 用于快捷指令（继续 / 压缩等）：只发文字，不带、也不清空已暂存的图片。
+  const handleSend = useCallback((text: string, includeAttachments = true) => {
     const body = text.trim();
-    if (!id || !body) return;
+    const ready = includeAttachments ? attachmentsRef.current.filter((a) => a.status === 'done' && a.url) : [];
+    if (!id || (!body && ready.length === 0)) return;
+    if (includeAttachments && attachmentsRef.current.some((a) => a.status === 'uploading')) { flashToast('图片还在上传中…'); return; }
     setInput('');
+    if (includeAttachments) setAttachments([]);
+    const atts = ready.map((a) => ({ url: a.url as string, filename: a.name }));
     const prevLive = liveStateRef.current?.messages ?? [];
     if (prevLive.length) setHistoryMessages((prev) => [...prev, ...prevLive]);
     clientRef.current?.disconnect();
     setSending(true);
-    const client = TaskStreamClient.newRound(id, body, {
+    const client = TaskStreamClient.newRound(id, body, atts, {
       onState: (s) => { setLive(s); if (s.connectionState === 'connected') setSending(false); },
       onOpen: () => setSending(false), onClose: () => setSending(false), onError: () => setSending(false),
     });
     clientRef.current = client; client.connect();
-  }, [id, setLive]);
+  }, [id, setLive, flashToast]);
+
+  // 选图 → 逐张上传（先占位预览，上传完回填 url）。受 MAX_ATTACHMENTS 张数限制。
+  const onAttach = useCallback(async () => {
+    const remaining = MAX_ATTACHMENTS - attachmentsRef.current.length;
+    if (remaining <= 0) { flashToast(`最多 ${MAX_ATTACHMENTS} 张图片`); return; }
+    let picked;
+    try { picked = await pickImages(remaining); }
+    catch { flashToast('无法打开相册'); return; }
+    if (!picked.length) return;
+    const items = picked.map((img) => ({ key: `a${(attachSeq.current += 1)}`, img }));
+    setAttachments((prev) => [...prev, ...items.map(({ key, img }) => ({ key, localUri: img.uri, name: img.name, status: 'uploading' as const }))]);
+    // 并发上传（各自独立的 presign+PUT；setAttachments 按 key 更新，完成顺序无关）。
+    await Promise.all(items.map(async ({ key, img }) => {
+      try {
+        const up = await uploadImage(img);
+        setAttachments((prev) => prev.map((a) => (a.key === key ? { ...a, status: 'done', url: up.url, name: up.filename } : a)));
+      } catch (e) {
+        setAttachments((prev) => prev.map((a) => (a.key === key ? { ...a, status: 'error' } : a)));
+        flashToast(e instanceof Error ? e.message : '图片上传失败');
+      }
+    }));
+  }, [flashToast]);
+
+  const removeAttachment = useCallback((key: string) => {
+    setAttachments((prev) => prev.filter((a) => a.key !== key));
+  }, []);
+
+  // 点对话里的图片 → 确认后保存（用户附件图 + AI 的 markdown 图都走这里）。
+  // 优先存相册（需原生构建里有 expo-media-library）；不可用时回退系统分享。
+  const onSaveImage = useCallback((url: string) => {
+    if (!url) return;
+    Alert.alert('保存图片', '保存这张图片？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '保存',
+        onPress: async () => {
+          try { await saveImageToAlbum(url); flashToast('已保存到相册'); }
+          catch (e) { flashToast(e instanceof Error ? e.message : '保存失败'); }
+        },
+      },
+    ]);
+  }, [flashToast]);
 
   const handleCancel = useCallback(() => clientRef.current?.sendCancel(), []);
   const handleAnswer = useCallback((askId: string, answers: AnswerMap) => { clientRef.current?.sendReplyQuestion(askId, answers); }, []);
 
-  const flashToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2400); }, []);
   // 倒置列表里原生选中不可用，长按消息改为弹出可选中文本的面板（在正常层里选词复制 / 复制全部）。
   const [copyText, setCopyText] = useState<string | null>(null);
   const onCopy = useCallback((text: string) => setCopyText(text), []);
@@ -331,8 +386,8 @@ export default function TaskDetailScreen() {
 
   const onCmd = useCallback((key: CmdKey) => {
     if (restartBusy) return;
-    if (key === 'continue') handleSend('继续');
-    else if (key === 'compact') handleSend('/compact');
+    if (key === 'continue') handleSend('继续', false);
+    else if (key === 'compact') handleSend('/compact', false);
     else if (key === 'skill') {
       if ((liveStateRef.current?.availableCommands?.length ?? 0) === 0) { flashToast('当前没有可用技能指令'); return; }
       setSkillPickerOpen(true);
@@ -364,6 +419,8 @@ export default function TaskDetailScreen() {
 
   const canAnswer = !!interactive && !!streamConnected;
   const canSwitchModel = !!interactive && !roundRunning && models.length > 0;
+  const anyUploading = attachments.some((a) => a.status === 'uploading');
+  const canSend = !!input.trim() || attachments.some((a) => a.status === 'done');
   const title = task ? taskDisplayName(task, '任务详情') : '任务详情';
 
   // 上下文用量是“事件驱动”的：仅当收到 usage_update（size>0）时才更新；新一轮会重建 handler 把
@@ -446,11 +503,12 @@ export default function TaskDetailScreen() {
             data={reversed}
             inverted
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <StreamBlock message={item} canAnswer={canAnswer} onAnswer={handleAnswer} onCopy={onCopy} />}
+            renderItem={({ item }) => <StreamBlock message={item} canAnswer={canAnswer} onAnswer={handleAnswer} onCopy={onCopy} onSaveImage={onSaveImage} />}
             ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
             // inverted 下：paddingTop=视觉底部（贴近 composer），paddingBottom=视觉顶部（避开浮动 header）。
             contentContainerStyle={{ paddingTop: 14, paddingBottom: headerH + 12, paddingHorizontal: spacing.pad }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             onEndReached={loadEarlier}
             onEndReachedThreshold={0.4}
             // inverted 下 ListFooterComponent 渲染在视觉顶部 → 放“加载更早历史”的转圈。
@@ -509,7 +567,7 @@ export default function TaskDetailScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 9 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flex: 1 }} contentContainerStyle={{ gap: 7, paddingRight: 8, alignItems: 'center' }}>
                 {QUICK_PROMPTS.map((p) => (
-                  <Pressable key={p.label} disabled={!!restartBusy || sending} onPress={() => handleSend(p.text)}
+                  <Pressable key={p.label} disabled={!!restartBusy || sending} onPress={() => handleSend(p.text, false)}
                     style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9, backgroundColor: t.acGhost, opacity: (restartBusy || sending) ? 0.5 : 1 }}>
                     <Text style={{ color: t.acTx, fontSize: 12.5, fontWeight: '600' }}>{p.label}</Text>
                   </Pressable>
@@ -532,19 +590,44 @@ export default function TaskDetailScreen() {
               </Pressable>
             </View>
           )}
+          {attachments.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginBottom: 9 }} contentContainerStyle={{ gap: 10, paddingTop: 6, paddingRight: 6 }}>
+              {attachments.map((a) => (
+                <View key={a.key} style={{ width: 60, height: 60 }}>
+                  <Image source={{ uri: a.localUri }} style={{ width: 60, height: 60, borderRadius: 10, backgroundColor: t.bg3, opacity: a.status === 'done' ? 1 : 0.55 }} />
+                  {a.status === 'uploading' ? (
+                    <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.28)', borderRadius: 10 }]}>
+                      <Spinner size={18} color="#fff" sw={2.2} />
+                    </View>
+                  ) : a.status === 'error' ? (
+                    <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: t.redGhost, borderWidth: 1, borderColor: t.red, borderRadius: 10 }]}>
+                      <Icons.alert size={18} color={t.red} sw={2} />
+                    </View>
+                  ) : null}
+                  <Pressable onPress={() => removeAttachment(a.key)} hitSlop={8}
+                    style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 99, backgroundColor: t.bg, borderWidth: 1, borderColor: t.line2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: t.tx2, fontSize: 14, lineHeight: 16, fontWeight: '700' }}>×</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 9 }}>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: t.bg2, borderWidth: 1, borderColor: t.line2, borderRadius: 22, paddingLeft: 14, paddingRight: 6, minHeight: 44, opacity: roundRunning ? 0.6 : 1 }}>
-              <Icons.attach size={19} color={t.tx3} sw={1.8} />
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: t.bg2, borderWidth: 1, borderColor: (inputFocused || speech.active) ? t.ac : t.line2, borderRadius: 22, paddingLeft: 10, paddingRight: 6, minHeight: 44, opacity: roundRunning ? 0.6 : 1 }}>
+              <Pressable onPress={onAttach} disabled={roundRunning || sending || attachments.length >= MAX_ATTACHMENTS} hitSlop={8} style={{ paddingVertical: 4, paddingHorizontal: 2 }}>
+                <Icons.attach size={20} color={attachments.length >= MAX_ATTACHMENTS ? t.line2 : t.tx3} sw={1.8} />
+              </Pressable>
               <TextInput value={input} onChangeText={setInput} editable={!roundRunning && !sending && !speech.active}
+                onFocus={() => setInputFocused(true)} onBlur={() => setInputFocused(false)}
                 placeholder={speech.active ? '请说话…' : roundRunning ? '' : '继续这个任务…'} placeholderTextColor={speech.active ? t.acTx : t.tx3}
                 multiline style={{ flex: 1, color: t.tx, fontSize: 15, paddingVertical: 11, maxHeight: 120 }} />
               <MicButton status={speech.status} active={speech.active} onPress={onMic} disabled={roundRunning} idleColor={t.tx3} />
             </View>
             <Pressable
               onPress={roundRunning ? handleCancel : () => { if (speech.active) speech.stop(true); handleSend(input); }}
-              disabled={roundRunning ? false : (!input.trim() || sending)}
-              style={{ width: 44, height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', backgroundColor: roundRunning ? t.red : input.trim() ? t.ac : t.bg3 }}>
-              {roundRunning ? <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#fff' }} /> : sending ? <ActivityIndicator size="small" color={t.acInk} /> : <Icons.send size={20} color={input.trim() ? t.acInk : t.tx3} sw={2.2} />}
+              disabled={roundRunning ? false : (!canSend || sending || anyUploading)}
+              style={{ width: 44, height: 44, borderRadius: 99, alignItems: 'center', justifyContent: 'center', backgroundColor: roundRunning ? t.red : canSend ? t.ac : t.bg3 }}>
+              {roundRunning ? <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#fff' }} /> : sending ? <ActivityIndicator size="small" color={t.acInk} /> : <Icons.send size={20} color={canSend ? t.acInk : t.tx3} sw={2.2} />}
             </Pressable>
           </View>
         </Glass>

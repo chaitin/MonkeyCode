@@ -66,6 +66,20 @@
       ],
       "expo-sharing",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "用于选择图片作为对话附件发送给 AI"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "用于把对话中的图片保存到相册",
+          "photosPermission": false,
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "ios": { "buildReactNativeFromSource": true }
