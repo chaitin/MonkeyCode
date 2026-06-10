@@ -115,6 +115,101 @@ func TestListUserUpstreamsSkipsDisabledPlatformResources(t *testing.T) {
 	}
 }
 
+func TestListUserUpstreamsDefaultsUnsetPlatformToolSettingsToEnabled(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:user-mcp-upstreams-tool-settings?mode=memory&cache=shared&_fk=1")
+	t.Cleanup(func() { _ = client.Close() })
+
+	uid := uuid.New()
+	if _, err := client.User.Create().
+		SetID(uid).
+		SetName("tester").
+		SetRole(consts.UserRoleIndividual).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	upstreamID := uuid.New()
+	if _, err := client.MCPUpstream.Create().
+		SetID(upstreamID).
+		SetName("Platform Docs").
+		SetSlug("platform-docs").
+		SetScope("platform").
+		SetType("server").
+		SetURL("https://example.com/mcp").
+		SetHeaders(map[string]string{}).
+		Save(ctx); err != nil {
+		t.Fatalf("create upstream: %v", err)
+	}
+
+	closedToolID := uuid.New()
+	if _, err := client.MCPTool.Create().
+		SetID(closedToolID).
+		SetUpstreamID(upstreamID).
+		SetName("closed_docs").
+		SetNamespacedName("platform-docs__closed_docs").
+		SetScope("platform").
+		SetInputSchema(map[string]any{}).
+		SetEnabled(true).
+		Save(ctx); err != nil {
+		t.Fatalf("create closed tool: %v", err)
+	}
+
+	unsetToolID := uuid.New()
+	if _, err := client.MCPTool.Create().
+		SetID(unsetToolID).
+		SetUpstreamID(upstreamID).
+		SetName("search_docs").
+		SetNamespacedName("platform-docs__search_docs").
+		SetScope("platform").
+		SetInputSchema(map[string]any{}).
+		SetEnabled(true).
+		Save(ctx); err != nil {
+		t.Fatalf("create unset tool: %v", err)
+	}
+
+	if _, err := client.MCPUserToolSetting.Create().
+		SetID(uuid.New()).
+		SetUserID(uid).
+		SetToolID(closedToolID).
+		SetEnabled(false).
+		Save(ctx); err != nil {
+		t.Fatalf("create tool setting: %v", err)
+	}
+
+	cfg := &config.Config{}
+	cfg.Server.BaseURL = "https://monkeycode.example"
+	repo := &mcpRepo{db: client, cfg: cfg}
+	upstreams, err := repo.ListUserUpstreams(ctx, uid, domain.CursorReq{})
+	if err != nil {
+		t.Fatalf("ListUserUpstreams() error = %v", err)
+	}
+	if len(upstreams) == 0 {
+		t.Fatal("upstreams is empty, want platform aggregate upstream")
+	}
+
+	toolsByID := make(map[uuid.UUID]*domain.MCPTool)
+	for _, tool := range upstreams[0].Tools {
+		toolsByID[tool.ID] = tool
+	}
+
+	if toolsByID[closedToolID] == nil {
+		t.Fatalf("closed tool %s not found", closedToolID)
+	}
+	if toolsByID[closedToolID].Enabled {
+		t.Fatal("closed tool enabled = true, want false")
+	}
+	if toolsByID[unsetToolID] == nil {
+		t.Fatalf("unset tool %s not found", unsetToolID)
+	}
+	if !toolsByID[unsetToolID].Enabled {
+		t.Fatal("unset tool enabled = false, want true")
+	}
+}
+
 func TestDeleteUserUpstreamMarksDeletedAt(t *testing.T) {
 	t.Parallel()
 

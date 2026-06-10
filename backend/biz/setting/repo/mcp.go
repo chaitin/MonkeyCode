@@ -81,7 +81,11 @@ func (r *mcpRepo) ListUserUpstreams(ctx context.Context, uid uuid.UUID, _ domain
 		if u.Scope == mcpupstream.ScopePlatform {
 			tools := cvt.Iter(u.Edges.Tools, func(_ int, t *db.MCPTool) *domain.MCPTool {
 				tmp := cvt.From(t, &domain.MCPTool{})
-				tmp.Enabled = len(settings) == 0 || settings[t.ID]
+				if enabled, ok := settings[t.ID]; ok {
+					tmp.Enabled = enabled
+				} else {
+					tmp.Enabled = true
+				}
 				return tmp
 			})
 			platform.Tools = append(platform.Tools, tools...)
