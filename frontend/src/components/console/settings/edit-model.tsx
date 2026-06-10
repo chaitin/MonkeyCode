@@ -273,11 +273,11 @@ export default function EditModel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>修改 AI 大模型</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain pr-1">
           <Field>
             <FieldLabel>接口格式</FieldLabel>
             <FieldContent>

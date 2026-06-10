@@ -250,11 +250,11 @@ export default function AddModel({
       <DialogTrigger asChild>
         <Button variant={"outline"} size="sm">绑定</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>绑定 AI 大模型</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain pr-1">
           <Field>
             <FieldLabel>接口格式</FieldLabel>
             <FieldContent>
