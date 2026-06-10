@@ -101,7 +101,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   );
 
   // 用户已显式选定的身份（包括「我的仓库」精准带回、或选「匿名」）优先保留，
-  // 否则按 base_url 前缀 + hostname 推 platform 兜底自动匹配（覆盖 codeup/cnb）。
+  // 否则按 base_url 前缀 + hostname 推 platform 兜底自动匹配（覆盖 codeup/cnb/atomgit）。
   useEffect(() => {
     const userChoiceStillValid =
       selectedIdentityId === "none" ||
@@ -709,16 +709,19 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">匿名</SelectItem>
-                      {identities.filter((identity) => selectedRepo.startsWith(identity.base_url || '')).length > 0 ? (
-                        identities.filter((identity) => selectedRepo.startsWith(identity.base_url || '')).map((identity) => (
-                          <SelectItem key={identity.id} value={identity.id as string}>
-                            {getGitPlatformIcon(identity.platform || '')}
-                            {identity.remark || identity.username}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="unknown" disabled>该仓库未配置身份凭证</SelectItem>
-                      )}
+                      {(() => {
+                        const matched = findIdentitiesForRepoUrl(selectedRepo, identities);
+                        return matched.length > 0 ? (
+                          matched.map((identity) => (
+                            <SelectItem key={identity.id} value={identity.id as string}>
+                              {getGitPlatformIcon(identity.platform || '')}
+                              {identity.remark || identity.username}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="unknown" disabled>该仓库未配置身份凭证</SelectItem>
+                        );
+                      })()}
                     </SelectContent>
                   </Select>
                 </FieldContent>
