@@ -97,8 +97,8 @@ function About({ t }: { t: Theme }) {
     const r = await checkOta();
     setOtaBusy(null);
     if (r.status === 'disabled') { Alert.alert('检查更新', '开发模式下不可用，正式包才会检查更新。'); return; }
-    if (r.status === 'error') { Alert.alert('检查失败', r.message || '请检查网络后重试。'); return; }
-    if (r.status === 'none') { Alert.alert('已是最新', `当前已是最新版本 ${verLine}。`); return; }
+    // error（OTA 服务未上线/网络异常，拿不到有效数据）视为已是最新，不向用户报错
+    if (r.status === 'error' || r.status === 'none') { Alert.alert('已是最新', `当前已是最新版本 ${verLine}。`); return; }
     Alert.alert('发现新版本', '有新版本可用，是否立即更新？\n（更新后将自动重启）', [
       { text: '取消', style: 'cancel' },
       { text: '立即更新', onPress: applyOtaNow },

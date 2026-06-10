@@ -4,6 +4,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, Vi
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError, createTask, getSubscription, listImages, listModels, listProjects } from '@/api/client';
+import { AiConsentModal, useAiConsent } from '@/components/AiConsent';
 import type { Model, Project } from '@/api/types';
 import { ConcurrentLimitModal } from '@/components/ConcurrentLimitModal';
 import { Icons, providerIconForUrl } from '@/components/Icons';
@@ -37,6 +38,7 @@ export default function NewTaskScreen() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const aiConsent = useAiConsent(); // 新建任务会把内容发给 AI，需先取得数据处理同意（App Store 2.1）
   const params = useLocalSearchParams<{ repo?: string; repoName?: string; projectId?: string }>();
 
   const [models, setModels] = useState<Model[]>([]);
@@ -199,6 +201,9 @@ export default function NewTaskScreen() {
       <ModelSheet visible={picking === 'model'} models={models} selectedId={modelId}
         onPick={(k) => { setModelId(k); setPicking(null); }} onClose={() => setPicking(null)} />
       <ConcurrentLimitModal visible={limitOpen} onClose={() => setLimitOpen(false)} onStopped={() => { setLimitOpen(false); setTimeout(() => submit(), 400); }} />
+
+      {/* AI 数据处理同意：新建任务会把内容发给 AI，未同意则退出 */}
+      <AiConsentModal visible={aiConsent.status === 'needed'} onAgree={aiConsent.grant} onDecline={() => router.back()} />
     </KeyboardAvoidingView>
   );
 }
