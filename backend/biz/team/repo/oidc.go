@@ -114,6 +114,17 @@ func (r *TeamOIDCRepo) FindTeamMemberByEmail(ctx context.Context, teamID uuid.UU
 }
 
 func (r *TeamOIDCRepo) BindOIDCIdentity(ctx context.Context, userID uuid.UUID, external *domain.OIDCExternalUser) error {
+	identityID := oidc.IdentityID(external.Issuer, external.Subject)
+	exists, err := r.db.UserIdentity.Query().
+		Where(useridentity.PlatformEQ(consts.UserPlatformOIDC), useridentity.IdentityIDEQ(identityID)).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
 	name := external.Name
 	if name == "" {
 		name = external.Username
@@ -125,14 +136,10 @@ func (r *TeamOIDCRepo) BindOIDCIdentity(ctx context.Context, userID uuid.UUID, e
 		SetID(uuid.New()).
 		SetUserID(userID).
 		SetPlatform(consts.UserPlatformOIDC).
-		SetIdentityID(oidc.IdentityID(external.Issuer, external.Subject)).
+		SetIdentityID(identityID).
 		SetUsername(name).
 		SetEmail(external.Email).
 		SetAvatarURL(external.AvatarURL).
-		OnConflict(
-			sql.ConflictColumns(useridentity.FieldPlatform, useridentity.FieldIdentityID),
-			sql.ResolveWithIgnore(),
-		).
 		Exec(ctx)
 }
 

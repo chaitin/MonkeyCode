@@ -5,10 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 
+	"github.com/chaitin/MonkeyCode/backend/consts"
+	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/oidc"
 )
 
 func TestTeamOIDCConfigSchemaPersistsDefaults(t *testing.T) {
@@ -106,6 +112,77 @@ func TestTeamOIDCRepoAutoCreateMemberHonorsLimit(t *testing.T) {
 	_, err = r.AutoCreateMember(ctx, teamID, &domain.OIDCExternalUser{Email: "new@example.com", Name: "新成员"})
 	if err == nil {
 		t.Fatal("expected member limit error")
+	}
+}
+
+func TestTeamOIDCRepoBindOIDCIdentitySkipsCreateWhenIdentityExists(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	client := db.NewClient(db.Driver(entsql.OpenDB(dialect.Postgres, sqlDB)))
+	defer client.Close()
+
+	external := &domain.OIDCExternalUser{
+		Issuer:    "https://id.example.com",
+		Subject:   "sub-1",
+		Email:     "new@example.com",
+		Name:      "新成员",
+		AvatarURL: "https://id.example.com/avatar.png",
+	}
+	identityID := oidc.IdentityID(external.Issuer, external.Subject)
+	userID := uuid.New()
+
+	mock.ExpectQuery(`SELECT .* FROM "user_identities"`).
+		WithArgs(consts.UserPlatformOIDC, identityID).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uuid.New()))
+
+	r := &TeamOIDCRepo{db: client}
+	if err := r.BindOIDCIdentity(ctx, userID, external); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTeamOIDCRepoBindOIDCIdentityCreatesAfterExplicitLookup(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	client := db.NewClient(db.Driver(entsql.OpenDB(dialect.Postgres, sqlDB)))
+	defer client.Close()
+
+	external := &domain.OIDCExternalUser{
+		Issuer:    "https://id.example.com",
+		Subject:   "sub-1",
+		Email:     "new@example.com",
+		Name:      "新成员",
+		AvatarURL: "https://id.example.com/avatar.png",
+	}
+	identityID := oidc.IdentityID(external.Issuer, external.Subject)
+	userID := uuid.New()
+
+	mock.ExpectQuery(`SELECT .* FROM "user_identities"`).
+		WithArgs(consts.UserPlatformOIDC, identityID).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectExec(`INSERT INTO "user_identities" .* VALUES`).
+		WithArgs(consts.UserPlatformOIDC, identityID, external.Name, external.Email, external.AvatarURL, sqlmock.AnyArg(), userID, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	r := &TeamOIDCRepo{db: client}
+	if err := r.BindOIDCIdentity(ctx, userID, external); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
