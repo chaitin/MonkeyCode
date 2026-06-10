@@ -271,15 +271,11 @@ func (c *Codeup) CheckPAT(ctx context.Context, token, repoURL string) (bool, *do
 	if repo == nil || repo.ID == 0 {
 		return false, nil, fmt.Errorf("repository not found or token has no access")
 	}
-	web := repo.WebURL
-	if web == "" {
-		web = repo.HTTPCloneURL
-	}
 	return true, &domain.BindRepository{
 		RepoID:          fmt.Sprintf("%d", repo.ID),
 		RepoName:        repo.Name,
 		FullName:        firstNonEmpty(repo.PathWithNs, repo.NameWithNs, identity),
-		RepoURL:         web,
+		RepoURL:         ensureCloneURL(repo.WebURL, repo.HTTPCloneURL),
 		RepoDescription: repo.Description,
 		IsPrivate:       strings.EqualFold(repo.Visibility, "private"),
 		Platform:        "codeup",
@@ -328,7 +324,7 @@ func (c *Codeup) Repositories(ctx context.Context, opts *domain.RepositoryOption
 		for _, r := range *repos {
 			result = append(result, domain.AuthRepository{
 				FullName:    firstNonEmpty(r.PathWithNs, r.NameWithNs, r.Name),
-				URL:         firstNonEmpty(r.WebURL, r.HTTPCloneURL),
+				URL:         ensureCloneURL(r.WebURL, r.HTTPCloneURL),
 				Description: r.Description,
 			})
 		}
@@ -391,4 +387,22 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// ensureCloneURL 返回可被 git clone 使用的仓库 URL。
+//
+// 云效 Codeup 比较严格：仓库 URL 不带 .git 后缀时 git clone 会失败。OpenAPI 同时返回
+// webUrl（站点 URL，无 .git）和 httpCloneUrl（克隆 URL，含 .git），但列表接口里 httpCloneUrl
+// 不保证返回，所以优先用 httpCloneUrl，回退到 webUrl 时补上 .git。
+func ensureCloneURL(webURL, httpCloneURL string) string {
+	if httpCloneURL != "" {
+		return httpCloneURL
+	}
+	if webURL == "" {
+		return ""
+	}
+	if strings.HasSuffix(webURL, ".git") {
+		return webURL
+	}
+	return webURL + ".git"
 }
