@@ -52,6 +52,7 @@ func (r *GitIdentityRepo) Create(ctx context.Context, uid uuid.UUID, req *domain
 		SetUsername(req.Username).
 		SetEmail(req.Email).
 		SetRemark(req.Remark).
+		SetOrganizationID(req.OrganizationID).
 		Save(ctx)
 }
 
@@ -81,6 +82,9 @@ func (r *GitIdentityRepo) Update(ctx context.Context, uid uuid.UUID, id uuid.UUI
 	}
 	if req.OAuthExpiresAt != nil {
 		upt.SetOauthExpiresAt(*req.OAuthExpiresAt)
+	}
+	if req.OrganizationID != nil {
+		upt.SetOrganizationID(*req.OrganizationID)
 	}
 	return upt.Exec(ctx)
 }

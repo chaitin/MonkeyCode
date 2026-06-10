@@ -31,6 +31,8 @@ const (
 	FieldEmail = "email"
 	// FieldInstallationID holds the string denoting the installation_id field in the database.
 	FieldInstallationID = "installation_id"
+	// FieldOrganizationID holds the string denoting the organization_id field in the database.
+	FieldOrganizationID = "organization_id"
 	// FieldRemark holds the string denoting the remark field in the database.
 	FieldRemark = "remark"
 	// FieldOauthRefreshToken holds the string denoting the oauth_refresh_token field in the database.
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldUsername,
 	FieldEmail,
 	FieldInstallationID,
+	FieldOrganizationID,
 	FieldRemark,
 	FieldOauthRefreshToken,
 	FieldOauthExpiresAt,
@@ -171,6 +174,11 @@ func ByEmail(opts ...sql.OrderTermOption) OrderOption {
 // ByInstallationID orders the results by the installation_id field.
 func ByInstallationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldInstallationID, opts...).ToFunc()
+}
+
+// ByOrganizationID orders the results by the organization_id field.
+func ByOrganizationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOrganizationID, opts...).ToFunc()
 }
 
 // ByRemark orders the results by the remark field.

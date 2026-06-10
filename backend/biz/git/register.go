@@ -22,6 +22,7 @@ func ProvideGit(i *do.Injector) {
 	do.Provide(i, v1.NewGitlabWebhookHandler)
 	do.Provide(i, v1.NewGiteeWebhookHandler)
 	do.Provide(i, v1.NewGiteaWebhookHandler)
+	do.Provide(i, v1.NewCodeupWebhookHandler)
 }
 
 // InvokeGit 触发 git 模块的 handler 初始化
@@ -32,4 +33,5 @@ func InvokeGit(i *do.Injector) {
 	do.MustInvoke[*v1.GitlabWebhookHandler](i)
 	do.MustInvoke[*v1.GiteeWebhookHandler](i)
 	do.MustInvoke[*v1.GiteaWebhookHandler](i)
+	do.MustInvoke[*v1.CodeupWebhookHandler](i)
 }

@@ -99,11 +99,11 @@ func init() {
 	gitidentityFields := schema.GitIdentity{}.Fields()
 	_ = gitidentityFields
 	// gitidentityDescCreatedAt is the schema descriptor for created_at field.
-	gitidentityDescCreatedAt := gitidentityFields[11].Descriptor()
+	gitidentityDescCreatedAt := gitidentityFields[12].Descriptor()
 	// gitidentity.DefaultCreatedAt holds the default value on creation for the created_at field.
 	gitidentity.DefaultCreatedAt = gitidentityDescCreatedAt.Default.(func() time.Time)
 	// gitidentityDescUpdatedAt is the schema descriptor for updated_at field.
-	gitidentityDescUpdatedAt := gitidentityFields[12].Descriptor()
+	gitidentityDescUpdatedAt := gitidentityFields[13].Descriptor()
 	// gitidentity.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	gitidentity.DefaultUpdatedAt = gitidentityDescUpdatedAt.Default.(func() time.Time)
 	// gitidentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

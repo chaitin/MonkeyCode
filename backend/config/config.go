@@ -68,6 +68,9 @@ type Config struct {
 	Gitlab GitlabConfig `mapstructure:"gitlab"`
 	Gitea  GiteaConfig  `mapstructure:"gitea"`
 	Gitee  GiteeConfig  `mapstructure:"gitee"`
+	Codeup  CodeupConfig  `mapstructure:"codeup"`
+	Cnb     CnbConfig     `mapstructure:"cnb"`
+	Atomgit AtomgitConfig `mapstructure:"atomgit"`
 
 	// 微信配置（开放平台 OAuth 登录 + 公众号消息推送）
 	Wechat WechatConfig `mapstructure:"wechat"`
@@ -472,6 +475,59 @@ type GiteeOAuthConfig struct {
 	RedirectURL  string `mapstructure:"redirect_url"`
 }
 
+// CodeupConfig 阿里云云效 Codeup 配置
+type CodeupConfig struct {
+	// OpenAPI 域名（默认 https://openapi-rdc.aliyuncs.com，专有云可覆盖）
+	BaseURL string            `mapstructure:"base_url"`
+	Enabled bool              `mapstructure:"enabled"`
+	OAuth   CodeupOAuthConfig `mapstructure:"oauth"`
+}
+
+// CodeupOAuthConfig Codeup OAuth 配置（走阿里云账号 OAuth2）
+//
+// ⚠️ 暂未启用：云效 OAuth（POST /login/oauth/create）官方仍在内测，且响应不返回
+// refresh_token / expires_in，与现有 OAuth2 刷新模型不兼容。当前 codeup 一律走 PAT
+// 模式（identity.AccessToken 存用户填写的 PAT）。等云效放开公网接入并补齐响应字段后，
+// 再补 Authorize/Callback handler 和 token 持久化逻辑。
+type CodeupOAuthConfig struct {
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	RedirectURL  string `mapstructure:"redirect_url"`
+	// TokenURL 阿里云 OAuth2 token endpoint，默认 https://account.aliyun.com/oauth2/v1/token
+	TokenURL string `mapstructure:"token_url"`
+	// AuthorizeURL 阿里云 OAuth2 authorize endpoint，默认 https://account.aliyun.com/oauth2/v1/auth
+	AuthorizeURL string `mapstructure:"authorize_url"`
+}
+
+// CnbConfig 腾讯 CNB (cnb.cool) 配置
+type CnbConfig struct {
+	// OpenAPI 域名（默认 https://api.cnb.cool）
+	BaseURL string `mapstructure:"base_url"`
+	// Web 域名（默认 https://cnb.cool，OAuth authorize / token endpoint 走这个）
+	WebBaseURL string         `mapstructure:"web_base_url"`
+	Enabled    bool           `mapstructure:"enabled"`
+	OAuth      CnbOAuthConfig `mapstructure:"oauth"`
+}
+
+// CnbOAuthConfig CNB OAuth2 配置（标准授权码模式 + refresh_token）
+type CnbOAuthConfig struct {
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	RedirectURL  string `mapstructure:"redirect_url"`
+	// Scope 默认 "repo-basic-info repo-code account-profile"
+	Scope string `mapstructure:"scope"`
+}
+
+// AtomgitConfig atomgit (https://atomgit.com) 配置
+//
+// 当前实现仅支持 PAT 模式; OAuth authorize/callback 链路待补 (token endpoint 已在文档中:
+// POST https://api.atomgit.com/login/oauth/access_token, refresh_token 也走该地址)。
+type AtomgitConfig struct {
+	// OpenAPI 域名（默认 https://api.atomgit.com）
+	BaseURL string `mapstructure:"base_url"`
+	Enabled bool   `mapstructure:"enabled"`
+}
+
 // IsGithubEnabled 检查 GitHub 是否启用
 func (c *Config) IsGithubEnabled() bool {
 	return c.Github.Enabled
@@ -610,6 +666,113 @@ func (c *Config) GetGiteeOAuthRedirectURL() string {
 		return c.Gitee.OAuth.RedirectURL
 	}
 	return c.Server.BaseURL + "/api/v1/oauth/gitee/callback"
+}
+
+// IsCodeupEnabled 检查 Codeup 是否启用
+func (c *Config) IsCodeupEnabled() bool {
+	return c.Codeup.Enabled
+}
+
+// GetCodeupBaseURL 获取 Codeup OpenAPI 域名（默认公共站）
+func (c *Config) GetCodeupBaseURL() string {
+	if c.Codeup.BaseURL != "" {
+		return c.Codeup.BaseURL
+	}
+	return "https://openapi-rdc.aliyuncs.com"
+}
+
+// GetCodeupOAuthClientID 获取 Codeup OAuth Client ID
+func (c *Config) GetCodeupOAuthClientID() string {
+	return c.Codeup.OAuth.ClientID
+}
+
+// GetCodeupOAuthClientSecret 获取 Codeup OAuth Client Secret
+func (c *Config) GetCodeupOAuthClientSecret() string {
+	return c.Codeup.OAuth.ClientSecret
+}
+
+// GetCodeupOAuthRedirectURL 获取 Codeup OAuth Redirect URL
+func (c *Config) GetCodeupOAuthRedirectURL() string {
+	if c.Codeup.OAuth.RedirectURL != "" {
+		return c.Codeup.OAuth.RedirectURL
+	}
+	return c.Server.BaseURL + "/api/v1/oauth/codeup/callback"
+}
+
+// GetCodeupOAuthTokenURL 获取 Codeup OAuth token endpoint（默认阿里云账号通用网关）
+func (c *Config) GetCodeupOAuthTokenURL() string {
+	if c.Codeup.OAuth.TokenURL != "" {
+		return c.Codeup.OAuth.TokenURL
+	}
+	return "https://account.aliyun.com/oauth2/v1/token"
+}
+
+// GetCodeupOAuthAuthorizeURL 获取 Codeup OAuth authorize endpoint
+func (c *Config) GetCodeupOAuthAuthorizeURL() string {
+	if c.Codeup.OAuth.AuthorizeURL != "" {
+		return c.Codeup.OAuth.AuthorizeURL
+	}
+	return "https://account.aliyun.com/oauth2/v1/auth"
+}
+
+// IsCnbEnabled 检查 CNB 是否启用
+func (c *Config) IsCnbEnabled() bool {
+	return c.Cnb.Enabled
+}
+
+// GetCnbBaseURL 获取 CNB OpenAPI 域名（默认 https://api.cnb.cool）
+func (c *Config) GetCnbBaseURL() string {
+	if c.Cnb.BaseURL != "" {
+		return c.Cnb.BaseURL
+	}
+	return "https://api.cnb.cool"
+}
+
+// GetCnbWebBaseURL 获取 CNB Web 域名（OAuth authorize/token 走此域名）
+func (c *Config) GetCnbWebBaseURL() string {
+	if c.Cnb.WebBaseURL != "" {
+		return c.Cnb.WebBaseURL
+	}
+	return "https://cnb.cool"
+}
+
+// GetCnbOAuthClientID 获取 CNB OAuth Client ID
+func (c *Config) GetCnbOAuthClientID() string {
+	return c.Cnb.OAuth.ClientID
+}
+
+// GetCnbOAuthClientSecret 获取 CNB OAuth Client Secret
+func (c *Config) GetCnbOAuthClientSecret() string {
+	return c.Cnb.OAuth.ClientSecret
+}
+
+// GetCnbOAuthRedirectURL 获取 CNB OAuth Redirect URL
+func (c *Config) GetCnbOAuthRedirectURL() string {
+	if c.Cnb.OAuth.RedirectURL != "" {
+		return c.Cnb.OAuth.RedirectURL
+	}
+	return c.Server.BaseURL + "/api/v1/oauth/cnb/callback"
+}
+
+// GetCnbOAuthScope 获取 CNB OAuth scope（多 scope 空格分隔）
+func (c *Config) GetCnbOAuthScope() string {
+	if c.Cnb.OAuth.Scope != "" {
+		return c.Cnb.OAuth.Scope
+	}
+	return "repo-basic-info repo-code account-profile"
+}
+
+// IsAtomgitEnabled 检查 atomgit 是否启用
+func (c *Config) IsAtomgitEnabled() bool {
+	return c.Atomgit.Enabled
+}
+
+// GetAtomgitBaseURL 获取 atomgit OpenAPI 域名（默认 https://api.atomgit.com）
+func (c *Config) GetAtomgitBaseURL() string {
+	if c.Atomgit.BaseURL != "" {
+		return c.Atomgit.BaseURL
+	}
+	return "https://api.atomgit.com"
 }
 
 // WechatConfig 微信配置（包含开放平台和公众号两部分）

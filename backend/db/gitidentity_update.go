@@ -190,6 +190,26 @@ func (_u *GitIdentityUpdate) ClearInstallationID() *GitIdentityUpdate {
 	return _u
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_u *GitIdentityUpdate) SetOrganizationID(v string) *GitIdentityUpdate {
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *GitIdentityUpdate) SetNillableOrganizationID(v *string) *GitIdentityUpdate {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *GitIdentityUpdate) ClearOrganizationID() *GitIdentityUpdate {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
 // SetRemark sets the "remark" field.
 func (_u *GitIdentityUpdate) SetRemark(v string) *GitIdentityUpdate {
 	_u.mutation.SetRemark(v)
@@ -503,6 +523,12 @@ func (_u *GitIdentityUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.InstallationIDCleared() {
 		_spec.ClearField(gitidentity.FieldInstallationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(gitidentity.FieldOrganizationID, field.TypeString, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(gitidentity.FieldOrganizationID, field.TypeString)
 	}
 	if value, ok := _u.mutation.Remark(); ok {
 		_spec.SetField(gitidentity.FieldRemark, field.TypeString, value)
@@ -869,6 +895,26 @@ func (_u *GitIdentityUpdateOne) ClearInstallationID() *GitIdentityUpdateOne {
 	return _u
 }
 
+// SetOrganizationID sets the "organization_id" field.
+func (_u *GitIdentityUpdateOne) SetOrganizationID(v string) *GitIdentityUpdateOne {
+	_u.mutation.SetOrganizationID(v)
+	return _u
+}
+
+// SetNillableOrganizationID sets the "organization_id" field if the given value is not nil.
+func (_u *GitIdentityUpdateOne) SetNillableOrganizationID(v *string) *GitIdentityUpdateOne {
+	if v != nil {
+		_u.SetOrganizationID(*v)
+	}
+	return _u
+}
+
+// ClearOrganizationID clears the value of the "organization_id" field.
+func (_u *GitIdentityUpdateOne) ClearOrganizationID() *GitIdentityUpdateOne {
+	_u.mutation.ClearOrganizationID()
+	return _u
+}
+
 // SetRemark sets the "remark" field.
 func (_u *GitIdentityUpdateOne) SetRemark(v string) *GitIdentityUpdateOne {
 	_u.mutation.SetRemark(v)
@@ -1212,6 +1258,12 @@ func (_u *GitIdentityUpdateOne) sqlSave(ctx context.Context) (_node *GitIdentity
 	}
 	if _u.mutation.InstallationIDCleared() {
 		_spec.ClearField(gitidentity.FieldInstallationID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.OrganizationID(); ok {
+		_spec.SetField(gitidentity.FieldOrganizationID, field.TypeString, value)
+	}
+	if _u.mutation.OrganizationIDCleared() {
+		_spec.ClearField(gitidentity.FieldOrganizationID, field.TypeString)
 	}
 	if value, ok := _u.mutation.Remark(); ok {
 		_spec.SetField(gitidentity.FieldRemark, field.TypeString, value)

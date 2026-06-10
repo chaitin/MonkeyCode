@@ -478,6 +478,9 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		git.Email = identity.Email
 	}
 
+	// 打印一下 codeup 的 git 凭证我要看看为什么没有 clone 下来
+	a.logger.InfoContext(ctx, "codeup git identity is", git)
+
 	limit := 1
 	if a.taskHook != nil {
 		if req.SystemPrompt == "" {

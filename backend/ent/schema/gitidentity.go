@@ -42,6 +42,7 @@ func (GitIdentity) Fields() []ent.Field {
 		field.String("username").Optional(),
 		field.String("email").Optional(),
 		field.Int64("installation_id").Optional(),
+		field.String("organization_id").Optional(),
 		field.String("remark").Optional(),
 		field.String("oauth_refresh_token").Optional(),
 		field.Time("oauth_expires_at").Optional().Nillable(),

@@ -70,6 +70,7 @@ var (
 	ErrRepoAlreadyLinked          = web.NewErr(http.StatusOK, 10406, "err-repo-already-linked")
 	ErrGitIdentityInUseByProject  = web.NewErr(http.StatusOK, 10407, "err-git-identity-in-use-by-project")
 	ErrForbiddenBaseURL           = web.NewErr(http.StatusOK, 10408, "err-forbidden-base-url")
+	ErrCodeupOAuthNotSupported    = web.NewErr(http.StatusOK, 10409, "err-codeup-oauth-not-supported")
 
 	// 团队管理
 	ErrTeamMemberLimitExceeded = web.NewErr(http.StatusOK, 10500, "err-team-member-limit-exceeded")
