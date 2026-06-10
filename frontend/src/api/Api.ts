@@ -201,6 +201,7 @@ export enum ConstsUserPlatform {
   UserPlatformGitLab = "gitlab",
   UserPlatformGitea = "gitea",
   UserPlatformGitee = "gitee",
+  UserPlatformOIDC = "oidc",
 }
 
 export enum ConstsUserRole {
@@ -1906,6 +1907,51 @@ export interface DomainUpdateTeamOAuthSiteReq {
   proxy_url?: string;
 }
 
+export interface DomainSaveTeamOIDCConfigReq {
+  allow_password_login?: boolean;
+  auto_create_member?: boolean;
+  client_id: string;
+  client_secret?: string;
+  display_name: string;
+  email_domain?: string;
+  enabled?: boolean;
+  issuer: string;
+  scopes?: string;
+}
+
+export interface DomainTeamOIDCConfig {
+  allow_password_login?: boolean;
+  auto_create_member?: boolean;
+  client_id?: string;
+  display_name?: string;
+  email_domain?: string;
+  enabled?: boolean;
+  has_client_secret?: boolean;
+  id?: string;
+  issuer?: string;
+  login_url?: string;
+  redirect_uri?: string;
+  scopes?: string;
+  team_id?: string;
+}
+
+export interface DomainTeamOIDCConfigResp {
+  config?: DomainTeamOIDCConfig;
+}
+
+export interface DomainTeamOIDCPublicConfigResp {
+  display_name?: string;
+  enabled?: boolean;
+  login_url?: string;
+  team_id?: string;
+}
+
+export interface DomainTeamOIDCTestResp {
+  issuer?: string;
+  message?: string;
+  success?: boolean;
+}
+
 export interface DomainUpdateTeamUserReq {
   is_blocked?: boolean;
 }
@@ -3447,6 +3493,80 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/images/${imageId}`,
         method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取当前团队企业登录 OIDC 配置
+     *
+     * @tags 【Team 管理员】企业登录
+     * @name V1TeamsOidcList
+     * @summary 获取团队 OIDC 配置
+     * @request GET:/api/v1/teams/oidc
+     * @secure
+     */
+    v1TeamsOidcList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamOIDCConfigResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/oidc`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 新增或更新当前团队企业登录 OIDC 配置
+     *
+     * @tags 【Team 管理员】企业登录
+     * @name V1TeamsOidcUpdate
+     * @summary 保存团队 OIDC 配置
+     * @request PUT:/api/v1/teams/oidc
+     * @secure
+     */
+    v1TeamsOidcUpdate: (req: DomainSaveTeamOIDCConfigReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamOIDCConfigResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/oidc`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 拉取 OIDC discovery 文档验证配置可用性
+     *
+     * @tags 【Team 管理员】企业登录
+     * @name V1TeamsOidcTestCreate
+     * @summary 测试团队 OIDC 配置
+     * @request POST:/api/v1/teams/oidc/test
+     * @secure
+     */
+    v1TeamsOidcTestCreate: (req: DomainSaveTeamOIDCConfigReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamOIDCTestResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/oidc/test`,
+        method: "POST",
+        body: req,
         secure: true,
         type: ContentType.Json,
         format: "json",
@@ -5248,6 +5368,73 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         method: "GET",
         query: query,
         type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 处理身份源回调并创建 MonkeyCode 登录会话
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcCallbackList
+     * @summary 处理团队 OIDC 回调
+     * @request GET:/api/v1/users/oidc/callback
+     */
+    v1UsersOidcCallbackList: (
+      query: {
+        code: string;
+        state: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<any, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/oidc/callback`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 根据 team_id 跳转到团队 OIDC 身份源
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcLoginList
+     * @summary 发起团队 OIDC 登录
+     * @request GET:/api/v1/users/oidc/login
+     */
+    v1UsersOidcLoginList: (
+      query: {
+        team_id: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<any, GithubComGoYokoWebResp>({
+        path: `/api/v1/users/oidc/login`,
+        method: "GET",
+        query: query,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description 用于团队专属登录页展示企业登录入口
+     *
+     * @tags 【用户】企业团队成员认证
+     * @name V1UsersOidcTeamsDetail
+     * @summary 获取团队公开 OIDC 登录配置
+     * @request GET:/api/v1/users/oidc/teams/{team_id}
+     */
+    v1UsersOidcTeamsDetail: (teamId: string, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamOIDCPublicConfigResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/oidc/teams/${teamId}`,
+        method: "GET",
+        type: ContentType.Json,
+        format: "json",
         ...params,
       }),
 

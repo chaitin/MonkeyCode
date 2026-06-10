@@ -53,6 +53,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -139,6 +140,8 @@ type Client struct {
 	TeamMember *TeamMemberClient
 	// TeamModel is the client for interacting with the TeamModel builders.
 	TeamModel *TeamModelClient
+	// TeamOIDCConfig is the client for interacting with the TeamOIDCConfig builders.
+	TeamOIDCConfig *TeamOIDCConfigClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -193,6 +196,7 @@ func (c *Client) init() {
 	c.TeamImage = NewTeamImageClient(c.config)
 	c.TeamMember = NewTeamMemberClient(c.config)
 	c.TeamModel = NewTeamModelClient(c.config)
+	c.TeamOIDCConfig = NewTeamOIDCConfigClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserIdentity = NewUserIdentityClient(c.config)
 	c.VirtualMachine = NewVirtualMachineClient(c.config)
@@ -325,6 +329,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TeamImage:           NewTeamImageClient(cfg),
 		TeamMember:          NewTeamMemberClient(cfg),
 		TeamModel:           NewTeamModelClient(cfg),
+		TeamOIDCConfig:      NewTeamOIDCConfigClient(cfg),
 		User:                NewUserClient(cfg),
 		UserIdentity:        NewUserIdentityClient(cfg),
 		VirtualMachine:      NewVirtualMachineClient(cfg),
@@ -384,6 +389,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TeamImage:           NewTeamImageClient(cfg),
 		TeamMember:          NewTeamMemberClient(cfg),
 		TeamModel:           NewTeamModelClient(cfg),
+		TeamOIDCConfig:      NewTeamOIDCConfigClient(cfg),
 		User:                NewUserClient(cfg),
 		UserIdentity:        NewUserIdentityClient(cfg),
 		VirtualMachine:      NewVirtualMachineClient(cfg),
@@ -423,8 +429,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
 		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
 		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
-		c.VirtualMachine,
+		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
+		c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -441,8 +447,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
 		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
 		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.User, c.UserIdentity,
-		c.VirtualMachine,
+		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
+		c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -525,6 +531,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TeamMember.mutate(ctx, m)
 	case *TeamModelMutation:
 		return c.TeamModel.mutate(ctx, m)
+	case *TeamOIDCConfigMutation:
+		return c.TeamOIDCConfig.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *UserIdentityMutation:
@@ -7379,6 +7387,155 @@ func (c *TeamModelClient) mutate(ctx context.Context, m *TeamModelMutation) (Val
 	}
 }
 
+// TeamOIDCConfigClient is a client for the TeamOIDCConfig schema.
+type TeamOIDCConfigClient struct {
+	config
+}
+
+// NewTeamOIDCConfigClient returns a client for the TeamOIDCConfig from the given config.
+func NewTeamOIDCConfigClient(c config) *TeamOIDCConfigClient {
+	return &TeamOIDCConfigClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamoidcconfig.Hooks(f(g(h())))`.
+func (c *TeamOIDCConfigClient) Use(hooks ...Hook) {
+	c.hooks.TeamOIDCConfig = append(c.hooks.TeamOIDCConfig, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamoidcconfig.Intercept(f(g(h())))`.
+func (c *TeamOIDCConfigClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamOIDCConfig = append(c.inters.TeamOIDCConfig, interceptors...)
+}
+
+// Create returns a builder for creating a TeamOIDCConfig entity.
+func (c *TeamOIDCConfigClient) Create() *TeamOIDCConfigCreate {
+	mutation := newTeamOIDCConfigMutation(c.config, OpCreate)
+	return &TeamOIDCConfigCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamOIDCConfig entities.
+func (c *TeamOIDCConfigClient) CreateBulk(builders ...*TeamOIDCConfigCreate) *TeamOIDCConfigCreateBulk {
+	return &TeamOIDCConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamOIDCConfigClient) MapCreateBulk(slice any, setFunc func(*TeamOIDCConfigCreate, int)) *TeamOIDCConfigCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamOIDCConfigCreateBulk{err: fmt.Errorf("calling to TeamOIDCConfigClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamOIDCConfigCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamOIDCConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamOIDCConfig.
+func (c *TeamOIDCConfigClient) Update() *TeamOIDCConfigUpdate {
+	mutation := newTeamOIDCConfigMutation(c.config, OpUpdate)
+	return &TeamOIDCConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamOIDCConfigClient) UpdateOne(_m *TeamOIDCConfig) *TeamOIDCConfigUpdateOne {
+	mutation := newTeamOIDCConfigMutation(c.config, OpUpdateOne, withTeamOIDCConfig(_m))
+	return &TeamOIDCConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamOIDCConfigClient) UpdateOneID(id uuid.UUID) *TeamOIDCConfigUpdateOne {
+	mutation := newTeamOIDCConfigMutation(c.config, OpUpdateOne, withTeamOIDCConfigID(id))
+	return &TeamOIDCConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamOIDCConfig.
+func (c *TeamOIDCConfigClient) Delete() *TeamOIDCConfigDelete {
+	mutation := newTeamOIDCConfigMutation(c.config, OpDelete)
+	return &TeamOIDCConfigDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamOIDCConfigClient) DeleteOne(_m *TeamOIDCConfig) *TeamOIDCConfigDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamOIDCConfigClient) DeleteOneID(id uuid.UUID) *TeamOIDCConfigDeleteOne {
+	builder := c.Delete().Where(teamoidcconfig.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamOIDCConfigDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamOIDCConfig.
+func (c *TeamOIDCConfigClient) Query() *TeamOIDCConfigQuery {
+	return &TeamOIDCConfigQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamOIDCConfig},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamOIDCConfig entity by its id.
+func (c *TeamOIDCConfigClient) Get(ctx context.Context, id uuid.UUID) (*TeamOIDCConfig, error) {
+	return c.Query().Where(teamoidcconfig.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamOIDCConfigClient) GetX(ctx context.Context, id uuid.UUID) *TeamOIDCConfig {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTeam queries the team edge of a TeamOIDCConfig.
+func (c *TeamOIDCConfigClient) QueryTeam(_m *TeamOIDCConfig) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamoidcconfig.Table, teamoidcconfig.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamoidcconfig.TeamTable, teamoidcconfig.TeamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamOIDCConfigClient) Hooks() []Hook {
+	return c.hooks.TeamOIDCConfig
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamOIDCConfigClient) Interceptors() []Interceptor {
+	return c.inters.TeamOIDCConfig
+}
+
+func (c *TeamOIDCConfigClient) mutate(ctx context.Context, m *TeamOIDCConfigMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamOIDCConfigCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamOIDCConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamOIDCConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamOIDCConfigDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamOIDCConfig mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -8241,7 +8398,8 @@ type (
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
 		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity, VirtualMachine []ent.Hook
+		TeamImage, TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
+		VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
@@ -8250,7 +8408,7 @@ type (
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
 		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, User, UserIdentity,
+		TeamImage, TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
 		VirtualMachine []ent.Interceptor
 	}
 )

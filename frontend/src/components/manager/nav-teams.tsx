@@ -8,7 +8,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
-import { Bot, Box, FolderGit2, LayoutDashboard, ListTodo, MessagesSquare, MonitorCloud, User } from "lucide-react"
+import { Bot, Box, FolderGit2, LayoutDashboard, ListTodo, MessagesSquare, MonitorCloud, ShieldCheck, User } from "lucide-react"
 
 export default function NavTeams() {
   const location = useLocation()
@@ -113,6 +113,17 @@ export default function NavTeams() {
             <Link to="/manager/manager">
               <User />
               <span>管理员</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/oidc"}
+            asChild
+          >
+            <Link to="/manager/oidc">
+              <ShieldCheck />
+              <span>企业登录</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

@@ -50,6 +50,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -103,6 +104,7 @@ const (
 	TypeTeamImage           = "TeamImage"
 	TypeTeamMember          = "TeamMember"
 	TypeTeamModel           = "TeamModel"
+	TypeTeamOIDCConfig      = "TeamOIDCConfig"
 	TypeUser                = "User"
 	TypeUserIdentity        = "UserIdentity"
 	TypeVirtualMachine      = "VirtualMachine"
@@ -36384,6 +36386,1027 @@ func (m *TeamModelMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown TeamModel edge %s", name)
+}
+
+// TeamOIDCConfigMutation represents an operation that mutates the TeamOIDCConfig nodes in the graph.
+type TeamOIDCConfigMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *uuid.UUID
+	enabled                  *bool
+	display_name             *string
+	issuer                   *string
+	client_id                *string
+	client_secret_ciphertext *string
+	scopes                   *string
+	email_domain             *string
+	auto_create_member       *bool
+	allow_password_login     *bool
+	created_at               *time.Time
+	updated_at               *time.Time
+	clearedFields            map[string]struct{}
+	team                     *uuid.UUID
+	clearedteam              bool
+	done                     bool
+	oldValue                 func(context.Context) (*TeamOIDCConfig, error)
+	predicates               []predicate.TeamOIDCConfig
+}
+
+var _ ent.Mutation = (*TeamOIDCConfigMutation)(nil)
+
+// teamoidcconfigOption allows management of the mutation configuration using functional options.
+type teamoidcconfigOption func(*TeamOIDCConfigMutation)
+
+// newTeamOIDCConfigMutation creates new mutation for the TeamOIDCConfig entity.
+func newTeamOIDCConfigMutation(c config, op Op, opts ...teamoidcconfigOption) *TeamOIDCConfigMutation {
+	m := &TeamOIDCConfigMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeamOIDCConfig,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeamOIDCConfigID sets the ID field of the mutation.
+func withTeamOIDCConfigID(id uuid.UUID) teamoidcconfigOption {
+	return func(m *TeamOIDCConfigMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TeamOIDCConfig
+		)
+		m.oldValue = func(ctx context.Context) (*TeamOIDCConfig, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TeamOIDCConfig.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeamOIDCConfig sets the old TeamOIDCConfig of the mutation.
+func withTeamOIDCConfig(node *TeamOIDCConfig) teamoidcconfigOption {
+	return func(m *TeamOIDCConfigMutation) {
+		m.oldValue = func(context.Context) (*TeamOIDCConfig, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeamOIDCConfigMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeamOIDCConfigMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TeamOIDCConfig entities.
+func (m *TeamOIDCConfigMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeamOIDCConfigMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeamOIDCConfigMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TeamOIDCConfig.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTeamID sets the "team_id" field.
+func (m *TeamOIDCConfigMutation) SetTeamID(u uuid.UUID) {
+	m.team = &u
+}
+
+// TeamID returns the value of the "team_id" field in the mutation.
+func (m *TeamOIDCConfigMutation) TeamID() (r uuid.UUID, exists bool) {
+	v := m.team
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamID returns the old "team_id" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamID: %w", err)
+	}
+	return oldValue.TeamID, nil
+}
+
+// ResetTeamID resets all changes to the "team_id" field.
+func (m *TeamOIDCConfigMutation) ResetTeamID() {
+	m.team = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *TeamOIDCConfigMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *TeamOIDCConfigMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *TeamOIDCConfigMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetDisplayName sets the "display_name" field.
+func (m *TeamOIDCConfigMutation) SetDisplayName(s string) {
+	m.display_name = &s
+}
+
+// DisplayName returns the value of the "display_name" field in the mutation.
+func (m *TeamOIDCConfigMutation) DisplayName() (r string, exists bool) {
+	v := m.display_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisplayName returns the old "display_name" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldDisplayName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayName: %w", err)
+	}
+	return oldValue.DisplayName, nil
+}
+
+// ResetDisplayName resets all changes to the "display_name" field.
+func (m *TeamOIDCConfigMutation) ResetDisplayName() {
+	m.display_name = nil
+}
+
+// SetIssuer sets the "issuer" field.
+func (m *TeamOIDCConfigMutation) SetIssuer(s string) {
+	m.issuer = &s
+}
+
+// Issuer returns the value of the "issuer" field in the mutation.
+func (m *TeamOIDCConfigMutation) Issuer() (r string, exists bool) {
+	v := m.issuer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIssuer returns the old "issuer" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldIssuer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIssuer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIssuer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIssuer: %w", err)
+	}
+	return oldValue.Issuer, nil
+}
+
+// ResetIssuer resets all changes to the "issuer" field.
+func (m *TeamOIDCConfigMutation) ResetIssuer() {
+	m.issuer = nil
+}
+
+// SetClientID sets the "client_id" field.
+func (m *TeamOIDCConfigMutation) SetClientID(s string) {
+	m.client_id = &s
+}
+
+// ClientID returns the value of the "client_id" field in the mutation.
+func (m *TeamOIDCConfigMutation) ClientID() (r string, exists bool) {
+	v := m.client_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientID returns the old "client_id" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldClientID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientID: %w", err)
+	}
+	return oldValue.ClientID, nil
+}
+
+// ResetClientID resets all changes to the "client_id" field.
+func (m *TeamOIDCConfigMutation) ResetClientID() {
+	m.client_id = nil
+}
+
+// SetClientSecretCiphertext sets the "client_secret_ciphertext" field.
+func (m *TeamOIDCConfigMutation) SetClientSecretCiphertext(s string) {
+	m.client_secret_ciphertext = &s
+}
+
+// ClientSecretCiphertext returns the value of the "client_secret_ciphertext" field in the mutation.
+func (m *TeamOIDCConfigMutation) ClientSecretCiphertext() (r string, exists bool) {
+	v := m.client_secret_ciphertext
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientSecretCiphertext returns the old "client_secret_ciphertext" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldClientSecretCiphertext(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientSecretCiphertext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientSecretCiphertext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientSecretCiphertext: %w", err)
+	}
+	return oldValue.ClientSecretCiphertext, nil
+}
+
+// ClearClientSecretCiphertext clears the value of the "client_secret_ciphertext" field.
+func (m *TeamOIDCConfigMutation) ClearClientSecretCiphertext() {
+	m.client_secret_ciphertext = nil
+	m.clearedFields[teamoidcconfig.FieldClientSecretCiphertext] = struct{}{}
+}
+
+// ClientSecretCiphertextCleared returns if the "client_secret_ciphertext" field was cleared in this mutation.
+func (m *TeamOIDCConfigMutation) ClientSecretCiphertextCleared() bool {
+	_, ok := m.clearedFields[teamoidcconfig.FieldClientSecretCiphertext]
+	return ok
+}
+
+// ResetClientSecretCiphertext resets all changes to the "client_secret_ciphertext" field.
+func (m *TeamOIDCConfigMutation) ResetClientSecretCiphertext() {
+	m.client_secret_ciphertext = nil
+	delete(m.clearedFields, teamoidcconfig.FieldClientSecretCiphertext)
+}
+
+// SetScopes sets the "scopes" field.
+func (m *TeamOIDCConfigMutation) SetScopes(s string) {
+	m.scopes = &s
+}
+
+// Scopes returns the value of the "scopes" field in the mutation.
+func (m *TeamOIDCConfigMutation) Scopes() (r string, exists bool) {
+	v := m.scopes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScopes returns the old "scopes" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldScopes(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScopes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScopes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScopes: %w", err)
+	}
+	return oldValue.Scopes, nil
+}
+
+// ResetScopes resets all changes to the "scopes" field.
+func (m *TeamOIDCConfigMutation) ResetScopes() {
+	m.scopes = nil
+}
+
+// SetEmailDomain sets the "email_domain" field.
+func (m *TeamOIDCConfigMutation) SetEmailDomain(s string) {
+	m.email_domain = &s
+}
+
+// EmailDomain returns the value of the "email_domain" field in the mutation.
+func (m *TeamOIDCConfigMutation) EmailDomain() (r string, exists bool) {
+	v := m.email_domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEmailDomain returns the old "email_domain" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldEmailDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEmailDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEmailDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEmailDomain: %w", err)
+	}
+	return oldValue.EmailDomain, nil
+}
+
+// ClearEmailDomain clears the value of the "email_domain" field.
+func (m *TeamOIDCConfigMutation) ClearEmailDomain() {
+	m.email_domain = nil
+	m.clearedFields[teamoidcconfig.FieldEmailDomain] = struct{}{}
+}
+
+// EmailDomainCleared returns if the "email_domain" field was cleared in this mutation.
+func (m *TeamOIDCConfigMutation) EmailDomainCleared() bool {
+	_, ok := m.clearedFields[teamoidcconfig.FieldEmailDomain]
+	return ok
+}
+
+// ResetEmailDomain resets all changes to the "email_domain" field.
+func (m *TeamOIDCConfigMutation) ResetEmailDomain() {
+	m.email_domain = nil
+	delete(m.clearedFields, teamoidcconfig.FieldEmailDomain)
+}
+
+// SetAutoCreateMember sets the "auto_create_member" field.
+func (m *TeamOIDCConfigMutation) SetAutoCreateMember(b bool) {
+	m.auto_create_member = &b
+}
+
+// AutoCreateMember returns the value of the "auto_create_member" field in the mutation.
+func (m *TeamOIDCConfigMutation) AutoCreateMember() (r bool, exists bool) {
+	v := m.auto_create_member
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAutoCreateMember returns the old "auto_create_member" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldAutoCreateMember(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoCreateMember is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoCreateMember requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoCreateMember: %w", err)
+	}
+	return oldValue.AutoCreateMember, nil
+}
+
+// ResetAutoCreateMember resets all changes to the "auto_create_member" field.
+func (m *TeamOIDCConfigMutation) ResetAutoCreateMember() {
+	m.auto_create_member = nil
+}
+
+// SetAllowPasswordLogin sets the "allow_password_login" field.
+func (m *TeamOIDCConfigMutation) SetAllowPasswordLogin(b bool) {
+	m.allow_password_login = &b
+}
+
+// AllowPasswordLogin returns the value of the "allow_password_login" field in the mutation.
+func (m *TeamOIDCConfigMutation) AllowPasswordLogin() (r bool, exists bool) {
+	v := m.allow_password_login
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowPasswordLogin returns the old "allow_password_login" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldAllowPasswordLogin(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowPasswordLogin is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowPasswordLogin requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowPasswordLogin: %w", err)
+	}
+	return oldValue.AllowPasswordLogin, nil
+}
+
+// ResetAllowPasswordLogin resets all changes to the "allow_password_login" field.
+func (m *TeamOIDCConfigMutation) ResetAllowPasswordLogin() {
+	m.allow_password_login = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TeamOIDCConfigMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TeamOIDCConfigMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TeamOIDCConfigMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TeamOIDCConfigMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TeamOIDCConfigMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TeamOIDCConfig entity.
+// If the TeamOIDCConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamOIDCConfigMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TeamOIDCConfigMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearTeam clears the "team" edge to the Team entity.
+func (m *TeamOIDCConfigMutation) ClearTeam() {
+	m.clearedteam = true
+	m.clearedFields[teamoidcconfig.FieldTeamID] = struct{}{}
+}
+
+// TeamCleared reports if the "team" edge to the Team entity was cleared.
+func (m *TeamOIDCConfigMutation) TeamCleared() bool {
+	return m.clearedteam
+}
+
+// TeamIDs returns the "team" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TeamID instead. It exists only for internal usage by the builders.
+func (m *TeamOIDCConfigMutation) TeamIDs() (ids []uuid.UUID) {
+	if id := m.team; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTeam resets all changes to the "team" edge.
+func (m *TeamOIDCConfigMutation) ResetTeam() {
+	m.team = nil
+	m.clearedteam = false
+}
+
+// Where appends a list predicates to the TeamOIDCConfigMutation builder.
+func (m *TeamOIDCConfigMutation) Where(ps ...predicate.TeamOIDCConfig) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeamOIDCConfigMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeamOIDCConfigMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TeamOIDCConfig, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeamOIDCConfigMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeamOIDCConfigMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TeamOIDCConfig).
+func (m *TeamOIDCConfigMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeamOIDCConfigMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.team != nil {
+		fields = append(fields, teamoidcconfig.FieldTeamID)
+	}
+	if m.enabled != nil {
+		fields = append(fields, teamoidcconfig.FieldEnabled)
+	}
+	if m.display_name != nil {
+		fields = append(fields, teamoidcconfig.FieldDisplayName)
+	}
+	if m.issuer != nil {
+		fields = append(fields, teamoidcconfig.FieldIssuer)
+	}
+	if m.client_id != nil {
+		fields = append(fields, teamoidcconfig.FieldClientID)
+	}
+	if m.client_secret_ciphertext != nil {
+		fields = append(fields, teamoidcconfig.FieldClientSecretCiphertext)
+	}
+	if m.scopes != nil {
+		fields = append(fields, teamoidcconfig.FieldScopes)
+	}
+	if m.email_domain != nil {
+		fields = append(fields, teamoidcconfig.FieldEmailDomain)
+	}
+	if m.auto_create_member != nil {
+		fields = append(fields, teamoidcconfig.FieldAutoCreateMember)
+	}
+	if m.allow_password_login != nil {
+		fields = append(fields, teamoidcconfig.FieldAllowPasswordLogin)
+	}
+	if m.created_at != nil {
+		fields = append(fields, teamoidcconfig.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, teamoidcconfig.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeamOIDCConfigMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case teamoidcconfig.FieldTeamID:
+		return m.TeamID()
+	case teamoidcconfig.FieldEnabled:
+		return m.Enabled()
+	case teamoidcconfig.FieldDisplayName:
+		return m.DisplayName()
+	case teamoidcconfig.FieldIssuer:
+		return m.Issuer()
+	case teamoidcconfig.FieldClientID:
+		return m.ClientID()
+	case teamoidcconfig.FieldClientSecretCiphertext:
+		return m.ClientSecretCiphertext()
+	case teamoidcconfig.FieldScopes:
+		return m.Scopes()
+	case teamoidcconfig.FieldEmailDomain:
+		return m.EmailDomain()
+	case teamoidcconfig.FieldAutoCreateMember:
+		return m.AutoCreateMember()
+	case teamoidcconfig.FieldAllowPasswordLogin:
+		return m.AllowPasswordLogin()
+	case teamoidcconfig.FieldCreatedAt:
+		return m.CreatedAt()
+	case teamoidcconfig.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeamOIDCConfigMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case teamoidcconfig.FieldTeamID:
+		return m.OldTeamID(ctx)
+	case teamoidcconfig.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case teamoidcconfig.FieldDisplayName:
+		return m.OldDisplayName(ctx)
+	case teamoidcconfig.FieldIssuer:
+		return m.OldIssuer(ctx)
+	case teamoidcconfig.FieldClientID:
+		return m.OldClientID(ctx)
+	case teamoidcconfig.FieldClientSecretCiphertext:
+		return m.OldClientSecretCiphertext(ctx)
+	case teamoidcconfig.FieldScopes:
+		return m.OldScopes(ctx)
+	case teamoidcconfig.FieldEmailDomain:
+		return m.OldEmailDomain(ctx)
+	case teamoidcconfig.FieldAutoCreateMember:
+		return m.OldAutoCreateMember(ctx)
+	case teamoidcconfig.FieldAllowPasswordLogin:
+		return m.OldAllowPasswordLogin(ctx)
+	case teamoidcconfig.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case teamoidcconfig.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TeamOIDCConfig field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamOIDCConfigMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case teamoidcconfig.FieldTeamID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamID(v)
+		return nil
+	case teamoidcconfig.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case teamoidcconfig.FieldDisplayName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisplayName(v)
+		return nil
+	case teamoidcconfig.FieldIssuer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIssuer(v)
+		return nil
+	case teamoidcconfig.FieldClientID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientID(v)
+		return nil
+	case teamoidcconfig.FieldClientSecretCiphertext:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientSecretCiphertext(v)
+		return nil
+	case teamoidcconfig.FieldScopes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScopes(v)
+		return nil
+	case teamoidcconfig.FieldEmailDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEmailDomain(v)
+		return nil
+	case teamoidcconfig.FieldAutoCreateMember:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAutoCreateMember(v)
+		return nil
+	case teamoidcconfig.FieldAllowPasswordLogin:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowPasswordLogin(v)
+		return nil
+	case teamoidcconfig.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case teamoidcconfig.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TeamOIDCConfig field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeamOIDCConfigMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeamOIDCConfigMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamOIDCConfigMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TeamOIDCConfig numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeamOIDCConfigMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(teamoidcconfig.FieldClientSecretCiphertext) {
+		fields = append(fields, teamoidcconfig.FieldClientSecretCiphertext)
+	}
+	if m.FieldCleared(teamoidcconfig.FieldEmailDomain) {
+		fields = append(fields, teamoidcconfig.FieldEmailDomain)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeamOIDCConfigMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeamOIDCConfigMutation) ClearField(name string) error {
+	switch name {
+	case teamoidcconfig.FieldClientSecretCiphertext:
+		m.ClearClientSecretCiphertext()
+		return nil
+	case teamoidcconfig.FieldEmailDomain:
+		m.ClearEmailDomain()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamOIDCConfig nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeamOIDCConfigMutation) ResetField(name string) error {
+	switch name {
+	case teamoidcconfig.FieldTeamID:
+		m.ResetTeamID()
+		return nil
+	case teamoidcconfig.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case teamoidcconfig.FieldDisplayName:
+		m.ResetDisplayName()
+		return nil
+	case teamoidcconfig.FieldIssuer:
+		m.ResetIssuer()
+		return nil
+	case teamoidcconfig.FieldClientID:
+		m.ResetClientID()
+		return nil
+	case teamoidcconfig.FieldClientSecretCiphertext:
+		m.ResetClientSecretCiphertext()
+		return nil
+	case teamoidcconfig.FieldScopes:
+		m.ResetScopes()
+		return nil
+	case teamoidcconfig.FieldEmailDomain:
+		m.ResetEmailDomain()
+		return nil
+	case teamoidcconfig.FieldAutoCreateMember:
+		m.ResetAutoCreateMember()
+		return nil
+	case teamoidcconfig.FieldAllowPasswordLogin:
+		m.ResetAllowPasswordLogin()
+		return nil
+	case teamoidcconfig.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case teamoidcconfig.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamOIDCConfig field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeamOIDCConfigMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.team != nil {
+		edges = append(edges, teamoidcconfig.EdgeTeam)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeamOIDCConfigMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teamoidcconfig.EdgeTeam:
+		if id := m.team; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeamOIDCConfigMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeamOIDCConfigMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeamOIDCConfigMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedteam {
+		edges = append(edges, teamoidcconfig.EdgeTeam)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeamOIDCConfigMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teamoidcconfig.EdgeTeam:
+		return m.clearedteam
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeamOIDCConfigMutation) ClearEdge(name string) error {
+	switch name {
+	case teamoidcconfig.EdgeTeam:
+		m.ClearTeam()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamOIDCConfig unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeamOIDCConfigMutation) ResetEdge(name string) error {
+	switch name {
+	case teamoidcconfig.EdgeTeam:
+		m.ResetTeam()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamOIDCConfig edge %s", name)
 }
 
 // UserMutation represents an operation that mutates the User nodes in the graph.

@@ -8,6 +8,7 @@ const (
 	UserPlatformGitLab UserPlatform = "gitlab"
 	UserPlatformGitea  UserPlatform = "gitea"
 	UserPlatformGitee  UserPlatform = "gitee"
+	UserPlatformOIDC   UserPlatform = "oidc"
 )
 
 type UserStatus string

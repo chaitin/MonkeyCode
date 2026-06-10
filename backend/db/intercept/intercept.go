@@ -46,6 +46,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -1106,6 +1107,33 @@ func (f TraverseTeamModel) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamModelQuery", q)
 }
 
+// The TeamOIDCConfigFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamOIDCConfigFunc func(context.Context, *db.TeamOIDCConfigQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamOIDCConfigFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamOIDCConfigQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamOIDCConfigQuery", q)
+}
+
+// The TraverseTeamOIDCConfig type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamOIDCConfig func(context.Context, *db.TeamOIDCConfigQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamOIDCConfig) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamOIDCConfig) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamOIDCConfigQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamOIDCConfigQuery", q)
+}
+
 // The UserFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserFunc func(context.Context, *db.UserQuery) (db.Value, error)
 
@@ -1264,6 +1292,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TeamMemberQuery, predicate.TeamMember, teammember.OrderOption]{typ: db.TypeTeamMember, tq: q}, nil
 	case *db.TeamModelQuery:
 		return &query[*db.TeamModelQuery, predicate.TeamModel, teammodel.OrderOption]{typ: db.TypeTeamModel, tq: q}, nil
+	case *db.TeamOIDCConfigQuery:
+		return &query[*db.TeamOIDCConfigQuery, predicate.TeamOIDCConfig, teamoidcconfig.OrderOption]{typ: db.TypeTeamOIDCConfig, tq: q}, nil
 	case *db.UserQuery:
 		return &query[*db.UserQuery, predicate.User, user.OrderOption]{typ: db.TypeUser, tq: q}, nil
 	case *db.UserIdentityQuery:

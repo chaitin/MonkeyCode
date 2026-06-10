@@ -453,6 +453,18 @@ func (f TeamModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamModelMutation", m)
 }
 
+// The TeamOIDCConfigFunc type is an adapter to allow the use of ordinary
+// function as TeamOIDCConfig mutator.
+type TeamOIDCConfigFunc func(context.Context, *db.TeamOIDCConfigMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamOIDCConfigFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamOIDCConfigMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamOIDCConfigMutation", m)
+}
+
 // The UserFunc type is an adapter to allow the use of ordinary
 // function as User mutator.
 type UserFunc func(context.Context, *db.UserMutation) (db.Value, error)

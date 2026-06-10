@@ -24,6 +24,7 @@ type AuthHandler struct {
 	logger         *slog.Logger
 	usecase        domain.UserUsecase
 	teamUsecase    domain.TeamGroupUserUsecase
+	oidcUsecase    domain.TeamOIDCLoginUsecase
 	redis          *redis.Client
 	authMiddleware *middleware.AuthMiddleware
 	captcha        *captcha.Captcha
@@ -40,12 +41,14 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
 	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 	captchaSvc := do.MustInvoke[*captcha.Captcha](i)
+	oidcUsecase, _ := do.Invoke[domain.TeamOIDCLoginUsecase](i)
 
 	h := &AuthHandler{
 		config:         cfg,
 		logger:         logger.With("module", "auth.handler"),
 		usecase:        usecase,
 		teamUsecase:    teamUsecase,
+		oidcUsecase:    oidcUsecase,
 		redis:          redisClient,
 		authMiddleware: auth,
 		captcha:        captchaSvc,
@@ -60,6 +63,10 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 
 	// 密码登录
 	v1.POST("/password-login", web.BindHandler(h.PasswordLogin), targetActive.TargetActive())
+	v1.GET("/oidc/login", web.BindHandler(h.OIDCLogin), targetActive.TargetActive())
+	v1.GET("/oidc/callback", web.BindHandler(h.OIDCCallback), targetActive.TargetActive())
+	v1.GET("/oidc/default-team", web.BaseHandler(h.OIDCDefaultPublicConfig), targetActive.TargetActive())
+	v1.GET("/oidc/teams/:team_id", web.BindHandler(h.OIDCPublicConfig), targetActive.TargetActive())
 	v1.PUT("", web.BindHandler(h.Update), auth.Auth(), targetActive.TargetActive())
 	v1.PUT("/passwords/change", web.BindHandler(h.ChangePassword), auth.Check(), targetActive.TargetActive())
 	v1.GET("/status", web.BaseHandler(h.Status), auth.Check(), targetActive.TargetActive())
@@ -71,6 +78,93 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	v1.GET("/email/verify", web.BindHandler(h.VerifyBindEmail), targetActive.TargetActive())
 
 	return h, nil
+}
+
+// OIDCLogin 发起团队 OIDC 登录
+//
+//	@Summary		发起团队 OIDC 登录
+//	@Description	根据 team_id 跳转到团队 OIDC 身份源
+//	@Tags			【用户】企业团队成员认证
+//	@Accept			json
+//	@Produce		json
+//	@Param			team_id	query	string	true	"团队 ID"
+//	@Router			/api/v1/users/oidc/login [get]
+func (h *AuthHandler) OIDCLogin(c *web.Context, req domain.TeamOIDCLoginReq) error {
+	if h.oidcUsecase == nil {
+		return errcode.ErrOIDCDisabled
+	}
+	authURL, err := h.oidcUsecase.StartLogin(c.Request().Context(), req.TeamID)
+	if err != nil {
+		return err
+	}
+	return c.Redirect(http.StatusFound, authURL)
+}
+
+// OIDCCallback 处理团队 OIDC 回调
+//
+//	@Summary		处理团队 OIDC 回调
+//	@Description	处理身份源回调并创建 MonkeyCode 登录会话
+//	@Tags			【用户】企业团队成员认证
+//	@Accept			json
+//	@Produce		json
+//	@Param			code	query	string	true	"授权码"
+//	@Param			state	query	string	true	"状态"
+//	@Router			/api/v1/users/oidc/callback [get]
+func (h *AuthHandler) OIDCCallback(c *web.Context, req domain.TeamOIDCCallbackReq) error {
+	if h.oidcUsecase == nil {
+		return errcode.ErrOIDCDisabled
+	}
+	user, err := h.oidcUsecase.HandleCallback(c.Request().Context(), &req)
+	if err != nil {
+		return err
+	}
+	_, err = h.authMiddleware.Session.Save(c, consts.MonkeyCodeAISession, user.ID, user)
+	if err != nil {
+		h.logger.ErrorContext(c.Request().Context(), "save oidc session failed", "error", err)
+		return errcode.ErrInternalServer
+	}
+	return c.Redirect(http.StatusFound, "/console/")
+}
+
+// OIDCPublicConfig 获取团队公开 OIDC 登录配置
+//
+//	@Summary		获取团队公开 OIDC 登录配置
+//	@Description	用于团队专属登录页展示企业登录入口
+//	@Tags			【用户】企业团队成员认证
+//	@Accept			json
+//	@Produce		json
+//	@Param			team_id	path		string	true	"团队 ID"
+//	@Success		200		{object}	web.Resp{data=domain.TeamOIDCPublicConfigResp}
+//	@Router			/api/v1/users/oidc/teams/{team_id} [get]
+func (h *AuthHandler) OIDCPublicConfig(c *web.Context, req domain.TeamOIDCPublicConfigReq) error {
+	if h.oidcUsecase == nil {
+		return c.Success(&domain.TeamOIDCPublicConfigResp{TeamID: req.TeamID})
+	}
+	resp, err := h.oidcUsecase.PublicConfig(c.Request().Context(), req.TeamID)
+	if err != nil {
+		return err
+	}
+	return c.Success(resp)
+}
+
+// OIDCDefaultPublicConfig 获取默认团队公开 OIDC 登录配置
+//
+//	@Summary		获取默认团队公开 OIDC 登录配置
+//	@Description	用于私有化登录页展示第一个已启用团队的企业登录入口
+//	@Tags			【用户】企业团队成员认证
+//	@Accept			json
+//	@Produce		json
+//	@Success		200	{object}	web.Resp{data=domain.TeamOIDCPublicConfigResp}
+//	@Router			/api/v1/users/oidc/default-team [get]
+func (h *AuthHandler) OIDCDefaultPublicConfig(c *web.Context) error {
+	if h.oidcUsecase == nil {
+		return c.Success(&domain.TeamOIDCPublicConfigResp{})
+	}
+	resp, err := h.oidcUsecase.DefaultPublicConfig(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	return c.Success(resp)
 }
 
 // PasswordLogin 密码登录接口

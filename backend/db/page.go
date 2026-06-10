@@ -529,6 +529,20 @@ func (_m *TeamModelQuery) Page(ctx context.Context, page, size int) ([]*TeamMode
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *TeamOIDCConfigQuery) Page(ctx context.Context, page, size int) ([]*TeamOIDCConfig, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *UserQuery) Page(ctx context.Context, page, size int) ([]*User, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {

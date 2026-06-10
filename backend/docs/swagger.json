@@ -1857,6 +1857,146 @@
                 }
             }
         },
+        "/api/v1/teams/oidc": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取当前团队企业登录 OIDC 配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】企业登录"
+                ],
+                "summary": "获取团队 OIDC 配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamOIDCConfigResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "新增或更新当前团队企业登录 OIDC 配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】企业登录"
+                ],
+                "summary": "保存团队 OIDC 配置",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.SaveTeamOIDCConfigReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamOIDCConfigResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/oidc/test": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "拉取 OIDC discovery 文档验证配置可用性",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】企业登录"
+                ],
+                "summary": "测试团队 OIDC 配置",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.SaveTeamOIDCConfigReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamOIDCTestResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/projects": {
             "get": {
                 "security": [
@@ -6388,6 +6528,142 @@
                 }
             }
         },
+        "/api/v1/users/oidc/callback": {
+            "get": {
+                "description": "处理身份源回调并创建 MonkeyCode 登录会话",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】企业团队成员认证"
+                ],
+                "summary": "处理团队 OIDC 回调",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "授权码",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/v1/users/oidc/default-team": {
+            "get": {
+                "description": "用于私有化登录页展示第一个已启用团队的企业登录入口",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】企业团队成员认证"
+                ],
+                "summary": "获取默认团队公开 OIDC 登录配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamOIDCPublicConfigResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/oidc/login": {
+            "get": {
+                "description": "根据 team_id 跳转到团队 OIDC 身份源",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】企业团队成员认证"
+                ],
+                "summary": "发起团队 OIDC 登录",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "团队 ID",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/v1/users/oidc/teams/{team_id}": {
+            "get": {
+                "description": "用于团队专属登录页展示企业登录入口",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】企业团队成员认证"
+                ],
+                "summary": "获取团队公开 OIDC 登录配置",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "团队 ID",
+                        "name": "team_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamOIDCPublicConfigResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/password-login": {
             "post": {
                 "description": "密码登录",
@@ -8765,7 +9041,8 @@
                 "github",
                 "gitlab",
                 "gitea",
-                "gitee"
+                "gitee",
+                "oidc"
             ],
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
@@ -8775,7 +9052,8 @@
                 "UserPlatformGithub",
                 "UserPlatformGitLab",
                 "UserPlatformGitea",
-                "UserPlatformGitee"
+                "UserPlatformGitee",
+                "UserPlatformOIDC"
             ]
         },
         "consts.UserRole": {
@@ -10811,6 +11089,43 @@
                 }
             }
         },
+        "domain.SaveTeamOIDCConfigReq": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "display_name",
+                "issuer"
+            ],
+            "properties": {
+                "allow_password_login": {
+                    "type": "boolean"
+                },
+                "auto_create_member": {
+                    "type": "boolean"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_secret": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "email_domain": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.SendBindEmailVerificationReq": {
             "type": "object",
             "required": [
@@ -11646,6 +11961,89 @@
                 },
                 "updated_at": {
                     "type": "integer"
+                }
+            }
+        },
+        "domain.TeamOIDCConfig": {
+            "type": "object",
+            "properties": {
+                "allow_password_login": {
+                    "type": "boolean"
+                },
+                "auto_create_member": {
+                    "type": "boolean"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "email_domain": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "has_client_secret": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "login_url": {
+                    "type": "string"
+                },
+                "redirect_uri": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamOIDCConfigResp": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/domain.TeamOIDCConfig"
+                }
+            }
+        },
+        "domain.TeamOIDCPublicConfigResp": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "login_url": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TeamOIDCTestResp": {
+            "type": "object",
+            "properties": {
+                "issuer": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "success": {
+                    "type": "boolean"
                 }
             }
         },

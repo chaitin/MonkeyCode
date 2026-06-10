@@ -88,6 +88,8 @@ type Tx struct {
 	TeamMember *TeamMemberClient
 	// TeamModel is the client for interacting with the TeamModel builders.
 	TeamModel *TeamModelClient
+	// TeamOIDCConfig is the client for interacting with the TeamOIDCConfig builders.
+	TeamOIDCConfig *TeamOIDCConfigClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -262,6 +264,7 @@ func (tx *Tx) init() {
 	tx.TeamImage = NewTeamImageClient(tx.config)
 	tx.TeamMember = NewTeamMemberClient(tx.config)
 	tx.TeamModel = NewTeamModelClient(tx.config)
+	tx.TeamOIDCConfig = NewTeamOIDCConfigClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.VirtualMachine = NewVirtualMachineClient(tx.config)
