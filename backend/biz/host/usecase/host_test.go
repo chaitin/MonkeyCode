@@ -52,6 +52,7 @@ func TestInstallScriptDefaultsToOnlineInstaller(t *testing.T) {
 	if strings.Contains(script, "install_docker_from_bundle") {
 		t.Fatalf("online script should not include offline installer: %s", script)
 	}
+	assertInstallScriptChecksAVX(t, script)
 }
 
 func TestInstallScriptUsesOfflineBundle(t *testing.T) {
@@ -110,6 +111,28 @@ func TestInstallScriptUsesOfflineBundle(t *testing.T) {
 	}
 	if strings.Contains(script, "release.baizhi.cloud") {
 		t.Fatalf("script should not download public installer: %s", script)
+	}
+	assertInstallScriptChecksAVX(t, script)
+}
+
+func assertInstallScriptChecksAVX(t *testing.T, script string) {
+	t.Helper()
+
+	for _, want := range []string{
+		"check_avx_support",
+		"/proc/cpuinfo",
+		"grep -qiE '(^|[[:space:]])avx([[:space:]]|$)' /proc/cpuinfo",
+		"Current CPU does not support AVX instructions",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("install script missing AVX check %q:\n%s", want, script)
+		}
+	}
+
+	checkIndex := strings.Index(script, "check_avx_support\n")
+	curlIndex := strings.Index(script, "curl -4")
+	if checkIndex == -1 || curlIndex == -1 || checkIndex > curlIndex {
+		t.Fatalf("install script should check AVX before downloading installer:\n%s", script)
 	}
 }
 
