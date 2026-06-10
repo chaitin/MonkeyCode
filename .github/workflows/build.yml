@@ -30,13 +30,6 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      - name: Generate sitemap
-        working-directory: frontend
-        run: |
-          sudo apt-get update && sudo apt-get install -y python3 python3-pip
-          pip3 install requests --break-system-packages
-          python3 scripts/generate-sitemap.py || true
-
       - name: Build
         working-directory: frontend
         run: pnpm run build:online

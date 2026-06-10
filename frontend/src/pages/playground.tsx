@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Header from "@/components/welcome/header"
 import Footer from "@/components/welcome/footer";
 import { Item, ItemContent, ItemDescription, ItemFooter, ItemHeader, ItemMedia, ItemTitle } from "@/components/ui/item";
@@ -72,18 +72,14 @@ const PlaygroundContent = () => {
           {posts.map((post, index) => (
             <Item key={index} variant="outline" className="group hover:border-primary/50 pb-2">
               <ItemHeader className="bg-muted/50">
-                <Link to={`/playground/detail?id=${post.id}`} className="w-full">
-                  <ItemMedia className="w-full">
-                    <img src={post.task_post?.images?.[0] || post.normal_post?.images?.[0] || "/logo-light.png"} className="max-w-full h-[140px]" />
-                  </ItemMedia>
-                </Link>
+                <ItemMedia className="w-full">
+                  <img src={post.task_post?.images?.[0] || post.normal_post?.images?.[0] || "/logo-light.png"} className="max-w-full h-[140px]" />
+                </ItemMedia>
               </ItemHeader>
               <ItemContent>
-                <Link to={`/playground/detail?id=${post.id}`}>
-                  <ItemTitle className="group-hover:text-primary hover:underline cursor-pointer line-clamp-1">
-                    {post.kind === ConstsPostKind.PostKindTask ? post?.task_post?.title : post?.normal_post?.title}
-                  </ItemTitle>
-                </Link>
+                <ItemTitle className="line-clamp-1">
+                  {post.kind === ConstsPostKind.PostKindTask ? post?.task_post?.title : post?.normal_post?.title}
+                </ItemTitle>
                 <ItemDescription className="line-clamp-1 whitespace-normal break-all">
                   {post.kind === ConstsPostKind.PostKindTask ? post?.task_post?.content : post?.normal_post?.content}
                 </ItemDescription>
@@ -134,4 +130,3 @@ const PlaygroundPage = () => {
 }
 
 export default PlaygroundPage
-

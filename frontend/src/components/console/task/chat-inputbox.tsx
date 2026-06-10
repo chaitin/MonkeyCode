@@ -19,6 +19,7 @@ import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
+const TASK_INPUT_DRAFT_STORAGE_PREFIX = "task-chat-input-draft"
 const PUBLISH_WEBSITE_PROMPT = "使用 publish-website 技能发布当前应用"
 const PASTED_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
   "image/png": "png",
@@ -38,6 +39,7 @@ interface QueuedTaskInput {
 }
 
 interface TaskChatInputBoxProps {
+  taskId: string
   streamStatus: TaskStreamStatus | TaskMessageHandlerStatus
   availableCommands: AvailableCommands | null
   onSend: (input: TaskUserInput) => Promise<boolean> | boolean | void
@@ -49,8 +51,48 @@ interface TaskChatInputBoxProps {
   whiteboardPersistenceKey?: string
 }
 
-export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }: TaskChatInputBoxProps) => {
-  const [content, setContent] = useState('')
+const getTaskInputDraftStorageKey = (taskId: string) => {
+  const normalizedTaskId = taskId.trim()
+  return normalizedTaskId ? `${TASK_INPUT_DRAFT_STORAGE_PREFIX}:${normalizedTaskId}` : null
+}
+
+const readTaskInputDraft = (taskId: string) => {
+  const storageKey = getTaskInputDraftStorageKey(taskId)
+  if (!storageKey || typeof window === "undefined") {
+    return ""
+  }
+
+  try {
+    return window.localStorage.getItem(storageKey) || ""
+  } catch {
+    return ""
+  }
+}
+
+const writeTaskInputDraft = (taskId: string, draft: string) => {
+  const storageKey = getTaskInputDraftStorageKey(taskId)
+  if (!storageKey || typeof window === "undefined") {
+    return
+  }
+
+  try {
+    if (draft === "") {
+      window.localStorage.removeItem(storageKey)
+      return
+    }
+
+    window.localStorage.setItem(storageKey, draft)
+  } catch {
+    // Ignore storage failures so typing and sending continue to work.
+  }
+}
+
+const removeTaskInputDraft = (taskId: string) => {
+  writeTaskInputDraft(taskId, "")
+}
+
+export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }: TaskChatInputBoxProps) => {
+  const [content, setContent] = useState(() => readTaskInputDraft(taskId))
   const [isComposing, setIsComposing] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null)
@@ -86,6 +128,10 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
       mountedRef.current = false
     }
   }, [])
+
+  React.useEffect(() => {
+    writeTaskInputDraft(taskId, content)
+  }, [content, taskId])
 
   React.useEffect(() => {
     if (wasExecutingRef.current && !isExecuting && queuedInput) {
@@ -137,6 +183,7 @@ export const TaskChatInputBox = ({ streamStatus, availableCommands, onSend, send
   }, [onSend])
 
   const clearCurrentInput = () => {
+    removeTaskInputDraft(taskId)
     setContent('')
     setUploadedFiles([])
     setPreviewFile(null)

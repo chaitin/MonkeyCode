@@ -1,20 +1,13 @@
-import { MessageItem, type MessageType } from "./message"
 import React from "react"
-import { createPortal } from "react-dom"
-import { useVirtualizer } from "@tanstack/react-virtual"
 import { Button } from "@/components/ui/button"
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { IconCircle, IconCircleCheck, IconLoader, IconSubtask } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import type { ConstsCliName } from "@/api/Api"
-import { TaskChatInputBox } from "./chat-inputbox"
 import type {
-  AvailableCommands,
   PlanEntry,
   TaskPlan,
   TaskStreamStatus,
-  TaskUserInput,
 } from "./task-shared"
 
 export interface PlanStepsBlockProps {
@@ -86,183 +79,6 @@ export function PlanStepsBlock({ plan, streamStatus }: PlanStepsBlockProps) {
       >
         {renderPlan()}
       </div>
-    </div>
-  )
-}
-
-interface TaskChatPanelProps {
-  scrollContainerRef?: React.RefObject<HTMLDivElement | null>
-  inputPortalTargetRef?: React.RefObject<HTMLDivElement | null>
-  messages: MessageType[]
-  cli?: ConstsCliName
-  streamStatus: TaskStreamStatus
-  disabled: boolean
-  availableCommands: AvailableCommands | null
-  sending: boolean
-  queueSize: number
-  sendUserInput: (input: TaskUserInput) => Promise<boolean> | boolean | void
-  sendCancelCommand: () => void
-}
-
-export const TaskChatPanel = ({ scrollContainerRef: externalScrollRef, inputPortalTargetRef, messages, cli, streamStatus, disabled, availableCommands, sending, sendUserInput, sendCancelCommand, queueSize }: TaskChatPanelProps) => {
-  const [timeCost, setTimeCost] = React.useState(0)
-  const internalScrollRef = React.useRef<HTMLDivElement>(null)
-  const scrollContainerRef = externalScrollRef ?? internalScrollRef
-
-  React.useEffect(() => {
-    if (streamStatus === 'executing') {
-      setTimeCost(0)
-      const timer = setInterval(() => {
-        setTimeCost(prev => prev + 100)
-      }, 100)
-      return () => clearInterval(timer)
-    }
-  }, [streamStatus])
-
-  const displayMessages = React.useMemo(
-    () => messages.filter((message) => message.type !== 'agent_thought_chunk'),
-    [messages]
-  )
-
-  const virtualRows = React.useMemo(() => {
-    const rows: Array<{ type: 'message'; message: MessageType } | { type: 'taskStatus' }> = displayMessages.map((m) => ({ type: 'message' as const, message: m }))
-    if (streamStatus !== 'waiting') {
-      rows.push({ type: 'taskStatus' })
-    }
-    return rows
-  }, [displayMessages, streamStatus])
-
-  const virtualizer = useVirtualizer({
-    count: virtualRows.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: (index) => {
-      const row = virtualRows[index]
-      if (row.type === 'taskStatus') return 40
-      return 120
-    },
-    overscan: 5,
-    gap: 4,
-  })
-
-  const virtualItems = virtualizer.getVirtualItems()
-
-  // 自动滚动到底部
-  React.useEffect(() => {
-    if (scrollContainerRef.current && streamStatus !== 'waiting') {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
-    }
-  }, [streamStatus, virtualRows.length])
-
-  const renderTaskStatus = () => {
-    if (streamStatus === 'inited') {
-      return <div className="w-full flex items-center justify-center mt-2">
-        <div className="text-xs border rounded-full px-2 py-1 w-fit flex items-center gap-2 text-muted-foreground">
-          <IconLoader className="size-4 animate-spin" />
-          正在初始化
-        </div>
-      </div>
-    } else if (streamStatus === 'executing') {
-      return <div className="w-full flex items-center justify-center mt-2">
-        <div className="text-xs border rounded-full px-2 py-1 w-fit flex items-center gap-2 text-muted-foreground">
-          <IconLoader className="size-4 animate-spin" />
-          任务执行耗时 {(timeCost / 1000).toFixed(1)} 秒
-        </div>
-      </div>
-    } else if (streamStatus === 'waiting') {
-      return null
-    } else if (streamStatus === 'finished') {
-      return <div className="w-full flex items-center justify-center mt-2">
-        <div className="text-xs border rounded-full px-2 py-1 w-fit flex items-center gap-2 text-muted-foreground">
-          任务已终止
-        </div>
-      </div>
-    } else if (streamStatus === 'error') {
-      return <div className="w-full flex items-center justify-center mt-2">
-        <div className="text-xs border rounded-full px-2 py-1 w-fit flex items-center gap-2 text-muted-foreground">
-          连接异常断开，请刷新重试
-        </div>
-      </div>
-    } else {
-      return null
-    }
-  }
-
-  return (
-    <div className={cn("flex flex-col gap-2 w-full", externalScrollRef ? "min-h-full" : "h-full")}>
-      <div
-        ref={!externalScrollRef ? internalScrollRef : undefined}
-        className={cn("py-2", !externalScrollRef && "h-full overflow-y-auto")}
-        style={externalScrollRef ? { minHeight: virtualizer.getTotalSize() } : undefined}
-      >
-        <div
-          style={{
-            height: virtualizer.getTotalSize(),
-            position: 'relative',
-          }}
-        >
-          {virtualItems.map((virtualRow) => {
-            const row = virtualRows[virtualRow.index]
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                {row.type === 'message' && (
-                  <div id={`message-${row.message.id}`} className="scroll-mt-4">
-                    <MessageItem message={row.message as MessageType} cli={cli} />
-                  </div>
-                )}
-                {row.type === 'taskStatus' && renderTaskStatus()}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      {inputPortalTargetRef
-        ? inputPortalTargetRef.current &&
-          createPortal(
-            disabled ? (
-              <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
-                开发环境不可用
-              </div>
-            ) : (
-              <TaskChatInputBox
-                streamStatus={streamStatus}
-                availableCommands={availableCommands}
-                onSend={sendUserInput}
-                sending={sending}
-                queueSize={queueSize}
-                executionTimeMs={timeCost}
-                onCancel={sendCancelCommand}
-              />
-            ),
-            inputPortalTargetRef.current
-          )
-        : null}
-      {!inputPortalTargetRef && (disabled ? (
-            <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
-              开发环境不可用
-            </div>
-          ) : (
-            <TaskChatInputBox
-              streamStatus={streamStatus}
-              availableCommands={availableCommands}
-              onSend={sendUserInput}
-              sending={sending}
-              queueSize={queueSize}
-              executionTimeMs={timeCost}
-              onCancel={sendCancelCommand}
-            />
-          ))}
-
     </div>
   )
 }

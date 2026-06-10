@@ -24,7 +24,6 @@ import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
 import TeamManagerManager from "./pages/console/manager/manager"
 import PlaygroundPage from "./pages/playground"
-import PlaygroundDetailPage from "./pages/playground-detail"
 import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
 import ProjectOverviewPage from "./pages/console/user/project/overview"
@@ -49,7 +48,6 @@ function App() {
             <Route path="/" element={IS_OFFLINE_EDITION ? <Navigate to="/login" replace /> : <WelcomePage />} />
             <Route path="/playground" element={<PlaygroundPage />} />
             <Route path="/playground/create" element={<PostCreatePage />} />
-            <Route path="/playground/detail" element={<PlaygroundDetailPage />} />
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             <Route path="/user-agreement" element={<UserAgreementPage />} />
             <Route path="/tasks/public" element={<PublicTaskPage />} />

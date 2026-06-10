@@ -1496,6 +1496,7 @@ export default function TaskDetailPage() {
                     )}
                     {taskInteractive ? (
                       <TaskChatInputBox
+                        taskId={taskId ?? ""}
                         streamStatus={streamStatus}
                         availableCommands={availableCommands}
                         onSend={handleSend}
