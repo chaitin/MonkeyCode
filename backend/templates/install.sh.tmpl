@@ -25,6 +25,16 @@ cleanup() {
     rm -f "$FILE_NAME"
 }
 
+check_avx_support() {
+    if [[ "$ARCH" != "x86_64" ]]; then
+        return
+    fi
+    if [[ ! -r /proc/cpuinfo ]] || ! grep -qiE '(^|[[:space:]])avx([[:space:]]|$)' /proc/cpuinfo; then
+        echo -e "${RED}Current CPU does not support AVX instructions. MonkeyCode Runner cannot be installed on this host.${NC}"
+        exit 1
+    fi
+}
+
 # 检查系统架构
 ARCH=$(uname -m)
 case "$ARCH" in
@@ -46,6 +56,7 @@ if [[ $EUID -ne 0 ]]; then
     echo -e "${RED}This script must be run as root${NC}"
     exit 1
 fi
+check_avx_support
 
 echo -e "${GREEN}Architecture: $ARCH${NC}"
 URL="https://release.baizhi.cloud/monkeycode/runner/$ARCH/installer"
