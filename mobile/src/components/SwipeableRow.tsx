@@ -45,6 +45,9 @@ export function SwipeableRow({ children, actions, radius = R.card }: { children:
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4,
+      // iOS 关键：接管后拒绝把手势让给外层 FlatList 的原生滚动。默认会让出（返回 true），
+      // 于是「接管→被终止回弹→再接管」死循环，表现为横滑疯狂抖动、根本滑不开（Android 仲裁不同，无此问题）。
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => reveal(true),
       onPanResponderMove: (_, g) => {
         let x = baseRef.current + g.dx;

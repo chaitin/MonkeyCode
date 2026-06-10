@@ -25,6 +25,7 @@
         "dark": "./assets/icon-dark.png"
       },
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "用于语音输入，将你的语音实时转写为文字",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,

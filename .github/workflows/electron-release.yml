@@ -199,6 +199,10 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # 缓存 Gradle 发行版 + 依赖 + 构建缓存（android/ 由 prebuild 生成、不在仓库里，
+      # 所以不用 setup-java 的 cache:gradle——它靠 hash 仓库里的 gradle 文件，这里 hash 不到）
+      - uses: gradle/actions/setup-gradle@v4
+
       - name: Set versions (from tag, e.g. v26060901)
         working-directory: mobile
         shell: bash
@@ -233,8 +237,10 @@ jobs:
           KS="$RUNNER_TEMP/release.jks"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
           chmod +x gradlew
-          # 用 AGP 注入签名（无需改 build.gradle）：release APK 直接用 keystore 签名
+          # 用 AGP 注入签名（无需改 build.gradle）：release APK 直接用 keystore 签名。
+          # 只编真机 ABI（arm64 + armv7）：x86/x86_64 仅模拟器需要，少编一半 C++（新架构下这是大头）
           ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4096m \
+            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a \
             -Pandroid.injected.signing.store.file="$KS" \
             -Pandroid.injected.signing.store.password="$ANDROID_STORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
