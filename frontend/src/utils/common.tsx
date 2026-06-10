@@ -4,7 +4,7 @@ import Icon from "@/components/common/Icon"
 import { IconAssembly, IconBrandChrome, IconBrandPython, IconBug, IconDeviceGamepad2, IconFileText, IconHelpHexagon, IconPalette, IconPuzzle, IconShieldChevron, IconTerminal2, IconTestPipe } from "@tabler/icons-react"
 import Cap from "@cap.js/widget"
 import { HoverCardContent } from "@/components/ui/hover-card"
-import { ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProjectTask, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
+import { ConstsGitPlatform, ConstsHostStatus, ConstsInterfaceType, ConstsOwnerType, ConstsProjectIssueStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, TaskflowVirtualMachineStatus, type DomainGitIdentity, type DomainHost, type DomainImage, type DomainModel, type DomainOwner, type DomainProjectTask, type DomainProviderModelListItem, type DomainSubscriptionResp, type DomainUser, type DomainVirtualMachine, type GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition } from "@/api/Api"
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
@@ -356,6 +356,60 @@ export function getRepoIcon(url: string) {
     default:
       return <Icon name="GitHub-Uncolor" className="size-4" />
   }
+}
+
+/** 根据仓库 URL 的 hostname 推断 git 平台，给身份自动匹配做兜底。
+ *  说明：codeup/cnb 身份的 base_url 存的是 API 域名（openapi-rdc.aliyuncs.com / api.cnb.cool），
+ *  跟仓库 URL 的 hostname 不一致，所以单靠 startsWith(base_url) 匹配不上。 */
+export function detectGitPlatformFromUrl(url: string): ConstsGitPlatform | undefined {
+  if (!url) {
+    return undefined
+  }
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname.toLowerCase()
+  } catch {
+    return undefined
+  }
+  if (hostname === "github.com") {
+    return ConstsGitPlatform.GitPlatformGithub
+  }
+  if (hostname === "gitee.com") {
+    return ConstsGitPlatform.GitPlatformGitee
+  }
+  if (hostname === "gitlab.com") {
+    return ConstsGitPlatform.GitPlatformGitLab
+  }
+  if (hostname === "codeup.aliyun.com" || hostname.endsWith(".codeup.aliyun.com")) {
+    return ConstsGitPlatform.GitPlatformCodeup
+  }
+  if (hostname === "cnb.cool" || hostname.endsWith(".cnb.cool")) {
+    return ConstsGitPlatform.GitPlatformCnb
+  }
+  return undefined
+}
+
+/** 给定一个仓库 URL，挑出最匹配的 git 身份列表。
+ *  1) 优先按 base_url 前缀匹配（github/gitlab/gitea/gitee 的现有行为）
+ *  2) 匹不到再按 hostname 推 platform，按 identity.platform 兜底（覆盖 codeup/cnb） */
+export function findIdentitiesForRepoUrl(
+  repoUrl: string,
+  identities: DomainGitIdentity[],
+): DomainGitIdentity[] {
+  if (!repoUrl) {
+    return []
+  }
+  const byBaseUrl = identities.filter(
+    (identity) => identity.base_url && repoUrl.startsWith(identity.base_url),
+  )
+  if (byBaseUrl.length > 0) {
+    return byBaseUrl
+  }
+  const platform = detectGitPlatformFromUrl(repoUrl)
+  if (!platform) {
+    return []
+  }
+  return identities.filter((identity) => identity.platform === platform)
 }
 
 export function getGitPlatformIcon(platform?: string) {

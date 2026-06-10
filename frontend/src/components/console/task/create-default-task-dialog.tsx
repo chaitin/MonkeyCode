@@ -44,6 +44,7 @@ import { useSettingsDialog } from "@/pages/console/user/page"
 import { defaultSkills } from "@/utils/config"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
+  findIdentitiesForRepoUrl,
   getGitPlatformIcon,
   getHostBadges,
   getImageShortName,
@@ -189,15 +190,18 @@ export default function CreateDefaultTaskDialog({
   }, [open])
 
   useEffect(() => {
-    const matchedIdentities = identities.filter((identity) => {
-      return selectedRepo.startsWith(identity.base_url || "")
-    })
+    // 用户已显式选定的身份（包括「我的仓库」精准带回、或选「匿名」）优先保留，
+    // 否则按 base_url 前缀 + hostname 推 platform 兜底自动匹配（覆盖 codeup/cnb）。
     const userChoiceStillValid =
-      selectedIdentityId === "none" || matchedIdentities.some((identity) => identity.id === selectedIdentityId)
+      selectedIdentityId === "none" ||
+      identities.some((identity) => identity.id === selectedIdentityId)
 
-    if (!userChoiceStillValid) {
-      setSelectedIdentityId(matchedIdentities[0]?.id || "none")
+    if (userChoiceStillValid) {
+      return
     }
+
+    const matched = findIdentitiesForRepoUrl(selectedRepo, identities)
+    setSelectedIdentityId(matched[0]?.id || "none")
   }, [selectedRepo, identities, selectedIdentityId])
 
   const loadReposForAllIdentities = async (flush = false, targetIdentityId?: string) => {
