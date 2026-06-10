@@ -158,6 +158,9 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
                 <SelectItem value={ConstsGitPlatform.GitPlatformCnb}>
                   <Icon name="Cnb" />CNB
                 </SelectItem>
+                <SelectItem value={ConstsGitPlatform.GitPlatformAtomGit}>
+                  <Icon name="GitCode" />GitCode
+                </SelectItem>
               </SelectContent>
             </Select>
           </FieldContent>

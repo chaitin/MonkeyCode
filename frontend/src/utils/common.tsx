@@ -353,6 +353,8 @@ export function getRepoIcon(url: string) {
       return <Icon name="Gitee" className="size-4" />
     case 'gitea.com':
       return <Icon name="Gitea" className="size-4" />
+    case 'atomgit.com':
+      return <Icon name="GitCode" className="size-4" />
     default:
       return <Icon name="GitHub-Uncolor" className="size-4" />
   }
@@ -385,6 +387,9 @@ export function detectGitPlatformFromUrl(url: string): ConstsGitPlatform | undef
   }
   if (hostname === "cnb.cool" || hostname.endsWith(".cnb.cool")) {
     return ConstsGitPlatform.GitPlatformCnb
+  }
+  if (hostname === "atomgit.com" || hostname.endsWith(".atomgit.com")) {
+    return ConstsGitPlatform.GitPlatformAtomGit
   }
   return undefined
 }
@@ -430,6 +435,8 @@ export function getGitPlatformIcon(platform?: string) {
       return <Icon name="Codeup" className="size-4" />
     case 'cnb':
       return <Icon name="Cnb" className="size-4" />
+    case 'atomgit':
+      return <Icon name="GitCode" className="size-4" />
     default:
       return <IconHelpHexagon className="size-4" />
   }
