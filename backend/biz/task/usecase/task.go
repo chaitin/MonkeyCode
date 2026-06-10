@@ -28,6 +28,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/giturl"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/loki"
 	"github.com/chaitin/MonkeyCode/backend/pkg/notify/dispatcher"
@@ -478,8 +479,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		git.Email = identity.Email
 	}
 
-	// 打印一下 codeup 的 git 凭证我要看看为什么没有 clone 下来
-	a.logger.InfoContext(ctx, "codeup git identity is", git)
+	a.logger.InfoContext(ctx, "resolved git identity for task", slog.Any("git", git))
 
 	limit := 1
 	if a.taskHook != nil {
@@ -508,6 +508,9 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		if git.URL == "" {
 			git.URL = pt.RepoURL
 		}
+		// Codeup 仓库 URL 必须带 .git 后缀才能 clone，做一次兜底归一化
+		// （覆盖用户手输仓库地址未带后缀的场景）
+		git.URL = giturl.NormalizeCloneURL(git.URL)
 
 		var token string
 		if keys := m.Edges.Apikeys; len(keys) > 0 {

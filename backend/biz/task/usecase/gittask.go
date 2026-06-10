@@ -15,6 +15,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/domain"
+	"github.com/chaitin/MonkeyCode/backend/pkg/git/giturl"
 	"github.com/chaitin/MonkeyCode/backend/pkg/lifecycle"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
@@ -65,7 +66,8 @@ func (g *GitTaskUsecase) Create(ctx context.Context, req domain.CreateGitTaskReq
 			HostID:   req.HostID,
 			HostName: t.ID.String(),
 			Git: taskflow.Git{
-				URL:      req.Repo.URL,
+				// Codeup 仓库 URL 必须带 .git 后缀才能 clone，做一次兜底归一化
+				URL:      giturl.NormalizeCloneURL(req.Repo.URL),
 				Username: "MonkeyCode-AI",
 				Email:    "monkeycode-ai@chaitin.com",
 				Branch:   branch,

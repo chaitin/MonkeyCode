@@ -68,3 +68,24 @@ func ResolveBranch(configuredBranch, repoURL string) string {
 	}
 	return branch
 }
+
+// NormalizeCloneURL 把仓库 URL 调整成可被 git clone 使用的形式。
+//
+// 当前只针对阿里云 Codeup：Codeup 仓库 URL 不带 .git 后缀时 git clone 会失败，
+// 这里在 hostname 命中时自动补 .git。其它平台（GitHub/Gitee/GitLab/Gitea 等）
+// 同时接受带或不带 .git 的 URL，原样返回。
+//
+// 同时兼容 HTTPS（https://codeup.aliyun.com/...）和 SSH（git@codeup.aliyun.com:...）两种形式。
+func NormalizeCloneURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	if strings.HasSuffix(raw, ".git") {
+		return raw
+	}
+	if !strings.Contains(strings.ToLower(raw), "codeup.aliyun.com") {
+		return raw
+	}
+	return raw + ".git"
+}
