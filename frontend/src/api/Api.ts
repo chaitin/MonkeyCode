@@ -22,6 +22,7 @@ export enum ConstsGitPlatform {
   GitPlatformGitee = "gitee",
   GitPlatformCodeup = "codeup",
   GitPlatformCnb = "cnb",
+  GitPlatformAtomGit = "atomgit",
   GitPlatformInternal = "internal",
 }
 

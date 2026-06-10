@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { TASK_PROMPT_PLACEHOLDER, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
+import { TASK_PROMPT_PLACEHOLDER, findIdentitiesForRepoUrl, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconLink, IconReload, IconSend, IconSourceCode, IconUpload, IconUser, IconXboxX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -47,6 +47,7 @@ function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
     ConstsGitPlatform.GitPlatformGitLab,
     ConstsGitPlatform.GitPlatformCodeup,
     ConstsGitPlatform.GitPlatformCnb,
+    ConstsGitPlatform.GitPlatformAtomGit,
   ].includes(identity.platform as ConstsGitPlatform);
 }
 
@@ -99,15 +100,17 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     [identities]
   );
 
-  // 根据选中的仓库自动匹配身份凭证；若用户已显式选择（如从「我的仓库」选中、或选择「匿名」），且该身份仍在匹配列表中，则保留用户选择
+  // 用户已显式选定的身份（包括「我的仓库」精准带回、或选「匿名」）优先保留，
+  // 否则按 base_url 前缀 + hostname 推 platform 兜底自动匹配（覆盖 codeup/cnb）。
   useEffect(() => {
-    const matchedIdentities = identities.filter((identity) => {
-      return selectedRepo.startsWith(identity.base_url || '');
-    });
-    const userChoiceStillValid = selectedIdentityId === "none" || matchedIdentities.some((id) => id.id === selectedIdentityId);
-    if (!userChoiceStillValid) {
-      setSelectedIdentityId(matchedIdentities[0]?.id || "none");
+    const userChoiceStillValid =
+      selectedIdentityId === "none" ||
+      identities.some((id) => id.id === selectedIdentityId);
+    if (userChoiceStillValid) {
+      return;
     }
+    const matched = findIdentitiesForRepoUrl(selectedRepo, identities);
+    setSelectedIdentityId(matched[0]?.id || "none");
   }, [selectedRepo, identities, selectedIdentityId])
 
   useEffect(() => {
