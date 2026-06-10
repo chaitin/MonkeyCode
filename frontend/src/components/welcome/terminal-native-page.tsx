@@ -127,7 +127,7 @@ const mobileClientItems = [
   },
 ];
 
-const SELF_HOSTING_DOC_LINK = "https://monkeycode.docs.baizhi.cloud/node/019ea70b-10ef-797b-9615-4cc6e4d91ac6";
+const SELF_HOSTING_DOC_LINK = "https://monkeycode.docs.baizhi.cloud/node/019eb0f3-9424-7c93-9489-4e584f989527";
 
 const selfHostingAdvantages = [
   "部署在企业内网，代码仓库、任务记录和研发数据留在自己的网络边界内。",
