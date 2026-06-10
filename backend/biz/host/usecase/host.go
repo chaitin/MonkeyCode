@@ -176,7 +176,7 @@ func (h *HostUsecase) GetInstallCommand(ctx context.Context, user *domain.User) 
 		return "", err
 	}
 	key := fmt.Sprintf("host:token:%s", token)
-	if err := h.redis.Set(ctx, key, string(ub), 15*time.Minute).Err(); err != nil {
+	if err := h.redis.Set(ctx, key, string(ub), 2*time.Hour).Err(); err != nil {
 		return "", err
 	}
 

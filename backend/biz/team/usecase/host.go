@@ -50,7 +50,7 @@ func (u *TeamHostUsecase) GetInstallCommand(ctx context.Context, teamUser *domai
 		return "", err
 	}
 	key := fmt.Sprintf("host:token:%s", token)
-	if err := u.redis.Set(ctx, key, string(ub), 15*time.Minute).Err(); err != nil {
+	if err := u.redis.Set(ctx, key, string(ub), 2*time.Hour).Err(); err != nil {
 		return "", err
 	}
 
