@@ -200,3 +200,30 @@ other = "Image not found"
 
 [err-model-access-denied]
 other = "Model access denied"
+
+[err-oidc-disabled]
+other = "Enterprise login is disabled"
+
+[err-oidc-config-invalid]
+other = "Enterprise login configuration is invalid"
+
+[err-oidc-state-invalid]
+other = "Enterprise login state has expired"
+
+[err-oidc-token-invalid]
+other = "Enterprise identity verification failed"
+
+[err-oidc-email-required]
+other = "Enterprise identity did not return an email"
+
+[err-oidc-email-not-verified]
+other = "Enterprise email is not verified"
+
+[err-oidc-email-domain-denied]
+other = "Enterprise email domain is not allowed"
+
+[err-oidc-team-member-required]
+other = "Account is not a member of this team"
+
+[err-password-login-disabled]
+other = "Password login is disabled for this team"

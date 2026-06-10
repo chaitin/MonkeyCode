@@ -12,6 +12,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/notifychannel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
@@ -87,12 +88,37 @@ func (u *userRepo) PasswordLogin(ctx context.Context, req *domain.TeamLoginReq) 
 		return nil, errcode.ErrLoginFailed.Wrap(err)
 	}
 
+	if err := u.checkPasswordLoginAllowed(ctx, usr); err != nil {
+		return nil, err
+	}
+
 	err = crypto.VerifyPassword(usr.Password, req.Password)
 	if err != nil {
 		u.logger.Error("invalid password", "email", req.Email, "error", err)
 		return nil, errcode.ErrLoginFailed
 	}
 	return usr, nil
+}
+
+func (u *userRepo) checkPasswordLoginAllowed(ctx context.Context, usr *db.User) error {
+	if usr == nil || usr.Role == consts.UserRoleEnterprise {
+		return nil
+	}
+	for _, member := range usr.Edges.TeamMembers {
+		cfg, err := u.db.TeamOIDCConfig.Query().
+			Where(teamoidcconfig.TeamIDEQ(member.TeamID)).
+			First(ctx)
+		if err != nil {
+			if db.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		if cfg.Enabled && !cfg.AllowPasswordLogin {
+			return errcode.ErrPasswordLoginDisabled
+		}
+	}
+	return nil
 }
 
 // ChangePassword implements domain.UserRepo.

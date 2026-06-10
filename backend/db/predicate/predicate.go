@@ -117,6 +117,9 @@ type TeamMember func(*sql.Selector)
 // TeamModel is the predicate function for teammodel builders.
 type TeamModel func(*sql.Selector)
 
+// TeamOIDCConfig is the predicate function for teamoidcconfig builders.
+type TeamOIDCConfig func(*sql.Selector)
+
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
 

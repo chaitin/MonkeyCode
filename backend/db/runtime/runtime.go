@@ -43,6 +43,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -845,6 +846,46 @@ func init() {
 	teammodelDescCreatedAt := teammodelFields[3].Descriptor()
 	// teammodel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teammodel.DefaultCreatedAt = teammodelDescCreatedAt.Default.(func() time.Time)
+	teamoidcconfigFields := schema.TeamOIDCConfig{}.Fields()
+	_ = teamoidcconfigFields
+	// teamoidcconfigDescEnabled is the schema descriptor for enabled field.
+	teamoidcconfigDescEnabled := teamoidcconfigFields[2].Descriptor()
+	// teamoidcconfig.DefaultEnabled holds the default value on creation for the enabled field.
+	teamoidcconfig.DefaultEnabled = teamoidcconfigDescEnabled.Default.(bool)
+	// teamoidcconfigDescDisplayName is the schema descriptor for display_name field.
+	teamoidcconfigDescDisplayName := teamoidcconfigFields[3].Descriptor()
+	// teamoidcconfig.DefaultDisplayName holds the default value on creation for the display_name field.
+	teamoidcconfig.DefaultDisplayName = teamoidcconfigDescDisplayName.Default.(string)
+	// teamoidcconfigDescIssuer is the schema descriptor for issuer field.
+	teamoidcconfigDescIssuer := teamoidcconfigFields[4].Descriptor()
+	// teamoidcconfig.IssuerValidator is a validator for the "issuer" field. It is called by the builders before save.
+	teamoidcconfig.IssuerValidator = teamoidcconfigDescIssuer.Validators[0].(func(string) error)
+	// teamoidcconfigDescClientID is the schema descriptor for client_id field.
+	teamoidcconfigDescClientID := teamoidcconfigFields[5].Descriptor()
+	// teamoidcconfig.ClientIDValidator is a validator for the "client_id" field. It is called by the builders before save.
+	teamoidcconfig.ClientIDValidator = teamoidcconfigDescClientID.Validators[0].(func(string) error)
+	// teamoidcconfigDescScopes is the schema descriptor for scopes field.
+	teamoidcconfigDescScopes := teamoidcconfigFields[7].Descriptor()
+	// teamoidcconfig.DefaultScopes holds the default value on creation for the scopes field.
+	teamoidcconfig.DefaultScopes = teamoidcconfigDescScopes.Default.(string)
+	// teamoidcconfigDescAutoCreateMember is the schema descriptor for auto_create_member field.
+	teamoidcconfigDescAutoCreateMember := teamoidcconfigFields[9].Descriptor()
+	// teamoidcconfig.DefaultAutoCreateMember holds the default value on creation for the auto_create_member field.
+	teamoidcconfig.DefaultAutoCreateMember = teamoidcconfigDescAutoCreateMember.Default.(bool)
+	// teamoidcconfigDescAllowPasswordLogin is the schema descriptor for allow_password_login field.
+	teamoidcconfigDescAllowPasswordLogin := teamoidcconfigFields[10].Descriptor()
+	// teamoidcconfig.DefaultAllowPasswordLogin holds the default value on creation for the allow_password_login field.
+	teamoidcconfig.DefaultAllowPasswordLogin = teamoidcconfigDescAllowPasswordLogin.Default.(bool)
+	// teamoidcconfigDescCreatedAt is the schema descriptor for created_at field.
+	teamoidcconfigDescCreatedAt := teamoidcconfigFields[11].Descriptor()
+	// teamoidcconfig.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamoidcconfig.DefaultCreatedAt = teamoidcconfigDescCreatedAt.Default.(func() time.Time)
+	// teamoidcconfigDescUpdatedAt is the schema descriptor for updated_at field.
+	teamoidcconfigDescUpdatedAt := teamoidcconfigFields[12].Descriptor()
+	// teamoidcconfig.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	teamoidcconfig.DefaultUpdatedAt = teamoidcconfigDescUpdatedAt.Default.(func() time.Time)
+	// teamoidcconfig.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	teamoidcconfig.UpdateDefaultUpdatedAt = teamoidcconfigDescUpdatedAt.UpdateDefault.(func() time.Time)
 	userMixin := schema.User{}.Mixin()
 	userMixinHooks0 := userMixin[0].Hooks()
 	user.Hooks[0] = userMixinHooks0[0]

@@ -20,6 +20,8 @@ import TeamManagerOverview from "./pages/console/manager/overview"
 import TeamManagerProjects from "./pages/console/manager/projects"
 import TeamManagerTasks from "./pages/console/manager/tasks"
 import TeamManagerConversations from "./pages/console/manager/conversations"
+import TeamManagerOIDC from "./pages/console/manager/oidc"
+import TeamOIDCLoginPage from "./pages/team-oidc-login"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
 import TeamManagerManager from "./pages/console/manager/manager"
@@ -52,6 +54,7 @@ function App() {
             <Route path="/user-agreement" element={<UserAgreementPage />} />
             <Route path="/tasks/public" element={<PublicTaskPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/team-login/:teamId" element={<TeamOIDCLoginPage />} />
             <Route path="/findpassword" element={<FindPasswordPage />} />
             <Route path="/resetpassword" element={<ResetPasswordPage />} />
             <Route path="/console" element={<UserConsolePage />}>
@@ -77,6 +80,7 @@ function App() {
               <Route path="models" element={<TeamManagerModels />} />
               <Route path="logs" element={<TeamManagerLogs />} />
               <Route path="manager" element={<TeamManagerManager />} />
+              <Route path="oidc" element={<TeamManagerOIDC />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

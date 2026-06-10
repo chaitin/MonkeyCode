@@ -1244,6 +1244,43 @@ var (
 			},
 		},
 	}
+	// TeamOidcConfigsColumns holds the columns for the "team_oidc_configs" table.
+	TeamOidcConfigsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "display_name", Type: field.TypeString, Default: "企业登录"},
+		{Name: "issuer", Type: field.TypeString},
+		{Name: "client_id", Type: field.TypeString},
+		{Name: "client_secret_ciphertext", Type: field.TypeString, Nullable: true},
+		{Name: "scopes", Type: field.TypeString, Default: "openid email profile"},
+		{Name: "email_domain", Type: field.TypeString, Nullable: true},
+		{Name: "auto_create_member", Type: field.TypeBool, Default: false},
+		{Name: "allow_password_login", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID},
+	}
+	// TeamOidcConfigsTable holds the schema information for the "team_oidc_configs" table.
+	TeamOidcConfigsTable = &schema.Table{
+		Name:       "team_oidc_configs",
+		Columns:    TeamOidcConfigsColumns,
+		PrimaryKey: []*schema.Column{TeamOidcConfigsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_oidc_configs_teams_team",
+				Columns:    []*schema.Column{TeamOidcConfigsColumns[12]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamoidcconfig_team_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamOidcConfigsColumns[12]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1392,6 +1429,7 @@ var (
 		TeamImagesTable,
 		TeamMembersTable,
 		TeamModelsTable,
+		TeamOidcConfigsTable,
 		UsersTable,
 		UserIdentitiesTable,
 		VirtualmachinesTable,
@@ -1568,6 +1606,10 @@ func init() {
 	TeamModelsTable.ForeignKeys[1].RefTable = ModelsTable
 	TeamModelsTable.Annotation = &entsql.Annotation{
 		Table: "team_models",
+	}
+	TeamOidcConfigsTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamOidcConfigsTable.Annotation = &entsql.Annotation{
+		Table: "team_oidc_configs",
 	}
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",

@@ -25,6 +25,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { captchaChallenge } from "@/utils/common"
 import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import type { DomainTeamOIDCPublicConfigResp, GithubComGoYokoWebResp } from "@/api/Api"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
@@ -42,9 +43,11 @@ export default function LoginPage({
   const [showManagerPassword, setShowManagerPassword] = React.useState(false)
   const [userLoginView, setUserLoginView] = React.useState<'choices' | 'password'>('choices')
   const [agreedToTerms, setAgreedToTerms] = React.useState(true)
+  const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
   const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
+  const defaultOIDCLoginURL = defaultOIDCConfig?.enabled ? defaultOIDCConfig.login_url : ''
 
   const ensureTermsAccepted = React.useCallback(() => {
     if (agreedToTerms) return true
@@ -69,6 +72,27 @@ export default function LoginPage({
     } catch {
       // ignore
     }
+  }, [])
+
+  React.useEffect(() => {
+    if (!IS_OFFLINE_EDITION) return
+
+    const controller = new AbortController()
+    fetch('/api/v1/users/oidc/default-team', { signal: controller.signal })
+      .then(async (resp) => {
+        if (!resp.ok) return
+        const body = await resp.json() as GithubComGoYokoWebResp & { data?: DomainTeamOIDCPublicConfigResp }
+        if (body.code === 0 && body.data?.enabled && body.data.login_url) {
+          setDefaultOIDCConfig(body.data)
+        }
+      })
+      .catch((err) => {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('load default oidc config failed', err)
+        }
+      })
+
+    return () => controller.abort()
   }, [])
 
   const handleUserLogin = async () => {
@@ -163,6 +187,20 @@ export default function LoginPage({
                             }}
                           >
                             百智云登录 - 推荐
+                          </a>
+                        </Button>
+                      )}
+                      {IS_OFFLINE_EDITION && defaultOIDCLoginURL && (
+                        <Button size="lg" className="w-full" asChild>
+                          <a
+                            href={defaultOIDCLoginURL}
+                            onClick={(e) => {
+                              if (!ensureTermsAccepted()) {
+                                e.preventDefault()
+                              }
+                            }}
+                          >
+                            {defaultOIDCConfig?.display_name || '企业登录'}
                           </a>
                         </Button>
                       )}

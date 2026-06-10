@@ -49,6 +49,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -149,6 +150,7 @@ func checkColumn(t, c string) error {
 			teamimage.Table:           teamimage.ValidColumn,
 			teammember.Table:          teammember.ValidColumn,
 			teammodel.Table:           teammodel.ValidColumn,
+			teamoidcconfig.Table:      teamoidcconfig.ValidColumn,
 			user.Table:                user.ValidColumn,
 			useridentity.Table:        useridentity.ValidColumn,
 			virtualmachine.Table:      virtualmachine.ValidColumn,

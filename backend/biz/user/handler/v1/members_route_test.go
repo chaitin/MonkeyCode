@@ -42,6 +42,32 @@ func TestNewAuthHandlerRegistersMembersRoute(t *testing.T) {
 	t.Fatal("GET /api/v1/users/members route is not registered")
 }
 
+func TestNewAuthHandlerRegistersDefaultOIDCRoute(t *testing.T) {
+	injector := do.New()
+	w := web.New()
+	do.ProvideValue(injector, w)
+	do.ProvideValue(injector, &config.Config{})
+	do.ProvideValue(injector, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	do.ProvideValue(injector, (*redis.Client)(nil))
+	do.ProvideValue[domain.UserUsecase](injector, &membersUserUsecaseStub{})
+	do.ProvideValue[domain.TeamGroupUserUsecase](injector, &membersTeamUsecaseStub{})
+	do.ProvideValue[domain.TeamOIDCLoginUsecase](injector, &membersOIDCUsecaseStub{})
+	do.ProvideValue(injector, &middleware.AuthMiddleware{})
+	do.ProvideValue(injector, middleware.NewTargetActiveMiddleware(slog.New(slog.NewTextHandler(io.Discard, nil)), nil))
+	do.ProvideValue(injector, captcha.NewCaptcha())
+
+	if _, err := NewAuthHandler(injector); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, route := range w.Routes() {
+		if route.Method == "GET" && route.Path == "/api/v1/users/oidc/default-team" {
+			return
+		}
+	}
+	t.Fatal("GET /api/v1/users/oidc/default-team route is not registered")
+}
+
 type membersUserUsecaseStub struct {
 	domain.UserUsecase
 }
@@ -56,4 +82,12 @@ type membersTeamUsecaseStub struct {
 
 func (s *membersTeamUsecaseStub) MemberList(ctx context.Context, teamUser *domain.TeamUser, req *domain.MemberListReq) (*domain.MemberListResp, error) {
 	return &domain.MemberListResp{}, nil
+}
+
+type membersOIDCUsecaseStub struct {
+	domain.TeamOIDCLoginUsecase
+}
+
+func (s *membersOIDCUsecaseStub) DefaultPublicConfig(ctx context.Context) (*domain.TeamOIDCPublicConfigResp, error) {
+	return &domain.TeamOIDCPublicConfigResp{}, nil
 }

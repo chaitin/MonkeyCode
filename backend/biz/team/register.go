@@ -30,6 +30,10 @@ func ProvideTeam(i *do.Injector) {
 	do.Provide(i, repo.NewTeamPolicyRepo)
 	do.Provide(i, usecase.NewTeamPolicyUsecase)
 	do.Provide(i, v1.NewTeamPolicyHandler)
+	do.Provide(i, repo.NewTeamOIDCRepo)
+	do.Provide(i, usecase.NewTeamOIDCUsecase)
+	do.Provide(i, usecase.NewTeamOIDCLoginUsecase)
+	do.Provide(i, v1.NewTeamOIDCHandler)
 	do.Provide(i, v1.NewTeamGroupUserHandler)
 }
 
@@ -45,4 +49,5 @@ func InvokeTeam(i *do.Injector) {
 	do.MustInvoke[*v1.TeamImageHandler](i)
 	do.MustInvoke[*v1.TeamHostHandler](i)
 	do.MustInvoke[*v1.TeamPolicyHandler](i)
+	do.MustInvoke[*v1.TeamOIDCHandler](i)
 }

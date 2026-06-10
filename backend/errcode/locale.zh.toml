@@ -207,3 +207,30 @@ other = "镜像配置未找到"
 
 [err-model-access-denied]
 other = "无权使用该模型"
+
+[err-oidc-disabled]
+other = "企业登录未启用"
+
+[err-oidc-config-invalid]
+other = "企业登录配置无效"
+
+[err-oidc-state-invalid]
+other = "企业登录状态已失效，请重新登录"
+
+[err-oidc-token-invalid]
+other = "企业登录身份校验失败"
+
+[err-oidc-email-required]
+other = "企业身份未返回邮箱"
+
+[err-oidc-email-not-verified]
+other = "企业邮箱未验证"
+
+[err-oidc-email-domain-denied]
+other = "企业邮箱域名不允许登录"
+
+[err-oidc-team-member-required]
+other = "账号未加入该团队"
+
+[err-password-login-disabled]
+other = "该团队已关闭账号密码登录"

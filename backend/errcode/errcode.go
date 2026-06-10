@@ -97,6 +97,15 @@ var (
 	ErrEmailRequired                 = web.NewErr(http.StatusOK, 10614, "err-email-required")
 	ErrEmailNotBound                 = web.NewErr(http.StatusOK, 10615, "err-email-not-bound")
 	ErrEnterpriseResetPasswordDenied = web.NewErr(http.StatusOK, 10616, "err-enterprise-reset-password-denied")
+	ErrOIDCDisabled                  = web.NewErr(http.StatusOK, 10617, "err-oidc-disabled")
+	ErrOIDCConfigInvalid             = web.NewErr(http.StatusOK, 10618, "err-oidc-config-invalid")
+	ErrOIDCStateInvalid              = web.NewErr(http.StatusOK, 10619, "err-oidc-state-invalid")
+	ErrOIDCTokenInvalid              = web.NewErr(http.StatusOK, 10620, "err-oidc-token-invalid")
+	ErrOIDCEmailRequired             = web.NewErr(http.StatusOK, 10621, "err-oidc-email-required")
+	ErrOIDCEmailNotVerified          = web.NewErr(http.StatusOK, 10622, "err-oidc-email-not-verified")
+	ErrOIDCEmailDomainDenied         = web.NewErr(http.StatusOK, 10623, "err-oidc-email-domain-denied")
+	ErrOIDCTeamMemberRequired        = web.NewErr(http.StatusOK, 10624, "err-oidc-team-member-required")
+	ErrPasswordLoginDisabled         = web.NewErr(http.StatusOK, 10625, "err-password-login-disabled")
 
 	// captcha 模块
 	ErrCreateCaptchaFailed = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")
