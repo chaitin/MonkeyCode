@@ -1,7 +1,8 @@
 import { Tabs, useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AiConsentModal, useAiConsent } from '@/components/AiConsent';
 import { Glass } from '@/components/glass';
 import { Icons } from '@/components/Icons';
 import { useTheme } from '@/theme';
@@ -51,11 +52,22 @@ function GlassDock({ state, navigation }: { state: any; navigation: any }) {
 }
 
 export default function TabsLayout() {
+  // 登录后进入首页（tab 区）首次提示 AI 数据处理同意（App Store 2.1）。已同意则不再弹；
+  // 「暂不使用」仅本次关闭（下次启动再问），真正的硬拦截在任务会话页/新建任务页。
+  const aiConsent = useAiConsent();
+  const [consentDismissed, setConsentDismissed] = useState(false);
   return (
-    <Tabs tabBar={(props) => <GlassDock {...(props as any)} />} screenOptions={{ headerShown: false }}>
-      <Tabs.Screen name="tasks" />
-      <Tabs.Screen name="projects" />
-      <Tabs.Screen name="profile" />
-    </Tabs>
+    <>
+      <Tabs tabBar={(props) => <GlassDock {...(props as any)} />} screenOptions={{ headerShown: false }}>
+        <Tabs.Screen name="tasks" />
+        <Tabs.Screen name="projects" />
+        <Tabs.Screen name="profile" />
+      </Tabs>
+      <AiConsentModal
+        visible={aiConsent.status === 'needed' && !consentDismissed}
+        onAgree={aiConsent.grant}
+        onDecline={() => setConsentDismissed(true)}
+      />
+    </>
   );
 }

@@ -8,6 +8,7 @@ import { ApiError, getTaskDetail, getTaskRounds, listModels } from '@/api/client
 import { TaskControlClient, type PortForwardInfo, type RepoFileChange } from '@/api/control';
 import { TaskStreamClient, type StreamState } from '@/api/stream';
 import { MAX_ATTACHMENTS, pickImages, saveImageToAlbum, uploadImage } from '@/api/upload';
+import { AiConsentModal, useAiConsent } from '@/components/AiConsent';
 import type { Model, ProjectTask } from '@/api/types';
 import { Glass } from '@/components/glass';
 import { Icons, Spinner } from '@/components/Icons';
@@ -85,6 +86,7 @@ export default function TaskDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const aiConsent = useAiConsent(); // 进入可交互任务前需先取得 AI 数据处理同意（App Store 2.1）
 
   const [task, setTask] = useState<ProjectTask | null>(null);
   const [historyMessages, setHistoryMessages] = useState<ChatMessage[]>([]);
@@ -646,6 +648,9 @@ export default function TaskDetailScreen() {
       <FilesPanel visible={filesOpen} onClose={() => setFilesOpen(false)} control={controlRef.current} initialChanges={fileChanges} vmId={task?.virtualmachine?.id} />
       <PreviewSheet visible={previewOpen} ports={previewPorts} refreshing={portsRefreshing} activeUrl={preview && preview.taskId === id ? preview.url : undefined} onOpen={openInBrowser} onRefresh={refreshPorts} onClose={() => setPreviewOpen(false)} />
       <CopySheet visible={copyText != null} text={copyText ?? ''} onClose={() => setCopyText(null)} onCopyAll={onCopyAll} />
+
+      {/* AI 数据处理同意：进入可交互（可对话）任务且未同意时弹出，未同意则退出该页 */}
+      <AiConsentModal visible={interactive && aiConsent.status === 'needed'} onAgree={aiConsent.grant} onDecline={() => router.back()} />
 
       {/* ⋯ 更多操作：低频/破坏性指令，点开后选择，避免误触 */}
       <Modal visible={moreOpen} transparent animationType="slide" onRequestClose={() => setMoreOpen(false)} statusBarTranslucent>
