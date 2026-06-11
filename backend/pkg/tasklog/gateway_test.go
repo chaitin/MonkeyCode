@@ -32,6 +32,10 @@ func (s *gatewayProviderStub) QueryTurns(context.Context, uuid.UUID, time.Time, 
 	return &QueryTurnsResp{}, nil
 }
 
+func (s *gatewayProviderStub) QueryUserInputs(context.Context, uuid.UUID, time.Time, string, int) (*QueryUserInputsResp, error) {
+	return &QueryUserInputsResp{}, nil
+}
+
 func TestGatewayEmptyStoreUsesLoki(t *testing.T) {
 	loki := &gatewayProviderStub{name: "loki"}
 	clickHouse := &gatewayProviderStub{name: "clickhouse"}

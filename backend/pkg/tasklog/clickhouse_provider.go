@@ -157,6 +157,82 @@ ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
 	return resp, nil
 }
 
+// QueryUserInputs 查询任务的所有 user-input 日志，正序（最早在前），用于侧边栏。
+// cursor 编码上一页最后一条的 ts 纳秒，下次拉取 `ts > cursor` 的条目。
+func (p *ClickHouseProvider) QueryUserInputs(ctx context.Context, taskID uuid.UUID, _ time.Time, cursor string, limit int) (*QueryUserInputsResp, error) {
+	if p.client == nil {
+		return nil, ErrProviderUnavailable
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	table := p.client.Table()
+
+	cursorFilter := ""
+	args := []any{taskID}
+	if cursor != "" {
+		ns, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		cursorFilter = "AND ts > ?"
+		args = append(args, time.Unix(0, ns).UTC())
+	}
+	args = append(args, limit+1)
+
+	// task_logs 是 MergeTree（无主键去重），偶发会因 ingest 重试落多行同 ts，
+	// LIMIT 1 BY ts 保证每个时间戳只返回一行（取 msg_seq_start/ingest_id 最小的那条）。
+	q := fmt.Sprintf(`
+SELECT ts, data
+FROM %s
+WHERE task_id = ? AND event = 'user-input'
+%s
+ORDER BY ts ASC, msg_seq_start ASC, ingest_id ASC
+LIMIT 1 BY ts
+LIMIT ?
+`, table, cursorFilter)
+
+	rows, err := p.client.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := make([]*UserInputEntry, 0, limit+1)
+	for rows.Next() {
+		var (
+			ts   time.Time
+			data string
+		)
+		if err := rows.Scan(&ts, &data); err != nil {
+			return nil, err
+		}
+		entries = append(entries, &UserInputEntry{
+			Timestamp: ts.UTC().UnixNano(),
+			Data:      []byte(data),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	hasMore := len(entries) > limit
+	if hasMore {
+		entries = entries[:limit]
+	}
+	resp := &QueryUserInputsResp{
+		Entries: entries,
+		HasMore: hasMore,
+	}
+	if hasMore && len(entries) > 0 {
+		resp.NextCursor = strconv.FormatInt(entries[len(entries)-1].Timestamp, 10)
+	}
+	return resp, nil
+}
+
 func (p *ClickHouseProvider) hasLowerTurn(ctx context.Context, taskID uuid.UUID, turnSeq uint32) (bool, error) {
 	if turnSeq == 0 {
 		return false, nil

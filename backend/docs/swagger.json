@@ -8509,6 +8509,73 @@
                 }
             }
         },
+        "/api/v1/users/tasks/user-inputs": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "查询任务的所有 user-input 消息（正序，最早在前），用于聊天页侧边栏快速跳转到指定一轮对话。\n单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。\ncontent 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】任务管理"
+                ],
+                "summary": "查询任务用户输入列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "分页游标，第一页留空",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "返回条数（默认 20，上限 100）",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TaskUserInputsResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/tasks/{id}": {
             "get": {
                 "security": [
@@ -8768,13 +8835,19 @@
                 "github",
                 "gitlab",
                 "gitea",
-                "gitee"
+                "gitee",
+                "codeup",
+                "cnb",
+                "atomgit"
             ],
             "x-enum-varnames": [
                 "GitPlatformGithub",
                 "GitPlatformGitLab",
                 "GitPlatformGitea",
-                "GitPlatformGitee"
+                "GitPlatformGitee",
+                "GitPlatformCodeup",
+                "GitPlatformCnb",
+                "GitPlatformAtomgit"
             ]
         },
         "consts.HostStatus": {
@@ -9047,6 +9120,14 @@
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
             },
+            "x-enum-descriptions": [
+                "百智云平台",
+                "",
+                "",
+                "",
+                "",
+                ""
+            ],
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
                 "UserPlatformGithub",
@@ -9072,6 +9153,13 @@
                 "UserRoleIndividual": "个人用户",
                 "UserRoleSubAccount": "企业子账户"
             },
+            "x-enum-descriptions": [
+                "个人用户",
+                "企业用户",
+                "企业子账户",
+                "MonkeyCode-AI 管理员账号，用来配置公共资源. 如公共宿主机等",
+                "全自动 git 任务插入的用户"
+            ],
             "x-enum-varnames": [
                 "UserRoleIndividual",
                 "UserRoleEnterprise",
@@ -9137,6 +9225,10 @@
                     "type": "string"
                 },
                 "email": {
+                    "type": "string"
+                },
+                "organization_id": {
+                    "description": "云效 Codeup 组织 ID，绑定后自动解析填充",
                     "type": "string"
                 },
                 "platform": {
@@ -10031,6 +10123,10 @@
                 },
                 "is_installation_app": {
                     "type": "boolean"
+                },
+                "organization_id": {
+                    "description": "云效 Codeup 组织 ID",
+                    "type": "string"
                 },
                 "platform": {
                     "$ref": "#/definitions/consts.GitPlatform"
@@ -11522,6 +11618,44 @@
                 }
             }
         },
+        "domain.TaskUserInputItem": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "description": "用户输入文本，超过 500 字符截断",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "与前端 message.id 对齐：user-input-{timestamp}",
+                    "type": "string"
+                },
+                "timestamp": {
+                    "description": "纳秒，与 chunk.timestamp 对齐",
+                    "type": "integer"
+                },
+                "truncated": {
+                    "description": "是否被截断",
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain.TaskUserInputsResp": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TaskUserInputItem"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.Team": {
             "type": "object",
             "properties": {
@@ -12302,6 +12436,9 @@
                 "email": {
                     "type": "string"
                 },
+                "organization_id": {
+                    "type": "string"
+                },
                 "platform": {
                     "$ref": "#/definitions/consts.GitPlatform"
                 },
@@ -12999,6 +13136,7 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
+            "format": "int32",
             "enum": [
                 0,
                 1,

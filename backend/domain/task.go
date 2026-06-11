@@ -349,6 +349,28 @@ type TaskChunkEntry struct {
 	Labels    map[string]string `json:"labels,omitempty"`
 }
 
+// TaskUserInputsReq 查询任务用户输入列表请求（正序，从最早翻到最新）
+type TaskUserInputsReq struct {
+	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
+	Cursor string    `json:"cursor" query:"cursor"`             // 分页游标
+	Limit  int       `json:"limit" query:"limit"`               // 返回条数（默认 20，上限 100）
+}
+
+// TaskUserInputItem 单条用户输入（侧边栏用）
+type TaskUserInputItem struct {
+	ID        string `json:"id"`        // 与前端 message.id 对齐：user-input-{timestamp}
+	Content   string `json:"content"`   // 用户输入文本，超过 500 字符截断
+	Truncated bool   `json:"truncated"` // 是否被截断
+	Timestamp int64  `json:"timestamp"` // 纳秒，与 chunk.timestamp 对齐
+}
+
+// TaskUserInputsResp 查询任务用户输入列表响应
+type TaskUserInputsResp struct {
+	Items      []*TaskUserInputItem `json:"items"`
+	NextCursor string               `json:"next_cursor,omitempty"`
+	HasMore    bool                 `json:"has_more"`
+}
+
 // GitTask git 任务（由内部项目通过 TaskHook 提供）
 type GitTask struct {
 	ID                   uuid.UUID          `json:"id"`

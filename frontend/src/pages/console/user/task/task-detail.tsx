@@ -12,6 +12,7 @@ import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
 import type { AvailableCommands, TaskPlan, TaskStreamStatus, TaskUserInput } from "@/components/console/task/task-shared"
 import { TaskStreamClient, type TaskStreamClientState, type TaskStreamCloseReason, type TaskStreamConnectionState } from "@/components/console/task/task-stream-client"
 import { TaskTerminalPanel } from "@/components/console/task/task-terminal-panel"
+import { TaskUserInputIndex } from "@/components/console/task/task-user-input-index"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
   AlertDialog,
@@ -92,6 +93,7 @@ export default function TaskDetailPage() {
   const [fileChangesCount, setFileChangesCount] = React.useState(0)
   const [fileRefreshSignal, setFileRefreshSignal] = React.useState(0)
   const [historyCursor, setHistoryCursor] = React.useState<string | null>(null)
+  const historyCursorRef = React.useRef<string | null>(null)
   const [historyHasMore, setHistoryHasMore] = React.useState(true)
   const [historyLoaded, setHistoryLoaded] = React.useState(false)
   const [historyLoading, setHistoryLoading] = React.useState(false)
@@ -390,6 +392,7 @@ export default function TaskDetailPage() {
             if (!historyLoadedRef.current && state.historyCursor.ready) {
               setHistoryCursorReady(true)
               setHistoryCursor(state.historyCursor.cursor)
+              historyCursorRef.current = state.historyCursor.cursor
               setHistoryHasMore(state.historyCursor.hasMore)
             }
           },
@@ -482,6 +485,7 @@ export default function TaskDetailPage() {
     setFileChangesCount(0)
     setFileRefreshSignal(0)
     setHistoryCursor(null)
+    historyCursorRef.current = null
     setHistoryHasMore(true)
     setHistoryLoaded(false)
     setHistoryCursorReady(false)
@@ -580,7 +584,7 @@ export default function TaskDetailPage() {
     timeoutRef.current = setTimeout(scheduleFetchTaskDetail, delay)
   }, [fetchTaskDetail])
 
-  const fetchTaskRounds = React.useCallback(async (cursor?: string) => {
+  const fetchTaskRounds = React.useCallback(async (cursor?: string, limit?: number) => {
     if (!taskId || historyLoadingRef.current) return
     historyLoadingRef.current = true
     setHistoryLoading(true)
@@ -588,7 +592,7 @@ export default function TaskDetailPage() {
       "v1UsersTasksRoundsList",
       {
         id: taskId,
-        limit: 1,
+        limit: limit ?? 1,
         ...(cursor ? { cursor } : {}),
       },
       [],
@@ -600,7 +604,11 @@ export default function TaskDetailPage() {
           const messageState = messageHandler.finalizeCycle()
           setRawHistoryMessages((prev) => [...messageState.messages, ...prev])
           setHistoryCursorReady(true)
-          setHistoryCursor(resp.data?.next_cursor ?? null)
+          {
+            const nextCursor = resp.data?.next_cursor ?? null
+            setHistoryCursor(nextCursor)
+            historyCursorRef.current = nextCursor
+          }
           setHistoryHasMore(resp.data?.has_more ?? false)
           setHistoryLoaded(true)
           historyLoadedRef.current = true
@@ -1417,7 +1425,7 @@ export default function TaskDetailPage() {
           <ResizablePanel id="top" defaultSize={hasBottomTerminal ? 75 : 100} minSize={30} className="min-h-0">
             <ResizablePanelGroup orientation="horizontal">
               <ResizablePanel id="chat" defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
-                <div className={cn("flex flex-col h-full min-h-0 gap-2")}>
+                <div className={cn("flex flex-col h-full min-h-0 gap-2 flex-1 min-w-0")}>
                   {/* 消息列表 */}
                   <div ref={chatScrollRootRef} className="flex-1 min-h-0 min-w-0 relative">
                     <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:!block">
@@ -1456,6 +1464,13 @@ export default function TaskDetailPage() {
                         ) : null}
                       </div>
                     </ScrollArea>
+                    <TaskUserInputIndex
+                      taskId={taskId ?? null}
+                      liveMessages={messages}
+                      getScrollContainer={getChatScrollContainer}
+                      historyHasMore={!historyLoaded || historyHasMore}
+                      loadMoreHistory={() => fetchTaskRounds(historyCursorRef.current ?? undefined, 1)}
+                    />
                     {chatHasOverflow && (
                       <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
                         <div className={cn("relative h-full", hasSidePanel ? "w-full" : "mx-auto max-w-[960px]")}>
