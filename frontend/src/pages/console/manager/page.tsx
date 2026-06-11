@@ -53,12 +53,14 @@ export default function ManagerConsolePage() {
     "/manager/logs": [
       { label: "操作记录", href: "/manager/logs" },
     ],
+    "/manager/license": [
+      { label: "License", href: "/manager/license" },
+    ],
   }
-  
 
   const normalizedPath =
     location.pathname !== "/" ? location.pathname.replace(/\/$/, "") : location.pathname
-  
+
   const breadcrumbSegments =
     breadcrumbSegmentsMap[normalizedPath] ?? [{ label: "企业管理后台" }]
 

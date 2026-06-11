@@ -21,6 +21,7 @@ import TeamManagerProjects from "./pages/console/manager/projects"
 import TeamManagerTasks from "./pages/console/manager/tasks"
 import TeamManagerConversations from "./pages/console/manager/conversations"
 import TeamManagerOIDC from "./pages/console/manager/oidc"
+import TeamManagerLicense from "./pages/console/manager/license"
 import TeamOIDCLoginPage from "./pages/team-oidc-login"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
@@ -81,6 +82,16 @@ function App() {
               <Route path="logs" element={<TeamManagerLogs />} />
               <Route path="manager" element={<TeamManagerManager />} />
               <Route path="oidc" element={<TeamManagerOIDC />} />
+              <Route
+                path="license"
+                element={
+                  IS_OFFLINE_EDITION ? (
+                    <TeamManagerLicense />
+                  ) : (
+                    <Navigate to="/manager/overview" replace />
+                  )
+                }
+              />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
