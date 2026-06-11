@@ -67,6 +67,7 @@ func NewTeamGroupUserHandler(i *do.Injector) (*TeamGroupUserHandler, error) {
 	u.GET("", web.BindHandler(h.MemberList), auth.TeamAuth(), adminAuth)
 	u.PUT("/:user_id/passwords/reset", web.BindHandler(h.ResetPassword), auth.TeamAuth(), adminAuth, audit.Audit("reset_team_user_password"))
 	u.PUT("/:user_id", web.BindHandler(h.UpdateUser), auth.TeamAuth(), adminAuth, audit.Audit("update_team_user"))
+	u.DELETE("/:user_id", web.BindHandler(h.DeleteUser), auth.TeamAuth(), adminAuth, audit.Audit("delete_team_user"))
 
 	g := w.Group("/api/v1/teams/groups")
 	g.GET("", web.BaseHandler(h.List), auth.TeamAuth())
@@ -322,13 +323,39 @@ func (h *TeamGroupUserHandler) UpdateUser(c *web.Context, req domain.UpdateTeamU
 		return err
 	}
 	// 如果设置了禁用用户，删除该用户相关联的 cookie
-	if *req.IsBlocked {
+	if req.IsBlocked != nil && *req.IsBlocked {
 		err := h.authMiddleware.Session.Trunc(c.Request().Context(), consts.MonkeyCodeAITeamSession, resp.User.ID)
 		if err != nil {
 			return err
 		}
 	}
 	return c.Success(resp)
+}
+
+// DeleteUser 删除团队成员
+//
+//	@Summary		删除团队成员
+//	@Description	软删除团队成员或管理员，不删除团队成员关系
+//	@Tags			【Team 管理员】分组成员管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAITeamAuth
+//	@Param			user_id	path		string		true	"用户ID"
+//	@Success		200		{object}	web.Resp{}	"成功"
+//	@Failure		401		{object}	web.Resp	"未授权"
+//	@Failure		500		{object}	web.Resp	"服务器内部错误"
+//	@Router			/api/v1/teams/users/{user_id} [delete]
+func (h *TeamGroupUserHandler) DeleteUser(c *web.Context, req domain.DeleteTeamUserReq) error {
+	teamUser := middleware.GetTeamUser(c)
+	if err := h.usecase.DeleteUser(c.Request().Context(), teamUser, &req); err != nil {
+		return err
+	}
+	if h.authMiddleware != nil && h.authMiddleware.Session != nil {
+		if err := h.authMiddleware.Session.Trunc(c.Request().Context(), consts.MonkeyCodeAITeamSession, req.UserID); err != nil {
+			return err
+		}
+	}
+	return c.Success(nil)
 }
 
 // List 获取团队分组列表

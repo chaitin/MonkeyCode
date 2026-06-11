@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { IconCirclePlus, IconCopy, IconDotsVertical, IconForbid, IconLockCode, IconUser, IconUserCircle, IconCheck } from "@tabler/icons-react";
+import { IconCirclePlus, IconCopy, IconDotsVertical, IconForbid, IconLockCode, IconUser, IconUserCircle, IconCheck, IconTrash } from "@tabler/icons-react";
 import { Fragment, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,9 +21,10 @@ interface TeamMembersCardProps {
   memberLimit: number;
   groups: any[];
   onRefreshMembers: () => void;
+  onRefreshGroups?: () => void;
 }
 
-export default function TeamMembersCard({ members, memberLimit, groups, onRefreshMembers }: TeamMembersCardProps) {
+export default function TeamMembersCard({ members, memberLimit, groups, onRefreshMembers, onRefreshGroups }: TeamMembersCardProps) {
   const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [emails, setEmails] = useState("");
@@ -35,6 +36,9 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [resettingPasswordUser, setResettingPasswordUser] = useState<{ id?: string; email?: string }>({});
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<{ id?: string; email?: string }>({});
+  const [deleting, setDeleting] = useState(false);
 
   // 获取成员所属的组
   const getMemberGroups = (memberId: string) => {
@@ -57,6 +61,22 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
       .filter(email => email.length > 0);
   };
 
+  const formatAddMemberError = (message?: string) => {
+    if (!message) {
+      return "成员添加失败，请稍后重试";
+    }
+    if (message.includes("limit") || message.includes("上限")) {
+      return "成员添加失败：团队成员数量已达上限";
+    }
+    if (message.includes("deleted") || message.includes("删除")) {
+      return "成员添加失败：邮箱对应用户已被删除，不能重复添加";
+    }
+    if (message.includes("exists") || message.includes("存在")) {
+      return "成员添加失败：用户已在团队中";
+    }
+    return `成员添加失败：${message}`;
+  };
+
   const handleAddMember = async () => {
     const emailList = parseEmails(emails);
     
@@ -69,6 +89,12 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
     const invalidEmails = emailList.filter(email => !validateEmail(email));
     if (invalidEmails.length > 0) {
       toast.error(`以下邮箱格式不正确：${invalidEmails.join(", ")}`);
+      return;
+    }
+    const lowerEmails = emailList.map(email => email.toLowerCase());
+    const duplicateEmails = emailList.filter((email, index) => lowerEmails.indexOf(email.toLowerCase()) !== index);
+    if (duplicateEmails.length > 0) {
+      toast.error(`以下邮箱重复输入：${Array.from(new Set(duplicateEmails)).join(", ")}`);
       return;
     }
 
@@ -88,7 +114,7 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
         setSelectedGroupId("");
         onRefreshMembers();
       } else {
-        toast.error("成员添加失败: " + resp.message);
+        toast.error(formatAddMemberError(resp.message));
       }
     })
     setSubmitting(false);
@@ -181,6 +207,35 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
     setResettingPassword(false);
   };
 
+  const handleOpenDeleteDialog = (user: { id?: string; email?: string }) => {
+    setDeletingUser(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleCancelDelete = () => {
+    setDeletingUser({});
+    setDeleteDialogOpen(false);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser.id) {
+      return;
+    }
+    setDeleting(true);
+    await apiRequest('v1TeamsUsersDelete', {}, [deletingUser.id], (resp) => {
+      if (resp.code === 0) {
+        toast.success(`已删除成员 ${deletingUser.email || ""}`);
+        setDeletingUser({});
+        setDeleteDialogOpen(false);
+        onRefreshMembers();
+        onRefreshGroups?.();
+      } else {
+        toast.error("删除成员失败: " + resp.message);
+      }
+    })
+    setDeleting(false);
+  };
+
   return (
     <>
       <Card className="shadow-none flex-4">
@@ -254,6 +309,12 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
                         >
                           <IconLockCode />
                           重置密码
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleOpenDeleteDialog({ id: member.user?.id, email: member.user?.email })}
+                        >
+                          <IconTrash />
+                          删除成员
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -342,6 +403,25 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmResetPassword} disabled={resettingPassword}>
               {resettingPassword ? "重置中..." : "确认重置"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除成员</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除成员 "{deletingUser.email}" 吗？删除后该成员将无法继续使用团队账号登录。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDelete} disabled={deleting}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
+              {deleting ? "删除中..." : "确认删除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

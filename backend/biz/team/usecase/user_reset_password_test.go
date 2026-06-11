@@ -71,6 +71,52 @@ func TestResetPasswordRejectsUserOutsideTeam(t *testing.T) {
 	}
 }
 
+func TestDeleteUserRejectsUserOutsideTeam(t *testing.T) {
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	repo := &resetPasswordRepoStub{getMemberErr: errcode.ErrNotFound}
+	u := &TeamGroupUserUsecase{
+		repo:   repo,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	err := u.DeleteUser(ctx, &domain.TeamUser{Team: &domain.Team{ID: teamID}}, &domain.DeleteTeamUserReq{UserID: userID})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if repo.deleteCalled {
+		t.Fatal("user should not be deleted when outside team")
+	}
+}
+
+func TestUpdateUserAllowsNameOnly(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	repo := &resetPasswordRepoStub{
+		updatedUser: &db.User{
+			ID:    userID,
+			Name:  "new name",
+			Email: "member@example.com",
+		},
+	}
+	u := &TeamGroupUserUsecase{
+		repo:   repo,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	resp, err := u.UpdateUser(ctx, &domain.UpdateTeamUserReq{
+		UserID: userID,
+		Name:   stringPtr("new name"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.User.Name != "new name" {
+		t.Fatalf("name = %q, want new name", resp.User.Name)
+	}
+}
+
 type resetPasswordRepoStub struct {
 	domain.TeamGroupUserRepo
 	member        *db.TeamMember
@@ -78,6 +124,9 @@ type resetPasswordRepoStub struct {
 	resetCalled   bool
 	resetUserID   uuid.UUID
 	resetPassword string
+	deleteCalled  bool
+	deletedUserID uuid.UUID
+	updatedUser   *db.User
 }
 
 func (s *resetPasswordRepoStub) GetMember(ctx context.Context, teamID, userID uuid.UUID) (*db.TeamMember, error) {
@@ -92,4 +141,18 @@ func (s *resetPasswordRepoStub) ResetPassword(ctx context.Context, userID uuid.U
 	s.resetUserID = userID
 	s.resetPassword = newPassword
 	return nil
+}
+
+func (s *resetPasswordRepoStub) DeleteUser(ctx context.Context, teamID, userID uuid.UUID) error {
+	s.deleteCalled = true
+	s.deletedUserID = userID
+	return nil
+}
+
+func (s *resetPasswordRepoStub) UpdateUser(ctx context.Context, userID uuid.UUID, req *domain.UpdateTeamUserReq) (*db.User, error) {
+	return s.updatedUser, nil
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

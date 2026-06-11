@@ -249,6 +249,7 @@ export interface DomainAddTeamAdminReq {
 }
 
 export interface DomainAddTeamAdminResp {
+  password?: string;
   user?: DomainTeamUser;
 }
 
@@ -1954,6 +1955,7 @@ export interface DomainTeamOIDCTestResp {
 
 export interface DomainUpdateTeamUserReq {
   is_blocked?: boolean;
+  name?: string;
 }
 
 export interface DomainUpdateTeamUserResp {
@@ -4130,6 +4132,25 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         path: `/api/v1/teams/users/${userId}`,
         method: "PUT",
         body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 软删除团队成员或管理员，不删除团队成员关系
+     *
+     * @tags 【Team 管理员】分组成员管理
+     * @name V1TeamsUsersDelete
+     * @summary 删除团队成员
+     * @request DELETE:/api/v1/teams/users/{user_id}
+     * @secure
+     */
+    v1TeamsUsersDelete: (userId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/teams/users/${userId}`,
+        method: "DELETE",
         secure: true,
         type: ContentType.Json,
         format: "json",

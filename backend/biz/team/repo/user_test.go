@@ -317,6 +317,68 @@ func TestResetPasswordStoresHashedPassword(t *testing.T) {
 	}
 }
 
+func TestMemberListSkipsDeletedUsers(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamRepoTestTeam(t, client)
+	activeUserID := createTeamRepoNamedUser(t, client, "active@example.com")
+	deletedUserID := createTeamRepoNamedUser(t, client, "deleted@example.com")
+	createTeamRepoTestMember(t, client, teamID, activeUserID, consts.TeamMemberRoleUser)
+	createTeamRepoTestMember(t, client, teamID, deletedUserID, consts.TeamMemberRoleUser)
+	if err := client.User.DeleteOneID(deletedUserID).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	members, err := repo.MemberList(ctx, teamID, consts.TeamMemberRoleUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 1 {
+		t.Fatalf("len(members) = %d, want 1", len(members))
+	}
+	if members[0].UserID != activeUserID {
+		t.Fatalf("member user id = %s, want %s", members[0].UserID, activeUserID)
+	}
+}
+
+func TestDeleteUserSoftDeletesUserAndKeepsTeamMember(t *testing.T) {
+	ctx := context.Background()
+	client := newTeamRepoTestDB(t)
+	repo := &TeamGroupUserRepo{
+		db:     client,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	teamID := createTeamRepoTestTeam(t, client)
+	userID := createTeamRepoNamedUser(t, client, "member@example.com")
+	createTeamRepoTestMember(t, client, teamID, userID, consts.TeamMemberRoleUser)
+
+	if err := repo.DeleteUser(ctx, teamID, userID); err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := client.User.Query().
+		Where(user.IDEQ(userID)).
+		Only(entx.SkipSoftDelete(ctx))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.DeletedAt.IsZero() {
+		t.Fatal("deleted_at was not set")
+	}
+	exists, err := client.TeamMember.Query().
+		Where(teammember.TeamIDEQ(teamID), teammember.UserIDEQ(userID)).
+		Exist(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("team member relation should be kept")
+	}
+}
+
 func TestEnsureDefaultTeamGroupReturnsExistingGroup(t *testing.T) {
 	ctx := context.Background()
 	client := newTeamRepoTestDB(t)
@@ -365,4 +427,32 @@ func createTeamRepoTestTeam(t *testing.T, client *db.Client) uuid.UUID {
 		t.Fatal(err)
 	}
 	return team.ID
+}
+
+func createTeamRepoNamedUser(t *testing.T, client *db.Client, email string) uuid.UUID {
+	t.Helper()
+	usr, err := client.User.Create().
+		SetID(uuid.New()).
+		SetName(email).
+		SetEmail(email).
+		SetPassword("").
+		SetRole(consts.UserRoleSubAccount).
+		SetStatus(consts.UserStatusActive).
+		Save(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return usr.ID
+}
+
+func createTeamRepoTestMember(t *testing.T, client *db.Client, teamID, userID uuid.UUID, role consts.TeamMemberRole) {
+	t.Helper()
+	if _, err := client.TeamMember.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetUserID(userID).
+		SetRole(role).
+		Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }

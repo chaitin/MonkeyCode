@@ -52,6 +52,7 @@ func (r *TeamGroupUserRepo) List(ctx context.Context, teamID uuid.UUID) ([]*db.T
 		Where(teamgroup.TeamIDEQ(teamID)).
 		WithMembers(
 			func(uq *db.UserQuery) {
+				uq.Where(user.DeletedAtIsNil())
 				uq.Order(user.ByCreatedAt(sql.OrderDesc()))
 			},
 		).
@@ -130,7 +131,10 @@ func (r *TeamGroupUserRepo) Delete(ctx context.Context, teamID, groupID uuid.UUI
 // ListGroupUsers 获取团队组成员列表
 func (r *TeamGroupUserRepo) ListGroupUsers(ctx context.Context, groupID uuid.UUID) ([]*db.TeamGroupMember, error) {
 	return r.db.TeamGroupMember.Query().
-		Where(teamgroupmember.GroupIDEQ(groupID)).
+		Where(
+			teamgroupmember.GroupIDEQ(groupID),
+			teamgroupmember.HasUserWith(user.DeletedAtIsNil()),
+		).
 		WithUser().
 		All(ctx)
 }
@@ -197,7 +201,10 @@ func (r *TeamGroupUserRepo) Login(ctx context.Context, req *domain.TeamLoginReq)
 // MemberList 获取团队成员列表
 func (r *TeamGroupUserRepo) MemberList(ctx context.Context, teamID uuid.UUID, role consts.TeamMemberRole) ([]*db.TeamMember, error) {
 	query := r.db.TeamMember.Query().
-		Where(teammember.TeamIDEQ(teamID)).
+		Where(
+			teammember.TeamIDEQ(teamID),
+			teammember.HasUserWith(user.DeletedAtIsNil()),
+		).
 		WithUser()
 
 	if role != "" {
@@ -237,10 +244,30 @@ func (r *TeamGroupUserRepo) GetTeam(ctx context.Context, teamID uuid.UUID) (*db.
 // UpdateUser 更新团队用户信息
 func (r *TeamGroupUserRepo) UpdateUser(ctx context.Context, userID uuid.UUID, req *domain.UpdateTeamUserReq) (*db.User, error) {
 	update := r.db.User.UpdateOneID(userID)
+	if req.Name != nil {
+		update = update.SetName(*req.Name)
+	}
 	if req.IsBlocked != nil {
 		update = update.SetIsBlocked(*req.IsBlocked)
 	}
 	return update.Save(ctx)
+}
+
+func (r *TeamGroupUserRepo) DeleteUser(ctx context.Context, teamID, userID uuid.UUID) error {
+	exists, err := r.db.TeamMember.Query().
+		Where(
+			teammember.TeamIDEQ(teamID),
+			teammember.UserIDEQ(userID),
+			teammember.HasUserWith(user.DeletedAtIsNil()),
+		).
+		Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errcode.ErrNotFound
+	}
+	return r.db.User.DeleteOneID(userID).Exec(ctx)
 }
 
 // GetMembersByIDs 根据用户ID列表获取团队成员
@@ -260,6 +287,7 @@ func (r *TeamGroupUserRepo) GetMember(ctx context.Context, teamID, userID uuid.U
 		Where(
 			teammember.TeamIDEQ(teamID),
 			teammember.UserIDEQ(userID),
+			teammember.HasUserWith(user.DeletedAtIsNil()),
 		).
 		WithUser().
 		First(ctx)

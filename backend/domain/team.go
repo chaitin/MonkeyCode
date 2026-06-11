@@ -33,6 +33,7 @@ type TeamGroupUserUsecase interface {
 	MemberList(ctx context.Context, teamUser *TeamUser, req *MemberListReq) (*MemberListResp, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, req *ChangePasswordReq) error
 	UpdateUser(ctx context.Context, req *UpdateTeamUserReq) (*UpdateTeamUserResp, error)
+	DeleteUser(ctx context.Context, teamUser *TeamUser, req *DeleteTeamUserReq) error
 }
 
 type TeamPolicyUsecase interface {
@@ -56,6 +57,7 @@ type TeamGroupUserRepo interface {
 	ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error
 	GetTeam(ctx context.Context, teamID uuid.UUID) (*db.Team, error)
 	UpdateUser(ctx context.Context, userID uuid.UUID, req *UpdateTeamUserReq) (*db.User, error)
+	DeleteUser(ctx context.Context, teamID, userID uuid.UUID) error
 	GetMembersByIDs(ctx context.Context, teamID uuid.UUID, userIDs []uuid.UUID) ([]*db.TeamMember, error)
 	GetMember(ctx context.Context, teamID, userID uuid.UUID) (*db.TeamMember, error)
 	InitTeam(ctx context.Context, email, name, password, image string) error
@@ -295,15 +297,21 @@ type ResetPasswordReq struct {
 	UserID uuid.UUID `param:"user_id" validate:"required" json:"-" swaggerignore:"true"`
 }
 
+type DeleteTeamUserReq struct {
+	UserID uuid.UUID `param:"user_id" validate:"required" json:"-" swaggerignore:"true"`
+}
+
 // AddTeamAdminReq 创建团队管理员请求
 type AddTeamAdminReq struct {
-	Email string `json:"email" validate:"required,email"` // 邮箱
-	Name  string `json:"name" validate:"required"`        // 姓名
+	Email    string `json:"email" validate:"required,email"` // 邮箱
+	Name     string `json:"name" validate:"required"`        // 姓名
+	Password string `json:"-" swaggerignore:"true"`
 }
 
 // AddTeamAdminResp 创建团队管理员响应
 type AddTeamAdminResp struct {
-	User *TeamUser `json:"user"`
+	User     *TeamUser `json:"user"`
+	Password string    `json:"password,omitempty"`
 }
 
 // MemberListReq 获取团队成员列表请求
@@ -347,6 +355,7 @@ type ChangePasswordResp struct {
 // UpdateTeamUserReq 更新团队用户信息请求
 type UpdateTeamUserReq struct {
 	UserID    uuid.UUID `param:"user_id" validate:"required" json:"-" swaggerignore:"true"`
+	Name      *string   `json:"name" validate:"omitempty"`
 	IsBlocked *bool     `json:"is_blocked" validate:"omitempty"`
 }
 

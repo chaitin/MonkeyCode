@@ -215,6 +215,13 @@ func (u *TeamGroupUserUsecase) UpdateUser(ctx context.Context, req *domain.Updat
 	}, nil
 }
 
+func (u *TeamGroupUserUsecase) DeleteUser(ctx context.Context, teamUser *domain.TeamUser, req *domain.DeleteTeamUserReq) error {
+	if _, err := u.repo.GetMember(ctx, teamUser.GetTeamID(), req.UserID); err != nil {
+		return err
+	}
+	return u.repo.DeleteUser(ctx, teamUser.GetTeamID(), req.UserID)
+}
+
 // generateResetPWDToken 生成重置密码的 token
 // 使用 UUID 作为随机 handle，实际过期时间由 Redis TTL 控制，
 // 避免 base32 填充字符在邮件传输中被破坏。
