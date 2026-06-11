@@ -42,6 +42,7 @@ export default function TeamManagerMembers() {
         memberLimit={memberLimit}
         groups={groups}
         onRefreshMembers={fetchMembers}
+        onRefreshGroups={fetchGroups}
       />
       <TeamGroupsCard 
         groups={groups}

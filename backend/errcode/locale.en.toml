@@ -85,6 +85,12 @@ other = "Codeup OAuth is not supported yet; please bind with a Personal Access T
 [err-team-member-limit-exceeded]
 other = "Team member limit exceeded"
 
+[err-team-admin-limit-exceeded]
+other = "Team admin limit exceeded"
+
+[err-team-user-deleted]
+other = "This user has been deleted and cannot be added again"
+
 [err-invalid-password]
 other = "Invalid password"
 
