@@ -8,7 +8,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
-import { Bot, Box, FolderGit2, LayoutDashboard, ListTodo, MessagesSquare, MonitorCloud, ShieldCheck, User } from "lucide-react"
+import { Bot, Box, FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, MonitorCloud, ShieldCheck, User } from "lucide-react"
+import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 export default function NavTeams() {
   const location = useLocation()
@@ -127,6 +128,19 @@ export default function NavTeams() {
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
+        {IS_OFFLINE_EDITION ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={location.pathname === "/manager/license"}
+              asChild
+            >
+              <Link to="/manager/license">
+                <KeyRound />
+                <span>License</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
         <SidebarMenuItem>
           <SidebarMenuButton
             isActive={location.pathname === "/manager/logs"}
