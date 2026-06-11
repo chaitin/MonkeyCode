@@ -24,6 +24,16 @@ func TestTeamMemberLimitExceededHasChineseMessage(t *testing.T) {
 	}
 }
 
+func TestLicenseMachineMismatchHasChineseMessage(t *testing.T) {
+	localizer := locale.NewLocalizerWithFile(language.Chinese, errcode.LocalFS, []string{"locale.zh.toml", "locale.en.toml"})
+
+	got := localizer.Message("zh", "err-license-machine-mismatch", nil)
+
+	if got != "License 机器码不匹配" {
+		t.Fatalf("message = %q, want %q", got, "License 机器码不匹配")
+	}
+}
+
 func TestErrCodeMessagesHaveLocaleEntries(t *testing.T) {
 	keys := errCodeKeys(t)
 	localizer := locale.NewLocalizerWithFile(language.Chinese, errcode.LocalFS, []string{"locale.zh.toml", "locale.en.toml"})

@@ -261,3 +261,18 @@ other = "验证码校验失败"
 
 [err-wechat-mp-not-bound]
 other = "未绑定微信公众号"
+
+[err-license-invalid]
+other = "License 无效"
+
+[err-license-missing]
+other = "未导入 License"
+
+[err-license-expired]
+other = "License 已过期"
+
+[err-license-not-ready]
+other = "License 尚未生效"
+
+[err-license-machine-mismatch]
+other = "License 机器码不匹配"
