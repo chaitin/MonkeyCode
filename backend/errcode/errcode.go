@@ -132,4 +132,11 @@ var (
 
 	// 微信公众号
 	ErrWechatMPNotBound = web.NewErr(http.StatusOK, 11200, "err-wechat-mp-not-bound")
+
+	// License 管理
+	ErrLicenseInvalid         = web.NewErr(http.StatusOK, 11300, "err-license-invalid")
+	ErrLicenseMissing         = web.NewErr(http.StatusOK, 11301, "err-license-missing")
+	ErrLicenseExpired         = web.NewErr(http.StatusOK, 11302, "err-license-expired")
+	ErrLicenseNotReady        = web.NewErr(http.StatusOK, 11303, "err-license-not-ready")
+	ErrLicenseMachineMismatch = web.NewErr(http.StatusOK, 11304, "err-license-machine-mismatch")
 )

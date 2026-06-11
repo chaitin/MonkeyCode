@@ -263,3 +263,18 @@ other = "Captcha verification failed"
 
 [err-wechat-mp-not-bound]
 other = "WeChat official account is not bound"
+
+[err-license-invalid]
+other = "License is invalid"
+
+[err-license-missing]
+other = "License has not been imported"
+
+[err-license-expired]
+other = "License has expired"
+
+[err-license-not-ready]
+other = "License is not active yet"
+
+[err-license-machine-mismatch]
+other = "License machine code does not match"
