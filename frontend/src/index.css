@@ -176,6 +176,20 @@
 }
 
 
+/* 对话列表点击跳转：主题色边框闪两下后消失 */
+@keyframes jump-highlight-flash {
+  0%, 100% { outline-color: transparent; }
+  10%, 40% { outline-color: var(--primary); }
+  25%, 55% { outline-color: transparent; }
+  65%, 90% { outline-color: var(--primary); }
+}
+
+.jump-highlight {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  animation: jump-highlight-flash 1.6s ease-out forwards;
+}
+
 /* 预留滚动条空间（左右对称），避免出现/消失时布局偏移，保持内容居中 */
 .scrollbar-gutter-stable {
   scrollbar-gutter: stable both-edges;

@@ -1489,6 +1489,23 @@ export interface DomainTaskRoundsResp {
   next_cursor?: string;
 }
 
+export interface DomainTaskUserInputItem {
+  /** 用户输入文本，超过 500 字符截断 */
+  content?: string;
+  /** 与前端 message.id 对齐：user-input-{timestamp} */
+  id?: string;
+  /** 纳秒，与 chunk.timestamp 对齐 */
+  timestamp?: number;
+  /** 是否被截断 */
+  truncated?: boolean;
+}
+
+export interface DomainTaskUserInputsResp {
+  has_more?: boolean;
+  items?: DomainTaskUserInputItem[];
+  next_cursor?: string;
+}
+
 export interface DomainTaskStats {
   input_tokens?: number;
   llm_requests?: number;
@@ -6908,6 +6925,41 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         GithubComGoYokoWebResp
       >({
         path: `/api/v1/users/tasks/rounds`,
+        method: "GET",
+        query: query,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 查询任务的所有 user-input 消息（正序，最早在前），用于聊天页侧边栏快速跳转到指定一轮对话。单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。content 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。
+     *
+     * @tags 【用户】任务管理
+     * @name V1UsersTasksUserInputsList
+     * @summary 查询任务用户输入列表
+     * @request GET:/api/v1/users/tasks/user-inputs
+     * @secure
+     */
+    v1UsersTasksUserInputsList: (
+      query: {
+        /** 任务 ID */
+        id: string;
+        /** 分页游标，第一页留空 */
+        cursor?: string;
+        /** 返回条数（默认 20，上限 100） */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTaskUserInputsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/users/tasks/user-inputs`,
         method: "GET",
         query: query,
         secure: true,

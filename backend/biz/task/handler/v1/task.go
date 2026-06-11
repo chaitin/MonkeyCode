@@ -40,8 +40,8 @@ type TaskHandler struct {
 	logger        *slog.Logger
 	taskflow      taskflow.Clienter
 	tasklog       *tasklog.Gateway
-	nls           *nls.NLS         // 一段录音的 POST 接口 (SpeechToText) 仍走阿里云 NLS
-	asr           asr.Transcriber  // 流式 WS 接口 (SpeechToTextStream) 走豆包等中性 ASR
+	nls           *nls.NLS        // 一段录音的 POST 接口 (SpeechToText) 仍走阿里云 NLS
+	asr           asr.Transcriber // 流式 WS 接口 (SpeechToTextStream) 走豆包等中性 ASR
 	taskConns     *ws.TaskConn
 	controlConns  *ws.ControlConn
 	taskSummary   *service.TaskSummaryService
@@ -117,6 +117,7 @@ func NewTaskHandler(i *do.Injector) (*TaskHandler, error) {
 	v1.GET("/stream", web.BindHandler(h.Stream))
 	v1.GET("/control", web.BindHandler(h.Control))
 	v1.GET("/rounds", web.BindHandler(h.TaskTurns))
+	v1.GET("/user-inputs", web.BindHandler(h.TaskUserInputs))
 	v1.POST("", web.BindHandler(h.Create))
 	v1.PUT("/stop", web.BindHandler(h.Stop))
 	v1.DELETE("/:id", web.BindHandler(h.Delete))
@@ -806,6 +807,91 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 	return c.Success(resp)
 }
 
+// TaskUserInputs 查询任务的所有 user-input 列表（侧边栏快速跳转用）
+//
+//	@Summary		查询任务用户输入列表
+//	@Description	查询任务的所有 user-input 消息（正序，最早在前），用于聊天页侧边栏快速跳转到指定一轮对话。
+//	@Description	单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。
+//	@Description	content 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。
+//	@Tags			【用户】任务管理
+//	@Accept			json
+//	@Produce		json
+//	@Security		MonkeyCodeAIAuth
+//	@Param			id		query		string										true	"任务 ID"
+//	@Param			cursor	query		string										false	"分页游标，第一页留空"
+//	@Param			limit	query		int											false	"返回条数（默认 20，上限 100）"
+//	@Success		200		{object}	web.Resp{data=domain.TaskUserInputsResp}	"成功"
+//	@Failure		500		{object}	web.Resp									"服务器内部错误"
+//	@Router			/api/v1/users/tasks/user-inputs [get]
+func (h *TaskHandler) TaskUserInputs(c *web.Context, req domain.TaskUserInputsReq) error {
+	ctx := c.Request().Context()
+	user := middleware.GetUser(c)
+
+	// 验证任务属于当前用户
+	task, _, err := h.usecase.Info(ctx, user, req.ID)
+	if err != nil {
+		return err
+	}
+
+	taskCreatedAt := time.Unix(task.CreatedAt, 0)
+
+	result, err := h.tasklog.QueryUserInputs(ctx, task.ID, taskCreatedAt, req.Cursor, req.Limit, task.LogStore)
+	if err != nil {
+		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query user inputs")
+		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query user inputs: %w", err))
+	}
+
+	items := make([]*domain.TaskUserInputItem, 0, len(result.Entries)+1)
+	for _, e := range result.Entries {
+		items = append(items, buildTaskUserInputItem(e.Timestamp, e.Data))
+	}
+
+	// 兼容历史任务：仅当 ClickHouse/Loki 里完全没有 user-input 记录时，才用 task.Content
+	// 合成一条首条（对齐 /rounds 的兜底语义）。不要根据时间戳启发式判断，因为 task.CreatedAt
+	// 和实际第一条 user-input 落库时间天然会差几十秒（用户思考 + 输入），会误判出重复。
+	if req.Cursor == "" && !result.HasMore && len(items) == 0 && len(task.Content) > 0 {
+		synth := buildTaskUserInputItem(taskCreatedAt.UnixNano(), normalizeUserInputData([]byte(task.Content)))
+		items = append([]*domain.TaskUserInputItem{synth}, items...)
+	}
+
+	resp := &domain.TaskUserInputsResp{
+		Items:   items,
+		HasMore: result.HasMore,
+	}
+	if result.HasMore && result.NextCursor != "" {
+		resp.NextCursor = result.NextCursor
+	}
+	return c.Success(resp)
+}
+
+const taskUserInputPreviewMaxRunes = 500
+
+func buildTaskUserInputItem(timestampNS int64, data []byte) *domain.TaskUserInputItem {
+	parsed := parseUserInputData(data)
+	content, truncated := truncateRunes(string(parsed.Content), taskUserInputPreviewMaxRunes)
+	// 截到毫秒边界：WebSocket 推送 chunk 时做了 ns/1e6 整数除（task.go: chunk.Timestamp/1e6），
+	// sub-ms 精度已经丢失。这里也截到 ms 边界，保证同一条消息无论从 REST `/user-inputs`、
+	// REST `/rounds` 还是 WS 进入前端都生成相同的 user-input-{ns} 标识。
+	alignedNS := (timestampNS / 1_000_000) * 1_000_000
+	return &domain.TaskUserInputItem{
+		ID:        fmt.Sprintf("user-input-%d", alignedNS),
+		Content:   content,
+		Truncated: truncated,
+		Timestamp: alignedNS,
+	}
+}
+
+func truncateRunes(s string, max int) (string, bool) {
+	if max <= 0 {
+		return s, false
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s, false
+	}
+	return string(runes[:max]), true
+}
+
 func (h *TaskHandler) ping(
 	ctx context.Context,
 	cancel context.CancelCauseFunc,
@@ -845,4 +931,3 @@ func validateSkillID(skillID string) error {
 	}
 	return nil
 }
-

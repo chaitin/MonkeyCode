@@ -32,6 +32,14 @@ func (g *Gateway) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedA
 	return p.QueryTurns(ctx, taskID, taskCreatedAt, cursor, limit)
 }
 
+func (g *Gateway) QueryUserInputs(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int, store consts.LogStore) (*QueryUserInputsResp, error) {
+	p, err := g.providerByStore(store)
+	if err != nil {
+		return nil, err
+	}
+	return p.QueryUserInputs(ctx, taskID, taskCreatedAt, cursor, limit)
+}
+
 func (g *Gateway) providerByStore(store consts.LogStore) (Provider, error) {
 	s := consts.LogStore(strings.TrimSpace(string(store)))
 	switch s {

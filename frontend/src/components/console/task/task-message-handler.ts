@@ -8,6 +8,20 @@ import { parseTaskUserInputPayload, type TaskUserInputPayload } from "./task-sha
 
 export type TaskMessageHandlerStatus = "inited" | "connected" | "finished" | "error"
 
+// 统一时间戳到纳秒：后端 REST 给纳秒、WebSocket 给毫秒，根据数量级判断单位。
+// 最后截到 10ms 边界——纳秒时间戳（~1.7e18）超出 Number.MAX_SAFE_INTEGER，不同 API
+// 返回的同一条消息经 JSON 解析后浮点精度损失（~256ns）可能不同，截到 1ms 偶发跨界，
+// 截到 10ms 彻底避免此问题，同时兼容 WS 已丢失 sub-ms 精度的场景。
+function normalizeTimestampToNs(ts: number): number {
+  if (!Number.isFinite(ts) || ts <= 0) return 0
+  let ns: number
+  if (ts >= 1e17) ns = ts                    // 已经是纳秒
+  else if (ts >= 1e14) ns = ts * 1_000       // 微秒 → 纳秒
+  else if (ts >= 1e11) ns = ts * 1_000_000   // 毫秒 → 纳秒
+  else ns = ts * 1_000_000_000               // 秒 → 纳秒
+  return Math.floor(ns / 10_000_000) * 10_000_000
+}
+
 interface TaskMessageHandlerOptions {
   captureCursor?: boolean
 }
@@ -153,9 +167,24 @@ export class TaskMessageHandler {
   }
 
   private applyUserInput(data: TaskUserInputPayload, timestamp: number) {
+    // chunk.timestamp 不同来源单位不一致：
+    //   - REST /rounds 是纳秒（ClickHouse UnixNano）
+    //   - WebSocket 推送是毫秒（task.go: chunk.Timestamp / 1e6）
+    // 这里统一归一化到纳秒，保证 user-input 的 id 跨来源稳定（同一条消息只产生一条 React item）
+    // 且与后端 /user-inputs 返回的 id 严格对齐，方便侧边栏点击跳转。
+    const tsNs = normalizeTimestampToNs(timestamp)
+    const userInputId = tsNs > 0 ? `user-input-${tsNs}` : this.createMessageId()
+
+    if (tsNs > 0) {
+      const dup = this.state.messages.some(
+        (m) => m.type === "user_input" && m.id === userInputId,
+      )
+      if (dup) return
+    }
+
     const newMessage: MessageType = {
-      id: this.createMessageId(),
-      time: timestamp,
+      id: userInputId,
+      time: tsNs > 0 ? tsNs : timestamp,
       role: "user",
       data: {
         content: data.content,
