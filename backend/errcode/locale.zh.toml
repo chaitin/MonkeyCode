@@ -240,3 +240,24 @@ other = "账号未加入该团队"
 
 [err-password-login-disabled]
 other = "该团队已关闭账号密码登录"
+
+[err-has-invalid-entry]
+other = "存在无效条目"
+
+[err-forbidden-base-url]
+other = "不允许访问该地址"
+
+[err-user-already-exists]
+other = "用户已存在"
+
+[err-change-password-failed]
+other = "修改密码失败"
+
+[err-password-hash-failed]
+other = "密码加密失败"
+
+[err-captcha-verify-failed]
+other = "验证码校验失败"
+
+[err-wechat-mp-not-bound]
+other = "未绑定微信公众号"

@@ -233,3 +233,33 @@ other = "Account is not a member of this team"
 
 [err-password-login-disabled]
 other = "Password login is disabled for this team"
+
+[err-has-invalid-entry]
+other = "Invalid entry exists"
+
+[err-stream-disconnect]
+other = "Disconnected from development environment, please try again later"
+
+[err-file-op]
+other = "File operation failed"
+
+[err-vm-removed]
+other = "VM has been recycled"
+
+[err-forbidden-base-url]
+other = "Base URL is not allowed"
+
+[err-user-already-exists]
+other = "User already exists"
+
+[err-change-password-failed]
+other = "Change password failed"
+
+[err-password-hash-failed]
+other = "Password hash failed"
+
+[err-captcha-verify-failed]
+other = "Captcha verification failed"
+
+[err-wechat-mp-not-bound]
+other = "WeChat official account is not bound"
