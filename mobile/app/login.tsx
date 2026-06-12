@@ -1,5 +1,6 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError, DEFAULT_BASE_URL } from '@/api/client';
@@ -14,7 +15,7 @@ const norm = (u: string) => u.trim().replace(/\/+$/, '');
 
 export default function LoginScreen() {
   const t = useTheme();
-  const { login, savedEmail, savedPassword, baseUrl, basicAuth, updateBaseUrl, updateBasicAuth } = useAuth();
+  const { login, loginWithApple, savedEmail, savedPassword, baseUrl, basicAuth, updateBaseUrl, updateBasicAuth } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -34,6 +35,50 @@ export default function LoginScreen() {
   // 百智云 OAuth 仅对官方云可用；私有化/自定义服务地址只走账号密码登录
   const cloud = norm(serverUrl || baseUrl) === DEFAULT_BASE_URL;
   const [view, setView] = useState<'choices' | 'password'>(cloud && !savedPassword ? 'choices' : 'password');
+
+  // Sign in with Apple（App Store Guideline 4.8：提供第三方登录时必须有等效的 Apple 登录）。
+  // 仅 iOS 且系统支持时展示；官方云和自定义服务地址（如测试环境）都可用，
+  // 后端未开启 Apple 登录时按返回的 404 给出明确提示。
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
+
+  const onAppleLogin = async () => {
+    setError('');
+    if (!ensureAgreed()) return;
+    setBusy(true);
+    try {
+      // 与密码登录一致：先应用刚填写的服务器地址 / Basic Auth，再发起登录
+      if (serverUrl.trim() && norm(serverUrl) !== norm(baseUrl)) await updateBaseUrl(serverUrl.trim());
+      if (basicAuthInput.trim() !== basicAuth) await updateBasicAuth(basicAuthInput.trim());
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) throw new Error('未获取到 Apple 登录凭证');
+      // full_name 仅首次授权时下发，给后端建号用；邮箱后端只信 identity token 里的 claim，不另传
+      const fullName = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ');
+      await loginWithApple({
+        identity_token: credential.identityToken,
+        authorization_code: credential.authorizationCode ?? undefined,
+        full_name: fullName || undefined,
+      });
+      // 导航交给根布局的鉴权守卫
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'ERR_REQUEST_CANCELED') return; // 用户取消，不算错误
+      if (e instanceof ApiError && (e.status === 404 || e.code === 10002)) {
+        setError('当前服务器未开启 Apple 登录');
+        return;
+      }
+      setError(e instanceof ApiError ? e.message : (e as Error)?.message || 'Apple 登录失败，请重试');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const onLogoTap = () => {
     if (showServer) return;
@@ -78,6 +123,17 @@ export default function LoginScreen() {
 
   const openDoc = (path: string) => Linking.openURL(`${norm(baseUrl)}${path}`).catch(() => undefined);
 
+  // Apple 登录按钮：登录方式选择页和账号密码页（自定义服务地址直接进入的视图）共用
+  const AppleButton = appleAvailable ? (
+    <AppleAuthentication.AppleAuthenticationButton
+      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+      buttonStyle={t.dark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+      cornerRadius={16}
+      style={{ height: 51, marginTop: 12, opacity: busy ? 0.6 : 1 }}
+      onPress={() => { if (!busy) void onAppleLogin(); }}
+    />
+  ) : null;
+
   const Agreement = (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16 }}>
       <Pressable onPress={() => setAgreed((v) => !v)} hitSlop={8} style={{ marginTop: 1, width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: agreed ? t.ac : t.line2, backgroundColor: agreed ? t.ac : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
@@ -107,7 +163,7 @@ export default function LoginScreen() {
           {view === 'choices' && cloud ? (
             <>
               <Text style={{ fontSize: 14, fontWeight: '600', color: t.tx2 }}>选择登录方式</Text>
-              <Pressable onPress={goOAuth} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: t.ac, borderRadius: 16, paddingVertical: 15, marginTop: 18 }, t.shCard, { shadowColor: t.ac }, pressed && { opacity: 0.8 }]}>
+              <Pressable onPress={goOAuth} disabled={busy} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: t.ac, borderRadius: 16, paddingVertical: 15, marginTop: 18 }, t.shCard, { shadowColor: t.ac }, (busy || pressed) && { opacity: busy ? 0.6 : 0.8 }]}>
                 <Image source={BAIZHI_ICON} style={{ width: 21, height: 21 }} resizeMode="contain" />
                 <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>百智云登录</Text>
                 <View style={{ backgroundColor: t.dark ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.28)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 1.5 }}>
@@ -115,10 +171,18 @@ export default function LoginScreen() {
                 </View>
               </Pressable>
 
-              <Pressable onPress={() => { setError(''); setView('password'); }} style={({ pressed }) => [{ alignItems: 'center', justifyContent: 'center', backgroundColor: t.bg3, borderWidth: 1, borderColor: t.line2, borderRadius: 16, paddingVertical: 15, marginTop: 12 }, pressed && { opacity: 0.8 }]}>
+              {AppleButton}
+
+              <Pressable onPress={() => { setError(''); setView('password'); }} disabled={busy} style={({ pressed }) => [{ alignItems: 'center', justifyContent: 'center', backgroundColor: t.bg3, borderWidth: 1, borderColor: t.line2, borderRadius: 16, paddingVertical: 15, marginTop: 12 }, (busy || pressed) && { opacity: busy ? 0.6 : 0.8 }]}>
                 <Text style={{ color: t.tx, fontSize: 15, fontWeight: '600' }}>账号密码登录</Text>
               </Pressable>
 
+              {busy ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+                  <ActivityIndicator color={t.tx2} size="small" />
+                  <Text style={{ color: t.tx2, fontSize: 13 }}>正在登录…</Text>
+                </View>
+              ) : null}
               {error ? <Text style={{ color: t.red, fontSize: 13, marginTop: 12 }}>{error}</Text> : null}
               {Agreement}
 
@@ -162,6 +226,9 @@ export default function LoginScreen() {
                   </View>
                 ) : <Text style={{ color: t.acInk, fontSize: 16, fontWeight: '700' }}>登录</Text>}
               </Pressable>
+
+              {/* 自定义服务地址（测试环境等）没有“选择登录方式”页，Apple 登录入口放在这里 */}
+              {!cloud ? AppleButton : null}
             </>
           )}
 

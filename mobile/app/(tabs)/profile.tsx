@@ -229,9 +229,9 @@ function InviteeStack({ items, t }: { items: InvitationItem[]; t: Theme }) {
 
 export default function ProfileScreen() {
   const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const { user, baseUrl, logout } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { user, baseUrl, logout, deleteAccount, appleSession } = useAuth();
   const [busy, setBusy] = useState(false);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -288,7 +288,36 @@ export default function ProfileScreen() {
   const onLogout = () => {
     Alert.alert('退出登录', '确定要退出当前账号吗？', [
       { text: '取消', style: 'cancel' },
-      { text: '退出', style: 'destructive', onPress: async () => { setBusy(true); await logout(); setBusy(false); router.replace('/login'); } },
+      // 退出后导航交给根布局鉴权守卫（authenticated 变 false 自动回登录页），避免二次跳转/卸载后 setState
+      { text: '退出', style: 'destructive', onPress: async () => { setBusy(true); await logout(); } },
+    ]);
+  };
+
+  // 注销账号（App Store Guideline 5.1.1(v) 要求 App 内可删除账号）。两步确认防误触。
+  const onDeleteAccount = () => {
+    Alert.alert('注销账号', '注销后，你的账号及全部数据将被永久删除，无法恢复；Apple 登录的授权也会一并撤销。', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '继续',
+        style: 'destructive',
+        onPress: () => Alert.alert('确认永久删除？', '此操作不可撤销。', [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '永久删除',
+            style: 'destructive',
+            onPress: async () => {
+              setBusy(true);
+              try {
+                await deleteAccount();
+                // 成功后不手动跳转、也不复位 busy：authenticated 置 false 会触发根布局守卫回登录页，本屏随即卸载
+              } catch (e) {
+                setBusy(false);
+                Alert.alert('注销失败', e instanceof Error && e.message ? e.message : '请稍后重试。如多次失败，请通过官网联系我们处理。');
+              }
+            },
+          },
+        ]),
+      },
     ]);
   };
 
@@ -393,6 +422,14 @@ export default function ProfileScreen() {
             <Icons.logout size={19} color={t.red} sw={1.9} />
             <Text style={{ color: t.red, fontSize: 15.5, fontWeight: '600' }}>退出登录</Text>
           </Pressable>
+          {/* 注销账号：Apple 登录的配套能力（审核要求支持建号必须支持删号），
+              只对 Apple 登录的会话显示；其余账号体系不在 App 内删号，后端同样拦截 */}
+          {appleSession ? (
+            <Pressable onPress={onDeleteAccount} disabled={busy} style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 10 }, pressed && { opacity: 0.6 }]}>
+              <Text style={{ color: t.tx3, fontSize: 13 }}>注销账号</Text>
+            </Pressable>
+          ) : null}
+
           <Text style={{ textAlign: 'center', color: t.tx3, fontSize: 12, marginTop: 4 }}>Building with MonkeyCode</Text>
         </View>
       </ScrollView>

@@ -18,6 +18,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.chaitin.baizhi.monkeycode",
       "buildNumber": "1",
       "icon": {
@@ -31,7 +32,8 @@
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "appleTeamId": "8Z56KX83T3"
     },
     "android": {
       "package": "com.chaitin.baizhi.monkeycode",
@@ -49,6 +51,7 @@
       "output": "single"
     },
     "plugins": [
+      "expo-apple-authentication",
       "expo-router",
       "expo-font",
       "expo-asset",
@@ -83,7 +86,9 @@
       [
         "expo-build-properties",
         {
-          "ios": { "buildReactNativeFromSource": true }
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
         }
       ]
     ],

@@ -76,7 +76,7 @@ export default function ProjectsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ac} progressViewOffset={insets.top + 46} />}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.4}
-          ListEmptyComponent={<View style={{ paddingTop: 40 }}><EmptyView title="暂无项目" subtitle="在 Web 端关联代码仓库后会出现在这里" icon="folder" /></View>}
+          ListEmptyComponent={<View style={{ paddingTop: 40 }}><EmptyView title="暂无项目" subtitle="关联代码仓库后，项目会显示在这里" icon="folder" /></View>}
           ListFooterComponent={
             loadingMore ? <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={t.ac} /></View>
               : !hasMore && projects.length > 0 ? <Text style={{ textAlign: 'center', color: t.tx3, fontSize: 11, paddingVertical: 18 }}>没有更多了</Text>
