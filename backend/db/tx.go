@@ -60,6 +60,8 @@ type Tx struct {
 	ProjectIssueComment *ProjectIssueCommentClient
 	// ProjectTask is the client for interacting with the ProjectTask builders.
 	ProjectTask *ProjectTaskClient
+	// Skill is the client for interacting with the Skill builders.
+	Skill *SkillClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
 	// TaskModelSwitch is the client for interacting with the TaskModelSwitch builders.
@@ -80,6 +82,8 @@ type Tx struct {
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
 	TeamGroupModel *TeamGroupModelClient
+	// TeamGroupSkill is the client for interacting with the TeamGroupSkill builders.
+	TeamGroupSkill *TeamGroupSkillClient
 	// TeamHost is the client for interacting with the TeamHost builders.
 	TeamHost *TeamHostClient
 	// TeamImage is the client for interacting with the TeamImage builders.
@@ -90,6 +94,8 @@ type Tx struct {
 	TeamModel *TeamModelClient
 	// TeamOIDCConfig is the client for interacting with the TeamOIDCConfig builders.
 	TeamOIDCConfig *TeamOIDCConfigClient
+	// TeamSkill is the client for interacting with the TeamSkill builders.
+	TeamSkill *TeamSkillClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -250,6 +256,7 @@ func (tx *Tx) init() {
 	tx.ProjectIssue = NewProjectIssueClient(tx.config)
 	tx.ProjectIssueComment = NewProjectIssueCommentClient(tx.config)
 	tx.ProjectTask = NewProjectTaskClient(tx.config)
+	tx.Skill = NewSkillClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
 	tx.TaskModelSwitch = NewTaskModelSwitchClient(tx.config)
 	tx.TaskUsageStat = NewTaskUsageStatClient(tx.config)
@@ -260,11 +267,13 @@ func (tx *Tx) init() {
 	tx.TeamGroupImage = NewTeamGroupImageClient(tx.config)
 	tx.TeamGroupMember = NewTeamGroupMemberClient(tx.config)
 	tx.TeamGroupModel = NewTeamGroupModelClient(tx.config)
+	tx.TeamGroupSkill = NewTeamGroupSkillClient(tx.config)
 	tx.TeamHost = NewTeamHostClient(tx.config)
 	tx.TeamImage = NewTeamImageClient(tx.config)
 	tx.TeamMember = NewTeamMemberClient(tx.config)
 	tx.TeamModel = NewTeamModelClient(tx.config)
 	tx.TeamOIDCConfig = NewTeamOIDCConfigClient(tx.config)
+	tx.TeamSkill = NewTeamSkillClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.VirtualMachine = NewVirtualMachineClient(tx.config)

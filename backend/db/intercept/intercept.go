@@ -32,6 +32,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
@@ -42,11 +43,13 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
+	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -729,6 +732,33 @@ func (f TraverseProjectTask) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.ProjectTaskQuery", q)
 }
 
+// The SkillFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SkillFunc func(context.Context, *db.SkillQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f SkillFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.SkillQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.SkillQuery", q)
+}
+
+// The TraverseSkill type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSkill func(context.Context, *db.SkillQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSkill) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseSkill) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.SkillQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.SkillQuery", q)
+}
+
 // The TaskFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TaskFunc func(context.Context, *db.TaskQuery) (db.Value, error)
 
@@ -999,6 +1029,33 @@ func (f TraverseTeamGroupModel) Traverse(ctx context.Context, q db.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupModelQuery", q)
 }
 
+// The TeamGroupSkillFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamGroupSkillFunc func(context.Context, *db.TeamGroupSkillQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamGroupSkillFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamGroupSkillQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamGroupSkillQuery", q)
+}
+
+// The TraverseTeamGroupSkill type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamGroupSkill func(context.Context, *db.TeamGroupSkillQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamGroupSkill) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamGroupSkill) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamGroupSkillQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupSkillQuery", q)
+}
+
 // The TeamHostFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamHostFunc func(context.Context, *db.TeamHostQuery) (db.Value, error)
 
@@ -1134,6 +1191,33 @@ func (f TraverseTeamOIDCConfig) Traverse(ctx context.Context, q db.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamOIDCConfigQuery", q)
 }
 
+// The TeamSkillFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamSkillFunc func(context.Context, *db.TeamSkillQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamSkillFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamSkillQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamSkillQuery", q)
+}
+
+// The TraverseTeamSkill type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamSkill func(context.Context, *db.TeamSkillQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamSkill) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamSkill) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamSkillQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamSkillQuery", q)
+}
+
 // The UserFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserFunc func(context.Context, *db.UserQuery) (db.Value, error)
 
@@ -1264,6 +1348,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.ProjectIssueCommentQuery, predicate.ProjectIssueComment, projectissuecomment.OrderOption]{typ: db.TypeProjectIssueComment, tq: q}, nil
 	case *db.ProjectTaskQuery:
 		return &query[*db.ProjectTaskQuery, predicate.ProjectTask, projecttask.OrderOption]{typ: db.TypeProjectTask, tq: q}, nil
+	case *db.SkillQuery:
+		return &query[*db.SkillQuery, predicate.Skill, skill.OrderOption]{typ: db.TypeSkill, tq: q}, nil
 	case *db.TaskQuery:
 		return &query[*db.TaskQuery, predicate.Task, task.OrderOption]{typ: db.TypeTask, tq: q}, nil
 	case *db.TaskModelSwitchQuery:
@@ -1284,6 +1370,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TeamGroupMemberQuery, predicate.TeamGroupMember, teamgroupmember.OrderOption]{typ: db.TypeTeamGroupMember, tq: q}, nil
 	case *db.TeamGroupModelQuery:
 		return &query[*db.TeamGroupModelQuery, predicate.TeamGroupModel, teamgroupmodel.OrderOption]{typ: db.TypeTeamGroupModel, tq: q}, nil
+	case *db.TeamGroupSkillQuery:
+		return &query[*db.TeamGroupSkillQuery, predicate.TeamGroupSkill, teamgroupskill.OrderOption]{typ: db.TypeTeamGroupSkill, tq: q}, nil
 	case *db.TeamHostQuery:
 		return &query[*db.TeamHostQuery, predicate.TeamHost, teamhost.OrderOption]{typ: db.TypeTeamHost, tq: q}, nil
 	case *db.TeamImageQuery:
@@ -1294,6 +1382,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TeamModelQuery, predicate.TeamModel, teammodel.OrderOption]{typ: db.TypeTeamModel, tq: q}, nil
 	case *db.TeamOIDCConfigQuery:
 		return &query[*db.TeamOIDCConfigQuery, predicate.TeamOIDCConfig, teamoidcconfig.OrderOption]{typ: db.TypeTeamOIDCConfig, tq: q}, nil
+	case *db.TeamSkillQuery:
+		return &query[*db.TeamSkillQuery, predicate.TeamSkill, teamskill.OrderOption]{typ: db.TypeTeamSkill, tq: q}, nil
 	case *db.UserQuery:
 		return &query[*db.UserQuery, predicate.User, user.OrderOption]{typ: db.TypeUser, tq: q}, nil
 	case *db.UserIdentityQuery:

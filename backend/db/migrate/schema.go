@@ -783,6 +783,37 @@ var (
 			},
 		},
 	}
+	// SkillsColumns holds the columns for the "skills" table.
+	SkillsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Size: 2147483647},
+		{Name: "tags", Type: field.TypeJSON, Nullable: true},
+		{Name: "content", Type: field.TypeString, Size: 2147483647},
+		{Name: "package_object_key", Type: field.TypeString, Nullable: true},
+		{Name: "package_url", Type: field.TypeString, Nullable: true},
+		{Name: "source_type", Type: field.TypeString},
+		{Name: "source_label", Type: field.TypeString},
+		{Name: "skill_md_path", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// SkillsTable holds the schema information for the "skills" table.
+	SkillsTable = &schema.Table{
+		Name:       "skills",
+		Columns:    SkillsColumns,
+		PrimaryKey: []*schema.Column{SkillsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "skills_users_skills",
+				Columns:    []*schema.Column{SkillsColumns[13]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// TasksColumns holds the columns for the "tasks" table.
 	TasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1114,6 +1145,40 @@ var (
 			},
 		},
 	}
+	// TeamGroupSkillsColumns holds the columns for the "team_group_skills" table.
+	TeamGroupSkillsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "skill_id", Type: field.TypeUUID},
+	}
+	// TeamGroupSkillsTable holds the schema information for the "team_group_skills" table.
+	TeamGroupSkillsTable = &schema.Table{
+		Name:       "team_group_skills",
+		Columns:    TeamGroupSkillsColumns,
+		PrimaryKey: []*schema.Column{TeamGroupSkillsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_group_skills_team_groups_group",
+				Columns:    []*schema.Column{TeamGroupSkillsColumns[2]},
+				RefColumns: []*schema.Column{TeamGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_group_skills_skills_skill",
+				Columns:    []*schema.Column{TeamGroupSkillsColumns[3]},
+				RefColumns: []*schema.Column{SkillsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamgroupskill_group_id_skill_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamGroupSkillsColumns[2], TeamGroupSkillsColumns[3]},
+			},
+		},
+	}
 	// TeamHostsColumns holds the columns for the "team_hosts" table.
 	TeamHostsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1281,6 +1346,40 @@ var (
 			},
 		},
 	}
+	// TeamSkillsColumns holds the columns for the "team_skills" table.
+	TeamSkillsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "skill_id", Type: field.TypeUUID},
+	}
+	// TeamSkillsTable holds the schema information for the "team_skills" table.
+	TeamSkillsTable = &schema.Table{
+		Name:       "team_skills",
+		Columns:    TeamSkillsColumns,
+		PrimaryKey: []*schema.Column{TeamSkillsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_skills_teams_team",
+				Columns:    []*schema.Column{TeamSkillsColumns[2]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_skills_skills_skill",
+				Columns:    []*schema.Column{TeamSkillsColumns[3]},
+				RefColumns: []*schema.Column{SkillsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamskill_team_id_skill_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamSkillsColumns[2], TeamSkillsColumns[3]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1415,6 +1514,7 @@ var (
 		ProjectIssuesTable,
 		ProjectIssueCommentsTable,
 		ProjectTasksTable,
+		SkillsTable,
 		TasksTable,
 		TaskModelSwitchesTable,
 		TaskUsageStatsTable,
@@ -1425,11 +1525,13 @@ var (
 		TeamGroupImagesTable,
 		TeamGroupMembersTable,
 		TeamGroupModelsTable,
+		TeamGroupSkillsTable,
 		TeamHostsTable,
 		TeamImagesTable,
 		TeamMembersTable,
 		TeamModelsTable,
 		TeamOidcConfigsTable,
+		TeamSkillsTable,
 		UsersTable,
 		UserIdentitiesTable,
 		VirtualmachinesTable,
@@ -1541,6 +1643,10 @@ func init() {
 	ProjectTasksTable.Annotation = &entsql.Annotation{
 		Table: "project_tasks",
 	}
+	SkillsTable.ForeignKeys[0].RefTable = UsersTable
+	SkillsTable.Annotation = &entsql.Annotation{
+		Table: "skills",
+	}
 	TasksTable.ForeignKeys[0].RefTable = UsersTable
 	TasksTable.Annotation = &entsql.Annotation{
 		Table: "tasks",
@@ -1587,6 +1693,11 @@ func init() {
 	TeamGroupModelsTable.Annotation = &entsql.Annotation{
 		Table: "team_group_models",
 	}
+	TeamGroupSkillsTable.ForeignKeys[0].RefTable = TeamGroupsTable
+	TeamGroupSkillsTable.ForeignKeys[1].RefTable = SkillsTable
+	TeamGroupSkillsTable.Annotation = &entsql.Annotation{
+		Table: "team_group_skills",
+	}
 	TeamHostsTable.ForeignKeys[0].RefTable = TeamsTable
 	TeamHostsTable.ForeignKeys[1].RefTable = HostsTable
 	TeamHostsTable.Annotation = &entsql.Annotation{
@@ -1610,6 +1721,11 @@ func init() {
 	TeamOidcConfigsTable.ForeignKeys[0].RefTable = TeamsTable
 	TeamOidcConfigsTable.Annotation = &entsql.Annotation{
 		Table: "team_oidc_configs",
+	}
+	TeamSkillsTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamSkillsTable.ForeignKeys[1].RefTable = SkillsTable
+	TeamSkillsTable.Annotation = &entsql.Annotation{
+		Table: "team_skills",
 	}
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",

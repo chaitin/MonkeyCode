@@ -29,6 +29,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
@@ -39,11 +40,13 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
+	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -657,6 +660,43 @@ func init() {
 	projecttaskDescCreatedAt := projecttaskFields[11].Descriptor()
 	// projecttask.DefaultCreatedAt holds the default value on creation for the created_at field.
 	projecttask.DefaultCreatedAt = projecttaskDescCreatedAt.Default.(func() time.Time)
+	skillMixin := schema.Skill{}.Mixin()
+	skillMixinHooks0 := skillMixin[0].Hooks()
+	skill.Hooks[0] = skillMixinHooks0[0]
+	skillMixinInters0 := skillMixin[0].Interceptors()
+	skill.Interceptors[0] = skillMixinInters0[0]
+	skillFields := schema.Skill{}.Fields()
+	_ = skillFields
+	// skillDescName is the schema descriptor for name field.
+	skillDescName := skillFields[2].Descriptor()
+	// skill.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	skill.NameValidator = skillDescName.Validators[0].(func(string) error)
+	// skillDescDescription is the schema descriptor for description field.
+	skillDescDescription := skillFields[3].Descriptor()
+	// skill.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	skill.DescriptionValidator = skillDescDescription.Validators[0].(func(string) error)
+	// skillDescContent is the schema descriptor for content field.
+	skillDescContent := skillFields[5].Descriptor()
+	// skill.ContentValidator is a validator for the "content" field. It is called by the builders before save.
+	skill.ContentValidator = skillDescContent.Validators[0].(func(string) error)
+	// skillDescSourceType is the schema descriptor for source_type field.
+	skillDescSourceType := skillFields[8].Descriptor()
+	// skill.SourceTypeValidator is a validator for the "source_type" field. It is called by the builders before save.
+	skill.SourceTypeValidator = skillDescSourceType.Validators[0].(func(string) error)
+	// skillDescSourceLabel is the schema descriptor for source_label field.
+	skillDescSourceLabel := skillFields[9].Descriptor()
+	// skill.SourceLabelValidator is a validator for the "source_label" field. It is called by the builders before save.
+	skill.SourceLabelValidator = skillDescSourceLabel.Validators[0].(func(string) error)
+	// skillDescCreatedAt is the schema descriptor for created_at field.
+	skillDescCreatedAt := skillFields[11].Descriptor()
+	// skill.DefaultCreatedAt holds the default value on creation for the created_at field.
+	skill.DefaultCreatedAt = skillDescCreatedAt.Default.(func() time.Time)
+	// skillDescUpdatedAt is the schema descriptor for updated_at field.
+	skillDescUpdatedAt := skillFields[12].Descriptor()
+	// skill.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	skill.DefaultUpdatedAt = skillDescUpdatedAt.Default.(func() time.Time)
+	// skill.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	skill.UpdateDefaultUpdatedAt = skillDescUpdatedAt.UpdateDefault.(func() time.Time)
 	taskMixin := schema.Task{}.Mixin()
 	taskMixinHooks0 := taskMixin[0].Hooks()
 	task.Hooks[0] = taskMixinHooks0[0]
@@ -822,6 +862,12 @@ func init() {
 	teamgroupmodelDescCreatedAt := teamgroupmodelFields[3].Descriptor()
 	// teamgroupmodel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamgroupmodel.DefaultCreatedAt = teamgroupmodelDescCreatedAt.Default.(func() time.Time)
+	teamgroupskillFields := schema.TeamGroupSkill{}.Fields()
+	_ = teamgroupskillFields
+	// teamgroupskillDescCreatedAt is the schema descriptor for created_at field.
+	teamgroupskillDescCreatedAt := teamgroupskillFields[3].Descriptor()
+	// teamgroupskill.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamgroupskill.DefaultCreatedAt = teamgroupskillDescCreatedAt.Default.(func() time.Time)
 	teamhostFields := schema.TeamHost{}.Fields()
 	_ = teamhostFields
 	// teamhostDescCreatedAt is the schema descriptor for created_at field.
@@ -886,6 +932,12 @@ func init() {
 	teamoidcconfig.DefaultUpdatedAt = teamoidcconfigDescUpdatedAt.Default.(func() time.Time)
 	// teamoidcconfig.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	teamoidcconfig.UpdateDefaultUpdatedAt = teamoidcconfigDescUpdatedAt.UpdateDefault.(func() time.Time)
+	teamskillFields := schema.TeamSkill{}.Fields()
+	_ = teamskillFields
+	// teamskillDescCreatedAt is the schema descriptor for created_at field.
+	teamskillDescCreatedAt := teamskillFields[3].Descriptor()
+	// teamskill.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamskill.DefaultCreatedAt = teamskillDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()
 	userMixinHooks0 := userMixin[0].Hooks()
 	user.Hooks[0] = userMixinHooks0[0]

@@ -47,6 +47,8 @@ type TeamGroupEdges struct {
 	Images []*Image `json:"images,omitempty"`
 	// Hosts holds the value of the hosts edge.
 	Hosts []*Host `json:"hosts,omitempty"`
+	// Skills holds the value of the skills edge.
+	Skills []*Skill `json:"skills,omitempty"`
 	// TeamGroupMembers holds the value of the team_group_members edge.
 	TeamGroupMembers []*TeamGroupMember `json:"team_group_members,omitempty"`
 	// TeamGroupModels holds the value of the team_group_models edge.
@@ -55,9 +57,11 @@ type TeamGroupEdges struct {
 	TeamGroupImages []*TeamGroupImage `json:"team_group_images,omitempty"`
 	// TeamGroupHosts holds the value of the team_group_hosts edge.
 	TeamGroupHosts []*TeamGroupHost `json:"team_group_hosts,omitempty"`
+	// TeamGroupSkills holds the value of the team_group_skills edge.
+	TeamGroupSkills []*TeamGroupSkill `json:"team_group_skills,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [9]bool
+	loadedTypes [11]bool
 }
 
 // MembersOrErr returns the Members value or an error if the edge
@@ -107,10 +111,19 @@ func (e TeamGroupEdges) HostsOrErr() ([]*Host, error) {
 	return nil, &NotLoadedError{edge: "hosts"}
 }
 
+// SkillsOrErr returns the Skills value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamGroupEdges) SkillsOrErr() ([]*Skill, error) {
+	if e.loadedTypes[5] {
+		return e.Skills, nil
+	}
+	return nil, &NotLoadedError{edge: "skills"}
+}
+
 // TeamGroupMembersOrErr returns the TeamGroupMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TeamGroupMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_members"}
@@ -119,7 +132,7 @@ func (e TeamGroupEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
 // TeamGroupModelsOrErr returns the TeamGroupModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.TeamGroupModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_models"}
@@ -128,7 +141,7 @@ func (e TeamGroupEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
 // TeamGroupImagesOrErr returns the TeamGroupImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[8] {
 		return e.TeamGroupImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_images"}
@@ -137,10 +150,19 @@ func (e TeamGroupEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
 // TeamGroupHostsOrErr returns the TeamGroupHosts value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupHostsOrErr() ([]*TeamGroupHost, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[9] {
 		return e.TeamGroupHosts, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_hosts"}
+}
+
+// TeamGroupSkillsOrErr returns the TeamGroupSkills value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamGroupEdges) TeamGroupSkillsOrErr() ([]*TeamGroupSkill, error) {
+	if e.loadedTypes[10] {
+		return e.TeamGroupSkills, nil
+	}
+	return nil, &NotLoadedError{edge: "team_group_skills"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -243,6 +265,11 @@ func (_m *TeamGroup) QueryHosts() *HostQuery {
 	return NewTeamGroupClient(_m.config).QueryHosts(_m)
 }
 
+// QuerySkills queries the "skills" edge of the TeamGroup entity.
+func (_m *TeamGroup) QuerySkills() *SkillQuery {
+	return NewTeamGroupClient(_m.config).QuerySkills(_m)
+}
+
 // QueryTeamGroupMembers queries the "team_group_members" edge of the TeamGroup entity.
 func (_m *TeamGroup) QueryTeamGroupMembers() *TeamGroupMemberQuery {
 	return NewTeamGroupClient(_m.config).QueryTeamGroupMembers(_m)
@@ -261,6 +288,11 @@ func (_m *TeamGroup) QueryTeamGroupImages() *TeamGroupImageQuery {
 // QueryTeamGroupHosts queries the "team_group_hosts" edge of the TeamGroup entity.
 func (_m *TeamGroup) QueryTeamGroupHosts() *TeamGroupHostQuery {
 	return NewTeamGroupClient(_m.config).QueryTeamGroupHosts(_m)
+}
+
+// QueryTeamGroupSkills queries the "team_group_skills" edge of the TeamGroup entity.
+func (_m *TeamGroup) QueryTeamGroupSkills() *TeamGroupSkillQuery {
+	return NewTeamGroupClient(_m.config).QueryTeamGroupSkills(_m)
 }
 
 // Update returns a builder for updating this TeamGroup.
