@@ -22,7 +22,7 @@ type fakeTasklogGateway struct {
 	calls     int
 }
 
-func (f *fakeTasklogGateway) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int, store consts.LogStore) (*tasklog.QueryTurnsResp, error) {
+func (f *fakeTasklogGateway) QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, opts tasklog.QueryTurnsOpts, store consts.LogStore) (*tasklog.QueryTurnsResp, error) {
 	f.calls++
 	f.stores = append(f.stores, store)
 	if len(f.responses) == 0 {

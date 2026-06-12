@@ -27,7 +27,7 @@ func (s *gatewayProviderStub) QueryLatestTurn(context.Context, uuid.UUID, time.T
 	return &QueryLatestTurnResp{}, nil
 }
 
-func (s *gatewayProviderStub) QueryTurns(context.Context, uuid.UUID, time.Time, string, int) (*QueryTurnsResp, error) {
+func (s *gatewayProviderStub) QueryTurns(context.Context, uuid.UUID, time.Time, QueryTurnsOpts) (*QueryTurnsResp, error) {
 	s.queryTurnsCalled = true
 	return &QueryTurnsResp{}, nil
 }
@@ -41,7 +41,7 @@ func TestGatewayEmptyStoreUsesLoki(t *testing.T) {
 	clickHouse := &gatewayProviderStub{name: "clickhouse"}
 	gateway := &Gateway{Loki: loki, ClickHouse: clickHouse}
 
-	_, err := gateway.QueryTurns(context.Background(), uuid.New(), time.Now(), "", 10, "")
+	_, err := gateway.QueryTurns(context.Background(), uuid.New(), time.Now(), QueryTurnsOpts{Limit: 10}, "")
 	if err != nil {
 		t.Fatalf("QueryTurns returned error: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestGatewayUnknownStoreReturnsError(t *testing.T) {
 	clickHouse := &gatewayProviderStub{name: "clickhouse"}
 	gateway := &Gateway{Loki: loki, ClickHouse: clickHouse}
 
-	_, err := gateway.QueryTurns(context.Background(), uuid.New(), time.Now(), "", 10, consts.LogStore("bad-store"))
+	_, err := gateway.QueryTurns(context.Background(), uuid.New(), time.Now(), QueryTurnsOpts{Limit: 10}, consts.LogStore("bad-store"))
 	if err == nil {
 		t.Fatal("expected QueryTurns to return error")
 	}
@@ -91,7 +91,7 @@ func TestGatewayNilLokiProviderReturnsError(t *testing.T) {
 	clickHouse := &gatewayProviderStub{name: "clickhouse"}
 	gateway := &Gateway{ClickHouse: clickHouse}
 
-	_, err := gateway.QueryTurns(context.Background(), uuid.New(), time.Now(), "", 10, "")
+	_, err := gateway.QueryTurns(context.Background(), uuid.New(), time.Now(), QueryTurnsOpts{Limit: 10}, "")
 	if err == nil {
 		t.Fatal("expected QueryTurns to return error")
 	}

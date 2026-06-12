@@ -44,7 +44,7 @@ type TaskSummaryService struct {
 }
 
 type tasklogGateway interface {
-	QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, cursor string, limit int, store consts.LogStore) (*tasklog.QueryTurnsResp, error)
+	QueryTurns(ctx context.Context, taskID uuid.UUID, taskCreatedAt time.Time, opts tasklog.QueryTurnsOpts, store consts.LogStore) (*tasklog.QueryTurnsResp, error)
 }
 
 type ConversationReader interface {
@@ -303,7 +303,7 @@ func (r *tasklogConversationReader) Fetch(ctx context.Context, taskID uuid.UUID,
 	cursor := ""
 
 	for {
-		resp, err := r.gateway.QueryTurns(ctx, taskID, createdAt, cursor, pageSize, store)
+		resp, err := r.gateway.QueryTurns(ctx, taskID, createdAt, tasklog.QueryTurnsOpts{Cursor: cursor, Limit: pageSize}, store)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch task log history: %w", err)
 		}
