@@ -19,12 +19,13 @@ import dayjs from "dayjs";
 interface TeamMembersCardProps {
   members: any[];
   memberLimit: number;
+  usedSeats: number;
   groups: any[];
   onRefreshMembers: () => void;
   onRefreshGroups?: () => void;
 }
 
-export default function TeamMembersCard({ members, memberLimit, groups, onRefreshMembers, onRefreshGroups }: TeamMembersCardProps) {
+export default function TeamMembersCard({ members, memberLimit, usedSeats, groups, onRefreshMembers, onRefreshGroups }: TeamMembersCardProps) {
   const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [emails, setEmails] = useState("");
@@ -245,12 +246,12 @@ export default function TeamMembersCard({ members, memberLimit, groups, onRefres
             团队成员
           </CardTitle>
           <CardDescription>
-            当前成员数量: {members.length} / {memberLimit}
+            当前成员数量: {usedSeats} / {memberLimit}
           </CardDescription>
           <CardAction>
             <Button 
               variant="outline" 
-              disabled={memberLimit <= members.length}
+              disabled={memberLimit <= usedSeats}
               onClick={() => setAddMemberDialogOpen(true)}
             >
               <IconCirclePlus />

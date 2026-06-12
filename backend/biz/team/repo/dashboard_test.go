@@ -94,6 +94,42 @@ func TestTeamDashboardOverviewAggregatesMetrics(t *testing.T) {
 	}
 }
 
+func TestTeamDashboardOverviewExcludesAdminsFromMemberMetrics(t *testing.T) {
+	ctx := context.Background()
+	client := newDashboardRepoTestDB(t)
+	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
+	teamID := uuid.New()
+	memberID := uuid.New()
+	adminID := uuid.New()
+	repo := &TeamDashboardRepo{
+		db:          client,
+		usageReader: &dashboardUsageReaderStub{},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	createDashboardTeamUser(t, client, teamID, memberID, "林航", "前端组")
+	createDashboardTeamMember(t, client, teamID, adminID, "管理员", "管理组", consts.TeamMemberRoleAdmin)
+	createDashboardTask(t, client, uuid.New(), memberID, "成员任务", consts.TaskStatusFinished, now.Add(-2*time.Hour), now.Add(-90*time.Minute), now.Add(-30*time.Minute))
+	createDashboardTask(t, client, uuid.New(), adminID, "管理员任务", consts.TaskStatusFinished, now.Add(-2*time.Hour), now.Add(-90*time.Minute), now.Add(-30*time.Minute))
+
+	resp, err := repo.Overview(ctx, teamID, domain.TeamDashboardQuery{
+		Start: now.Add(-24 * time.Hour),
+		End:   now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Metrics.TotalMembers != 1 {
+		t.Fatalf("total members = %d, want 1", resp.Metrics.TotalMembers)
+	}
+	if resp.Metrics.ActiveMembers != 1 {
+		t.Fatalf("active members = %d, want 1", resp.Metrics.ActiveMembers)
+	}
+	if resp.Metrics.TaskCount != 1 {
+		t.Fatalf("task count = %d, want 1", resp.Metrics.TaskCount)
+	}
+}
+
 func TestTeamDashboardOverviewAggregatesUsageByTask(t *testing.T) {
 	ctx := context.Background()
 	client := newDashboardRepoTestDB(t)
@@ -289,6 +325,11 @@ func TestTeamDashboardRepoAvoidsSQLiteOnlyTimeFunction(t *testing.T) {
 
 func createDashboardTeamUser(t *testing.T, client *db.Client, teamID, userID uuid.UUID, name, groupName string) {
 	t.Helper()
+	createDashboardTeamMember(t, client, teamID, userID, name, groupName, consts.TeamMemberRoleUser)
+}
+
+func createDashboardTeamMember(t *testing.T, client *db.Client, teamID, userID uuid.UUID, name, groupName string, role consts.TeamMemberRole) {
+	t.Helper()
 	ctx := context.Background()
 	exists, err := client.Team.Query().Where(team.IDEQ(teamID)).Exist(ctx)
 	if err != nil {
@@ -302,7 +343,7 @@ func createDashboardTeamUser(t *testing.T, client *db.Client, teamID, userID uui
 	if _, err := client.User.Create().SetID(userID).SetName(name).SetEmail(name + "@example.com").SetRole(consts.UserRoleEnterprise).SetStatus(consts.UserStatusActive).Save(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.TeamMember.Create().SetID(uuid.New()).SetTeamID(teamID).SetUserID(userID).SetRole(consts.TeamMemberRoleUser).Save(ctx); err != nil {
+	if _, err := client.TeamMember.Create().SetID(uuid.New()).SetTeamID(teamID).SetUserID(userID).SetRole(role).Save(ctx); err != nil {
 		t.Fatal(err)
 	}
 	group, err := client.TeamGroup.Create().SetID(uuid.New()).SetTeamID(teamID).SetName(groupName).Save(ctx)
