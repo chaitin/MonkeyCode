@@ -5,7 +5,8 @@ import { PlanStepsBlock } from "@/components/console/task/chat-panel"
 import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
 import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
-import { MessageItem, type MessageType } from "@/components/console/task/message"
+import type { MessageType } from "@/components/console/task/message"
+import { TaskMessageVirtualList, type TaskMessageVirtualListHandle, type TaskMessageVirtualListScrollOptions } from "@/components/console/task/task-message-virtual-list"
 import { TaskPreparingView, useShouldShowPreparing } from "@/components/console/task/task-preparing-dialog"
 import { TaskFileExplorer } from "@/components/console/task/task-file-explorer"
 import { TaskPreviewPanel } from "@/components/console/task/task-preview-panel"
@@ -47,7 +48,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { canUseModelBySubscription, formatTokens, getBrandFromModel, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName, isBuiltinPublicModelPackage, stripBuiltinPublicModelPackagePrefix } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconArrowDown, IconArrowUp, IconChevronDown, IconDeviceDesktop, IconFile, IconHistory, IconReload, IconTerminal2 } from "@tabler/icons-react"
+import { IconChevronDown, IconDeviceDesktop, IconFile, IconReload, IconTerminal2 } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -109,9 +110,6 @@ export default function TaskDetailPage() {
   const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
   const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
   const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
-  const [chatHasOverflow, setChatHasOverflow] = React.useState(false)
-  const [chatAtTop, setChatAtTop] = React.useState(true)
-  const [chatAtBottom, setChatAtBottom] = React.useState(true)
   const taskControlClientRef = React.useRef<TaskControlClient | null>(null)
   const streamClientRef = React.useRef<TaskStreamClient | null>(null)
   const historyLoadingRef = React.useRef(false)
@@ -119,6 +117,7 @@ export default function TaskDetailPage() {
   const historyLoadedRef = React.useRef(false)
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
+  const taskMessageListRef = React.useRef<TaskMessageVirtualListHandle | null>(null)
   const autoScrollFrameRef = React.useRef<number | null>(null)
   const autoScrollLockTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoScrollIntentLockedRef = React.useRef(false)
@@ -970,12 +969,7 @@ export default function TaskDetailPage() {
 
     const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
     const hasOverflow = maxScrollTop > 4
-    const isAtTop = !hasOverflow || container.scrollTop <= 8
     const isAtBottom = !hasOverflow || maxScrollTop - container.scrollTop <= 24
-
-    setChatHasOverflow(hasOverflow)
-    setChatAtTop(isAtTop)
-    setChatAtBottom(isAtBottom)
 
     if (!hasOverflow) {
       shouldAutoScrollChatRef.current = true
@@ -1020,33 +1014,9 @@ export default function TaskDetailPage() {
     return () => window.cancelAnimationFrame(frame)
   }, [messages, hasSidePanel, hasBottomTerminal, historyLoading, historyLoaded, showHistoryLoadButton, updateChatScrollState])
 
-  const getUserInputMessageAnchors = React.useCallback(() => {
-    return Array.from(
-      chatContentRef.current?.querySelectorAll<HTMLElement>('[data-message-type="user_input"]') ?? [],
-    )
+  const scrollChatToMessage = React.useCallback((messageId: string, options?: TaskMessageVirtualListScrollOptions) => {
+    return taskMessageListRef.current?.scrollToMessage(messageId, options) ?? false
   }, [])
-
-  const scrollChatToPreviousUserInput = React.useCallback(() => {
-    const container = getChatScrollContainer()
-    if (!container) return
-
-    shouldAutoScrollChatRef.current = false
-
-    const containerTop = container.getBoundingClientRect().top
-    const target = getUserInputMessageAnchors()
-      .filter((anchor) => anchor.getBoundingClientRect().top < containerTop - 8)
-      .at(-1)
-
-    if (!target) {
-      container.scrollTo({ top: 0, behavior: "smooth" })
-      return
-    }
-
-    container.scrollTo({
-      top: container.scrollTop + target.getBoundingClientRect().top - containerTop,
-      behavior: "smooth",
-    })
-  }, [getChatScrollContainer, getUserInputMessageAnchors])
 
   const scheduleChatScrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth", options?: { forceAutoScroll?: boolean }) => {
     const container = getChatScrollContainer()
@@ -1076,28 +1046,10 @@ export default function TaskDetailPage() {
       autoScrollFrameRef.current = null
       const nextContainer = getChatScrollContainer()
       if (!nextContainer) return
+      if (taskMessageListRef.current?.scrollToBottom(behavior)) return
       nextContainer.scrollTo({ top: nextContainer.scrollHeight, behavior })
     })
   }, [getChatScrollContainer, updateChatScrollState])
-
-  const scrollChatToNextUserInput = React.useCallback(() => {
-    const container = getChatScrollContainer()
-    if (!container) return
-
-    const containerTop = container.getBoundingClientRect().top
-    const target = getUserInputMessageAnchors().find((anchor) => anchor.getBoundingClientRect().top > containerTop + 8)
-
-    if (!target) {
-      scheduleChatScrollToBottom("smooth", { forceAutoScroll: true })
-      return
-    }
-
-    shouldAutoScrollChatRef.current = false
-    container.scrollTo({
-      top: container.scrollTop + target.getBoundingClientRect().top - containerTop,
-      behavior: "smooth",
-    })
-  }, [getChatScrollContainer, getUserInputMessageAnchors, scheduleChatScrollToBottom])
 
   React.useEffect(() => {
     return () => {
@@ -1429,78 +1381,27 @@ export default function TaskDetailPage() {
                   {/* 消息列表 */}
                   <div ref={chatScrollRootRef} className="flex-1 min-h-0 min-w-0 relative">
                     <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:!block">
-                      <div
-                        ref={chatContentRef}
-                        className={cn("min-h-full flex flex-col gap-3", hasSidePanel ? "w-full" : "mx-auto max-w-[960px]")}
-                      >
-                        {showHistoryLoadButton && (
-                          <div className="flex justify-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="w-full text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                              onClick={() => fetchTaskRounds(historyCursor ?? undefined)}
-                              disabled={historyLoading}
-                            >
-                              {!historyLoading && <IconHistory className="size-4" />}
-                              {historyLoading && <Spinner className="size-4" />}
-                              {historyLoading ? "正在加载" : historyLoaded ? "加载更多" : "加载历史消息"}
-                            </Button>
-                          </div>
-                        )}
-                        {messages.length > 0 ? (
-                          <div className="flex flex-col gap-1 pb-4">
-                            {messages.map((message, index) => (
-                              <MessageItem
-                                key={message.id}
-                                message={message}
-                                cli={task?.cli_name}
-                                isLatest={index === messages.length - 1}
-                              />
-                            ))}
-                          </div>
-                        ) : historyLoaded ? (
-                          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">暂无消息</div>
-                        ) : null}
-                      </div>
+                      <TaskMessageVirtualList
+                        ref={taskMessageListRef}
+                        contentRef={chatContentRef}
+                        messages={messages}
+                        cli={task?.cli_name}
+                        getScrollContainer={getChatScrollContainer}
+                        showHistoryLoadButton={showHistoryLoadButton}
+                        historyLoading={historyLoading}
+                        historyLoaded={historyLoaded}
+                        onLoadHistory={() => fetchTaskRounds(historyCursor ?? undefined)}
+                        className={cn(hasSidePanel ? "w-full" : "mx-auto max-w-[960px]")}
+                      />
                     </ScrollArea>
                     <TaskUserInputIndex
                       taskId={taskId ?? null}
                       liveMessages={messages}
                       getScrollContainer={getChatScrollContainer}
+                      scrollToMessage={scrollChatToMessage}
                       historyHasMore={!historyLoaded || historyHasMore}
                       loadMoreHistory={() => fetchTaskRounds(historyCursorRef.current ?? undefined, 1)}
                     />
-                    {chatHasOverflow && (
-                      <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10">
-                        <div className={cn("relative h-full", hasSidePanel ? "w-full" : "mx-auto max-w-[960px]")}>
-                          <div className="pointer-events-auto absolute top-1/2 right-1 flex -translate-y-1/2 flex-col gap-2">
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="secondary"
-                              className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-25"
-                              onClick={scrollChatToPreviousUserInput}
-                              disabled={chatAtTop}
-                              aria-label="滚动到上一条用户消息"
-                            >
-                              <IconArrowUp className="size-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="secondary"
-                              className="size-9 rounded-full shadow-md opacity-45 transition-opacity hover:opacity-100 cursor-pointer disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-25"
-                              onClick={scrollChatToNextUserInput}
-                              disabled={chatAtBottom}
-                              aria-label="滚动到下一条用户消息"
-                            >
-                              <IconArrowDown className="size-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                   {/* 输入框 */}
                   <div className={cn("shrink-0", hasSidePanel ? "w-full" : "mx-auto max-w-[960px] w-full")}>

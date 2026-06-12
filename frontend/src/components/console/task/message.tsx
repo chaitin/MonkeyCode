@@ -68,6 +68,18 @@ interface MessageType {
   onUserInput?: (content: TaskUserInput) => Promise<boolean> | boolean
 }
 
+const shouldRenderMessage = (message: MessageType) => {
+  if (message.type === 'agent_message_chunk' && message.data.content?.trim() === '(no content)') {
+    return false
+  }
+
+  if (message.type === 'agent_thought_chunk' && message.data.content?.trim() === '') {
+    return false
+  }
+
+  return true
+}
+
 const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType, cli?: ConstsCliName, isLatest?: boolean }) => {
   const renderMessage = (message: MessageType) => {
     switch (message.type) {
@@ -95,11 +107,7 @@ const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType,
     }
   }
 
-  if (message.type === 'agent_message_chunk' && message.data.content?.trim() === '(no content)') {
-    return null
-  }
-
-  if (message.type === 'agent_thought_chunk' && message.data.content?.trim() === '') {
+  if (!shouldRenderMessage(message)) {
     return null
   }
 
@@ -117,5 +125,6 @@ const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType,
 
 export { 
   MessageItem,
+  shouldRenderMessage,
   type MessageType
 }

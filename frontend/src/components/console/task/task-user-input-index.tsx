@@ -1,53 +1,33 @@
-import type { DomainTaskUserInputItem } from "@/api/Api"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 import React from "react"
 import { toast } from "sonner"
 import type { MessageType } from "./message"
-
-interface UserInputIndexEntry {
-  id: string
-  timestamp: number
-  content: string
-  truncated: boolean
-}
+import {
+  getNearestUserInputIdToViewport,
+  getUserInputIndexDotIndexForEntryId,
+  getUserInputIndexDots,
+  mergeLoadedUserInputIndexEntries,
+  mergeUserInputIndexEntries,
+  normalizeUserInputIndexPage,
+  type UserInputIndexEntry,
+} from "./task-user-input-index-model"
 
 export interface TaskUserInputIndexProps {
   taskId: string | null | undefined
   liveMessages: MessageType[]
   getScrollContainer: () => HTMLElement | null
+  scrollToMessage?: (messageId: string, options?: { align?: "start" | "center" | "end" | "auto"; behavior?: ScrollBehavior; highlight?: boolean }) => boolean
   historyHasMore: boolean
   loadMoreHistory: () => Promise<void>
 }
 
-const PAGE_SIZE = 20
-
-// 统一把任何精度的时间戳归一化到 纳秒，并截到 10ms 边界：
-//   - 后端 REST `/user-inputs` 返回纳秒
-//   - 后端 REST `/rounds`  返回纳秒
-//   - 后端 WebSocket 推送的 chunk.timestamp 是毫秒（task.go: chunk.Timestamp/1e6）
-//   纳秒时间戳（~1.7e18）超出 Number.MAX_SAFE_INTEGER（~9e15），不同 API 返回的同一
-//   条消息经 JSON 解析后浮点精度损失（~256ns）可能不同，截到 1ms 边界偶发跨界。
-//   截到 10ms 彻底避免此问题（256ns << 10ms），同时兼容 WS 已丢失 sub-ms 精度的场景。
-function normalizeTimestampToNs(ts: number): number {
-  if (!Number.isFinite(ts) || ts <= 0) return 0
-  let ns: number
-  if (ts >= 1e17) ns = ts
-  else if (ts >= 1e14) ns = ts * 1_000
-  else if (ts >= 1e11) ns = ts * 1_000_000
-  else ns = ts * 1_000_000_000
-  return Math.floor(ns / 10_000_000) * 10_000_000
-}
-
-function decodeUserInputContent(message: MessageType): string {
-  if (message.type !== "user_input") return ""
-  const raw = message.data?.content
-  return typeof raw === "string" ? raw : ""
-}
+const PAGE_SIZE = 10
+const MAX_INDEX_DOTS = 20
 
 export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
-  const { taskId, liveMessages, getScrollContainer, historyHasMore, loadMoreHistory } = props
+  const { taskId, liveMessages, getScrollContainer, scrollToMessage, historyHasMore, loadMoreHistory } = props
   const historyHasMoreRef = React.useRef(historyHasMore)
   React.useEffect(() => { historyHasMoreRef.current = historyHasMore }, [historyHasMore])
   const loadMoreHistoryRef = React.useRef(loadMoreHistory)
@@ -60,6 +40,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
   const [initialized, setInitialized] = React.useState(false)
   const loadingRef = React.useRef(false)
   const [expanded, setExpanded] = React.useState(false)
+  const [activeUserInputId, setActiveUserInputId] = React.useState<string | null>(null)
 
   const fetchPage = React.useCallback(async (nextCursor?: string) => {
     if (!taskId || loadingRef.current) return
@@ -75,16 +56,8 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
       [],
       (resp) => {
         if (resp.code === 0) {
-          const items = (resp.data?.items ?? []).map((item: DomainTaskUserInputItem) => {
-            const ts = normalizeTimestampToNs(item.timestamp ?? 0)
-            return {
-              id: ts > 0 ? `user-input-${ts}` : (item.id ?? ""),
-              timestamp: ts,
-              content: item.content ?? "",
-              truncated: !!item.truncated,
-            }
-          })
-          setEntries((prev) => (nextCursor ? [...prev, ...items] : items))
+          const items = normalizeUserInputIndexPage(resp.data?.items ?? [])
+          setEntries((prev) => mergeLoadedUserInputIndexEntries(prev, items, Boolean(nextCursor)))
           setCursor(resp.data?.next_cursor ?? null)
           setHasMore(!!resp.data?.has_more)
           setInitialized(true)
@@ -109,34 +82,91 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     setCursor(null)
     setHasMore(false)
     setInitialized(false)
+    setActiveUserInputId(null)
   }, [taskId])
 
   const mergedEntries = React.useMemo(() => {
-    const seen = new Set<string>()
-    const uniqueEntries: UserInputIndexEntry[] = []
-    for (const e of entries) {
-      if (!e.id || seen.has(e.id)) continue
-      seen.add(e.id)
-      uniqueEntries.push(e)
-    }
-    const tail: UserInputIndexEntry[] = []
-    for (const m of liveMessages) {
-      if (m.type !== "user_input") continue
-      if (!m.id || seen.has(m.id)) continue
-      seen.add(m.id)
-      tail.push({
-        id: m.id,
-        timestamp: normalizeTimestampToNs(m.time ?? 0),
-        content: decodeUserInputContent(m),
-        truncated: false,
+    return mergeUserInputIndexEntries(entries, liveMessages)
+  }, [entries, liveMessages])
+  const miniDots = React.useMemo(() => getUserInputIndexDots(mergedEntries, MAX_INDEX_DOTS), [mergedEntries])
+  const activeDotIndex = React.useMemo(() => (
+    getUserInputIndexDotIndexForEntryId(mergedEntries, activeUserInputId, MAX_INDEX_DOTS)
+  ), [activeUserInputId, mergedEntries])
+
+  const updateActiveUserInputId = React.useCallback(() => {
+    const container = getScrollContainer()
+    if (!container) return
+
+    const containerRect = container.getBoundingClientRect()
+    const candidates = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-message-type="user_input"]'),
+    )
+      .map((element) => {
+        const id = element.dataset.messageId ?? ""
+        const rect = element.getBoundingClientRect()
+        return {
+          id,
+          top: rect.top,
+          bottom: rect.bottom,
+        }
+      })
+      .filter((candidate) => candidate.id)
+
+    const nearestId = getNearestUserInputIdToViewport(candidates, containerRect.top, containerRect.bottom)
+    if (!nearestId) return
+
+    setActiveUserInputId((prev) => (prev === nearestId ? prev : nearestId))
+  }, [getScrollContainer])
+
+  React.useEffect(() => {
+    const container = getScrollContainer()
+    if (!container) return
+
+    let frame: number | null = null
+    const scheduleUpdate = () => {
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame)
+      }
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        updateActiveUserInputId()
       })
     }
-    return [...uniqueEntries, ...tail].sort((a, b) => a.timestamp - b.timestamp)
-  }, [entries, liveMessages])
+
+    container.addEventListener("scroll", scheduleUpdate, { passive: true })
+    const resizeObserver = new ResizeObserver(scheduleUpdate)
+    resizeObserver.observe(container)
+    scheduleUpdate()
+
+    return () => {
+      container.removeEventListener("scroll", scheduleUpdate)
+      resizeObserver.disconnect()
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame)
+      }
+    }
+  }, [getScrollContainer, updateActiveUserInputId])
+
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      updateActiveUserInputId()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [mergedEntries, updateActiveUserInputId])
 
   const [jumpingId, setJumpingId] = React.useState<string | null>(null)
 
   const handleJump = React.useCallback(async (entry: UserInputIndexEntry) => {
+    const scrollVirtualMessage = () => scrollToMessage?.(entry.id, {
+      align: "start",
+      behavior: "smooth",
+      highlight: true,
+    }) ?? false
+
+    if (scrollVirtualMessage()) {
+      return
+    }
+
     const container = getScrollContainer()
     if (!container) return
     const findTarget = () => container.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(entry.id)}"]`)
@@ -150,6 +180,9 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
         while (!target && historyHasMoreRef.current && pages < MAX_PAGES) {
           await loadMoreHistoryRef.current()
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          if (scrollVirtualMessage()) {
+            return
+          }
           target = findTarget()
           pages++
         }
@@ -172,11 +205,9 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     bubble.addEventListener("animationend", () => {
       bubble.classList.remove("jump-highlight")
     }, { once: true })
-  }, [getScrollContainer])
+  }, [getScrollContainer, scrollToMessage])
 
-  if (mergedEntries.length === 0 && !loading) return null
-
-  const miniLines = mergedEntries.slice(0, 8)
+  if (mergedEntries.length <= 1 && !loading) return null
 
   return (
     <div
@@ -186,11 +217,17 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     >
       {/* 收起态：迷你竖条 */}
       <div className={cn(
-        "flex flex-col items-center gap-[5px] rounded-lg border bg-popover/90 px-[6px] py-3 shadow-md backdrop-blur-sm transition-opacity cursor-pointer",
+        "flex flex-col items-center gap-[5px] rounded-full border bg-popover/90 p-3 shadow-md backdrop-blur-sm transition-opacity cursor-pointer",
         expanded ? "opacity-0 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2" : "opacity-60 hover:opacity-100",
       )}>
-        {miniLines.map((e) => (
-          <div key={e.id} className="h-[2px] w-4 rounded-full bg-muted-foreground/50" />
+        {miniDots.map((dot, index) => (
+          <div
+            key={dot.key}
+            className={cn(
+              "size-2 rounded-full transition-colors",
+              index === activeDotIndex ? "bg-foreground" : "bg-muted-foreground/50",
+            )}
+          />
         ))}
       </div>
 
@@ -203,18 +240,32 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
             : "scale-95 opacity-0 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2",
         )}
         style={{ maxHeight: "min(480px, 70vh)", width: "280px" }}
-        onScroll={(e) => {
-          if (!hasMore || loading) return
-          const el = e.currentTarget
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
-            fetchPage(cursor ?? undefined)
-          }
-        }}
       >
-        {jumpingId && (
-          <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b bg-popover/95 px-4 py-2 text-xs text-muted-foreground">
-            <Spinner className="size-3" />
-            正在定位消息...
+        {(jumpingId || hasMore) && (
+          <div className="sticky top-0 z-10 border-b bg-popover/95">
+            {jumpingId && (
+              <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground">
+                <Spinner className="size-3" />
+                正在定位消息...
+              </div>
+            )}
+            {hasMore && (
+              <div className="p-1.5">
+                <button
+                  type="button"
+                  onClick={() => fetchPage(cursor ?? undefined)}
+                  disabled={loading}
+                  className={cn(
+                    "flex h-8 w-full items-center justify-center gap-1.5 rounded-md text-sm transition-colors",
+                    "text-muted-foreground hover:bg-accent hover:text-popover-foreground",
+                    "disabled:pointer-events-none disabled:opacity-60",
+                  )}
+                >
+                  {loading && <Spinner className="size-3.5" />}
+                  加载更多
+                </button>
+              </div>
+            )}
           </div>
         )}
         <div className="flex flex-col py-1.5">
@@ -237,7 +288,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
               </button>
             )
           })}
-          {loading && (
+          {loading && !hasMore && (
             <div className="flex justify-center py-2">
               <Spinner className="size-4" />
             </div>
