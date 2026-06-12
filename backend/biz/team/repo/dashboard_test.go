@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -102,9 +103,16 @@ func TestTeamDashboardOverviewExcludesAdminsFromMemberMetrics(t *testing.T) {
 	memberID := uuid.New()
 	adminID := uuid.New()
 	repo := &TeamDashboardRepo{
-		db:          client,
-		usageReader: &dashboardUsageReaderStub{},
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		db: client,
+		usageReader: &dashboardUsageReaderStub{
+			summary: clickhouse.ModelUsageSummary{TotalTokens: 300, Requests: 2},
+			topUsers: []clickhouse.ModelUsageTopUser{
+				{UserID: adminID.String(), TotalTokens: 200, Requests: 1},
+				{UserID: memberID.String(), TotalTokens: 100, Requests: 1},
+			},
+			filterTopUsersByQuery: true,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
 	createDashboardTeamUser(t, client, teamID, memberID, "林航", "前端组")
@@ -127,6 +135,12 @@ func TestTeamDashboardOverviewExcludesAdminsFromMemberMetrics(t *testing.T) {
 	}
 	if resp.Metrics.TaskCount != 1 {
 		t.Fatalf("task count = %d, want 1", resp.Metrics.TaskCount)
+	}
+	if len(resp.Insights.HighConsumption) != 1 || resp.Insights.HighConsumption[0].ID != memberID.String() {
+		t.Fatalf("high consumption = %#v, want only non-admin member", resp.Insights.HighConsumption)
+	}
+	if got := repo.usageReader.(*dashboardUsageReaderStub).topUserQueries[0].UserIDs; !slices.Equal(got, []string{memberID.String()}) {
+		t.Fatalf("top user query user ids = %#v, want only member id", got)
 	}
 }
 
@@ -289,8 +303,10 @@ func TestTeamDashboardListsOnlyCurrentTeamData(t *testing.T) {
 }
 
 type dashboardUsageReaderStub struct {
-	summary  clickhouse.ModelUsageSummary
-	topUsers []clickhouse.ModelUsageTopUser
+	summary               clickhouse.ModelUsageSummary
+	topUsers              []clickhouse.ModelUsageTopUser
+	topUserQueries        []clickhouse.ModelUsageQuery
+	filterTopUsersByQuery bool
 }
 
 func (s *dashboardUsageReaderStub) QueryModelUsageSummary(ctx context.Context, q clickhouse.ModelUsageQuery) (clickhouse.ModelUsageSummary, error) {
@@ -298,6 +314,16 @@ func (s *dashboardUsageReaderStub) QueryModelUsageSummary(ctx context.Context, q
 }
 
 func (s *dashboardUsageReaderStub) QueryModelUsageTopUsers(ctx context.Context, q clickhouse.ModelUsageQuery, limit int) ([]clickhouse.ModelUsageTopUser, error) {
+	s.topUserQueries = append(s.topUserQueries, q)
+	if s.filterTopUsersByQuery {
+		users := make([]clickhouse.ModelUsageTopUser, 0, len(s.topUsers))
+		for _, item := range s.topUsers {
+			if slices.Contains(q.UserIDs, item.UserID) {
+				users = append(users, item)
+			}
+		}
+		return users, nil
+	}
 	return s.topUsers, nil
 }
 
