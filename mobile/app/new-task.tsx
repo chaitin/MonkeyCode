@@ -42,6 +42,7 @@ export default function NewTaskScreen() {
   const params = useLocalSearchParams<{ repo?: string; repoName?: string; projectId?: string }>();
 
   const [models, setModels] = useState<Model[]>([]);
+  const [plan, setPlan] = useState<string | undefined>(undefined);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -77,6 +78,7 @@ export default function NewTaskScreen() {
           getSubscription().catch(() => null),
         ]);
         setModels(m);
+        setPlan(sub?.plan);
         setModelId(pickDefaultModel(m, sub?.plan));
         setImageId(pickDefaultImage(imgs));
         setProjects(projRes.projects);
@@ -198,7 +200,7 @@ export default function NewTaskScreen() {
 
       <PickerSheet visible={picking === 'repo'} title="选择仓库" options={repoOptions} selected={repoKey}
         onPick={(k) => { setRepoKey(k); setPicking(null); }} onClose={() => setPicking(null)} />
-      <ModelSheet visible={picking === 'model'} models={models} selectedId={modelId}
+      <ModelSheet visible={picking === 'model'} models={models} selectedId={modelId} plan={plan}
         onPick={(k) => { setModelId(k); setPicking(null); }} onClose={() => setPicking(null)} />
       <ConcurrentLimitModal visible={limitOpen} onClose={() => setLimitOpen(false)} onStopped={() => { setLimitOpen(false); setTimeout(() => submit(), 400); }} />
 

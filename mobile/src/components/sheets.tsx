@@ -48,11 +48,13 @@ function SheetShell({ title, subtitle, onClose, action, children }: { title: str
   );
 }
 
-export function ModelSheet({ visible, models, selectedId, onPick, onClose, title = '选择模型' }: {
+export function ModelSheet({ visible, models, selectedId, onPick, onClose, title = '选择模型', plan }: {
   visible: boolean; models: Model[]; selectedId?: string; onPick: (id: string) => void; onClose: () => void; title?: string;
+  /** 会员等级（subscription.plan）：高于该等级的内置分组不展示 */
+  plan?: string;
 }) {
   const t = useTheme();
-  const groups = groupModels(models);
+  const groups = groupModels(models, plan);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <SheetShell title={title} onClose={onClose}>

@@ -9,6 +9,8 @@ import React, {
 } from 'react';
 import { obtainCaptchaToken } from '@/api/captcha';
 import {
+  appleLogin as apiAppleLogin,
+  deleteAccount as apiDeleteAccount,
   DEFAULT_BASE_URL,
   getUserStatus,
   login as apiLogin,
@@ -24,18 +26,22 @@ const STORAGE_EMAIL = 'mc.email';
 const STORAGE_PASSWORD = 'mc.pw';
 const STORAGE_BASIC_AUTH = 'mc.basicAuth';
 const STORAGE_LOGGED_IN = 'mc.loggedIn';
+const STORAGE_APPLE_LOGIN = 'mc.appleLogin'; // 当前登录态是否来自 Apple 登录（注销账号入口只对 Apple 账号开放）
 
 interface AuthState {
   ready: boolean; // 启动恢复完成
   authenticated: boolean;
+  appleSession: boolean; // 当前登录态是否来自 Apple 登录
   user: UserStatus | null;
   baseUrl: string;
   basicAuth: string; // 测试环境的 HTTP Basic Auth（"user:pass"），可选
   savedEmail: string;
   savedPassword: string; // 上次登录成功的密码，用于自动填充
   login: (email: string, password: string) => Promise<void>;
+  loginWithApple: (params: { identity_token: string; authorization_code?: string; full_name?: string }) => Promise<void>;
   completeOAuthLogin: () => Promise<void>; // 百智云 OAuth 在 WebView 完成后，用会话 Cookie 确认登录
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>; // 注销账号：后端删除成功后清空本地登录态与保存的凭据
   updateBaseUrl: (url: string) => Promise<void>;
   updateBasicAuth: (v: string) => Promise<void>;
 }
@@ -45,6 +51,7 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [appleSession, setAppleSession] = useState(false);
   const [user, setUser] = useState<UserStatus | null>(null);
   const [baseUrl, setBaseUrlState] = useState(DEFAULT_BASE_URL);
   const [basicAuth, setBasicAuthState] = useState('');
@@ -56,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 否则残留的会话 Cookie 会被下一次（尤其是百智云）登录沿用，导致用户信息串号。
     setAuthenticated(false);
     setUser(null);
+    setAppleSession(false);
     await AsyncStorage.setItem(STORAGE_LOGGED_IN, '0');
     await apiLogout();
   }, []);
@@ -66,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(STORAGE_LOGGED_IN, '0').catch(() => undefined);
       setAuthenticated(false);
       setUser(null);
+      setAppleSession(false);
     });
     return () => setUnauthorizedHandler(null);
   }, []);
@@ -74,12 +83,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [storedBase, storedBasic, storedEmail, storedPassword, loggedIn] = await Promise.all([
+        const [storedBase, storedBasic, storedEmail, storedPassword, loggedIn, storedApple] = await Promise.all([
           AsyncStorage.getItem(STORAGE_BASE_URL),
           AsyncStorage.getItem(STORAGE_BASIC_AUTH),
           AsyncStorage.getItem(STORAGE_EMAIL),
           AsyncStorage.getItem(STORAGE_PASSWORD),
           AsyncStorage.getItem(STORAGE_LOGGED_IN),
+          AsyncStorage.getItem(STORAGE_APPLE_LOGIN),
         ]);
         const url = storedBase || DEFAULT_BASE_URL;
         setBaseUrl(url);
@@ -95,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const u = await getUserStatus();
             if (u && (u.id || u.email || u.username)) {
               setUser(u);
+              setAppleSession(storedApple === '1');
               setAuthenticated(true);
             }
           } catch {
@@ -120,15 +131,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       await AsyncStorage.multiSet([
         [STORAGE_LOGGED_IN, '1'],
+        [STORAGE_APPLE_LOGIN, '0'],
         [STORAGE_EMAIL, email.trim()],
         [STORAGE_PASSWORD, password],
       ]);
       setSavedEmail(email.trim());
       setSavedPassword(password);
       setUser(u);
+      setAppleSession(false);
       setAuthenticated(true);
     },
     [baseUrl],
+  );
+
+  // 注销账号：后端删除成功后，账号已不存在——清掉保存的自动填充凭据，
+  // 其余登录态清理复用 doLogout（保持与退出登录完全一致的清场顺序）。
+  const deleteAccount = useCallback(async () => {
+    await apiDeleteAccount();
+    // 删除已成功，之后的本地清理失败不能再抛给调用方（否则会误报“注销失败”，
+    // 而账号其实已经删了）；兜底保证内存登录态一定被清掉。
+    try {
+      setSavedEmail('');
+      setSavedPassword('');
+      await AsyncStorage.multiSet([
+        [STORAGE_EMAIL, ''],
+        [STORAGE_PASSWORD, ''],
+      ]);
+      await doLogout();
+    } catch {
+      setAuthenticated(false);
+      setUser(null);
+    }
+  }, [doLogout]);
+
+  // Sign in with Apple：原生授权拿到 identity_token 后交给后端建会话（写 Cookie），
+  // 之后与密码登录共用同一套会话机制。不保存表单自动填充凭据。
+  const loginWithApple = useCallback(
+    async (params: { identity_token: string; authorization_code?: string; full_name?: string }) => {
+      // 后端 apple-login 直接返回用户信息，无需再多打一次 status（省一个慢网络往返）
+      const resp = await apiAppleLogin(params);
+      await AsyncStorage.multiSet([
+        [STORAGE_LOGGED_IN, '1'],
+        [STORAGE_APPLE_LOGIN, '1'],
+      ]);
+      setUser(resp.data ?? {});
+      setAppleSession(true);
+      setAuthenticated(true);
+    },
+    [],
   );
 
   // 百智云 OAuth：WebView 跑完整个授权流程后，后端已写入会话 Cookie（原生网络层与
@@ -139,8 +189,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('登录未完成');
     }
     // 只建立会话 + 当前用户信息；不动登录表单的自动填充凭据（那是另一回事）。
-    await AsyncStorage.setItem(STORAGE_LOGGED_IN, '1');
+    await AsyncStorage.multiSet([
+      [STORAGE_LOGGED_IN, '1'],
+      [STORAGE_APPLE_LOGIN, '0'],
+    ]);
     setUser(u);
+    setAppleSession(false);
     setAuthenticated(true);
   }, []);
 
@@ -162,18 +216,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       ready,
       authenticated,
+      appleSession,
       user,
       baseUrl,
       basicAuth,
       savedEmail,
       savedPassword,
       login,
+      loginWithApple,
       completeOAuthLogin,
       logout: doLogout,
+      deleteAccount,
       updateBaseUrl,
       updateBasicAuth,
     }),
-    [ready, authenticated, user, baseUrl, basicAuth, savedEmail, savedPassword, login, completeOAuthLogin, doLogout, updateBaseUrl, updateBasicAuth],
+    [ready, authenticated, appleSession, user, baseUrl, basicAuth, savedEmail, savedPassword, login, loginWithApple, completeOAuthLogin, doLogout, deleteAccount, updateBaseUrl, updateBasicAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

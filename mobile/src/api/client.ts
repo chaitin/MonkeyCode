@@ -179,8 +179,37 @@ export function login(email: string, password: string, captchaToken: string) {
   });
 }
 
+/**
+ * Sign in with Apple（App Store 审核 Guideline 4.8 要求）。
+ * 客户端把 Apple 下发的 identity_token（JWT）交给后端；后端用 Apple 公钥验签
+ * （iss=https://appleid.apple.com，aud=应用 Bundle ID），以 token 里的 sub 作为
+ * 稳定用户标识创建/关联账号，成功后写入会话 Cookie（与密码登录一致）。
+ * full_name 仅在用户首次授权时由 Apple 提供，供建号时初始化昵称；邮箱以 identity token
+ * 里 Apple 验签的 claim 为准，客户端不自报。
+ */
+export function appleLogin(params: {
+  identity_token: string;
+  authorization_code?: string;
+  full_name?: string;
+}) {
+  return request<UserStatus>('/api/v1/users/apple-login', {
+    method: 'POST',
+    body: params,
+  });
+}
+
 export function logout() {
   return request('/api/v1/users/logout', { method: 'POST' }).catch(() => undefined);
+}
+
+/**
+ * 注销账号（App Store Guideline 5.1.1(v)：支持建号就必须支持删号）。
+ * 后端负责删除账号及关联数据并使所有会话失效；Apple 登录建的号还需由后端
+ * 调用 Apple 的 token revoke 接口撤销授权。失败时抛 ApiError（如旧版自托管
+ * 后端没有此接口）。
+ */
+export function deleteAccount() {
+  return request('/api/v1/users/account', { method: 'DELETE' });
 }
 
 export async function getUserStatus(): Promise<UserStatus> {

@@ -17,6 +17,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@shopify/flash-list": "2.0.2",
     "expo": "^56.0.8",
+    "expo-apple-authentication": "~56.0.4",
     "expo-asset": "~56.0.15",
     "expo-blur": "~56.0.3",
     "expo-build-properties": "~56.0.17",
@@ -59,6 +60,8 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^25.9.1",
     "@types/react": "~19.2.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~56.0.4",
     "typescript": "~6.0.3"
   },
   "private": true,
