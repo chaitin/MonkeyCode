@@ -16,7 +16,12 @@ import { spacing, useTheme } from '@/theme';
 
 // 与 Web 端一致：用户自有模型固定走 BaiZhiCloud 渠道
 const PROVIDER = 'BaiZhiCloud';
-const DEFAULT_MODEL_BASE_URL = 'https://model-square.app.baizhi.cloud/v1';
+// 默认 API 地址按接口格式区分；用户改过地址后切换接口格式不再覆盖
+const DEFAULT_BASE_URLS: Record<ModelInterfaceType, string> = {
+  openai_chat: 'https://ai-models.app.baizhi.cloud/api/openai',
+  openai_responses: 'https://ai-models.app.baizhi.cloud/api/openai',
+  anthropic: 'https://ai-models.app.baizhi.cloud/api/anthropic',
+};
 const DEFAULT_CONTEXT_LIMIT = '200000';
 const DEFAULT_OUTPUT_LIMIT = '32000';
 
@@ -75,7 +80,7 @@ export default function ModelFormScreen() {
   const [loading, setLoading] = useState(editing);
   const [provider, setProvider] = useState(PROVIDER);
   const [interfaceType, setInterfaceType] = useState<ModelInterfaceType>('openai_chat');
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_MODEL_BASE_URL);
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URLS.openai_chat);
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(!editing);
   const [model, setModel] = useState('');
@@ -88,6 +93,7 @@ export default function ModelFormScreen() {
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelOptions, setModelOptions] = useState<ProviderModelItem[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const [saving, setSaving] = useState<null | '检查模型中…' | '保存中…'>(null);
 
   // 已保存的连接相关字段快照：这五个字段未变时跳过健康检查（检查会真实调用上游模型）
@@ -108,12 +114,13 @@ export default function ModelFormScreen() {
           leave();
           return;
         }
+        const itf: ModelInterfaceType = m.interface_type || 'openai_chat';
         const conn: ConnFields = {
           provider: m.provider || PROVIDER,
           model: m.model || '',
-          base_url: m.base_url || DEFAULT_MODEL_BASE_URL,
+          base_url: m.base_url || DEFAULT_BASE_URLS[itf],
           api_key: m.api_key || '',
-          interface_type: m.interface_type || 'openai_chat',
+          interface_type: itf,
         };
         setProvider(conn.provider);
         setInterfaceType(conn.interface_type);
@@ -121,10 +128,16 @@ export default function ModelFormScreen() {
         setApiKey(conn.api_key);
         setModel(conn.model);
         setRemark(m.remark || '');
-        setContextLimit(m.context_limit ? String(m.context_limit) : DEFAULT_CONTEXT_LIMIT);
-        setOutputLimit(m.output_limit ? String(m.output_limit) : DEFAULT_OUTPUT_LIMIT);
-        setThinkingEnabled(m.thinking_enabled === true);
-        setSupportImage(m.support_image === true);
+        const ctxStr = m.context_limit ? String(m.context_limit) : DEFAULT_CONTEXT_LIMIT;
+        const outStr = m.output_limit ? String(m.output_limit) : DEFAULT_OUTPUT_LIMIT;
+        const thinking = m.thinking_enabled === true;
+        const image = m.support_image === true;
+        setContextLimit(ctxStr);
+        setOutputLimit(outStr);
+        setThinkingEnabled(thinking);
+        setSupportImage(image);
+        // 高级项有非默认值（默认：思考开、图片关、长度 200000/32000）时自动展开，保证「查看」场景不漏信息
+        setAdvanced(ctxStr !== DEFAULT_CONTEXT_LIMIT || outStr !== DEFAULT_OUTPUT_LIMIT || !thinking || image);
         loadedConnRef.current = conn;
         setLoading(false);
       })
@@ -145,9 +158,20 @@ export default function ModelFormScreen() {
     <Text style={{ fontSize: 13, color: t.tx2, fontWeight: '600', marginTop: top, marginBottom: 8 }}>{text}</Text>
   );
 
+  // 切换接口格式：地址为空或仍是「当前格式」的默认值（用户未自定义）时，跟随切到新格式的默认地址。
+  // 只和当前格式的默认值比较 —— 若和所有默认值比较，会把「anthropic 格式 + openai 地址」这类
+  // 存量组合在点击任意标签（包括已选中的）时静默改写掉
+  const pickInterface = useCallback((k: ModelInterfaceType) => {
+    setBaseUrl((u) => {
+      const cur = u.trim().replace(/\/+$/, '');
+      return cur === '' || cur === DEFAULT_BASE_URLS[interfaceType] ? DEFAULT_BASE_URLS[k] : u;
+    });
+    setInterfaceType(k);
+  }, [interfaceType]);
+
   const fetchModels = useCallback(async () => {
     if (!apiKey.trim()) { Alert.alert('提示', '请先输入 API Token'); return; }
-    const url = baseUrl.trim() || DEFAULT_MODEL_BASE_URL;
+    const url = baseUrl.trim() || DEFAULT_BASE_URLS[interfaceType];
     const preset = STATIC_PROVIDER_MODELS[url];
     if (preset) { setModelOptions(preset); setPickerOpen(true); return; }
     setLoadingModels(true);
@@ -164,7 +188,7 @@ export default function ModelFormScreen() {
     } finally {
       setLoadingModels(false);
     }
-  }, [apiKey, baseUrl, provider]);
+  }, [apiKey, baseUrl, provider, interfaceType]);
 
   const pickerOptions = useMemo(
     () => modelOptions.filter((m) => m.model).map((m) => ({ key: m.model!, title: m.model! })),
@@ -177,9 +201,9 @@ export default function ModelFormScreen() {
     if (!apiKey.trim()) { Alert.alert('提示', '请输入 API Token'); return; }
     if (!model.trim()) { Alert.alert('提示', '请填写或选择模型名称'); return; }
     const ctx = parsePositiveInt(contextLimit);
-    if (ctx === null) { Alert.alert('提示', '上下文长度必须为大于 0 的整数'); return; }
+    if (ctx === null) { setAdvanced(true); Alert.alert('提示', '上下文长度必须为大于 0 的整数'); return; }
     const out = parsePositiveInt(outputLimit);
-    if (out === null) { Alert.alert('提示', '输出长度必须为大于 0 的整数'); return; }
+    if (out === null) { setAdvanced(true); Alert.alert('提示', '输出长度必须为大于 0 的整数'); return; }
 
     const conn: ConnFields = {
       provider,
@@ -259,7 +283,7 @@ export default function ModelFormScreen() {
             {INTERFACE_OPTIONS.map((o) => {
               const on = interfaceType === o.k;
               return (
-                <Pressable key={o.k} disabled={!!saving} onPress={() => setInterfaceType(o.k)} style={[{ flex: 1, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? t.bg2 : 'transparent' }, on && t.shCard]}>
+                <Pressable key={o.k} disabled={!!saving} onPress={() => pickInterface(o.k)} style={[{ flex: 1, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? t.bg2 : 'transparent' }, on && t.shCard]}>
                   <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: on ? '700' : '500', color: on ? t.tx : t.tx2 }}>{o.label}</Text>
                 </Pressable>
               );
@@ -267,7 +291,7 @@ export default function ModelFormScreen() {
           </View>
 
           {label('模型 API 地址')}
-          <TextInput value={baseUrl} onChangeText={setBaseUrl} placeholder={DEFAULT_MODEL_BASE_URL} placeholderTextColor={t.tx3}
+          <TextInput value={baseUrl} onChangeText={setBaseUrl} placeholder={DEFAULT_BASE_URLS[interfaceType]} placeholderTextColor={t.tx3}
             autoCapitalize="none" autoCorrect={false} keyboardType="url" editable={!saving} style={fieldStyle('baseUrl')} {...focusProps('baseUrl')} />
           <Text style={{ color: t.tx3, fontSize: 11.5, marginTop: 7, fontFamily: 'monospace' }}>{endpointHint(baseUrl, interfaceType)}</Text>
 
@@ -283,8 +307,10 @@ export default function ModelFormScreen() {
 
           {label('模型名称')}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {/* 与右侧 44 高的按钮同行：固定高度并垂直居中，否则 Android 上 padding 撑出的 ~38 高会让文字偏上 */}
             <TextInput value={model} onChangeText={setModel} placeholder="与服务商 API 一致，如 deepseek-chat" placeholderTextColor={t.tx3}
-              autoCapitalize="none" autoCorrect={false} editable={!saving} style={[fieldStyle('model'), { flex: 1 }]} {...focusProps('model')} />
+              autoCapitalize="none" autoCorrect={false} editable={!saving}
+              style={[fieldStyle('model'), { flex: 1, height: 44, paddingVertical: 0, textAlignVertical: 'center' }]} {...focusProps('model')} />
             <Pressable onPress={fetchModels} disabled={loadingModels || !!saving} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 44, paddingHorizontal: 13, borderRadius: 14, backgroundColor: t.acGhost }, (pressed || loadingModels) && { opacity: 0.6 }]}>
               {loadingModels ? <ActivityIndicator size="small" color={t.acTx} /> : <Icons.search size={14} color={t.acTx} sw={2} />}
               <Text style={{ color: t.acTx, fontSize: 13, fontWeight: '700' }}>拉取列表</Text>
@@ -296,23 +322,33 @@ export default function ModelFormScreen() {
           <TextInput value={remark} onChangeText={setRemark} placeholder="模型展示名，如「我的 DeepSeek」" placeholderTextColor={t.tx3}
             editable={!saving} style={fieldStyle('remark')} {...focusProps('remark')} />
 
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              {label('上下文长度')}
-              <TextInput value={contextLimit} onChangeText={setContextLimit} keyboardType="number-pad" editable={!saving}
-                placeholder={DEFAULT_CONTEXT_LIMIT} placeholderTextColor={t.tx3} style={fieldStyle('ctx')} {...focusProps('ctx')} />
-            </View>
-            <View style={{ flex: 1 }}>
-              {label('输出长度')}
-              <TextInput value={outputLimit} onChangeText={setOutputLimit} keyboardType="number-pad" editable={!saving}
-                placeholder={DEFAULT_OUTPUT_LIMIT} placeholderTextColor={t.tx3} style={fieldStyle('out')} {...focusProps('out')} />
-            </View>
-          </View>
+          {/* 高级配置：上下文/输出长度 + 思考/图片开关，默认折叠（编辑时有非默认值会自动展开） */}
+          <Pressable onPress={() => setAdvanced((v) => !v)} hitSlop={8} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 20, alignSelf: 'flex-start' }, pressed && { opacity: 0.6 }]}>
+            <Text style={{ fontSize: 13, color: t.tx2, fontWeight: '600' }}>高级配置</Text>
+            <Icons.chevron size={14} color={t.tx3} sw={2} style={{ transform: [{ rotate: advanced ? '90deg' : '0deg' }] }} />
+          </Pressable>
 
-          <View style={{ marginTop: 8 }}>
-            {switchRow('推理 / 思考', '模型支持思考模式时开启', thinkingEnabled, setThinkingEnabled)}
-            {switchRow('图片识别', '开启后该模型可接收图片输入', supportImage, setSupportImage)}
-          </View>
+          {advanced ? (
+            <>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  {label('上下文长度', 12)}
+                  <TextInput value={contextLimit} onChangeText={setContextLimit} keyboardType="number-pad" editable={!saving}
+                    placeholder={DEFAULT_CONTEXT_LIMIT} placeholderTextColor={t.tx3} style={fieldStyle('ctx')} {...focusProps('ctx')} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  {label('输出长度', 12)}
+                  <TextInput value={outputLimit} onChangeText={setOutputLimit} keyboardType="number-pad" editable={!saving}
+                    placeholder={DEFAULT_OUTPUT_LIMIT} placeholderTextColor={t.tx3} style={fieldStyle('out')} {...focusProps('out')} />
+                </View>
+              </View>
+
+              <View style={{ marginTop: 8 }}>
+                {switchRow('推理 / 思考', '模型支持思考模式时开启', thinkingEnabled, setThinkingEnabled)}
+                {switchRow('图片识别', '开启后该模型可接收图片输入', supportImage, setSupportImage)}
+              </View>
+            </>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
