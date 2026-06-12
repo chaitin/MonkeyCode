@@ -87,7 +87,10 @@ func (r *TeamDashboardRepo) Overview(ctx context.Context, teamID uuid.UUID, req 
 
 func (r *TeamDashboardRepo) teamMemberIDs(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error) {
 	return r.db.TeamMember.Query().
-		Where(teammember.TeamIDEQ(teamID)).
+		Where(
+			teammember.TeamIDEQ(teamID),
+			teammember.RoleEQ(consts.TeamMemberRoleUser),
+		).
 		QueryUser().
 		Where(user.IsBlockedEQ(false)).
 		IDs(ctx)
