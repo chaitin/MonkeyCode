@@ -399,11 +399,11 @@ func (r *TeamDashboardRepo) fillInsights(ctx context.Context, resp *domain.TeamD
 		})
 	}
 
-	usage, err := r.usageSummary(ctx, teamID, req.Start, req.End)
+	usage, err := r.usageSummary(ctx, teamID, req.Start, req.End, memberIDs...)
 	if err != nil {
 		return err
 	}
-	topUsers, err := r.topUsers(ctx, teamID, req.Start, req.End, 5)
+	topUsers, err := r.topUsers(ctx, teamID, memberIDs, req.Start, req.End, 5)
 	if err != nil {
 		return err
 	}
@@ -480,26 +480,39 @@ func (r *TeamDashboardRepo) fillInsights(ctx context.Context, resp *domain.TeamD
 	return nil
 }
 
-func (r *TeamDashboardRepo) usageSummary(ctx context.Context, teamID uuid.UUID, start, end time.Time) (clickhouse.ModelUsageSummary, error) {
+func (r *TeamDashboardRepo) usageSummary(ctx context.Context, teamID uuid.UUID, start, end time.Time, memberIDs ...uuid.UUID) (clickhouse.ModelUsageSummary, error) {
 	if r.usageReader == nil {
 		return clickhouse.ModelUsageSummary{}, nil
 	}
 	return r.usageReader.QueryModelUsageSummary(ctx, clickhouse.ModelUsageQuery{
-		TeamID: teamID.String(),
-		Start:  start,
-		End:    end,
+		TeamID:  teamID.String(),
+		UserIDs: uuidStrings(memberIDs),
+		Start:   start,
+		End:     end,
 	})
 }
 
-func (r *TeamDashboardRepo) topUsers(ctx context.Context, teamID uuid.UUID, start, end time.Time, limit int) ([]clickhouse.ModelUsageTopUser, error) {
+func (r *TeamDashboardRepo) topUsers(ctx context.Context, teamID uuid.UUID, memberIDs []uuid.UUID, start, end time.Time, limit int) ([]clickhouse.ModelUsageTopUser, error) {
 	if r.usageReader == nil {
 		return nil, nil
 	}
 	return r.usageReader.QueryModelUsageTopUsers(ctx, clickhouse.ModelUsageQuery{
-		TeamID: teamID.String(),
-		Start:  start,
-		End:    end,
+		TeamID:  teamID.String(),
+		UserIDs: uuidStrings(memberIDs),
+		Start:   start,
+		End:     end,
 	}, limit)
+}
+
+func uuidStrings(ids []uuid.UUID) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, id.String())
+	}
+	return values
 }
 
 func (r *TeamDashboardRepo) ListProjects(ctx context.Context, teamID uuid.UUID, req domain.TeamDashboardListReq) (*domain.TeamProjectListResp, error) {

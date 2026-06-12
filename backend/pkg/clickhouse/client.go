@@ -175,9 +175,10 @@ type ModelUsageEvent struct {
 }
 
 type ModelUsageQuery struct {
-	TeamID string
-	Start  time.Time
-	End    time.Time
+	TeamID  string
+	UserIDs []string
+	Start   time.Time
+	End     time.Time
 }
 
 type ModelUsageSummary struct {
@@ -221,12 +222,12 @@ type TeamConversationListQuery struct {
 }
 
 type TeamConversationRow struct {
-	TaskID    string
-	TS        time.Time
-	Event     string
-	Kind      string
-	TurnSeq   uint32
-	Data      string
+	TaskID      string
+	TS          time.Time
+	Event       string
+	Kind        string
+	TurnSeq     uint32
+	Data        string
 	MsgSeqStart uint64
 	MsgSeqEnd   uint64
 }
@@ -278,6 +279,7 @@ func (c *Client) QueryModelUsageSummary(ctx context.Context, q ModelUsageQuery) 
 	if err != nil {
 		return summary, err
 	}
+	where, args := modelUsageWhere(q)
 	query := fmt.Sprintf(`SELECT
 	coalesce(sum(input_tokens), 0) AS input_tokens,
 	coalesce(sum(output_tokens), 0) AS output_tokens,
@@ -285,8 +287,8 @@ func (c *Client) QueryModelUsageSummary(ctx context.Context, q ModelUsageQuery) 
 	coalesce(sum(total_tokens), 0) AS total_tokens,
 	coalesce(sum(request_count), 0) AS requests
 FROM %s
-WHERE team_id = ? AND event_time >= ? AND event_time < ?`, tableIdentifier)
-	err = c.db.QueryRowContext(ctx, query, q.TeamID, q.Start, q.End).Scan(
+%s`, tableIdentifier, where)
+	err = c.db.QueryRowContext(ctx, query, args...).Scan(
 		&summary.InputTokens,
 		&summary.OutputTokens,
 		&summary.CachedTokens,
@@ -307,16 +309,18 @@ func (c *Client) QueryModelUsageTopUsers(ctx context.Context, q ModelUsageQuery,
 	if err != nil {
 		return nil, err
 	}
+	where, args := modelUsageWhere(q)
 	query := fmt.Sprintf(`SELECT
 	user_id,
 	coalesce(sum(total_tokens), 0) AS total_tokens,
 	coalesce(sum(request_count), 0) AS requests
 FROM %s
-WHERE team_id = ? AND event_time >= ? AND event_time < ?
+%s
 GROUP BY user_id
 ORDER BY total_tokens DESC
-LIMIT ?`, tableIdentifier)
-	rows, err := c.db.QueryContext(ctx, query, q.TeamID, q.Start, q.End, limit)
+LIMIT ?`, tableIdentifier, where)
+	args = append(args, limit)
+	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -333,6 +337,17 @@ LIMIT ?`, tableIdentifier)
 		return nil, err
 	}
 	return users, nil
+}
+
+func modelUsageWhere(q ModelUsageQuery) (string, []any) {
+	where := "WHERE team_id = ? AND event_time >= ? AND event_time < ?"
+	args := []any{q.TeamID, q.Start, q.End}
+	if len(q.UserIDs) > 0 {
+		inClause, inArgs := buildInClause(q.UserIDs)
+		where += fmt.Sprintf(" AND user_id IN (%s)", inClause)
+		args = append(args, inArgs...)
+	}
+	return where, args
 }
 
 func (c *Client) QueryTeamConversationStats(ctx context.Context, q TeamConversationQuery) (TeamConversationStats, error) {

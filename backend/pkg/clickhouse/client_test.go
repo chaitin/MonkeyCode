@@ -438,8 +438,9 @@ func TestQueryModelUsageSummaryAggregatesByTeamAndTime(t *testing.T) {
 	start := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
 	_, err = db.Exec(`INSERT INTO model_usage_events_test
 		(event_time, team_id, user_id, task_id, project_id, model_id, total_tokens, input_tokens, output_tokens, cached_tokens, request_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		start.Add(time.Hour), "team-1", "user-1", "task-1", "", "m1", 100, 60, 40, 20, 1,
+		start.Add(time.Hour), "team-1", "user-admin", "task-admin", "", "m1", 300, 200, 100, 0, 1,
 		start.Add(time.Hour), "team-2", "user-2", "task-2", "", "m1", 900, 500, 400, 0, 1,
 	)
 	if err != nil {
@@ -454,8 +455,20 @@ func TestQueryModelUsageSummaryAggregatesByTeamAndTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.TotalTokens != 100 || summary.CachedTokens != 20 || summary.Requests != 1 {
+	if summary.TotalTokens != 400 || summary.CachedTokens != 20 || summary.Requests != 2 {
 		t.Fatalf("summary = %#v", summary)
+	}
+	filtered, err := client.QueryModelUsageSummary(context.Background(), ModelUsageQuery{
+		TeamID:  "team-1",
+		UserIDs: []string{"user-1"},
+		Start:   start,
+		End:     start.AddDate(0, 0, 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.TotalTokens != 100 || filtered.CachedTokens != 20 || filtered.Requests != 1 {
+		t.Fatalf("filtered summary = %#v", filtered)
 	}
 }
 
@@ -500,5 +513,17 @@ func TestQueryModelUsageTopUsersOrdersByTokens(t *testing.T) {
 	}
 	if users[0].UserID != "user-high" || users[0].TotalTokens != 300 || users[0].Requests != 2 {
 		t.Fatalf("first user = %#v", users[0])
+	}
+	filtered, err := client.QueryModelUsageTopUsers(context.Background(), ModelUsageQuery{
+		TeamID:  "team-1",
+		UserIDs: []string{"user-low"},
+		Start:   start,
+		End:     start.AddDate(0, 0, 1),
+	}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].UserID != "user-low" {
+		t.Fatalf("filtered top users = %#v, want user-low only", filtered)
 	}
 }
