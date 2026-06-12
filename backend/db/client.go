@@ -39,6 +39,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
@@ -49,11 +50,13 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
+	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -112,6 +115,8 @@ type Client struct {
 	ProjectIssueComment *ProjectIssueCommentClient
 	// ProjectTask is the client for interacting with the ProjectTask builders.
 	ProjectTask *ProjectTaskClient
+	// Skill is the client for interacting with the Skill builders.
+	Skill *SkillClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
 	// TaskModelSwitch is the client for interacting with the TaskModelSwitch builders.
@@ -132,6 +137,8 @@ type Client struct {
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
 	TeamGroupModel *TeamGroupModelClient
+	// TeamGroupSkill is the client for interacting with the TeamGroupSkill builders.
+	TeamGroupSkill *TeamGroupSkillClient
 	// TeamHost is the client for interacting with the TeamHost builders.
 	TeamHost *TeamHostClient
 	// TeamImage is the client for interacting with the TeamImage builders.
@@ -142,6 +149,8 @@ type Client struct {
 	TeamModel *TeamModelClient
 	// TeamOIDCConfig is the client for interacting with the TeamOIDCConfig builders.
 	TeamOIDCConfig *TeamOIDCConfigClient
+	// TeamSkill is the client for interacting with the TeamSkill builders.
+	TeamSkill *TeamSkillClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -182,6 +191,7 @@ func (c *Client) init() {
 	c.ProjectIssue = NewProjectIssueClient(c.config)
 	c.ProjectIssueComment = NewProjectIssueCommentClient(c.config)
 	c.ProjectTask = NewProjectTaskClient(c.config)
+	c.Skill = NewSkillClient(c.config)
 	c.Task = NewTaskClient(c.config)
 	c.TaskModelSwitch = NewTaskModelSwitchClient(c.config)
 	c.TaskUsageStat = NewTaskUsageStatClient(c.config)
@@ -192,11 +202,13 @@ func (c *Client) init() {
 	c.TeamGroupImage = NewTeamGroupImageClient(c.config)
 	c.TeamGroupMember = NewTeamGroupMemberClient(c.config)
 	c.TeamGroupModel = NewTeamGroupModelClient(c.config)
+	c.TeamGroupSkill = NewTeamGroupSkillClient(c.config)
 	c.TeamHost = NewTeamHostClient(c.config)
 	c.TeamImage = NewTeamImageClient(c.config)
 	c.TeamMember = NewTeamMemberClient(c.config)
 	c.TeamModel = NewTeamModelClient(c.config)
 	c.TeamOIDCConfig = NewTeamOIDCConfigClient(c.config)
+	c.TeamSkill = NewTeamSkillClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserIdentity = NewUserIdentityClient(c.config)
 	c.VirtualMachine = NewVirtualMachineClient(c.config)
@@ -315,6 +327,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ProjectIssue:        NewProjectIssueClient(cfg),
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
+		Skill:               NewSkillClient(cfg),
 		Task:                NewTaskClient(cfg),
 		TaskModelSwitch:     NewTaskModelSwitchClient(cfg),
 		TaskUsageStat:       NewTaskUsageStatClient(cfg),
@@ -325,11 +338,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TeamGroupImage:      NewTeamGroupImageClient(cfg),
 		TeamGroupMember:     NewTeamGroupMemberClient(cfg),
 		TeamGroupModel:      NewTeamGroupModelClient(cfg),
+		TeamGroupSkill:      NewTeamGroupSkillClient(cfg),
 		TeamHost:            NewTeamHostClient(cfg),
 		TeamImage:           NewTeamImageClient(cfg),
 		TeamMember:          NewTeamMemberClient(cfg),
 		TeamModel:           NewTeamModelClient(cfg),
 		TeamOIDCConfig:      NewTeamOIDCConfigClient(cfg),
+		TeamSkill:           NewTeamSkillClient(cfg),
 		User:                NewUserClient(cfg),
 		UserIdentity:        NewUserIdentityClient(cfg),
 		VirtualMachine:      NewVirtualMachineClient(cfg),
@@ -375,6 +390,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ProjectIssue:        NewProjectIssueClient(cfg),
 		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
 		ProjectTask:         NewProjectTaskClient(cfg),
+		Skill:               NewSkillClient(cfg),
 		Task:                NewTaskClient(cfg),
 		TaskModelSwitch:     NewTaskModelSwitchClient(cfg),
 		TaskUsageStat:       NewTaskUsageStatClient(cfg),
@@ -385,11 +401,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TeamGroupImage:      NewTeamGroupImageClient(cfg),
 		TeamGroupMember:     NewTeamGroupMemberClient(cfg),
 		TeamGroupModel:      NewTeamGroupModelClient(cfg),
+		TeamGroupSkill:      NewTeamGroupSkillClient(cfg),
 		TeamHost:            NewTeamHostClient(cfg),
 		TeamImage:           NewTeamImageClient(cfg),
 		TeamMember:          NewTeamMemberClient(cfg),
 		TeamModel:           NewTeamModelClient(cfg),
 		TeamOIDCConfig:      NewTeamOIDCConfigClient(cfg),
+		TeamSkill:           NewTeamSkillClient(cfg),
 		User:                NewUserClient(cfg),
 		UserIdentity:        NewUserIdentityClient(cfg),
 		VirtualMachine:      NewVirtualMachineClient(cfg),
@@ -426,11 +444,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
 		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Skill, c.Task,
 		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
 		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
-		c.UserIdentity, c.VirtualMachine,
+		c.TeamGroupSkill, c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel,
+		c.TeamOIDCConfig, c.TeamSkill, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -444,11 +462,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Image, c.MCPTool, c.MCPUpstream, c.MCPUserToolSetting, c.Model,
 		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
-		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Task,
+		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Skill, c.Task,
 		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
 		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
-		c.UserIdentity, c.VirtualMachine,
+		c.TeamGroupSkill, c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel,
+		c.TeamOIDCConfig, c.TeamSkill, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -503,6 +521,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ProjectIssueComment.mutate(ctx, m)
 	case *ProjectTaskMutation:
 		return c.ProjectTask.mutate(ctx, m)
+	case *SkillMutation:
+		return c.Skill.mutate(ctx, m)
 	case *TaskMutation:
 		return c.Task.mutate(ctx, m)
 	case *TaskModelSwitchMutation:
@@ -523,6 +543,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TeamGroupMember.mutate(ctx, m)
 	case *TeamGroupModelMutation:
 		return c.TeamGroupModel.mutate(ctx, m)
+	case *TeamGroupSkillMutation:
+		return c.TeamGroupSkill.mutate(ctx, m)
 	case *TeamHostMutation:
 		return c.TeamHost.mutate(ctx, m)
 	case *TeamImageMutation:
@@ -533,6 +555,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TeamModel.mutate(ctx, m)
 	case *TeamOIDCConfigMutation:
 		return c.TeamOIDCConfig.mutate(ctx, m)
+	case *TeamSkillMutation:
+		return c.TeamSkill.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *UserIdentityMutation:
@@ -4799,6 +4823,221 @@ func (c *ProjectTaskClient) mutate(ctx context.Context, m *ProjectTaskMutation) 
 	}
 }
 
+// SkillClient is a client for the Skill schema.
+type SkillClient struct {
+	config
+}
+
+// NewSkillClient returns a client for the Skill from the given config.
+func NewSkillClient(c config) *SkillClient {
+	return &SkillClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `skill.Hooks(f(g(h())))`.
+func (c *SkillClient) Use(hooks ...Hook) {
+	c.hooks.Skill = append(c.hooks.Skill, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `skill.Intercept(f(g(h())))`.
+func (c *SkillClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Skill = append(c.inters.Skill, interceptors...)
+}
+
+// Create returns a builder for creating a Skill entity.
+func (c *SkillClient) Create() *SkillCreate {
+	mutation := newSkillMutation(c.config, OpCreate)
+	return &SkillCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Skill entities.
+func (c *SkillClient) CreateBulk(builders ...*SkillCreate) *SkillCreateBulk {
+	return &SkillCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SkillClient) MapCreateBulk(slice any, setFunc func(*SkillCreate, int)) *SkillCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SkillCreateBulk{err: fmt.Errorf("calling to SkillClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SkillCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SkillCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Skill.
+func (c *SkillClient) Update() *SkillUpdate {
+	mutation := newSkillMutation(c.config, OpUpdate)
+	return &SkillUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SkillClient) UpdateOne(_m *Skill) *SkillUpdateOne {
+	mutation := newSkillMutation(c.config, OpUpdateOne, withSkill(_m))
+	return &SkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SkillClient) UpdateOneID(id uuid.UUID) *SkillUpdateOne {
+	mutation := newSkillMutation(c.config, OpUpdateOne, withSkillID(id))
+	return &SkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Skill.
+func (c *SkillClient) Delete() *SkillDelete {
+	mutation := newSkillMutation(c.config, OpDelete)
+	return &SkillDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SkillClient) DeleteOne(_m *Skill) *SkillDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SkillClient) DeleteOneID(id uuid.UUID) *SkillDeleteOne {
+	builder := c.Delete().Where(skill.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SkillDeleteOne{builder}
+}
+
+// Query returns a query builder for Skill.
+func (c *SkillClient) Query() *SkillQuery {
+	return &SkillQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSkill},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Skill entity by its id.
+func (c *SkillClient) Get(ctx context.Context, id uuid.UUID) (*Skill, error) {
+	return c.Query().Where(skill.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SkillClient) GetX(ctx context.Context, id uuid.UUID) *Skill {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a Skill.
+func (c *SkillClient) QueryUser(_m *Skill) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(skill.Table, skill.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, skill.UserTable, skill.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeams queries the teams edge of a Skill.
+func (c *SkillClient) QueryTeams(_m *Skill) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(skill.Table, skill.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, skill.TeamsTable, skill.TeamsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroups queries the groups edge of a Skill.
+func (c *SkillClient) QueryGroups(_m *Skill) *TeamGroupQuery {
+	query := (&TeamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(skill.Table, skill.FieldID, id),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, skill.GroupsTable, skill.GroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamSkills queries the team_skills edge of a Skill.
+func (c *SkillClient) QueryTeamSkills(_m *Skill) *TeamSkillQuery {
+	query := (&TeamSkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(skill.Table, skill.FieldID, id),
+			sqlgraph.To(teamskill.Table, teamskill.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, skill.TeamSkillsTable, skill.TeamSkillsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamGroupSkills queries the team_group_skills edge of a Skill.
+func (c *SkillClient) QueryTeamGroupSkills(_m *Skill) *TeamGroupSkillQuery {
+	query := (&TeamGroupSkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(skill.Table, skill.FieldID, id),
+			sqlgraph.To(teamgroupskill.Table, teamgroupskill.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, skill.TeamGroupSkillsTable, skill.TeamGroupSkillsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *SkillClient) Hooks() []Hook {
+	hooks := c.hooks.Skill
+	return append(hooks[:len(hooks):len(hooks)], skill.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *SkillClient) Interceptors() []Interceptor {
+	inters := c.inters.Skill
+	return append(inters[:len(inters):len(inters)], skill.Interceptors[:]...)
+}
+
+func (c *SkillClient) mutate(ctx context.Context, m *SkillMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SkillCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SkillUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SkillDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown Skill mutation op: %q", m.Op())
+	}
+}
+
 // TaskClient is a client for the Task schema.
 type TaskClient struct {
 	config
@@ -5713,6 +5952,22 @@ func (c *TeamClient) QueryImages(_m *Team) *ImageQuery {
 	return query
 }
 
+// QuerySkills queries the skills edge of a Team.
+func (c *TeamClient) QuerySkills(_m *Team) *SkillQuery {
+	query := (&SkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, id),
+			sqlgraph.To(skill.Table, skill.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, team.SkillsTable, team.SkillsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a Team.
 func (c *TeamClient) QueryTeamMembers(_m *Team) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -5754,6 +6009,22 @@ func (c *TeamClient) QueryTeamImages(_m *Team) *TeamImageQuery {
 			sqlgraph.From(team.Table, team.FieldID, id),
 			sqlgraph.To(teamimage.Table, teamimage.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, team.TeamImagesTable, team.TeamImagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamSkills queries the team_skills edge of a Team.
+func (c *TeamClient) QueryTeamSkills(_m *Team) *TeamSkillQuery {
+	query := (&TeamSkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, id),
+			sqlgraph.To(teamskill.Table, teamskill.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, team.TeamSkillsTable, team.TeamSkillsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5976,6 +6247,22 @@ func (c *TeamGroupClient) QueryHosts(_m *TeamGroup) *HostQuery {
 	return query
 }
 
+// QuerySkills queries the skills edge of a TeamGroup.
+func (c *TeamGroupClient) QuerySkills(_m *TeamGroup) *SkillQuery {
+	query := (&SkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
+			sqlgraph.To(skill.Table, skill.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, teamgroup.SkillsTable, teamgroup.SkillsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamGroupMembers queries the team_group_members edge of a TeamGroup.
 func (c *TeamGroupClient) QueryTeamGroupMembers(_m *TeamGroup) *TeamGroupMemberQuery {
 	query := (&TeamGroupMemberClient{config: c.config}).Query()
@@ -6033,6 +6320,22 @@ func (c *TeamGroupClient) QueryTeamGroupHosts(_m *TeamGroup) *TeamGroupHostQuery
 			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
 			sqlgraph.To(teamgrouphost.Table, teamgrouphost.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupHostsTable, teamgroup.TeamGroupHostsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamGroupSkills queries the team_group_skills edge of a TeamGroup.
+func (c *TeamGroupClient) QueryTeamGroupSkills(_m *TeamGroup) *TeamGroupSkillQuery {
+	query := (&TeamGroupSkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
+			sqlgraph.To(teamgroupskill.Table, teamgroupskill.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupSkillsTable, teamgroup.TeamGroupSkillsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -6724,6 +7027,171 @@ func (c *TeamGroupModelClient) mutate(ctx context.Context, m *TeamGroupModelMuta
 		return (&TeamGroupModelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown TeamGroupModel mutation op: %q", m.Op())
+	}
+}
+
+// TeamGroupSkillClient is a client for the TeamGroupSkill schema.
+type TeamGroupSkillClient struct {
+	config
+}
+
+// NewTeamGroupSkillClient returns a client for the TeamGroupSkill from the given config.
+func NewTeamGroupSkillClient(c config) *TeamGroupSkillClient {
+	return &TeamGroupSkillClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamgroupskill.Hooks(f(g(h())))`.
+func (c *TeamGroupSkillClient) Use(hooks ...Hook) {
+	c.hooks.TeamGroupSkill = append(c.hooks.TeamGroupSkill, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamgroupskill.Intercept(f(g(h())))`.
+func (c *TeamGroupSkillClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamGroupSkill = append(c.inters.TeamGroupSkill, interceptors...)
+}
+
+// Create returns a builder for creating a TeamGroupSkill entity.
+func (c *TeamGroupSkillClient) Create() *TeamGroupSkillCreate {
+	mutation := newTeamGroupSkillMutation(c.config, OpCreate)
+	return &TeamGroupSkillCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamGroupSkill entities.
+func (c *TeamGroupSkillClient) CreateBulk(builders ...*TeamGroupSkillCreate) *TeamGroupSkillCreateBulk {
+	return &TeamGroupSkillCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamGroupSkillClient) MapCreateBulk(slice any, setFunc func(*TeamGroupSkillCreate, int)) *TeamGroupSkillCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamGroupSkillCreateBulk{err: fmt.Errorf("calling to TeamGroupSkillClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamGroupSkillCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamGroupSkillCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamGroupSkill.
+func (c *TeamGroupSkillClient) Update() *TeamGroupSkillUpdate {
+	mutation := newTeamGroupSkillMutation(c.config, OpUpdate)
+	return &TeamGroupSkillUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamGroupSkillClient) UpdateOne(_m *TeamGroupSkill) *TeamGroupSkillUpdateOne {
+	mutation := newTeamGroupSkillMutation(c.config, OpUpdateOne, withTeamGroupSkill(_m))
+	return &TeamGroupSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamGroupSkillClient) UpdateOneID(id uuid.UUID) *TeamGroupSkillUpdateOne {
+	mutation := newTeamGroupSkillMutation(c.config, OpUpdateOne, withTeamGroupSkillID(id))
+	return &TeamGroupSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamGroupSkill.
+func (c *TeamGroupSkillClient) Delete() *TeamGroupSkillDelete {
+	mutation := newTeamGroupSkillMutation(c.config, OpDelete)
+	return &TeamGroupSkillDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamGroupSkillClient) DeleteOne(_m *TeamGroupSkill) *TeamGroupSkillDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamGroupSkillClient) DeleteOneID(id uuid.UUID) *TeamGroupSkillDeleteOne {
+	builder := c.Delete().Where(teamgroupskill.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamGroupSkillDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamGroupSkill.
+func (c *TeamGroupSkillClient) Query() *TeamGroupSkillQuery {
+	return &TeamGroupSkillQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamGroupSkill},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamGroupSkill entity by its id.
+func (c *TeamGroupSkillClient) Get(ctx context.Context, id uuid.UUID) (*TeamGroupSkill, error) {
+	return c.Query().Where(teamgroupskill.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamGroupSkillClient) GetX(ctx context.Context, id uuid.UUID) *TeamGroupSkill {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a TeamGroupSkill.
+func (c *TeamGroupSkillClient) QueryGroup(_m *TeamGroupSkill) *TeamGroupQuery {
+	query := (&TeamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroupskill.Table, teamgroupskill.FieldID, id),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgroupskill.GroupTable, teamgroupskill.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySkill queries the skill edge of a TeamGroupSkill.
+func (c *TeamGroupSkillClient) QuerySkill(_m *TeamGroupSkill) *SkillQuery {
+	query := (&SkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroupskill.Table, teamgroupskill.FieldID, id),
+			sqlgraph.To(skill.Table, skill.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgroupskill.SkillTable, teamgroupskill.SkillColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamGroupSkillClient) Hooks() []Hook {
+	return c.hooks.TeamGroupSkill
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamGroupSkillClient) Interceptors() []Interceptor {
+	return c.inters.TeamGroupSkill
+}
+
+func (c *TeamGroupSkillClient) mutate(ctx context.Context, m *TeamGroupSkillMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamGroupSkillCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamGroupSkillUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamGroupSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamGroupSkillDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamGroupSkill mutation op: %q", m.Op())
 	}
 }
 
@@ -7536,6 +8004,171 @@ func (c *TeamOIDCConfigClient) mutate(ctx context.Context, m *TeamOIDCConfigMuta
 	}
 }
 
+// TeamSkillClient is a client for the TeamSkill schema.
+type TeamSkillClient struct {
+	config
+}
+
+// NewTeamSkillClient returns a client for the TeamSkill from the given config.
+func NewTeamSkillClient(c config) *TeamSkillClient {
+	return &TeamSkillClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamskill.Hooks(f(g(h())))`.
+func (c *TeamSkillClient) Use(hooks ...Hook) {
+	c.hooks.TeamSkill = append(c.hooks.TeamSkill, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamskill.Intercept(f(g(h())))`.
+func (c *TeamSkillClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamSkill = append(c.inters.TeamSkill, interceptors...)
+}
+
+// Create returns a builder for creating a TeamSkill entity.
+func (c *TeamSkillClient) Create() *TeamSkillCreate {
+	mutation := newTeamSkillMutation(c.config, OpCreate)
+	return &TeamSkillCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamSkill entities.
+func (c *TeamSkillClient) CreateBulk(builders ...*TeamSkillCreate) *TeamSkillCreateBulk {
+	return &TeamSkillCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamSkillClient) MapCreateBulk(slice any, setFunc func(*TeamSkillCreate, int)) *TeamSkillCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamSkillCreateBulk{err: fmt.Errorf("calling to TeamSkillClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamSkillCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamSkillCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamSkill.
+func (c *TeamSkillClient) Update() *TeamSkillUpdate {
+	mutation := newTeamSkillMutation(c.config, OpUpdate)
+	return &TeamSkillUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamSkillClient) UpdateOne(_m *TeamSkill) *TeamSkillUpdateOne {
+	mutation := newTeamSkillMutation(c.config, OpUpdateOne, withTeamSkill(_m))
+	return &TeamSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamSkillClient) UpdateOneID(id uuid.UUID) *TeamSkillUpdateOne {
+	mutation := newTeamSkillMutation(c.config, OpUpdateOne, withTeamSkillID(id))
+	return &TeamSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamSkill.
+func (c *TeamSkillClient) Delete() *TeamSkillDelete {
+	mutation := newTeamSkillMutation(c.config, OpDelete)
+	return &TeamSkillDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamSkillClient) DeleteOne(_m *TeamSkill) *TeamSkillDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamSkillClient) DeleteOneID(id uuid.UUID) *TeamSkillDeleteOne {
+	builder := c.Delete().Where(teamskill.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamSkillDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamSkill.
+func (c *TeamSkillClient) Query() *TeamSkillQuery {
+	return &TeamSkillQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamSkill},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamSkill entity by its id.
+func (c *TeamSkillClient) Get(ctx context.Context, id uuid.UUID) (*TeamSkill, error) {
+	return c.Query().Where(teamskill.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamSkillClient) GetX(ctx context.Context, id uuid.UUID) *TeamSkill {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTeam queries the team edge of a TeamSkill.
+func (c *TeamSkillClient) QueryTeam(_m *TeamSkill) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamskill.Table, teamskill.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamskill.TeamTable, teamskill.TeamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySkill queries the skill edge of a TeamSkill.
+func (c *TeamSkillClient) QuerySkill(_m *TeamSkill) *SkillQuery {
+	query := (&SkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamskill.Table, teamskill.FieldID, id),
+			sqlgraph.To(skill.Table, skill.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamskill.SkillTable, teamskill.SkillColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamSkillClient) Hooks() []Hook {
+	return c.hooks.TeamSkill
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamSkillClient) Interceptors() []Interceptor {
+	return c.inters.TeamSkill
+}
+
+func (c *TeamSkillClient) mutate(ctx context.Context, m *TeamSkillMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamSkillCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamSkillUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamSkillUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamSkillDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamSkill mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -7733,6 +8366,22 @@ func (c *UserClient) QueryImages(_m *User) *ImageQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(image.Table, image.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.ImagesTable, user.ImagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySkills queries the skills edge of a User.
+func (c *UserClient) QuerySkills(_m *User) *SkillQuery {
+	query := (&SkillClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(skill.Table, skill.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.SkillsTable, user.SkillsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -8395,21 +9044,21 @@ type (
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
 		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
-		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
+		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Skill, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
-		VirtualMachine []ent.Hook
+		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamGroupSkill,
+		TeamHost, TeamImage, TeamMember, TeamModel, TeamOIDCConfig, TeamSkill, User,
+		UserIdentity, VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
 		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
-		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Task,
+		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Skill, Task,
 		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamHost,
-		TeamImage, TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
-		VirtualMachine []ent.Interceptor
+		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamGroupSkill,
+		TeamHost, TeamImage, TeamMember, TeamModel, TeamOIDCConfig, TeamSkill, User,
+		UserIdentity, VirtualMachine []ent.Interceptor
 	}
 )
 

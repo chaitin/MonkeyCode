@@ -36,6 +36,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
@@ -46,11 +47,13 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
+	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -90,6 +93,7 @@ const (
 	TypeProjectIssue        = "ProjectIssue"
 	TypeProjectIssueComment = "ProjectIssueComment"
 	TypeProjectTask         = "ProjectTask"
+	TypeSkill               = "Skill"
 	TypeTask                = "Task"
 	TypeTaskModelSwitch     = "TaskModelSwitch"
 	TypeTaskUsageStat       = "TaskUsageStat"
@@ -100,11 +104,13 @@ const (
 	TypeTeamGroupImage      = "TeamGroupImage"
 	TypeTeamGroupMember     = "TeamGroupMember"
 	TypeTeamGroupModel      = "TeamGroupModel"
+	TypeTeamGroupSkill      = "TeamGroupSkill"
 	TypeTeamHost            = "TeamHost"
 	TypeTeamImage           = "TeamImage"
 	TypeTeamMember          = "TeamMember"
 	TypeTeamModel           = "TeamModel"
 	TypeTeamOIDCConfig      = "TeamOIDCConfig"
+	TypeTeamSkill           = "TeamSkill"
 	TypeUser                = "User"
 	TypeUserIdentity        = "UserIdentity"
 	TypeVirtualMachine      = "VirtualMachine"
@@ -25215,6 +25221,1489 @@ func (m *ProjectTaskMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ProjectTask edge %s", name)
 }
 
+// SkillMutation represents an operation that mutates the Skill nodes in the graph.
+type SkillMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *uuid.UUID
+	deleted_at               *time.Time
+	name                     *string
+	description              *string
+	tags                     *[]string
+	appendtags               []string
+	content                  *string
+	package_object_key       *string
+	package_url              *string
+	source_type              *string
+	source_label             *string
+	skill_md_path            *string
+	created_at               *time.Time
+	updated_at               *time.Time
+	clearedFields            map[string]struct{}
+	user                     *uuid.UUID
+	cleareduser              bool
+	teams                    map[uuid.UUID]struct{}
+	removedteams             map[uuid.UUID]struct{}
+	clearedteams             bool
+	groups                   map[uuid.UUID]struct{}
+	removedgroups            map[uuid.UUID]struct{}
+	clearedgroups            bool
+	team_skills              map[uuid.UUID]struct{}
+	removedteam_skills       map[uuid.UUID]struct{}
+	clearedteam_skills       bool
+	team_group_skills        map[uuid.UUID]struct{}
+	removedteam_group_skills map[uuid.UUID]struct{}
+	clearedteam_group_skills bool
+	done                     bool
+	oldValue                 func(context.Context) (*Skill, error)
+	predicates               []predicate.Skill
+}
+
+var _ ent.Mutation = (*SkillMutation)(nil)
+
+// skillOption allows management of the mutation configuration using functional options.
+type skillOption func(*SkillMutation)
+
+// newSkillMutation creates new mutation for the Skill entity.
+func newSkillMutation(c config, op Op, opts ...skillOption) *SkillMutation {
+	m := &SkillMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSkill,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSkillID sets the ID field of the mutation.
+func withSkillID(id uuid.UUID) skillOption {
+	return func(m *SkillMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Skill
+		)
+		m.oldValue = func(ctx context.Context) (*Skill, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Skill.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSkill sets the old Skill of the mutation.
+func withSkill(node *Skill) skillOption {
+	return func(m *SkillMutation) {
+		m.oldValue = func(context.Context) (*Skill, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SkillMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SkillMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Skill entities.
+func (m *SkillMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SkillMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SkillMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Skill.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *SkillMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *SkillMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldDeletedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *SkillMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[skill.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *SkillMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[skill.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *SkillMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, skill.FieldDeletedAt)
+}
+
+// SetUserID sets the "user_id" field.
+func (m *SkillMutation) SetUserID(u uuid.UUID) {
+	m.user = &u
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *SkillMutation) UserID() (r uuid.UUID, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *SkillMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetName sets the "name" field.
+func (m *SkillMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *SkillMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *SkillMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *SkillMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *SkillMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *SkillMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetTags sets the "tags" field.
+func (m *SkillMutation) SetTags(s []string) {
+	m.tags = &s
+	m.appendtags = nil
+}
+
+// Tags returns the value of the "tags" field in the mutation.
+func (m *SkillMutation) Tags() (r []string, exists bool) {
+	v := m.tags
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTags returns the old "tags" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldTags(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTags is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTags requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTags: %w", err)
+	}
+	return oldValue.Tags, nil
+}
+
+// AppendTags adds s to the "tags" field.
+func (m *SkillMutation) AppendTags(s []string) {
+	m.appendtags = append(m.appendtags, s...)
+}
+
+// AppendedTags returns the list of values that were appended to the "tags" field in this mutation.
+func (m *SkillMutation) AppendedTags() ([]string, bool) {
+	if len(m.appendtags) == 0 {
+		return nil, false
+	}
+	return m.appendtags, true
+}
+
+// ClearTags clears the value of the "tags" field.
+func (m *SkillMutation) ClearTags() {
+	m.tags = nil
+	m.appendtags = nil
+	m.clearedFields[skill.FieldTags] = struct{}{}
+}
+
+// TagsCleared returns if the "tags" field was cleared in this mutation.
+func (m *SkillMutation) TagsCleared() bool {
+	_, ok := m.clearedFields[skill.FieldTags]
+	return ok
+}
+
+// ResetTags resets all changes to the "tags" field.
+func (m *SkillMutation) ResetTags() {
+	m.tags = nil
+	m.appendtags = nil
+	delete(m.clearedFields, skill.FieldTags)
+}
+
+// SetContent sets the "content" field.
+func (m *SkillMutation) SetContent(s string) {
+	m.content = &s
+}
+
+// Content returns the value of the "content" field in the mutation.
+func (m *SkillMutation) Content() (r string, exists bool) {
+	v := m.content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContent returns the old "content" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldContent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContent: %w", err)
+	}
+	return oldValue.Content, nil
+}
+
+// ResetContent resets all changes to the "content" field.
+func (m *SkillMutation) ResetContent() {
+	m.content = nil
+}
+
+// SetPackageObjectKey sets the "package_object_key" field.
+func (m *SkillMutation) SetPackageObjectKey(s string) {
+	m.package_object_key = &s
+}
+
+// PackageObjectKey returns the value of the "package_object_key" field in the mutation.
+func (m *SkillMutation) PackageObjectKey() (r string, exists bool) {
+	v := m.package_object_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPackageObjectKey returns the old "package_object_key" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldPackageObjectKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPackageObjectKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPackageObjectKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPackageObjectKey: %w", err)
+	}
+	return oldValue.PackageObjectKey, nil
+}
+
+// ClearPackageObjectKey clears the value of the "package_object_key" field.
+func (m *SkillMutation) ClearPackageObjectKey() {
+	m.package_object_key = nil
+	m.clearedFields[skill.FieldPackageObjectKey] = struct{}{}
+}
+
+// PackageObjectKeyCleared returns if the "package_object_key" field was cleared in this mutation.
+func (m *SkillMutation) PackageObjectKeyCleared() bool {
+	_, ok := m.clearedFields[skill.FieldPackageObjectKey]
+	return ok
+}
+
+// ResetPackageObjectKey resets all changes to the "package_object_key" field.
+func (m *SkillMutation) ResetPackageObjectKey() {
+	m.package_object_key = nil
+	delete(m.clearedFields, skill.FieldPackageObjectKey)
+}
+
+// SetPackageURL sets the "package_url" field.
+func (m *SkillMutation) SetPackageURL(s string) {
+	m.package_url = &s
+}
+
+// PackageURL returns the value of the "package_url" field in the mutation.
+func (m *SkillMutation) PackageURL() (r string, exists bool) {
+	v := m.package_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPackageURL returns the old "package_url" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldPackageURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPackageURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPackageURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPackageURL: %w", err)
+	}
+	return oldValue.PackageURL, nil
+}
+
+// ClearPackageURL clears the value of the "package_url" field.
+func (m *SkillMutation) ClearPackageURL() {
+	m.package_url = nil
+	m.clearedFields[skill.FieldPackageURL] = struct{}{}
+}
+
+// PackageURLCleared returns if the "package_url" field was cleared in this mutation.
+func (m *SkillMutation) PackageURLCleared() bool {
+	_, ok := m.clearedFields[skill.FieldPackageURL]
+	return ok
+}
+
+// ResetPackageURL resets all changes to the "package_url" field.
+func (m *SkillMutation) ResetPackageURL() {
+	m.package_url = nil
+	delete(m.clearedFields, skill.FieldPackageURL)
+}
+
+// SetSourceType sets the "source_type" field.
+func (m *SkillMutation) SetSourceType(s string) {
+	m.source_type = &s
+}
+
+// SourceType returns the value of the "source_type" field in the mutation.
+func (m *SkillMutation) SourceType() (r string, exists bool) {
+	v := m.source_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceType returns the old "source_type" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldSourceType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceType: %w", err)
+	}
+	return oldValue.SourceType, nil
+}
+
+// ResetSourceType resets all changes to the "source_type" field.
+func (m *SkillMutation) ResetSourceType() {
+	m.source_type = nil
+}
+
+// SetSourceLabel sets the "source_label" field.
+func (m *SkillMutation) SetSourceLabel(s string) {
+	m.source_label = &s
+}
+
+// SourceLabel returns the value of the "source_label" field in the mutation.
+func (m *SkillMutation) SourceLabel() (r string, exists bool) {
+	v := m.source_label
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceLabel returns the old "source_label" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldSourceLabel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceLabel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceLabel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceLabel: %w", err)
+	}
+	return oldValue.SourceLabel, nil
+}
+
+// ResetSourceLabel resets all changes to the "source_label" field.
+func (m *SkillMutation) ResetSourceLabel() {
+	m.source_label = nil
+}
+
+// SetSkillMdPath sets the "skill_md_path" field.
+func (m *SkillMutation) SetSkillMdPath(s string) {
+	m.skill_md_path = &s
+}
+
+// SkillMdPath returns the value of the "skill_md_path" field in the mutation.
+func (m *SkillMutation) SkillMdPath() (r string, exists bool) {
+	v := m.skill_md_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkillMdPath returns the old "skill_md_path" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldSkillMdPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkillMdPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkillMdPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkillMdPath: %w", err)
+	}
+	return oldValue.SkillMdPath, nil
+}
+
+// ClearSkillMdPath clears the value of the "skill_md_path" field.
+func (m *SkillMutation) ClearSkillMdPath() {
+	m.skill_md_path = nil
+	m.clearedFields[skill.FieldSkillMdPath] = struct{}{}
+}
+
+// SkillMdPathCleared returns if the "skill_md_path" field was cleared in this mutation.
+func (m *SkillMutation) SkillMdPathCleared() bool {
+	_, ok := m.clearedFields[skill.FieldSkillMdPath]
+	return ok
+}
+
+// ResetSkillMdPath resets all changes to the "skill_md_path" field.
+func (m *SkillMutation) ResetSkillMdPath() {
+	m.skill_md_path = nil
+	delete(m.clearedFields, skill.FieldSkillMdPath)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SkillMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SkillMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SkillMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SkillMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SkillMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SkillMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *SkillMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[skill.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *SkillMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *SkillMutation) UserIDs() (ids []uuid.UUID) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *SkillMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// AddTeamIDs adds the "teams" edge to the Team entity by ids.
+func (m *SkillMutation) AddTeamIDs(ids ...uuid.UUID) {
+	if m.teams == nil {
+		m.teams = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.teams[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeams clears the "teams" edge to the Team entity.
+func (m *SkillMutation) ClearTeams() {
+	m.clearedteams = true
+}
+
+// TeamsCleared reports if the "teams" edge to the Team entity was cleared.
+func (m *SkillMutation) TeamsCleared() bool {
+	return m.clearedteams
+}
+
+// RemoveTeamIDs removes the "teams" edge to the Team entity by IDs.
+func (m *SkillMutation) RemoveTeamIDs(ids ...uuid.UUID) {
+	if m.removedteams == nil {
+		m.removedteams = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.teams, ids[i])
+		m.removedteams[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeams returns the removed IDs of the "teams" edge to the Team entity.
+func (m *SkillMutation) RemovedTeamsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteams {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamsIDs returns the "teams" edge IDs in the mutation.
+func (m *SkillMutation) TeamsIDs() (ids []uuid.UUID) {
+	for id := range m.teams {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeams resets all changes to the "teams" edge.
+func (m *SkillMutation) ResetTeams() {
+	m.teams = nil
+	m.clearedteams = false
+	m.removedteams = nil
+}
+
+// AddGroupIDs adds the "groups" edge to the TeamGroup entity by ids.
+func (m *SkillMutation) AddGroupIDs(ids ...uuid.UUID) {
+	if m.groups == nil {
+		m.groups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.groups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearGroups clears the "groups" edge to the TeamGroup entity.
+func (m *SkillMutation) ClearGroups() {
+	m.clearedgroups = true
+}
+
+// GroupsCleared reports if the "groups" edge to the TeamGroup entity was cleared.
+func (m *SkillMutation) GroupsCleared() bool {
+	return m.clearedgroups
+}
+
+// RemoveGroupIDs removes the "groups" edge to the TeamGroup entity by IDs.
+func (m *SkillMutation) RemoveGroupIDs(ids ...uuid.UUID) {
+	if m.removedgroups == nil {
+		m.removedgroups = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.groups, ids[i])
+		m.removedgroups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedGroups returns the removed IDs of the "groups" edge to the TeamGroup entity.
+func (m *SkillMutation) RemovedGroupsIDs() (ids []uuid.UUID) {
+	for id := range m.removedgroups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// GroupsIDs returns the "groups" edge IDs in the mutation.
+func (m *SkillMutation) GroupsIDs() (ids []uuid.UUID) {
+	for id := range m.groups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetGroups resets all changes to the "groups" edge.
+func (m *SkillMutation) ResetGroups() {
+	m.groups = nil
+	m.clearedgroups = false
+	m.removedgroups = nil
+}
+
+// AddTeamSkillIDs adds the "team_skills" edge to the TeamSkill entity by ids.
+func (m *SkillMutation) AddTeamSkillIDs(ids ...uuid.UUID) {
+	if m.team_skills == nil {
+		m.team_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.team_skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeamSkills clears the "team_skills" edge to the TeamSkill entity.
+func (m *SkillMutation) ClearTeamSkills() {
+	m.clearedteam_skills = true
+}
+
+// TeamSkillsCleared reports if the "team_skills" edge to the TeamSkill entity was cleared.
+func (m *SkillMutation) TeamSkillsCleared() bool {
+	return m.clearedteam_skills
+}
+
+// RemoveTeamSkillIDs removes the "team_skills" edge to the TeamSkill entity by IDs.
+func (m *SkillMutation) RemoveTeamSkillIDs(ids ...uuid.UUID) {
+	if m.removedteam_skills == nil {
+		m.removedteam_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.team_skills, ids[i])
+		m.removedteam_skills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeamSkills returns the removed IDs of the "team_skills" edge to the TeamSkill entity.
+func (m *SkillMutation) RemovedTeamSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteam_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamSkillsIDs returns the "team_skills" edge IDs in the mutation.
+func (m *SkillMutation) TeamSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.team_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeamSkills resets all changes to the "team_skills" edge.
+func (m *SkillMutation) ResetTeamSkills() {
+	m.team_skills = nil
+	m.clearedteam_skills = false
+	m.removedteam_skills = nil
+}
+
+// AddTeamGroupSkillIDs adds the "team_group_skills" edge to the TeamGroupSkill entity by ids.
+func (m *SkillMutation) AddTeamGroupSkillIDs(ids ...uuid.UUID) {
+	if m.team_group_skills == nil {
+		m.team_group_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.team_group_skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeamGroupSkills clears the "team_group_skills" edge to the TeamGroupSkill entity.
+func (m *SkillMutation) ClearTeamGroupSkills() {
+	m.clearedteam_group_skills = true
+}
+
+// TeamGroupSkillsCleared reports if the "team_group_skills" edge to the TeamGroupSkill entity was cleared.
+func (m *SkillMutation) TeamGroupSkillsCleared() bool {
+	return m.clearedteam_group_skills
+}
+
+// RemoveTeamGroupSkillIDs removes the "team_group_skills" edge to the TeamGroupSkill entity by IDs.
+func (m *SkillMutation) RemoveTeamGroupSkillIDs(ids ...uuid.UUID) {
+	if m.removedteam_group_skills == nil {
+		m.removedteam_group_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.team_group_skills, ids[i])
+		m.removedteam_group_skills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeamGroupSkills returns the removed IDs of the "team_group_skills" edge to the TeamGroupSkill entity.
+func (m *SkillMutation) RemovedTeamGroupSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteam_group_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamGroupSkillsIDs returns the "team_group_skills" edge IDs in the mutation.
+func (m *SkillMutation) TeamGroupSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.team_group_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeamGroupSkills resets all changes to the "team_group_skills" edge.
+func (m *SkillMutation) ResetTeamGroupSkills() {
+	m.team_group_skills = nil
+	m.clearedteam_group_skills = false
+	m.removedteam_group_skills = nil
+}
+
+// Where appends a list predicates to the SkillMutation builder.
+func (m *SkillMutation) Where(ps ...predicate.Skill) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SkillMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SkillMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Skill, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SkillMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SkillMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Skill).
+func (m *SkillMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SkillMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.deleted_at != nil {
+		fields = append(fields, skill.FieldDeletedAt)
+	}
+	if m.user != nil {
+		fields = append(fields, skill.FieldUserID)
+	}
+	if m.name != nil {
+		fields = append(fields, skill.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, skill.FieldDescription)
+	}
+	if m.tags != nil {
+		fields = append(fields, skill.FieldTags)
+	}
+	if m.content != nil {
+		fields = append(fields, skill.FieldContent)
+	}
+	if m.package_object_key != nil {
+		fields = append(fields, skill.FieldPackageObjectKey)
+	}
+	if m.package_url != nil {
+		fields = append(fields, skill.FieldPackageURL)
+	}
+	if m.source_type != nil {
+		fields = append(fields, skill.FieldSourceType)
+	}
+	if m.source_label != nil {
+		fields = append(fields, skill.FieldSourceLabel)
+	}
+	if m.skill_md_path != nil {
+		fields = append(fields, skill.FieldSkillMdPath)
+	}
+	if m.created_at != nil {
+		fields = append(fields, skill.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, skill.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SkillMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case skill.FieldDeletedAt:
+		return m.DeletedAt()
+	case skill.FieldUserID:
+		return m.UserID()
+	case skill.FieldName:
+		return m.Name()
+	case skill.FieldDescription:
+		return m.Description()
+	case skill.FieldTags:
+		return m.Tags()
+	case skill.FieldContent:
+		return m.Content()
+	case skill.FieldPackageObjectKey:
+		return m.PackageObjectKey()
+	case skill.FieldPackageURL:
+		return m.PackageURL()
+	case skill.FieldSourceType:
+		return m.SourceType()
+	case skill.FieldSourceLabel:
+		return m.SourceLabel()
+	case skill.FieldSkillMdPath:
+		return m.SkillMdPath()
+	case skill.FieldCreatedAt:
+		return m.CreatedAt()
+	case skill.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SkillMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case skill.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case skill.FieldUserID:
+		return m.OldUserID(ctx)
+	case skill.FieldName:
+		return m.OldName(ctx)
+	case skill.FieldDescription:
+		return m.OldDescription(ctx)
+	case skill.FieldTags:
+		return m.OldTags(ctx)
+	case skill.FieldContent:
+		return m.OldContent(ctx)
+	case skill.FieldPackageObjectKey:
+		return m.OldPackageObjectKey(ctx)
+	case skill.FieldPackageURL:
+		return m.OldPackageURL(ctx)
+	case skill.FieldSourceType:
+		return m.OldSourceType(ctx)
+	case skill.FieldSourceLabel:
+		return m.OldSourceLabel(ctx)
+	case skill.FieldSkillMdPath:
+		return m.OldSkillMdPath(ctx)
+	case skill.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case skill.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Skill field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SkillMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case skill.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case skill.FieldUserID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case skill.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case skill.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case skill.FieldTags:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTags(v)
+		return nil
+	case skill.FieldContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContent(v)
+		return nil
+	case skill.FieldPackageObjectKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPackageObjectKey(v)
+		return nil
+	case skill.FieldPackageURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPackageURL(v)
+		return nil
+	case skill.FieldSourceType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceType(v)
+		return nil
+	case skill.FieldSourceLabel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceLabel(v)
+		return nil
+	case skill.FieldSkillMdPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkillMdPath(v)
+		return nil
+	case skill.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case skill.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Skill field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SkillMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SkillMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SkillMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Skill numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SkillMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(skill.FieldDeletedAt) {
+		fields = append(fields, skill.FieldDeletedAt)
+	}
+	if m.FieldCleared(skill.FieldTags) {
+		fields = append(fields, skill.FieldTags)
+	}
+	if m.FieldCleared(skill.FieldPackageObjectKey) {
+		fields = append(fields, skill.FieldPackageObjectKey)
+	}
+	if m.FieldCleared(skill.FieldPackageURL) {
+		fields = append(fields, skill.FieldPackageURL)
+	}
+	if m.FieldCleared(skill.FieldSkillMdPath) {
+		fields = append(fields, skill.FieldSkillMdPath)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SkillMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SkillMutation) ClearField(name string) error {
+	switch name {
+	case skill.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case skill.FieldTags:
+		m.ClearTags()
+		return nil
+	case skill.FieldPackageObjectKey:
+		m.ClearPackageObjectKey()
+		return nil
+	case skill.FieldPackageURL:
+		m.ClearPackageURL()
+		return nil
+	case skill.FieldSkillMdPath:
+		m.ClearSkillMdPath()
+		return nil
+	}
+	return fmt.Errorf("unknown Skill nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SkillMutation) ResetField(name string) error {
+	switch name {
+	case skill.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case skill.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case skill.FieldName:
+		m.ResetName()
+		return nil
+	case skill.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case skill.FieldTags:
+		m.ResetTags()
+		return nil
+	case skill.FieldContent:
+		m.ResetContent()
+		return nil
+	case skill.FieldPackageObjectKey:
+		m.ResetPackageObjectKey()
+		return nil
+	case skill.FieldPackageURL:
+		m.ResetPackageURL()
+		return nil
+	case skill.FieldSourceType:
+		m.ResetSourceType()
+		return nil
+	case skill.FieldSourceLabel:
+		m.ResetSourceLabel()
+		return nil
+	case skill.FieldSkillMdPath:
+		m.ResetSkillMdPath()
+		return nil
+	case skill.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case skill.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Skill field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SkillMutation) AddedEdges() []string {
+	edges := make([]string, 0, 5)
+	if m.user != nil {
+		edges = append(edges, skill.EdgeUser)
+	}
+	if m.teams != nil {
+		edges = append(edges, skill.EdgeTeams)
+	}
+	if m.groups != nil {
+		edges = append(edges, skill.EdgeGroups)
+	}
+	if m.team_skills != nil {
+		edges = append(edges, skill.EdgeTeamSkills)
+	}
+	if m.team_group_skills != nil {
+		edges = append(edges, skill.EdgeTeamGroupSkills)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SkillMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case skill.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	case skill.EdgeTeams:
+		ids := make([]ent.Value, 0, len(m.teams))
+		for id := range m.teams {
+			ids = append(ids, id)
+		}
+		return ids
+	case skill.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.groups))
+		for id := range m.groups {
+			ids = append(ids, id)
+		}
+		return ids
+	case skill.EdgeTeamSkills:
+		ids := make([]ent.Value, 0, len(m.team_skills))
+		for id := range m.team_skills {
+			ids = append(ids, id)
+		}
+		return ids
+	case skill.EdgeTeamGroupSkills:
+		ids := make([]ent.Value, 0, len(m.team_group_skills))
+		for id := range m.team_group_skills {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SkillMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 5)
+	if m.removedteams != nil {
+		edges = append(edges, skill.EdgeTeams)
+	}
+	if m.removedgroups != nil {
+		edges = append(edges, skill.EdgeGroups)
+	}
+	if m.removedteam_skills != nil {
+		edges = append(edges, skill.EdgeTeamSkills)
+	}
+	if m.removedteam_group_skills != nil {
+		edges = append(edges, skill.EdgeTeamGroupSkills)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SkillMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case skill.EdgeTeams:
+		ids := make([]ent.Value, 0, len(m.removedteams))
+		for id := range m.removedteams {
+			ids = append(ids, id)
+		}
+		return ids
+	case skill.EdgeGroups:
+		ids := make([]ent.Value, 0, len(m.removedgroups))
+		for id := range m.removedgroups {
+			ids = append(ids, id)
+		}
+		return ids
+	case skill.EdgeTeamSkills:
+		ids := make([]ent.Value, 0, len(m.removedteam_skills))
+		for id := range m.removedteam_skills {
+			ids = append(ids, id)
+		}
+		return ids
+	case skill.EdgeTeamGroupSkills:
+		ids := make([]ent.Value, 0, len(m.removedteam_group_skills))
+		for id := range m.removedteam_group_skills {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SkillMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 5)
+	if m.cleareduser {
+		edges = append(edges, skill.EdgeUser)
+	}
+	if m.clearedteams {
+		edges = append(edges, skill.EdgeTeams)
+	}
+	if m.clearedgroups {
+		edges = append(edges, skill.EdgeGroups)
+	}
+	if m.clearedteam_skills {
+		edges = append(edges, skill.EdgeTeamSkills)
+	}
+	if m.clearedteam_group_skills {
+		edges = append(edges, skill.EdgeTeamGroupSkills)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SkillMutation) EdgeCleared(name string) bool {
+	switch name {
+	case skill.EdgeUser:
+		return m.cleareduser
+	case skill.EdgeTeams:
+		return m.clearedteams
+	case skill.EdgeGroups:
+		return m.clearedgroups
+	case skill.EdgeTeamSkills:
+		return m.clearedteam_skills
+	case skill.EdgeTeamGroupSkills:
+		return m.clearedteam_group_skills
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SkillMutation) ClearEdge(name string) error {
+	switch name {
+	case skill.EdgeUser:
+		m.ClearUser()
+		return nil
+	}
+	return fmt.Errorf("unknown Skill unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SkillMutation) ResetEdge(name string) error {
+	switch name {
+	case skill.EdgeUser:
+		m.ResetUser()
+		return nil
+	case skill.EdgeTeams:
+		m.ResetTeams()
+		return nil
+	case skill.EdgeGroups:
+		m.ResetGroups()
+		return nil
+	case skill.EdgeTeamSkills:
+		m.ResetTeamSkills()
+		return nil
+	case skill.EdgeTeamGroupSkills:
+		m.ResetTeamGroupSkills()
+		return nil
+	}
+	return fmt.Errorf("unknown Skill edge %s", name)
+}
+
 // TaskMutation represents an operation that mutates the Task nodes in the graph.
 type TaskMutation struct {
 	config
@@ -29276,6 +30765,9 @@ type TeamMutation struct {
 	images                     map[uuid.UUID]struct{}
 	removedimages              map[uuid.UUID]struct{}
 	clearedimages              bool
+	skills                     map[uuid.UUID]struct{}
+	removedskills              map[uuid.UUID]struct{}
+	clearedskills              bool
 	team_members               map[uuid.UUID]struct{}
 	removedteam_members        map[uuid.UUID]struct{}
 	clearedteam_members        bool
@@ -29285,6 +30777,9 @@ type TeamMutation struct {
 	team_images                map[uuid.UUID]struct{}
 	removedteam_images         map[uuid.UUID]struct{}
 	clearedteam_images         bool
+	team_skills                map[uuid.UUID]struct{}
+	removedteam_skills         map[uuid.UUID]struct{}
+	clearedteam_skills         bool
 	done                       bool
 	oldValue                   func(context.Context) (*Team, error)
 	predicates                 []predicate.Team
@@ -30007,6 +31502,60 @@ func (m *TeamMutation) ResetImages() {
 	m.removedimages = nil
 }
 
+// AddSkillIDs adds the "skills" edge to the Skill entity by ids.
+func (m *TeamMutation) AddSkillIDs(ids ...uuid.UUID) {
+	if m.skills == nil {
+		m.skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSkills clears the "skills" edge to the Skill entity.
+func (m *TeamMutation) ClearSkills() {
+	m.clearedskills = true
+}
+
+// SkillsCleared reports if the "skills" edge to the Skill entity was cleared.
+func (m *TeamMutation) SkillsCleared() bool {
+	return m.clearedskills
+}
+
+// RemoveSkillIDs removes the "skills" edge to the Skill entity by IDs.
+func (m *TeamMutation) RemoveSkillIDs(ids ...uuid.UUID) {
+	if m.removedskills == nil {
+		m.removedskills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.skills, ids[i])
+		m.removedskills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSkills returns the removed IDs of the "skills" edge to the Skill entity.
+func (m *TeamMutation) RemovedSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedskills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SkillsIDs returns the "skills" edge IDs in the mutation.
+func (m *TeamMutation) SkillsIDs() (ids []uuid.UUID) {
+	for id := range m.skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSkills resets all changes to the "skills" edge.
+func (m *TeamMutation) ResetSkills() {
+	m.skills = nil
+	m.clearedskills = false
+	m.removedskills = nil
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by ids.
 func (m *TeamMutation) AddTeamMemberIDs(ids ...uuid.UUID) {
 	if m.team_members == nil {
@@ -30167,6 +31716,60 @@ func (m *TeamMutation) ResetTeamImages() {
 	m.team_images = nil
 	m.clearedteam_images = false
 	m.removedteam_images = nil
+}
+
+// AddTeamSkillIDs adds the "team_skills" edge to the TeamSkill entity by ids.
+func (m *TeamMutation) AddTeamSkillIDs(ids ...uuid.UUID) {
+	if m.team_skills == nil {
+		m.team_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.team_skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeamSkills clears the "team_skills" edge to the TeamSkill entity.
+func (m *TeamMutation) ClearTeamSkills() {
+	m.clearedteam_skills = true
+}
+
+// TeamSkillsCleared reports if the "team_skills" edge to the TeamSkill entity was cleared.
+func (m *TeamMutation) TeamSkillsCleared() bool {
+	return m.clearedteam_skills
+}
+
+// RemoveTeamSkillIDs removes the "team_skills" edge to the TeamSkill entity by IDs.
+func (m *TeamMutation) RemoveTeamSkillIDs(ids ...uuid.UUID) {
+	if m.removedteam_skills == nil {
+		m.removedteam_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.team_skills, ids[i])
+		m.removedteam_skills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeamSkills returns the removed IDs of the "team_skills" edge to the TeamSkill entity.
+func (m *TeamMutation) RemovedTeamSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteam_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamSkillsIDs returns the "team_skills" edge IDs in the mutation.
+func (m *TeamMutation) TeamSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.team_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeamSkills resets all changes to the "team_skills" edge.
+func (m *TeamMutation) ResetTeamSkills() {
+	m.team_skills = nil
+	m.clearedteam_skills = false
+	m.removedteam_skills = nil
 }
 
 // Where appends a list predicates to the TeamMutation builder.
@@ -30486,7 +32089,7 @@ func (m *TeamMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamMutation) AddedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.groups != nil {
 		edges = append(edges, team.EdgeGroups)
 	}
@@ -30499,6 +32102,9 @@ func (m *TeamMutation) AddedEdges() []string {
 	if m.images != nil {
 		edges = append(edges, team.EdgeImages)
 	}
+	if m.skills != nil {
+		edges = append(edges, team.EdgeSkills)
+	}
 	if m.team_members != nil {
 		edges = append(edges, team.EdgeTeamMembers)
 	}
@@ -30507,6 +32113,9 @@ func (m *TeamMutation) AddedEdges() []string {
 	}
 	if m.team_images != nil {
 		edges = append(edges, team.EdgeTeamImages)
+	}
+	if m.team_skills != nil {
+		edges = append(edges, team.EdgeTeamSkills)
 	}
 	return edges
 }
@@ -30539,6 +32148,12 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case team.EdgeSkills:
+		ids := make([]ent.Value, 0, len(m.skills))
+		for id := range m.skills {
+			ids = append(ids, id)
+		}
+		return ids
 	case team.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.team_members))
 		for id := range m.team_members {
@@ -30557,13 +32172,19 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case team.EdgeTeamSkills:
+		ids := make([]ent.Value, 0, len(m.team_skills))
+		for id := range m.team_skills {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.removedgroups != nil {
 		edges = append(edges, team.EdgeGroups)
 	}
@@ -30576,6 +32197,9 @@ func (m *TeamMutation) RemovedEdges() []string {
 	if m.removedimages != nil {
 		edges = append(edges, team.EdgeImages)
 	}
+	if m.removedskills != nil {
+		edges = append(edges, team.EdgeSkills)
+	}
 	if m.removedteam_members != nil {
 		edges = append(edges, team.EdgeTeamMembers)
 	}
@@ -30584,6 +32208,9 @@ func (m *TeamMutation) RemovedEdges() []string {
 	}
 	if m.removedteam_images != nil {
 		edges = append(edges, team.EdgeTeamImages)
+	}
+	if m.removedteam_skills != nil {
+		edges = append(edges, team.EdgeTeamSkills)
 	}
 	return edges
 }
@@ -30616,6 +32243,12 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case team.EdgeSkills:
+		ids := make([]ent.Value, 0, len(m.removedskills))
+		for id := range m.removedskills {
+			ids = append(ids, id)
+		}
+		return ids
 	case team.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.removedteam_members))
 		for id := range m.removedteam_members {
@@ -30634,13 +32267,19 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case team.EdgeTeamSkills:
+		ids := make([]ent.Value, 0, len(m.removedteam_skills))
+		for id := range m.removedteam_skills {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 9)
 	if m.clearedgroups {
 		edges = append(edges, team.EdgeGroups)
 	}
@@ -30653,6 +32292,9 @@ func (m *TeamMutation) ClearedEdges() []string {
 	if m.clearedimages {
 		edges = append(edges, team.EdgeImages)
 	}
+	if m.clearedskills {
+		edges = append(edges, team.EdgeSkills)
+	}
 	if m.clearedteam_members {
 		edges = append(edges, team.EdgeTeamMembers)
 	}
@@ -30661,6 +32303,9 @@ func (m *TeamMutation) ClearedEdges() []string {
 	}
 	if m.clearedteam_images {
 		edges = append(edges, team.EdgeTeamImages)
+	}
+	if m.clearedteam_skills {
+		edges = append(edges, team.EdgeTeamSkills)
 	}
 	return edges
 }
@@ -30677,12 +32322,16 @@ func (m *TeamMutation) EdgeCleared(name string) bool {
 		return m.clearedmodels
 	case team.EdgeImages:
 		return m.clearedimages
+	case team.EdgeSkills:
+		return m.clearedskills
 	case team.EdgeTeamMembers:
 		return m.clearedteam_members
 	case team.EdgeTeamModels:
 		return m.clearedteam_models
 	case team.EdgeTeamImages:
 		return m.clearedteam_images
+	case team.EdgeTeamSkills:
+		return m.clearedteam_skills
 	}
 	return false
 }
@@ -30711,6 +32360,9 @@ func (m *TeamMutation) ResetEdge(name string) error {
 	case team.EdgeImages:
 		m.ResetImages()
 		return nil
+	case team.EdgeSkills:
+		m.ResetSkills()
+		return nil
 	case team.EdgeTeamMembers:
 		m.ResetTeamMembers()
 		return nil
@@ -30719,6 +32371,9 @@ func (m *TeamMutation) ResetEdge(name string) error {
 		return nil
 	case team.EdgeTeamImages:
 		m.ResetTeamImages()
+		return nil
+	case team.EdgeTeamSkills:
+		m.ResetTeamSkills()
 		return nil
 	}
 	return fmt.Errorf("unknown Team edge %s", name)
@@ -30749,6 +32404,9 @@ type TeamGroupMutation struct {
 	hosts                     map[string]struct{}
 	removedhosts              map[string]struct{}
 	clearedhosts              bool
+	skills                    map[uuid.UUID]struct{}
+	removedskills             map[uuid.UUID]struct{}
+	clearedskills             bool
 	team_group_members        map[uuid.UUID]struct{}
 	removedteam_group_members map[uuid.UUID]struct{}
 	clearedteam_group_members bool
@@ -30761,6 +32419,9 @@ type TeamGroupMutation struct {
 	team_group_hosts          map[uuid.UUID]struct{}
 	removedteam_group_hosts   map[uuid.UUID]struct{}
 	clearedteam_group_hosts   bool
+	team_group_skills         map[uuid.UUID]struct{}
+	removedteam_group_skills  map[uuid.UUID]struct{}
+	clearedteam_group_skills  bool
 	done                      bool
 	oldValue                  func(context.Context) (*TeamGroup, error)
 	predicates                []predicate.TeamGroup
@@ -31306,6 +32967,60 @@ func (m *TeamGroupMutation) ResetHosts() {
 	m.removedhosts = nil
 }
 
+// AddSkillIDs adds the "skills" edge to the Skill entity by ids.
+func (m *TeamGroupMutation) AddSkillIDs(ids ...uuid.UUID) {
+	if m.skills == nil {
+		m.skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSkills clears the "skills" edge to the Skill entity.
+func (m *TeamGroupMutation) ClearSkills() {
+	m.clearedskills = true
+}
+
+// SkillsCleared reports if the "skills" edge to the Skill entity was cleared.
+func (m *TeamGroupMutation) SkillsCleared() bool {
+	return m.clearedskills
+}
+
+// RemoveSkillIDs removes the "skills" edge to the Skill entity by IDs.
+func (m *TeamGroupMutation) RemoveSkillIDs(ids ...uuid.UUID) {
+	if m.removedskills == nil {
+		m.removedskills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.skills, ids[i])
+		m.removedskills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSkills returns the removed IDs of the "skills" edge to the Skill entity.
+func (m *TeamGroupMutation) RemovedSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedskills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SkillsIDs returns the "skills" edge IDs in the mutation.
+func (m *TeamGroupMutation) SkillsIDs() (ids []uuid.UUID) {
+	for id := range m.skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSkills resets all changes to the "skills" edge.
+func (m *TeamGroupMutation) ResetSkills() {
+	m.skills = nil
+	m.clearedskills = false
+	m.removedskills = nil
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by ids.
 func (m *TeamGroupMutation) AddTeamGroupMemberIDs(ids ...uuid.UUID) {
 	if m.team_group_members == nil {
@@ -31522,6 +33237,60 @@ func (m *TeamGroupMutation) ResetTeamGroupHosts() {
 	m.removedteam_group_hosts = nil
 }
 
+// AddTeamGroupSkillIDs adds the "team_group_skills" edge to the TeamGroupSkill entity by ids.
+func (m *TeamGroupMutation) AddTeamGroupSkillIDs(ids ...uuid.UUID) {
+	if m.team_group_skills == nil {
+		m.team_group_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.team_group_skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearTeamGroupSkills clears the "team_group_skills" edge to the TeamGroupSkill entity.
+func (m *TeamGroupMutation) ClearTeamGroupSkills() {
+	m.clearedteam_group_skills = true
+}
+
+// TeamGroupSkillsCleared reports if the "team_group_skills" edge to the TeamGroupSkill entity was cleared.
+func (m *TeamGroupMutation) TeamGroupSkillsCleared() bool {
+	return m.clearedteam_group_skills
+}
+
+// RemoveTeamGroupSkillIDs removes the "team_group_skills" edge to the TeamGroupSkill entity by IDs.
+func (m *TeamGroupMutation) RemoveTeamGroupSkillIDs(ids ...uuid.UUID) {
+	if m.removedteam_group_skills == nil {
+		m.removedteam_group_skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.team_group_skills, ids[i])
+		m.removedteam_group_skills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedTeamGroupSkills returns the removed IDs of the "team_group_skills" edge to the TeamGroupSkill entity.
+func (m *TeamGroupMutation) RemovedTeamGroupSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedteam_group_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// TeamGroupSkillsIDs returns the "team_group_skills" edge IDs in the mutation.
+func (m *TeamGroupMutation) TeamGroupSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.team_group_skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetTeamGroupSkills resets all changes to the "team_group_skills" edge.
+func (m *TeamGroupMutation) ResetTeamGroupSkills() {
+	m.team_group_skills = nil
+	m.clearedteam_group_skills = false
+	m.removedteam_group_skills = nil
+}
+
 // Where appends a list predicates to the TeamGroupMutation builder.
 func (m *TeamGroupMutation) Where(ps ...predicate.TeamGroup) {
 	m.predicates = append(m.predicates, ps...)
@@ -31732,7 +33501,7 @@ func (m *TeamGroupMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamGroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 11)
 	if m.members != nil {
 		edges = append(edges, teamgroup.EdgeMembers)
 	}
@@ -31748,6 +33517,9 @@ func (m *TeamGroupMutation) AddedEdges() []string {
 	if m.hosts != nil {
 		edges = append(edges, teamgroup.EdgeHosts)
 	}
+	if m.skills != nil {
+		edges = append(edges, teamgroup.EdgeSkills)
+	}
 	if m.team_group_members != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupMembers)
 	}
@@ -31759,6 +33531,9 @@ func (m *TeamGroupMutation) AddedEdges() []string {
 	}
 	if m.team_group_hosts != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupHosts)
+	}
+	if m.team_group_skills != nil {
+		edges = append(edges, teamgroup.EdgeTeamGroupSkills)
 	}
 	return edges
 }
@@ -31795,6 +33570,12 @@ func (m *TeamGroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeSkills:
+		ids := make([]ent.Value, 0, len(m.skills))
+		for id := range m.skills {
+			ids = append(ids, id)
+		}
+		return ids
 	case teamgroup.EdgeTeamGroupMembers:
 		ids := make([]ent.Value, 0, len(m.team_group_members))
 		for id := range m.team_group_members {
@@ -31819,13 +33600,19 @@ func (m *TeamGroupMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeTeamGroupSkills:
+		ids := make([]ent.Value, 0, len(m.team_group_skills))
+		for id := range m.team_group_skills {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamGroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 11)
 	if m.removedmembers != nil {
 		edges = append(edges, teamgroup.EdgeMembers)
 	}
@@ -31838,6 +33625,9 @@ func (m *TeamGroupMutation) RemovedEdges() []string {
 	if m.removedhosts != nil {
 		edges = append(edges, teamgroup.EdgeHosts)
 	}
+	if m.removedskills != nil {
+		edges = append(edges, teamgroup.EdgeSkills)
+	}
 	if m.removedteam_group_members != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupMembers)
 	}
@@ -31849,6 +33639,9 @@ func (m *TeamGroupMutation) RemovedEdges() []string {
 	}
 	if m.removedteam_group_hosts != nil {
 		edges = append(edges, teamgroup.EdgeTeamGroupHosts)
+	}
+	if m.removedteam_group_skills != nil {
+		edges = append(edges, teamgroup.EdgeTeamGroupSkills)
 	}
 	return edges
 }
@@ -31881,6 +33674,12 @@ func (m *TeamGroupMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeSkills:
+		ids := make([]ent.Value, 0, len(m.removedskills))
+		for id := range m.removedskills {
+			ids = append(ids, id)
+		}
+		return ids
 	case teamgroup.EdgeTeamGroupMembers:
 		ids := make([]ent.Value, 0, len(m.removedteam_group_members))
 		for id := range m.removedteam_group_members {
@@ -31905,13 +33704,19 @@ func (m *TeamGroupMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case teamgroup.EdgeTeamGroupSkills:
+		ids := make([]ent.Value, 0, len(m.removedteam_group_skills))
+		for id := range m.removedteam_group_skills {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamGroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 11)
 	if m.clearedmembers {
 		edges = append(edges, teamgroup.EdgeMembers)
 	}
@@ -31927,6 +33732,9 @@ func (m *TeamGroupMutation) ClearedEdges() []string {
 	if m.clearedhosts {
 		edges = append(edges, teamgroup.EdgeHosts)
 	}
+	if m.clearedskills {
+		edges = append(edges, teamgroup.EdgeSkills)
+	}
 	if m.clearedteam_group_members {
 		edges = append(edges, teamgroup.EdgeTeamGroupMembers)
 	}
@@ -31938,6 +33746,9 @@ func (m *TeamGroupMutation) ClearedEdges() []string {
 	}
 	if m.clearedteam_group_hosts {
 		edges = append(edges, teamgroup.EdgeTeamGroupHosts)
+	}
+	if m.clearedteam_group_skills {
+		edges = append(edges, teamgroup.EdgeTeamGroupSkills)
 	}
 	return edges
 }
@@ -31956,6 +33767,8 @@ func (m *TeamGroupMutation) EdgeCleared(name string) bool {
 		return m.clearedimages
 	case teamgroup.EdgeHosts:
 		return m.clearedhosts
+	case teamgroup.EdgeSkills:
+		return m.clearedskills
 	case teamgroup.EdgeTeamGroupMembers:
 		return m.clearedteam_group_members
 	case teamgroup.EdgeTeamGroupModels:
@@ -31964,6 +33777,8 @@ func (m *TeamGroupMutation) EdgeCleared(name string) bool {
 		return m.clearedteam_group_images
 	case teamgroup.EdgeTeamGroupHosts:
 		return m.clearedteam_group_hosts
+	case teamgroup.EdgeTeamGroupSkills:
+		return m.clearedteam_group_skills
 	}
 	return false
 }
@@ -31998,6 +33813,9 @@ func (m *TeamGroupMutation) ResetEdge(name string) error {
 	case teamgroup.EdgeHosts:
 		m.ResetHosts()
 		return nil
+	case teamgroup.EdgeSkills:
+		m.ResetSkills()
+		return nil
 	case teamgroup.EdgeTeamGroupMembers:
 		m.ResetTeamGroupMembers()
 		return nil
@@ -32009,6 +33827,9 @@ func (m *TeamGroupMutation) ResetEdge(name string) error {
 		return nil
 	case teamgroup.EdgeTeamGroupHosts:
 		m.ResetTeamGroupHosts()
+		return nil
+	case teamgroup.EdgeTeamGroupSkills:
+		m.ResetTeamGroupSkills()
 		return nil
 	}
 	return fmt.Errorf("unknown TeamGroup edge %s", name)
@@ -34172,6 +35993,546 @@ func (m *TeamGroupModelMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown TeamGroupModel edge %s", name)
+}
+
+// TeamGroupSkillMutation represents an operation that mutates the TeamGroupSkill nodes in the graph.
+type TeamGroupSkillMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	group         *uuid.UUID
+	clearedgroup  bool
+	skill         *uuid.UUID
+	clearedskill  bool
+	done          bool
+	oldValue      func(context.Context) (*TeamGroupSkill, error)
+	predicates    []predicate.TeamGroupSkill
+}
+
+var _ ent.Mutation = (*TeamGroupSkillMutation)(nil)
+
+// teamgroupskillOption allows management of the mutation configuration using functional options.
+type teamgroupskillOption func(*TeamGroupSkillMutation)
+
+// newTeamGroupSkillMutation creates new mutation for the TeamGroupSkill entity.
+func newTeamGroupSkillMutation(c config, op Op, opts ...teamgroupskillOption) *TeamGroupSkillMutation {
+	m := &TeamGroupSkillMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeamGroupSkill,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeamGroupSkillID sets the ID field of the mutation.
+func withTeamGroupSkillID(id uuid.UUID) teamgroupskillOption {
+	return func(m *TeamGroupSkillMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TeamGroupSkill
+		)
+		m.oldValue = func(ctx context.Context) (*TeamGroupSkill, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TeamGroupSkill.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeamGroupSkill sets the old TeamGroupSkill of the mutation.
+func withTeamGroupSkill(node *TeamGroupSkill) teamgroupskillOption {
+	return func(m *TeamGroupSkillMutation) {
+		m.oldValue = func(context.Context) (*TeamGroupSkill, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeamGroupSkillMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeamGroupSkillMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TeamGroupSkill entities.
+func (m *TeamGroupSkillMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeamGroupSkillMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeamGroupSkillMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TeamGroupSkill.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *TeamGroupSkillMutation) SetGroupID(u uuid.UUID) {
+	m.group = &u
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *TeamGroupSkillMutation) GroupID() (r uuid.UUID, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the TeamGroupSkill entity.
+// If the TeamGroupSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamGroupSkillMutation) OldGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *TeamGroupSkillMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetSkillID sets the "skill_id" field.
+func (m *TeamGroupSkillMutation) SetSkillID(u uuid.UUID) {
+	m.skill = &u
+}
+
+// SkillID returns the value of the "skill_id" field in the mutation.
+func (m *TeamGroupSkillMutation) SkillID() (r uuid.UUID, exists bool) {
+	v := m.skill
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkillID returns the old "skill_id" field's value of the TeamGroupSkill entity.
+// If the TeamGroupSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamGroupSkillMutation) OldSkillID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkillID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkillID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkillID: %w", err)
+	}
+	return oldValue.SkillID, nil
+}
+
+// ResetSkillID resets all changes to the "skill_id" field.
+func (m *TeamGroupSkillMutation) ResetSkillID() {
+	m.skill = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TeamGroupSkillMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TeamGroupSkillMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TeamGroupSkill entity.
+// If the TeamGroupSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamGroupSkillMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TeamGroupSkillMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearGroup clears the "group" edge to the TeamGroup entity.
+func (m *TeamGroupSkillMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[teamgroupskill.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the TeamGroup entity was cleared.
+func (m *TeamGroupSkillMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *TeamGroupSkillMutation) GroupIDs() (ids []uuid.UUID) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *TeamGroupSkillMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// ClearSkill clears the "skill" edge to the Skill entity.
+func (m *TeamGroupSkillMutation) ClearSkill() {
+	m.clearedskill = true
+	m.clearedFields[teamgroupskill.FieldSkillID] = struct{}{}
+}
+
+// SkillCleared reports if the "skill" edge to the Skill entity was cleared.
+func (m *TeamGroupSkillMutation) SkillCleared() bool {
+	return m.clearedskill
+}
+
+// SkillIDs returns the "skill" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// SkillID instead. It exists only for internal usage by the builders.
+func (m *TeamGroupSkillMutation) SkillIDs() (ids []uuid.UUID) {
+	if id := m.skill; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetSkill resets all changes to the "skill" edge.
+func (m *TeamGroupSkillMutation) ResetSkill() {
+	m.skill = nil
+	m.clearedskill = false
+}
+
+// Where appends a list predicates to the TeamGroupSkillMutation builder.
+func (m *TeamGroupSkillMutation) Where(ps ...predicate.TeamGroupSkill) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeamGroupSkillMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeamGroupSkillMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TeamGroupSkill, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeamGroupSkillMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeamGroupSkillMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TeamGroupSkill).
+func (m *TeamGroupSkillMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeamGroupSkillMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.group != nil {
+		fields = append(fields, teamgroupskill.FieldGroupID)
+	}
+	if m.skill != nil {
+		fields = append(fields, teamgroupskill.FieldSkillID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, teamgroupskill.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeamGroupSkillMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case teamgroupskill.FieldGroupID:
+		return m.GroupID()
+	case teamgroupskill.FieldSkillID:
+		return m.SkillID()
+	case teamgroupskill.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeamGroupSkillMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case teamgroupskill.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case teamgroupskill.FieldSkillID:
+		return m.OldSkillID(ctx)
+	case teamgroupskill.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TeamGroupSkill field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamGroupSkillMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case teamgroupskill.FieldGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case teamgroupskill.FieldSkillID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkillID(v)
+		return nil
+	case teamgroupskill.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupSkill field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeamGroupSkillMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeamGroupSkillMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamGroupSkillMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TeamGroupSkill numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeamGroupSkillMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeamGroupSkillMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeamGroupSkillMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown TeamGroupSkill nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeamGroupSkillMutation) ResetField(name string) error {
+	switch name {
+	case teamgroupskill.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case teamgroupskill.FieldSkillID:
+		m.ResetSkillID()
+		return nil
+	case teamgroupskill.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupSkill field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeamGroupSkillMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.group != nil {
+		edges = append(edges, teamgroupskill.EdgeGroup)
+	}
+	if m.skill != nil {
+		edges = append(edges, teamgroupskill.EdgeSkill)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeamGroupSkillMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teamgroupskill.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	case teamgroupskill.EdgeSkill:
+		if id := m.skill; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeamGroupSkillMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeamGroupSkillMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeamGroupSkillMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedgroup {
+		edges = append(edges, teamgroupskill.EdgeGroup)
+	}
+	if m.clearedskill {
+		edges = append(edges, teamgroupskill.EdgeSkill)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeamGroupSkillMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teamgroupskill.EdgeGroup:
+		return m.clearedgroup
+	case teamgroupskill.EdgeSkill:
+		return m.clearedskill
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeamGroupSkillMutation) ClearEdge(name string) error {
+	switch name {
+	case teamgroupskill.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	case teamgroupskill.EdgeSkill:
+		m.ClearSkill()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupSkill unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeamGroupSkillMutation) ResetEdge(name string) error {
+	switch name {
+	case teamgroupskill.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	case teamgroupskill.EdgeSkill:
+		m.ResetSkill()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamGroupSkill edge %s", name)
 }
 
 // TeamHostMutation represents an operation that mutates the TeamHost nodes in the graph.
@@ -37409,6 +39770,546 @@ func (m *TeamOIDCConfigMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown TeamOIDCConfig edge %s", name)
 }
 
+// TeamSkillMutation represents an operation that mutates the TeamSkill nodes in the graph.
+type TeamSkillMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	team          *uuid.UUID
+	clearedteam   bool
+	skill         *uuid.UUID
+	clearedskill  bool
+	done          bool
+	oldValue      func(context.Context) (*TeamSkill, error)
+	predicates    []predicate.TeamSkill
+}
+
+var _ ent.Mutation = (*TeamSkillMutation)(nil)
+
+// teamskillOption allows management of the mutation configuration using functional options.
+type teamskillOption func(*TeamSkillMutation)
+
+// newTeamSkillMutation creates new mutation for the TeamSkill entity.
+func newTeamSkillMutation(c config, op Op, opts ...teamskillOption) *TeamSkillMutation {
+	m := &TeamSkillMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeamSkill,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeamSkillID sets the ID field of the mutation.
+func withTeamSkillID(id uuid.UUID) teamskillOption {
+	return func(m *TeamSkillMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TeamSkill
+		)
+		m.oldValue = func(ctx context.Context) (*TeamSkill, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TeamSkill.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeamSkill sets the old TeamSkill of the mutation.
+func withTeamSkill(node *TeamSkill) teamskillOption {
+	return func(m *TeamSkillMutation) {
+		m.oldValue = func(context.Context) (*TeamSkill, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeamSkillMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeamSkillMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TeamSkill entities.
+func (m *TeamSkillMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeamSkillMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeamSkillMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TeamSkill.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTeamID sets the "team_id" field.
+func (m *TeamSkillMutation) SetTeamID(u uuid.UUID) {
+	m.team = &u
+}
+
+// TeamID returns the value of the "team_id" field in the mutation.
+func (m *TeamSkillMutation) TeamID() (r uuid.UUID, exists bool) {
+	v := m.team
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamID returns the old "team_id" field's value of the TeamSkill entity.
+// If the TeamSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamSkillMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamID: %w", err)
+	}
+	return oldValue.TeamID, nil
+}
+
+// ResetTeamID resets all changes to the "team_id" field.
+func (m *TeamSkillMutation) ResetTeamID() {
+	m.team = nil
+}
+
+// SetSkillID sets the "skill_id" field.
+func (m *TeamSkillMutation) SetSkillID(u uuid.UUID) {
+	m.skill = &u
+}
+
+// SkillID returns the value of the "skill_id" field in the mutation.
+func (m *TeamSkillMutation) SkillID() (r uuid.UUID, exists bool) {
+	v := m.skill
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkillID returns the old "skill_id" field's value of the TeamSkill entity.
+// If the TeamSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamSkillMutation) OldSkillID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkillID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkillID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkillID: %w", err)
+	}
+	return oldValue.SkillID, nil
+}
+
+// ResetSkillID resets all changes to the "skill_id" field.
+func (m *TeamSkillMutation) ResetSkillID() {
+	m.skill = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TeamSkillMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TeamSkillMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TeamSkill entity.
+// If the TeamSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamSkillMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TeamSkillMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearTeam clears the "team" edge to the Team entity.
+func (m *TeamSkillMutation) ClearTeam() {
+	m.clearedteam = true
+	m.clearedFields[teamskill.FieldTeamID] = struct{}{}
+}
+
+// TeamCleared reports if the "team" edge to the Team entity was cleared.
+func (m *TeamSkillMutation) TeamCleared() bool {
+	return m.clearedteam
+}
+
+// TeamIDs returns the "team" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TeamID instead. It exists only for internal usage by the builders.
+func (m *TeamSkillMutation) TeamIDs() (ids []uuid.UUID) {
+	if id := m.team; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTeam resets all changes to the "team" edge.
+func (m *TeamSkillMutation) ResetTeam() {
+	m.team = nil
+	m.clearedteam = false
+}
+
+// ClearSkill clears the "skill" edge to the Skill entity.
+func (m *TeamSkillMutation) ClearSkill() {
+	m.clearedskill = true
+	m.clearedFields[teamskill.FieldSkillID] = struct{}{}
+}
+
+// SkillCleared reports if the "skill" edge to the Skill entity was cleared.
+func (m *TeamSkillMutation) SkillCleared() bool {
+	return m.clearedskill
+}
+
+// SkillIDs returns the "skill" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// SkillID instead. It exists only for internal usage by the builders.
+func (m *TeamSkillMutation) SkillIDs() (ids []uuid.UUID) {
+	if id := m.skill; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetSkill resets all changes to the "skill" edge.
+func (m *TeamSkillMutation) ResetSkill() {
+	m.skill = nil
+	m.clearedskill = false
+}
+
+// Where appends a list predicates to the TeamSkillMutation builder.
+func (m *TeamSkillMutation) Where(ps ...predicate.TeamSkill) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeamSkillMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeamSkillMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TeamSkill, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeamSkillMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeamSkillMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TeamSkill).
+func (m *TeamSkillMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeamSkillMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.team != nil {
+		fields = append(fields, teamskill.FieldTeamID)
+	}
+	if m.skill != nil {
+		fields = append(fields, teamskill.FieldSkillID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, teamskill.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeamSkillMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case teamskill.FieldTeamID:
+		return m.TeamID()
+	case teamskill.FieldSkillID:
+		return m.SkillID()
+	case teamskill.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeamSkillMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case teamskill.FieldTeamID:
+		return m.OldTeamID(ctx)
+	case teamskill.FieldSkillID:
+		return m.OldSkillID(ctx)
+	case teamskill.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TeamSkill field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamSkillMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case teamskill.FieldTeamID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamID(v)
+		return nil
+	case teamskill.FieldSkillID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkillID(v)
+		return nil
+	case teamskill.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TeamSkill field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeamSkillMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeamSkillMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamSkillMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TeamSkill numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeamSkillMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeamSkillMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeamSkillMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown TeamSkill nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeamSkillMutation) ResetField(name string) error {
+	switch name {
+	case teamskill.FieldTeamID:
+		m.ResetTeamID()
+		return nil
+	case teamskill.FieldSkillID:
+		m.ResetSkillID()
+		return nil
+	case teamskill.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamSkill field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeamSkillMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.team != nil {
+		edges = append(edges, teamskill.EdgeTeam)
+	}
+	if m.skill != nil {
+		edges = append(edges, teamskill.EdgeSkill)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeamSkillMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teamskill.EdgeTeam:
+		if id := m.team; id != nil {
+			return []ent.Value{*id}
+		}
+	case teamskill.EdgeSkill:
+		if id := m.skill; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeamSkillMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeamSkillMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeamSkillMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedteam {
+		edges = append(edges, teamskill.EdgeTeam)
+	}
+	if m.clearedskill {
+		edges = append(edges, teamskill.EdgeSkill)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeamSkillMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teamskill.EdgeTeam:
+		return m.clearedteam
+	case teamskill.EdgeSkill:
+		return m.clearedskill
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeamSkillMutation) ClearEdge(name string) error {
+	switch name {
+	case teamskill.EdgeTeam:
+		m.ClearTeam()
+		return nil
+	case teamskill.EdgeSkill:
+		m.ClearSkill()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamSkill unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeamSkillMutation) ResetEdge(name string) error {
+	switch name {
+	case teamskill.EdgeTeam:
+		m.ResetTeam()
+		return nil
+	case teamskill.EdgeSkill:
+		m.ResetSkill()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamSkill edge %s", name)
+}
+
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
@@ -37445,6 +40346,9 @@ type UserMutation struct {
 	images                        map[uuid.UUID]struct{}
 	removedimages                 map[uuid.UUID]struct{}
 	clearedimages                 bool
+	skills                        map[uuid.UUID]struct{}
+	removedskills                 map[uuid.UUID]struct{}
+	clearedskills                 bool
 	hosts                         map[string]struct{}
 	removedhosts                  map[string]struct{}
 	clearedhosts                  bool
@@ -38382,6 +41286,60 @@ func (m *UserMutation) ResetImages() {
 	m.images = nil
 	m.clearedimages = false
 	m.removedimages = nil
+}
+
+// AddSkillIDs adds the "skills" edge to the Skill entity by ids.
+func (m *UserMutation) AddSkillIDs(ids ...uuid.UUID) {
+	if m.skills == nil {
+		m.skills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.skills[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSkills clears the "skills" edge to the Skill entity.
+func (m *UserMutation) ClearSkills() {
+	m.clearedskills = true
+}
+
+// SkillsCleared reports if the "skills" edge to the Skill entity was cleared.
+func (m *UserMutation) SkillsCleared() bool {
+	return m.clearedskills
+}
+
+// RemoveSkillIDs removes the "skills" edge to the Skill entity by IDs.
+func (m *UserMutation) RemoveSkillIDs(ids ...uuid.UUID) {
+	if m.removedskills == nil {
+		m.removedskills = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.skills, ids[i])
+		m.removedskills[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSkills returns the removed IDs of the "skills" edge to the Skill entity.
+func (m *UserMutation) RemovedSkillsIDs() (ids []uuid.UUID) {
+	for id := range m.removedskills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// SkillsIDs returns the "skills" edge IDs in the mutation.
+func (m *UserMutation) SkillsIDs() (ids []uuid.UUID) {
+	for id := range m.skills {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSkills resets all changes to the "skills" edge.
+func (m *UserMutation) ResetSkills() {
+	m.skills = nil
+	m.clearedskills = false
+	m.removedskills = nil
 }
 
 // AddHostIDs adds the "hosts" edge to the Host entity by ids.
@@ -39530,7 +42488,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 21)
+	edges := make([]string, 0, 22)
 	if m.identities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -39548,6 +42506,9 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.images != nil {
 		edges = append(edges, user.EdgeImages)
+	}
+	if m.skills != nil {
+		edges = append(edges, user.EdgeSkills)
 	}
 	if m.hosts != nil {
 		edges = append(edges, user.EdgeHosts)
@@ -39634,6 +42595,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 	case user.EdgeImages:
 		ids := make([]ent.Value, 0, len(m.images))
 		for id := range m.images {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeSkills:
+		ids := make([]ent.Value, 0, len(m.skills))
+		for id := range m.skills {
 			ids = append(ids, id)
 		}
 		return ids
@@ -39733,7 +42700,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 21)
+	edges := make([]string, 0, 22)
 	if m.removedidentities != nil {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -39751,6 +42718,9 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedimages != nil {
 		edges = append(edges, user.EdgeImages)
+	}
+	if m.removedskills != nil {
+		edges = append(edges, user.EdgeSkills)
 	}
 	if m.removedhosts != nil {
 		edges = append(edges, user.EdgeHosts)
@@ -39837,6 +42807,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 	case user.EdgeImages:
 		ids := make([]ent.Value, 0, len(m.removedimages))
 		for id := range m.removedimages {
+			ids = append(ids, id)
+		}
+		return ids
+	case user.EdgeSkills:
+		ids := make([]ent.Value, 0, len(m.removedskills))
+		for id := range m.removedskills {
 			ids = append(ids, id)
 		}
 		return ids
@@ -39936,7 +42912,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 21)
+	edges := make([]string, 0, 22)
 	if m.clearedidentities {
 		edges = append(edges, user.EdgeIdentities)
 	}
@@ -39954,6 +42930,9 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedimages {
 		edges = append(edges, user.EdgeImages)
+	}
+	if m.clearedskills {
+		edges = append(edges, user.EdgeSkills)
 	}
 	if m.clearedhosts {
 		edges = append(edges, user.EdgeHosts)
@@ -40019,6 +42998,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedmodels
 	case user.EdgeImages:
 		return m.clearedimages
+	case user.EdgeSkills:
+		return m.clearedskills
 	case user.EdgeHosts:
 		return m.clearedhosts
 	case user.EdgeVms:
@@ -40082,6 +43063,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeImages:
 		m.ResetImages()
+		return nil
+	case user.EdgeSkills:
+		m.ResetSkills()
 		return nil
 	case user.EdgeHosts:
 		m.ResetHosts()

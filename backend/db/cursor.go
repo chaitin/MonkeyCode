@@ -22,10 +22,12 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/google/uuid"
 )
 
@@ -618,6 +620,51 @@ func (q *ProjectIssueCommentQuery) After(ctx context.Context, cursor string, lim
 	return nodes, res, nil
 }
 
+func (q *SkillQuery) After(ctx context.Context, cursor string, limit int) ([]*Skill, *Cursor, error) {
+	i, err := unmarshalCreatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(skill.ByCreatedAt(sql.OrderDesc()), skill.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("created_at"), i.CreatedAt),
+				sql.And(
+					sql.EQ(s.C("created_at"), i.CreatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &createdAtCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
 func (q *TaskQuery) After(ctx context.Context, cursor string, limit int) ([]*Task, *Cursor, error) {
 	i, err := unmarshalCreatedAt(cursor)
 	if err != nil {
@@ -759,6 +806,51 @@ func (q *TeamGroupModelQuery) After(ctx context.Context, cursor string, limit in
 		return nil, nil, err
 	}
 	q.Order(teamgroupmodel.ByCreatedAt(sql.OrderDesc()), teamgroupmodel.ByID(sql.OrderDesc()))
+	q.Limit(limit + 1)
+
+	if i != nil {
+		q.Where(func(s *sql.Selector) {
+			s.Where(sql.Or(
+				sql.LT(s.C("created_at"), i.CreatedAt),
+				sql.And(
+					sql.EQ(s.C("created_at"), i.CreatedAt),
+					sql.LT(s.C("id"), i.ID),
+				),
+			))
+		})
+	}
+	nodes, err := q.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res := &Cursor{}
+	if len(nodes) > limit {
+		res.HasNextPage = true
+		nodes = nodes[:limit]
+	}
+
+	if len(nodes) > 0 {
+		last := nodes[len(nodes)-1]
+		i := &createdAtCursor{
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		}
+		cursor, err := i.marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		res.Cursor = cursor
+	}
+	return nodes, res, nil
+}
+
+func (q *TeamGroupSkillQuery) After(ctx context.Context, cursor string, limit int) ([]*TeamGroupSkill, *Cursor, error) {
+	i, err := unmarshalCreatedAt(cursor)
+	if err != nil {
+		return nil, nil, err
+	}
+	q.Order(teamgroupskill.ByCreatedAt(sql.OrderDesc()), teamgroupskill.ByID(sql.OrderDesc()))
 	q.Limit(limit + 1)
 
 	if i != nil {

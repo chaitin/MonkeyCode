@@ -271,6 +271,29 @@ export interface DomainAddTeamImageReq {
   remark?: string;
 }
 
+export interface DomainAddTeamSkillReq {
+  content: string;
+  description: string;
+  group_ids?: string[];
+  name: string;
+  skill_md_path?: string;
+  source_label: string;
+  source_type: string;
+  tags?: string[];
+}
+
+export interface DomainAddTeamSkillPackageReq {
+  content: string;
+  description: string;
+  file: File;
+  group_ids?: string;
+  name: string;
+  skill_md_path?: string;
+  source_label: string;
+  source_type: string;
+  tags?: string;
+}
+
 export interface DomainAddTeamModelReq {
   api_key: string;
   base_url: string;
@@ -835,6 +858,10 @@ export interface DomainListTeamHostsResp {
 
 export interface DomainListTeamImagesResp {
   images?: DomainTeamImage[];
+}
+
+export interface DomainListTeamSkillsResp {
+  skills?: DomainTeamSkill[];
 }
 
 export interface DomainListTeamModelsResp {
@@ -1690,6 +1717,22 @@ export interface DomainTeamImage {
   updated_at?: number;
 }
 
+export interface DomainTeamSkill {
+  content?: string;
+  created_at?: number;
+  description?: string;
+  groups?: DomainTeamGroup[];
+  id?: string;
+  name?: string;
+  package_object_key?: string;
+  package_url?: string;
+  skill_md_path?: string;
+  source_label?: string;
+  source_type?: string;
+  tags?: string[];
+  updated_at?: number;
+}
+
 export interface DomainTeamLoginReq {
   /** 验证码Token */
   captcha_token: string;
@@ -1896,6 +1939,17 @@ export interface DomainUpdateTeamImageReq {
   group_ids?: string[];
   name?: string;
   remark?: string;
+}
+
+export interface DomainUpdateTeamSkillReq {
+  content?: string;
+  description?: string;
+  group_ids?: string[];
+  name?: string;
+  skill_md_path?: string;
+  source_label?: string;
+  source_type?: string;
+  tags?: string[];
 }
 
 export interface DomainUpdateTeamModelReq {
@@ -3511,6 +3565,124 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
     v1TeamsImagesDelete: (imageId: string, params: RequestParams = {}) =>
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/images/${imageId}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取团队 Skill 列表
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsList
+     * @summary 获取团队 Skill 列表
+     * @request GET:/api/v1/teams/skills
+     * @secure
+     */
+    v1TeamsSkillsList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainListTeamSkillsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 添加团队 Skill
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsCreate
+     * @summary 添加团队 Skill
+     * @request POST:/api/v1/teams/skills
+     * @secure
+     */
+    v1TeamsSkillsCreate: (req: DomainAddTeamSkillReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamSkill;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 上传团队 Skill zip 包
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsPackageCreate
+     * @summary 上传团队 Skill zip 包
+     * @request POST:/api/v1/teams/skills/package
+     * @secure
+     */
+    v1TeamsSkillsPackageCreate: (req: DomainAddTeamSkillPackageReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamSkill;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills/package`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.FormData,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新团队 Skill
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsUpdate
+     * @summary 更新团队 Skill
+     * @request PUT:/api/v1/teams/skills/{skill_id}
+     * @secure
+     */
+    v1TeamsSkillsUpdate: (skillId: string, req: DomainUpdateTeamSkillReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamSkill;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/skills/${skillId}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除团队 Skill
+     *
+     * @tags 【Team 管理员】Skill 管理
+     * @name V1TeamsSkillsDelete
+     * @summary 删除团队 Skill
+     * @request DELETE:/api/v1/teams/skills/{skill_id}
+     * @secure
+     */
+    v1TeamsSkillsDelete: (skillId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/teams/skills/${skillId}`,
         method: "DELETE",
         secure: true,
         type: ContentType.Json,

@@ -75,6 +75,9 @@ type ProjectIssueComment func(*sql.Selector)
 // ProjectTask is the predicate function for projecttask builders.
 type ProjectTask func(*sql.Selector)
 
+// Skill is the predicate function for skill builders.
+type Skill func(*sql.Selector)
+
 // Task is the predicate function for task builders.
 type Task func(*sql.Selector)
 
@@ -105,6 +108,9 @@ type TeamGroupMember func(*sql.Selector)
 // TeamGroupModel is the predicate function for teamgroupmodel builders.
 type TeamGroupModel func(*sql.Selector)
 
+// TeamGroupSkill is the predicate function for teamgroupskill builders.
+type TeamGroupSkill func(*sql.Selector)
+
 // TeamHost is the predicate function for teamhost builders.
 type TeamHost func(*sql.Selector)
 
@@ -119,6 +125,9 @@ type TeamModel func(*sql.Selector)
 
 // TeamOIDCConfig is the predicate function for teamoidcconfig builders.
 type TeamOIDCConfig func(*sql.Selector)
+
+// TeamSkill is the predicate function for teamskill builders.
+type TeamSkill func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

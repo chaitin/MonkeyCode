@@ -333,6 +333,20 @@ func (_m *ProjectTaskQuery) Page(ctx context.Context, page, size int) ([]*Projec
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *SkillQuery) Page(ctx context.Context, page, size int) ([]*Skill, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *TaskQuery) Page(ctx context.Context, page, size int) ([]*Task, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
@@ -473,6 +487,20 @@ func (_m *TeamGroupModelQuery) Page(ctx context.Context, page, size int) ([]*Tea
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *TeamGroupSkillQuery) Page(ctx context.Context, page, size int) ([]*TeamGroupSkill, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *TeamHostQuery) Page(ctx context.Context, page, size int) ([]*TeamHost, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
@@ -530,6 +558,20 @@ func (_m *TeamModelQuery) Page(ctx context.Context, page, size int) ([]*TeamMode
 }
 
 func (_m *TeamOIDCConfigQuery) Page(ctx context.Context, page, size int) ([]*TeamOIDCConfig, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
+func (_m *TeamSkillQuery) Page(ctx context.Context, page, size int) ([]*TeamSkill, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {
 		return nil, nil, err

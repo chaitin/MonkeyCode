@@ -35,6 +35,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
@@ -45,11 +46,13 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
+	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -136,6 +139,7 @@ func checkColumn(t, c string) error {
 			projectissue.Table:        projectissue.ValidColumn,
 			projectissuecomment.Table: projectissuecomment.ValidColumn,
 			projecttask.Table:         projecttask.ValidColumn,
+			skill.Table:               skill.ValidColumn,
 			task.Table:                task.ValidColumn,
 			taskmodelswitch.Table:     taskmodelswitch.ValidColumn,
 			taskusagestat.Table:       taskusagestat.ValidColumn,
@@ -146,11 +150,13 @@ func checkColumn(t, c string) error {
 			teamgroupimage.Table:      teamgroupimage.ValidColumn,
 			teamgroupmember.Table:     teamgroupmember.ValidColumn,
 			teamgroupmodel.Table:      teamgroupmodel.ValidColumn,
+			teamgroupskill.Table:      teamgroupskill.ValidColumn,
 			teamhost.Table:            teamhost.ValidColumn,
 			teamimage.Table:           teamimage.ValidColumn,
 			teammember.Table:          teammember.ValidColumn,
 			teammodel.Table:           teammodel.ValidColumn,
 			teamoidcconfig.Table:      teamoidcconfig.ValidColumn,
+			teamskill.Table:           teamskill.ValidColumn,
 			user.Table:                user.ValidColumn,
 			useridentity.Table:        useridentity.ValidColumn,
 			virtualmachine.Table:      virtualmachine.ValidColumn,

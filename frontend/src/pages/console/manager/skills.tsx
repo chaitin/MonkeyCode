@@ -11,7 +11,7 @@ import {
 import { IconPencil, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import type { DomainTeamGroup } from "@/api/Api"
+import { Api, type DomainTeamGroup, type DomainTeamSkill } from "@/api/Api"
 import {
   findSkillMarkdownPath,
   normalizeSkillTags,
@@ -97,8 +97,25 @@ interface SkillSourceState {
 
 export default function TeamManagerSkills() {
   const [skills, setSkills] = useState<ManagedSkill[]>([])
+  const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<ManagedSkill | null>(null)
+
+  const fetchSkills = async () => {
+    setLoading(true)
+    await apiRequest("v1TeamsSkillsList", {}, [], (resp) => {
+      if (resp.code === 0) {
+        setSkills((resp.data?.skills || []).map(toManagedSkill))
+        return
+      }
+      toast.error(resp.message || "获取 Skill 列表失败")
+    })
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    void fetchSkills()
+  }, [])
 
   const handleCreate = (skill: ManagedSkill) => {
     setSkills((prev) => [skill, ...prev])
@@ -109,8 +126,14 @@ export default function TeamManagerSkills() {
   }
 
   const handleDelete = (skillID: string) => {
-    setSkills((prev) => prev.filter((skill) => skill.id !== skillID))
-    toast.success("Skill 已删除")
+    void apiRequest("v1TeamsSkillsDelete", {}, [skillID], (resp) => {
+      if (resp.code === 0) {
+        setSkills((prev) => prev.filter((skill) => skill.id !== skillID))
+        toast.success("Skill 已删除")
+        return
+      }
+      toast.error(resp.message || "删除 Skill 失败")
+    })
   }
 
   return (
@@ -133,7 +156,16 @@ export default function TeamManagerSkills() {
           </CardAction>
         </CardHeader>
         <CardContent>
-          {skills.length === 0 ? (
+          {loading ? (
+            <Empty className="bg-muted">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Sparkles className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>正在加载 Skills</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : skills.length === 0 ? (
             <Empty className="bg-muted">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -260,6 +292,7 @@ function AddSkillDialog({
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState("")
   const [pastedText, setPastedText] = useState("")
+  const [packageFile, setPackageFile] = useState<File | null>(null)
   const [source, setSource] = useState<SkillSourceState | null>(null)
   const [draft, setDraft] = useState<ParsedSkillMarkdown | null>(null)
   const [name, setName] = useState("")
@@ -280,6 +313,7 @@ function AddSkillDialog({
     setParsing(false)
     setParseError("")
     setPastedText("")
+    setPackageFile(null)
     setSource(null)
     setDraft(null)
     setName("")
@@ -312,10 +346,12 @@ function AddSkillDialog({
     setParsing(true)
     try {
       const parsedFile = await parseSkillFile(file)
+      setPackageFile(parsedFile.source.type === "zip" ? file : null)
       applyParsedSkill(parsedFile.parsed, parsedFile.source)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Skill 文件解析失败"
       setDraft(null)
+      setPackageFile(null)
       setSource(null)
       setParseError(message)
       toast.error(message)
@@ -329,12 +365,14 @@ function AddSkillDialog({
 
     if (!value.trim()) {
       setDraft(null)
+      setPackageFile(null)
       setSource(null)
       setParseError("")
       return
     }
 
     try {
+      setPackageFile(null)
       applyParsedSkill(parseSkillMarkdown(value), {
         type: "text",
         label: "粘贴文本",
@@ -362,22 +400,52 @@ function AddSkillDialog({
       return
     }
 
-    const now = Math.floor(Date.now() / 1000)
-    onCreate({
-      id: createLocalSkillID(),
+    const tags = normalizeSkillTags(tagsText)
+    if (source.type === "zip" && packageFile) {
+      const api = new Api()
+      void api.api.v1TeamsSkillsPackageCreate({
+        name: name.trim(),
+        description: description.trim(),
+        tags: JSON.stringify(tags),
+        content: draft.content,
+        group_ids: JSON.stringify(selectedGroupIds),
+        source_type: source.type,
+        source_label: source.label,
+        skill_md_path: source.skillMdPath,
+        file: packageFile,
+      }).then((response) => {
+        const resp = response.data
+        if (resp.code === 0 && resp.data) {
+          onCreate(toManagedSkill(resp.data))
+          toast.success("Skill 已添加")
+          handleOpenChange(false)
+          return
+        }
+        toast.error(resp.message || "添加 Skill 失败")
+      }).catch((error) => {
+        toast.error(error?.message || "添加 Skill 失败")
+      })
+      return
+    }
+
+    void apiRequest("v1TeamsSkillsCreate", {
       name: name.trim(),
       description: description.trim(),
-      tags: normalizeSkillTags(tagsText),
-      groups: resolveSelectedGroups(groups, selectedGroupIds),
-      sourceType: source.type,
-      sourceLabel: source.label,
-      skillMdPath: source.skillMdPath,
-      createdAt: now,
-      updatedAt: now,
+      tags,
+      content: draft.content,
+      group_ids: selectedGroupIds,
+      source_type: source.type,
+      source_label: source.label,
+      skill_md_path: source.skillMdPath,
+    }, [], (resp) => {
+      if (resp.code === 0 && resp.data) {
+        onCreate(toManagedSkill(resp.data))
+        toast.success("Skill 已添加")
+        handleOpenChange(false)
+        return
+      }
+      toast.error(resp.message || "添加 Skill 失败")
     })
-
-    toast.success("Skill 已添加")
-    handleOpenChange(false)
   }
 
   return (
@@ -506,16 +574,20 @@ function EditSkillDialog({
       return
     }
 
-    onUpdate({
-      ...skill,
+    void apiRequest("v1TeamsSkillsUpdate", {
       name: name.trim(),
       description: description.trim(),
       tags: normalizeSkillTags(tagsText),
-      groups: resolveSelectedGroups(groups, selectedGroupIds),
-      updatedAt: Math.floor(Date.now() / 1000),
+      group_ids: selectedGroupIds,
+    }, [skill.id], (resp) => {
+      if (resp.code === 0 && resp.data) {
+        onUpdate(toManagedSkill(resp.data))
+        toast.success("Skill 已修改")
+        onOpenChange(false)
+        return
+      }
+      toast.error(resp.message || "修改 Skill 失败")
     })
-    toast.success("Skill 已修改")
-    onOpenChange(false)
   }
 
   return (
@@ -810,14 +882,24 @@ function fetchGroups(setGroups: (groups: DomainTeamGroup[]) => void) {
   })
 }
 
-function resolveSelectedGroups(groups: DomainTeamGroup[], selectedGroupIds: string[]): DomainTeamGroup[] {
-  const selected = new Set(selectedGroupIds)
-  return groups.filter((group) => group.id && selected.has(group.id))
+function toManagedSkill(skill: DomainTeamSkill): ManagedSkill {
+  return {
+    id: skill.id || "",
+    name: skill.name || "",
+    description: skill.description || "",
+    tags: skill.tags || [],
+    groups: skill.groups || [],
+    sourceType: toSkillSourceType(skill.source_type),
+    sourceLabel: skill.source_label || "SKILL.md",
+    skillMdPath: skill.skill_md_path,
+    createdAt: skill.created_at || 0,
+    updatedAt: skill.updated_at || 0,
+  }
 }
 
-function createLocalSkillID() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID()
+function toSkillSourceType(value: unknown): SkillSourceType {
+  if (value === "zip" || value === "markdown" || value === "text") {
+    return value
   }
-  return `skill-${Date.now()}`
+  return "markdown"
 }

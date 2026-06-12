@@ -285,6 +285,18 @@ func (f ProjectTaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectTaskMutation", m)
 }
 
+// The SkillFunc type is an adapter to allow the use of ordinary
+// function as Skill mutator.
+type SkillFunc func(context.Context, *db.SkillMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.SkillMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.SkillMutation", m)
+}
+
 // The TaskFunc type is an adapter to allow the use of ordinary
 // function as Task mutator.
 type TaskFunc func(context.Context, *db.TaskMutation) (db.Value, error)
@@ -405,6 +417,18 @@ func (f TeamGroupModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupModelMutation", m)
 }
 
+// The TeamGroupSkillFunc type is an adapter to allow the use of ordinary
+// function as TeamGroupSkill mutator.
+type TeamGroupSkillFunc func(context.Context, *db.TeamGroupSkillMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamGroupSkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamGroupSkillMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupSkillMutation", m)
+}
+
 // The TeamHostFunc type is an adapter to allow the use of ordinary
 // function as TeamHost mutator.
 type TeamHostFunc func(context.Context, *db.TeamHostMutation) (db.Value, error)
@@ -463,6 +487,18 @@ func (f TeamOIDCConfigFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamOIDCConfigMutation", m)
+}
+
+// The TeamSkillFunc type is an adapter to allow the use of ordinary
+// function as TeamSkill mutator.
+type TeamSkillFunc func(context.Context, *db.TeamSkillMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamSkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamSkillMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamSkillMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

@@ -15,12 +15,14 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -158,6 +160,21 @@ func (_c *TeamGroupCreate) AddHosts(v ...*Host) *TeamGroupCreate {
 	return _c.AddHostIDs(ids...)
 }
 
+// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
+func (_c *TeamGroupCreate) AddSkillIDs(ids ...uuid.UUID) *TeamGroupCreate {
+	_c.mutation.AddSkillIDs(ids...)
+	return _c
+}
+
+// AddSkills adds the "skills" edges to the Skill entity.
+func (_c *TeamGroupCreate) AddSkills(v ...*Skill) *TeamGroupCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddSkillIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_c *TeamGroupCreate) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupCreate {
 	_c.mutation.AddTeamGroupMemberIDs(ids...)
@@ -216,6 +233,21 @@ func (_c *TeamGroupCreate) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupCrea
 		ids[i] = v[i].ID
 	}
 	return _c.AddTeamGroupHostIDs(ids...)
+}
+
+// AddTeamGroupSkillIDs adds the "team_group_skills" edge to the TeamGroupSkill entity by IDs.
+func (_c *TeamGroupCreate) AddTeamGroupSkillIDs(ids ...uuid.UUID) *TeamGroupCreate {
+	_c.mutation.AddTeamGroupSkillIDs(ids...)
+	return _c
+}
+
+// AddTeamGroupSkills adds the "team_group_skills" edges to the TeamGroupSkill entity.
+func (_c *TeamGroupCreate) AddTeamGroupSkills(v ...*TeamGroupSkill) *TeamGroupCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamGroupSkillIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -438,6 +470,26 @@ func (_c *TeamGroupCreate) createSpec() (*TeamGroup, *sqlgraph.CreateSpec) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.SkillsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupSkillCreate{config: _c.config, mutation: newTeamGroupSkillMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.TeamGroupMembersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -495,6 +547,22 @@ func (_c *TeamGroupCreate) createSpec() (*TeamGroup, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TeamGroupSkillsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

@@ -15,12 +15,14 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -172,6 +174,21 @@ func (_u *TeamGroupUpdate) AddHosts(v ...*Host) *TeamGroupUpdate {
 	return _u.AddHostIDs(ids...)
 }
 
+// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
+func (_u *TeamGroupUpdate) AddSkillIDs(ids ...uuid.UUID) *TeamGroupUpdate {
+	_u.mutation.AddSkillIDs(ids...)
+	return _u
+}
+
+// AddSkills adds the "skills" edges to the Skill entity.
+func (_u *TeamGroupUpdate) AddSkills(v ...*Skill) *TeamGroupUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSkillIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_u *TeamGroupUpdate) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupUpdate {
 	_u.mutation.AddTeamGroupMemberIDs(ids...)
@@ -230,6 +247,21 @@ func (_u *TeamGroupUpdate) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupUpda
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamGroupHostIDs(ids...)
+}
+
+// AddTeamGroupSkillIDs adds the "team_group_skills" edge to the TeamGroupSkill entity by IDs.
+func (_u *TeamGroupUpdate) AddTeamGroupSkillIDs(ids ...uuid.UUID) *TeamGroupUpdate {
+	_u.mutation.AddTeamGroupSkillIDs(ids...)
+	return _u
+}
+
+// AddTeamGroupSkills adds the "team_group_skills" edges to the TeamGroupSkill entity.
+func (_u *TeamGroupUpdate) AddTeamGroupSkills(v ...*TeamGroupSkill) *TeamGroupUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamGroupSkillIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -327,6 +359,27 @@ func (_u *TeamGroupUpdate) RemoveHosts(v ...*Host) *TeamGroupUpdate {
 	return _u.RemoveHostIDs(ids...)
 }
 
+// ClearSkills clears all "skills" edges to the Skill entity.
+func (_u *TeamGroupUpdate) ClearSkills() *TeamGroupUpdate {
+	_u.mutation.ClearSkills()
+	return _u
+}
+
+// RemoveSkillIDs removes the "skills" edge to Skill entities by IDs.
+func (_u *TeamGroupUpdate) RemoveSkillIDs(ids ...uuid.UUID) *TeamGroupUpdate {
+	_u.mutation.RemoveSkillIDs(ids...)
+	return _u
+}
+
+// RemoveSkills removes "skills" edges to Skill entities.
+func (_u *TeamGroupUpdate) RemoveSkills(v ...*Skill) *TeamGroupUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSkillIDs(ids...)
+}
+
 // ClearTeamGroupMembers clears all "team_group_members" edges to the TeamGroupMember entity.
 func (_u *TeamGroupUpdate) ClearTeamGroupMembers() *TeamGroupUpdate {
 	_u.mutation.ClearTeamGroupMembers()
@@ -409,6 +462,27 @@ func (_u *TeamGroupUpdate) RemoveTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupU
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamGroupHostIDs(ids...)
+}
+
+// ClearTeamGroupSkills clears all "team_group_skills" edges to the TeamGroupSkill entity.
+func (_u *TeamGroupUpdate) ClearTeamGroupSkills() *TeamGroupUpdate {
+	_u.mutation.ClearTeamGroupSkills()
+	return _u
+}
+
+// RemoveTeamGroupSkillIDs removes the "team_group_skills" edge to TeamGroupSkill entities by IDs.
+func (_u *TeamGroupUpdate) RemoveTeamGroupSkillIDs(ids ...uuid.UUID) *TeamGroupUpdate {
+	_u.mutation.RemoveTeamGroupSkillIDs(ids...)
+	return _u
+}
+
+// RemoveTeamGroupSkills removes "team_group_skills" edges to TeamGroupSkill entities.
+func (_u *TeamGroupUpdate) RemoveTeamGroupSkills(v ...*TeamGroupSkill) *TeamGroupUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamGroupSkillIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -751,6 +825,63 @@ func (_u *TeamGroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.SkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TeamGroupSkillCreate{config: _u.config, mutation: newTeamGroupSkillMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSkillsIDs(); len(nodes) > 0 && !_u.mutation.SkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupSkillCreate{config: _u.config, mutation: newTeamGroupSkillMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SkillsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupSkillCreate{config: _u.config, mutation: newTeamGroupSkillMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamGroupMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -931,6 +1062,51 @@ func (_u *TeamGroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.TeamGroupSkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamGroupSkillsIDs(); len(nodes) > 0 && !_u.mutation.TeamGroupSkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamGroupSkillsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	_spec.AddModifiers(_u.modifiers...)
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1086,6 +1262,21 @@ func (_u *TeamGroupUpdateOne) AddHosts(v ...*Host) *TeamGroupUpdateOne {
 	return _u.AddHostIDs(ids...)
 }
 
+// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
+func (_u *TeamGroupUpdateOne) AddSkillIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
+	_u.mutation.AddSkillIDs(ids...)
+	return _u
+}
+
+// AddSkills adds the "skills" edges to the Skill entity.
+func (_u *TeamGroupUpdateOne) AddSkills(v ...*Skill) *TeamGroupUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddSkillIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_u *TeamGroupUpdateOne) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
 	_u.mutation.AddTeamGroupMemberIDs(ids...)
@@ -1144,6 +1335,21 @@ func (_u *TeamGroupUpdateOne) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupU
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamGroupHostIDs(ids...)
+}
+
+// AddTeamGroupSkillIDs adds the "team_group_skills" edge to the TeamGroupSkill entity by IDs.
+func (_u *TeamGroupUpdateOne) AddTeamGroupSkillIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
+	_u.mutation.AddTeamGroupSkillIDs(ids...)
+	return _u
+}
+
+// AddTeamGroupSkills adds the "team_group_skills" edges to the TeamGroupSkill entity.
+func (_u *TeamGroupUpdateOne) AddTeamGroupSkills(v ...*TeamGroupSkill) *TeamGroupUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTeamGroupSkillIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -1241,6 +1447,27 @@ func (_u *TeamGroupUpdateOne) RemoveHosts(v ...*Host) *TeamGroupUpdateOne {
 	return _u.RemoveHostIDs(ids...)
 }
 
+// ClearSkills clears all "skills" edges to the Skill entity.
+func (_u *TeamGroupUpdateOne) ClearSkills() *TeamGroupUpdateOne {
+	_u.mutation.ClearSkills()
+	return _u
+}
+
+// RemoveSkillIDs removes the "skills" edge to Skill entities by IDs.
+func (_u *TeamGroupUpdateOne) RemoveSkillIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
+	_u.mutation.RemoveSkillIDs(ids...)
+	return _u
+}
+
+// RemoveSkills removes "skills" edges to Skill entities.
+func (_u *TeamGroupUpdateOne) RemoveSkills(v ...*Skill) *TeamGroupUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveSkillIDs(ids...)
+}
+
 // ClearTeamGroupMembers clears all "team_group_members" edges to the TeamGroupMember entity.
 func (_u *TeamGroupUpdateOne) ClearTeamGroupMembers() *TeamGroupUpdateOne {
 	_u.mutation.ClearTeamGroupMembers()
@@ -1323,6 +1550,27 @@ func (_u *TeamGroupUpdateOne) RemoveTeamGroupHosts(v ...*TeamGroupHost) *TeamGro
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamGroupHostIDs(ids...)
+}
+
+// ClearTeamGroupSkills clears all "team_group_skills" edges to the TeamGroupSkill entity.
+func (_u *TeamGroupUpdateOne) ClearTeamGroupSkills() *TeamGroupUpdateOne {
+	_u.mutation.ClearTeamGroupSkills()
+	return _u
+}
+
+// RemoveTeamGroupSkillIDs removes the "team_group_skills" edge to TeamGroupSkill entities by IDs.
+func (_u *TeamGroupUpdateOne) RemoveTeamGroupSkillIDs(ids ...uuid.UUID) *TeamGroupUpdateOne {
+	_u.mutation.RemoveTeamGroupSkillIDs(ids...)
+	return _u
+}
+
+// RemoveTeamGroupSkills removes "team_group_skills" edges to TeamGroupSkill entities.
+func (_u *TeamGroupUpdateOne) RemoveTeamGroupSkills(v ...*TeamGroupSkill) *TeamGroupUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTeamGroupSkillIDs(ids...)
 }
 
 // Where appends a list predicates to the TeamGroupUpdate builder.
@@ -1695,6 +1943,63 @@ func (_u *TeamGroupUpdateOne) sqlSave(ctx context.Context) (_node *TeamGroup, er
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.SkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		createE := &TeamGroupSkillCreate{config: _u.config, mutation: newTeamGroupSkillMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedSkillsIDs(); len(nodes) > 0 && !_u.mutation.SkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupSkillCreate{config: _u.config, mutation: newTeamGroupSkillMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.SkillsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.SkillsTable,
+			Columns: teamgroup.SkillsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupSkillCreate{config: _u.config, mutation: newTeamGroupSkillMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamGroupMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1868,6 +2173,51 @@ func (_u *TeamGroupUpdateOne) sqlSave(ctx context.Context) (_node *TeamGroup, er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.TeamGroupSkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTeamGroupSkillsIDs(); len(nodes) > 0 && !_u.mutation.TeamGroupSkillsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TeamGroupSkillsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupSkillsTable,
+			Columns: []string{teamgroup.TeamGroupSkillsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupskill.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

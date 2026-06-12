@@ -2051,6 +2051,350 @@
                 }
             }
         },
+        "/api/v1/teams/skills": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "获取团队 Skill 列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】Skill 管理"
+                ],
+                "summary": "获取团队 Skill 列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListTeamSkillsResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "添加团队 Skill",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】Skill 管理"
+                ],
+                "summary": "添加团队 Skill",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.AddTeamSkillReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamSkill"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/skills/package": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "上传团队 Skill zip 包",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】Skill 管理"
+                ],
+                "summary": "上传团队 Skill zip 包",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Skill 名称",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Skill 描述",
+                        "name": "description",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "JSON 字符串数组",
+                        "name": "tags",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "SKILL.md 原文",
+                        "name": "content",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "JSON 字符串数组",
+                        "name": "group_ids",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "来源类型",
+                        "name": "source_type",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "来源标签",
+                        "name": "source_label",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "zip 内 SKILL.md 路径",
+                        "name": "skill_md_path",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Skill zip 包",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamSkill"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/skills/{skill_id}": {
+            "put": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "更新团队 Skill",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】Skill 管理"
+                ],
+                "summary": "更新团队 Skill",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Skill ID",
+                        "name": "skill_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateTeamSkillReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamSkill"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "删除团队 Skill",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】Skill 管理"
+                ],
+                "summary": "删除团队 Skill",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Skill ID",
+                        "name": "skill_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/task-vm-idle-policy": {
             "get": {
                 "security": [
@@ -2620,6 +2964,53 @@
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "软删除团队成员或管理员，不删除团队成员关系",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】分组成员管理"
+                ],
+                "summary": "删除团队成员",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
                         }
                     },
                     "401": {
@@ -9120,14 +9511,6 @@
             "x-enum-comments": {
                 "UserPlatformBaizhi": "百智云平台"
             },
-            "x-enum-descriptions": [
-                "百智云平台",
-                "",
-                "",
-                "",
-                "",
-                ""
-            ],
             "x-enum-varnames": [
                 "UserPlatformBaizhi",
                 "UserPlatformGithub",
@@ -9153,13 +9536,6 @@
                 "UserRoleIndividual": "个人用户",
                 "UserRoleSubAccount": "企业子账户"
             },
-            "x-enum-descriptions": [
-                "个人用户",
-                "企业用户",
-                "企业子账户",
-                "MonkeyCode-AI 管理员账号，用来配置公共资源. 如公共宿主机等",
-                "全自动 git 任务插入的用户"
-            ],
             "x-enum-varnames": [
                 "UserRoleIndividual",
                 "UserRoleEnterprise",
@@ -9262,6 +9638,9 @@
         "domain.AddTeamAdminResp": {
             "type": "object",
             "properties": {
+                "password": {
+                    "type": "string"
+                },
                 "user": {
                     "$ref": "#/definitions/domain.TeamUser"
                 }
@@ -9371,6 +9750,48 @@
                 },
                 "temperature": {
                     "type": "number"
+                }
+            }
+        },
+        "domain.AddTeamSkillReq": {
+            "type": "object",
+            "required": [
+                "content",
+                "description",
+                "name",
+                "source_label",
+                "source_type"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "group_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "skill_md_path": {
+                    "type": "string"
+                },
+                "source_label": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -10459,6 +10880,17 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/domain.TeamModel"
+                    }
+                }
+            }
+        },
+        "domain.ListTeamSkillsResp": {
+            "type": "object",
+            "properties": {
+                "skills": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamSkill"
                     }
                 }
             }
@@ -12247,6 +12679,56 @@
                 }
             }
         },
+        "domain.TeamSkill": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamGroup"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "package_object_key": {
+                    "type": "string"
+                },
+                "package_url": {
+                    "type": "string"
+                },
+                "skill_md_path": {
+                    "type": "string"
+                },
+                "source_label": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
         "domain.TeamTaskItem": {
             "type": "object",
             "properties": {
@@ -12702,6 +13184,41 @@
                 }
             }
         },
+        "domain.UpdateTeamSkillReq": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "group_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "skill_md_path": {
+                    "type": "string"
+                },
+                "source_label": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "domain.UpdateTeamTaskVMIdlePolicyReq": {
             "type": "object",
             "properties": {
@@ -12724,6 +13241,9 @@
             "properties": {
                 "is_blocked": {
                     "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },
@@ -13136,7 +13656,6 @@
         },
         "types.ConditionStatus": {
             "type": "integer",
-            "format": "int32",
             "enum": [
                 0,
                 1,
