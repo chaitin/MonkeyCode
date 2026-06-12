@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, ScrollView
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { ApiError, getTaskDetail, getTaskRounds, listModels } from '@/api/client';
+import { ApiError, getSubscription, getTaskDetail, getTaskRounds, listModels } from '@/api/client';
 import { TaskControlClient, type PortForwardInfo, type RepoFileChange } from '@/api/control';
 import { TaskStreamClient, type StreamState } from '@/api/stream';
 import { MAX_ATTACHMENTS, pickImages, saveImageToAlbum, uploadImage } from '@/api/upload';
@@ -98,6 +98,7 @@ export default function TaskDetailScreen() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [models, setModels] = useState<Model[]>([]);
+  const [plan, setPlan] = useState<string | undefined>(undefined);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -187,6 +188,7 @@ export default function TaskDetailScreen() {
     });
     controlRef.current = control; control.connect();
     listModels().then(setModels).catch(() => undefined);
+    getSubscription().then((s) => setPlan(s?.plan)).catch(() => undefined);
     return () => { control.dispose(); if (controlRef.current === control) controlRef.current = null; setPreviewPorts([]); setFileChanges([]); };
   }, [id, interactive, refreshPorts, refreshChanges]);
 
@@ -643,7 +645,7 @@ export default function TaskDetailScreen() {
         </View>
       )}
 
-      <ModelSheet visible={modelPickerOpen} title="切换模型" models={models} selectedId={task?.model?.id ?? ''} onPick={requestSwitchModel} onClose={() => setModelPickerOpen(false)} />
+      <ModelSheet visible={modelPickerOpen} title="切换模型" models={models} selectedId={task?.model?.id ?? ''} plan={plan} onPick={requestSwitchModel} onClose={() => setModelPickerOpen(false)} />
       <SkillSheet visible={skillPickerOpen} commands={availableCommands} onPick={pickSkill} onClose={() => setSkillPickerOpen(false)} />
       <FilesPanel visible={filesOpen} onClose={() => setFilesOpen(false)} control={controlRef.current} initialChanges={fileChanges} vmId={task?.virtualmachine?.id} />
       <PreviewSheet visible={previewOpen} ports={previewPorts} refreshing={portsRefreshing} activeUrl={preview && preview.taskId === id ? preview.url : undefined} onOpen={openInBrowser} onRefresh={refreshPorts} onClose={() => setPreviewOpen(false)} />

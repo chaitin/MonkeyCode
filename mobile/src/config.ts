@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { Image, Model, Skill } from '@/api/types';
 
 /** 默认技能 ID（与 Web 端 src/utils/config.tsx 一致），始终勾选、不可取消。 */
@@ -62,12 +63,16 @@ export function usableModels(models: Model[]): Model[] {
   return models.filter((m) => m.id && m.model && !m.is_hidden && !BUILTIN_META.has(m.model));
 }
 
-/** 会员等级能否使用该内置档模型（对齐 Web canUseModelBySubscription）。 */
-function planAllowsModel(model: Model, plan?: string): boolean {
-  const builtin = builtinName(model.model);
+/** 会员等级能否使用该内置档（基础/专业/旗舰）。 */
+function planAllowsBuiltin(builtin: ReturnType<typeof builtinName>, plan?: string): boolean {
   if (builtin === 'monkeycode-pro') return plan === 'pro' || plan === 'flagship' || plan === 'ultra';
   if (builtin === 'monkeycode-ultra') return plan === 'flagship' || plan === 'ultra';
   return true;
+}
+
+/** 会员等级能否使用该内置档模型（对齐 Web canUseModelBySubscription）。 */
+function planAllowsModel(model: Model, plan?: string): boolean {
+  return planAllowsBuiltin(builtinName(model.model), plan);
 }
 
 // 先按 weight 降序，权重相同再按模型名稳定排序（对齐 Web）。
@@ -121,14 +126,20 @@ export interface ModelGroup {
   models: Model[];
 }
 
-/** 模型分组（对齐 Web ModelSelect）：基础/专业/旗舰内置 + 付费 + 我的 + 团队。 */
-export function groupModels(models: Model[]): ModelGroup[] {
+/**
+ * 模型分组（对齐 Web ModelSelect）：基础/专业/旗舰内置 + 付费 + 我的 + 团队。
+ * 仅 iOS：高于当前会员等级的内置分组不展示（基础会员看不到专业/旗舰档）——App 内
+ * 没有升级会员的购买路径，展示用不了的档位既是死入口，也有审核风险。Android 不受限。
+ */
+export function groupModels(models: Model[], plan?: string): ModelGroup[] {
   const supported = models.filter((m) => m.id && m.model && !m.is_hidden);
-  const builtin: ModelGroup[] = [
+  const builtin: ModelGroup[] = ([
     { key: 'monkeycode-basic', label: '基础模型', badge: '免费使用' },
     { key: 'monkeycode-pro', label: '专业模型', badge: '专业会员免费' },
     { key: 'monkeycode-ultra', label: '旗舰模型', badge: '旗舰会员免费' },
-  ].map((o) => ({ ...o, models: supported.filter((m) => builtinName(m.model) === o.key) }));
+  ] as const)
+    .filter((o) => Platform.OS !== 'ios' || planAllowsBuiltin(o.key, plan))
+    .map((o) => ({ ...o, models: supported.filter((m) => builtinName(m.model) === o.key) }));
 
   const paid = supported.filter((m) => m.owner?.type === 'public' && !builtinName(m.model));
   const priv = supported.filter((m) => m.owner?.type === 'private' && !builtinName(m.model));

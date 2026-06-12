@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCheckinStatus, getSubscription, getWallet, listInvitations, resolveAssetUrl, submitCheckin } from '@/api/client';
 import { checkAppUpdate, checkOta, currentOtaId, downloadAndApplyOta, installedAppVersion } from '@/updates/useOtaUpdate';
@@ -329,11 +329,13 @@ export default function ProfileScreen() {
   const inviteLink = user?.id ? `${baseUrl}/?ic=${user.id}` : '';
   const planKey = normalizePlan(subscription?.plan);
   const limits = PLAN_LIMITS[planKey];
+  // 仅 iOS：只展示当前会员等级包含的档位（total>0），基础会员看不到专业/旗舰的
+  // 额度条（App 内无升级购买路径，展示死入口有审核风险）。Android 保持全部展示。
   const quotas = [
     { key: 'basic', label: '基础模型', total: limits.basic, remaining: clamp(wallet?.daily_basic_token_balance ?? 0, limits.basic) },
     { key: 'pro', label: '专业模型', total: limits.pro, remaining: clamp(wallet?.daily_pro_token_balance ?? 0, limits.pro) },
     { key: 'ultra', label: '旗舰模型', total: limits.ultra, remaining: clamp(wallet?.daily_ultra_token_balance ?? 0, limits.ultra) },
-  ];
+  ].filter((q) => Platform.OS !== 'ios' || q.total > 0);
   const expiry = subscription?.expires_at && planKey !== 'basic' ? subscription.expires_at.slice(0, 10) : undefined;
 
   return (
