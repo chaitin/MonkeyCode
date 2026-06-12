@@ -27,7 +27,7 @@ export default function ManagerConsolePage() {
     { label: string; href?: string }[]
   > = {
     "/manager/overview": [
-      { label: "概览", href: "/manager/overview" },
+      { label: "仪表盘", href: "/manager/overview" },
     ],
     "/manager/projects": [
       { label: "项目", href: "/manager/projects" },
@@ -39,16 +39,22 @@ export default function ManagerConsolePage() {
       { label: "对话", href: "/manager/conversations" },
     ],
     "/manager/members": [
-      { label: "成员管理", href: "/manager/members" },
+      { label: "成员与权限", href: "/manager/members" },
     ],
     "/manager/hosts": [
-      { label: "开发环境", href: "/manager/hosts" },
+      { label: "设置", href: "/manager/settings" },
+    ],
+    "/manager/settings": [
+      { label: "设置", href: "/manager/settings" },
     ],
     "/manager/models": [
-      { label: "AI 大模型", href: "/manager/models" },
+      { label: "设置", href: "/manager/settings" },
     ],
     "/manager/images": [
-      { label: "镜像管理", href: "/manager/images" },
+      { label: "设置", href: "/manager/settings" },
+    ],
+    "/manager/oidc": [
+      { label: "设置", href: "/manager/settings" },
     ],
     "/manager/logs": [
       { label: "操作记录", href: "/manager/logs" },

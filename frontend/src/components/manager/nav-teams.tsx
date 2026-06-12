@@ -8,7 +8,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
-import { Bot, Box, FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, MonitorCloud, ShieldCheck, User } from "lucide-react"
+import { FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 export default function NavTeams() {
@@ -25,7 +25,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/overview">
               <LayoutDashboard />
-              <span>概览</span>
+              <span>仪表盘</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -69,62 +69,18 @@ export default function NavTeams() {
           >
             <Link to="/manager/members">
               <IconUsersGroup />
-              <span>成员管理</span>
+              <span>成员与权限</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
-            isActive={location.pathname === "/manager/hosts"}
+            isActive={location.pathname === "/manager/settings"}
             asChild
           >
-            <Link to="/manager/hosts">
-              <MonitorCloud />
-              <span>开发环境</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={location.pathname === "/manager/models"}
-            asChild
-          >
-            <Link to="/manager/models">
-              <Bot />
-              <span>AI 大模型</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={location.pathname === "/manager/images"}
-            asChild
-          >
-            <Link to="/manager/images">
-              <Box />
-              <span>系统镜像</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={location.pathname === "/manager/manager"}
-            asChild
-          >
-            <Link to="/manager/manager">
-              <User />
-              <span>管理员</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={location.pathname === "/manager/oidc"}
-            asChild
-          >
-            <Link to="/manager/oidc">
-              <ShieldCheck />
-              <span>企业登录</span>
+            <Link to="/manager/settings">
+              <Settings />
+              <span>设置</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

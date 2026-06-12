@@ -8,6 +8,7 @@ import {
   resolveUsedSeats,
   type LicenseSeatStatus,
 } from "./member-seat";
+import TeamManagerManager from "./manager";
 
 export default function TeamManagerMembers() {
   const [members, setMembers] = useState<any[]>([]);
@@ -63,20 +64,34 @@ export default function TeamManagerMembers() {
   }, [isOfflineEdition]);
 
   return (
-    <div className="flex flex-row gap-4 w-full flex-1">
-      <TeamMembersCard 
-        members={members}
-        memberLimit={memberLimit}
-        usedSeats={usedSeats}
-        groups={groups}
-        onRefreshMembers={refreshMembers}
-        onRefreshGroups={fetchGroups}
-      />
-      <TeamGroupsCard 
-        groups={groups}
-        members={members}
-        onRefreshGroups={fetchGroups}
-      />
+    <div className="flex w-full flex-1 flex-col gap-6">
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-base font-semibold">管理员</h2>
+        </div>
+        <TeamManagerManager />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-base font-semibold">普通成员</h2>
+        </div>
+        <div className="flex flex-col gap-4 xl:flex-row">
+          <TeamMembersCard
+            members={members}
+            memberLimit={memberLimit}
+            usedSeats={usedSeats}
+            groups={groups}
+            onRefreshMembers={refreshMembers}
+            onRefreshGroups={fetchGroups}
+          />
+          <TeamGroupsCard
+            groups={groups}
+            members={members}
+            onRefreshGroups={fetchGroups}
+          />
+        </div>
+      </section>
     </div>
   )
 }

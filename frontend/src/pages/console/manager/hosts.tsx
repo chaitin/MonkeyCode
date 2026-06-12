@@ -44,6 +44,17 @@ const formatPolicyDuration = (seconds?: number) => {
   return Number.isInteger(hours) ? `${hours} 小时` : `${Math.round(hours * 100) / 100} 小时`
 }
 
+function PolicySummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="truncate text-sm font-medium" title={value}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
 export default function TeamManagerHosts() {
   const [open, setOpen] = useState(false)
   const [command, setCommand] = useState<string>("")
@@ -55,6 +66,7 @@ export default function TeamManagerHosts() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingHost, setEditingHost] = useState<DomainHost | null>(null)
   const [policy, setPolicy] = useState<DomainTeamTaskVMIdlePolicy | null>(null)
+  const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
   const [loadingPolicy, setLoadingPolicy] = useState(false)
   const [savingPolicy, setSavingPolicy] = useState(false)
   const [sleepEnabled, setSleepEnabled] = useState(true)
@@ -176,15 +188,11 @@ export default function TeamManagerHosts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock3 />
-            任务开发环境策略
+            开发环境自动回收
           </CardTitle>
-          <CardDescription>
-            只影响通过任务创建的开发环境，手动创建的开发环境不受此配置影响
-          </CardDescription>
           <CardAction>
-            <Button size="sm" onClick={handleSavePolicy} disabled={savingPolicy || loadingPolicy}>
-              {savingPolicy ? <Spinner className="size-4" /> : <Save className="size-4" />}
-              保存
+            <Button variant="outline" size="sm" onClick={() => setPolicyDialogOpen(true)}>
+              配置
             </Button>
           </CardAction>
         </CardHeader>
@@ -199,73 +207,109 @@ export default function TeamManagerHosts() {
             </Empty>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <Label htmlFor="task-vm-sleep-enabled">自动休眠</Label>
-                    <p className="text-sm text-muted-foreground">
-                      空闲达到设置时长后休眠任务开发环境
-                    </p>
-                  </div>
-                  <Switch
-                    id="task-vm-sleep-enabled"
-                    checked={sleepEnabled}
-                    onCheckedChange={setSleepEnabled}
-                  />
-                </div>
-                <div className="mt-4 space-y-2">
-                  <Label htmlFor="task-vm-sleep-hours">休眠时长（小时）</Label>
-                  <Input
-                    id="task-vm-sleep-hours"
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={sleepHours}
-                    disabled={!sleepEnabled}
-                    placeholder={policy?.sleep_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_sleep_seconds)}` : "继承全局默认"}
-                    onChange={(e) => setSleepHours(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    留空或填 0 表示继承全局默认，当前生效：{sleepEnabled ? formatPolicyDuration(policy?.effective_sleep_seconds) : "已关闭"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <Label htmlFor="task-vm-recycle-enabled">自动回收</Label>
-                    <p className="text-sm text-muted-foreground">
-                      空闲达到设置时长后回收任务开发环境
-                    </p>
-                  </div>
-                  <Switch
-                    id="task-vm-recycle-enabled"
-                    checked={recycleEnabled}
-                    onCheckedChange={setRecycleEnabled}
-                  />
-                </div>
-                <div className="mt-4 space-y-2">
-                  <Label htmlFor="task-vm-recycle-hours">回收时长（小时）</Label>
-                  <Input
-                    id="task-vm-recycle-hours"
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={recycleHours}
-                    disabled={!recycleEnabled}
-                    placeholder={policy?.recycle_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_recycle_seconds)}` : "继承全局默认"}
-                    onChange={(e) => setRecycleHours(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    留空或填 0 表示继承全局默认，当前生效：{recycleEnabled ? formatPolicyDuration(policy?.effective_recycle_seconds) : "已关闭"}
-                  </p>
-                </div>
-              </div>
+              <PolicySummaryItem
+                label="自动休眠"
+                value={sleepEnabled ? `${formatPolicyDuration(policy?.effective_sleep_seconds)} 后休眠` : "已关闭"}
+              />
+              <PolicySummaryItem
+                label="自动回收"
+                value={recycleEnabled ? `${formatPolicyDuration(policy?.effective_recycle_seconds)} 后回收` : "已关闭"}
+              />
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>开发环境自动回收</DialogTitle>
+          </DialogHeader>
+          {loadingPolicy ? (
+            <Empty className="bg-muted">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Spinner className="size-6" />
+                </EmptyMedia>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="task-vm-sleep-enabled">自动休眠</Label>
+                      <p className="text-sm text-muted-foreground">
+                        空闲达到设置时长后休眠任务开发环境
+                      </p>
+                    </div>
+                    <Switch
+                      id="task-vm-sleep-enabled"
+                      checked={sleepEnabled}
+                      onCheckedChange={setSleepEnabled}
+                    />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <Label htmlFor="task-vm-sleep-hours">休眠时长（小时）</Label>
+                    <Input
+                      id="task-vm-sleep-hours"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={sleepHours}
+                      disabled={!sleepEnabled}
+                      placeholder={policy?.sleep_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_sleep_seconds)}` : "继承全局默认"}
+                      onChange={(e) => setSleepHours(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      留空或填 0 表示继承全局默认，当前生效：{sleepEnabled ? formatPolicyDuration(policy?.effective_sleep_seconds) : "已关闭"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="task-vm-recycle-enabled">自动回收</Label>
+                      <p className="text-sm text-muted-foreground">
+                        空闲达到设置时长后回收任务开发环境
+                      </p>
+                    </div>
+                    <Switch
+                      id="task-vm-recycle-enabled"
+                      checked={recycleEnabled}
+                      onCheckedChange={setRecycleEnabled}
+                    />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <Label htmlFor="task-vm-recycle-hours">回收时长（小时）</Label>
+                    <Input
+                      id="task-vm-recycle-hours"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={recycleHours}
+                      disabled={!recycleEnabled}
+                      placeholder={policy?.recycle_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_recycle_seconds)}` : "继承全局默认"}
+                      onChange={(e) => setRecycleHours(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      留空或填 0 表示继承全局默认，当前生效：{recycleEnabled ? formatPolicyDuration(policy?.effective_recycle_seconds) : "已关闭"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleSavePolicy} disabled={savingPolicy || loadingPolicy}>
+                  {savingPolicy ? <Spinner className="size-4" /> : <Save className="size-4" />}
+                  保存
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Card className="w-full shadow-none">
         <CardHeader>

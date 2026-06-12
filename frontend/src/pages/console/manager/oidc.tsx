@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -38,6 +39,7 @@ const defaultForm: OIDCForm = {
 
 export default function TeamManagerOIDC() {
   const [form, setForm] = React.useState<OIDCForm>(defaultForm)
+  const [dialogOpen, setDialogOpen] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
 
@@ -86,20 +88,35 @@ export default function TeamManagerOIDC() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">企业登录</h1>
-        <p className="text-sm text-muted-foreground">配置团队成员使用企业 OIDC 身份源登录。</p>
-      </div>
-
+    <>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ShieldCheck size={18} />
-            OIDC 配置
+            企业登录
           </CardTitle>
+          <Button variant="outline" onClick={() => setDialogOpen(true)}>
+            配置
+          </Button>
         </CardHeader>
         <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <SummaryItem label="启用状态" value={form.enabled ? '已启用' : '未启用'} />
+            <SummaryItem label="登录按钮名称" value={form.display_name || '未配置'} />
+            <SummaryItem label="Issuer" value={form.issuer || '未配置'} />
+            <SummaryItem label="邮箱域名限制" value={form.email_domain || '未限制'} />
+            <SummaryItem label="自动创建成员" value={form.auto_create_member ? '允许' : '不允许'} />
+            <SummaryItem label="账号密码登录" value={form.allow_password_login ? '允许' : '不允许'} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>企业登录配置</DialogTitle>
+            <DialogDescription>配置团队成员使用企业 OIDC 身份源登录。</DialogDescription>
+          </DialogHeader>
           <FieldGroup>
             <div className="grid gap-4 md:grid-cols-2">
               <Field>
@@ -162,8 +179,19 @@ export default function TeamManagerOIDC() {
               {testing ? '测试中...' : '测试连接'}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="truncate text-sm font-medium" title={value}>
+        {value}
+      </div>
     </div>
   )
 }

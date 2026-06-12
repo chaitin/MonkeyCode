@@ -243,7 +243,7 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <IconUserCircle />
-            团队成员
+            普通成员
           </CardTitle>
           <CardDescription>
             当前成员数量: {usedSeats} / {memberLimit}

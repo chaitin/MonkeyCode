@@ -12,20 +12,16 @@ import FileManagerPage from "@/pages/console/user/file-manager"
 import { Toaster } from "@/components/ui/sonner"
 import SharedTerminalPage from "@/pages/shared-terminal"
 import TeamManagerMembers from "./pages/console/manager/members"
-import TeamManagerModels from "@/pages/console/manager/models"
-import TeamManagerImages from "@/pages/console/manager/images"
+import TeamManagerSettings from "./pages/console/manager/settings"
 import TeamManagerLogs from "@/pages/console/manager/logs"
-import TeamManagerHosts from "./pages/console/manager/hosts"
 import TeamManagerOverview from "./pages/console/manager/overview"
 import TeamManagerProjects from "./pages/console/manager/projects"
 import TeamManagerTasks from "./pages/console/manager/tasks"
 import TeamManagerConversations from "./pages/console/manager/conversations"
-import TeamManagerOIDC from "./pages/console/manager/oidc"
 import TeamManagerLicense from "./pages/console/manager/license"
 import TeamOIDCLoginPage from "./pages/team-oidc-login"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
-import TeamManagerManager from "./pages/console/manager/manager"
 import PlaygroundPage from "./pages/playground"
 import PublicTaskPage from "./pages/public-task"
 import PostCreatePage from "./pages/post-create"
@@ -76,12 +72,13 @@ function App() {
               <Route path="tasks" element={<TeamManagerTasks />} />
               <Route path="conversations" element={<TeamManagerConversations />} />
               <Route path="members" element={<TeamManagerMembers />} />
-              <Route path="hosts" element={<TeamManagerHosts />} />
-              <Route path="images" element={<TeamManagerImages />} />
-              <Route path="models" element={<TeamManagerModels />} />
+              <Route path="settings" element={<TeamManagerSettings />} />
+              <Route path="hosts" element={<Navigate to="/manager/settings" replace />} />
+              <Route path="images" element={<Navigate to="/manager/settings" replace />} />
+              <Route path="models" element={<Navigate to="/manager/settings" replace />} />
               <Route path="logs" element={<TeamManagerLogs />} />
-              <Route path="manager" element={<TeamManagerManager />} />
-              <Route path="oidc" element={<TeamManagerOIDC />} />
+              <Route path="manager" element={<Navigate to="/manager/members" replace />} />
+              <Route path="oidc" element={<Navigate to="/manager/settings" replace />} />
               <Route
                 path="license"
                 element={
