@@ -2,13 +2,12 @@ import { Link, useLocation } from "react-router-dom"
 
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
-import { FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings } from "lucide-react"
+import { FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings, Sparkles } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 
 export default function NavTeams() {
@@ -16,7 +15,6 @@ export default function NavTeams() {
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>企业管理</SidebarGroupLabel>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
@@ -70,6 +68,17 @@ export default function NavTeams() {
             <Link to="/manager/members">
               <IconUsersGroup />
               <span>成员与权限</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={location.pathname === "/manager/skills"}
+            asChild
+          >
+            <Link to="/manager/skills">
+              <Sparkles />
+              <span>Skills</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

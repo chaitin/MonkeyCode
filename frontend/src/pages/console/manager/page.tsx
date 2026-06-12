@@ -41,6 +41,9 @@ export default function ManagerConsolePage() {
     "/manager/members": [
       { label: "成员与权限", href: "/manager/members" },
     ],
+    "/manager/skills": [
+      { label: "Skills", href: "/manager/skills" },
+    ],
     "/manager/hosts": [
       { label: "设置", href: "/manager/settings" },
     ],

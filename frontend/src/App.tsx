@@ -19,6 +19,7 @@ import TeamManagerProjects from "./pages/console/manager/projects"
 import TeamManagerTasks from "./pages/console/manager/tasks"
 import TeamManagerConversations from "./pages/console/manager/conversations"
 import TeamManagerLicense from "./pages/console/manager/license"
+import TeamManagerSkills from "./pages/console/manager/skills"
 import TeamOIDCLoginPage from "./pages/team-oidc-login"
 import ResetPasswordPage from "./pages/resetpassword"
 import FindPasswordPage from "./pages/findpassword"
@@ -72,6 +73,7 @@ function App() {
               <Route path="tasks" element={<TeamManagerTasks />} />
               <Route path="conversations" element={<TeamManagerConversations />} />
               <Route path="members" element={<TeamManagerMembers />} />
+              <Route path="skills" element={<TeamManagerSkills />} />
               <Route path="settings" element={<TeamManagerSettings />} />
               <Route path="hosts" element={<Navigate to="/manager/settings" replace />} />
               <Route path="images" element={<Navigate to="/manager/settings" replace />} />
