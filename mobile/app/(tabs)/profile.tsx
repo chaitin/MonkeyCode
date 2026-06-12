@@ -9,7 +9,7 @@ import { obtainCaptchaToken } from '@/api/captcha';
 import type { InvitationItem, Subscription, Wallet } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { Icons } from '@/components/Icons';
-import { BigTitle, Card, GlassTop, MonkeyLogo, Pill, Toast } from '@/components/ui';
+import { BigTitle, Card, GlassTop, MonkeyLogo, Pill, Row, Toast } from '@/components/ui';
 import { ACCENTS, ACCENT_KEYS, spacing, useTheme, useThemePrefs, type Theme, type ThemeMode } from '@/theme';
 
 
@@ -375,6 +375,11 @@ export default function ProfileScreen() {
             </View>
             <Text style={{ paddingTop: 8, paddingBottom: 2, fontSize: 12, fontWeight: '700', color: t.tx3, letterSpacing: 0.5 }}>今日额度</Text>
             {quotas.map((q) => <QuotaBar key={q.key} name={q.label} total={q.total} remaining={q.remaining} t={t} />)}
+          </Card>
+
+          {/* 模型：自定义大模型管理入口 */}
+          <Card style={{ paddingVertical: 2 }}>
+            <Row icon="brain" label="自定义模型" value="接入自己的大模型" onPress={() => router.push('/models')} />
           </Card>
 
           {/* 外观：主题 + 点缀色 */}

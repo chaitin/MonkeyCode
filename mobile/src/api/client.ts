@@ -7,6 +7,8 @@
  */
 import type {
   ApiEnvelope,
+  CheckModelResp,
+  CreateModelReq,
   CreateTaskReq,
   Image,
   InvitationListResp,
@@ -15,9 +17,11 @@ import type {
   Model,
   Project,
   ProjectTask,
+  ProviderModelItem,
   Skill,
   Subscription,
   TaskRoundsResp,
+  UpdateModelReq,
   UserStatus,
   Wallet,
 } from './types';
@@ -261,6 +265,32 @@ export async function getTaskRounds(params: {
 
 export async function listModels(): Promise<Model[]> {
   const resp = await request<{ models?: Model[] }>('/api/v1/users/models');
+  return resp.data?.models ?? [];
+}
+
+/** 创建当前用户的自有模型配置。 */
+export async function createModel(req: CreateModelReq): Promise<Model | null> {
+  const resp = await request<Model>('/api/v1/users/models', { method: 'POST', body: req });
+  return resp.data ?? null;
+}
+
+export function updateModel(id: string, req: UpdateModelReq) {
+  return request(`/api/v1/users/models/${id}`, { method: 'PUT', body: req });
+}
+
+export function deleteModel(id: string) {
+  return request(`/api/v1/users/models/${id}`, { method: 'DELETE' });
+}
+
+/** 按配置做健康检查（不落库），保存前校验配置可用性。 */
+export async function checkModelConfig(req: Pick<CreateModelReq, 'provider' | 'model' | 'base_url' | 'api_key' | 'interface_type'>): Promise<CheckModelResp> {
+  const resp = await request<CheckModelResp>('/api/v1/users/models/health-check', { method: 'POST', body: req });
+  return resp.data ?? {};
+}
+
+/** 拉取供应商支持的模型列表（拉不到时由调用方回退为手动输入）。 */
+export async function listProviderModels(params: { api_key: string; base_url: string; provider: string }): Promise<ProviderModelItem[]> {
+  const resp = await request<{ models?: ProviderModelItem[]; error?: { message?: string } }>('/api/v1/users/models/providers', { query: params });
   return resp.data?.models ?? [];
 }
 

@@ -46,6 +46,8 @@ function RootNav() {
       <Stack.Screen name="task/[id]" />
       <Stack.Screen name="project/[id]" />
       <Stack.Screen name="new-task" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="models" />
+      <Stack.Screen name="model-form" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
     </Stack>
   );
 }
