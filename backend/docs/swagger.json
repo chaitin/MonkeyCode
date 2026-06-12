@@ -2635,6 +2635,53 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "软删除团队成员或管理员，不删除团队成员关系",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】分组成员管理"
+                ],
+                "summary": "删除团队成员",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/teams/users/{user_id}/passwords/reset": {
@@ -8277,7 +8324,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），\nlimit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。\n返回的 user-input.data 统一为 JSON payload 字符串，例如 `{\"content\":\"57un57ut5aSE55CG\",\"attachments\":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。",
+                "description": "根据 cursor 翻页查询任务的历史轮次。limit 为轮次数（非条目数），\nlimit=2 表示返回 2 轮的完整消息。direction=backward（默认）从 cursor 往更早翻，轮间倒序（最新轮在前）；\ndirection=forward 往更新翻，轮间正序（最旧轮在前）；轮内消息始终按时间正序。\n即响应中最后一轮总是与 next_cursor 相邻的那一轮。前端应以每条 chunk 的 seq 做分组排序，不依赖数组顺序。\n日志存储为 ClickHouse 时 cursor 即轮次号 seq，可配合 inclusive=true 实现\"跳转到第 seq 轮\"；\nLoki 仅支持 backward 且不支持 inclusive，违反时返回 err-task-rounds-direction-unsupported。\n返回的 user-input.data 统一为 JSON payload 字符串，例如 `{\"content\":\"57un57ut5aSE55CG\",\"attachments\":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。",
                 "consumes": [
                     "application/json"
                 ],
@@ -8298,7 +8345,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "分页游标",
+                        "description": "分页游标（ClickHouse 下即轮次号 seq）",
                         "name": "cursor",
                         "in": "query"
                     },
@@ -8306,6 +8353,18 @@
                         "type": "integer",
                         "description": "轮次数（默认 2，上限 10）",
                         "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "翻页方向：backward（默认）/ forward",
+                        "name": "direction",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否包含 cursor 指向的那一轮（跳转定位用）",
+                        "name": "inclusive",
                         "in": "query"
                     }
                 ],
@@ -8516,7 +8575,7 @@
                         "MonkeyCodeAIAuth": []
                     }
                 ],
-                "description": "查询任务的所有 user-input 消息（正序，最早在前），用于聊天页侧边栏快速跳转到指定一轮对话。\n单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。\ncontent 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。",
+                "description": "查询任务的 user-input 消息（倒序，最新在前），根据 cursor 向更早翻页，用于聊天页侧边栏快速跳转到指定一轮对话。\n单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。\ncontent 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。\n日志存储为 ClickHouse 时每条带 seq（轮次号），可作为 /rounds 接口的 cursor 配合 inclusive=true 跳转定位；Loki 下无 seq。",
                 "consumes": [
                     "application/json"
                 ],
@@ -9262,6 +9321,9 @@
         "domain.AddTeamAdminResp": {
             "type": "object",
             "properties": {
+                "password": {
+                    "type": "string"
+                },
                 "user": {
                     "$ref": "#/definitions/domain.TeamUser"
                 }
@@ -11544,6 +11606,10 @@
                         "type": "string"
                     }
                 },
+                "seq": {
+                    "description": "轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值",
+                    "type": "integer"
+                },
                 "timestamp": {
                     "type": "integer"
                 }
@@ -11628,6 +11694,10 @@
                 "id": {
                     "description": "与前端 message.id 对齐：user-input-{timestamp}",
                     "type": "string"
+                },
+                "seq": {
+                    "description": "轮次号，可作为 /rounds 的 cursor 跳转定位；仅日志存储为 ClickHouse 时有值",
+                    "type": "integer"
                 },
                 "timestamp": {
                     "description": "纳秒，与 chunk.timestamp 对齐",
@@ -12724,6 +12794,9 @@
             "properties": {
                 "is_blocked": {
                     "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },

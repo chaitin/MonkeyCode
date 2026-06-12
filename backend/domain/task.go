@@ -326,11 +326,13 @@ type TaskControlReq struct {
 	ID uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 id
 }
 
-// TaskRoundsReq 查询任务历史轮次请求（向前翻页）
+// TaskRoundsReq 查询任务历史轮次请求（双向翻页）
 type TaskRoundsReq struct {
-	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
-	Cursor string    `json:"cursor" query:"cursor"`             // 分页游标
-	Limit  int       `json:"limit" query:"limit"`               // 返回的轮次数（默认 2，上限 10）
+	ID        uuid.UUID `json:"id" query:"id" validate:"required"`                                       // 任务 ID
+	Cursor    string    `json:"cursor" query:"cursor"`                                                   // 分页游标；日志存储为 ClickHouse 时即轮次号 seq
+	Limit     int       `json:"limit" query:"limit"`                                                     // 返回的轮次数（默认 2，上限 10）
+	Direction string    `json:"direction" query:"direction" validate:"omitempty,oneof=backward forward"` // 翻页方向，默认 backward（往更早翻）；forward 仅 ClickHouse 支持
+	Inclusive bool      `json:"inclusive" query:"inclusive"`                                             // 是否包含 cursor 指向的那一轮（跳转定位用），仅 ClickHouse 支持
 }
 
 // TaskRoundsResp 查询任务历史轮次响应
@@ -346,22 +348,24 @@ type TaskChunkEntry struct {
 	Event     string            `json:"event"`
 	Kind      string            `json:"kind"`
 	Timestamp int64             `json:"timestamp"`
+	Seq       uint32            `json:"seq,omitempty"` // 轮次号，可作为 cursor 翻页；仅日志存储为 ClickHouse 时有值
 	Labels    map[string]string `json:"labels,omitempty"`
 }
 
-// TaskUserInputsReq 查询任务用户输入列表请求（正序，从最早翻到最新）
+// TaskUserInputsReq 查询任务用户输入列表请求（倒序，从最新翻到最早）
 type TaskUserInputsReq struct {
 	ID     uuid.UUID `json:"id" query:"id" validate:"required"` // 任务 ID
-	Cursor string    `json:"cursor" query:"cursor"`             // 分页游标
+	Cursor string    `json:"cursor" query:"cursor"`             // 分页游标，第一页留空；编码上一页最后一条（最早一条）的纳秒时间戳
 	Limit  int       `json:"limit" query:"limit"`               // 返回条数（默认 20，上限 100）
 }
 
 // TaskUserInputItem 单条用户输入（侧边栏用）
 type TaskUserInputItem struct {
-	ID        string `json:"id"`        // 与前端 message.id 对齐：user-input-{timestamp}
-	Content   string `json:"content"`   // 用户输入文本，超过 500 字符截断
-	Truncated bool   `json:"truncated"` // 是否被截断
-	Timestamp int64  `json:"timestamp"` // 纳秒，与 chunk.timestamp 对齐
+	ID        string `json:"id"`            // 与前端 message.id 对齐：user-input-{timestamp}
+	Content   string `json:"content"`       // 用户输入文本，超过 500 字符截断
+	Truncated bool   `json:"truncated"`     // 是否被截断
+	Timestamp int64  `json:"timestamp"`     // 纳秒，与 chunk.timestamp 对齐
+	Seq       uint32 `json:"seq,omitempty"` // 轮次号，可作为 /rounds 的 cursor 跳转定位；仅日志存储为 ClickHouse 时有值
 }
 
 // TaskUserInputsResp 查询任务用户输入列表响应

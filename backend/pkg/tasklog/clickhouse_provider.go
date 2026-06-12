@@ -62,11 +62,15 @@ func (p *ClickHouseProvider) QueryLatestTurn(ctx context.Context, taskID uuid.UU
 	return resp, nil
 }
 
-func (p *ClickHouseProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, _ time.Time, cursor string, limit int) (*QueryTurnsResp, error) {
+// QueryTurns 按 turn_seq 双向翻页查询轮次。
+// backward 返回轮间倒序（最新轮在前），forward 返回轮间正序（最旧轮在前），轮内均按时间正序；
+// 即响应中最后一轮总是与 NextCursor 相邻的那一轮。
+func (p *ClickHouseProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, _ time.Time, opts QueryTurnsOpts) (*QueryTurnsResp, error) {
 	if p.client == nil {
 		return nil, ErrProviderUnavailable
 	}
 	table := p.client.Table()
+	limit := opts.Limit
 	if limit <= 0 {
 		limit = 2
 	}
@@ -74,17 +78,33 @@ func (p *ClickHouseProvider) QueryTurns(ctx context.Context, taskID uuid.UUID, _
 		limit = 10
 	}
 
+	var cmp, order string
+	switch opts.Direction {
+	case "", DirectionBackward:
+		cmp, order = "<", "DESC"
+		if opts.Inclusive {
+			cmp = "<="
+		}
+	case DirectionForward:
+		cmp, order = ">", "ASC"
+		if opts.Inclusive {
+			cmp = ">="
+		}
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrDirectionUnsupported, opts.Direction)
+	}
+
 	cursorFilter := ""
 	args := []any{taskID, taskID}
-	if cursor != "" {
-		turn, err := strconv.ParseUint(cursor, 10, 32)
+	if opts.Cursor != "" {
+		turn, err := strconv.ParseUint(opts.Cursor, 10, 32)
 		if err != nil {
 			return nil, err
 		}
-		cursorFilter = "AND turn_seq < ?"
+		cursorFilter = fmt.Sprintf("AND turn_seq %s ?", cmp)
 		args = append(args, uint32(turn))
 	}
-	args = append(args, limit+1)
+	args = append(args, limit)
 
 	q := fmt.Sprintf(`
 SELECT ts, event, kind, data, turn_seq
@@ -94,11 +114,11 @@ WHERE task_id = ? AND turn_seq IN (
 	FROM %[1]s
 	WHERE task_id = ?
 	%[2]s
-	ORDER BY turn_seq DESC
+	ORDER BY turn_seq %[3]s
 	LIMIT ?
 )
-ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
-`, table, cursorFilter)
+ORDER BY turn_seq %[3]s, ts ASC, msg_seq_start ASC, ingest_id ASC
+`, table, cursorFilter, order)
 
 	rows, err := p.client.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -107,8 +127,7 @@ ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
 	defer rows.Close()
 
 	chunks := make([]*TurnChunk, 0)
-	seenTurns := make(map[uint32]struct{}, limit+1)
-	turns := make([]uint32, 0, limit+1)
+	var boundarySeq uint32
 	for rows.Next() {
 		var (
 			ts      time.Time
@@ -120,30 +139,26 @@ ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
 		if err := rows.Scan(&ts, &event, &kind, &data, &turnSeq); err != nil {
 			return nil, err
 		}
-		if _, ok := seenTurns[turnSeq]; !ok {
-			seenTurns[turnSeq] = struct{}{}
-			turns = append(turns, turnSeq)
-		}
-		if len(turns) > limit {
-			continue
-		}
+		// 行按扫描方向排列，最后一行所在轮即本页边界轮
+		boundarySeq = turnSeq
 		chunks = append(chunks, &TurnChunk{
 			Data:      []byte(data),
 			Event:     event,
 			Kind:      kind,
 			Timestamp: ts.UTC().UnixNano(),
+			TurnSeq:   turnSeq,
 		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if len(turns) == 0 {
+	if len(chunks) == 0 {
 		return &QueryTurnsResp{}, nil
 	}
 
-	hasMore := len(turns) > limit
-	if hasMore {
-		turns = turns[:limit]
+	hasMore, err := p.hasTurnBeyond(ctx, taskID, boundarySeq, cmp)
+	if err != nil {
+		return nil, err
 	}
 
 	resp := &QueryTurnsResp{
@@ -151,14 +166,13 @@ ORDER BY turn_seq DESC, ts ASC, msg_seq_start ASC, ingest_id ASC
 		HasMore: hasMore,
 	}
 	if hasMore {
-		oldest := turns[len(turns)-1]
-		resp.NextCursor = strconv.FormatUint(uint64(oldest), 10)
+		resp.NextCursor = strconv.FormatUint(uint64(boundarySeq), 10)
 	}
 	return resp, nil
 }
 
-// QueryUserInputs 查询任务的所有 user-input 日志，正序（最早在前），用于侧边栏。
-// cursor 编码上一页最后一条的 ts 纳秒，下次拉取 `ts > cursor` 的条目。
+// QueryUserInputs 查询任务的所有 user-input 日志，倒序（最新在前），用于侧边栏。
+// cursor 编码上一页最后一条（最早一条）的 ts 纳秒，下次拉取 `ts < cursor` 的条目，向更早翻页。
 func (p *ClickHouseProvider) QueryUserInputs(ctx context.Context, taskID uuid.UUID, _ time.Time, cursor string, limit int) (*QueryUserInputsResp, error) {
 	if p.client == nil {
 		return nil, ErrProviderUnavailable
@@ -178,7 +192,7 @@ func (p *ClickHouseProvider) QueryUserInputs(ctx context.Context, taskID uuid.UU
 		if err != nil {
 			return nil, err
 		}
-		cursorFilter = "AND ts > ?"
+		cursorFilter = "AND ts < ?"
 		args = append(args, time.Unix(0, ns).UTC())
 	}
 	args = append(args, limit+1)
@@ -186,11 +200,11 @@ func (p *ClickHouseProvider) QueryUserInputs(ctx context.Context, taskID uuid.UU
 	// task_logs 是 MergeTree（无主键去重），偶发会因 ingest 重试落多行同 ts，
 	// LIMIT 1 BY ts 保证每个时间戳只返回一行（取 msg_seq_start/ingest_id 最小的那条）。
 	q := fmt.Sprintf(`
-SELECT ts, data
+SELECT ts, data, turn_seq
 FROM %s
 WHERE task_id = ? AND event = 'user-input'
 %s
-ORDER BY ts ASC, msg_seq_start ASC, ingest_id ASC
+ORDER BY ts DESC, msg_seq_start ASC, ingest_id ASC
 LIMIT 1 BY ts
 LIMIT ?
 `, table, cursorFilter)
@@ -204,15 +218,17 @@ LIMIT ?
 	entries := make([]*UserInputEntry, 0, limit+1)
 	for rows.Next() {
 		var (
-			ts   time.Time
-			data string
+			ts      time.Time
+			data    string
+			turnSeq uint32
 		)
-		if err := rows.Scan(&ts, &data); err != nil {
+		if err := rows.Scan(&ts, &data, &turnSeq); err != nil {
 			return nil, err
 		}
 		entries = append(entries, &UserInputEntry{
 			Timestamp: ts.UTC().UnixNano(),
 			Data:      []byte(data),
+			TurnSeq:   turnSeq,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -234,7 +250,21 @@ LIMIT ?
 }
 
 func (p *ClickHouseProvider) hasLowerTurn(ctx context.Context, taskID uuid.UUID, turnSeq uint32) (bool, error) {
-	if turnSeq == 0 {
+	return p.hasTurnBeyond(ctx, taskID, turnSeq, "<")
+}
+
+// hasTurnBeyond 判断 turnSeq 在 cmp 方向（"<"/"<="/">"/">="，含等号时退化为去掉等号）上是否还有别的轮次
+func (p *ClickHouseProvider) hasTurnBeyond(ctx context.Context, taskID uuid.UUID, turnSeq uint32, cmp string) (bool, error) {
+	// 边界轮自身已返回，探测下一页只看严格大于/小于
+	switch cmp {
+	case "<", "<=":
+		cmp = "<"
+	case ">", ">=":
+		cmp = ">"
+	default:
+		return false, fmt.Errorf("invalid turn comparator: %q", cmp)
+	}
+	if cmp == "<" && turnSeq == 0 {
 		return false, nil
 	}
 	table := p.client.Table()
@@ -242,10 +272,9 @@ func (p *ClickHouseProvider) hasLowerTurn(ctx context.Context, taskID uuid.UUID,
 	q := fmt.Sprintf(`
 SELECT turn_seq
 		FROM %s
-		WHERE task_id = ? AND turn_seq < ?
+		WHERE task_id = ? AND turn_seq %s ?
 		GROUP BY turn_seq
-		ORDER BY turn_seq DESC
-		LIMIT ?`, table)
+		LIMIT ?`, table, cmp)
 
 	rows, err := p.client.QueryContext(ctx, q, taskID, turnSeq, 1)
 	if err != nil {

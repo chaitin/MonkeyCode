@@ -198,6 +198,9 @@ other = "Task is running or VM is online, cannot delete"
 [err-task-concurrency-limit]
 other = "You already have a running task, please wait for it to finish before creating a new one"
 
+[err-task-rounds-direction-unsupported]
+other = "The task's log store does not support this paging direction"
+
 [err-model-not-found]
 other = "Model not found"
 

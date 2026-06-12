@@ -739,21 +739,27 @@ func (h *TaskHandler) writeCursor(wsConn *ws.WebsocketManager, cursor string, ha
 	})
 }
 
-// TaskTurns 查询任务历史轮次（原始 TaskChunk，向前翻页）
+// TaskTurns 查询任务历史轮次（原始 TaskChunk，双向翻页）
 //
 //	@Summary		查询任务历史轮次
-//	@Description	根据 cursor 向前翻页查询任务的历史轮次。limit 为轮次数（非条目数），
-//	@Description	limit=2 表示返回 2 轮的完整消息。返回的 chunks 按时间倒序排列（最新在前）。
+//	@Description	根据 cursor 翻页查询任务的历史轮次。limit 为轮次数（非条目数），
+//	@Description	limit=2 表示返回 2 轮的完整消息。direction=backward（默认）从 cursor 往更早翻，轮间倒序（最新轮在前）；
+//	@Description	direction=forward 往更新翻，轮间正序（最旧轮在前）；轮内消息始终按时间正序。
+//	@Description	即响应中最后一轮总是与 next_cursor 相邻的那一轮。前端应以每条 chunk 的 seq 做分组排序，不依赖数组顺序。
+//	@Description	日志存储为 ClickHouse 时 cursor 即轮次号 seq，可配合 inclusive=true 实现"跳转到第 seq 轮"；
+//	@Description	Loki 仅支持 backward 且不支持 inclusive，违反时返回 err-task-rounds-direction-unsupported。
 //	@Description	返回的 user-input.data 统一为 JSON payload 字符串，例如 `{"content":"57un57ut5aSE55CG","attachments":[]}`；content 为用户输入文本的 base64 编码，旧历史裸文本也会按该结构包装返回。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Param			id		query		string									true	"任务 ID"
-//	@Param			cursor	query		string									false	"分页游标"
-//	@Param			limit	query		int										false	"轮次数（默认 2，上限 10）"
-//	@Success		200		{object}	web.Resp{data=domain.TaskRoundsResp}	"成功"
-//	@Failure		500		{object}	web.Resp								"服务器内部错误"
+//	@Param			id			query		string									true	"任务 ID"
+//	@Param			cursor		query		string									false	"分页游标（ClickHouse 下即轮次号 seq）"
+//	@Param			limit		query		int										false	"轮次数（默认 2，上限 10）"
+//	@Param			direction	query		string									false	"翻页方向：backward（默认）/ forward"
+//	@Param			inclusive	query		bool									false	"是否包含 cursor 指向的那一轮（跳转定位用）"
+//	@Success		200			{object}	web.Resp{data=domain.TaskRoundsResp}	"成功"
+//	@Failure		500			{object}	web.Resp								"服务器内部错误"
 //	@Router			/api/v1/users/tasks/rounds [get]
 func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error {
 	ctx := c.Request().Context()
@@ -767,8 +773,17 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 
 	start := time.Unix(task.CreatedAt, 0)
 
-	result, err := h.tasklog.QueryTurns(ctx, task.ID, start, req.Cursor, req.Limit, task.LogStore)
+	opts := tasklog.QueryTurnsOpts{
+		Cursor:    req.Cursor,
+		Limit:     req.Limit,
+		Direction: tasklog.Direction(req.Direction),
+		Inclusive: req.Inclusive,
+	}
+	result, err := h.tasklog.QueryTurns(ctx, task.ID, start, opts, task.LogStore)
 	if err != nil {
+		if errors.Is(err, tasklog.ErrDirectionUnsupported) {
+			return errcode.ErrTaskRoundsDirectionUnsupported.Wrap(err)
+		}
 		h.logger.With("error", err, "task_id", task.ID).ErrorContext(ctx, "failed to query turns")
 		return errcode.ErrInternalServer.Wrap(fmt.Errorf("failed to query turns: %w", err))
 	}
@@ -780,12 +795,21 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 			Event:     c.Event,
 			Kind:      c.Kind,
 			Timestamp: c.Timestamp,
+			Seq:       c.TurnSeq,
 			Labels:    c.Labels,
 		})
 	}
 
-	// 兼容逻辑：当拉到最老的数据且第一条不是 user-input 时，从 db content 补充
-	if !result.HasMore && len(chunks) > 0 && chunks[0].Event != "user-input" {
+	// 兼容逻辑：触达最老一轮且第一条不是 user-input 时，从 db content 补充。
+	// backward 下 !HasMore 即触达最老；forward 下只有不带 cursor 的第一页才从最老开始。
+	reachedOldest := false
+	switch opts.Direction {
+	case "", tasklog.DirectionBackward:
+		reachedOldest = !result.HasMore
+	case tasklog.DirectionForward:
+		reachedOldest = req.Cursor == ""
+	}
+	if reachedOldest && len(chunks) > 0 && chunks[0].Event != "user-input" {
 		contentData := normalizeUserInputData([]byte(task.Content))
 		chunks = append([]*domain.TaskChunkEntry{{
 			Data:      contentData,
@@ -810,9 +834,10 @@ func (h *TaskHandler) TaskTurns(c *web.Context, req domain.TaskRoundsReq) error 
 // TaskUserInputs 查询任务的所有 user-input 列表（侧边栏快速跳转用）
 //
 //	@Summary		查询任务用户输入列表
-//	@Description	查询任务的所有 user-input 消息（正序，最早在前），用于聊天页侧边栏快速跳转到指定一轮对话。
+//	@Description	查询任务的 user-input 消息（倒序，最新在前），根据 cursor 向更早翻页，用于聊天页侧边栏快速跳转到指定一轮对话。
 //	@Description	单条返回的 id 形如 `user-input-{timestamp_ns}`，与前端聊天页消息列表中的 `data-message-id` 对齐。
 //	@Description	content 已解码为明文，超出 500 字符会截断并将 truncated 置为 true。
+//	@Description	日志存储为 ClickHouse 时每条带 seq（轮次号），可作为 /rounds 接口的 cursor 配合 inclusive=true 跳转定位；Loki 下无 seq。
 //	@Tags			【用户】任务管理
 //	@Accept			json
 //	@Produce		json
@@ -843,14 +868,14 @@ func (h *TaskHandler) TaskUserInputs(c *web.Context, req domain.TaskUserInputsRe
 
 	items := make([]*domain.TaskUserInputItem, 0, len(result.Entries)+1)
 	for _, e := range result.Entries {
-		items = append(items, buildTaskUserInputItem(e.Timestamp, e.Data))
+		items = append(items, buildTaskUserInputItem(e.Timestamp, e.Data, e.TurnSeq))
 	}
 
 	// 兼容历史任务：仅当 ClickHouse/Loki 里完全没有 user-input 记录时，才用 task.Content
 	// 合成一条首条（对齐 /rounds 的兜底语义）。不要根据时间戳启发式判断，因为 task.CreatedAt
 	// 和实际第一条 user-input 落库时间天然会差几十秒（用户思考 + 输入），会误判出重复。
 	if req.Cursor == "" && !result.HasMore && len(items) == 0 && len(task.Content) > 0 {
-		synth := buildTaskUserInputItem(taskCreatedAt.UnixNano(), normalizeUserInputData([]byte(task.Content)))
+		synth := buildTaskUserInputItem(taskCreatedAt.UnixNano(), normalizeUserInputData([]byte(task.Content)), 0)
 		items = append([]*domain.TaskUserInputItem{synth}, items...)
 	}
 
@@ -866,7 +891,7 @@ func (h *TaskHandler) TaskUserInputs(c *web.Context, req domain.TaskUserInputsRe
 
 const taskUserInputPreviewMaxRunes = 500
 
-func buildTaskUserInputItem(timestampNS int64, data []byte) *domain.TaskUserInputItem {
+func buildTaskUserInputItem(timestampNS int64, data []byte, turnSeq uint32) *domain.TaskUserInputItem {
 	parsed := parseUserInputData(data)
 	content, truncated := truncateRunes(string(parsed.Content), taskUserInputPreviewMaxRunes)
 	// 截到毫秒边界：WebSocket 推送 chunk 时做了 ns/1e6 整数除（task.go: chunk.Timestamp/1e6），
@@ -878,6 +903,7 @@ func buildTaskUserInputItem(timestampNS int64, data []byte) *domain.TaskUserInpu
 		Content:   content,
 		Truncated: truncated,
 		Timestamp: alignedNS,
+		Seq:       turnSeq,
 	}
 }
 
