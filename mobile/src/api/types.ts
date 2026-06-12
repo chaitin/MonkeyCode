@@ -164,6 +164,45 @@ export interface Model {
   access_level?: string;
   weight?: number;
   owner?: { id?: string; name?: string; type?: OwnerType };
+  /** 以下字段仅自有模型（owner.type === 'private'）返回，共享模型会被后端脱敏 */
+  base_url?: string;
+  api_key?: string;
+  interface_type?: ModelInterfaceType;
+  context_limit?: number;
+  output_limit?: number;
+  thinking_enabled?: boolean;
+  support_image?: boolean;
+}
+
+export type ModelInterfaceType = 'openai_chat' | 'openai_responses' | 'anthropic';
+
+/** 创建自有模型请求体（对齐后端 DomainCreateModelReq） */
+export interface CreateModelReq {
+  provider: string;
+  model: string;
+  base_url: string;
+  api_key: string;
+  interface_type: ModelInterfaceType;
+  remark?: string;
+  context_limit?: number;
+  output_limit?: number;
+  thinking_enabled?: boolean;
+  support_image?: boolean;
+  is_default?: boolean;
+}
+
+/** 模型健康检查结果（DomainCheckModelResp） */
+export interface CheckModelResp {
+  success?: boolean;
+  error?: string;
+}
+
+/** 更新自有模型请求体（对齐后端 DomainUpdateModelReq，字段均可选） */
+export type UpdateModelReq = Partial<CreateModelReq>;
+
+/** 供应商可用模型项（DomainProviderModelListItem） */
+export interface ProviderModelItem {
+  model?: string;
 }
 
 export interface Image {
