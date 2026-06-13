@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -126,9 +127,58 @@ func TestAgentAuthSoftDeletedRecycledVMStillTriggersDelete(t *testing.T) {
 	}
 }
 
+func TestAgentAuthCachesMissingAccessToken(t *testing.T) {
+	rdb := newTestRedis(t)
+	repo := &internalHostRepoStub{}
+	handler := &InternalHostHandler{
+		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		redis:         rdb,
+		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
+		repo:          repo,
+		skipSoftDelete: func(ctx context.Context) context.Context {
+			return ctx
+		},
+	}
+
+	if _, err := handler.agentAuth(context.Background(), "missing-agent", "machine-1"); err == nil {
+		t.Fatal("first agent auth error is nil")
+	}
+	if _, err := handler.agentAuth(context.Background(), "missing-agent", "machine-1"); err == nil {
+		t.Fatal("second agent auth error is nil")
+	}
+	if repo.accessTokenCalls != 1 {
+		t.Fatalf("GetVirtualMachineByAccessToken calls = %d, want 1", repo.accessTokenCalls)
+	}
+}
+
+func TestCheckTokenLogsMissingAgentVMBelowError(t *testing.T) {
+	rdb := newTestRedis(t)
+	handler := &captureSlogHandler{}
+	h := &InternalHostHandler{
+		logger:        slog.New(handler),
+		redis:         rdb,
+		getAgentToken: func(context.Context, string) (string, error) { return "", redis.Nil },
+		repo:          &internalHostRepoStub{},
+		skipSoftDelete: func(ctx context.Context) context.Context {
+			return ctx
+		},
+	}
+
+	_, err := h.agentAuth(context.Background(), "missing-agent-log", "machine-1")
+	if err == nil {
+		t.Fatal("agent auth error is nil")
+	}
+	h.logCheckTokenError(context.Background(), h.logger.With("fn", "CheckToken"), err)
+
+	if slices.Contains(handler.levels, slog.LevelError) {
+		t.Fatalf("log levels = %v, want no error level for missing vm", handler.levels)
+	}
+}
+
 type internalHostRepoStub struct {
 	vm               *db.VirtualMachine
 	accessTokenVM    *db.VirtualMachine
+	accessTokenCalls int
 	assertSkipMarker bool
 	skipMarkerKey    any
 	skipMarkerValue  string
@@ -168,6 +218,7 @@ func (s *internalHostRepoStub) GetTaskIDByVMID(context.Context, string) (string,
 }
 
 func (s *internalHostRepoStub) GetVirtualMachineByAccessToken(ctx context.Context, _ string) (*db.VirtualMachine, error) {
+	s.accessTokenCalls++
 	if s.assertSkipMarker {
 		v, ok := ctx.Value(s.skipMarkerKey).(string)
 		if !ok || v != s.skipMarkerValue {
@@ -324,4 +375,25 @@ func newTestRedis(t *testing.T) *redis.Client {
 		_ = rdb.Close()
 	})
 	return rdb
+}
+
+type captureSlogHandler struct {
+	levels []slog.Level
+}
+
+func (h *captureSlogHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
+func (h *captureSlogHandler) Handle(_ context.Context, r slog.Record) error {
+	h.levels = append(h.levels, r.Level)
+	return nil
+}
+
+func (h *captureSlogHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *captureSlogHandler) WithGroup(string) slog.Handler {
+	return h
 }

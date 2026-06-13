@@ -222,7 +222,7 @@ func (h *InternalHostHandler) CheckToken(c *web.Context, req taskflow.CheckToken
 	}
 
 	if err != nil {
-		logger.With("error", err).ErrorContext(c.Request().Context(), "failed to check token")
+		h.logCheckTokenError(c.Request().Context(), logger, err)
 		return err
 	}
 
@@ -272,8 +272,14 @@ func (h *InternalHostHandler) agentAuth(ctx context.Context, token, mid string) 
 
 	// 2) Redis miss 时按 access_token 查询数据库
 	// 注意：migration 已将旧 VM 的 access_token 回填为 id，因此旧 VM 也能通过此查询找到
+	if h.isAgentVMNotFoundCached(ctx, token) {
+		return nil, errAgentVMNotFoundCached
+	}
 	vm, err := h.repo.GetVirtualMachineByAccessToken(h.skipSoftDelete(ctx), token)
 	if err != nil {
+		if db.IsNotFound(err) {
+			h.cacheAgentVMNotFound(ctx, token)
+		}
 		return nil, err
 	}
 
