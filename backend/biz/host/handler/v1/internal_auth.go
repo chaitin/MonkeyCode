@@ -16,7 +16,7 @@ import (
 const (
 	recycledDeleteRetryTTL = 30 * time.Second
 	recycledDeleteTimeout  = 5 * time.Second
-	agentVMNotFoundTTL     = 30 * time.Second
+	agentVMNotFoundTTL     = 24 * time.Hour
 )
 
 var (
