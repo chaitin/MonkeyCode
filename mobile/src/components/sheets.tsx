@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Model } from '@/api/types';
 import type { PortForwardInfo } from '@/api/control';
@@ -203,6 +204,70 @@ export function CopySheet({ visible, text, onClose, onCopyAll }: {
           )}
         </View>
       </SheetShell>
+    </Modal>
+  );
+}
+
+/**
+ * 手动输入仓库地址对话框：在「选择仓库」列表里点「手动输入仓库地址」后弹出，
+ * 让用户直接填写 Git 仓库地址（无需先在后台创建项目）。居中弹窗 + 键盘避让，
+ * 避免被软键盘遮挡。
+ */
+export function RepoUrlSheet({ visible, initialUrl, onConfirm, onClose }: {
+  visible: boolean; initialUrl?: string; onConfirm: (url: string) => void; onClose: () => void;
+}) {
+  const t = useTheme();
+  const inputRef = React.useRef<TextInput>(null);
+  const [url, setUrl] = React.useState(initialUrl || '');
+  const [err, setErr] = React.useState('');
+  // 打开瞬间把输入同步成外部已有地址、清掉旧报错（用「渲染期间调整 state」的写法，避免 effect 级联渲染）
+  const [wasOpen, setWasOpen] = React.useState(visible);
+  if (visible !== wasOpen) {
+    setWasOpen(visible);
+    if (visible) { setUrl(initialUrl || ''); setErr(''); }
+  }
+
+  const confirm = () => {
+    const v = url.trim();
+    if (!v) { setErr('请输入仓库地址'); return; }
+    if (!/^(https?:\/\/|ssh:\/\/|git@)/i.test(v)) { setErr('请输入有效的 Git 地址（http(s):// 或 git@）'); return; }
+    onConfirm(v);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent onShow={() => inputRef.current?.focus()}>
+      {/* 居中对话框需压暗背景并拦截背景点击（点背景即关闭） */}
+      <Pressable onPress={onClose} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+      <KeyboardAvoidingView behavior="padding" style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26 }} pointerEvents="box-none">
+          <View style={{ width: '100%', backgroundColor: t.bg2, borderRadius: 22, borderWidth: 1, borderColor: t.line2, padding: 20, ...t.shLift }}>
+            <Text style={{ color: t.tx, fontSize: 17, fontWeight: '700' }}>手动输入仓库地址</Text>
+            <Text style={{ color: t.tx3, fontSize: 12.5, marginTop: 4, marginBottom: 14 }}>填写 Git 仓库地址，任务将基于该仓库运行</Text>
+            <TextInput
+              ref={inputRef}
+              value={url}
+              onChangeText={(v) => { setUrl(v); if (err) setErr(''); }}
+              placeholder="https://github.com/owner/repo.git"
+              placeholderTextColor={t.tx3}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="done"
+              onSubmitEditing={confirm}
+              style={{ borderWidth: 1, borderColor: err ? t.red : t.line2, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: t.tx, backgroundColor: t.bg, fontFamily: 'monospace' }}
+            />
+            {err ? <Text style={{ color: t.red, fontSize: 12.5, marginTop: 8 }}>{err}</Text> : null}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+              <Pressable onPress={onClose} style={({ pressed }) => [{ flex: 1, paddingVertical: 13, borderRadius: 13, alignItems: 'center', backgroundColor: t.bg4 }, pressed && { opacity: 0.8 }]}>
+                <Text style={{ color: t.tx2, fontSize: 15, fontWeight: '600' }}>取消</Text>
+              </Pressable>
+              <Pressable onPress={confirm} style={({ pressed }) => [{ flex: 1, paddingVertical: 13, borderRadius: 13, alignItems: 'center', backgroundColor: t.ac }, pressed && { opacity: 0.85 }]}>
+                <Text style={{ color: t.acInk, fontSize: 15, fontWeight: '700' }}>确定</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

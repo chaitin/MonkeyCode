@@ -9,13 +9,24 @@ import type { Model, Project } from '@/api/types';
 import { ConcurrentLimitModal } from '@/components/ConcurrentLimitModal';
 import { Icons, providerIconForUrl } from '@/components/Icons';
 import { MicButton } from '@/components/MicButton';
-import { ModelSheet } from '@/components/sheets';
+import { ModelSheet, RepoUrlSheet } from '@/components/sheets';
 import { Card, IconButton, MonkeyLogo, PickerSheet, PrimaryButton, type PickerOption } from '@/components/ui';
 import { useSpeechToText } from '@/speech/useSpeechToText';
 import { DEFAULT_SKILL_IDS, modelLabel, pickDefaultImage, pickDefaultModel, TASK_DEFAULTS } from '@/config';
 import { spacing, useTheme, type Theme } from '@/theme';
 
 const SUGGESTIONS = ['修复一个线上 bug', '为这个仓库写单元测试', '重构这个模块', '解释这段代码做了什么'];
+
+// 「选择仓库」列表里的「手动输入仓库地址」入口标识（区别于真实 project.id）
+const MANUAL_REPO_KEY = '__manual_repo__';
+
+/** 从 Git 地址里取 owner/repo 作为简短展示名（取不到则回退为整段地址）。 */
+function repoNameFromUrl(url: string): string {
+  const cleaned = url.trim().replace(/\.git$/i, '').replace(/\/+$/, '');
+  const m = cleaned.match(/[/:]([^/:]+\/[^/:]+)$/);
+  if (m) return m[1];
+  return cleaned.split(/[/:]/).filter(Boolean).pop() || url;
+}
 
 function ConfigRow({ icon, label, value, sub, divider, onPress, t }: { icon: string; label: string; value: string; sub?: string; divider?: boolean; onPress: () => void; t: Theme }) {
   const I = Icons[icon];
@@ -50,9 +61,11 @@ export default function NewTaskScreen() {
   const [content, setContent] = useState('');
   const [modelId, setModelId] = useState('');
   const [imageId, setImageId] = useState('');
-  const [repoKey, setRepoKey] = useState<string>(params.projectId || ''); // '' = 不关联仓库；否则为 project.id
+  const [repoKey, setRepoKey] = useState<string>(params.projectId || ''); // '' = 不关联仓库；project.id = 选中项目；MANUAL_REPO_KEY = 手动输入
+  const [manualRepo, setManualRepo] = useState(''); // 手动输入的 Git 仓库地址
 
   const [picking, setPicking] = useState<'repo' | 'model' | null>(null);
+  const [manualOpen, setManualOpen] = useState(false); // 手动输入仓库地址对话框
   const [limitOpen, setLimitOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +108,7 @@ export default function NewTaskScreen() {
 
   const repoOptions: PickerOption[] = [
     { key: '', title: '快速开始', sub: '不关联仓库', icon: 'sparkle' },
+    { key: MANUAL_REPO_KEY, title: '手动输入仓库地址', sub: manualRepo || '填写 Git 仓库地址', icon: manualRepo ? providerIconForUrl(manualRepo) : 'git' },
     ...projects.map((p, i) => ({ key: p.id || `p${i}`, title: p.name || p.full_name || '项目', sub: p.repo_url, icon: providerIconForUrl(p.repo_url) })),
   ];
 
@@ -104,7 +118,11 @@ export default function NewTaskScreen() {
     if (!modelId) { setError('请选择模型'); return; }
     setSubmitting(true);
     try {
-      const repo = selectedProject ? { repo_url: selectedProject.repo_url || undefined } : {};
+      // 手动输入的仓库地址优先；否则用所选项目；都没有则不关联仓库（快速开始）
+      const manualUrl = repoKey === MANUAL_REPO_KEY ? manualRepo.trim() : '';
+      const repo = manualUrl
+        ? { repo_url: manualUrl }
+        : selectedProject ? { repo_url: selectedProject.repo_url || undefined } : {};
       const task = await createTask({
         content: content.trim(),
         cli_name: TASK_DEFAULTS.cliName,
@@ -114,7 +132,7 @@ export default function NewTaskScreen() {
         task_type: 'develop',
         repo,
         resource: { ...TASK_DEFAULTS.resource },
-        extra: { skill_ids: DEFAULT_SKILL_IDS, project_id: selectedProject?.id },
+        extra: { skill_ids: DEFAULT_SKILL_IDS, project_id: manualUrl ? undefined : selectedProject?.id },
       });
       if (task?.id) router.replace(`/task/${task.id}`);
       else setError('任务创建成功但未返回 ID');
@@ -124,10 +142,12 @@ export default function NewTaskScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [content, imageId, modelId, router, selectedProject]);
+  }, [content, imageId, modelId, router, selectedProject, repoKey, manualRepo]);
 
   // 仓库行只展示一处信息，避免「快速开始 / 不关联仓库」「名字 / 同名仓库路径」这种左右重复。
-  const repoValue = selectedProject ? (selectedProject.full_name || selectedProject.name || '项目') : '不关联仓库';
+  const repoValue = repoKey === MANUAL_REPO_KEY && manualRepo
+    ? repoNameFromUrl(manualRepo)
+    : selectedProject ? (selectedProject.full_name || selectedProject.name || '项目') : '不关联仓库';
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior="padding">
@@ -199,7 +219,14 @@ export default function NewTaskScreen() {
       ) : null}
 
       <PickerSheet visible={picking === 'repo'} title="选择仓库" options={repoOptions} selected={repoKey}
-        onPick={(k) => { setRepoKey(k); setPicking(null); }} onClose={() => setPicking(null)} />
+        onPick={(k) => {
+          // 「手动输入仓库地址」不直接选中，而是先收起列表、弹出输入框
+          if (k === MANUAL_REPO_KEY) { setPicking(null); setManualOpen(true); return; }
+          setRepoKey(k); setPicking(null);
+        }} onClose={() => setPicking(null)} />
+      <RepoUrlSheet visible={manualOpen} initialUrl={manualRepo}
+        onConfirm={(u) => { setManualRepo(u); setRepoKey(MANUAL_REPO_KEY); setManualOpen(false); }}
+        onClose={() => setManualOpen(false)} />
       <ModelSheet visible={picking === 'model'} models={models} selectedId={modelId} plan={plan}
         onPick={(k) => { setModelId(k); setPicking(null); }} onClose={() => setPicking(null)} />
       <ConcurrentLimitModal visible={limitOpen} onClose={() => setLimitOpen(false)} onStopped={() => { setLimitOpen(false); setTimeout(() => submit(), 400); }} />
