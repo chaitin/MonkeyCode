@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,9 +16,13 @@ import (
 const (
 	recycledDeleteRetryTTL = 30 * time.Second
 	recycledDeleteTimeout  = 5 * time.Second
+	agentVMNotFoundTTL     = 30 * time.Second
 )
 
-var errAgentVMRecycled = errors.New("agent vm is recycled")
+var (
+	errAgentVMRecycled       = errors.New("agent vm is recycled")
+	errAgentVMNotFoundCached = errors.New("agent vm not found")
+)
 
 type agentTokenGetter func(ctx context.Context, key string) (string, error)
 
@@ -41,6 +46,39 @@ return nil
 			return "", redis.Nil
 		}
 		return b, nil
+	}
+}
+
+func (h *InternalHostHandler) logCheckTokenError(ctx context.Context, logger *slog.Logger, err error) {
+	if db.IsNotFound(err) || errors.Is(err, errAgentVMNotFoundCached) {
+		logger.With("error", err).DebugContext(ctx, "failed to check token")
+		return
+	}
+	logger.With("error", err).ErrorContext(ctx, "failed to check token")
+}
+
+func agentVMNotFoundCacheKey(token string) string {
+	return fmt.Sprintf("agent:vm:not-found:%s", token)
+}
+
+func (h *InternalHostHandler) isAgentVMNotFoundCached(ctx context.Context, token string) bool {
+	if h.redis == nil {
+		return false
+	}
+	ok, err := h.redis.Exists(ctx, agentVMNotFoundCacheKey(token)).Result()
+	if err != nil {
+		h.logger.WarnContext(ctx, "check agent vm not found cache failed", "error", err)
+		return false
+	}
+	return ok > 0
+}
+
+func (h *InternalHostHandler) cacheAgentVMNotFound(ctx context.Context, token string) {
+	if h.redis == nil {
+		return
+	}
+	if err := h.redis.Set(ctx, agentVMNotFoundCacheKey(token), "1", agentVMNotFoundTTL).Err(); err != nil {
+		h.logger.WarnContext(ctx, "cache agent vm not found failed", "error", err)
 	}
 }
 

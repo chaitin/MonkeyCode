@@ -31,6 +31,9 @@ const (
 	sleepQueueKey   = "vm:idle:sleep"
 	notifyQueueKey  = "vm:idle:notify"
 	recycleQueueKey = "vm:idle:recycle"
+
+	vmIdleDebounceTTL = 30 * time.Second
+	vmNotFoundTTL     = 30 * time.Second
 )
 
 // notifySchedule 描述一档"距回收还有 lead 时"要触发的提醒，及它应当落到哪些渠道。
@@ -220,24 +223,39 @@ func buildVMIdleSchedulePlan(policy *domain.TeamTaskVMIdlePolicy, schedules []no
 }
 
 func (r *vmIdleRefresher) Refresh(ctx context.Context, vmID string) error {
+	notFoundKey := fmt.Sprintf("vm:idle:not-found:%s", vmID)
+	if exists, err := r.redis.Exists(ctx, notFoundKey).Result(); err == nil && exists > 0 {
+		return nil
+	} else if err != nil {
+		r.logger.WarnContext(ctx, "redis not found cache check failed", "vmID", vmID, "error", err)
+	}
+
+	debounceKey := fmt.Sprintf("vm:idle:debounce:%s", vmID)
+	ok, err := r.redis.SetNX(ctx, debounceKey, "1", vmIdleDebounceTTL).Result()
+	if err != nil {
+		r.logger.ErrorContext(ctx, "redis SetNX failed", "vmID", vmID, "error", err)
+		return fmt.Errorf("redis debounce for vm %s: %w", vmID, err)
+	}
+	if !ok {
+		return nil
+	}
+
 	vm, err := r.hostRepo.GetVirtualMachine(ctx, vmID)
 	if err != nil {
+		if db.IsNotFound(err) {
+			if setErr := r.redis.Set(ctx, notFoundKey, "1", vmNotFoundTTL).Err(); setErr != nil {
+				r.logger.WarnContext(ctx, "redis set not found cache failed", "vmID", vmID, "error", setErr)
+			}
+			r.logger.DebugContext(ctx, "skip idle timer for missing VM", "vmID", vmID)
+			return nil
+		}
+		_ = r.redis.Del(ctx, debounceKey).Err()
 		r.logger.ErrorContext(ctx, "failed to get vm", "vmID", vmID, "error", err)
 		return fmt.Errorf("get vm %s: %w", vmID, err)
 	}
 
 	if len(vm.Edges.Tasks) == 0 {
 		r.logger.DebugContext(ctx, "skip idle timer for countdown VM", "vmID", vmID)
-		return nil
-	}
-
-	debounceKey := fmt.Sprintf("vm:idle:debounce:%s", vmID)
-	ok, err := r.redis.SetNX(ctx, debounceKey, "1", 30*time.Second).Result()
-	if err != nil {
-		r.logger.ErrorContext(ctx, "redis SetNX failed", "vmID", vmID, "error", err)
-		return fmt.Errorf("redis debounce for vm %s: %w", vmID, err)
-	}
-	if !ok {
 		return nil
 	}
 
