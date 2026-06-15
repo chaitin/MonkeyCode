@@ -221,6 +221,69 @@ export interface Skill {
   tags?: string[];
 }
 
+/** Git 平台类型（对齐后端 consts.GitPlatform）。internal 为系统内部身份，不对用户展示。 */
+export type GitPlatform = 'github' | 'gitlab' | 'gitea' | 'gitee' | 'codeup' | 'cnb' | 'atomgit' | 'internal';
+
+/** Git 身份有权限访问的仓库（git-identities 详情接口返回）。 */
+export interface AuthRepository {
+  url?: string;
+  full_name?: string;
+  description?: string;
+}
+
+/** Git 身份凭证（对齐后端 domain.GitIdentity）。 */
+export interface GitIdentity {
+  id?: string;
+  platform?: GitPlatform;
+  base_url?: string;
+  username?: string;
+  email?: string;
+  access_token?: string;
+  remark?: string;
+  organization_id?: string;
+  /** true 表示通过 GitHub App 安装绑定（无需手动 token，编辑时隐藏 token 字段） */
+  is_installation_app?: boolean;
+  created_at?: string;
+  /** 仅 git-identities 详情接口返回：该身份有权访问的仓库列表 */
+  authorized_repositories?: AuthRepository[];
+}
+
+/** 添加 Git 身份请求体（对齐后端 domain.AddGitIdentityReq）。 */
+export interface AddGitIdentityReq {
+  platform: GitPlatform;
+  base_url: string;
+  access_token: string;
+  username: string;
+  email: string;
+  remark?: string;
+  organization_id?: string;
+}
+
+/** 更新 Git 身份请求体（对齐后端 domain.UpdateGitIdentityReq，字段均可选，只传需变更的）。 */
+export interface UpdateGitIdentityReq {
+  platform?: GitPlatform;
+  base_url?: string;
+  access_token?: string;
+  username?: string;
+  email?: string;
+  remark?: string;
+  organization_id?: string;
+}
+
+/** OAuth 授权地址响应（domain.OAuthURLResp）。 */
+export interface OAuthURLResp {
+  url?: string;
+}
+
+/** 创建项目请求体（对齐后端 domain.CreateProjectReq，移动端用到的子集）。 */
+export interface CreateProjectReq {
+  name?: string;
+  description?: string;
+  platform?: GitPlatform;
+  git_identity_id?: string;
+  repo_url?: string;
+}
+
 /** 创建任务请求体（对齐后端 DomainCreateTaskReq） */
 export interface CreateTaskReq {
   content: string;

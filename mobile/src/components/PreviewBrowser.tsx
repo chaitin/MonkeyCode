@@ -79,6 +79,12 @@ export function PreviewBrowser({ url, minimized, onMinimize, onClose }: {
       <WebView
         ref={ref}
         source={{ uri: url }}
+        // cookie 取默认行为，刻意不做处理：
+        //  · 别加 sharedCookiesEnabled —— 会把 App 会话 cookie 带进预览；
+        //  · 别加 incognito —— iOS 会清掉预览站「自己」的 cookie/登录态（无痕，关掉即丢），
+        //    Android 的 incognito 还会 removeAllCookies 把共用的 App 会话一并删掉（直接登出）。
+        // App 会话 cookie 是 host-only（后端 SetCookie 未设 Domain），本就不会发给不同域的预览，
+        // 既不泄露登录态、又能让被预览的 Web 应用正常保留自己的 cookie。
         {...(Platform.OS === 'android' ? { cacheEnabled: true } : null)}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}

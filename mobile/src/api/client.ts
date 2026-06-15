@@ -6,21 +6,26 @@
  * 后续请求无需手动携带 token。
  */
 import type {
+  AddGitIdentityReq,
   ApiEnvelope,
   CheckModelResp,
   CreateModelReq,
+  CreateProjectReq,
   CreateTaskReq,
+  GitIdentity,
   Image,
   InvitationListResp,
   ListProjectResp,
   ListTaskResp,
   Model,
+  OAuthURLResp,
   Project,
   ProjectTask,
   ProviderModelItem,
   Skill,
   Subscription,
   TaskRoundsResp,
+  UpdateGitIdentityReq,
   UpdateModelReq,
   UserStatus,
   Wallet,
@@ -276,6 +281,51 @@ export async function listProjects(params: {
 export async function getProjectDetail(id: string): Promise<Project | null> {
   const resp = await request<Project>(`/api/v1/users/projects/${id}`);
   return resp.data ?? null;
+}
+
+/** 创建项目（关联一个已绑定的 Git 身份 + 仓库）。对齐 Web add-project。 */
+export async function createProject(req: CreateProjectReq): Promise<Project | null> {
+  const resp = await request<Project>('/api/v1/users/projects', { method: 'POST', body: req });
+  return resp.data ?? null;
+}
+
+/* ----------------------------- Git 身份 ----------------------------- */
+
+/** 当前用户的 Git 身份列表（过滤系统内部身份，与 Web data-provider 一致）。 */
+export async function listGitIdentities(): Promise<GitIdentity[]> {
+  const resp = await request<GitIdentity[]>('/api/v1/users/git-identities');
+  return (resp.data ?? []).filter((i) => i.platform !== 'internal');
+}
+
+/** 单个 Git 身份详情，含 authorized_repositories；flush=true 刷新远端仓库缓存。 */
+export async function getGitIdentity(id: string, flush = false): Promise<GitIdentity | null> {
+  const resp = await request<GitIdentity>(`/api/v1/users/git-identities/${id}`, { query: { flush } });
+  return resp.data ?? null;
+}
+
+/** 手动绑定 Git 身份（填写 Access Token 方式）。 */
+export async function addGitIdentity(req: AddGitIdentityReq): Promise<GitIdentity | null> {
+  const resp = await request<GitIdentity>('/api/v1/users/git-identities', { method: 'POST', body: req });
+  return resp.data ?? null;
+}
+
+/** 更新 Git 身份（只传需变更的字段；platform/base_url 不可改，access_token 留空表示不动）。 */
+export function updateGitIdentity(id: string, req: UpdateGitIdentityReq) {
+  return request(`/api/v1/users/git-identities/${id}`, { method: 'PUT', body: req });
+}
+
+/** 移除 Git 身份。被项目占用时后端返回 409。 */
+export function deleteGitIdentity(id: string) {
+  return request(`/api/v1/users/git-identities/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * 获取第三方平台 OAuth 授权地址（gitee / gitea / gitlab）。
+ * 由当前会话 Cookie 关联用户，返回的 url 在 WebView 里打开完成授权。GitLab 需传 base 指定实例。
+ */
+export async function getGitOAuthUrl(platform: string, base?: string): Promise<string> {
+  const resp = await request<OAuthURLResp>(`/api/v1/${platform}/authorize_url`, { query: base ? { base } : undefined });
+  return resp.data?.url ?? '';
 }
 
 export async function getTaskDetail(id: string): Promise<ProjectTask | null> {
