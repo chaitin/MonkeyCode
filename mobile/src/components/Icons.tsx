@@ -69,6 +69,8 @@ export const Icons: Record<string, IconFn> = {
   server: (p) => <Ic {...p}><Rect x={4} y={4.5} width={16} height={6} rx={2} /><Rect x={4} y={13.5} width={16} height={6} rx={2} /><Path d="M7.5 7.5h.01M7.5 16.5h.01" /></Ic>,
   globe: (p) => <Ic {...p}><Circle cx={12} cy={12} r={9} /><Path d="M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 0 0 0 18M12.5 3a17 17 0 0 1 0 18" /></Ic>,
   trash: (p) => <Ic {...p}><Path d="M4.5 7h15M9 7V5.4A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.4V7M6.5 7l.9 11.2A2 2 0 0 0 9.4 20h5.2a2 2 0 0 0 2-1.8L17.5 7M10 11v5M14 11v5" /></Ic>,
+  key: (p) => <Ic {...p}><Circle cx={8} cy={8} r={4.2} /><Path d="M11 11l8 8M16 16l2-2M18.5 18.5l2-2" /></Ic>,
+  link: (p) => <Ic {...p}><Path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" /></Ic>,
   // 品牌标识（实心，currentColor）
   github: ({ size = 22, color = '#000', style }) => (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={style}>
