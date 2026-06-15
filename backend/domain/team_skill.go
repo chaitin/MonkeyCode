@@ -17,6 +17,27 @@ type TeamSkillUsecase interface {
 	Delete(ctx context.Context, teamUser *TeamUser, req *DeleteTeamSkillReq) error
 }
 
+// UserSkillUsecase powers the user-facing /api/v1/skills picker and the
+// task-dispatch skill resolution path. Both surfaces are scoped to the
+// requesting user's active team and rewrite skill artifacts with short-lived
+// presigned GET URLs.
+type UserSkillUsecase interface {
+	List(ctx context.Context, user *User) (*ListTeamSkillsResp, error)
+	// Refs resolves the requested skill IDs against the user's active team
+	// and returns one entry per matched skill carrying the presigned zip URL.
+	// IDs that don't belong to the user's team or have no package are
+	// silently dropped (task creation must not fail on a stale picker).
+	Refs(ctx context.Context, user *User, skillIDs []uuid.UUID) ([]SkillRef, error)
+}
+
+// SkillRef is the agent-dispatch view of a skill: a presigned download URL
+// plus the metadata the agent needs to register the skill in-VM.
+type SkillRef struct {
+	Name          string
+	ZipURL        string
+	EntryFilename string
+}
+
 type TeamSkillRepo interface {
 	List(ctx context.Context, teamID uuid.UUID) ([]*db.Skill, error)
 	Create(ctx context.Context, teamID, userID uuid.UUID, req *AddTeamSkillReq) (*db.Skill, error)

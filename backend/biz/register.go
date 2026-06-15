@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/project"
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
 	"github.com/chaitin/MonkeyCode/backend/biz/setting"
+	"github.com/chaitin/MonkeyCode/backend/biz/skill"
 	"github.com/chaitin/MonkeyCode/backend/biz/static"
 	"github.com/chaitin/MonkeyCode/backend/biz/subscription"
 	"github.com/chaitin/MonkeyCode/backend/biz/task"
@@ -33,6 +34,7 @@ func RegisterAll(i *do.Injector) error {
 	user.ProvideUser(i)
 	setting.ProvideSetting(i)
 	team.ProvideTeam(i)
+	skill.ProvideSkill(i)
 	host.ProvideHost(i)
 	task.ProvideTask(i)
 	git.ProvideGit(i)
@@ -48,6 +50,7 @@ func InvokeAll(i *do.Injector) {
 	user.InvokeUser(i)
 	setting.InvokeSetting(i)
 	team.InvokeTeam(i)
+	skill.InvokeSkill(i)
 	host.InvokeHost(i)
 	task.InvokeTask(i)
 	git.InvokeGit(i)

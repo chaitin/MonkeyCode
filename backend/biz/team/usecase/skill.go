@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/samber/do"
@@ -24,28 +25,38 @@ const skillPackagePrefix = "skills"
 
 type teamSkillUsecase struct {
 	repo         domain.TeamSkillRepo
-	packageStore skillPackageStore
+	packageStore SkillPackageStore
 	logger       *slog.Logger
 }
 
 func NewTeamSkillUsecase(i *do.Injector) (domain.TeamSkillUsecase, error) {
-	cfg := do.MustInvoke[*config.Config](i)
-	var store skillPackageStore
-	if cfg.ObjectStorage.Enabled {
-		client, err := oss.NewS3Compatible(context.Background(), cfg.ObjectStorage, oss.S3Option{
-			ForcePathStyle: cfg.ObjectStorage.ForcePathStyle,
-			InitBucket:     cfg.ObjectStorage.InitBucket,
-		})
-		if err != nil {
-			return nil, err
-		}
-		store = &ossSkillPackageStore{client: client.WithAccessEndpoint(cfg.ObjectStorage.AccessEndpoint)}
+	store, err := do.Invoke[SkillPackageStore](i)
+	if err != nil {
+		store = nil
 	}
 	return &teamSkillUsecase{
 		repo:         do.MustInvoke[domain.TeamSkillRepo](i),
 		packageStore: store,
 		logger:       do.MustInvoke[*slog.Logger](i),
 	}, nil
+}
+
+// NewSkillPackageStore returns the shared OSS-backed package store used by
+// team skill management and the user-facing /api/v1/skills picker. Returns
+// nil store when object storage is disabled; callers must handle that.
+func NewSkillPackageStore(i *do.Injector) (SkillPackageStore, error) {
+	cfg := do.MustInvoke[*config.Config](i)
+	if !cfg.ObjectStorage.Enabled {
+		return nil, fmt.Errorf("object storage is disabled")
+	}
+	client, err := oss.NewS3Compatible(context.Background(), cfg.ObjectStorage, oss.S3Option{
+		ForcePathStyle: cfg.ObjectStorage.ForcePathStyle,
+		InitBucket:     cfg.ObjectStorage.InitBucket,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ossSkillPackageStore{client: client.WithAccessEndpoint(cfg.ObjectStorage.AccessEndpoint)}, nil
 }
 
 func (u *teamSkillUsecase) Add(ctx context.Context, teamUser *domain.TeamUser, req *domain.AddTeamSkillReq) (*domain.TeamSkill, error) {
@@ -116,8 +127,11 @@ func (u *teamSkillUsecase) Delete(ctx context.Context, teamUser *domain.TeamUser
 	return u.repo.Delete(ctx, teamUser.GetTeamID(), req.SkillID)
 }
 
-type skillPackageStore interface {
+// SkillPackageStore is the shared surface over OSS for skill zip artifacts.
+// Used by team management (upload) and the user-facing picker (presigned read).
+type SkillPackageStore interface {
 	Put(ctx context.Context, filename string, data []byte) (objectKey string, url string, err error)
+	PresignGet(ctx context.Context, objectKey string, expires time.Duration) (string, error)
 }
 
 type ossSkillPackageStore struct {
@@ -133,6 +147,13 @@ func (s *ossSkillPackageStore) Put(ctx context.Context, filename string, data []
 	}
 	objectKey := strings.Trim(filepath.ToSlash(filepath.Join(skillPackagePrefix, filepath.Base(filename))), "/")
 	return objectKey, s.client.GetURL(skillPackagePrefix, filename), nil
+}
+
+func (s *ossSkillPackageStore) PresignGet(ctx context.Context, objectKey string, expires time.Duration) (string, error) {
+	if s == nil || s.client == nil {
+		return "", errcode.ErrBadRequest.Wrap(fmt.Errorf("object storage is disabled"))
+	}
+	return s.client.PresignGet(ctx, objectKey, expires)
 }
 
 func packageSkillMarkdownContent(content string) ([]byte, error) {

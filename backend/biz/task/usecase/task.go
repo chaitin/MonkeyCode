@@ -59,6 +59,7 @@ type TaskUsecase struct {
 	projectRepo           domain.ProjectRepo
 	taskActivityRefresher service.TaskActivityRefresher
 	idleRefresher         vmidle.VMIdleRefresher
+	userSkill             domain.UserSkillUsecase
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -96,7 +97,51 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		u.modelHook = hook
 	}
 
+	// 可选注入 UserSkillUsecase（对象存储未启用时拿不到，跳过 skill 下发）
+	if su, err := do.Invoke[domain.UserSkillUsecase](i); err == nil {
+		u.userSkill = su
+	}
+
 	return u, nil
+}
+
+// resolveAgentResources 把用户在 req.Extra.SkillIDs 里选择的 skill 解析成
+// taskflow 期望的 *AgentResources（JSON 对齐 proto agent.AgentResources，
+// taskflow 反序列化后直接透传到 codingmatrix gRPC TaskExecutionConfig）。
+// 任何单条失败都只记日志、不影响任务创建；没有任何条目时返回 nil。
+func (a *TaskUsecase) resolveAgentResources(ctx context.Context, user *domain.User, skillIDs []string) *taskflow.AgentResources {
+	if a.userSkill == nil || len(skillIDs) == 0 {
+		return nil
+	}
+	uuids := make([]uuid.UUID, 0, len(skillIDs))
+	for _, raw := range skillIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			a.logger.WarnContext(ctx, "skip invalid skill id", "raw", raw, "error", err)
+			continue
+		}
+		uuids = append(uuids, id)
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	refs, err := a.userSkill.Refs(ctx, user, uuids)
+	if err != nil {
+		a.logger.WarnContext(ctx, "resolve skill refs failed", "error", err)
+		return nil
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	skills := make([]taskflow.AssetRef, 0, len(refs))
+	for _, r := range refs {
+		skills = append(skills, taskflow.AssetRef{
+			Name:          r.Name,
+			ZipURL:        r.ZipURL,
+			EntryFilename: r.EntryFilename,
+		})
+	}
+	return &taskflow.AgentResources{Skills: skills}
 }
 
 // isPrivileged 检查用户是否为特权用户（仅在注入 PrivilegeChecker 时生效）
@@ -554,6 +599,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		createdVm = vm
 
 		mcps := a.buildMCPConfigs(t.ID, token)
+		agentRes := a.resolveAgentResources(ctx, user, req.Extra.SkillIDs)
 
 		// 存储 CreateTaskReq 到 Redis，供 Lifecycle Manager 消费
 		createTaskReq := &taskflow.CreateTaskReq{
@@ -569,9 +615,10 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				Model:   m.Model,
 				ApiType: m.InterfaceType,
 			},
-			Configs:    configs,
-			McpConfigs: mcps,
-			LogStore:   normalizeTaskLogStore(t.LogStore),
+			Configs:        configs,
+			McpConfigs:     mcps,
+			AgentResources: agentRes,
+			LogStore:       normalizeTaskLogStore(t.LogStore),
 		}
 		b, err := json.Marshal(createTaskReq)
 		if err != nil {

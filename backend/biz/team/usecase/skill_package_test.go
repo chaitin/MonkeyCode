@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -166,6 +167,10 @@ type skillPackageStoreStub struct {
 func (s *skillPackageStoreStub) Put(ctx context.Context, filename string, data []byte) (string, string, error) {
 	s.data = append([]byte(nil), data...)
 	return "skills/" + filename, "https://oss.example.com/skills/" + filename, nil
+}
+
+func (s *skillPackageStoreStub) PresignGet(ctx context.Context, objectKey string, expires time.Duration) (string, error) {
+	return "https://oss.example.com/" + objectKey + "?presigned=1", nil
 }
 
 func readZipFile(t *testing.T, data []byte, name string) string {

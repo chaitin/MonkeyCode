@@ -601,19 +601,37 @@ type McpServerConfig struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
+// AssetRef 引用一个预签名 zip 资产（skills / plugins 共用）。JSON 字段名严格
+// 对齐下游 mcai-taskflow 期望的 proto JSON（agent.AgentResources_AssetRef），
+// 这样 taskflow 反序列化后可以直接透传到 codingmatrix gRPC。
+type AssetRef struct {
+	Name          string `json:"name,omitempty"`
+	Version       string `json:"version,omitempty"`
+	ZipURL        string `json:"zip_url,omitempty"`
+	EntryFilename string `json:"entry_filename,omitempty"` // plugin only; ignored for skill
+}
+
+// AgentResources 对齐 agent.AgentResources proto JSON。Agent 在 VM 内拉取并解压
+// 到 ~/.codingmatrix/project-tpl/.ai-ready/{skills,plugins}/。
+type AgentResources struct {
+	Skills  []AssetRef `json:"skills,omitempty"`
+	Plugins []AssetRef `json:"plugins,omitempty"`
+}
+
 // CreateTaskReq 创建任务请求
 type CreateTaskReq struct {
-	ID           uuid.UUID         `json:"id"`
-	VMID         string            `json:"vm_id"`
-	SystemPrompt string            `json:"system_prompt,omitempty"`
-	Text         string            `json:"text,omitempty"`
-	Attachments  []Attachment      `json:"attachments,omitempty"`
-	LLM          LLM               `json:"llm,omitzero"`
-	CodingAgent  CodingAgent       `json:"coding_agent,omitempty"`
-	Configs      []ConfigFile      `json:"configs,omitzero"`
-	McpConfigs   []McpServerConfig `json:"mcp_configs,omitzero"`
-	Env          map[string]string `json:"env,omitempty"`
-	LogStore     string            `json:"log_store,omitempty"`
+	ID             uuid.UUID         `json:"id"`
+	VMID           string            `json:"vm_id"`
+	SystemPrompt   string            `json:"system_prompt,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	Attachments    []Attachment      `json:"attachments,omitempty"`
+	LLM            LLM               `json:"llm,omitzero"`
+	CodingAgent    CodingAgent       `json:"coding_agent,omitempty"`
+	Configs        []ConfigFile      `json:"configs,omitzero"`
+	McpConfigs     []McpServerConfig `json:"mcp_configs,omitzero"`
+	AgentResources *AgentResources   `json:"agent_resources,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	LogStore       string            `json:"log_store,omitempty"`
 }
 
 // ==================== VirtualMachine 查询类型 ====================
