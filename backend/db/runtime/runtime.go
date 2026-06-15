@@ -797,28 +797,34 @@ func init() {
 	teamDescName := teamFields[1].Descriptor()
 	// team.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	team.NameValidator = teamDescName.Validators[0].(func(string) error)
+	// teamDescTaskConcurrencyLimit is the schema descriptor for task_concurrency_limit field.
+	teamDescTaskConcurrencyLimit := teamFields[3].Descriptor()
+	// team.DefaultTaskConcurrencyLimit holds the default value on creation for the task_concurrency_limit field.
+	team.DefaultTaskConcurrencyLimit = teamDescTaskConcurrencyLimit.Default.(int)
+	// team.TaskConcurrencyLimitValidator is a validator for the "task_concurrency_limit" field. It is called by the builders before save.
+	team.TaskConcurrencyLimitValidator = teamDescTaskConcurrencyLimit.Validators[0].(func(int) error)
 	// teamDescTaskVMSleepEnabled is the schema descriptor for task_vm_sleep_enabled field.
-	teamDescTaskVMSleepEnabled := teamFields[3].Descriptor()
+	teamDescTaskVMSleepEnabled := teamFields[4].Descriptor()
 	// team.DefaultTaskVMSleepEnabled holds the default value on creation for the task_vm_sleep_enabled field.
 	team.DefaultTaskVMSleepEnabled = teamDescTaskVMSleepEnabled.Default.(bool)
 	// teamDescTaskVMSleepSeconds is the schema descriptor for task_vm_sleep_seconds field.
-	teamDescTaskVMSleepSeconds := teamFields[4].Descriptor()
+	teamDescTaskVMSleepSeconds := teamFields[5].Descriptor()
 	// team.DefaultTaskVMSleepSeconds holds the default value on creation for the task_vm_sleep_seconds field.
 	team.DefaultTaskVMSleepSeconds = teamDescTaskVMSleepSeconds.Default.(int)
 	// teamDescTaskVMRecycleEnabled is the schema descriptor for task_vm_recycle_enabled field.
-	teamDescTaskVMRecycleEnabled := teamFields[5].Descriptor()
+	teamDescTaskVMRecycleEnabled := teamFields[6].Descriptor()
 	// team.DefaultTaskVMRecycleEnabled holds the default value on creation for the task_vm_recycle_enabled field.
 	team.DefaultTaskVMRecycleEnabled = teamDescTaskVMRecycleEnabled.Default.(bool)
 	// teamDescTaskVMRecycleSeconds is the schema descriptor for task_vm_recycle_seconds field.
-	teamDescTaskVMRecycleSeconds := teamFields[6].Descriptor()
+	teamDescTaskVMRecycleSeconds := teamFields[7].Descriptor()
 	// team.DefaultTaskVMRecycleSeconds holds the default value on creation for the task_vm_recycle_seconds field.
 	team.DefaultTaskVMRecycleSeconds = teamDescTaskVMRecycleSeconds.Default.(int)
 	// teamDescCreatedAt is the schema descriptor for created_at field.
-	teamDescCreatedAt := teamFields[7].Descriptor()
+	teamDescCreatedAt := teamFields[8].Descriptor()
 	// team.DefaultCreatedAt holds the default value on creation for the created_at field.
 	team.DefaultCreatedAt = teamDescCreatedAt.Default.(func() time.Time)
 	// teamDescUpdatedAt is the schema descriptor for updated_at field.
-	teamDescUpdatedAt := teamFields[8].Descriptor()
+	teamDescUpdatedAt := teamFields[9].Descriptor()
 	// team.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	team.DefaultUpdatedAt = teamDescUpdatedAt.Default.(func() time.Time)
 	teamgroupMixin := schema.TeamGroup{}.Mixin()

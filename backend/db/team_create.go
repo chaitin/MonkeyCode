@@ -59,6 +59,20 @@ func (_c *TeamCreate) SetMemberLimit(v int) *TeamCreate {
 	return _c
 }
 
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (_c *TeamCreate) SetTaskConcurrencyLimit(v int) *TeamCreate {
+	_c.mutation.SetTaskConcurrencyLimit(v)
+	return _c
+}
+
+// SetNillableTaskConcurrencyLimit sets the "task_concurrency_limit" field if the given value is not nil.
+func (_c *TeamCreate) SetNillableTaskConcurrencyLimit(v *int) *TeamCreate {
+	if v != nil {
+		_c.SetTaskConcurrencyLimit(*v)
+	}
+	return _c
+}
+
 // SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
 func (_c *TeamCreate) SetTaskVMSleepEnabled(v bool) *TeamCreate {
 	_c.mutation.SetTaskVMSleepEnabled(v)
@@ -321,6 +335,10 @@ func (_c *TeamCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *TeamCreate) defaults() error {
+	if _, ok := _c.mutation.TaskConcurrencyLimit(); !ok {
+		v := team.DefaultTaskConcurrencyLimit
+		_c.mutation.SetTaskConcurrencyLimit(v)
+	}
 	if _, ok := _c.mutation.TaskVMSleepEnabled(); !ok {
 		v := team.DefaultTaskVMSleepEnabled
 		_c.mutation.SetTaskVMSleepEnabled(v)
@@ -366,6 +384,14 @@ func (_c *TeamCreate) check() error {
 	}
 	if _, ok := _c.mutation.MemberLimit(); !ok {
 		return &ValidationError{Name: "member_limit", err: errors.New(`db: missing required field "Team.member_limit"`)}
+	}
+	if _, ok := _c.mutation.TaskConcurrencyLimit(); !ok {
+		return &ValidationError{Name: "task_concurrency_limit", err: errors.New(`db: missing required field "Team.task_concurrency_limit"`)}
+	}
+	if v, ok := _c.mutation.TaskConcurrencyLimit(); ok {
+		if err := team.TaskConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "task_concurrency_limit", err: fmt.Errorf(`db: validator failed for field "Team.task_concurrency_limit": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.TaskVMSleepEnabled(); !ok {
 		return &ValidationError{Name: "task_vm_sleep_enabled", err: errors.New(`db: missing required field "Team.task_vm_sleep_enabled"`)}
@@ -432,6 +458,10 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MemberLimit(); ok {
 		_spec.SetField(team.FieldMemberLimit, field.TypeInt, value)
 		_node.MemberLimit = value
+	}
+	if value, ok := _c.mutation.TaskConcurrencyLimit(); ok {
+		_spec.SetField(team.FieldTaskConcurrencyLimit, field.TypeInt, value)
+		_node.TaskConcurrencyLimit = value
 	}
 	if value, ok := _c.mutation.TaskVMSleepEnabled(); ok {
 		_spec.SetField(team.FieldTaskVMSleepEnabled, field.TypeBool, value)
@@ -717,6 +747,24 @@ func (u *TeamUpsert) AddMemberLimit(v int) *TeamUpsert {
 	return u
 }
 
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (u *TeamUpsert) SetTaskConcurrencyLimit(v int) *TeamUpsert {
+	u.Set(team.FieldTaskConcurrencyLimit, v)
+	return u
+}
+
+// UpdateTaskConcurrencyLimit sets the "task_concurrency_limit" field to the value that was provided on create.
+func (u *TeamUpsert) UpdateTaskConcurrencyLimit() *TeamUpsert {
+	u.SetExcluded(team.FieldTaskConcurrencyLimit)
+	return u
+}
+
+// AddTaskConcurrencyLimit adds v to the "task_concurrency_limit" field.
+func (u *TeamUpsert) AddTaskConcurrencyLimit(v int) *TeamUpsert {
+	u.Add(team.FieldTaskConcurrencyLimit, v)
+	return u
+}
+
 // SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
 func (u *TeamUpsert) SetTaskVMSleepEnabled(v bool) *TeamUpsert {
 	u.Set(team.FieldTaskVMSleepEnabled, v)
@@ -902,6 +950,27 @@ func (u *TeamUpsertOne) AddMemberLimit(v int) *TeamUpsertOne {
 func (u *TeamUpsertOne) UpdateMemberLimit() *TeamUpsertOne {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateMemberLimit()
+	})
+}
+
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (u *TeamUpsertOne) SetTaskConcurrencyLimit(v int) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskConcurrencyLimit(v)
+	})
+}
+
+// AddTaskConcurrencyLimit adds v to the "task_concurrency_limit" field.
+func (u *TeamUpsertOne) AddTaskConcurrencyLimit(v int) *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.AddTaskConcurrencyLimit(v)
+	})
+}
+
+// UpdateTaskConcurrencyLimit sets the "task_concurrency_limit" field to the value that was provided on create.
+func (u *TeamUpsertOne) UpdateTaskConcurrencyLimit() *TeamUpsertOne {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskConcurrencyLimit()
 	})
 }
 
@@ -1271,6 +1340,27 @@ func (u *TeamUpsertBulk) AddMemberLimit(v int) *TeamUpsertBulk {
 func (u *TeamUpsertBulk) UpdateMemberLimit() *TeamUpsertBulk {
 	return u.Update(func(s *TeamUpsert) {
 		s.UpdateMemberLimit()
+	})
+}
+
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (u *TeamUpsertBulk) SetTaskConcurrencyLimit(v int) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.SetTaskConcurrencyLimit(v)
+	})
+}
+
+// AddTaskConcurrencyLimit adds v to the "task_concurrency_limit" field.
+func (u *TeamUpsertBulk) AddTaskConcurrencyLimit(v int) *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.AddTaskConcurrencyLimit(v)
+	})
+}
+
+// UpdateTaskConcurrencyLimit sets the "task_concurrency_limit" field to the value that was provided on create.
+func (u *TeamUpsertBulk) UpdateTaskConcurrencyLimit() *TeamUpsertBulk {
+	return u.Update(func(s *TeamUpsert) {
+		s.UpdateTaskConcurrencyLimit()
 	})
 }
 

@@ -34,6 +34,7 @@ func (r *TeamPolicyRepo) GetTeamByUserID(ctx context.Context, userID uuid.UUID) 
 
 func (r *TeamPolicyRepo) UpdateTaskVMIdlePolicy(ctx context.Context, teamID uuid.UUID, req *domain.UpdateTeamTaskVMIdlePolicyReq) (*db.Team, error) {
 	return r.db.Team.UpdateOneID(teamID).
+		SetTaskConcurrencyLimit(req.TaskConcurrencyLimit).
 		SetTaskVMSleepEnabled(req.SleepEnabled).
 		SetTaskVMSleepSeconds(req.SleepSeconds).
 		SetTaskVMRecycleEnabled(req.RecycleEnabled).

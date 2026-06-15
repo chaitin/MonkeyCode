@@ -33,6 +33,58 @@ func TestResolveTeamTaskVMIdlePolicyInheritsGlobalDefaults(t *testing.T) {
 	}
 }
 
+func TestResolveTeamTaskVMIdlePolicyIncludesTaskConcurrencyLimit(t *testing.T) {
+	teamID := uuid.New()
+	team := &db.Team{
+		ID:                   teamID,
+		TaskConcurrencyLimit: 5,
+		TaskVMSleepEnabled:   true,
+		TaskVMSleepSeconds:   0,
+		TaskVMRecycleEnabled: true,
+		TaskVMRecycleSeconds: 0,
+	}
+
+	got, err := ResolveTeamTaskVMIdlePolicy(team, config.VMIdle{
+		SleepSeconds:   600,
+		RecycleSeconds: 604800,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TeamID != teamID {
+		t.Fatalf("team id = %s, want %s", got.TeamID, teamID)
+	}
+	if got.TaskConcurrencyLimit != 5 {
+		t.Fatalf("task concurrency limit = %d, want 5", got.TaskConcurrencyLimit)
+	}
+}
+
+func TestResolveTeamTaskVMIdlePolicyDefaultsTaskConcurrencyLimit(t *testing.T) {
+	got, err := ResolveTeamTaskVMIdlePolicy(nil, config.VMIdle{
+		SleepSeconds:   600,
+		RecycleSeconds: 604800,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.TaskConcurrencyLimit != 3 {
+		t.Fatalf("task concurrency limit = %d, want 3", got.TaskConcurrencyLimit)
+	}
+}
+
+func TestNewTeamTaskVMIdlePolicyFromReqRejectsInvalidTaskConcurrencyLimit(t *testing.T) {
+	_, err := NewTeamTaskVMIdlePolicyFromReq(uuid.New(), &UpdateTeamTaskVMIdlePolicyReq{
+		TaskConcurrencyLimit: 0,
+		SleepEnabled:         true,
+		SleepSeconds:         600,
+		RecycleEnabled:       true,
+		RecycleSeconds:       604800,
+	}, config.VMIdle{SleepSeconds: 600, RecycleSeconds: 604800})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestResolveTeamTaskVMIdlePolicyCanDisableQueues(t *testing.T) {
 	team := &db.Team{
 		ID:                   uuid.New(),

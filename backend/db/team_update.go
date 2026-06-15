@@ -94,6 +94,27 @@ func (_u *TeamUpdate) AddMemberLimit(v int) *TeamUpdate {
 	return _u
 }
 
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (_u *TeamUpdate) SetTaskConcurrencyLimit(v int) *TeamUpdate {
+	_u.mutation.ResetTaskConcurrencyLimit()
+	_u.mutation.SetTaskConcurrencyLimit(v)
+	return _u
+}
+
+// SetNillableTaskConcurrencyLimit sets the "task_concurrency_limit" field if the given value is not nil.
+func (_u *TeamUpdate) SetNillableTaskConcurrencyLimit(v *int) *TeamUpdate {
+	if v != nil {
+		_u.SetTaskConcurrencyLimit(*v)
+	}
+	return _u
+}
+
+// AddTaskConcurrencyLimit adds value to the "task_concurrency_limit" field.
+func (_u *TeamUpdate) AddTaskConcurrencyLimit(v int) *TeamUpdate {
+	_u.mutation.AddTaskConcurrencyLimit(v)
+	return _u
+}
+
 // SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
 func (_u *TeamUpdate) SetTaskVMSleepEnabled(v bool) *TeamUpdate {
 	_u.mutation.SetTaskVMSleepEnabled(v)
@@ -555,6 +576,11 @@ func (_u *TeamUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "Team.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TaskConcurrencyLimit(); ok {
+		if err := team.TaskConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "task_concurrency_limit", err: fmt.Errorf(`db: validator failed for field "Team.task_concurrency_limit": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -590,6 +616,12 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedMemberLimit(); ok {
 		_spec.AddField(team.FieldMemberLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TaskConcurrencyLimit(); ok {
+		_spec.SetField(team.FieldTaskConcurrencyLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedTaskConcurrencyLimit(); ok {
+		_spec.AddField(team.FieldTaskConcurrencyLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.TaskVMSleepEnabled(); ok {
 		_spec.SetField(team.FieldTaskVMSleepEnabled, field.TypeBool, value)
@@ -1145,6 +1177,27 @@ func (_u *TeamUpdateOne) AddMemberLimit(v int) *TeamUpdateOne {
 	return _u
 }
 
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (_u *TeamUpdateOne) SetTaskConcurrencyLimit(v int) *TeamUpdateOne {
+	_u.mutation.ResetTaskConcurrencyLimit()
+	_u.mutation.SetTaskConcurrencyLimit(v)
+	return _u
+}
+
+// SetNillableTaskConcurrencyLimit sets the "task_concurrency_limit" field if the given value is not nil.
+func (_u *TeamUpdateOne) SetNillableTaskConcurrencyLimit(v *int) *TeamUpdateOne {
+	if v != nil {
+		_u.SetTaskConcurrencyLimit(*v)
+	}
+	return _u
+}
+
+// AddTaskConcurrencyLimit adds value to the "task_concurrency_limit" field.
+func (_u *TeamUpdateOne) AddTaskConcurrencyLimit(v int) *TeamUpdateOne {
+	_u.mutation.AddTaskConcurrencyLimit(v)
+	return _u
+}
+
 // SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
 func (_u *TeamUpdateOne) SetTaskVMSleepEnabled(v bool) *TeamUpdateOne {
 	_u.mutation.SetTaskVMSleepEnabled(v)
@@ -1619,6 +1672,11 @@ func (_u *TeamUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "Team.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TaskConcurrencyLimit(); ok {
+		if err := team.TaskConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "task_concurrency_limit", err: fmt.Errorf(`db: validator failed for field "Team.task_concurrency_limit": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1671,6 +1729,12 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 	}
 	if value, ok := _u.mutation.AddedMemberLimit(); ok {
 		_spec.AddField(team.FieldMemberLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TaskConcurrencyLimit(); ok {
+		_spec.SetField(team.FieldTaskConcurrencyLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedTaskConcurrencyLimit(); ok {
+		_spec.AddField(team.FieldTaskConcurrencyLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.TaskVMSleepEnabled(); ok {
 		_spec.SetField(team.FieldTaskVMSleepEnabled, field.TypeBool, value)

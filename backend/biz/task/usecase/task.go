@@ -50,6 +50,7 @@ type TaskUsecase struct {
 	redis                 *redis.Client
 	notifyDispatcher      *dispatcher.Dispatcher
 	taskHook              domain.TaskHook
+	teamPolicyRepo        domain.TeamPolicyRepo
 	privilegeChecker      domain.PrivilegeChecker
 	modelHook             domain.ModelHook
 	taskLifecycle         *lifecycle.Manager[uuid.UUID, consts.TaskStatus, lifecycle.TaskMetadata]
@@ -86,6 +87,10 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		u.taskHook = hook
 	}
 
+	if repo, err := do.Invoke[domain.TeamPolicyRepo](i); err == nil {
+		u.teamPolicyRepo = repo
+	}
+
 	// 可选注入 PrivilegeChecker
 	if pc, err := do.Invoke[domain.PrivilegeChecker](i); err == nil {
 		u.privilegeChecker = pc
@@ -110,6 +115,29 @@ func (a *TaskUsecase) isPrivileged(ctx context.Context, uid uuid.UUID) bool {
 		return false
 	}
 	return ok
+}
+
+func (a *TaskUsecase) resolveTaskConcurrencyLimit(ctx context.Context, userID uuid.UUID) (int, error) {
+	const defaultLimit = 3
+	if a.teamPolicyRepo != nil {
+		team, err := a.teamPolicyRepo.GetTeamByUserID(ctx, userID)
+		if err == nil && team != nil && team.TaskConcurrencyLimit > 0 {
+			return team.TaskConcurrencyLimit, nil
+		}
+		if err != nil && !db.IsNotFound(err) {
+			return 0, err
+		}
+	}
+	if a.taskHook != nil {
+		n, err := a.taskHook.GetMaxConcurrent(ctx, userID)
+		if err != nil {
+			return 0, err
+		}
+		if n > 0 {
+			return n, nil
+		}
+	}
+	return defaultLimit, nil
 }
 
 // AutoApprove implements domain.TaskUsecase.
@@ -481,7 +509,6 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 
 	a.logger.InfoContext(ctx, "resolved git identity for task", slog.Any("git", git))
 
-	limit := 1
 	if a.taskHook != nil {
 		if req.SystemPrompt == "" {
 			// 如果有 TaskHook，获取系统提示词
@@ -489,14 +516,12 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				req.SystemPrompt = prompt
 			}
 		}
-
-		n, err := a.taskHook.GetMaxConcurrent(ctx, user.ID)
-		if err != nil {
-			return nil, err
-		}
-		limit = cmp.Or(n, limit)
 	}
 
+	limit, err := a.resolveTaskConcurrencyLimit(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
 	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
 
 	var createdVm *taskflow.VirtualMachine

@@ -73,6 +73,7 @@ export default function TeamManagerHosts() {
   const [sleepHours, setSleepHours] = useState("")
   const [recycleEnabled, setRecycleEnabled] = useState(true)
   const [recycleHours, setRecycleHours] = useState("")
+  const [taskConcurrencyLimit, setTaskConcurrencyLimit] = useState("3")
   
 
 
@@ -94,6 +95,7 @@ export default function TeamManagerHosts() {
     setSleepHours(secondsToHours(nextPolicy.sleep_seconds))
     setRecycleEnabled(nextPolicy.recycle_enabled ?? true)
     setRecycleHours(secondsToHours(nextPolicy.recycle_seconds))
+    setTaskConcurrencyLimit(String(nextPolicy.task_concurrency_limit ?? 3))
   }
 
   const fetchPolicy = async () => {
@@ -132,8 +134,15 @@ export default function TeamManagerHosts() {
   }, [])
 
   const handleSavePolicy = async () => {
+    const parsedTaskConcurrencyLimit = Number(taskConcurrencyLimit)
+    if (!Number.isInteger(parsedTaskConcurrencyLimit) || parsedTaskConcurrencyLimit <= 0) {
+      toast.error("任务并发数必须为正整数")
+      return
+    }
+
     setSavingPolicy(true)
     await apiRequest('v1TeamsTaskVmIdlePolicyUpdate', {
+      task_concurrency_limit: parsedTaskConcurrencyLimit,
       sleep_enabled: sleepEnabled,
       sleep_seconds: hoursToSeconds(sleepHours),
       recycle_enabled: recycleEnabled,
@@ -141,9 +150,9 @@ export default function TeamManagerHosts() {
     }, [], (resp) => {
       if (resp.code === 0 && resp.data) {
         syncPolicyForm(resp.data)
-        toast.success("任务开发环境策略已保存")
+        toast.success("任务策略已保存")
       } else {
-        toast.error("保存任务开发环境策略失败: " + resp.message)
+        toast.error("保存任务策略失败: " + resp.message)
       }
     })
     setSavingPolicy(false)
@@ -188,7 +197,7 @@ export default function TeamManagerHosts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock3 />
-            开发环境自动回收
+            任务策略
           </CardTitle>
           <CardAction>
             <Button variant="outline" size="sm" onClick={() => setPolicyDialogOpen(true)}>
@@ -206,7 +215,11 @@ export default function TeamManagerHosts() {
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
+              <PolicySummaryItem
+                label="任务并发数"
+                value={`${policy?.task_concurrency_limit ?? 3} 个任务`}
+              />
               <PolicySummaryItem
                 label="自动休眠"
                 value={sleepEnabled ? `${formatPolicyDuration(policy?.effective_sleep_seconds)} 后休眠` : "已关闭"}
@@ -223,7 +236,7 @@ export default function TeamManagerHosts() {
       <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>开发环境自动回收</DialogTitle>
+            <DialogTitle>任务策略</DialogTitle>
           </DialogHeader>
           {loadingPolicy ? (
             <Empty className="bg-muted">
@@ -235,7 +248,26 @@ export default function TeamManagerHosts() {
             </Empty>
           ) : (
             <>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-lg border p-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="task-concurrency-limit">任务并发数</Label>
+                    <p className="text-sm text-muted-foreground">
+                      同一成员可同时运行的任务数量
+                    </p>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <Input
+                      id="task-concurrency-limit"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={taskConcurrencyLimit}
+                      onChange={(e) => setTaskConcurrencyLimit(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div className="rounded-lg border p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
