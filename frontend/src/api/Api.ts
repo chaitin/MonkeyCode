@@ -1705,6 +1705,7 @@ export interface DomainTeamTaskVMIdlePolicy {
   sleep_enabled?: boolean;
   sleep_inherited?: boolean;
   sleep_seconds?: number;
+  task_concurrency_limit?: number;
   team_id?: string;
 }
 
@@ -1969,6 +1970,7 @@ export interface DomainUpdateTeamTaskVMIdlePolicyReq {
   recycle_seconds?: number;
   sleep_enabled?: boolean;
   sleep_seconds?: number;
+  task_concurrency_limit?: number;
 }
 
 export interface DomainUpdateTeamOAuthSiteReq {
