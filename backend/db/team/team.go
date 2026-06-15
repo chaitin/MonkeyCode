@@ -21,6 +21,8 @@ const (
 	FieldName = "name"
 	// FieldMemberLimit holds the string denoting the member_limit field in the database.
 	FieldMemberLimit = "member_limit"
+	// FieldTaskConcurrencyLimit holds the string denoting the task_concurrency_limit field in the database.
+	FieldTaskConcurrencyLimit = "task_concurrency_limit"
 	// FieldTaskVMSleepEnabled holds the string denoting the task_vm_sleep_enabled field in the database.
 	FieldTaskVMSleepEnabled = "task_vm_sleep_enabled"
 	// FieldTaskVMSleepSeconds holds the string denoting the task_vm_sleep_seconds field in the database.
@@ -116,6 +118,7 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldName,
 	FieldMemberLimit,
+	FieldTaskConcurrencyLimit,
 	FieldTaskVMSleepEnabled,
 	FieldTaskVMSleepSeconds,
 	FieldTaskVMRecycleEnabled,
@@ -159,6 +162,10 @@ var (
 	Interceptors [1]ent.Interceptor
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultTaskConcurrencyLimit holds the default value on creation for the "task_concurrency_limit" field.
+	DefaultTaskConcurrencyLimit int
+	// TaskConcurrencyLimitValidator is a validator for the "task_concurrency_limit" field. It is called by the builders before save.
+	TaskConcurrencyLimitValidator func(int) error
 	// DefaultTaskVMSleepEnabled holds the default value on creation for the "task_vm_sleep_enabled" field.
 	DefaultTaskVMSleepEnabled bool
 	// DefaultTaskVMSleepSeconds holds the default value on creation for the "task_vm_sleep_seconds" field.
@@ -194,6 +201,11 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByMemberLimit orders the results by the member_limit field.
 func ByMemberLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMemberLimit, opts...).ToFunc()
+}
+
+// ByTaskConcurrencyLimit orders the results by the task_concurrency_limit field.
+func ByTaskConcurrencyLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTaskConcurrencyLimit, opts...).ToFunc()
 }
 
 // ByTaskVMSleepEnabled orders the results by the task_vm_sleep_enabled field.

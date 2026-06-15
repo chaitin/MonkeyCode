@@ -30744,6 +30744,8 @@ type TeamMutation struct {
 	name                       *string
 	member_limit               *int
 	addmember_limit            *int
+	task_concurrency_limit     *int
+	addtask_concurrency_limit  *int
 	task_vm_sleep_enabled      *bool
 	task_vm_sleep_seconds      *int
 	addtask_vm_sleep_seconds   *int
@@ -31028,6 +31030,62 @@ func (m *TeamMutation) AddedMemberLimit() (r int, exists bool) {
 func (m *TeamMutation) ResetMemberLimit() {
 	m.member_limit = nil
 	m.addmember_limit = nil
+}
+
+// SetTaskConcurrencyLimit sets the "task_concurrency_limit" field.
+func (m *TeamMutation) SetTaskConcurrencyLimit(i int) {
+	m.task_concurrency_limit = &i
+	m.addtask_concurrency_limit = nil
+}
+
+// TaskConcurrencyLimit returns the value of the "task_concurrency_limit" field in the mutation.
+func (m *TeamMutation) TaskConcurrencyLimit() (r int, exists bool) {
+	v := m.task_concurrency_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTaskConcurrencyLimit returns the old "task_concurrency_limit" field's value of the Team entity.
+// If the Team object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamMutation) OldTaskConcurrencyLimit(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskConcurrencyLimit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskConcurrencyLimit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskConcurrencyLimit: %w", err)
+	}
+	return oldValue.TaskConcurrencyLimit, nil
+}
+
+// AddTaskConcurrencyLimit adds i to the "task_concurrency_limit" field.
+func (m *TeamMutation) AddTaskConcurrencyLimit(i int) {
+	if m.addtask_concurrency_limit != nil {
+		*m.addtask_concurrency_limit += i
+	} else {
+		m.addtask_concurrency_limit = &i
+	}
+}
+
+// AddedTaskConcurrencyLimit returns the value that was added to the "task_concurrency_limit" field in this mutation.
+func (m *TeamMutation) AddedTaskConcurrencyLimit() (r int, exists bool) {
+	v := m.addtask_concurrency_limit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTaskConcurrencyLimit resets all changes to the "task_concurrency_limit" field.
+func (m *TeamMutation) ResetTaskConcurrencyLimit() {
+	m.task_concurrency_limit = nil
+	m.addtask_concurrency_limit = nil
 }
 
 // SetTaskVMSleepEnabled sets the "task_vm_sleep_enabled" field.
@@ -31806,7 +31864,7 @@ func (m *TeamMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TeamMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.deleted_at != nil {
 		fields = append(fields, team.FieldDeletedAt)
 	}
@@ -31815,6 +31873,9 @@ func (m *TeamMutation) Fields() []string {
 	}
 	if m.member_limit != nil {
 		fields = append(fields, team.FieldMemberLimit)
+	}
+	if m.task_concurrency_limit != nil {
+		fields = append(fields, team.FieldTaskConcurrencyLimit)
 	}
 	if m.task_vm_sleep_enabled != nil {
 		fields = append(fields, team.FieldTaskVMSleepEnabled)
@@ -31848,6 +31909,8 @@ func (m *TeamMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case team.FieldMemberLimit:
 		return m.MemberLimit()
+	case team.FieldTaskConcurrencyLimit:
+		return m.TaskConcurrencyLimit()
 	case team.FieldTaskVMSleepEnabled:
 		return m.TaskVMSleepEnabled()
 	case team.FieldTaskVMSleepSeconds:
@@ -31875,6 +31938,8 @@ func (m *TeamMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldName(ctx)
 	case team.FieldMemberLimit:
 		return m.OldMemberLimit(ctx)
+	case team.FieldTaskConcurrencyLimit:
+		return m.OldTaskConcurrencyLimit(ctx)
 	case team.FieldTaskVMSleepEnabled:
 		return m.OldTaskVMSleepEnabled(ctx)
 	case team.FieldTaskVMSleepSeconds:
@@ -31916,6 +31981,13 @@ func (m *TeamMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMemberLimit(v)
+		return nil
+	case team.FieldTaskConcurrencyLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTaskConcurrencyLimit(v)
 		return nil
 	case team.FieldTaskVMSleepEnabled:
 		v, ok := value.(bool)
@@ -31970,6 +32042,9 @@ func (m *TeamMutation) AddedFields() []string {
 	if m.addmember_limit != nil {
 		fields = append(fields, team.FieldMemberLimit)
 	}
+	if m.addtask_concurrency_limit != nil {
+		fields = append(fields, team.FieldTaskConcurrencyLimit)
+	}
 	if m.addtask_vm_sleep_seconds != nil {
 		fields = append(fields, team.FieldTaskVMSleepSeconds)
 	}
@@ -31986,6 +32061,8 @@ func (m *TeamMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case team.FieldMemberLimit:
 		return m.AddedMemberLimit()
+	case team.FieldTaskConcurrencyLimit:
+		return m.AddedTaskConcurrencyLimit()
 	case team.FieldTaskVMSleepSeconds:
 		return m.AddedTaskVMSleepSeconds()
 	case team.FieldTaskVMRecycleSeconds:
@@ -32005,6 +32082,13 @@ func (m *TeamMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMemberLimit(v)
+		return nil
+	case team.FieldTaskConcurrencyLimit:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTaskConcurrencyLimit(v)
 		return nil
 	case team.FieldTaskVMSleepSeconds:
 		v, ok := value.(int)
@@ -32064,6 +32148,9 @@ func (m *TeamMutation) ResetField(name string) error {
 		return nil
 	case team.FieldMemberLimit:
 		m.ResetMemberLimit()
+		return nil
+	case team.FieldTaskConcurrencyLimit:
+		m.ResetTaskConcurrencyLimit()
 		return nil
 	case team.FieldTaskVMSleepEnabled:
 		m.ResetTaskVMSleepEnabled()

@@ -36,6 +36,7 @@ func (Team) Fields() []ent.Field {
 		field.UUID("id", uuid.UUID{}).Unique(),
 		field.String("name").NotEmpty(),
 		field.Int("member_limit"),
+		field.Int("task_concurrency_limit").Default(3).Positive(),
 		field.Bool("task_vm_sleep_enabled").Default(true),
 		field.Int("task_vm_sleep_seconds").Default(0),
 		field.Bool("task_vm_recycle_enabled").Default(true),
