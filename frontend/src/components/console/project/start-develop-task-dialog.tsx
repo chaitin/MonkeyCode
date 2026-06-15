@@ -1,10 +1,12 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch, type DomainTeamSkill } from "@/api/Api"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
@@ -13,7 +15,7 @@ import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "@/comp
 import { TASK_PROMPT_PLACEHOLDER, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconSparkles } from "@tabler/icons-react"
+import { IconSparkles, IconWand } from "@tabler/icons-react"
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -40,6 +42,9 @@ export default function StartDevelopTaskDialog({
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const [selectedHostId, setSelectedHostId] = useState<string>('')
+  const [skills, setSkills] = useState<DomainTeamSkill[]>([])
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
+  const [skillPopoverOpen, setSkillPopoverOpen] = useState(false)
   const { images, models, hosts, subscription } = useCommonData()
   const branchRequestIdRef = useRef(0)
   const branchTouchedRef = useRef(false)
@@ -171,6 +176,7 @@ export default function StartDevelopTaskDialog({
         setSelectedModelId(selectPreferredTaskModel(models, subscription))
         setSelectedHostId(selectDefaultHostId())
         setSelectedBranch('main')
+        setSelectedSkillIds([])
       }
     } else {
       prevOpenRef.current = false
@@ -178,6 +184,34 @@ export default function StartDevelopTaskDialog({
       setSelectedHostId('')
     }
   }, [open, models, subscription, selectDefaultHostId])
+
+  // 拉用户当前 team 下可见的 skill 列表（PackageURL 为 1h TTL 预签名 URL）
+  // 直接 fetch 是因为 Api.ts 的 v1SkillsList 类型还是旧契约，这里不想触发生成器重跑
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetch('/api/v1/skills', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((body) => {
+        if (cancelled) return
+        if (body?.code === 0) {
+          setSkills(body.data?.skills || [])
+        } else {
+          setSkills([])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSkills([])
+      })
+    return () => { cancelled = true }
+  }, [open])
+
+  const toggleSkill = (id: string, checked: boolean) => {
+    setSelectedSkillIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id]
+      return prev.filter((x) => x !== id)
+    })
+  }
 
   useEffect(() => {
     if (!open) {
@@ -264,6 +298,7 @@ export default function StartDevelopTaskDialog({
       },
       extra: {
         project_id: project?.id,
+        skill_ids: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
       },
       task_type: ConstsTaskType.TaskTypeDevelop,
     }, [], (resp) => {
@@ -367,6 +402,49 @@ export default function StartDevelopTaskDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Skills <span className="text-xs text-muted-foreground">(测试用)</span></Label>
+            <Popover open={skillPopoverOpen} onOpenChange={setSkillPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" className="w-full justify-start">
+                  <IconWand className="size-4" />
+                  {selectedSkillIds.length > 0
+                    ? `已选 ${selectedSkillIds.length} 个 Skill`
+                    : '选择 Skill'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-2">
+                {skills.length === 0 ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">暂无可用 Skill</div>
+                ) : (
+                  <div className="max-h-64 space-y-1 overflow-y-auto">
+                    {skills.map((s) => {
+                      const id = s.id || ''
+                      const checked = selectedSkillIds.includes(id)
+                      return (
+                        <label
+                          key={id}
+                          className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 hover:bg-accent"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => toggleSkill(id, !!v)}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{s.name}</div>
+                            {s.description && (
+                              <div className="text-xs text-muted-foreground line-clamp-2">{s.description}</div>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-2">
             <Label>任务内容</Label>
