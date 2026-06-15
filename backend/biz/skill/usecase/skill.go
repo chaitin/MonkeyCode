@@ -41,8 +41,11 @@ func NewUserSkillUsecase(i *do.Injector) (domain.UserSkillUsecase, error) {
 }
 
 func (u *userSkillUsecase) List(ctx context.Context, user *domain.User) (*domain.ListTeamSkillsResp, error) {
-	if user == nil || user.Team == nil {
-		return nil, errcode.ErrUnauthorized.Wrap(fmt.Errorf("user has no active team"))
+	if user == nil {
+		return nil, errcode.ErrUnauthorized.Wrap(fmt.Errorf("no user in context"))
+	}
+	if user.Team == nil {
+		return &domain.ListTeamSkillsResp{Skills: []*domain.TeamSkill{}}, nil
 	}
 
 	skills, err := u.repo.List(ctx, user.Team.ID)
@@ -74,8 +77,11 @@ func (u *userSkillUsecase) Refs(ctx context.Context, user *domain.User, skillIDs
 	if len(skillIDs) == 0 {
 		return nil, nil
 	}
-	if user == nil || user.Team == nil {
-		return nil, errcode.ErrUnauthorized.Wrap(fmt.Errorf("user has no active team"))
+	if user == nil {
+		return nil, errcode.ErrUnauthorized.Wrap(fmt.Errorf("no user in context"))
+	}
+	if user.Team == nil {
+		return nil, nil
 	}
 	if u.packageStore == nil {
 		return nil, nil

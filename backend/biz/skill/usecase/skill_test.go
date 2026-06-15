@@ -124,11 +124,14 @@ func TestUserSkillUsecase_List_EmptyObjectKeySkipsPresign(t *testing.T) {
 	}
 }
 
-func TestUserSkillUsecase_List_NoTeamReturnsUnauthorized(t *testing.T) {
+func TestUserSkillUsecase_List_NoTeamReturnsEmpty(t *testing.T) {
 	uc := &userSkillUsecase{repo: &fakeRepo{}, packageStore: &fakeStore{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
-	_, err := uc.List(context.Background(), &domain.User{ID: uuid.New()})
-	if err == nil {
-		t.Fatal("expected error when user has no team")
+	resp, err := uc.List(context.Background(), &domain.User{ID: uuid.New()})
+	if err != nil {
+		t.Fatalf("List should not error when user has no team: %v", err)
+	}
+	if resp == nil || len(resp.Skills) != 0 {
+		t.Fatalf("want empty skills, got %+v", resp)
 	}
 }
