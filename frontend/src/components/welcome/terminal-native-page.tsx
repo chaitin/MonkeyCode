@@ -122,7 +122,7 @@ const mobileClientItems = [
   {
     platform: "iOS",
     icon: IconBrandApple,
-    href: "https://apps.apple.com/app/id6777423440",
+    href: "https://apps.apple.com/cn/app/monkeycode%E7%BC%96%E7%A8%8B%E5%8A%A9%E6%89%8B/id6777423440",
     cta: "前往 App Store",
   },
 ];

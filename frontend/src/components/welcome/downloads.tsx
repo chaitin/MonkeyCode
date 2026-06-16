@@ -7,6 +7,7 @@ import {
 } from "@tabler/icons-react";
 
 const RELEASE_URL = "https://github.com/chaitin/MonkeyCode/releases";
+const IOS_APP_STORE_URL = "https://apps.apple.com/cn/app/monkeycode%E7%BC%96%E7%A8%8B%E5%8A%A9%E6%89%8B/id6777423440";
 
 const clients = [
   {
@@ -28,6 +29,7 @@ const clients = [
     name: "iOS",
     description: "iPhone / iPad 客户端",
     icon: IconDeviceMobile,
+    href: IOS_APP_STORE_URL,
   },
 ];
 
@@ -50,7 +52,7 @@ const Downloads = () => {
           {clients.map((client) => (
             <a
               key={client.name}
-              href={RELEASE_URL}
+              href={client.href ?? RELEASE_URL}
               target="_blank"
               rel="noreferrer"
               className="group flex h-full flex-col justify-between rounded-2xl border border-background/20 bg-background/8 p-5 transition-all duration-200 hover:-translate-y-1 hover:border-background/40 hover:bg-background/12"
