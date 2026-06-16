@@ -194,8 +194,8 @@ export default function StartDevelopTaskDialog({
       .then((r) => r.json())
       .then((body) => {
         if (cancelled) return
-        if (body?.code === 0) {
-          setSkills(body.data?.skills || [])
+        if (body?.code === 0 && Array.isArray(body.data)) {
+          setSkills(body.data)
         } else {
           setSkills([])
         }

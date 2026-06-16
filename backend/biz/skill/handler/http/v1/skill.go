@@ -35,9 +35,9 @@ func NewUserSkillHandler(i *do.Injector) (*UserSkillHandler, error) {
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAIAuth
-//	@Success		200	{object}	web.Resp{data=domain.ListTeamSkillsResp}	"成功"
-//	@Failure		401	{object}	web.Resp									"未授权"
-//	@Failure		500	{object}	web.Resp									"服务器内部错误"
+//	@Success		200	{object}	web.Resp{data=[]domain.TeamSkill}	"成功"
+//	@Failure		401	{object}	web.Resp							"未授权"
+//	@Failure		500	{object}	web.Resp							"服务器内部错误"
 //	@Router			/api/v1/skills [get]
 func (h *UserSkillHandler) List(c *web.Context) error {
 	user := middleware.GetUser(c)
@@ -45,5 +45,9 @@ func (h *UserSkillHandler) List(c *web.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.Success(resp)
+	skills := resp.Skills
+	if skills == nil {
+		skills = []*domain.TeamSkill{}
+	}
+	return c.Success(skills)
 }
