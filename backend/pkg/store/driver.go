@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -50,6 +51,21 @@ func (d *multiDriver) Exec(ctx context.Context, query string, args, v any) error
 		return err
 	}
 	return nil
+}
+
+func (d *multiDriver) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	ex, ok := d.w.(interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("write driver does not support ExecContext")
+	}
+	result, err := ex.ExecContext(ctx, query, args...)
+	if err != nil {
+		d.logger.Error("exec context error", "query", strings.ReplaceAll(query, `"`, ""), "args", args)
+		return nil, err
+	}
+	return result, nil
 }
 
 func (d *multiDriver) Tx(ctx context.Context) (dialect.Tx, error) {
