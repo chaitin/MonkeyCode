@@ -37,6 +37,12 @@ const (
 	FieldSourceLabel = "source_label"
 	// FieldSkillMdPath holds the string denoting the skill_md_path field in the database.
 	FieldSkillMdPath = "skill_md_path"
+	// FieldExtensionPackageID holds the string denoting the extension_package_id field in the database.
+	FieldExtensionPackageID = "extension_package_id"
+	// FieldExtensionSkillID holds the string denoting the extension_skill_id field in the database.
+	FieldExtensionSkillID = "extension_skill_id"
+	// FieldExtensionVersion holds the string denoting the extension_version field in the database.
+	FieldExtensionVersion = "extension_version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -100,6 +106,9 @@ var Columns = []string{
 	FieldSourceType,
 	FieldSourceLabel,
 	FieldSkillMdPath,
+	FieldExtensionPackageID,
+	FieldExtensionSkillID,
+	FieldExtensionVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -205,6 +214,21 @@ func BySourceLabel(opts ...sql.OrderTermOption) OrderOption {
 // BySkillMdPath orders the results by the skill_md_path field.
 func BySkillMdPath(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSkillMdPath, opts...).ToFunc()
+}
+
+// ByExtensionPackageID orders the results by the extension_package_id field.
+func ByExtensionPackageID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionPackageID, opts...).ToFunc()
+}
+
+// ByExtensionSkillID orders the results by the extension_skill_id field.
+func ByExtensionSkillID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionSkillID, opts...).ToFunc()
+}
+
+// ByExtensionVersion orders the results by the extension_version field.
+func ByExtensionVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionVersion, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

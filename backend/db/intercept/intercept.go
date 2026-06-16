@@ -38,6 +38,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
@@ -894,6 +895,33 @@ func (f TraverseTeam) Traverse(ctx context.Context, q db.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamQuery", q)
 }
 
+// The TeamExtensionImageArchiveFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamExtensionImageArchiveFunc func(context.Context, *db.TeamExtensionImageArchiveQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamExtensionImageArchiveFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamExtensionImageArchiveQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamExtensionImageArchiveQuery", q)
+}
+
+// The TraverseTeamExtensionImageArchive type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamExtensionImageArchive func(context.Context, *db.TeamExtensionImageArchiveQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamExtensionImageArchive) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamExtensionImageArchive) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamExtensionImageArchiveQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamExtensionImageArchiveQuery", q)
+}
+
 // The TeamGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamGroupFunc func(context.Context, *db.TeamGroupQuery) (db.Value, error)
 
@@ -1360,6 +1388,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TaskVirtualMachineQuery, predicate.TaskVirtualMachine, taskvirtualmachine.OrderOption]{typ: db.TypeTaskVirtualMachine, tq: q}, nil
 	case *db.TeamQuery:
 		return &query[*db.TeamQuery, predicate.Team, team.OrderOption]{typ: db.TypeTeam, tq: q}, nil
+	case *db.TeamExtensionImageArchiveQuery:
+		return &query[*db.TeamExtensionImageArchiveQuery, predicate.TeamExtensionImageArchive, teamextensionimagearchive.OrderOption]{typ: db.TypeTeamExtensionImageArchive, tq: q}, nil
 	case *db.TeamGroupQuery:
 		return &query[*db.TeamGroupQuery, predicate.TeamGroup, teamgroup.OrderOption]{typ: db.TypeTeamGroup, tq: q}, nil
 	case *db.TeamGroupHostQuery:

@@ -38,6 +38,9 @@ func (Image) Fields() []ent.Field {
 		field.UUID("user_id", uuid.UUID{}),
 		field.String("name").NotEmpty(),
 		field.String("remark").Optional(),
+		field.String("extension_package_id").Optional(),
+		field.String("extension_image_id").Optional(),
+		field.String("extension_version").Optional(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -51,5 +54,6 @@ func (Image) Edges() []ent.Edge {
 		edge.From("groups", TeamGroup.Type).Ref("images").Through("team_group_images", TeamGroupImage.Type),
 		edge.To("project_tasks", ProjectTask.Type),
 		edge.To("projects", Project.Type),
+		edge.To("extension_archives", TeamExtensionImageArchive.Type),
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
@@ -105,6 +106,66 @@ func (_u *ImageUpdate) ClearRemark() *ImageUpdate {
 	return _u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_u *ImageUpdate) SetExtensionPackageID(v string) *ImageUpdate {
+	_u.mutation.SetExtensionPackageID(v)
+	return _u
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_u *ImageUpdate) SetNillableExtensionPackageID(v *string) *ImageUpdate {
+	if v != nil {
+		_u.SetExtensionPackageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (_u *ImageUpdate) ClearExtensionPackageID() *ImageUpdate {
+	_u.mutation.ClearExtensionPackageID()
+	return _u
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (_u *ImageUpdate) SetExtensionImageID(v string) *ImageUpdate {
+	_u.mutation.SetExtensionImageID(v)
+	return _u
+}
+
+// SetNillableExtensionImageID sets the "extension_image_id" field if the given value is not nil.
+func (_u *ImageUpdate) SetNillableExtensionImageID(v *string) *ImageUpdate {
+	if v != nil {
+		_u.SetExtensionImageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionImageID clears the value of the "extension_image_id" field.
+func (_u *ImageUpdate) ClearExtensionImageID() *ImageUpdate {
+	_u.mutation.ClearExtensionImageID()
+	return _u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_u *ImageUpdate) SetExtensionVersion(v string) *ImageUpdate {
+	_u.mutation.SetExtensionVersion(v)
+	return _u
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_u *ImageUpdate) SetNillableExtensionVersion(v *string) *ImageUpdate {
+	if v != nil {
+		_u.SetExtensionVersion(*v)
+	}
+	return _u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (_u *ImageUpdate) ClearExtensionVersion() *ImageUpdate {
+	_u.mutation.ClearExtensionVersion()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *ImageUpdate) SetCreatedAt(v time.Time) *ImageUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -188,6 +249,21 @@ func (_u *ImageUpdate) AddProjects(v ...*Project) *ImageUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddProjectIDs(ids...)
+}
+
+// AddExtensionArchiveIDs adds the "extension_archives" edge to the TeamExtensionImageArchive entity by IDs.
+func (_u *ImageUpdate) AddExtensionArchiveIDs(ids ...uuid.UUID) *ImageUpdate {
+	_u.mutation.AddExtensionArchiveIDs(ids...)
+	return _u
+}
+
+// AddExtensionArchives adds the "extension_archives" edges to the TeamExtensionImageArchive entity.
+func (_u *ImageUpdate) AddExtensionArchives(v ...*TeamExtensionImageArchive) *ImageUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddExtensionArchiveIDs(ids...)
 }
 
 // AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
@@ -313,6 +389,27 @@ func (_u *ImageUpdate) RemoveProjects(v ...*Project) *ImageUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectIDs(ids...)
+}
+
+// ClearExtensionArchives clears all "extension_archives" edges to the TeamExtensionImageArchive entity.
+func (_u *ImageUpdate) ClearExtensionArchives() *ImageUpdate {
+	_u.mutation.ClearExtensionArchives()
+	return _u
+}
+
+// RemoveExtensionArchiveIDs removes the "extension_archives" edge to TeamExtensionImageArchive entities by IDs.
+func (_u *ImageUpdate) RemoveExtensionArchiveIDs(ids ...uuid.UUID) *ImageUpdate {
+	_u.mutation.RemoveExtensionArchiveIDs(ids...)
+	return _u
+}
+
+// RemoveExtensionArchives removes "extension_archives" edges to TeamExtensionImageArchive entities.
+func (_u *ImageUpdate) RemoveExtensionArchives(v ...*TeamExtensionImageArchive) *ImageUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveExtensionArchiveIDs(ids...)
 }
 
 // ClearTeamImages clears all "team_images" edges to the TeamImage entity.
@@ -444,6 +541,24 @@ func (_u *ImageUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RemarkCleared() {
 		_spec.ClearField(image.FieldRemark, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(image.FieldExtensionPackageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionPackageIDCleared() {
+		_spec.ClearField(image.FieldExtensionPackageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionImageID(); ok {
+		_spec.SetField(image.FieldExtensionImageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionImageIDCleared() {
+		_spec.ClearField(image.FieldExtensionImageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionVersion(); ok {
+		_spec.SetField(image.FieldExtensionVersion, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionVersionCleared() {
+		_spec.ClearField(image.FieldExtensionVersion, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(image.FieldCreatedAt, field.TypeTime, value)
@@ -677,6 +792,51 @@ func (_u *ImageUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ExtensionArchivesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedExtensionArchivesIDs(); len(nodes) > 0 && !_u.mutation.ExtensionArchivesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ExtensionArchivesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -864,6 +1024,66 @@ func (_u *ImageUpdateOne) ClearRemark() *ImageUpdateOne {
 	return _u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_u *ImageUpdateOne) SetExtensionPackageID(v string) *ImageUpdateOne {
+	_u.mutation.SetExtensionPackageID(v)
+	return _u
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_u *ImageUpdateOne) SetNillableExtensionPackageID(v *string) *ImageUpdateOne {
+	if v != nil {
+		_u.SetExtensionPackageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (_u *ImageUpdateOne) ClearExtensionPackageID() *ImageUpdateOne {
+	_u.mutation.ClearExtensionPackageID()
+	return _u
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (_u *ImageUpdateOne) SetExtensionImageID(v string) *ImageUpdateOne {
+	_u.mutation.SetExtensionImageID(v)
+	return _u
+}
+
+// SetNillableExtensionImageID sets the "extension_image_id" field if the given value is not nil.
+func (_u *ImageUpdateOne) SetNillableExtensionImageID(v *string) *ImageUpdateOne {
+	if v != nil {
+		_u.SetExtensionImageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionImageID clears the value of the "extension_image_id" field.
+func (_u *ImageUpdateOne) ClearExtensionImageID() *ImageUpdateOne {
+	_u.mutation.ClearExtensionImageID()
+	return _u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_u *ImageUpdateOne) SetExtensionVersion(v string) *ImageUpdateOne {
+	_u.mutation.SetExtensionVersion(v)
+	return _u
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_u *ImageUpdateOne) SetNillableExtensionVersion(v *string) *ImageUpdateOne {
+	if v != nil {
+		_u.SetExtensionVersion(*v)
+	}
+	return _u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (_u *ImageUpdateOne) ClearExtensionVersion() *ImageUpdateOne {
+	_u.mutation.ClearExtensionVersion()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *ImageUpdateOne) SetCreatedAt(v time.Time) *ImageUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -947,6 +1167,21 @@ func (_u *ImageUpdateOne) AddProjects(v ...*Project) *ImageUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddProjectIDs(ids...)
+}
+
+// AddExtensionArchiveIDs adds the "extension_archives" edge to the TeamExtensionImageArchive entity by IDs.
+func (_u *ImageUpdateOne) AddExtensionArchiveIDs(ids ...uuid.UUID) *ImageUpdateOne {
+	_u.mutation.AddExtensionArchiveIDs(ids...)
+	return _u
+}
+
+// AddExtensionArchives adds the "extension_archives" edges to the TeamExtensionImageArchive entity.
+func (_u *ImageUpdateOne) AddExtensionArchives(v ...*TeamExtensionImageArchive) *ImageUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddExtensionArchiveIDs(ids...)
 }
 
 // AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
@@ -1072,6 +1307,27 @@ func (_u *ImageUpdateOne) RemoveProjects(v ...*Project) *ImageUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveProjectIDs(ids...)
+}
+
+// ClearExtensionArchives clears all "extension_archives" edges to the TeamExtensionImageArchive entity.
+func (_u *ImageUpdateOne) ClearExtensionArchives() *ImageUpdateOne {
+	_u.mutation.ClearExtensionArchives()
+	return _u
+}
+
+// RemoveExtensionArchiveIDs removes the "extension_archives" edge to TeamExtensionImageArchive entities by IDs.
+func (_u *ImageUpdateOne) RemoveExtensionArchiveIDs(ids ...uuid.UUID) *ImageUpdateOne {
+	_u.mutation.RemoveExtensionArchiveIDs(ids...)
+	return _u
+}
+
+// RemoveExtensionArchives removes "extension_archives" edges to TeamExtensionImageArchive entities.
+func (_u *ImageUpdateOne) RemoveExtensionArchives(v ...*TeamExtensionImageArchive) *ImageUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveExtensionArchiveIDs(ids...)
 }
 
 // ClearTeamImages clears all "team_images" edges to the TeamImage entity.
@@ -1233,6 +1489,24 @@ func (_u *ImageUpdateOne) sqlSave(ctx context.Context) (_node *Image, err error)
 	}
 	if _u.mutation.RemarkCleared() {
 		_spec.ClearField(image.FieldRemark, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(image.FieldExtensionPackageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionPackageIDCleared() {
+		_spec.ClearField(image.FieldExtensionPackageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionImageID(); ok {
+		_spec.SetField(image.FieldExtensionImageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionImageIDCleared() {
+		_spec.ClearField(image.FieldExtensionImageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionVersion(); ok {
+		_spec.SetField(image.FieldExtensionVersion, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionVersionCleared() {
+		_spec.ClearField(image.FieldExtensionVersion, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(image.FieldCreatedAt, field.TypeTime, value)
@@ -1466,6 +1740,51 @@ func (_u *ImageUpdateOne) sqlSave(ctx context.Context) (_node *Image, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ExtensionArchivesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedExtensionArchivesIDs(); len(nodes) > 0 && !_u.mutation.ExtensionArchivesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ExtensionArchivesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

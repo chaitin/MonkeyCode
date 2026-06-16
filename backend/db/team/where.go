@@ -596,6 +596,29 @@ func HasSkillsWith(preds ...predicate.Skill) predicate.Team {
 	})
 }
 
+// HasExtensionImageArchives applies the HasEdge predicate on the "extension_image_archives" edge.
+func HasExtensionImageArchives() predicate.Team {
+	return predicate.Team(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ExtensionImageArchivesTable, ExtensionImageArchivesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasExtensionImageArchivesWith applies the HasEdge predicate on the "extension_image_archives" edge with a given conditions (other predicates).
+func HasExtensionImageArchivesWith(preds ...predicate.TeamExtensionImageArchive) predicate.Team {
+	return predicate.Team(func(s *sql.Selector) {
+		step := newExtensionImageArchivesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamMembers applies the HasEdge predicate on the "team_members" edge.
 func HasTeamMembers() predicate.Team {
 	return predicate.Team(func(s *sql.Selector) {

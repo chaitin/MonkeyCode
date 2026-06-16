@@ -222,6 +222,9 @@ var (
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString},
 		{Name: "remark", Type: field.TypeString, Nullable: true},
+		{Name: "extension_package_id", Type: field.TypeString, Nullable: true},
+		{Name: "extension_image_id", Type: field.TypeString, Nullable: true},
+		{Name: "extension_version", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "user_id", Type: field.TypeUUID},
@@ -234,7 +237,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "images_users_images",
-				Columns:    []*schema.Column{ImagesColumns[6]},
+				Columns:    []*schema.Column{ImagesColumns[9]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -796,6 +799,9 @@ var (
 		{Name: "source_type", Type: field.TypeString},
 		{Name: "source_label", Type: field.TypeString},
 		{Name: "skill_md_path", Type: field.TypeString, Nullable: true},
+		{Name: "extension_package_id", Type: field.TypeString, Nullable: true},
+		{Name: "extension_skill_id", Type: field.TypeString, Nullable: true},
+		{Name: "extension_version", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "user_id", Type: field.TypeUUID},
@@ -808,7 +814,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "skills_users_skills",
-				Columns:    []*schema.Column{SkillsColumns[13]},
+				Columns:    []*schema.Column{SkillsColumns[16]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -986,6 +992,42 @@ var (
 		Name:       "teams",
 		Columns:    TeamsColumns,
 		PrimaryKey: []*schema.Column{TeamsColumns[0]},
+	}
+	// TeamExtensionImageArchivesColumns holds the columns for the "team_extension_image_archives" table.
+	TeamExtensionImageArchivesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "package_id", Type: field.TypeString},
+		{Name: "extension_image_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeString},
+		{Name: "arch", Type: field.TypeString},
+		{Name: "image_name", Type: field.TypeString},
+		{Name: "archive_path", Type: field.TypeString},
+		{Name: "archive_url", Type: field.TypeString},
+		{Name: "sha256", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "image_id", Type: field.TypeUUID},
+		{Name: "team_id", Type: field.TypeUUID},
+	}
+	// TeamExtensionImageArchivesTable holds the schema information for the "team_extension_image_archives" table.
+	TeamExtensionImageArchivesTable = &schema.Table{
+		Name:       "team_extension_image_archives",
+		Columns:    TeamExtensionImageArchivesColumns,
+		PrimaryKey: []*schema.Column{TeamExtensionImageArchivesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_extension_image_archives_images_extension_archives",
+				Columns:    []*schema.Column{TeamExtensionImageArchivesColumns[11]},
+				RefColumns: []*schema.Column{ImagesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_extension_image_archives_teams_extension_image_archives",
+				Columns:    []*schema.Column{TeamExtensionImageArchivesColumns[12]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
 	}
 	// TeamGroupsColumns holds the columns for the "team_groups" table.
 	TeamGroupsColumns = []*schema.Column{
@@ -1521,6 +1563,7 @@ var (
 		TaskUsageStatsTable,
 		TaskVirtualmachinesTable,
 		TeamsTable,
+		TeamExtensionImageArchivesTable,
 		TeamGroupsTable,
 		TeamGroupHostsTable,
 		TeamGroupImagesTable,
@@ -1669,6 +1712,11 @@ func init() {
 	}
 	TeamsTable.Annotation = &entsql.Annotation{
 		Table: "teams",
+	}
+	TeamExtensionImageArchivesTable.ForeignKeys[0].RefTable = ImagesTable
+	TeamExtensionImageArchivesTable.ForeignKeys[1].RefTable = TeamsTable
+	TeamExtensionImageArchivesTable.Annotation = &entsql.Annotation{
+		Table: "team_extension_image_archives",
 	}
 	TeamGroupsTable.ForeignKeys[0].RefTable = TeamsTable
 	TeamGroupsTable.Annotation = &entsql.Annotation{

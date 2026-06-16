@@ -43,6 +43,9 @@ func (Skill) Fields() []ent.Field {
 		field.String("source_type").NotEmpty(),
 		field.String("source_label").NotEmpty(),
 		field.String("skill_md_path").Optional(),
+		field.String("extension_package_id").Optional(),
+		field.String("extension_skill_id").Optional(),
+		field.String("extension_version").Optional(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

@@ -27,6 +27,12 @@ type Image struct {
 	Name string `json:"name,omitempty"`
 	// Remark holds the value of the "remark" field.
 	Remark string `json:"remark,omitempty"`
+	// ExtensionPackageID holds the value of the "extension_package_id" field.
+	ExtensionPackageID string `json:"extension_package_id,omitempty"`
+	// ExtensionImageID holds the value of the "extension_image_id" field.
+	ExtensionImageID string `json:"extension_image_id,omitempty"`
+	// ExtensionVersion holds the value of the "extension_version" field.
+	ExtensionVersion string `json:"extension_version,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -49,13 +55,15 @@ type ImageEdges struct {
 	ProjectTasks []*ProjectTask `json:"project_tasks,omitempty"`
 	// Projects holds the value of the projects edge.
 	Projects []*Project `json:"projects,omitempty"`
+	// ExtensionArchives holds the value of the extension_archives edge.
+	ExtensionArchives []*TeamExtensionImageArchive `json:"extension_archives,omitempty"`
 	// TeamImages holds the value of the team_images edge.
 	TeamImages []*TeamImage `json:"team_images,omitempty"`
 	// TeamGroupImages holds the value of the team_group_images edge.
 	TeamGroupImages []*TeamGroupImage `json:"team_group_images,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [7]bool
+	loadedTypes [8]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -105,10 +113,19 @@ func (e ImageEdges) ProjectsOrErr() ([]*Project, error) {
 	return nil, &NotLoadedError{edge: "projects"}
 }
 
+// ExtensionArchivesOrErr returns the ExtensionArchives value or an error if the edge
+// was not loaded in eager-loading.
+func (e ImageEdges) ExtensionArchivesOrErr() ([]*TeamExtensionImageArchive, error) {
+	if e.loadedTypes[5] {
+		return e.ExtensionArchives, nil
+	}
+	return nil, &NotLoadedError{edge: "extension_archives"}
+}
+
 // TeamImagesOrErr returns the TeamImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e ImageEdges) TeamImagesOrErr() ([]*TeamImage, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TeamImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_images"}
@@ -117,7 +134,7 @@ func (e ImageEdges) TeamImagesOrErr() ([]*TeamImage, error) {
 // TeamGroupImagesOrErr returns the TeamGroupImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e ImageEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.TeamGroupImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_images"}
@@ -128,7 +145,7 @@ func (*Image) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case image.FieldName, image.FieldRemark:
+		case image.FieldName, image.FieldRemark, image.FieldExtensionPackageID, image.FieldExtensionImageID, image.FieldExtensionVersion:
 			values[i] = new(sql.NullString)
 		case image.FieldDeletedAt, image.FieldCreatedAt, image.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -178,6 +195,24 @@ func (_m *Image) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field remark", values[i])
 			} else if value.Valid {
 				_m.Remark = value.String
+			}
+		case image.FieldExtensionPackageID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_package_id", values[i])
+			} else if value.Valid {
+				_m.ExtensionPackageID = value.String
+			}
+		case image.FieldExtensionImageID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_image_id", values[i])
+			} else if value.Valid {
+				_m.ExtensionImageID = value.String
+			}
+		case image.FieldExtensionVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_version", values[i])
+			} else if value.Valid {
+				_m.ExtensionVersion = value.String
 			}
 		case image.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -229,6 +264,11 @@ func (_m *Image) QueryProjects() *ProjectQuery {
 	return NewImageClient(_m.config).QueryProjects(_m)
 }
 
+// QueryExtensionArchives queries the "extension_archives" edge of the Image entity.
+func (_m *Image) QueryExtensionArchives() *TeamExtensionImageArchiveQuery {
+	return NewImageClient(_m.config).QueryExtensionArchives(_m)
+}
+
 // QueryTeamImages queries the "team_images" edge of the Image entity.
 func (_m *Image) QueryTeamImages() *TeamImageQuery {
 	return NewImageClient(_m.config).QueryTeamImages(_m)
@@ -273,6 +313,15 @@ func (_m *Image) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("remark=")
 	builder.WriteString(_m.Remark)
+	builder.WriteString(", ")
+	builder.WriteString("extension_package_id=")
+	builder.WriteString(_m.ExtensionPackageID)
+	builder.WriteString(", ")
+	builder.WriteString("extension_image_id=")
+	builder.WriteString(_m.ExtensionImageID)
+	builder.WriteString(", ")
+	builder.WriteString("extension_version=")
+	builder.WriteString(_m.ExtensionVersion)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

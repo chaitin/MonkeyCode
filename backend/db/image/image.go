@@ -23,6 +23,12 @@ const (
 	FieldName = "name"
 	// FieldRemark holds the string denoting the remark field in the database.
 	FieldRemark = "remark"
+	// FieldExtensionPackageID holds the string denoting the extension_package_id field in the database.
+	FieldExtensionPackageID = "extension_package_id"
+	// FieldExtensionImageID holds the string denoting the extension_image_id field in the database.
+	FieldExtensionImageID = "extension_image_id"
+	// FieldExtensionVersion holds the string denoting the extension_version field in the database.
+	FieldExtensionVersion = "extension_version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -37,6 +43,8 @@ const (
 	EdgeProjectTasks = "project_tasks"
 	// EdgeProjects holds the string denoting the projects edge name in mutations.
 	EdgeProjects = "projects"
+	// EdgeExtensionArchives holds the string denoting the extension_archives edge name in mutations.
+	EdgeExtensionArchives = "extension_archives"
 	// EdgeTeamImages holds the string denoting the team_images edge name in mutations.
 	EdgeTeamImages = "team_images"
 	// EdgeTeamGroupImages holds the string denoting the team_group_images edge name in mutations.
@@ -74,6 +82,13 @@ const (
 	ProjectsInverseTable = "projects"
 	// ProjectsColumn is the table column denoting the projects relation/edge.
 	ProjectsColumn = "image_id"
+	// ExtensionArchivesTable is the table that holds the extension_archives relation/edge.
+	ExtensionArchivesTable = "team_extension_image_archives"
+	// ExtensionArchivesInverseTable is the table name for the TeamExtensionImageArchive entity.
+	// It exists in this package in order to avoid circular dependency with the "teamextensionimagearchive" package.
+	ExtensionArchivesInverseTable = "team_extension_image_archives"
+	// ExtensionArchivesColumn is the table column denoting the extension_archives relation/edge.
+	ExtensionArchivesColumn = "image_id"
 	// TeamImagesTable is the table that holds the team_images relation/edge.
 	TeamImagesTable = "team_images"
 	// TeamImagesInverseTable is the table name for the TeamImage entity.
@@ -97,6 +112,9 @@ var Columns = []string{
 	FieldUserID,
 	FieldName,
 	FieldRemark,
+	FieldExtensionPackageID,
+	FieldExtensionImageID,
+	FieldExtensionVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -164,6 +182,21 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByRemark orders the results by the remark field.
 func ByRemark(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRemark, opts...).ToFunc()
+}
+
+// ByExtensionPackageID orders the results by the extension_package_id field.
+func ByExtensionPackageID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionPackageID, opts...).ToFunc()
+}
+
+// ByExtensionImageID orders the results by the extension_image_id field.
+func ByExtensionImageID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionImageID, opts...).ToFunc()
+}
+
+// ByExtensionVersion orders the results by the extension_version field.
+func ByExtensionVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionVersion, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
@@ -239,6 +272,20 @@ func ByProjects(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByExtensionArchivesCount orders the results by extension_archives count.
+func ByExtensionArchivesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newExtensionArchivesStep(), opts...)
+	}
+}
+
+// ByExtensionArchives orders the results by extension_archives terms.
+func ByExtensionArchives(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newExtensionArchivesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamImagesCount orders the results by team_images count.
 func ByTeamImagesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -299,6 +346,13 @@ func newProjectsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProjectsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ProjectsTable, ProjectsColumn),
+	)
+}
+func newExtensionArchivesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ExtensionArchivesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ExtensionArchivesTable, ExtensionArchivesColumn),
 	)
 }
 func newTeamImagesStep() *sqlgraph.Step {

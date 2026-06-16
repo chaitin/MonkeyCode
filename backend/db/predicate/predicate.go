@@ -93,6 +93,9 @@ type TaskVirtualMachine func(*sql.Selector)
 // Team is the predicate function for team builders.
 type Team func(*sql.Selector)
 
+// TeamExtensionImageArchive is the predicate function for teamextensionimagearchive builders.
+type TeamExtensionImageArchive func(*sql.Selector)
+
 // TeamGroup is the predicate function for teamgroup builders.
 type TeamGroup func(*sql.Selector)
 

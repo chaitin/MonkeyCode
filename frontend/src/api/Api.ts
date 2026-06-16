@@ -553,6 +553,15 @@ export interface DomainCreateTaskReq {
   task_type?: ConstsTaskType;
 }
 
+export interface DomainImportTeamExtensionPackageResp {
+  created_images?: number;
+  created_skills?: number;
+  package_id?: string;
+  updated_images?: number;
+  updated_skills?: number;
+  version?: string;
+}
+
 export interface DomainCreateUserMCPUpstreamReq {
   description?: string;
   enabled?: boolean;
@@ -3570,6 +3579,37 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         method: "DELETE",
         secure: true,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 上传团队扩展包并导入 Skills 和团队镜像记录
+     *
+     * @tags 【Team 管理员】扩展包管理
+     * @name V1TeamsExtensionPackagesCreate
+     * @summary 上传团队扩展包
+     * @request POST:/api/v1/teams/extension-packages
+     * @secure
+     */
+    v1TeamsExtensionPackagesCreate: (data: {
+      /**
+       * 扩展包 zip
+       * @format binary
+       */
+      file: File;
+    }, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainImportTeamExtensionPackageResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/extension-packages`,
+        method: "POST",
+        body: data,
+        secure: true,
+        type: ContentType.FormData,
         format: "json",
         ...params,
       }),

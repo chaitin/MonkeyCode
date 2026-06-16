@@ -45,6 +45,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
@@ -127,6 +128,8 @@ type Client struct {
 	TaskVirtualMachine *TaskVirtualMachineClient
 	// Team is the client for interacting with the Team builders.
 	Team *TeamClient
+	// TeamExtensionImageArchive is the client for interacting with the TeamExtensionImageArchive builders.
+	TeamExtensionImageArchive *TeamExtensionImageArchiveClient
 	// TeamGroup is the client for interacting with the TeamGroup builders.
 	TeamGroup *TeamGroupClient
 	// TeamGroupHost is the client for interacting with the TeamGroupHost builders.
@@ -197,6 +200,7 @@ func (c *Client) init() {
 	c.TaskUsageStat = NewTaskUsageStatClient(c.config)
 	c.TaskVirtualMachine = NewTaskVirtualMachineClient(c.config)
 	c.Team = NewTeamClient(c.config)
+	c.TeamExtensionImageArchive = NewTeamExtensionImageArchiveClient(c.config)
 	c.TeamGroup = NewTeamGroupClient(c.config)
 	c.TeamGroupHost = NewTeamGroupHostClient(c.config)
 	c.TeamGroupImage = NewTeamGroupImageClient(c.config)
@@ -302,52 +306,53 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                 ctx,
-		config:              cfg,
-		Audit:               NewAuditClient(cfg),
-		GitBot:              NewGitBotClient(cfg),
-		GitBotTask:          NewGitBotTaskClient(cfg),
-		GitBotUser:          NewGitBotUserClient(cfg),
-		GitIdentity:         NewGitIdentityClient(cfg),
-		GitTask:             NewGitTaskClient(cfg),
-		Host:                NewHostClient(cfg),
-		Image:               NewImageClient(cfg),
-		MCPTool:             NewMCPToolClient(cfg),
-		MCPUpstream:         NewMCPUpstreamClient(cfg),
-		MCPUserToolSetting:  NewMCPUserToolSettingClient(cfg),
-		Model:               NewModelClient(cfg),
-		ModelApiKey:         NewModelApiKeyClient(cfg),
-		ModelPricing:        NewModelPricingClient(cfg),
-		NotifyChannel:       NewNotifyChannelClient(cfg),
-		NotifySendLog:       NewNotifySendLogClient(cfg),
-		NotifySubscription:  NewNotifySubscriptionClient(cfg),
-		Project:             NewProjectClient(cfg),
-		ProjectCollaborator: NewProjectCollaboratorClient(cfg),
-		ProjectGitBot:       NewProjectGitBotClient(cfg),
-		ProjectIssue:        NewProjectIssueClient(cfg),
-		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
-		ProjectTask:         NewProjectTaskClient(cfg),
-		Skill:               NewSkillClient(cfg),
-		Task:                NewTaskClient(cfg),
-		TaskModelSwitch:     NewTaskModelSwitchClient(cfg),
-		TaskUsageStat:       NewTaskUsageStatClient(cfg),
-		TaskVirtualMachine:  NewTaskVirtualMachineClient(cfg),
-		Team:                NewTeamClient(cfg),
-		TeamGroup:           NewTeamGroupClient(cfg),
-		TeamGroupHost:       NewTeamGroupHostClient(cfg),
-		TeamGroupImage:      NewTeamGroupImageClient(cfg),
-		TeamGroupMember:     NewTeamGroupMemberClient(cfg),
-		TeamGroupModel:      NewTeamGroupModelClient(cfg),
-		TeamGroupSkill:      NewTeamGroupSkillClient(cfg),
-		TeamHost:            NewTeamHostClient(cfg),
-		TeamImage:           NewTeamImageClient(cfg),
-		TeamMember:          NewTeamMemberClient(cfg),
-		TeamModel:           NewTeamModelClient(cfg),
-		TeamOIDCConfig:      NewTeamOIDCConfigClient(cfg),
-		TeamSkill:           NewTeamSkillClient(cfg),
-		User:                NewUserClient(cfg),
-		UserIdentity:        NewUserIdentityClient(cfg),
-		VirtualMachine:      NewVirtualMachineClient(cfg),
+		ctx:                       ctx,
+		config:                    cfg,
+		Audit:                     NewAuditClient(cfg),
+		GitBot:                    NewGitBotClient(cfg),
+		GitBotTask:                NewGitBotTaskClient(cfg),
+		GitBotUser:                NewGitBotUserClient(cfg),
+		GitIdentity:               NewGitIdentityClient(cfg),
+		GitTask:                   NewGitTaskClient(cfg),
+		Host:                      NewHostClient(cfg),
+		Image:                     NewImageClient(cfg),
+		MCPTool:                   NewMCPToolClient(cfg),
+		MCPUpstream:               NewMCPUpstreamClient(cfg),
+		MCPUserToolSetting:        NewMCPUserToolSettingClient(cfg),
+		Model:                     NewModelClient(cfg),
+		ModelApiKey:               NewModelApiKeyClient(cfg),
+		ModelPricing:              NewModelPricingClient(cfg),
+		NotifyChannel:             NewNotifyChannelClient(cfg),
+		NotifySendLog:             NewNotifySendLogClient(cfg),
+		NotifySubscription:        NewNotifySubscriptionClient(cfg),
+		Project:                   NewProjectClient(cfg),
+		ProjectCollaborator:       NewProjectCollaboratorClient(cfg),
+		ProjectGitBot:             NewProjectGitBotClient(cfg),
+		ProjectIssue:              NewProjectIssueClient(cfg),
+		ProjectIssueComment:       NewProjectIssueCommentClient(cfg),
+		ProjectTask:               NewProjectTaskClient(cfg),
+		Skill:                     NewSkillClient(cfg),
+		Task:                      NewTaskClient(cfg),
+		TaskModelSwitch:           NewTaskModelSwitchClient(cfg),
+		TaskUsageStat:             NewTaskUsageStatClient(cfg),
+		TaskVirtualMachine:        NewTaskVirtualMachineClient(cfg),
+		Team:                      NewTeamClient(cfg),
+		TeamExtensionImageArchive: NewTeamExtensionImageArchiveClient(cfg),
+		TeamGroup:                 NewTeamGroupClient(cfg),
+		TeamGroupHost:             NewTeamGroupHostClient(cfg),
+		TeamGroupImage:            NewTeamGroupImageClient(cfg),
+		TeamGroupMember:           NewTeamGroupMemberClient(cfg),
+		TeamGroupModel:            NewTeamGroupModelClient(cfg),
+		TeamGroupSkill:            NewTeamGroupSkillClient(cfg),
+		TeamHost:                  NewTeamHostClient(cfg),
+		TeamImage:                 NewTeamImageClient(cfg),
+		TeamMember:                NewTeamMemberClient(cfg),
+		TeamModel:                 NewTeamModelClient(cfg),
+		TeamOIDCConfig:            NewTeamOIDCConfigClient(cfg),
+		TeamSkill:                 NewTeamSkillClient(cfg),
+		User:                      NewUserClient(cfg),
+		UserIdentity:              NewUserIdentityClient(cfg),
+		VirtualMachine:            NewVirtualMachineClient(cfg),
 	}, nil
 }
 
@@ -365,52 +370,53 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                 ctx,
-		config:              cfg,
-		Audit:               NewAuditClient(cfg),
-		GitBot:              NewGitBotClient(cfg),
-		GitBotTask:          NewGitBotTaskClient(cfg),
-		GitBotUser:          NewGitBotUserClient(cfg),
-		GitIdentity:         NewGitIdentityClient(cfg),
-		GitTask:             NewGitTaskClient(cfg),
-		Host:                NewHostClient(cfg),
-		Image:               NewImageClient(cfg),
-		MCPTool:             NewMCPToolClient(cfg),
-		MCPUpstream:         NewMCPUpstreamClient(cfg),
-		MCPUserToolSetting:  NewMCPUserToolSettingClient(cfg),
-		Model:               NewModelClient(cfg),
-		ModelApiKey:         NewModelApiKeyClient(cfg),
-		ModelPricing:        NewModelPricingClient(cfg),
-		NotifyChannel:       NewNotifyChannelClient(cfg),
-		NotifySendLog:       NewNotifySendLogClient(cfg),
-		NotifySubscription:  NewNotifySubscriptionClient(cfg),
-		Project:             NewProjectClient(cfg),
-		ProjectCollaborator: NewProjectCollaboratorClient(cfg),
-		ProjectGitBot:       NewProjectGitBotClient(cfg),
-		ProjectIssue:        NewProjectIssueClient(cfg),
-		ProjectIssueComment: NewProjectIssueCommentClient(cfg),
-		ProjectTask:         NewProjectTaskClient(cfg),
-		Skill:               NewSkillClient(cfg),
-		Task:                NewTaskClient(cfg),
-		TaskModelSwitch:     NewTaskModelSwitchClient(cfg),
-		TaskUsageStat:       NewTaskUsageStatClient(cfg),
-		TaskVirtualMachine:  NewTaskVirtualMachineClient(cfg),
-		Team:                NewTeamClient(cfg),
-		TeamGroup:           NewTeamGroupClient(cfg),
-		TeamGroupHost:       NewTeamGroupHostClient(cfg),
-		TeamGroupImage:      NewTeamGroupImageClient(cfg),
-		TeamGroupMember:     NewTeamGroupMemberClient(cfg),
-		TeamGroupModel:      NewTeamGroupModelClient(cfg),
-		TeamGroupSkill:      NewTeamGroupSkillClient(cfg),
-		TeamHost:            NewTeamHostClient(cfg),
-		TeamImage:           NewTeamImageClient(cfg),
-		TeamMember:          NewTeamMemberClient(cfg),
-		TeamModel:           NewTeamModelClient(cfg),
-		TeamOIDCConfig:      NewTeamOIDCConfigClient(cfg),
-		TeamSkill:           NewTeamSkillClient(cfg),
-		User:                NewUserClient(cfg),
-		UserIdentity:        NewUserIdentityClient(cfg),
-		VirtualMachine:      NewVirtualMachineClient(cfg),
+		ctx:                       ctx,
+		config:                    cfg,
+		Audit:                     NewAuditClient(cfg),
+		GitBot:                    NewGitBotClient(cfg),
+		GitBotTask:                NewGitBotTaskClient(cfg),
+		GitBotUser:                NewGitBotUserClient(cfg),
+		GitIdentity:               NewGitIdentityClient(cfg),
+		GitTask:                   NewGitTaskClient(cfg),
+		Host:                      NewHostClient(cfg),
+		Image:                     NewImageClient(cfg),
+		MCPTool:                   NewMCPToolClient(cfg),
+		MCPUpstream:               NewMCPUpstreamClient(cfg),
+		MCPUserToolSetting:        NewMCPUserToolSettingClient(cfg),
+		Model:                     NewModelClient(cfg),
+		ModelApiKey:               NewModelApiKeyClient(cfg),
+		ModelPricing:              NewModelPricingClient(cfg),
+		NotifyChannel:             NewNotifyChannelClient(cfg),
+		NotifySendLog:             NewNotifySendLogClient(cfg),
+		NotifySubscription:        NewNotifySubscriptionClient(cfg),
+		Project:                   NewProjectClient(cfg),
+		ProjectCollaborator:       NewProjectCollaboratorClient(cfg),
+		ProjectGitBot:             NewProjectGitBotClient(cfg),
+		ProjectIssue:              NewProjectIssueClient(cfg),
+		ProjectIssueComment:       NewProjectIssueCommentClient(cfg),
+		ProjectTask:               NewProjectTaskClient(cfg),
+		Skill:                     NewSkillClient(cfg),
+		Task:                      NewTaskClient(cfg),
+		TaskModelSwitch:           NewTaskModelSwitchClient(cfg),
+		TaskUsageStat:             NewTaskUsageStatClient(cfg),
+		TaskVirtualMachine:        NewTaskVirtualMachineClient(cfg),
+		Team:                      NewTeamClient(cfg),
+		TeamExtensionImageArchive: NewTeamExtensionImageArchiveClient(cfg),
+		TeamGroup:                 NewTeamGroupClient(cfg),
+		TeamGroupHost:             NewTeamGroupHostClient(cfg),
+		TeamGroupImage:            NewTeamGroupImageClient(cfg),
+		TeamGroupMember:           NewTeamGroupMemberClient(cfg),
+		TeamGroupModel:            NewTeamGroupModelClient(cfg),
+		TeamGroupSkill:            NewTeamGroupSkillClient(cfg),
+		TeamHost:                  NewTeamHostClient(cfg),
+		TeamImage:                 NewTeamImageClient(cfg),
+		TeamMember:                NewTeamMemberClient(cfg),
+		TeamModel:                 NewTeamModelClient(cfg),
+		TeamOIDCConfig:            NewTeamOIDCConfigClient(cfg),
+		TeamSkill:                 NewTeamSkillClient(cfg),
+		User:                      NewUserClient(cfg),
+		UserIdentity:              NewUserIdentityClient(cfg),
+		VirtualMachine:            NewVirtualMachineClient(cfg),
 	}, nil
 }
 
@@ -445,10 +451,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
 		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Skill, c.Task,
-		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamGroupSkill, c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel,
-		c.TeamOIDCConfig, c.TeamSkill, c.User, c.UserIdentity, c.VirtualMachine,
+		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team,
+		c.TeamExtensionImageArchive, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamGroupSkill, c.TeamHost, c.TeamImage,
+		c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.TeamSkill, c.User,
+		c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -463,10 +470,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.ModelApiKey, c.ModelPricing, c.NotifyChannel, c.NotifySendLog,
 		c.NotifySubscription, c.Project, c.ProjectCollaborator, c.ProjectGitBot,
 		c.ProjectIssue, c.ProjectIssueComment, c.ProjectTask, c.Skill, c.Task,
-		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamGroupSkill, c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel,
-		c.TeamOIDCConfig, c.TeamSkill, c.User, c.UserIdentity, c.VirtualMachine,
+		c.TaskModelSwitch, c.TaskUsageStat, c.TaskVirtualMachine, c.Team,
+		c.TeamExtensionImageArchive, c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamGroupSkill, c.TeamHost, c.TeamImage,
+		c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.TeamSkill, c.User,
+		c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -533,6 +541,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TaskVirtualMachine.mutate(ctx, m)
 	case *TeamMutation:
 		return c.Team.mutate(ctx, m)
+	case *TeamExtensionImageArchiveMutation:
+		return c.TeamExtensionImageArchive.mutate(ctx, m)
 	case *TeamGroupMutation:
 		return c.TeamGroup.mutate(ctx, m)
 	case *TeamGroupHostMutation:
@@ -2022,6 +2032,22 @@ func (c *ImageClient) QueryProjects(_m *Image) *ProjectQuery {
 			sqlgraph.From(image.Table, image.FieldID, id),
 			sqlgraph.To(project.Table, project.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, image.ProjectsTable, image.ProjectsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryExtensionArchives queries the extension_archives edge of a Image.
+func (c *ImageClient) QueryExtensionArchives(_m *Image) *TeamExtensionImageArchiveQuery {
+	query := (&TeamExtensionImageArchiveClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(image.Table, image.FieldID, id),
+			sqlgraph.To(teamextensionimagearchive.Table, teamextensionimagearchive.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, image.ExtensionArchivesTable, image.ExtensionArchivesColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5968,6 +5994,22 @@ func (c *TeamClient) QuerySkills(_m *Team) *SkillQuery {
 	return query
 }
 
+// QueryExtensionImageArchives queries the extension_image_archives edge of a Team.
+func (c *TeamClient) QueryExtensionImageArchives(_m *Team) *TeamExtensionImageArchiveQuery {
+	query := (&TeamExtensionImageArchiveClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, id),
+			sqlgraph.To(teamextensionimagearchive.Table, teamextensionimagearchive.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, team.ExtensionImageArchivesTable, team.ExtensionImageArchivesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a Team.
 func (c *TeamClient) QueryTeamMembers(_m *Team) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -6056,6 +6098,171 @@ func (c *TeamClient) mutate(ctx context.Context, m *TeamMutation) (Value, error)
 		return (&TeamDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown Team mutation op: %q", m.Op())
+	}
+}
+
+// TeamExtensionImageArchiveClient is a client for the TeamExtensionImageArchive schema.
+type TeamExtensionImageArchiveClient struct {
+	config
+}
+
+// NewTeamExtensionImageArchiveClient returns a client for the TeamExtensionImageArchive from the given config.
+func NewTeamExtensionImageArchiveClient(c config) *TeamExtensionImageArchiveClient {
+	return &TeamExtensionImageArchiveClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamextensionimagearchive.Hooks(f(g(h())))`.
+func (c *TeamExtensionImageArchiveClient) Use(hooks ...Hook) {
+	c.hooks.TeamExtensionImageArchive = append(c.hooks.TeamExtensionImageArchive, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamextensionimagearchive.Intercept(f(g(h())))`.
+func (c *TeamExtensionImageArchiveClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamExtensionImageArchive = append(c.inters.TeamExtensionImageArchive, interceptors...)
+}
+
+// Create returns a builder for creating a TeamExtensionImageArchive entity.
+func (c *TeamExtensionImageArchiveClient) Create() *TeamExtensionImageArchiveCreate {
+	mutation := newTeamExtensionImageArchiveMutation(c.config, OpCreate)
+	return &TeamExtensionImageArchiveCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamExtensionImageArchive entities.
+func (c *TeamExtensionImageArchiveClient) CreateBulk(builders ...*TeamExtensionImageArchiveCreate) *TeamExtensionImageArchiveCreateBulk {
+	return &TeamExtensionImageArchiveCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamExtensionImageArchiveClient) MapCreateBulk(slice any, setFunc func(*TeamExtensionImageArchiveCreate, int)) *TeamExtensionImageArchiveCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamExtensionImageArchiveCreateBulk{err: fmt.Errorf("calling to TeamExtensionImageArchiveClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamExtensionImageArchiveCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamExtensionImageArchiveCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamExtensionImageArchive.
+func (c *TeamExtensionImageArchiveClient) Update() *TeamExtensionImageArchiveUpdate {
+	mutation := newTeamExtensionImageArchiveMutation(c.config, OpUpdate)
+	return &TeamExtensionImageArchiveUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamExtensionImageArchiveClient) UpdateOne(_m *TeamExtensionImageArchive) *TeamExtensionImageArchiveUpdateOne {
+	mutation := newTeamExtensionImageArchiveMutation(c.config, OpUpdateOne, withTeamExtensionImageArchive(_m))
+	return &TeamExtensionImageArchiveUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamExtensionImageArchiveClient) UpdateOneID(id uuid.UUID) *TeamExtensionImageArchiveUpdateOne {
+	mutation := newTeamExtensionImageArchiveMutation(c.config, OpUpdateOne, withTeamExtensionImageArchiveID(id))
+	return &TeamExtensionImageArchiveUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamExtensionImageArchive.
+func (c *TeamExtensionImageArchiveClient) Delete() *TeamExtensionImageArchiveDelete {
+	mutation := newTeamExtensionImageArchiveMutation(c.config, OpDelete)
+	return &TeamExtensionImageArchiveDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamExtensionImageArchiveClient) DeleteOne(_m *TeamExtensionImageArchive) *TeamExtensionImageArchiveDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamExtensionImageArchiveClient) DeleteOneID(id uuid.UUID) *TeamExtensionImageArchiveDeleteOne {
+	builder := c.Delete().Where(teamextensionimagearchive.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamExtensionImageArchiveDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamExtensionImageArchive.
+func (c *TeamExtensionImageArchiveClient) Query() *TeamExtensionImageArchiveQuery {
+	return &TeamExtensionImageArchiveQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamExtensionImageArchive},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamExtensionImageArchive entity by its id.
+func (c *TeamExtensionImageArchiveClient) Get(ctx context.Context, id uuid.UUID) (*TeamExtensionImageArchive, error) {
+	return c.Query().Where(teamextensionimagearchive.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamExtensionImageArchiveClient) GetX(ctx context.Context, id uuid.UUID) *TeamExtensionImageArchive {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTeam queries the team edge of a TeamExtensionImageArchive.
+func (c *TeamExtensionImageArchiveClient) QueryTeam(_m *TeamExtensionImageArchive) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamextensionimagearchive.Table, teamextensionimagearchive.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, teamextensionimagearchive.TeamTable, teamextensionimagearchive.TeamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryImage queries the image edge of a TeamExtensionImageArchive.
+func (c *TeamExtensionImageArchiveClient) QueryImage(_m *TeamExtensionImageArchive) *ImageQuery {
+	query := (&ImageClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamextensionimagearchive.Table, teamextensionimagearchive.FieldID, id),
+			sqlgraph.To(image.Table, image.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, teamextensionimagearchive.ImageTable, teamextensionimagearchive.ImageColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamExtensionImageArchiveClient) Hooks() []Hook {
+	return c.hooks.TeamExtensionImageArchive
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamExtensionImageArchiveClient) Interceptors() []Interceptor {
+	return c.inters.TeamExtensionImageArchive
+}
+
+func (c *TeamExtensionImageArchiveClient) mutate(ctx context.Context, m *TeamExtensionImageArchiveMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamExtensionImageArchiveCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamExtensionImageArchiveUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamExtensionImageArchiveUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamExtensionImageArchiveDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamExtensionImageArchive mutation op: %q", m.Op())
 	}
 }
 
@@ -9045,20 +9252,22 @@ type (
 		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Skill, Task,
-		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamGroupSkill,
-		TeamHost, TeamImage, TeamMember, TeamModel, TeamOIDCConfig, TeamSkill, User,
-		UserIdentity, VirtualMachine []ent.Hook
+		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
+		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
+		TeamGroupMember, TeamGroupModel, TeamGroupSkill, TeamHost, TeamImage,
+		TeamMember, TeamModel, TeamOIDCConfig, TeamSkill, User, UserIdentity,
+		VirtualMachine []ent.Hook
 	}
 	inters struct {
 		Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask, Host, Image,
 		MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey, ModelPricing,
 		NotifyChannel, NotifySendLog, NotifySubscription, Project, ProjectCollaborator,
 		ProjectGitBot, ProjectIssue, ProjectIssueComment, ProjectTask, Skill, Task,
-		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team, TeamGroup,
-		TeamGroupHost, TeamGroupImage, TeamGroupMember, TeamGroupModel, TeamGroupSkill,
-		TeamHost, TeamImage, TeamMember, TeamModel, TeamOIDCConfig, TeamSkill, User,
-		UserIdentity, VirtualMachine []ent.Interceptor
+		TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
+		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
+		TeamGroupMember, TeamGroupModel, TeamGroupSkill, TeamHost, TeamImage,
+		TeamMember, TeamModel, TeamOIDCConfig, TeamSkill, User, UserIdentity,
+		VirtualMachine []ent.Interceptor
 	}
 )
 

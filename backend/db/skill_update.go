@@ -218,6 +218,66 @@ func (_u *SkillUpdate) ClearSkillMdPath() *SkillUpdate {
 	return _u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_u *SkillUpdate) SetExtensionPackageID(v string) *SkillUpdate {
+	_u.mutation.SetExtensionPackageID(v)
+	return _u
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_u *SkillUpdate) SetNillableExtensionPackageID(v *string) *SkillUpdate {
+	if v != nil {
+		_u.SetExtensionPackageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (_u *SkillUpdate) ClearExtensionPackageID() *SkillUpdate {
+	_u.mutation.ClearExtensionPackageID()
+	return _u
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (_u *SkillUpdate) SetExtensionSkillID(v string) *SkillUpdate {
+	_u.mutation.SetExtensionSkillID(v)
+	return _u
+}
+
+// SetNillableExtensionSkillID sets the "extension_skill_id" field if the given value is not nil.
+func (_u *SkillUpdate) SetNillableExtensionSkillID(v *string) *SkillUpdate {
+	if v != nil {
+		_u.SetExtensionSkillID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionSkillID clears the value of the "extension_skill_id" field.
+func (_u *SkillUpdate) ClearExtensionSkillID() *SkillUpdate {
+	_u.mutation.ClearExtensionSkillID()
+	return _u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_u *SkillUpdate) SetExtensionVersion(v string) *SkillUpdate {
+	_u.mutation.SetExtensionVersion(v)
+	return _u
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_u *SkillUpdate) SetNillableExtensionVersion(v *string) *SkillUpdate {
+	if v != nil {
+		_u.SetExtensionVersion(*v)
+	}
+	return _u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (_u *SkillUpdate) ClearExtensionVersion() *SkillUpdate {
+	_u.mutation.ClearExtensionVersion()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *SkillUpdate) SetCreatedAt(v time.Time) *SkillUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -540,6 +600,24 @@ func (_u *SkillUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SkillMdPathCleared() {
 		_spec.ClearField(skill.FieldSkillMdPath, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(skill.FieldExtensionPackageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionPackageIDCleared() {
+		_spec.ClearField(skill.FieldExtensionPackageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionSkillID(); ok {
+		_spec.SetField(skill.FieldExtensionSkillID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionSkillIDCleared() {
+		_spec.ClearField(skill.FieldExtensionSkillID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionVersion(); ok {
+		_spec.SetField(skill.FieldExtensionVersion, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionVersionCleared() {
+		_spec.ClearField(skill.FieldExtensionVersion, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(skill.FieldCreatedAt, field.TypeTime, value)
@@ -984,6 +1062,66 @@ func (_u *SkillUpdateOne) ClearSkillMdPath() *SkillUpdateOne {
 	return _u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_u *SkillUpdateOne) SetExtensionPackageID(v string) *SkillUpdateOne {
+	_u.mutation.SetExtensionPackageID(v)
+	return _u
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_u *SkillUpdateOne) SetNillableExtensionPackageID(v *string) *SkillUpdateOne {
+	if v != nil {
+		_u.SetExtensionPackageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (_u *SkillUpdateOne) ClearExtensionPackageID() *SkillUpdateOne {
+	_u.mutation.ClearExtensionPackageID()
+	return _u
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (_u *SkillUpdateOne) SetExtensionSkillID(v string) *SkillUpdateOne {
+	_u.mutation.SetExtensionSkillID(v)
+	return _u
+}
+
+// SetNillableExtensionSkillID sets the "extension_skill_id" field if the given value is not nil.
+func (_u *SkillUpdateOne) SetNillableExtensionSkillID(v *string) *SkillUpdateOne {
+	if v != nil {
+		_u.SetExtensionSkillID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionSkillID clears the value of the "extension_skill_id" field.
+func (_u *SkillUpdateOne) ClearExtensionSkillID() *SkillUpdateOne {
+	_u.mutation.ClearExtensionSkillID()
+	return _u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_u *SkillUpdateOne) SetExtensionVersion(v string) *SkillUpdateOne {
+	_u.mutation.SetExtensionVersion(v)
+	return _u
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_u *SkillUpdateOne) SetNillableExtensionVersion(v *string) *SkillUpdateOne {
+	if v != nil {
+		_u.SetExtensionVersion(*v)
+	}
+	return _u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (_u *SkillUpdateOne) ClearExtensionVersion() *SkillUpdateOne {
+	_u.mutation.ClearExtensionVersion()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *SkillUpdateOne) SetCreatedAt(v time.Time) *SkillUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -1336,6 +1474,24 @@ func (_u *SkillUpdateOne) sqlSave(ctx context.Context) (_node *Skill, err error)
 	}
 	if _u.mutation.SkillMdPathCleared() {
 		_spec.ClearField(skill.FieldSkillMdPath, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(skill.FieldExtensionPackageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionPackageIDCleared() {
+		_spec.ClearField(skill.FieldExtensionPackageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionSkillID(); ok {
+		_spec.SetField(skill.FieldExtensionSkillID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionSkillIDCleared() {
+		_spec.ClearField(skill.FieldExtensionSkillID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionVersion(); ok {
+		_spec.SetField(skill.FieldExtensionVersion, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionVersionCleared() {
+		_spec.ClearField(skill.FieldExtensionVersion, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(skill.FieldCreatedAt, field.TypeTime, value)

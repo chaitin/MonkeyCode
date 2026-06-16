@@ -53,6 +53,7 @@ BASE_URL="{{.base_url}}"
 INSTALLER_URL="{{.installer_url}}"
 DOCKER_BUNDLE_PATH="{{.docker_bundle_path}}"
 HOST_BUNDLE_PATH="{{.host_bundle_path}}"
+EXTENSION_IMAGES_MANIFEST_PATH="{{.extension_images_manifest_path}}"
 INSTALLER_FILE="/tmp/monkeycode-installer"
 
 cleanup() {
@@ -72,12 +73,16 @@ echo -e "${YELLOW}Downloading installer...${NC}"
 INSTALLER_URL=${INSTALLER_URL//\{\{.arch\}\}/$ARCH}
 DOCKER_BUNDLE_PATH=${DOCKER_BUNDLE_PATH//\{\{.arch\}\}/$ARCH}
 HOST_BUNDLE_PATH=${HOST_BUNDLE_PATH//\{\{.arch\}\}/$ARCH}
+EXTENSION_IMAGES_MANIFEST_PATH=${EXTENSION_IMAGES_MANIFEST_PATH//\{\{.arch\}\}/$ARCH}
 if ! curl -4fLk --progress-bar -o "$INSTALLER_FILE" "$INSTALLER_URL"; then
     echo -e "${RED}Failed to download installer${NC}"
     exit 1
 fi
 
 chmod +x "$INSTALLER_FILE"
+if [[ -n "$EXTENSION_IMAGES_MANIFEST_PATH" ]]; then
+    export MCAI_EXTENSION_IMAGES_MANIFEST_PATH="$EXTENSION_IMAGES_MANIFEST_PATH"
+fi
 MCAI_BASE_URL="$BASE_URL" \
 MCAI_DOCKER_BUNDLE_PATH="$DOCKER_BUNDLE_PATH" \
 MCAI_HOST_BUNDLE_PATH="$HOST_BUNDLE_PATH" \

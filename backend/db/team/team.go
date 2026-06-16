@@ -45,6 +45,8 @@ const (
 	EdgeImages = "images"
 	// EdgeSkills holds the string denoting the skills edge name in mutations.
 	EdgeSkills = "skills"
+	// EdgeExtensionImageArchives holds the string denoting the extension_image_archives edge name in mutations.
+	EdgeExtensionImageArchives = "extension_image_archives"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamModels holds the string denoting the team_models edge name in mutations.
@@ -82,6 +84,13 @@ const (
 	// SkillsInverseTable is the table name for the Skill entity.
 	// It exists in this package in order to avoid circular dependency with the "skill" package.
 	SkillsInverseTable = "skills"
+	// ExtensionImageArchivesTable is the table that holds the extension_image_archives relation/edge.
+	ExtensionImageArchivesTable = "team_extension_image_archives"
+	// ExtensionImageArchivesInverseTable is the table name for the TeamExtensionImageArchive entity.
+	// It exists in this package in order to avoid circular dependency with the "teamextensionimagearchive" package.
+	ExtensionImageArchivesInverseTable = "team_extension_image_archives"
+	// ExtensionImageArchivesColumn is the table column denoting the extension_image_archives relation/edge.
+	ExtensionImageArchivesColumn = "team_id"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -308,6 +317,20 @@ func BySkills(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByExtensionImageArchivesCount orders the results by extension_image_archives count.
+func ByExtensionImageArchivesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newExtensionImageArchivesStep(), opts...)
+	}
+}
+
+// ByExtensionImageArchives orders the results by extension_image_archives terms.
+func ByExtensionImageArchives(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newExtensionImageArchivesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -396,6 +419,13 @@ func newSkillsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(SkillsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, false, SkillsTable, SkillsPrimaryKey...),
+	)
+}
+func newExtensionImageArchivesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ExtensionImageArchivesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ExtensionImageArchivesTable, ExtensionImageArchivesColumn),
 	)
 }
 func newTeamMembersStep() *sqlgraph.Step {
