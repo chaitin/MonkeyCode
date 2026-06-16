@@ -35,3 +35,23 @@ func TestMigrationsWidenUserIdentityIDForOIDC(t *testing.T) {
 		t.Fatalf("identity_id migration must alter user_identities.identity_id to text")
 	}
 }
+
+func TestExtensionPackageMigrationDefinesArchiveTable(t *testing.T) {
+	data, err := os.ReadFile("000018_extension_package_resources.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(data)
+	for _, want := range []string{
+		"ALTER TABLE skills ADD COLUMN IF NOT EXISTS extension_package_id",
+		"ALTER TABLE skills ADD COLUMN IF NOT EXISTS extension_skill_id",
+		"ALTER TABLE images ADD COLUMN IF NOT EXISTS extension_package_id",
+		"ALTER TABLE images ADD COLUMN IF NOT EXISTS extension_image_id",
+		"CREATE TABLE IF NOT EXISTS team_extension_image_archives",
+		"unique_idx_team_extension_image_archives_identity",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("migration missing %q", want)
+		}
+	}
+}

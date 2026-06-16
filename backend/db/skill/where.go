@@ -106,6 +106,21 @@ func SkillMdPath(v string) predicate.Skill {
 	return predicate.Skill(sql.FieldEQ(FieldSkillMdPath, v))
 }
 
+// ExtensionPackageID applies equality check predicate on the "extension_package_id" field. It's identical to ExtensionPackageIDEQ.
+func ExtensionPackageID(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionSkillID applies equality check predicate on the "extension_skill_id" field. It's identical to ExtensionSkillIDEQ.
+func ExtensionSkillID(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEQ(FieldExtensionSkillID, v))
+}
+
+// ExtensionVersion applies equality check predicate on the "extension_version" field. It's identical to ExtensionVersionEQ.
+func ExtensionVersion(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEQ(FieldExtensionVersion, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Skill {
 	return predicate.Skill(sql.FieldEQ(FieldCreatedAt, v))
@@ -744,6 +759,231 @@ func SkillMdPathEqualFold(v string) predicate.Skill {
 // SkillMdPathContainsFold applies the ContainsFold predicate on the "skill_md_path" field.
 func SkillMdPathContainsFold(v string) predicate.Skill {
 	return predicate.Skill(sql.FieldContainsFold(FieldSkillMdPath, v))
+}
+
+// ExtensionPackageIDEQ applies the EQ predicate on the "extension_package_id" field.
+func ExtensionPackageIDEQ(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDNEQ applies the NEQ predicate on the "extension_package_id" field.
+func ExtensionPackageIDNEQ(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldNEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDIn applies the In predicate on the "extension_package_id" field.
+func ExtensionPackageIDIn(vs ...string) predicate.Skill {
+	return predicate.Skill(sql.FieldIn(FieldExtensionPackageID, vs...))
+}
+
+// ExtensionPackageIDNotIn applies the NotIn predicate on the "extension_package_id" field.
+func ExtensionPackageIDNotIn(vs ...string) predicate.Skill {
+	return predicate.Skill(sql.FieldNotIn(FieldExtensionPackageID, vs...))
+}
+
+// ExtensionPackageIDGT applies the GT predicate on the "extension_package_id" field.
+func ExtensionPackageIDGT(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldGT(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDGTE applies the GTE predicate on the "extension_package_id" field.
+func ExtensionPackageIDGTE(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldGTE(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDLT applies the LT predicate on the "extension_package_id" field.
+func ExtensionPackageIDLT(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldLT(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDLTE applies the LTE predicate on the "extension_package_id" field.
+func ExtensionPackageIDLTE(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldLTE(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDContains applies the Contains predicate on the "extension_package_id" field.
+func ExtensionPackageIDContains(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldContains(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDHasPrefix applies the HasPrefix predicate on the "extension_package_id" field.
+func ExtensionPackageIDHasPrefix(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldHasPrefix(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDHasSuffix applies the HasSuffix predicate on the "extension_package_id" field.
+func ExtensionPackageIDHasSuffix(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldHasSuffix(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDIsNil applies the IsNil predicate on the "extension_package_id" field.
+func ExtensionPackageIDIsNil() predicate.Skill {
+	return predicate.Skill(sql.FieldIsNull(FieldExtensionPackageID))
+}
+
+// ExtensionPackageIDNotNil applies the NotNil predicate on the "extension_package_id" field.
+func ExtensionPackageIDNotNil() predicate.Skill {
+	return predicate.Skill(sql.FieldNotNull(FieldExtensionPackageID))
+}
+
+// ExtensionPackageIDEqualFold applies the EqualFold predicate on the "extension_package_id" field.
+func ExtensionPackageIDEqualFold(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEqualFold(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDContainsFold applies the ContainsFold predicate on the "extension_package_id" field.
+func ExtensionPackageIDContainsFold(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldContainsFold(FieldExtensionPackageID, v))
+}
+
+// ExtensionSkillIDEQ applies the EQ predicate on the "extension_skill_id" field.
+func ExtensionSkillIDEQ(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEQ(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDNEQ applies the NEQ predicate on the "extension_skill_id" field.
+func ExtensionSkillIDNEQ(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldNEQ(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDIn applies the In predicate on the "extension_skill_id" field.
+func ExtensionSkillIDIn(vs ...string) predicate.Skill {
+	return predicate.Skill(sql.FieldIn(FieldExtensionSkillID, vs...))
+}
+
+// ExtensionSkillIDNotIn applies the NotIn predicate on the "extension_skill_id" field.
+func ExtensionSkillIDNotIn(vs ...string) predicate.Skill {
+	return predicate.Skill(sql.FieldNotIn(FieldExtensionSkillID, vs...))
+}
+
+// ExtensionSkillIDGT applies the GT predicate on the "extension_skill_id" field.
+func ExtensionSkillIDGT(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldGT(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDGTE applies the GTE predicate on the "extension_skill_id" field.
+func ExtensionSkillIDGTE(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldGTE(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDLT applies the LT predicate on the "extension_skill_id" field.
+func ExtensionSkillIDLT(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldLT(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDLTE applies the LTE predicate on the "extension_skill_id" field.
+func ExtensionSkillIDLTE(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldLTE(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDContains applies the Contains predicate on the "extension_skill_id" field.
+func ExtensionSkillIDContains(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldContains(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDHasPrefix applies the HasPrefix predicate on the "extension_skill_id" field.
+func ExtensionSkillIDHasPrefix(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldHasPrefix(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDHasSuffix applies the HasSuffix predicate on the "extension_skill_id" field.
+func ExtensionSkillIDHasSuffix(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldHasSuffix(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDIsNil applies the IsNil predicate on the "extension_skill_id" field.
+func ExtensionSkillIDIsNil() predicate.Skill {
+	return predicate.Skill(sql.FieldIsNull(FieldExtensionSkillID))
+}
+
+// ExtensionSkillIDNotNil applies the NotNil predicate on the "extension_skill_id" field.
+func ExtensionSkillIDNotNil() predicate.Skill {
+	return predicate.Skill(sql.FieldNotNull(FieldExtensionSkillID))
+}
+
+// ExtensionSkillIDEqualFold applies the EqualFold predicate on the "extension_skill_id" field.
+func ExtensionSkillIDEqualFold(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEqualFold(FieldExtensionSkillID, v))
+}
+
+// ExtensionSkillIDContainsFold applies the ContainsFold predicate on the "extension_skill_id" field.
+func ExtensionSkillIDContainsFold(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldContainsFold(FieldExtensionSkillID, v))
+}
+
+// ExtensionVersionEQ applies the EQ predicate on the "extension_version" field.
+func ExtensionVersionEQ(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEQ(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionNEQ applies the NEQ predicate on the "extension_version" field.
+func ExtensionVersionNEQ(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldNEQ(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionIn applies the In predicate on the "extension_version" field.
+func ExtensionVersionIn(vs ...string) predicate.Skill {
+	return predicate.Skill(sql.FieldIn(FieldExtensionVersion, vs...))
+}
+
+// ExtensionVersionNotIn applies the NotIn predicate on the "extension_version" field.
+func ExtensionVersionNotIn(vs ...string) predicate.Skill {
+	return predicate.Skill(sql.FieldNotIn(FieldExtensionVersion, vs...))
+}
+
+// ExtensionVersionGT applies the GT predicate on the "extension_version" field.
+func ExtensionVersionGT(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldGT(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionGTE applies the GTE predicate on the "extension_version" field.
+func ExtensionVersionGTE(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldGTE(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionLT applies the LT predicate on the "extension_version" field.
+func ExtensionVersionLT(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldLT(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionLTE applies the LTE predicate on the "extension_version" field.
+func ExtensionVersionLTE(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldLTE(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionContains applies the Contains predicate on the "extension_version" field.
+func ExtensionVersionContains(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldContains(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionHasPrefix applies the HasPrefix predicate on the "extension_version" field.
+func ExtensionVersionHasPrefix(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldHasPrefix(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionHasSuffix applies the HasSuffix predicate on the "extension_version" field.
+func ExtensionVersionHasSuffix(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldHasSuffix(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionIsNil applies the IsNil predicate on the "extension_version" field.
+func ExtensionVersionIsNil() predicate.Skill {
+	return predicate.Skill(sql.FieldIsNull(FieldExtensionVersion))
+}
+
+// ExtensionVersionNotNil applies the NotNil predicate on the "extension_version" field.
+func ExtensionVersionNotNil() predicate.Skill {
+	return predicate.Skill(sql.FieldNotNull(FieldExtensionVersion))
+}
+
+// ExtensionVersionEqualFold applies the EqualFold predicate on the "extension_version" field.
+func ExtensionVersionEqualFold(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldEqualFold(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionContainsFold applies the ContainsFold predicate on the "extension_version" field.
+func ExtensionVersionContainsFold(v string) predicate.Skill {
+	return predicate.Skill(sql.FieldContainsFold(FieldExtensionVersion, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

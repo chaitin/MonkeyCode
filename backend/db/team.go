@@ -56,6 +56,8 @@ type TeamEdges struct {
 	Images []*Image `json:"images,omitempty"`
 	// Skills holds the value of the skills edge.
 	Skills []*Skill `json:"skills,omitempty"`
+	// ExtensionImageArchives holds the value of the extension_image_archives edge.
+	ExtensionImageArchives []*TeamExtensionImageArchive `json:"extension_image_archives,omitempty"`
 	// TeamMembers holds the value of the team_members edge.
 	TeamMembers []*TeamMember `json:"team_members,omitempty"`
 	// TeamModels holds the value of the team_models edge.
@@ -66,7 +68,7 @@ type TeamEdges struct {
 	TeamSkills []*TeamSkill `json:"team_skills,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [9]bool
+	loadedTypes [10]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -114,10 +116,19 @@ func (e TeamEdges) SkillsOrErr() ([]*Skill, error) {
 	return nil, &NotLoadedError{edge: "skills"}
 }
 
+// ExtensionImageArchivesOrErr returns the ExtensionImageArchives value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamEdges) ExtensionImageArchivesOrErr() ([]*TeamExtensionImageArchive, error) {
+	if e.loadedTypes[5] {
+		return e.ExtensionImageArchives, nil
+	}
+	return nil, &NotLoadedError{edge: "extension_image_archives"}
+}
+
 // TeamMembersOrErr returns the TeamMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TeamMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_members"}
@@ -126,7 +137,7 @@ func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
 // TeamModelsOrErr returns the TeamModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.TeamModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_models"}
@@ -135,7 +146,7 @@ func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
 // TeamImagesOrErr returns the TeamImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamImagesOrErr() ([]*TeamImage, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[8] {
 		return e.TeamImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_images"}
@@ -144,7 +155,7 @@ func (e TeamEdges) TeamImagesOrErr() ([]*TeamImage, error) {
 // TeamSkillsOrErr returns the TeamSkills value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamSkillsOrErr() ([]*TeamSkill, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[9] {
 		return e.TeamSkills, nil
 	}
 	return nil, &NotLoadedError{edge: "team_skills"}
@@ -282,6 +293,11 @@ func (_m *Team) QueryImages() *ImageQuery {
 // QuerySkills queries the "skills" edge of the Team entity.
 func (_m *Team) QuerySkills() *SkillQuery {
 	return NewTeamClient(_m.config).QuerySkills(_m)
+}
+
+// QueryExtensionImageArchives queries the "extension_image_archives" edge of the Team entity.
+func (_m *Team) QueryExtensionImageArchives() *TeamExtensionImageArchiveQuery {
+	return NewTeamClient(_m.config).QueryExtensionImageArchives(_m)
 }
 
 // QueryTeamMembers queries the "team_members" edge of the Team entity.

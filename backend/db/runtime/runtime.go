@@ -35,6 +35,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
@@ -155,11 +156,11 @@ func init() {
 	// image.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	image.NameValidator = imageDescName.Validators[0].(func(string) error)
 	// imageDescCreatedAt is the schema descriptor for created_at field.
-	imageDescCreatedAt := imageFields[4].Descriptor()
+	imageDescCreatedAt := imageFields[7].Descriptor()
 	// image.DefaultCreatedAt holds the default value on creation for the created_at field.
 	image.DefaultCreatedAt = imageDescCreatedAt.Default.(func() time.Time)
 	// imageDescUpdatedAt is the schema descriptor for updated_at field.
-	imageDescUpdatedAt := imageFields[5].Descriptor()
+	imageDescUpdatedAt := imageFields[8].Descriptor()
 	// image.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	image.DefaultUpdatedAt = imageDescUpdatedAt.Default.(func() time.Time)
 	// image.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -688,11 +689,11 @@ func init() {
 	// skill.SourceLabelValidator is a validator for the "source_label" field. It is called by the builders before save.
 	skill.SourceLabelValidator = skillDescSourceLabel.Validators[0].(func(string) error)
 	// skillDescCreatedAt is the schema descriptor for created_at field.
-	skillDescCreatedAt := skillFields[11].Descriptor()
+	skillDescCreatedAt := skillFields[14].Descriptor()
 	// skill.DefaultCreatedAt holds the default value on creation for the created_at field.
 	skill.DefaultCreatedAt = skillDescCreatedAt.Default.(func() time.Time)
 	// skillDescUpdatedAt is the schema descriptor for updated_at field.
-	skillDescUpdatedAt := skillFields[12].Descriptor()
+	skillDescUpdatedAt := skillFields[15].Descriptor()
 	// skill.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	skill.DefaultUpdatedAt = skillDescUpdatedAt.Default.(func() time.Time)
 	// skill.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -827,6 +828,46 @@ func init() {
 	teamDescUpdatedAt := teamFields[9].Descriptor()
 	// team.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	team.DefaultUpdatedAt = teamDescUpdatedAt.Default.(func() time.Time)
+	teamextensionimagearchiveFields := schema.TeamExtensionImageArchive{}.Fields()
+	_ = teamextensionimagearchiveFields
+	// teamextensionimagearchiveDescPackageID is the schema descriptor for package_id field.
+	teamextensionimagearchiveDescPackageID := teamextensionimagearchiveFields[3].Descriptor()
+	// teamextensionimagearchive.PackageIDValidator is a validator for the "package_id" field. It is called by the builders before save.
+	teamextensionimagearchive.PackageIDValidator = teamextensionimagearchiveDescPackageID.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescExtensionImageID is the schema descriptor for extension_image_id field.
+	teamextensionimagearchiveDescExtensionImageID := teamextensionimagearchiveFields[4].Descriptor()
+	// teamextensionimagearchive.ExtensionImageIDValidator is a validator for the "extension_image_id" field. It is called by the builders before save.
+	teamextensionimagearchive.ExtensionImageIDValidator = teamextensionimagearchiveDescExtensionImageID.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescVersion is the schema descriptor for version field.
+	teamextensionimagearchiveDescVersion := teamextensionimagearchiveFields[5].Descriptor()
+	// teamextensionimagearchive.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	teamextensionimagearchive.VersionValidator = teamextensionimagearchiveDescVersion.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescArch is the schema descriptor for arch field.
+	teamextensionimagearchiveDescArch := teamextensionimagearchiveFields[6].Descriptor()
+	// teamextensionimagearchive.ArchValidator is a validator for the "arch" field. It is called by the builders before save.
+	teamextensionimagearchive.ArchValidator = teamextensionimagearchiveDescArch.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescImageName is the schema descriptor for image_name field.
+	teamextensionimagearchiveDescImageName := teamextensionimagearchiveFields[7].Descriptor()
+	// teamextensionimagearchive.ImageNameValidator is a validator for the "image_name" field. It is called by the builders before save.
+	teamextensionimagearchive.ImageNameValidator = teamextensionimagearchiveDescImageName.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescArchivePath is the schema descriptor for archive_path field.
+	teamextensionimagearchiveDescArchivePath := teamextensionimagearchiveFields[8].Descriptor()
+	// teamextensionimagearchive.ArchivePathValidator is a validator for the "archive_path" field. It is called by the builders before save.
+	teamextensionimagearchive.ArchivePathValidator = teamextensionimagearchiveDescArchivePath.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescArchiveURL is the schema descriptor for archive_url field.
+	teamextensionimagearchiveDescArchiveURL := teamextensionimagearchiveFields[9].Descriptor()
+	// teamextensionimagearchive.ArchiveURLValidator is a validator for the "archive_url" field. It is called by the builders before save.
+	teamextensionimagearchive.ArchiveURLValidator = teamextensionimagearchiveDescArchiveURL.Validators[0].(func(string) error)
+	// teamextensionimagearchiveDescCreatedAt is the schema descriptor for created_at field.
+	teamextensionimagearchiveDescCreatedAt := teamextensionimagearchiveFields[11].Descriptor()
+	// teamextensionimagearchive.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamextensionimagearchive.DefaultCreatedAt = teamextensionimagearchiveDescCreatedAt.Default.(func() time.Time)
+	// teamextensionimagearchiveDescUpdatedAt is the schema descriptor for updated_at field.
+	teamextensionimagearchiveDescUpdatedAt := teamextensionimagearchiveFields[12].Descriptor()
+	// teamextensionimagearchive.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	teamextensionimagearchive.DefaultUpdatedAt = teamextensionimagearchiveDescUpdatedAt.Default.(func() time.Time)
+	// teamextensionimagearchive.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	teamextensionimagearchive.UpdateDefaultUpdatedAt = teamextensionimagearchiveDescUpdatedAt.UpdateDefault.(func() time.Time)
 	teamgroupMixin := schema.TeamGroup{}.Mixin()
 	teamgroupMixinHooks0 := teamgroupMixin[0].Hooks()
 	teamgroup.Hooks[0] = teamgroupMixinHooks0[0]

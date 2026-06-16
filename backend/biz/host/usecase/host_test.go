@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/url"
@@ -146,6 +147,61 @@ func TestInstallScriptUsesOfflineBundle(t *testing.T) {
 		t.Fatalf("script should not download public installer: %s", script)
 	}
 	assertInstallScriptChecksAVX(t, script)
+}
+
+func TestInstallScriptIncludesExtensionImagesManifestPath(t *testing.T) {
+	t.Parallel()
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+
+	token := "install-token"
+	teamID := uuid.New()
+	rawUser, err := json.Marshal(&domain.User{
+		ID: uuid.New(),
+		Team: &domain.Team{
+			ID: teamID,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rdb.Set(context.Background(), "host:token:"+token, string(rawUser), time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	u := &HostUsecase{
+		cfg: &config.Config{
+			Server: struct {
+				Addr    string `mapstructure:"addr"`
+				BaseURL string `mapstructure:"base_url"`
+			}{BaseURL: "http://monkeycode.local"},
+			TaskFlow: config.TaskFlow{GrpcURL: "127.0.0.1:50443"},
+			StaticFiles: config.StaticFilesConfig{
+				RoutePrefix: "/static",
+			},
+			HostInstaller: config.HostInstaller{
+				Mode:       "offline",
+				BundlePath: "installer/{{.arch}}/host.tgz",
+			},
+		},
+		redis: rdb,
+	}
+
+	script, err := u.InstallScript(context.Background(), &domain.InstallReq{Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "/static/extensions/teams/" + teamID.String() + "/images/{{.arch}}/manifest.json"
+	if !strings.Contains(script, "EXTENSION_IMAGES_MANIFEST_PATH=\""+want+"\"") {
+		t.Fatalf("script missing extension manifest path %q:\n%s", want, script)
+	}
+	if !strings.Contains(script, "EXTENSION_IMAGES_MANIFEST_PATH=${EXTENSION_IMAGES_MANIFEST_PATH//\\{\\{.arch\\}\\}/$ARCH}") {
+		t.Fatalf("script missing extension manifest arch replacement:\n%s", script)
+	}
+	if !strings.Contains(script, "MCAI_EXTENSION_IMAGES_MANIFEST_PATH=\"$EXTENSION_IMAGES_MANIFEST_PATH\"") {
+		t.Fatalf("script missing installer extension manifest env:\n%s", script)
+	}
 }
 
 func assertInstallScriptChecksAVX(t *testing.T, script string) {

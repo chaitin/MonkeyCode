@@ -76,6 +76,21 @@ func Remark(v string) predicate.Image {
 	return predicate.Image(sql.FieldEQ(FieldRemark, v))
 }
 
+// ExtensionPackageID applies equality check predicate on the "extension_package_id" field. It's identical to ExtensionPackageIDEQ.
+func ExtensionPackageID(v string) predicate.Image {
+	return predicate.Image(sql.FieldEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionImageID applies equality check predicate on the "extension_image_id" field. It's identical to ExtensionImageIDEQ.
+func ExtensionImageID(v string) predicate.Image {
+	return predicate.Image(sql.FieldEQ(FieldExtensionImageID, v))
+}
+
+// ExtensionVersion applies equality check predicate on the "extension_version" field. It's identical to ExtensionVersionEQ.
+func ExtensionVersion(v string) predicate.Image {
+	return predicate.Image(sql.FieldEQ(FieldExtensionVersion, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Image {
 	return predicate.Image(sql.FieldEQ(FieldCreatedAt, v))
@@ -296,6 +311,231 @@ func RemarkContainsFold(v string) predicate.Image {
 	return predicate.Image(sql.FieldContainsFold(FieldRemark, v))
 }
 
+// ExtensionPackageIDEQ applies the EQ predicate on the "extension_package_id" field.
+func ExtensionPackageIDEQ(v string) predicate.Image {
+	return predicate.Image(sql.FieldEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDNEQ applies the NEQ predicate on the "extension_package_id" field.
+func ExtensionPackageIDNEQ(v string) predicate.Image {
+	return predicate.Image(sql.FieldNEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDIn applies the In predicate on the "extension_package_id" field.
+func ExtensionPackageIDIn(vs ...string) predicate.Image {
+	return predicate.Image(sql.FieldIn(FieldExtensionPackageID, vs...))
+}
+
+// ExtensionPackageIDNotIn applies the NotIn predicate on the "extension_package_id" field.
+func ExtensionPackageIDNotIn(vs ...string) predicate.Image {
+	return predicate.Image(sql.FieldNotIn(FieldExtensionPackageID, vs...))
+}
+
+// ExtensionPackageIDGT applies the GT predicate on the "extension_package_id" field.
+func ExtensionPackageIDGT(v string) predicate.Image {
+	return predicate.Image(sql.FieldGT(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDGTE applies the GTE predicate on the "extension_package_id" field.
+func ExtensionPackageIDGTE(v string) predicate.Image {
+	return predicate.Image(sql.FieldGTE(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDLT applies the LT predicate on the "extension_package_id" field.
+func ExtensionPackageIDLT(v string) predicate.Image {
+	return predicate.Image(sql.FieldLT(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDLTE applies the LTE predicate on the "extension_package_id" field.
+func ExtensionPackageIDLTE(v string) predicate.Image {
+	return predicate.Image(sql.FieldLTE(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDContains applies the Contains predicate on the "extension_package_id" field.
+func ExtensionPackageIDContains(v string) predicate.Image {
+	return predicate.Image(sql.FieldContains(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDHasPrefix applies the HasPrefix predicate on the "extension_package_id" field.
+func ExtensionPackageIDHasPrefix(v string) predicate.Image {
+	return predicate.Image(sql.FieldHasPrefix(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDHasSuffix applies the HasSuffix predicate on the "extension_package_id" field.
+func ExtensionPackageIDHasSuffix(v string) predicate.Image {
+	return predicate.Image(sql.FieldHasSuffix(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDIsNil applies the IsNil predicate on the "extension_package_id" field.
+func ExtensionPackageIDIsNil() predicate.Image {
+	return predicate.Image(sql.FieldIsNull(FieldExtensionPackageID))
+}
+
+// ExtensionPackageIDNotNil applies the NotNil predicate on the "extension_package_id" field.
+func ExtensionPackageIDNotNil() predicate.Image {
+	return predicate.Image(sql.FieldNotNull(FieldExtensionPackageID))
+}
+
+// ExtensionPackageIDEqualFold applies the EqualFold predicate on the "extension_package_id" field.
+func ExtensionPackageIDEqualFold(v string) predicate.Image {
+	return predicate.Image(sql.FieldEqualFold(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDContainsFold applies the ContainsFold predicate on the "extension_package_id" field.
+func ExtensionPackageIDContainsFold(v string) predicate.Image {
+	return predicate.Image(sql.FieldContainsFold(FieldExtensionPackageID, v))
+}
+
+// ExtensionImageIDEQ applies the EQ predicate on the "extension_image_id" field.
+func ExtensionImageIDEQ(v string) predicate.Image {
+	return predicate.Image(sql.FieldEQ(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDNEQ applies the NEQ predicate on the "extension_image_id" field.
+func ExtensionImageIDNEQ(v string) predicate.Image {
+	return predicate.Image(sql.FieldNEQ(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDIn applies the In predicate on the "extension_image_id" field.
+func ExtensionImageIDIn(vs ...string) predicate.Image {
+	return predicate.Image(sql.FieldIn(FieldExtensionImageID, vs...))
+}
+
+// ExtensionImageIDNotIn applies the NotIn predicate on the "extension_image_id" field.
+func ExtensionImageIDNotIn(vs ...string) predicate.Image {
+	return predicate.Image(sql.FieldNotIn(FieldExtensionImageID, vs...))
+}
+
+// ExtensionImageIDGT applies the GT predicate on the "extension_image_id" field.
+func ExtensionImageIDGT(v string) predicate.Image {
+	return predicate.Image(sql.FieldGT(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDGTE applies the GTE predicate on the "extension_image_id" field.
+func ExtensionImageIDGTE(v string) predicate.Image {
+	return predicate.Image(sql.FieldGTE(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDLT applies the LT predicate on the "extension_image_id" field.
+func ExtensionImageIDLT(v string) predicate.Image {
+	return predicate.Image(sql.FieldLT(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDLTE applies the LTE predicate on the "extension_image_id" field.
+func ExtensionImageIDLTE(v string) predicate.Image {
+	return predicate.Image(sql.FieldLTE(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDContains applies the Contains predicate on the "extension_image_id" field.
+func ExtensionImageIDContains(v string) predicate.Image {
+	return predicate.Image(sql.FieldContains(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDHasPrefix applies the HasPrefix predicate on the "extension_image_id" field.
+func ExtensionImageIDHasPrefix(v string) predicate.Image {
+	return predicate.Image(sql.FieldHasPrefix(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDHasSuffix applies the HasSuffix predicate on the "extension_image_id" field.
+func ExtensionImageIDHasSuffix(v string) predicate.Image {
+	return predicate.Image(sql.FieldHasSuffix(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDIsNil applies the IsNil predicate on the "extension_image_id" field.
+func ExtensionImageIDIsNil() predicate.Image {
+	return predicate.Image(sql.FieldIsNull(FieldExtensionImageID))
+}
+
+// ExtensionImageIDNotNil applies the NotNil predicate on the "extension_image_id" field.
+func ExtensionImageIDNotNil() predicate.Image {
+	return predicate.Image(sql.FieldNotNull(FieldExtensionImageID))
+}
+
+// ExtensionImageIDEqualFold applies the EqualFold predicate on the "extension_image_id" field.
+func ExtensionImageIDEqualFold(v string) predicate.Image {
+	return predicate.Image(sql.FieldEqualFold(FieldExtensionImageID, v))
+}
+
+// ExtensionImageIDContainsFold applies the ContainsFold predicate on the "extension_image_id" field.
+func ExtensionImageIDContainsFold(v string) predicate.Image {
+	return predicate.Image(sql.FieldContainsFold(FieldExtensionImageID, v))
+}
+
+// ExtensionVersionEQ applies the EQ predicate on the "extension_version" field.
+func ExtensionVersionEQ(v string) predicate.Image {
+	return predicate.Image(sql.FieldEQ(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionNEQ applies the NEQ predicate on the "extension_version" field.
+func ExtensionVersionNEQ(v string) predicate.Image {
+	return predicate.Image(sql.FieldNEQ(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionIn applies the In predicate on the "extension_version" field.
+func ExtensionVersionIn(vs ...string) predicate.Image {
+	return predicate.Image(sql.FieldIn(FieldExtensionVersion, vs...))
+}
+
+// ExtensionVersionNotIn applies the NotIn predicate on the "extension_version" field.
+func ExtensionVersionNotIn(vs ...string) predicate.Image {
+	return predicate.Image(sql.FieldNotIn(FieldExtensionVersion, vs...))
+}
+
+// ExtensionVersionGT applies the GT predicate on the "extension_version" field.
+func ExtensionVersionGT(v string) predicate.Image {
+	return predicate.Image(sql.FieldGT(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionGTE applies the GTE predicate on the "extension_version" field.
+func ExtensionVersionGTE(v string) predicate.Image {
+	return predicate.Image(sql.FieldGTE(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionLT applies the LT predicate on the "extension_version" field.
+func ExtensionVersionLT(v string) predicate.Image {
+	return predicate.Image(sql.FieldLT(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionLTE applies the LTE predicate on the "extension_version" field.
+func ExtensionVersionLTE(v string) predicate.Image {
+	return predicate.Image(sql.FieldLTE(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionContains applies the Contains predicate on the "extension_version" field.
+func ExtensionVersionContains(v string) predicate.Image {
+	return predicate.Image(sql.FieldContains(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionHasPrefix applies the HasPrefix predicate on the "extension_version" field.
+func ExtensionVersionHasPrefix(v string) predicate.Image {
+	return predicate.Image(sql.FieldHasPrefix(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionHasSuffix applies the HasSuffix predicate on the "extension_version" field.
+func ExtensionVersionHasSuffix(v string) predicate.Image {
+	return predicate.Image(sql.FieldHasSuffix(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionIsNil applies the IsNil predicate on the "extension_version" field.
+func ExtensionVersionIsNil() predicate.Image {
+	return predicate.Image(sql.FieldIsNull(FieldExtensionVersion))
+}
+
+// ExtensionVersionNotNil applies the NotNil predicate on the "extension_version" field.
+func ExtensionVersionNotNil() predicate.Image {
+	return predicate.Image(sql.FieldNotNull(FieldExtensionVersion))
+}
+
+// ExtensionVersionEqualFold applies the EqualFold predicate on the "extension_version" field.
+func ExtensionVersionEqualFold(v string) predicate.Image {
+	return predicate.Image(sql.FieldEqualFold(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionContainsFold applies the ContainsFold predicate on the "extension_version" field.
+func ExtensionVersionContainsFold(v string) predicate.Image {
+	return predicate.Image(sql.FieldContainsFold(FieldExtensionVersion, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Image {
 	return predicate.Image(sql.FieldEQ(FieldCreatedAt, v))
@@ -483,6 +723,29 @@ func HasProjects() predicate.Image {
 func HasProjectsWith(preds ...predicate.Project) predicate.Image {
 	return predicate.Image(func(s *sql.Selector) {
 		step := newProjectsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasExtensionArchives applies the HasEdge predicate on the "extension_archives" edge.
+func HasExtensionArchives() predicate.Image {
+	return predicate.Image(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ExtensionArchivesTable, ExtensionArchivesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasExtensionArchivesWith applies the HasEdge predicate on the "extension_archives" edge with a given conditions (other predicates).
+func HasExtensionArchivesWith(preds ...predicate.TeamExtensionImageArchive) predicate.Image {
+	return predicate.Image(func(s *sql.Selector) {
+		step := newExtensionArchivesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
@@ -67,6 +68,48 @@ func (_c *ImageCreate) SetRemark(v string) *ImageCreate {
 func (_c *ImageCreate) SetNillableRemark(v *string) *ImageCreate {
 	if v != nil {
 		_c.SetRemark(*v)
+	}
+	return _c
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_c *ImageCreate) SetExtensionPackageID(v string) *ImageCreate {
+	_c.mutation.SetExtensionPackageID(v)
+	return _c
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_c *ImageCreate) SetNillableExtensionPackageID(v *string) *ImageCreate {
+	if v != nil {
+		_c.SetExtensionPackageID(*v)
+	}
+	return _c
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (_c *ImageCreate) SetExtensionImageID(v string) *ImageCreate {
+	_c.mutation.SetExtensionImageID(v)
+	return _c
+}
+
+// SetNillableExtensionImageID sets the "extension_image_id" field if the given value is not nil.
+func (_c *ImageCreate) SetNillableExtensionImageID(v *string) *ImageCreate {
+	if v != nil {
+		_c.SetExtensionImageID(*v)
+	}
+	return _c
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_c *ImageCreate) SetExtensionVersion(v string) *ImageCreate {
+	_c.mutation.SetExtensionVersion(v)
+	return _c
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_c *ImageCreate) SetNillableExtensionVersion(v *string) *ImageCreate {
+	if v != nil {
+		_c.SetExtensionVersion(*v)
 	}
 	return _c
 }
@@ -168,6 +211,21 @@ func (_c *ImageCreate) AddProjects(v ...*Project) *ImageCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddProjectIDs(ids...)
+}
+
+// AddExtensionArchiveIDs adds the "extension_archives" edge to the TeamExtensionImageArchive entity by IDs.
+func (_c *ImageCreate) AddExtensionArchiveIDs(ids ...uuid.UUID) *ImageCreate {
+	_c.mutation.AddExtensionArchiveIDs(ids...)
+	return _c
+}
+
+// AddExtensionArchives adds the "extension_archives" edges to the TeamExtensionImageArchive entity.
+func (_c *ImageCreate) AddExtensionArchives(v ...*TeamExtensionImageArchive) *ImageCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddExtensionArchiveIDs(ids...)
 }
 
 // AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by IDs.
@@ -324,6 +382,18 @@ func (_c *ImageCreate) createSpec() (*Image, *sqlgraph.CreateSpec) {
 		_spec.SetField(image.FieldRemark, field.TypeString, value)
 		_node.Remark = value
 	}
+	if value, ok := _c.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(image.FieldExtensionPackageID, field.TypeString, value)
+		_node.ExtensionPackageID = value
+	}
+	if value, ok := _c.mutation.ExtensionImageID(); ok {
+		_spec.SetField(image.FieldExtensionImageID, field.TypeString, value)
+		_node.ExtensionImageID = value
+	}
+	if value, ok := _c.mutation.ExtensionVersion(); ok {
+		_spec.SetField(image.FieldExtensionVersion, field.TypeString, value)
+		_node.ExtensionVersion = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(image.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -414,6 +484,22 @@ func (_c *ImageCreate) createSpec() (*Image, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(project.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ExtensionArchivesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   image.ExtensionArchivesTable,
+			Columns: []string{image.ExtensionArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -565,6 +651,60 @@ func (u *ImageUpsert) ClearRemark() *ImageUpsert {
 	return u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *ImageUpsert) SetExtensionPackageID(v string) *ImageUpsert {
+	u.Set(image.FieldExtensionPackageID, v)
+	return u
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *ImageUpsert) UpdateExtensionPackageID() *ImageUpsert {
+	u.SetExcluded(image.FieldExtensionPackageID)
+	return u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *ImageUpsert) ClearExtensionPackageID() *ImageUpsert {
+	u.SetNull(image.FieldExtensionPackageID)
+	return u
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (u *ImageUpsert) SetExtensionImageID(v string) *ImageUpsert {
+	u.Set(image.FieldExtensionImageID, v)
+	return u
+}
+
+// UpdateExtensionImageID sets the "extension_image_id" field to the value that was provided on create.
+func (u *ImageUpsert) UpdateExtensionImageID() *ImageUpsert {
+	u.SetExcluded(image.FieldExtensionImageID)
+	return u
+}
+
+// ClearExtensionImageID clears the value of the "extension_image_id" field.
+func (u *ImageUpsert) ClearExtensionImageID() *ImageUpsert {
+	u.SetNull(image.FieldExtensionImageID)
+	return u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *ImageUpsert) SetExtensionVersion(v string) *ImageUpsert {
+	u.Set(image.FieldExtensionVersion, v)
+	return u
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *ImageUpsert) UpdateExtensionVersion() *ImageUpsert {
+	u.SetExcluded(image.FieldExtensionVersion)
+	return u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *ImageUpsert) ClearExtensionVersion() *ImageUpsert {
+	u.SetNull(image.FieldExtensionVersion)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *ImageUpsert) SetCreatedAt(v time.Time) *ImageUpsert {
 	u.Set(image.FieldCreatedAt, v)
@@ -704,6 +844,69 @@ func (u *ImageUpsertOne) UpdateRemark() *ImageUpsertOne {
 func (u *ImageUpsertOne) ClearRemark() *ImageUpsertOne {
 	return u.Update(func(s *ImageUpsert) {
 		s.ClearRemark()
+	})
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *ImageUpsertOne) SetExtensionPackageID(v string) *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.SetExtensionPackageID(v)
+	})
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *ImageUpsertOne) UpdateExtensionPackageID() *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.UpdateExtensionPackageID()
+	})
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *ImageUpsertOne) ClearExtensionPackageID() *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.ClearExtensionPackageID()
+	})
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (u *ImageUpsertOne) SetExtensionImageID(v string) *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.SetExtensionImageID(v)
+	})
+}
+
+// UpdateExtensionImageID sets the "extension_image_id" field to the value that was provided on create.
+func (u *ImageUpsertOne) UpdateExtensionImageID() *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.UpdateExtensionImageID()
+	})
+}
+
+// ClearExtensionImageID clears the value of the "extension_image_id" field.
+func (u *ImageUpsertOne) ClearExtensionImageID() *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.ClearExtensionImageID()
+	})
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *ImageUpsertOne) SetExtensionVersion(v string) *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.SetExtensionVersion(v)
+	})
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *ImageUpsertOne) UpdateExtensionVersion() *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.UpdateExtensionVersion()
+	})
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *ImageUpsertOne) ClearExtensionVersion() *ImageUpsertOne {
+	return u.Update(func(s *ImageUpsert) {
+		s.ClearExtensionVersion()
 	})
 }
 
@@ -1017,6 +1220,69 @@ func (u *ImageUpsertBulk) UpdateRemark() *ImageUpsertBulk {
 func (u *ImageUpsertBulk) ClearRemark() *ImageUpsertBulk {
 	return u.Update(func(s *ImageUpsert) {
 		s.ClearRemark()
+	})
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *ImageUpsertBulk) SetExtensionPackageID(v string) *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.SetExtensionPackageID(v)
+	})
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *ImageUpsertBulk) UpdateExtensionPackageID() *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.UpdateExtensionPackageID()
+	})
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *ImageUpsertBulk) ClearExtensionPackageID() *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.ClearExtensionPackageID()
+	})
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (u *ImageUpsertBulk) SetExtensionImageID(v string) *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.SetExtensionImageID(v)
+	})
+}
+
+// UpdateExtensionImageID sets the "extension_image_id" field to the value that was provided on create.
+func (u *ImageUpsertBulk) UpdateExtensionImageID() *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.UpdateExtensionImageID()
+	})
+}
+
+// ClearExtensionImageID clears the value of the "extension_image_id" field.
+func (u *ImageUpsertBulk) ClearExtensionImageID() *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.ClearExtensionImageID()
+	})
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *ImageUpsertBulk) SetExtensionVersion(v string) *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.SetExtensionVersion(v)
+	})
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *ImageUpsertBulk) UpdateExtensionVersion() *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.UpdateExtensionVersion()
+	})
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *ImageUpsertBulk) ClearExtensionVersion() *ImageUpsertBulk {
+	return u.Update(func(s *ImageUpsert) {
+		s.ClearExtensionVersion()
 	})
 }
 

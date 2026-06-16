@@ -42,6 +42,12 @@ type Skill struct {
 	SourceLabel string `json:"source_label,omitempty"`
 	// SkillMdPath holds the value of the "skill_md_path" field.
 	SkillMdPath string `json:"skill_md_path,omitempty"`
+	// ExtensionPackageID holds the value of the "extension_package_id" field.
+	ExtensionPackageID string `json:"extension_package_id,omitempty"`
+	// ExtensionSkillID holds the value of the "extension_skill_id" field.
+	ExtensionSkillID string `json:"extension_skill_id,omitempty"`
+	// ExtensionVersion holds the value of the "extension_version" field.
+	ExtensionVersion string `json:"extension_version,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -123,7 +129,7 @@ func (*Skill) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case skill.FieldTags:
 			values[i] = new([]byte)
-		case skill.FieldName, skill.FieldDescription, skill.FieldContent, skill.FieldPackageObjectKey, skill.FieldPackageURL, skill.FieldSourceType, skill.FieldSourceLabel, skill.FieldSkillMdPath:
+		case skill.FieldName, skill.FieldDescription, skill.FieldContent, skill.FieldPackageObjectKey, skill.FieldPackageURL, skill.FieldSourceType, skill.FieldSourceLabel, skill.FieldSkillMdPath, skill.FieldExtensionPackageID, skill.FieldExtensionSkillID, skill.FieldExtensionVersion:
 			values[i] = new(sql.NullString)
 		case skill.FieldDeletedAt, skill.FieldCreatedAt, skill.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -217,6 +223,24 @@ func (_m *Skill) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field skill_md_path", values[i])
 			} else if value.Valid {
 				_m.SkillMdPath = value.String
+			}
+		case skill.FieldExtensionPackageID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_package_id", values[i])
+			} else if value.Valid {
+				_m.ExtensionPackageID = value.String
+			}
+		case skill.FieldExtensionSkillID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_skill_id", values[i])
+			} else if value.Valid {
+				_m.ExtensionSkillID = value.String
+			}
+		case skill.FieldExtensionVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_version", values[i])
+			} else if value.Valid {
+				_m.ExtensionVersion = value.String
 			}
 		case skill.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -323,6 +347,15 @@ func (_m *Skill) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("skill_md_path=")
 	builder.WriteString(_m.SkillMdPath)
+	builder.WriteString(", ")
+	builder.WriteString("extension_package_id=")
+	builder.WriteString(_m.ExtensionPackageID)
+	builder.WriteString(", ")
+	builder.WriteString("extension_skill_id=")
+	builder.WriteString(_m.ExtensionSkillID)
+	builder.WriteString(", ")
+	builder.WriteString("extension_version=")
+	builder.WriteString(_m.ExtensionVersion)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

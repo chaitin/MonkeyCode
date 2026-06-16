@@ -16,6 +16,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
@@ -236,6 +237,21 @@ func (_c *TeamCreate) AddSkills(v ...*Skill) *TeamCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddSkillIDs(ids...)
+}
+
+// AddExtensionImageArchiveIDs adds the "extension_image_archives" edge to the TeamExtensionImageArchive entity by IDs.
+func (_c *TeamCreate) AddExtensionImageArchiveIDs(ids ...uuid.UUID) *TeamCreate {
+	_c.mutation.AddExtensionImageArchiveIDs(ids...)
+	return _c
+}
+
+// AddExtensionImageArchives adds the "extension_image_archives" edges to the TeamExtensionImageArchive entity.
+func (_c *TeamCreate) AddExtensionImageArchives(v ...*TeamExtensionImageArchive) *TeamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddExtensionImageArchiveIDs(ids...)
 }
 
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
@@ -581,6 +597,22 @@ func (_c *TeamCreate) createSpec() (*Team, *sqlgraph.CreateSpec) {
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ExtensionImageArchivesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.ExtensionImageArchivesTable,
+			Columns: []string{team.ExtensionImageArchivesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.TeamMembersIDs(); len(nodes) > 0 {

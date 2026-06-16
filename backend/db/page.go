@@ -417,6 +417,20 @@ func (_m *TeamQuery) Page(ctx context.Context, page, size int) ([]*Team, *PageIn
 	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
 }
 
+func (_m *TeamExtensionImageArchiveQuery) Page(ctx context.Context, page, size int) ([]*TeamExtensionImageArchive, *PageInfo, error) {
+	cnt, err := _m.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	offset := size * (page - 1)
+	rs, err := _m.Offset(offset).Limit(size).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	has := (page * size) < cnt
+	return rs, &PageInfo{HasNextPage: has, TotalCount: int64(cnt)}, nil
+}
+
 func (_m *TeamGroupQuery) Page(ctx context.Context, page, size int) ([]*TeamGroup, *PageInfo, error) {
 	cnt, err := _m.Count(ctx)
 	if err != nil {

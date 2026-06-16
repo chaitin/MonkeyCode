@@ -194,9 +194,9 @@ func (h *HostUsecase) GetInstallCommand(ctx context.Context, user *domain.User) 
 
 // InstallScript implements domain.HostUsecase.
 func (h *HostUsecase) InstallScript(ctx context.Context, token *domain.InstallReq) (string, error) {
-	key := fmt.Sprintf("host:token:%s", token.Token)
-	if _, err := h.redis.Get(ctx, key).Result(); err != nil {
-		return "", errcode.ErrInvalidInstallToken
+	teamID, err := h.teamIDFromInstallToken(ctx, token.Token)
+	if err != nil {
+		return "", err
 	}
 
 	tplName := "install"
@@ -212,17 +212,34 @@ func (h *HostUsecase) InstallScript(ctx context.Context, token *domain.InstallRe
 	}
 	buf := bytes.NewBuffer([]byte(""))
 	param := map[string]any{
-		"token":              token.Token,
-		"grpc_url":           h.cfg.TaskFlow.GrpcURL,
-		"base_url":           h.cfg.Server.BaseURL,
-		"installer_url":      h.installerURL(),
-		"docker_bundle_path": h.installerBundlePath("docker.tgz"),
-		"host_bundle_path":   h.hostBundlePath(),
+		"token":                          token.Token,
+		"grpc_url":                       h.cfg.TaskFlow.GrpcURL,
+		"base_url":                       h.cfg.Server.BaseURL,
+		"installer_url":                  h.installerURL(),
+		"docker_bundle_path":             h.installerBundlePath("docker.tgz"),
+		"host_bundle_path":               h.hostBundlePath(),
+		"extension_images_manifest_path": h.extensionImagesManifestPath(teamID),
 	}
 	if err := tmp.Execute(buf, param); err != nil {
 		return "", fmt.Errorf("failed to execute template %s", err)
 	}
 	return buf.String(), nil
+}
+
+func (h *HostUsecase) teamIDFromInstallToken(ctx context.Context, token string) (uuid.UUID, error) {
+	key := fmt.Sprintf("host:token:%s", token)
+	raw, err := h.redis.Get(ctx, key).Result()
+	if err != nil {
+		return uuid.Nil, errcode.ErrInvalidInstallToken
+	}
+	var user domain.User
+	if err := json.Unmarshal([]byte(raw), &user); err != nil {
+		return uuid.Nil, nil
+	}
+	if user.Team == nil {
+		return uuid.Nil, nil
+	}
+	return user.Team.ID, nil
 }
 
 func (h *HostUsecase) installerURL() string {
@@ -247,6 +264,13 @@ func (h *HostUsecase) hostBundlePath() string {
 
 func (h *HostUsecase) installerBundlePath(name string) string {
 	return "/" + strings.Trim(h.cfg.StaticFiles.RoutePrefix, "/") + "/installer/{{.arch}}/" + name
+}
+
+func (h *HostUsecase) extensionImagesManifestPath(teamID uuid.UUID) string {
+	if teamID == uuid.Nil {
+		return ""
+	}
+	return "/" + strings.Trim(h.cfg.StaticFiles.RoutePrefix, "/") + "/extensions/teams/" + teamID.String() + "/images/{{.arch}}/manifest.json"
 }
 
 // List implements domain.HostUsecase.

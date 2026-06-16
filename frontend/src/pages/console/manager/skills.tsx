@@ -18,6 +18,7 @@ import {
   parseSkillMarkdown,
   type ParsedSkillMarkdown,
 } from "@/components/manager/skill-package"
+import { formatExtensionImportResult } from "@/pages/console/manager/extension-package"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -99,6 +100,7 @@ export default function TeamManagerSkills() {
   const [skills, setSkills] = useState<ManagedSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [extensionDialogOpen, setExtensionDialogOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<ManagedSkill | null>(null)
 
   const fetchSkills = async () => {
@@ -148,11 +150,20 @@ export default function TeamManagerSkills() {
             管理团队可用 Skills、标签、说明和可使用分组。
           </CardDescription>
           <CardAction>
-            <AddSkillDialog
-              open={addDialogOpen}
-              onOpenChange={setAddDialogOpen}
-              onCreate={handleCreate}
-            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <ExtensionPackageImportDialog
+                open={extensionDialogOpen}
+                onOpenChange={setExtensionDialogOpen}
+                onImported={() => {
+                  void fetchSkills()
+                }}
+              />
+              <AddSkillDialog
+                open={addDialogOpen}
+                onOpenChange={setAddDialogOpen}
+                onCreate={handleCreate}
+              />
+            </div>
           </CardAction>
         </CardHeader>
         <CardContent>
@@ -276,6 +287,96 @@ export default function TeamManagerSkills() {
         onUpdate={handleUpdate}
       />
     </div>
+  )
+}
+
+function ExtensionPackageImportDialog({
+  open,
+  onOpenChange,
+  onImported,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onImported: () => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const reset = () => {
+    setFile(null)
+    setSubmitting(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) reset()
+    onOpenChange(nextOpen)
+  }
+
+  const handleSubmit = () => {
+    if (!file) {
+      toast.error("请选择扩展包")
+      return
+    }
+
+    setSubmitting(true)
+    const api = new Api()
+    void api.api.v1TeamsExtensionPackagesCreate({ file }).then((response) => {
+      const resp = response.data
+      if (resp.code === 0 && resp.data) {
+        toast.success(`${formatExtensionImportResult(resp.data)}，镜像列表已更新`)
+        onImported()
+        handleOpenChange(false)
+        return
+      }
+      toast.error(resp.message || "导入扩展包失败")
+    }).catch((error) => {
+      toast.error(error?.message || "导入扩展包失败")
+    }).finally(() => {
+      setSubmitting(false)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Upload className="size-4" />
+          导入扩展包
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>导入扩展包</DialogTitle>
+        </DialogHeader>
+        <Field>
+          <FieldLabel>扩展包文件</FieldLabel>
+          <FieldContent>
+            <Input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              disabled={submitting}
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+            />
+            <FieldDescription>
+              支持包含 Skills 和镜像归档的 zip 扩展包。
+            </FieldDescription>
+          </FieldContent>
+        </Field>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>
+            取消
+          </Button>
+          <Button onClick={handleSubmit} disabled={!file || submitting}>
+            {submitting ? "导入中..." : "导入"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

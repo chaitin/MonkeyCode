@@ -42,6 +42,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
 	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
@@ -70,50 +71,51 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAudit               = "Audit"
-	TypeGitBot              = "GitBot"
-	TypeGitBotTask          = "GitBotTask"
-	TypeGitBotUser          = "GitBotUser"
-	TypeGitIdentity         = "GitIdentity"
-	TypeGitTask             = "GitTask"
-	TypeHost                = "Host"
-	TypeImage               = "Image"
-	TypeMCPTool             = "MCPTool"
-	TypeMCPUpstream         = "MCPUpstream"
-	TypeMCPUserToolSetting  = "MCPUserToolSetting"
-	TypeModel               = "Model"
-	TypeModelApiKey         = "ModelApiKey"
-	TypeModelPricing        = "ModelPricing"
-	TypeNotifyChannel       = "NotifyChannel"
-	TypeNotifySendLog       = "NotifySendLog"
-	TypeNotifySubscription  = "NotifySubscription"
-	TypeProject             = "Project"
-	TypeProjectCollaborator = "ProjectCollaborator"
-	TypeProjectGitBot       = "ProjectGitBot"
-	TypeProjectIssue        = "ProjectIssue"
-	TypeProjectIssueComment = "ProjectIssueComment"
-	TypeProjectTask         = "ProjectTask"
-	TypeSkill               = "Skill"
-	TypeTask                = "Task"
-	TypeTaskModelSwitch     = "TaskModelSwitch"
-	TypeTaskUsageStat       = "TaskUsageStat"
-	TypeTaskVirtualMachine  = "TaskVirtualMachine"
-	TypeTeam                = "Team"
-	TypeTeamGroup           = "TeamGroup"
-	TypeTeamGroupHost       = "TeamGroupHost"
-	TypeTeamGroupImage      = "TeamGroupImage"
-	TypeTeamGroupMember     = "TeamGroupMember"
-	TypeTeamGroupModel      = "TeamGroupModel"
-	TypeTeamGroupSkill      = "TeamGroupSkill"
-	TypeTeamHost            = "TeamHost"
-	TypeTeamImage           = "TeamImage"
-	TypeTeamMember          = "TeamMember"
-	TypeTeamModel           = "TeamModel"
-	TypeTeamOIDCConfig      = "TeamOIDCConfig"
-	TypeTeamSkill           = "TeamSkill"
-	TypeUser                = "User"
-	TypeUserIdentity        = "UserIdentity"
-	TypeVirtualMachine      = "VirtualMachine"
+	TypeAudit                     = "Audit"
+	TypeGitBot                    = "GitBot"
+	TypeGitBotTask                = "GitBotTask"
+	TypeGitBotUser                = "GitBotUser"
+	TypeGitIdentity               = "GitIdentity"
+	TypeGitTask                   = "GitTask"
+	TypeHost                      = "Host"
+	TypeImage                     = "Image"
+	TypeMCPTool                   = "MCPTool"
+	TypeMCPUpstream               = "MCPUpstream"
+	TypeMCPUserToolSetting        = "MCPUserToolSetting"
+	TypeModel                     = "Model"
+	TypeModelApiKey               = "ModelApiKey"
+	TypeModelPricing              = "ModelPricing"
+	TypeNotifyChannel             = "NotifyChannel"
+	TypeNotifySendLog             = "NotifySendLog"
+	TypeNotifySubscription        = "NotifySubscription"
+	TypeProject                   = "Project"
+	TypeProjectCollaborator       = "ProjectCollaborator"
+	TypeProjectGitBot             = "ProjectGitBot"
+	TypeProjectIssue              = "ProjectIssue"
+	TypeProjectIssueComment       = "ProjectIssueComment"
+	TypeProjectTask               = "ProjectTask"
+	TypeSkill                     = "Skill"
+	TypeTask                      = "Task"
+	TypeTaskModelSwitch           = "TaskModelSwitch"
+	TypeTaskUsageStat             = "TaskUsageStat"
+	TypeTaskVirtualMachine        = "TaskVirtualMachine"
+	TypeTeam                      = "Team"
+	TypeTeamExtensionImageArchive = "TeamExtensionImageArchive"
+	TypeTeamGroup                 = "TeamGroup"
+	TypeTeamGroupHost             = "TeamGroupHost"
+	TypeTeamGroupImage            = "TeamGroupImage"
+	TypeTeamGroupMember           = "TeamGroupMember"
+	TypeTeamGroupModel            = "TeamGroupModel"
+	TypeTeamGroupSkill            = "TeamGroupSkill"
+	TypeTeamHost                  = "TeamHost"
+	TypeTeamImage                 = "TeamImage"
+	TypeTeamMember                = "TeamMember"
+	TypeTeamModel                 = "TeamModel"
+	TypeTeamOIDCConfig            = "TeamOIDCConfig"
+	TypeTeamSkill                 = "TeamSkill"
+	TypeUser                      = "User"
+	TypeUserIdentity              = "UserIdentity"
+	TypeVirtualMachine            = "VirtualMachine"
 )
 
 // AuditMutation represents an operation that mutates the Audit nodes in the graph.
@@ -7811,38 +7813,44 @@ func (m *HostMutation) ResetEdge(name string) error {
 // ImageMutation represents an operation that mutates the Image nodes in the graph.
 type ImageMutation struct {
 	config
-	op                       Op
-	typ                      string
-	id                       *uuid.UUID
-	deleted_at               *time.Time
-	name                     *string
-	remark                   *string
-	created_at               *time.Time
-	updated_at               *time.Time
-	clearedFields            map[string]struct{}
-	user                     *uuid.UUID
-	cleareduser              bool
-	teams                    map[uuid.UUID]struct{}
-	removedteams             map[uuid.UUID]struct{}
-	clearedteams             bool
-	groups                   map[uuid.UUID]struct{}
-	removedgroups            map[uuid.UUID]struct{}
-	clearedgroups            bool
-	project_tasks            map[uuid.UUID]struct{}
-	removedproject_tasks     map[uuid.UUID]struct{}
-	clearedproject_tasks     bool
-	projects                 map[uuid.UUID]struct{}
-	removedprojects          map[uuid.UUID]struct{}
-	clearedprojects          bool
-	team_images              map[uuid.UUID]struct{}
-	removedteam_images       map[uuid.UUID]struct{}
-	clearedteam_images       bool
-	team_group_images        map[uuid.UUID]struct{}
-	removedteam_group_images map[uuid.UUID]struct{}
-	clearedteam_group_images bool
-	done                     bool
-	oldValue                 func(context.Context) (*Image, error)
-	predicates               []predicate.Image
+	op                        Op
+	typ                       string
+	id                        *uuid.UUID
+	deleted_at                *time.Time
+	name                      *string
+	remark                    *string
+	extension_package_id      *string
+	extension_image_id        *string
+	extension_version         *string
+	created_at                *time.Time
+	updated_at                *time.Time
+	clearedFields             map[string]struct{}
+	user                      *uuid.UUID
+	cleareduser               bool
+	teams                     map[uuid.UUID]struct{}
+	removedteams              map[uuid.UUID]struct{}
+	clearedteams              bool
+	groups                    map[uuid.UUID]struct{}
+	removedgroups             map[uuid.UUID]struct{}
+	clearedgroups             bool
+	project_tasks             map[uuid.UUID]struct{}
+	removedproject_tasks      map[uuid.UUID]struct{}
+	clearedproject_tasks      bool
+	projects                  map[uuid.UUID]struct{}
+	removedprojects           map[uuid.UUID]struct{}
+	clearedprojects           bool
+	extension_archives        map[uuid.UUID]struct{}
+	removedextension_archives map[uuid.UUID]struct{}
+	clearedextension_archives bool
+	team_images               map[uuid.UUID]struct{}
+	removedteam_images        map[uuid.UUID]struct{}
+	clearedteam_images        bool
+	team_group_images         map[uuid.UUID]struct{}
+	removedteam_group_images  map[uuid.UUID]struct{}
+	clearedteam_group_images  bool
+	done                      bool
+	oldValue                  func(context.Context) (*Image, error)
+	predicates                []predicate.Image
 }
 
 var _ ent.Mutation = (*ImageMutation)(nil)
@@ -8117,6 +8125,153 @@ func (m *ImageMutation) RemarkCleared() bool {
 func (m *ImageMutation) ResetRemark() {
 	m.remark = nil
 	delete(m.clearedFields, image.FieldRemark)
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (m *ImageMutation) SetExtensionPackageID(s string) {
+	m.extension_package_id = &s
+}
+
+// ExtensionPackageID returns the value of the "extension_package_id" field in the mutation.
+func (m *ImageMutation) ExtensionPackageID() (r string, exists bool) {
+	v := m.extension_package_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionPackageID returns the old "extension_package_id" field's value of the Image entity.
+// If the Image object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageMutation) OldExtensionPackageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionPackageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionPackageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionPackageID: %w", err)
+	}
+	return oldValue.ExtensionPackageID, nil
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (m *ImageMutation) ClearExtensionPackageID() {
+	m.extension_package_id = nil
+	m.clearedFields[image.FieldExtensionPackageID] = struct{}{}
+}
+
+// ExtensionPackageIDCleared returns if the "extension_package_id" field was cleared in this mutation.
+func (m *ImageMutation) ExtensionPackageIDCleared() bool {
+	_, ok := m.clearedFields[image.FieldExtensionPackageID]
+	return ok
+}
+
+// ResetExtensionPackageID resets all changes to the "extension_package_id" field.
+func (m *ImageMutation) ResetExtensionPackageID() {
+	m.extension_package_id = nil
+	delete(m.clearedFields, image.FieldExtensionPackageID)
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (m *ImageMutation) SetExtensionImageID(s string) {
+	m.extension_image_id = &s
+}
+
+// ExtensionImageID returns the value of the "extension_image_id" field in the mutation.
+func (m *ImageMutation) ExtensionImageID() (r string, exists bool) {
+	v := m.extension_image_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionImageID returns the old "extension_image_id" field's value of the Image entity.
+// If the Image object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageMutation) OldExtensionImageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionImageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionImageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionImageID: %w", err)
+	}
+	return oldValue.ExtensionImageID, nil
+}
+
+// ClearExtensionImageID clears the value of the "extension_image_id" field.
+func (m *ImageMutation) ClearExtensionImageID() {
+	m.extension_image_id = nil
+	m.clearedFields[image.FieldExtensionImageID] = struct{}{}
+}
+
+// ExtensionImageIDCleared returns if the "extension_image_id" field was cleared in this mutation.
+func (m *ImageMutation) ExtensionImageIDCleared() bool {
+	_, ok := m.clearedFields[image.FieldExtensionImageID]
+	return ok
+}
+
+// ResetExtensionImageID resets all changes to the "extension_image_id" field.
+func (m *ImageMutation) ResetExtensionImageID() {
+	m.extension_image_id = nil
+	delete(m.clearedFields, image.FieldExtensionImageID)
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (m *ImageMutation) SetExtensionVersion(s string) {
+	m.extension_version = &s
+}
+
+// ExtensionVersion returns the value of the "extension_version" field in the mutation.
+func (m *ImageMutation) ExtensionVersion() (r string, exists bool) {
+	v := m.extension_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionVersion returns the old "extension_version" field's value of the Image entity.
+// If the Image object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageMutation) OldExtensionVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionVersion: %w", err)
+	}
+	return oldValue.ExtensionVersion, nil
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (m *ImageMutation) ClearExtensionVersion() {
+	m.extension_version = nil
+	m.clearedFields[image.FieldExtensionVersion] = struct{}{}
+}
+
+// ExtensionVersionCleared returns if the "extension_version" field was cleared in this mutation.
+func (m *ImageMutation) ExtensionVersionCleared() bool {
+	_, ok := m.clearedFields[image.FieldExtensionVersion]
+	return ok
+}
+
+// ResetExtensionVersion resets all changes to the "extension_version" field.
+func (m *ImageMutation) ResetExtensionVersion() {
+	m.extension_version = nil
+	delete(m.clearedFields, image.FieldExtensionVersion)
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -8434,6 +8589,60 @@ func (m *ImageMutation) ResetProjects() {
 	m.removedprojects = nil
 }
 
+// AddExtensionArchiveIDs adds the "extension_archives" edge to the TeamExtensionImageArchive entity by ids.
+func (m *ImageMutation) AddExtensionArchiveIDs(ids ...uuid.UUID) {
+	if m.extension_archives == nil {
+		m.extension_archives = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.extension_archives[ids[i]] = struct{}{}
+	}
+}
+
+// ClearExtensionArchives clears the "extension_archives" edge to the TeamExtensionImageArchive entity.
+func (m *ImageMutation) ClearExtensionArchives() {
+	m.clearedextension_archives = true
+}
+
+// ExtensionArchivesCleared reports if the "extension_archives" edge to the TeamExtensionImageArchive entity was cleared.
+func (m *ImageMutation) ExtensionArchivesCleared() bool {
+	return m.clearedextension_archives
+}
+
+// RemoveExtensionArchiveIDs removes the "extension_archives" edge to the TeamExtensionImageArchive entity by IDs.
+func (m *ImageMutation) RemoveExtensionArchiveIDs(ids ...uuid.UUID) {
+	if m.removedextension_archives == nil {
+		m.removedextension_archives = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.extension_archives, ids[i])
+		m.removedextension_archives[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedExtensionArchives returns the removed IDs of the "extension_archives" edge to the TeamExtensionImageArchive entity.
+func (m *ImageMutation) RemovedExtensionArchivesIDs() (ids []uuid.UUID) {
+	for id := range m.removedextension_archives {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ExtensionArchivesIDs returns the "extension_archives" edge IDs in the mutation.
+func (m *ImageMutation) ExtensionArchivesIDs() (ids []uuid.UUID) {
+	for id := range m.extension_archives {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetExtensionArchives resets all changes to the "extension_archives" edge.
+func (m *ImageMutation) ResetExtensionArchives() {
+	m.extension_archives = nil
+	m.clearedextension_archives = false
+	m.removedextension_archives = nil
+}
+
 // AddTeamImageIDs adds the "team_images" edge to the TeamImage entity by ids.
 func (m *ImageMutation) AddTeamImageIDs(ids ...uuid.UUID) {
 	if m.team_images == nil {
@@ -8576,7 +8785,7 @@ func (m *ImageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ImageMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 9)
 	if m.deleted_at != nil {
 		fields = append(fields, image.FieldDeletedAt)
 	}
@@ -8588,6 +8797,15 @@ func (m *ImageMutation) Fields() []string {
 	}
 	if m.remark != nil {
 		fields = append(fields, image.FieldRemark)
+	}
+	if m.extension_package_id != nil {
+		fields = append(fields, image.FieldExtensionPackageID)
+	}
+	if m.extension_image_id != nil {
+		fields = append(fields, image.FieldExtensionImageID)
+	}
+	if m.extension_version != nil {
+		fields = append(fields, image.FieldExtensionVersion)
 	}
 	if m.created_at != nil {
 		fields = append(fields, image.FieldCreatedAt)
@@ -8611,6 +8829,12 @@ func (m *ImageMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case image.FieldRemark:
 		return m.Remark()
+	case image.FieldExtensionPackageID:
+		return m.ExtensionPackageID()
+	case image.FieldExtensionImageID:
+		return m.ExtensionImageID()
+	case image.FieldExtensionVersion:
+		return m.ExtensionVersion()
 	case image.FieldCreatedAt:
 		return m.CreatedAt()
 	case image.FieldUpdatedAt:
@@ -8632,6 +8856,12 @@ func (m *ImageMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldName(ctx)
 	case image.FieldRemark:
 		return m.OldRemark(ctx)
+	case image.FieldExtensionPackageID:
+		return m.OldExtensionPackageID(ctx)
+	case image.FieldExtensionImageID:
+		return m.OldExtensionImageID(ctx)
+	case image.FieldExtensionVersion:
+		return m.OldExtensionVersion(ctx)
 	case image.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case image.FieldUpdatedAt:
@@ -8672,6 +8902,27 @@ func (m *ImageMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRemark(v)
+		return nil
+	case image.FieldExtensionPackageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionPackageID(v)
+		return nil
+	case image.FieldExtensionImageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionImageID(v)
+		return nil
+	case image.FieldExtensionVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionVersion(v)
 		return nil
 	case image.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -8723,6 +8974,15 @@ func (m *ImageMutation) ClearedFields() []string {
 	if m.FieldCleared(image.FieldRemark) {
 		fields = append(fields, image.FieldRemark)
 	}
+	if m.FieldCleared(image.FieldExtensionPackageID) {
+		fields = append(fields, image.FieldExtensionPackageID)
+	}
+	if m.FieldCleared(image.FieldExtensionImageID) {
+		fields = append(fields, image.FieldExtensionImageID)
+	}
+	if m.FieldCleared(image.FieldExtensionVersion) {
+		fields = append(fields, image.FieldExtensionVersion)
+	}
 	return fields
 }
 
@@ -8742,6 +9002,15 @@ func (m *ImageMutation) ClearField(name string) error {
 		return nil
 	case image.FieldRemark:
 		m.ClearRemark()
+		return nil
+	case image.FieldExtensionPackageID:
+		m.ClearExtensionPackageID()
+		return nil
+	case image.FieldExtensionImageID:
+		m.ClearExtensionImageID()
+		return nil
+	case image.FieldExtensionVersion:
+		m.ClearExtensionVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown Image nullable field %s", name)
@@ -8763,6 +9032,15 @@ func (m *ImageMutation) ResetField(name string) error {
 	case image.FieldRemark:
 		m.ResetRemark()
 		return nil
+	case image.FieldExtensionPackageID:
+		m.ResetExtensionPackageID()
+		return nil
+	case image.FieldExtensionImageID:
+		m.ResetExtensionImageID()
+		return nil
+	case image.FieldExtensionVersion:
+		m.ResetExtensionVersion()
+		return nil
 	case image.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -8775,7 +9053,7 @@ func (m *ImageMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ImageMutation) AddedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.user != nil {
 		edges = append(edges, image.EdgeUser)
 	}
@@ -8790,6 +9068,9 @@ func (m *ImageMutation) AddedEdges() []string {
 	}
 	if m.projects != nil {
 		edges = append(edges, image.EdgeProjects)
+	}
+	if m.extension_archives != nil {
+		edges = append(edges, image.EdgeExtensionArchives)
 	}
 	if m.team_images != nil {
 		edges = append(edges, image.EdgeTeamImages)
@@ -8832,6 +9113,12 @@ func (m *ImageMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case image.EdgeExtensionArchives:
+		ids := make([]ent.Value, 0, len(m.extension_archives))
+		for id := range m.extension_archives {
+			ids = append(ids, id)
+		}
+		return ids
 	case image.EdgeTeamImages:
 		ids := make([]ent.Value, 0, len(m.team_images))
 		for id := range m.team_images {
@@ -8850,7 +9137,7 @@ func (m *ImageMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ImageMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.removedteams != nil {
 		edges = append(edges, image.EdgeTeams)
 	}
@@ -8862,6 +9149,9 @@ func (m *ImageMutation) RemovedEdges() []string {
 	}
 	if m.removedprojects != nil {
 		edges = append(edges, image.EdgeProjects)
+	}
+	if m.removedextension_archives != nil {
+		edges = append(edges, image.EdgeExtensionArchives)
 	}
 	if m.removedteam_images != nil {
 		edges = append(edges, image.EdgeTeamImages)
@@ -8900,6 +9190,12 @@ func (m *ImageMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case image.EdgeExtensionArchives:
+		ids := make([]ent.Value, 0, len(m.removedextension_archives))
+		for id := range m.removedextension_archives {
+			ids = append(ids, id)
+		}
+		return ids
 	case image.EdgeTeamImages:
 		ids := make([]ent.Value, 0, len(m.removedteam_images))
 		for id := range m.removedteam_images {
@@ -8918,7 +9214,7 @@ func (m *ImageMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ImageMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.cleareduser {
 		edges = append(edges, image.EdgeUser)
 	}
@@ -8933,6 +9229,9 @@ func (m *ImageMutation) ClearedEdges() []string {
 	}
 	if m.clearedprojects {
 		edges = append(edges, image.EdgeProjects)
+	}
+	if m.clearedextension_archives {
+		edges = append(edges, image.EdgeExtensionArchives)
 	}
 	if m.clearedteam_images {
 		edges = append(edges, image.EdgeTeamImages)
@@ -8957,6 +9256,8 @@ func (m *ImageMutation) EdgeCleared(name string) bool {
 		return m.clearedproject_tasks
 	case image.EdgeProjects:
 		return m.clearedprojects
+	case image.EdgeExtensionArchives:
+		return m.clearedextension_archives
 	case image.EdgeTeamImages:
 		return m.clearedteam_images
 	case image.EdgeTeamGroupImages:
@@ -8994,6 +9295,9 @@ func (m *ImageMutation) ResetEdge(name string) error {
 		return nil
 	case image.EdgeProjects:
 		m.ResetProjects()
+		return nil
+	case image.EdgeExtensionArchives:
+		m.ResetExtensionArchives()
 		return nil
 	case image.EdgeTeamImages:
 		m.ResetTeamImages()
@@ -25238,6 +25542,9 @@ type SkillMutation struct {
 	source_type              *string
 	source_label             *string
 	skill_md_path            *string
+	extension_package_id     *string
+	extension_skill_id       *string
+	extension_version        *string
 	created_at               *time.Time
 	updated_at               *time.Time
 	clearedFields            map[string]struct{}
@@ -25841,6 +26148,153 @@ func (m *SkillMutation) ResetSkillMdPath() {
 	delete(m.clearedFields, skill.FieldSkillMdPath)
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (m *SkillMutation) SetExtensionPackageID(s string) {
+	m.extension_package_id = &s
+}
+
+// ExtensionPackageID returns the value of the "extension_package_id" field in the mutation.
+func (m *SkillMutation) ExtensionPackageID() (r string, exists bool) {
+	v := m.extension_package_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionPackageID returns the old "extension_package_id" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldExtensionPackageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionPackageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionPackageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionPackageID: %w", err)
+	}
+	return oldValue.ExtensionPackageID, nil
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (m *SkillMutation) ClearExtensionPackageID() {
+	m.extension_package_id = nil
+	m.clearedFields[skill.FieldExtensionPackageID] = struct{}{}
+}
+
+// ExtensionPackageIDCleared returns if the "extension_package_id" field was cleared in this mutation.
+func (m *SkillMutation) ExtensionPackageIDCleared() bool {
+	_, ok := m.clearedFields[skill.FieldExtensionPackageID]
+	return ok
+}
+
+// ResetExtensionPackageID resets all changes to the "extension_package_id" field.
+func (m *SkillMutation) ResetExtensionPackageID() {
+	m.extension_package_id = nil
+	delete(m.clearedFields, skill.FieldExtensionPackageID)
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (m *SkillMutation) SetExtensionSkillID(s string) {
+	m.extension_skill_id = &s
+}
+
+// ExtensionSkillID returns the value of the "extension_skill_id" field in the mutation.
+func (m *SkillMutation) ExtensionSkillID() (r string, exists bool) {
+	v := m.extension_skill_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionSkillID returns the old "extension_skill_id" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldExtensionSkillID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionSkillID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionSkillID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionSkillID: %w", err)
+	}
+	return oldValue.ExtensionSkillID, nil
+}
+
+// ClearExtensionSkillID clears the value of the "extension_skill_id" field.
+func (m *SkillMutation) ClearExtensionSkillID() {
+	m.extension_skill_id = nil
+	m.clearedFields[skill.FieldExtensionSkillID] = struct{}{}
+}
+
+// ExtensionSkillIDCleared returns if the "extension_skill_id" field was cleared in this mutation.
+func (m *SkillMutation) ExtensionSkillIDCleared() bool {
+	_, ok := m.clearedFields[skill.FieldExtensionSkillID]
+	return ok
+}
+
+// ResetExtensionSkillID resets all changes to the "extension_skill_id" field.
+func (m *SkillMutation) ResetExtensionSkillID() {
+	m.extension_skill_id = nil
+	delete(m.clearedFields, skill.FieldExtensionSkillID)
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (m *SkillMutation) SetExtensionVersion(s string) {
+	m.extension_version = &s
+}
+
+// ExtensionVersion returns the value of the "extension_version" field in the mutation.
+func (m *SkillMutation) ExtensionVersion() (r string, exists bool) {
+	v := m.extension_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionVersion returns the old "extension_version" field's value of the Skill entity.
+// If the Skill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SkillMutation) OldExtensionVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionVersion: %w", err)
+	}
+	return oldValue.ExtensionVersion, nil
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (m *SkillMutation) ClearExtensionVersion() {
+	m.extension_version = nil
+	m.clearedFields[skill.FieldExtensionVersion] = struct{}{}
+}
+
+// ExtensionVersionCleared returns if the "extension_version" field was cleared in this mutation.
+func (m *SkillMutation) ExtensionVersionCleared() bool {
+	_, ok := m.clearedFields[skill.FieldExtensionVersion]
+	return ok
+}
+
+// ResetExtensionVersion resets all changes to the "extension_version" field.
+func (m *SkillMutation) ResetExtensionVersion() {
+	m.extension_version = nil
+	delete(m.clearedFields, skill.FieldExtensionVersion)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *SkillMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -26190,7 +26644,7 @@ func (m *SkillMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SkillMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 16)
 	if m.deleted_at != nil {
 		fields = append(fields, skill.FieldDeletedAt)
 	}
@@ -26223,6 +26677,15 @@ func (m *SkillMutation) Fields() []string {
 	}
 	if m.skill_md_path != nil {
 		fields = append(fields, skill.FieldSkillMdPath)
+	}
+	if m.extension_package_id != nil {
+		fields = append(fields, skill.FieldExtensionPackageID)
+	}
+	if m.extension_skill_id != nil {
+		fields = append(fields, skill.FieldExtensionSkillID)
+	}
+	if m.extension_version != nil {
+		fields = append(fields, skill.FieldExtensionVersion)
 	}
 	if m.created_at != nil {
 		fields = append(fields, skill.FieldCreatedAt)
@@ -26260,6 +26723,12 @@ func (m *SkillMutation) Field(name string) (ent.Value, bool) {
 		return m.SourceLabel()
 	case skill.FieldSkillMdPath:
 		return m.SkillMdPath()
+	case skill.FieldExtensionPackageID:
+		return m.ExtensionPackageID()
+	case skill.FieldExtensionSkillID:
+		return m.ExtensionSkillID()
+	case skill.FieldExtensionVersion:
+		return m.ExtensionVersion()
 	case skill.FieldCreatedAt:
 		return m.CreatedAt()
 	case skill.FieldUpdatedAt:
@@ -26295,6 +26764,12 @@ func (m *SkillMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSourceLabel(ctx)
 	case skill.FieldSkillMdPath:
 		return m.OldSkillMdPath(ctx)
+	case skill.FieldExtensionPackageID:
+		return m.OldExtensionPackageID(ctx)
+	case skill.FieldExtensionSkillID:
+		return m.OldExtensionSkillID(ctx)
+	case skill.FieldExtensionVersion:
+		return m.OldExtensionVersion(ctx)
 	case skill.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case skill.FieldUpdatedAt:
@@ -26385,6 +26860,27 @@ func (m *SkillMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSkillMdPath(v)
 		return nil
+	case skill.FieldExtensionPackageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionPackageID(v)
+		return nil
+	case skill.FieldExtensionSkillID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionSkillID(v)
+		return nil
+	case skill.FieldExtensionVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionVersion(v)
+		return nil
 	case skill.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -26444,6 +26940,15 @@ func (m *SkillMutation) ClearedFields() []string {
 	if m.FieldCleared(skill.FieldSkillMdPath) {
 		fields = append(fields, skill.FieldSkillMdPath)
 	}
+	if m.FieldCleared(skill.FieldExtensionPackageID) {
+		fields = append(fields, skill.FieldExtensionPackageID)
+	}
+	if m.FieldCleared(skill.FieldExtensionSkillID) {
+		fields = append(fields, skill.FieldExtensionSkillID)
+	}
+	if m.FieldCleared(skill.FieldExtensionVersion) {
+		fields = append(fields, skill.FieldExtensionVersion)
+	}
 	return fields
 }
 
@@ -26472,6 +26977,15 @@ func (m *SkillMutation) ClearField(name string) error {
 		return nil
 	case skill.FieldSkillMdPath:
 		m.ClearSkillMdPath()
+		return nil
+	case skill.FieldExtensionPackageID:
+		m.ClearExtensionPackageID()
+		return nil
+	case skill.FieldExtensionSkillID:
+		m.ClearExtensionSkillID()
+		return nil
+	case skill.FieldExtensionVersion:
+		m.ClearExtensionVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown Skill nullable field %s", name)
@@ -26513,6 +27027,15 @@ func (m *SkillMutation) ResetField(name string) error {
 		return nil
 	case skill.FieldSkillMdPath:
 		m.ResetSkillMdPath()
+		return nil
+	case skill.FieldExtensionPackageID:
+		m.ResetExtensionPackageID()
+		return nil
+	case skill.FieldExtensionSkillID:
+		m.ResetExtensionSkillID()
+		return nil
+	case skill.FieldExtensionVersion:
+		m.ResetExtensionVersion()
 		return nil
 	case skill.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -30737,54 +31260,57 @@ func (m *TaskVirtualMachineMutation) ResetEdge(name string) error {
 // TeamMutation represents an operation that mutates the Team nodes in the graph.
 type TeamMutation struct {
 	config
-	op                         Op
-	typ                        string
-	id                         *uuid.UUID
-	deleted_at                 *time.Time
-	name                       *string
-	member_limit               *int
-	addmember_limit            *int
-	task_concurrency_limit     *int
-	addtask_concurrency_limit  *int
-	task_vm_sleep_enabled      *bool
-	task_vm_sleep_seconds      *int
-	addtask_vm_sleep_seconds   *int
-	task_vm_recycle_enabled    *bool
-	task_vm_recycle_seconds    *int
-	addtask_vm_recycle_seconds *int
-	created_at                 *time.Time
-	updated_at                 *time.Time
-	clearedFields              map[string]struct{}
-	groups                     map[uuid.UUID]struct{}
-	removedgroups              map[uuid.UUID]struct{}
-	clearedgroups              bool
-	members                    map[uuid.UUID]struct{}
-	removedmembers             map[uuid.UUID]struct{}
-	clearedmembers             bool
-	models                     map[uuid.UUID]struct{}
-	removedmodels              map[uuid.UUID]struct{}
-	clearedmodels              bool
-	images                     map[uuid.UUID]struct{}
-	removedimages              map[uuid.UUID]struct{}
-	clearedimages              bool
-	skills                     map[uuid.UUID]struct{}
-	removedskills              map[uuid.UUID]struct{}
-	clearedskills              bool
-	team_members               map[uuid.UUID]struct{}
-	removedteam_members        map[uuid.UUID]struct{}
-	clearedteam_members        bool
-	team_models                map[uuid.UUID]struct{}
-	removedteam_models         map[uuid.UUID]struct{}
-	clearedteam_models         bool
-	team_images                map[uuid.UUID]struct{}
-	removedteam_images         map[uuid.UUID]struct{}
-	clearedteam_images         bool
-	team_skills                map[uuid.UUID]struct{}
-	removedteam_skills         map[uuid.UUID]struct{}
-	clearedteam_skills         bool
-	done                       bool
-	oldValue                   func(context.Context) (*Team, error)
-	predicates                 []predicate.Team
+	op                              Op
+	typ                             string
+	id                              *uuid.UUID
+	deleted_at                      *time.Time
+	name                            *string
+	member_limit                    *int
+	addmember_limit                 *int
+	task_concurrency_limit          *int
+	addtask_concurrency_limit       *int
+	task_vm_sleep_enabled           *bool
+	task_vm_sleep_seconds           *int
+	addtask_vm_sleep_seconds        *int
+	task_vm_recycle_enabled         *bool
+	task_vm_recycle_seconds         *int
+	addtask_vm_recycle_seconds      *int
+	created_at                      *time.Time
+	updated_at                      *time.Time
+	clearedFields                   map[string]struct{}
+	groups                          map[uuid.UUID]struct{}
+	removedgroups                   map[uuid.UUID]struct{}
+	clearedgroups                   bool
+	members                         map[uuid.UUID]struct{}
+	removedmembers                  map[uuid.UUID]struct{}
+	clearedmembers                  bool
+	models                          map[uuid.UUID]struct{}
+	removedmodels                   map[uuid.UUID]struct{}
+	clearedmodels                   bool
+	images                          map[uuid.UUID]struct{}
+	removedimages                   map[uuid.UUID]struct{}
+	clearedimages                   bool
+	skills                          map[uuid.UUID]struct{}
+	removedskills                   map[uuid.UUID]struct{}
+	clearedskills                   bool
+	extension_image_archives        map[uuid.UUID]struct{}
+	removedextension_image_archives map[uuid.UUID]struct{}
+	clearedextension_image_archives bool
+	team_members                    map[uuid.UUID]struct{}
+	removedteam_members             map[uuid.UUID]struct{}
+	clearedteam_members             bool
+	team_models                     map[uuid.UUID]struct{}
+	removedteam_models              map[uuid.UUID]struct{}
+	clearedteam_models              bool
+	team_images                     map[uuid.UUID]struct{}
+	removedteam_images              map[uuid.UUID]struct{}
+	clearedteam_images              bool
+	team_skills                     map[uuid.UUID]struct{}
+	removedteam_skills              map[uuid.UUID]struct{}
+	clearedteam_skills              bool
+	done                            bool
+	oldValue                        func(context.Context) (*Team, error)
+	predicates                      []predicate.Team
 }
 
 var _ ent.Mutation = (*TeamMutation)(nil)
@@ -31614,6 +32140,60 @@ func (m *TeamMutation) ResetSkills() {
 	m.removedskills = nil
 }
 
+// AddExtensionImageArchiveIDs adds the "extension_image_archives" edge to the TeamExtensionImageArchive entity by ids.
+func (m *TeamMutation) AddExtensionImageArchiveIDs(ids ...uuid.UUID) {
+	if m.extension_image_archives == nil {
+		m.extension_image_archives = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.extension_image_archives[ids[i]] = struct{}{}
+	}
+}
+
+// ClearExtensionImageArchives clears the "extension_image_archives" edge to the TeamExtensionImageArchive entity.
+func (m *TeamMutation) ClearExtensionImageArchives() {
+	m.clearedextension_image_archives = true
+}
+
+// ExtensionImageArchivesCleared reports if the "extension_image_archives" edge to the TeamExtensionImageArchive entity was cleared.
+func (m *TeamMutation) ExtensionImageArchivesCleared() bool {
+	return m.clearedextension_image_archives
+}
+
+// RemoveExtensionImageArchiveIDs removes the "extension_image_archives" edge to the TeamExtensionImageArchive entity by IDs.
+func (m *TeamMutation) RemoveExtensionImageArchiveIDs(ids ...uuid.UUID) {
+	if m.removedextension_image_archives == nil {
+		m.removedextension_image_archives = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.extension_image_archives, ids[i])
+		m.removedextension_image_archives[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedExtensionImageArchives returns the removed IDs of the "extension_image_archives" edge to the TeamExtensionImageArchive entity.
+func (m *TeamMutation) RemovedExtensionImageArchivesIDs() (ids []uuid.UUID) {
+	for id := range m.removedextension_image_archives {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ExtensionImageArchivesIDs returns the "extension_image_archives" edge IDs in the mutation.
+func (m *TeamMutation) ExtensionImageArchivesIDs() (ids []uuid.UUID) {
+	for id := range m.extension_image_archives {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetExtensionImageArchives resets all changes to the "extension_image_archives" edge.
+func (m *TeamMutation) ResetExtensionImageArchives() {
+	m.extension_image_archives = nil
+	m.clearedextension_image_archives = false
+	m.removedextension_image_archives = nil
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by ids.
 func (m *TeamMutation) AddTeamMemberIDs(ids ...uuid.UUID) {
 	if m.team_members == nil {
@@ -32176,7 +32756,7 @@ func (m *TeamMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *TeamMutation) AddedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 10)
 	if m.groups != nil {
 		edges = append(edges, team.EdgeGroups)
 	}
@@ -32191,6 +32771,9 @@ func (m *TeamMutation) AddedEdges() []string {
 	}
 	if m.skills != nil {
 		edges = append(edges, team.EdgeSkills)
+	}
+	if m.extension_image_archives != nil {
+		edges = append(edges, team.EdgeExtensionImageArchives)
 	}
 	if m.team_members != nil {
 		edges = append(edges, team.EdgeTeamMembers)
@@ -32241,6 +32824,12 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case team.EdgeExtensionImageArchives:
+		ids := make([]ent.Value, 0, len(m.extension_image_archives))
+		for id := range m.extension_image_archives {
+			ids = append(ids, id)
+		}
+		return ids
 	case team.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.team_members))
 		for id := range m.team_members {
@@ -32271,7 +32860,7 @@ func (m *TeamMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *TeamMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 10)
 	if m.removedgroups != nil {
 		edges = append(edges, team.EdgeGroups)
 	}
@@ -32286,6 +32875,9 @@ func (m *TeamMutation) RemovedEdges() []string {
 	}
 	if m.removedskills != nil {
 		edges = append(edges, team.EdgeSkills)
+	}
+	if m.removedextension_image_archives != nil {
+		edges = append(edges, team.EdgeExtensionImageArchives)
 	}
 	if m.removedteam_members != nil {
 		edges = append(edges, team.EdgeTeamMembers)
@@ -32336,6 +32928,12 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case team.EdgeExtensionImageArchives:
+		ids := make([]ent.Value, 0, len(m.removedextension_image_archives))
+		for id := range m.removedextension_image_archives {
+			ids = append(ids, id)
+		}
+		return ids
 	case team.EdgeTeamMembers:
 		ids := make([]ent.Value, 0, len(m.removedteam_members))
 		for id := range m.removedteam_members {
@@ -32366,7 +32964,7 @@ func (m *TeamMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *TeamMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 9)
+	edges := make([]string, 0, 10)
 	if m.clearedgroups {
 		edges = append(edges, team.EdgeGroups)
 	}
@@ -32381,6 +32979,9 @@ func (m *TeamMutation) ClearedEdges() []string {
 	}
 	if m.clearedskills {
 		edges = append(edges, team.EdgeSkills)
+	}
+	if m.clearedextension_image_archives {
+		edges = append(edges, team.EdgeExtensionImageArchives)
 	}
 	if m.clearedteam_members {
 		edges = append(edges, team.EdgeTeamMembers)
@@ -32411,6 +33012,8 @@ func (m *TeamMutation) EdgeCleared(name string) bool {
 		return m.clearedimages
 	case team.EdgeSkills:
 		return m.clearedskills
+	case team.EdgeExtensionImageArchives:
+		return m.clearedextension_image_archives
 	case team.EdgeTeamMembers:
 		return m.clearedteam_members
 	case team.EdgeTeamModels:
@@ -32450,6 +33053,9 @@ func (m *TeamMutation) ResetEdge(name string) error {
 	case team.EdgeSkills:
 		m.ResetSkills()
 		return nil
+	case team.EdgeExtensionImageArchives:
+		m.ResetExtensionImageArchives()
+		return nil
 	case team.EdgeTeamMembers:
 		m.ResetTeamMembers()
 		return nil
@@ -32464,6 +33070,1054 @@ func (m *TeamMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Team edge %s", name)
+}
+
+// TeamExtensionImageArchiveMutation represents an operation that mutates the TeamExtensionImageArchive nodes in the graph.
+type TeamExtensionImageArchiveMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *uuid.UUID
+	package_id         *string
+	extension_image_id *string
+	version            *string
+	arch               *string
+	image_name         *string
+	archive_path       *string
+	archive_url        *string
+	sha256             *string
+	created_at         *time.Time
+	updated_at         *time.Time
+	clearedFields      map[string]struct{}
+	team               *uuid.UUID
+	clearedteam        bool
+	image              *uuid.UUID
+	clearedimage       bool
+	done               bool
+	oldValue           func(context.Context) (*TeamExtensionImageArchive, error)
+	predicates         []predicate.TeamExtensionImageArchive
+}
+
+var _ ent.Mutation = (*TeamExtensionImageArchiveMutation)(nil)
+
+// teamextensionimagearchiveOption allows management of the mutation configuration using functional options.
+type teamextensionimagearchiveOption func(*TeamExtensionImageArchiveMutation)
+
+// newTeamExtensionImageArchiveMutation creates new mutation for the TeamExtensionImageArchive entity.
+func newTeamExtensionImageArchiveMutation(c config, op Op, opts ...teamextensionimagearchiveOption) *TeamExtensionImageArchiveMutation {
+	m := &TeamExtensionImageArchiveMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTeamExtensionImageArchive,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTeamExtensionImageArchiveID sets the ID field of the mutation.
+func withTeamExtensionImageArchiveID(id uuid.UUID) teamextensionimagearchiveOption {
+	return func(m *TeamExtensionImageArchiveMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TeamExtensionImageArchive
+		)
+		m.oldValue = func(ctx context.Context) (*TeamExtensionImageArchive, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TeamExtensionImageArchive.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTeamExtensionImageArchive sets the old TeamExtensionImageArchive of the mutation.
+func withTeamExtensionImageArchive(node *TeamExtensionImageArchive) teamextensionimagearchiveOption {
+	return func(m *TeamExtensionImageArchiveMutation) {
+		m.oldValue = func(context.Context) (*TeamExtensionImageArchive, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TeamExtensionImageArchiveMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TeamExtensionImageArchiveMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("db: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TeamExtensionImageArchive entities.
+func (m *TeamExtensionImageArchiveMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TeamExtensionImageArchiveMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TeamExtensionImageArchiveMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TeamExtensionImageArchive.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTeamID sets the "team_id" field.
+func (m *TeamExtensionImageArchiveMutation) SetTeamID(u uuid.UUID) {
+	m.team = &u
+}
+
+// TeamID returns the value of the "team_id" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) TeamID() (r uuid.UUID, exists bool) {
+	v := m.team
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTeamID returns the old "team_id" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldTeamID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTeamID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTeamID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTeamID: %w", err)
+	}
+	return oldValue.TeamID, nil
+}
+
+// ResetTeamID resets all changes to the "team_id" field.
+func (m *TeamExtensionImageArchiveMutation) ResetTeamID() {
+	m.team = nil
+}
+
+// SetImageID sets the "image_id" field.
+func (m *TeamExtensionImageArchiveMutation) SetImageID(u uuid.UUID) {
+	m.image = &u
+}
+
+// ImageID returns the value of the "image_id" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) ImageID() (r uuid.UUID, exists bool) {
+	v := m.image
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageID returns the old "image_id" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldImageID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageID: %w", err)
+	}
+	return oldValue.ImageID, nil
+}
+
+// ResetImageID resets all changes to the "image_id" field.
+func (m *TeamExtensionImageArchiveMutation) ResetImageID() {
+	m.image = nil
+}
+
+// SetPackageID sets the "package_id" field.
+func (m *TeamExtensionImageArchiveMutation) SetPackageID(s string) {
+	m.package_id = &s
+}
+
+// PackageID returns the value of the "package_id" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) PackageID() (r string, exists bool) {
+	v := m.package_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPackageID returns the old "package_id" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldPackageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPackageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPackageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPackageID: %w", err)
+	}
+	return oldValue.PackageID, nil
+}
+
+// ResetPackageID resets all changes to the "package_id" field.
+func (m *TeamExtensionImageArchiveMutation) ResetPackageID() {
+	m.package_id = nil
+}
+
+// SetExtensionImageID sets the "extension_image_id" field.
+func (m *TeamExtensionImageArchiveMutation) SetExtensionImageID(s string) {
+	m.extension_image_id = &s
+}
+
+// ExtensionImageID returns the value of the "extension_image_id" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) ExtensionImageID() (r string, exists bool) {
+	v := m.extension_image_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionImageID returns the old "extension_image_id" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldExtensionImageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionImageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionImageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionImageID: %w", err)
+	}
+	return oldValue.ExtensionImageID, nil
+}
+
+// ResetExtensionImageID resets all changes to the "extension_image_id" field.
+func (m *TeamExtensionImageArchiveMutation) ResetExtensionImageID() {
+	m.extension_image_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *TeamExtensionImageArchiveMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *TeamExtensionImageArchiveMutation) ResetVersion() {
+	m.version = nil
+}
+
+// SetArch sets the "arch" field.
+func (m *TeamExtensionImageArchiveMutation) SetArch(s string) {
+	m.arch = &s
+}
+
+// Arch returns the value of the "arch" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) Arch() (r string, exists bool) {
+	v := m.arch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArch returns the old "arch" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldArch(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArch: %w", err)
+	}
+	return oldValue.Arch, nil
+}
+
+// ResetArch resets all changes to the "arch" field.
+func (m *TeamExtensionImageArchiveMutation) ResetArch() {
+	m.arch = nil
+}
+
+// SetImageName sets the "image_name" field.
+func (m *TeamExtensionImageArchiveMutation) SetImageName(s string) {
+	m.image_name = &s
+}
+
+// ImageName returns the value of the "image_name" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) ImageName() (r string, exists bool) {
+	v := m.image_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageName returns the old "image_name" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldImageName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageName: %w", err)
+	}
+	return oldValue.ImageName, nil
+}
+
+// ResetImageName resets all changes to the "image_name" field.
+func (m *TeamExtensionImageArchiveMutation) ResetImageName() {
+	m.image_name = nil
+}
+
+// SetArchivePath sets the "archive_path" field.
+func (m *TeamExtensionImageArchiveMutation) SetArchivePath(s string) {
+	m.archive_path = &s
+}
+
+// ArchivePath returns the value of the "archive_path" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) ArchivePath() (r string, exists bool) {
+	v := m.archive_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArchivePath returns the old "archive_path" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldArchivePath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArchivePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArchivePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArchivePath: %w", err)
+	}
+	return oldValue.ArchivePath, nil
+}
+
+// ResetArchivePath resets all changes to the "archive_path" field.
+func (m *TeamExtensionImageArchiveMutation) ResetArchivePath() {
+	m.archive_path = nil
+}
+
+// SetArchiveURL sets the "archive_url" field.
+func (m *TeamExtensionImageArchiveMutation) SetArchiveURL(s string) {
+	m.archive_url = &s
+}
+
+// ArchiveURL returns the value of the "archive_url" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) ArchiveURL() (r string, exists bool) {
+	v := m.archive_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArchiveURL returns the old "archive_url" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldArchiveURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArchiveURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArchiveURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArchiveURL: %w", err)
+	}
+	return oldValue.ArchiveURL, nil
+}
+
+// ResetArchiveURL resets all changes to the "archive_url" field.
+func (m *TeamExtensionImageArchiveMutation) ResetArchiveURL() {
+	m.archive_url = nil
+}
+
+// SetSha256 sets the "sha256" field.
+func (m *TeamExtensionImageArchiveMutation) SetSha256(s string) {
+	m.sha256 = &s
+}
+
+// Sha256 returns the value of the "sha256" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) Sha256() (r string, exists bool) {
+	v := m.sha256
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSha256 returns the old "sha256" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldSha256(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSha256 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSha256 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSha256: %w", err)
+	}
+	return oldValue.Sha256, nil
+}
+
+// ClearSha256 clears the value of the "sha256" field.
+func (m *TeamExtensionImageArchiveMutation) ClearSha256() {
+	m.sha256 = nil
+	m.clearedFields[teamextensionimagearchive.FieldSha256] = struct{}{}
+}
+
+// Sha256Cleared returns if the "sha256" field was cleared in this mutation.
+func (m *TeamExtensionImageArchiveMutation) Sha256Cleared() bool {
+	_, ok := m.clearedFields[teamextensionimagearchive.FieldSha256]
+	return ok
+}
+
+// ResetSha256 resets all changes to the "sha256" field.
+func (m *TeamExtensionImageArchiveMutation) ResetSha256() {
+	m.sha256 = nil
+	delete(m.clearedFields, teamextensionimagearchive.FieldSha256)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TeamExtensionImageArchiveMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TeamExtensionImageArchiveMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *TeamExtensionImageArchiveMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *TeamExtensionImageArchiveMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the TeamExtensionImageArchive entity.
+// If the TeamExtensionImageArchive object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TeamExtensionImageArchiveMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *TeamExtensionImageArchiveMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearTeam clears the "team" edge to the Team entity.
+func (m *TeamExtensionImageArchiveMutation) ClearTeam() {
+	m.clearedteam = true
+	m.clearedFields[teamextensionimagearchive.FieldTeamID] = struct{}{}
+}
+
+// TeamCleared reports if the "team" edge to the Team entity was cleared.
+func (m *TeamExtensionImageArchiveMutation) TeamCleared() bool {
+	return m.clearedteam
+}
+
+// TeamIDs returns the "team" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// TeamID instead. It exists only for internal usage by the builders.
+func (m *TeamExtensionImageArchiveMutation) TeamIDs() (ids []uuid.UUID) {
+	if id := m.team; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetTeam resets all changes to the "team" edge.
+func (m *TeamExtensionImageArchiveMutation) ResetTeam() {
+	m.team = nil
+	m.clearedteam = false
+}
+
+// ClearImage clears the "image" edge to the Image entity.
+func (m *TeamExtensionImageArchiveMutation) ClearImage() {
+	m.clearedimage = true
+	m.clearedFields[teamextensionimagearchive.FieldImageID] = struct{}{}
+}
+
+// ImageCleared reports if the "image" edge to the Image entity was cleared.
+func (m *TeamExtensionImageArchiveMutation) ImageCleared() bool {
+	return m.clearedimage
+}
+
+// ImageIDs returns the "image" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ImageID instead. It exists only for internal usage by the builders.
+func (m *TeamExtensionImageArchiveMutation) ImageIDs() (ids []uuid.UUID) {
+	if id := m.image; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetImage resets all changes to the "image" edge.
+func (m *TeamExtensionImageArchiveMutation) ResetImage() {
+	m.image = nil
+	m.clearedimage = false
+}
+
+// Where appends a list predicates to the TeamExtensionImageArchiveMutation builder.
+func (m *TeamExtensionImageArchiveMutation) Where(ps ...predicate.TeamExtensionImageArchive) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TeamExtensionImageArchiveMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TeamExtensionImageArchiveMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TeamExtensionImageArchive, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TeamExtensionImageArchiveMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TeamExtensionImageArchiveMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TeamExtensionImageArchive).
+func (m *TeamExtensionImageArchiveMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TeamExtensionImageArchiveMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.team != nil {
+		fields = append(fields, teamextensionimagearchive.FieldTeamID)
+	}
+	if m.image != nil {
+		fields = append(fields, teamextensionimagearchive.FieldImageID)
+	}
+	if m.package_id != nil {
+		fields = append(fields, teamextensionimagearchive.FieldPackageID)
+	}
+	if m.extension_image_id != nil {
+		fields = append(fields, teamextensionimagearchive.FieldExtensionImageID)
+	}
+	if m.version != nil {
+		fields = append(fields, teamextensionimagearchive.FieldVersion)
+	}
+	if m.arch != nil {
+		fields = append(fields, teamextensionimagearchive.FieldArch)
+	}
+	if m.image_name != nil {
+		fields = append(fields, teamextensionimagearchive.FieldImageName)
+	}
+	if m.archive_path != nil {
+		fields = append(fields, teamextensionimagearchive.FieldArchivePath)
+	}
+	if m.archive_url != nil {
+		fields = append(fields, teamextensionimagearchive.FieldArchiveURL)
+	}
+	if m.sha256 != nil {
+		fields = append(fields, teamextensionimagearchive.FieldSha256)
+	}
+	if m.created_at != nil {
+		fields = append(fields, teamextensionimagearchive.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, teamextensionimagearchive.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TeamExtensionImageArchiveMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case teamextensionimagearchive.FieldTeamID:
+		return m.TeamID()
+	case teamextensionimagearchive.FieldImageID:
+		return m.ImageID()
+	case teamextensionimagearchive.FieldPackageID:
+		return m.PackageID()
+	case teamextensionimagearchive.FieldExtensionImageID:
+		return m.ExtensionImageID()
+	case teamextensionimagearchive.FieldVersion:
+		return m.Version()
+	case teamextensionimagearchive.FieldArch:
+		return m.Arch()
+	case teamextensionimagearchive.FieldImageName:
+		return m.ImageName()
+	case teamextensionimagearchive.FieldArchivePath:
+		return m.ArchivePath()
+	case teamextensionimagearchive.FieldArchiveURL:
+		return m.ArchiveURL()
+	case teamextensionimagearchive.FieldSha256:
+		return m.Sha256()
+	case teamextensionimagearchive.FieldCreatedAt:
+		return m.CreatedAt()
+	case teamextensionimagearchive.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TeamExtensionImageArchiveMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case teamextensionimagearchive.FieldTeamID:
+		return m.OldTeamID(ctx)
+	case teamextensionimagearchive.FieldImageID:
+		return m.OldImageID(ctx)
+	case teamextensionimagearchive.FieldPackageID:
+		return m.OldPackageID(ctx)
+	case teamextensionimagearchive.FieldExtensionImageID:
+		return m.OldExtensionImageID(ctx)
+	case teamextensionimagearchive.FieldVersion:
+		return m.OldVersion(ctx)
+	case teamextensionimagearchive.FieldArch:
+		return m.OldArch(ctx)
+	case teamextensionimagearchive.FieldImageName:
+		return m.OldImageName(ctx)
+	case teamextensionimagearchive.FieldArchivePath:
+		return m.OldArchivePath(ctx)
+	case teamextensionimagearchive.FieldArchiveURL:
+		return m.OldArchiveURL(ctx)
+	case teamextensionimagearchive.FieldSha256:
+		return m.OldSha256(ctx)
+	case teamextensionimagearchive.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case teamextensionimagearchive.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TeamExtensionImageArchive field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamExtensionImageArchiveMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case teamextensionimagearchive.FieldTeamID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTeamID(v)
+		return nil
+	case teamextensionimagearchive.FieldImageID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageID(v)
+		return nil
+	case teamextensionimagearchive.FieldPackageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPackageID(v)
+		return nil
+	case teamextensionimagearchive.FieldExtensionImageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionImageID(v)
+		return nil
+	case teamextensionimagearchive.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case teamextensionimagearchive.FieldArch:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArch(v)
+		return nil
+	case teamextensionimagearchive.FieldImageName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageName(v)
+		return nil
+	case teamextensionimagearchive.FieldArchivePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArchivePath(v)
+		return nil
+	case teamextensionimagearchive.FieldArchiveURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArchiveURL(v)
+		return nil
+	case teamextensionimagearchive.FieldSha256:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSha256(v)
+		return nil
+	case teamextensionimagearchive.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case teamextensionimagearchive.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TeamExtensionImageArchive field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TeamExtensionImageArchiveMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TeamExtensionImageArchiveMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TeamExtensionImageArchiveMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown TeamExtensionImageArchive numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TeamExtensionImageArchiveMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(teamextensionimagearchive.FieldSha256) {
+		fields = append(fields, teamextensionimagearchive.FieldSha256)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TeamExtensionImageArchiveMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TeamExtensionImageArchiveMutation) ClearField(name string) error {
+	switch name {
+	case teamextensionimagearchive.FieldSha256:
+		m.ClearSha256()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamExtensionImageArchive nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TeamExtensionImageArchiveMutation) ResetField(name string) error {
+	switch name {
+	case teamextensionimagearchive.FieldTeamID:
+		m.ResetTeamID()
+		return nil
+	case teamextensionimagearchive.FieldImageID:
+		m.ResetImageID()
+		return nil
+	case teamextensionimagearchive.FieldPackageID:
+		m.ResetPackageID()
+		return nil
+	case teamextensionimagearchive.FieldExtensionImageID:
+		m.ResetExtensionImageID()
+		return nil
+	case teamextensionimagearchive.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case teamextensionimagearchive.FieldArch:
+		m.ResetArch()
+		return nil
+	case teamextensionimagearchive.FieldImageName:
+		m.ResetImageName()
+		return nil
+	case teamextensionimagearchive.FieldArchivePath:
+		m.ResetArchivePath()
+		return nil
+	case teamextensionimagearchive.FieldArchiveURL:
+		m.ResetArchiveURL()
+		return nil
+	case teamextensionimagearchive.FieldSha256:
+		m.ResetSha256()
+		return nil
+	case teamextensionimagearchive.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case teamextensionimagearchive.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamExtensionImageArchive field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TeamExtensionImageArchiveMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.team != nil {
+		edges = append(edges, teamextensionimagearchive.EdgeTeam)
+	}
+	if m.image != nil {
+		edges = append(edges, teamextensionimagearchive.EdgeImage)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TeamExtensionImageArchiveMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case teamextensionimagearchive.EdgeTeam:
+		if id := m.team; id != nil {
+			return []ent.Value{*id}
+		}
+	case teamextensionimagearchive.EdgeImage:
+		if id := m.image; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TeamExtensionImageArchiveMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TeamExtensionImageArchiveMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TeamExtensionImageArchiveMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedteam {
+		edges = append(edges, teamextensionimagearchive.EdgeTeam)
+	}
+	if m.clearedimage {
+		edges = append(edges, teamextensionimagearchive.EdgeImage)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TeamExtensionImageArchiveMutation) EdgeCleared(name string) bool {
+	switch name {
+	case teamextensionimagearchive.EdgeTeam:
+		return m.clearedteam
+	case teamextensionimagearchive.EdgeImage:
+		return m.clearedimage
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TeamExtensionImageArchiveMutation) ClearEdge(name string) error {
+	switch name {
+	case teamextensionimagearchive.EdgeTeam:
+		m.ClearTeam()
+		return nil
+	case teamextensionimagearchive.EdgeImage:
+		m.ClearImage()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamExtensionImageArchive unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TeamExtensionImageArchiveMutation) ResetEdge(name string) error {
+	switch name {
+	case teamextensionimagearchive.EdgeTeam:
+		m.ResetTeam()
+		return nil
+	case teamextensionimagearchive.EdgeImage:
+		m.ResetImage()
+		return nil
+	}
+	return fmt.Errorf("unknown TeamExtensionImageArchive edge %s", name)
 }
 
 // TeamGroupMutation represents an operation that mutates the TeamGroup nodes in the graph.

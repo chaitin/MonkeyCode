@@ -127,6 +127,48 @@ func (_c *SkillCreate) SetNillableSkillMdPath(v *string) *SkillCreate {
 	return _c
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_c *SkillCreate) SetExtensionPackageID(v string) *SkillCreate {
+	_c.mutation.SetExtensionPackageID(v)
+	return _c
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_c *SkillCreate) SetNillableExtensionPackageID(v *string) *SkillCreate {
+	if v != nil {
+		_c.SetExtensionPackageID(*v)
+	}
+	return _c
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (_c *SkillCreate) SetExtensionSkillID(v string) *SkillCreate {
+	_c.mutation.SetExtensionSkillID(v)
+	return _c
+}
+
+// SetNillableExtensionSkillID sets the "extension_skill_id" field if the given value is not nil.
+func (_c *SkillCreate) SetNillableExtensionSkillID(v *string) *SkillCreate {
+	if v != nil {
+		_c.SetExtensionSkillID(*v)
+	}
+	return _c
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_c *SkillCreate) SetExtensionVersion(v string) *SkillCreate {
+	_c.mutation.SetExtensionVersion(v)
+	return _c
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_c *SkillCreate) SetNillableExtensionVersion(v *string) *SkillCreate {
+	if v != nil {
+		_c.SetExtensionVersion(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *SkillCreate) SetCreatedAt(v time.Time) *SkillCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -409,6 +451,18 @@ func (_c *SkillCreate) createSpec() (*Skill, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SkillMdPath(); ok {
 		_spec.SetField(skill.FieldSkillMdPath, field.TypeString, value)
 		_node.SkillMdPath = value
+	}
+	if value, ok := _c.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(skill.FieldExtensionPackageID, field.TypeString, value)
+		_node.ExtensionPackageID = value
+	}
+	if value, ok := _c.mutation.ExtensionSkillID(); ok {
+		_spec.SetField(skill.FieldExtensionSkillID, field.TypeString, value)
+		_node.ExtensionSkillID = value
+	}
+	if value, ok := _c.mutation.ExtensionVersion(); ok {
+		_spec.SetField(skill.FieldExtensionVersion, field.TypeString, value)
+		_node.ExtensionVersion = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(skill.FieldCreatedAt, field.TypeTime, value)
@@ -721,6 +775,60 @@ func (u *SkillUpsert) ClearSkillMdPath() *SkillUpsert {
 	return u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *SkillUpsert) SetExtensionPackageID(v string) *SkillUpsert {
+	u.Set(skill.FieldExtensionPackageID, v)
+	return u
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *SkillUpsert) UpdateExtensionPackageID() *SkillUpsert {
+	u.SetExcluded(skill.FieldExtensionPackageID)
+	return u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *SkillUpsert) ClearExtensionPackageID() *SkillUpsert {
+	u.SetNull(skill.FieldExtensionPackageID)
+	return u
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (u *SkillUpsert) SetExtensionSkillID(v string) *SkillUpsert {
+	u.Set(skill.FieldExtensionSkillID, v)
+	return u
+}
+
+// UpdateExtensionSkillID sets the "extension_skill_id" field to the value that was provided on create.
+func (u *SkillUpsert) UpdateExtensionSkillID() *SkillUpsert {
+	u.SetExcluded(skill.FieldExtensionSkillID)
+	return u
+}
+
+// ClearExtensionSkillID clears the value of the "extension_skill_id" field.
+func (u *SkillUpsert) ClearExtensionSkillID() *SkillUpsert {
+	u.SetNull(skill.FieldExtensionSkillID)
+	return u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *SkillUpsert) SetExtensionVersion(v string) *SkillUpsert {
+	u.Set(skill.FieldExtensionVersion, v)
+	return u
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *SkillUpsert) UpdateExtensionVersion() *SkillUpsert {
+	u.SetExcluded(skill.FieldExtensionVersion)
+	return u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *SkillUpsert) ClearExtensionVersion() *SkillUpsert {
+	u.SetNull(skill.FieldExtensionVersion)
+	return u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (u *SkillUpsert) SetCreatedAt(v time.Time) *SkillUpsert {
 	u.Set(skill.FieldCreatedAt, v)
@@ -979,6 +1087,69 @@ func (u *SkillUpsertOne) UpdateSkillMdPath() *SkillUpsertOne {
 func (u *SkillUpsertOne) ClearSkillMdPath() *SkillUpsertOne {
 	return u.Update(func(s *SkillUpsert) {
 		s.ClearSkillMdPath()
+	})
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *SkillUpsertOne) SetExtensionPackageID(v string) *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.SetExtensionPackageID(v)
+	})
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *SkillUpsertOne) UpdateExtensionPackageID() *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.UpdateExtensionPackageID()
+	})
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *SkillUpsertOne) ClearExtensionPackageID() *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.ClearExtensionPackageID()
+	})
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (u *SkillUpsertOne) SetExtensionSkillID(v string) *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.SetExtensionSkillID(v)
+	})
+}
+
+// UpdateExtensionSkillID sets the "extension_skill_id" field to the value that was provided on create.
+func (u *SkillUpsertOne) UpdateExtensionSkillID() *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.UpdateExtensionSkillID()
+	})
+}
+
+// ClearExtensionSkillID clears the value of the "extension_skill_id" field.
+func (u *SkillUpsertOne) ClearExtensionSkillID() *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.ClearExtensionSkillID()
+	})
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *SkillUpsertOne) SetExtensionVersion(v string) *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.SetExtensionVersion(v)
+	})
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *SkillUpsertOne) UpdateExtensionVersion() *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.UpdateExtensionVersion()
+	})
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *SkillUpsertOne) ClearExtensionVersion() *SkillUpsertOne {
+	return u.Update(func(s *SkillUpsert) {
+		s.ClearExtensionVersion()
 	})
 }
 
@@ -1411,6 +1582,69 @@ func (u *SkillUpsertBulk) UpdateSkillMdPath() *SkillUpsertBulk {
 func (u *SkillUpsertBulk) ClearSkillMdPath() *SkillUpsertBulk {
 	return u.Update(func(s *SkillUpsert) {
 		s.ClearSkillMdPath()
+	})
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *SkillUpsertBulk) SetExtensionPackageID(v string) *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.SetExtensionPackageID(v)
+	})
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *SkillUpsertBulk) UpdateExtensionPackageID() *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.UpdateExtensionPackageID()
+	})
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *SkillUpsertBulk) ClearExtensionPackageID() *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.ClearExtensionPackageID()
+	})
+}
+
+// SetExtensionSkillID sets the "extension_skill_id" field.
+func (u *SkillUpsertBulk) SetExtensionSkillID(v string) *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.SetExtensionSkillID(v)
+	})
+}
+
+// UpdateExtensionSkillID sets the "extension_skill_id" field to the value that was provided on create.
+func (u *SkillUpsertBulk) UpdateExtensionSkillID() *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.UpdateExtensionSkillID()
+	})
+}
+
+// ClearExtensionSkillID clears the value of the "extension_skill_id" field.
+func (u *SkillUpsertBulk) ClearExtensionSkillID() *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.ClearExtensionSkillID()
+	})
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *SkillUpsertBulk) SetExtensionVersion(v string) *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.SetExtensionVersion(v)
+	})
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *SkillUpsertBulk) UpdateExtensionVersion() *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.UpdateExtensionVersion()
+	})
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *SkillUpsertBulk) ClearExtensionVersion() *SkillUpsertBulk {
+	return u.Update(func(s *SkillUpsert) {
+		s.ClearExtensionVersion()
 	})
 }
 

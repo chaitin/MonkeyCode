@@ -18,6 +18,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/project"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
@@ -28,18 +29,19 @@ import (
 // ImageQuery is the builder for querying Image entities.
 type ImageQuery struct {
 	config
-	ctx                 *QueryContext
-	order               []image.OrderOption
-	inters              []Interceptor
-	predicates          []predicate.Image
-	withUser            *UserQuery
-	withTeams           *TeamQuery
-	withGroups          *TeamGroupQuery
-	withProjectTasks    *ProjectTaskQuery
-	withProjects        *ProjectQuery
-	withTeamImages      *TeamImageQuery
-	withTeamGroupImages *TeamGroupImageQuery
-	modifiers           []func(*sql.Selector)
+	ctx                   *QueryContext
+	order                 []image.OrderOption
+	inters                []Interceptor
+	predicates            []predicate.Image
+	withUser              *UserQuery
+	withTeams             *TeamQuery
+	withGroups            *TeamGroupQuery
+	withProjectTasks      *ProjectTaskQuery
+	withProjects          *ProjectQuery
+	withExtensionArchives *TeamExtensionImageArchiveQuery
+	withTeamImages        *TeamImageQuery
+	withTeamGroupImages   *TeamGroupImageQuery
+	modifiers             []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -179,6 +181,28 @@ func (_q *ImageQuery) QueryProjects() *ProjectQuery {
 			sqlgraph.From(image.Table, image.FieldID, selector),
 			sqlgraph.To(project.Table, project.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, image.ProjectsTable, image.ProjectsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryExtensionArchives chains the current query on the "extension_archives" edge.
+func (_q *ImageQuery) QueryExtensionArchives() *TeamExtensionImageArchiveQuery {
+	query := (&TeamExtensionImageArchiveClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(image.Table, image.FieldID, selector),
+			sqlgraph.To(teamextensionimagearchive.Table, teamextensionimagearchive.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, image.ExtensionArchivesTable, image.ExtensionArchivesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -417,18 +441,19 @@ func (_q *ImageQuery) Clone() *ImageQuery {
 		return nil
 	}
 	return &ImageQuery{
-		config:              _q.config,
-		ctx:                 _q.ctx.Clone(),
-		order:               append([]image.OrderOption{}, _q.order...),
-		inters:              append([]Interceptor{}, _q.inters...),
-		predicates:          append([]predicate.Image{}, _q.predicates...),
-		withUser:            _q.withUser.Clone(),
-		withTeams:           _q.withTeams.Clone(),
-		withGroups:          _q.withGroups.Clone(),
-		withProjectTasks:    _q.withProjectTasks.Clone(),
-		withProjects:        _q.withProjects.Clone(),
-		withTeamImages:      _q.withTeamImages.Clone(),
-		withTeamGroupImages: _q.withTeamGroupImages.Clone(),
+		config:                _q.config,
+		ctx:                   _q.ctx.Clone(),
+		order:                 append([]image.OrderOption{}, _q.order...),
+		inters:                append([]Interceptor{}, _q.inters...),
+		predicates:            append([]predicate.Image{}, _q.predicates...),
+		withUser:              _q.withUser.Clone(),
+		withTeams:             _q.withTeams.Clone(),
+		withGroups:            _q.withGroups.Clone(),
+		withProjectTasks:      _q.withProjectTasks.Clone(),
+		withProjects:          _q.withProjects.Clone(),
+		withExtensionArchives: _q.withExtensionArchives.Clone(),
+		withTeamImages:        _q.withTeamImages.Clone(),
+		withTeamGroupImages:   _q.withTeamGroupImages.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -488,6 +513,17 @@ func (_q *ImageQuery) WithProjects(opts ...func(*ProjectQuery)) *ImageQuery {
 		opt(query)
 	}
 	_q.withProjects = query
+	return _q
+}
+
+// WithExtensionArchives tells the query-builder to eager-load the nodes that are connected to
+// the "extension_archives" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ImageQuery) WithExtensionArchives(opts ...func(*TeamExtensionImageArchiveQuery)) *ImageQuery {
+	query := (&TeamExtensionImageArchiveClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withExtensionArchives = query
 	return _q
 }
 
@@ -591,12 +627,13 @@ func (_q *ImageQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Image,
 	var (
 		nodes       = []*Image{}
 		_spec       = _q.querySpec()
-		loadedTypes = [7]bool{
+		loadedTypes = [8]bool{
 			_q.withUser != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
 			_q.withProjectTasks != nil,
 			_q.withProjects != nil,
+			_q.withExtensionArchives != nil,
 			_q.withTeamImages != nil,
 			_q.withTeamGroupImages != nil,
 		}
@@ -653,6 +690,15 @@ func (_q *ImageQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Image,
 		if err := _q.loadProjects(ctx, query, nodes,
 			func(n *Image) { n.Edges.Projects = []*Project{} },
 			func(n *Image, e *Project) { n.Edges.Projects = append(n.Edges.Projects, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withExtensionArchives; query != nil {
+		if err := _q.loadExtensionArchives(ctx, query, nodes,
+			func(n *Image) { n.Edges.ExtensionArchives = []*TeamExtensionImageArchive{} },
+			func(n *Image, e *TeamExtensionImageArchive) {
+				n.Edges.ExtensionArchives = append(n.Edges.ExtensionArchives, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -869,6 +915,36 @@ func (_q *ImageQuery) loadProjects(ctx context.Context, query *ProjectQuery, nod
 	}
 	query.Where(predicate.Project(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(image.ProjectsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ImageID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "image_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ImageQuery) loadExtensionArchives(ctx context.Context, query *TeamExtensionImageArchiveQuery, nodes []*Image, init func(*Image), assign func(*Image, *TeamExtensionImageArchive)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Image)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(teamextensionimagearchive.FieldImageID)
+	}
+	query.Where(predicate.TeamExtensionImageArchive(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(image.ExtensionArchivesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
