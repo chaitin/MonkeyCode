@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -68,10 +69,10 @@ type Config struct {
 	Context7ApiKey string `mapstructure:"context7_api_key"`
 
 	// Git 平台配置
-	Github GithubConfig `mapstructure:"github"`
-	Gitlab GitlabConfig `mapstructure:"gitlab"`
-	Gitea  GiteaConfig  `mapstructure:"gitea"`
-	Gitee  GiteeConfig  `mapstructure:"gitee"`
+	Github  GithubConfig  `mapstructure:"github"`
+	Gitlab  GitlabConfig  `mapstructure:"gitlab"`
+	Gitea   GiteaConfig   `mapstructure:"gitea"`
+	Gitee   GiteeConfig   `mapstructure:"gitee"`
 	Codeup  CodeupConfig  `mapstructure:"codeup"`
 	Cnb     CnbConfig     `mapstructure:"cnb"`
 	Atomgit AtomgitConfig `mapstructure:"atomgit"`
@@ -157,9 +158,22 @@ type TaskFlow struct {
 }
 
 type MCPHub struct {
-	Enabled bool   `mapstructure:"enabled"`
-	URL     string `mapstructure:"url"`
-	Token   string `mapstructure:"token"`
+	Enabled         bool   `mapstructure:"enabled"`
+	URL             string `mapstructure:"url"`
+	Token           string `mapstructure:"token"`
+	UpstreamTimeout string `mapstructure:"upstream_timeout"`
+}
+
+func (c MCPHub) UpstreamTimeoutDuration() time.Duration {
+	timeout := strings.TrimSpace(c.UpstreamTimeout)
+	if timeout == "" {
+		return 60 * time.Second
+	}
+	d, err := time.ParseDuration(timeout)
+	if err != nil || d <= 0 {
+		return 60 * time.Second
+	}
+	return d
 }
 
 // PublicHost 公共主机配置（可选，内部项目通过 WithPublicHost 注入时生效）
@@ -339,6 +353,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("mcp_hub.enabled", false)
 	v.SetDefault("mcp_hub.url", "")
 	v.SetDefault("mcp_hub.token", "")
+	v.SetDefault("mcp_hub.upstream_timeout", "60s")
 	v.SetDefault("attachment.allowed_url_prefixes", []string{})
 	v.SetDefault("object_storage.enabled", false)
 	v.SetDefault("object_storage.provider", "s3")

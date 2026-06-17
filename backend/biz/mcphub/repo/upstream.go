@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -71,6 +72,25 @@ func (r *UpstreamRepo) Get(ctx context.Context, id uuid.UUID) (*UpstreamConfig, 
 		Headers: headers,
 		Enabled: row.Enabled,
 	}, nil
+}
+
+func (r *UpstreamRepo) MarkSyncSuccess(ctx context.Context, id uuid.UUID) error {
+	if err := r.db.MCPUpstream.UpdateOneID(id).
+		SetSyncStatus("success").
+		SetLastSyncedAt(time.Now()).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("mark upstream %s sync success: %w", id, err)
+	}
+	return nil
+}
+
+func (r *UpstreamRepo) MarkSyncFailed(ctx context.Context, id uuid.UUID) error {
+	if err := r.db.MCPUpstream.UpdateOneID(id).
+		SetSyncStatus("failed").
+		Exec(ctx); err != nil {
+		return fmt.Errorf("mark upstream %s sync failed: %w", id, err)
+	}
+	return nil
 }
 
 func IsUpstreamNotFound(err error) bool {
