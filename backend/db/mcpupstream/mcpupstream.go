@@ -26,6 +26,8 @@ const (
 	FieldScope = "scope"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldTeamID holds the string denoting the team_id field in the database.
+	FieldTeamID = "team_id"
 	// FieldType holds the string denoting the type field in the database.
 	FieldType = "type"
 	// FieldURL holds the string denoting the url field in the database.
@@ -52,6 +54,12 @@ const (
 	EdgeTools = "tools"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeTeam holds the string denoting the team edge name in mutations.
+	EdgeTeam = "team"
+	// EdgeGroups holds the string denoting the groups edge name in mutations.
+	EdgeGroups = "groups"
+	// EdgeTeamGroupMcpUpstreams holds the string denoting the team_group_mcp_upstreams edge name in mutations.
+	EdgeTeamGroupMcpUpstreams = "team_group_mcp_upstreams"
 	// Table holds the table name of the mcpupstream in the database.
 	Table = "mcp_upstreams"
 	// ToolsTable is the table that holds the tools relation/edge.
@@ -68,6 +76,25 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
+	// TeamTable is the table that holds the team relation/edge.
+	TeamTable = "mcp_upstreams"
+	// TeamInverseTable is the table name for the Team entity.
+	// It exists in this package in order to avoid circular dependency with the "team" package.
+	TeamInverseTable = "teams"
+	// TeamColumn is the table column denoting the team relation/edge.
+	TeamColumn = "team_id"
+	// GroupsTable is the table that holds the groups relation/edge. The primary key declared below.
+	GroupsTable = "team_group_mcp_upstreams"
+	// GroupsInverseTable is the table name for the TeamGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "teamgroup" package.
+	GroupsInverseTable = "team_groups"
+	// TeamGroupMcpUpstreamsTable is the table that holds the team_group_mcp_upstreams relation/edge.
+	TeamGroupMcpUpstreamsTable = "team_group_mcp_upstreams"
+	// TeamGroupMcpUpstreamsInverseTable is the table name for the TeamGroupMCPUpstream entity.
+	// It exists in this package in order to avoid circular dependency with the "teamgroupmcpupstream" package.
+	TeamGroupMcpUpstreamsInverseTable = "team_group_mcp_upstreams"
+	// TeamGroupMcpUpstreamsColumn is the table column denoting the team_group_mcp_upstreams relation/edge.
+	TeamGroupMcpUpstreamsColumn = "upstream_id"
 )
 
 // Columns holds all SQL columns for mcpupstream fields.
@@ -78,6 +105,7 @@ var Columns = []string{
 	FieldSlug,
 	FieldScope,
 	FieldUserID,
+	FieldTeamID,
 	FieldType,
 	FieldURL,
 	FieldHeaders,
@@ -90,6 +118,12 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
+
+var (
+	// GroupsPrimaryKey and GroupsColumn2 are the table columns denoting the
+	// primary key for the groups relation (M2M).
+	GroupsPrimaryKey = []string{"group_id", "upstream_id"}
+)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -144,6 +178,7 @@ type Scope string
 const (
 	ScopeUser     Scope = "user"
 	ScopePlatform Scope = "platform"
+	ScopeTeam     Scope = "team"
 )
 
 func (s Scope) String() string {
@@ -153,7 +188,7 @@ func (s Scope) String() string {
 // ScopeValidator is a validator for the "scope" field enum values. It is called by the builders before save.
 func ScopeValidator(s Scope) error {
 	switch s {
-	case ScopeUser, ScopePlatform:
+	case ScopeUser, ScopePlatform, ScopeTeam:
 		return nil
 	default:
 		return fmt.Errorf("mcpupstream: invalid enum value for scope field: %q", s)
@@ -191,6 +226,11 @@ func ByScope(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByTeamID orders the results by the team_id field.
+func ByTeamID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTeamID, opts...).ToFunc()
 }
 
 // ByType orders the results by the type field.
@@ -263,6 +303,41 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByTeamField orders the results by team field.
+func ByTeamField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTeamStep(), sql.OrderByField(field, opts...))
+	}
+}
+
+// ByGroupsCount orders the results by groups count.
+func ByGroupsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newGroupsStep(), opts...)
+	}
+}
+
+// ByGroups orders the results by groups terms.
+func ByGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByTeamGroupMcpUpstreamsCount orders the results by team_group_mcp_upstreams count.
+func ByTeamGroupMcpUpstreamsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTeamGroupMcpUpstreamsStep(), opts...)
+	}
+}
+
+// ByTeamGroupMcpUpstreams orders the results by team_group_mcp_upstreams terms.
+func ByTeamGroupMcpUpstreams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTeamGroupMcpUpstreamsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newToolsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -275,5 +350,26 @@ func newUserStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newTeamStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TeamInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, TeamTable, TeamColumn),
+	)
+}
+func newGroupsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GroupsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, GroupsTable, GroupsPrimaryKey...),
+	)
+}
+func newTeamGroupMcpUpstreamsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TeamGroupMcpUpstreamsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupMcpUpstreamsTable, TeamGroupMcpUpstreamsColumn),
 	)
 }

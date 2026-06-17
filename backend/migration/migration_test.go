@@ -55,3 +55,22 @@ func TestExtensionPackageMigrationDefinesArchiveTable(t *testing.T) {
 		}
 	}
 }
+
+func TestTeamMCPHubMigrationAddsTeamScopeAndCalls(t *testing.T) {
+	data, err := os.ReadFile("000020_team_mcp_hub.up.sql")
+	if err != nil {
+		t.Fatalf("read team mcp migration: %v", err)
+	}
+	sql := string(data)
+	for _, want := range []string{
+		"ALTER TABLE mcp_upstreams",
+		"ADD COLUMN IF NOT EXISTS team_id uuid",
+		"team_group_mcp_upstreams",
+		"mcp_tool_calls",
+		"'team'",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("team mcp migration missing %q", want)
+		}
+	}
+}

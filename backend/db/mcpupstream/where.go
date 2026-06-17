@@ -76,6 +76,11 @@ func UserID(v uuid.UUID) predicate.MCPUpstream {
 	return predicate.MCPUpstream(sql.FieldEQ(FieldUserID, v))
 }
 
+// TeamID applies equality check predicate on the "team_id" field. It's identical to TeamIDEQ.
+func TeamID(v uuid.UUID) predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldEQ(FieldTeamID, v))
+}
+
 // Type applies equality check predicate on the "type" field. It's identical to TypeEQ.
 func Type(v string) predicate.MCPUpstream {
 	return predicate.MCPUpstream(sql.FieldEQ(FieldType, v))
@@ -354,6 +359,36 @@ func UserIDIsNil() predicate.MCPUpstream {
 // UserIDNotNil applies the NotNil predicate on the "user_id" field.
 func UserIDNotNil() predicate.MCPUpstream {
 	return predicate.MCPUpstream(sql.FieldNotNull(FieldUserID))
+}
+
+// TeamIDEQ applies the EQ predicate on the "team_id" field.
+func TeamIDEQ(v uuid.UUID) predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldEQ(FieldTeamID, v))
+}
+
+// TeamIDNEQ applies the NEQ predicate on the "team_id" field.
+func TeamIDNEQ(v uuid.UUID) predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldNEQ(FieldTeamID, v))
+}
+
+// TeamIDIn applies the In predicate on the "team_id" field.
+func TeamIDIn(vs ...uuid.UUID) predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldIn(FieldTeamID, vs...))
+}
+
+// TeamIDNotIn applies the NotIn predicate on the "team_id" field.
+func TeamIDNotIn(vs ...uuid.UUID) predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// TeamIDIsNil applies the IsNil predicate on the "team_id" field.
+func TeamIDIsNil() predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldIsNull(FieldTeamID))
+}
+
+// TeamIDNotNil applies the NotNil predicate on the "team_id" field.
+func TeamIDNotNil() predicate.MCPUpstream {
+	return predicate.MCPUpstream(sql.FieldNotNull(FieldTeamID))
 }
 
 // TypeEQ applies the EQ predicate on the "type" field.
@@ -929,6 +964,75 @@ func HasUser() predicate.MCPUpstream {
 func HasUserWith(preds ...predicate.User) predicate.MCPUpstream {
 	return predicate.MCPUpstream(func(s *sql.Selector) {
 		step := newUserStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTeam applies the HasEdge predicate on the "team" edge.
+func HasTeam() predicate.MCPUpstream {
+	return predicate.MCPUpstream(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, TeamTable, TeamColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTeamWith applies the HasEdge predicate on the "team" edge with a given conditions (other predicates).
+func HasTeamWith(preds ...predicate.Team) predicate.MCPUpstream {
+	return predicate.MCPUpstream(func(s *sql.Selector) {
+		step := newTeamStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasGroups applies the HasEdge predicate on the "groups" edge.
+func HasGroups() predicate.MCPUpstream {
+	return predicate.MCPUpstream(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, GroupsTable, GroupsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasGroupsWith applies the HasEdge predicate on the "groups" edge with a given conditions (other predicates).
+func HasGroupsWith(preds ...predicate.TeamGroup) predicate.MCPUpstream {
+	return predicate.MCPUpstream(func(s *sql.Selector) {
+		step := newGroupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTeamGroupMcpUpstreams applies the HasEdge predicate on the "team_group_mcp_upstreams" edge.
+func HasTeamGroupMcpUpstreams() predicate.MCPUpstream {
+	return predicate.MCPUpstream(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupMcpUpstreamsTable, TeamGroupMcpUpstreamsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTeamGroupMcpUpstreamsWith applies the HasEdge predicate on the "team_group_mcp_upstreams" edge with a given conditions (other predicates).
+func HasTeamGroupMcpUpstreamsWith(preds ...predicate.TeamGroupMCPUpstream) predicate.MCPUpstream {
+	return predicate.MCPUpstream(func(s *sql.Selector) {
+		step := newTeamGroupMcpUpstreamsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

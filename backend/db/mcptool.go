@@ -32,6 +32,8 @@ type MCPTool struct {
 	Scope mcptool.Scope `json:"scope,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID *uuid.UUID `json:"user_id,omitempty"`
+	// TeamID holds the value of the "team_id" field.
+	TeamID *uuid.UUID `json:"team_id,omitempty"`
 	// Description holds the value of the "description" field.
 	Description string `json:"description,omitempty"`
 	// InputSchema holds the value of the "input_schema" field.
@@ -79,7 +81,7 @@ func (*MCPTool) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case mcptool.FieldUserID:
+		case mcptool.FieldUserID, mcptool.FieldTeamID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case mcptool.FieldInputSchema:
 			values[i] = new([]byte)
@@ -150,6 +152,13 @@ func (_m *MCPTool) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UserID = new(uuid.UUID)
 				*_m.UserID = *value.S.(*uuid.UUID)
+			}
+		case mcptool.FieldTeamID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field team_id", values[i])
+			} else if value.Valid {
+				_m.TeamID = new(uuid.UUID)
+				*_m.TeamID = *value.S.(*uuid.UUID)
 			}
 		case mcptool.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -260,6 +269,11 @@ func (_m *MCPTool) String() string {
 	builder.WriteString(", ")
 	if v := _m.UserID; v != nil {
 		builder.WriteString("user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.TeamID; v != nil {
+		builder.WriteString("team_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

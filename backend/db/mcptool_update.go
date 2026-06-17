@@ -127,6 +127,26 @@ func (_u *MCPToolUpdate) ClearUserID() *MCPToolUpdate {
 	return _u
 }
 
+// SetTeamID sets the "team_id" field.
+func (_u *MCPToolUpdate) SetTeamID(v uuid.UUID) *MCPToolUpdate {
+	_u.mutation.SetTeamID(v)
+	return _u
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (_u *MCPToolUpdate) SetNillableTeamID(v *uuid.UUID) *MCPToolUpdate {
+	if v != nil {
+		_u.SetTeamID(*v)
+	}
+	return _u
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (_u *MCPToolUpdate) ClearTeamID() *MCPToolUpdate {
+	_u.mutation.ClearTeamID()
+	return _u
+}
+
 // SetDescription sets the "description" field.
 func (_u *MCPToolUpdate) SetDescription(v string) *MCPToolUpdate {
 	_u.mutation.SetDescription(v)
@@ -379,6 +399,12 @@ func (_u *MCPToolUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.UserIDCleared() {
 		_spec.ClearField(mcptool.FieldUserID, field.TypeUUID)
 	}
+	if value, ok := _u.mutation.TeamID(); ok {
+		_spec.SetField(mcptool.FieldTeamID, field.TypeUUID, value)
+	}
+	if _u.mutation.TeamIDCleared() {
+		_spec.ClearField(mcptool.FieldTeamID, field.TypeUUID)
+	}
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(mcptool.FieldDescription, field.TypeString, value)
 	}
@@ -562,6 +588,26 @@ func (_u *MCPToolUpdateOne) SetNillableUserID(v *uuid.UUID) *MCPToolUpdateOne {
 // ClearUserID clears the value of the "user_id" field.
 func (_u *MCPToolUpdateOne) ClearUserID() *MCPToolUpdateOne {
 	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetTeamID sets the "team_id" field.
+func (_u *MCPToolUpdateOne) SetTeamID(v uuid.UUID) *MCPToolUpdateOne {
+	_u.mutation.SetTeamID(v)
+	return _u
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (_u *MCPToolUpdateOne) SetNillableTeamID(v *uuid.UUID) *MCPToolUpdateOne {
+	if v != nil {
+		_u.SetTeamID(*v)
+	}
+	return _u
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (_u *MCPToolUpdateOne) ClearTeamID() *MCPToolUpdateOne {
+	_u.mutation.ClearTeamID()
 	return _u
 }
 
@@ -846,6 +892,12 @@ func (_u *MCPToolUpdateOne) sqlSave(ctx context.Context) (_node *MCPTool, err er
 	}
 	if _u.mutation.UserIDCleared() {
 		_spec.ClearField(mcptool.FieldUserID, field.TypeUUID)
+	}
+	if value, ok := _u.mutation.TeamID(); ok {
+		_spec.SetField(mcptool.FieldTeamID, field.TypeUUID, value)
+	}
+	if _u.mutation.TeamIDCleared() {
+		_spec.ClearField(mcptool.FieldTeamID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(mcptool.FieldDescription, field.TypeString, value)

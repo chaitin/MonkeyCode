@@ -27,6 +27,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptoolcall"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -51,6 +52,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
@@ -630,6 +632,33 @@ func (f TraverseMCPTool) Traverse(ctx context.Context, q db.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *db.MCPToolQuery", q)
+}
+
+// The MCPToolCallFunc type is an adapter to allow the use of ordinary function as a Querier.
+type MCPToolCallFunc func(context.Context, *db.MCPToolCallQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f MCPToolCallFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.MCPToolCallQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.MCPToolCallQuery", q)
+}
+
+// The TraverseMCPToolCall type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseMCPToolCall func(context.Context, *db.MCPToolCallQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseMCPToolCall) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseMCPToolCall) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.MCPToolCallQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.MCPToolCallQuery", q)
 }
 
 // The MCPUpstreamFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1253,6 +1282,33 @@ func (f TraverseTeamGroupImage) Traverse(ctx context.Context, q db.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupImageQuery", q)
 }
 
+// The TeamGroupMCPUpstreamFunc type is an adapter to allow the use of ordinary function as a Querier.
+type TeamGroupMCPUpstreamFunc func(context.Context, *db.TeamGroupMCPUpstreamQuery) (db.Value, error)
+
+// Query calls f(ctx, q).
+func (f TeamGroupMCPUpstreamFunc) Query(ctx context.Context, q db.Query) (db.Value, error) {
+	if q, ok := q.(*db.TeamGroupMCPUpstreamQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *db.TeamGroupMCPUpstreamQuery", q)
+}
+
+// The TraverseTeamGroupMCPUpstream type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseTeamGroupMCPUpstream func(context.Context, *db.TeamGroupMCPUpstreamQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseTeamGroupMCPUpstream) Intercept(next db.Querier) db.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseTeamGroupMCPUpstream) Traverse(ctx context.Context, q db.Query) error {
+	if q, ok := q.(*db.TeamGroupMCPUpstreamQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *db.TeamGroupMCPUpstreamQuery", q)
+}
+
 // The TeamGroupMemberFunc type is an adapter to allow the use of ordinary function as a Querier.
 type TeamGroupMemberFunc func(context.Context, *db.TeamGroupMemberQuery) (db.Value, error)
 
@@ -1564,6 +1620,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.ImageQuery, predicate.Image, image.OrderOption]{typ: db.TypeImage, tq: q}, nil
 	case *db.MCPToolQuery:
 		return &query[*db.MCPToolQuery, predicate.MCPTool, mcptool.OrderOption]{typ: db.TypeMCPTool, tq: q}, nil
+	case *db.MCPToolCallQuery:
+		return &query[*db.MCPToolCallQuery, predicate.MCPToolCall, mcptoolcall.OrderOption]{typ: db.TypeMCPToolCall, tq: q}, nil
 	case *db.MCPUpstreamQuery:
 		return &query[*db.MCPUpstreamQuery, predicate.MCPUpstream, mcpupstream.OrderOption]{typ: db.TypeMCPUpstream, tq: q}, nil
 	case *db.MCPUserToolSettingQuery:
@@ -1610,6 +1668,8 @@ func NewQuery(q db.Query) (Query, error) {
 		return &query[*db.TeamGroupHostQuery, predicate.TeamGroupHost, teamgrouphost.OrderOption]{typ: db.TypeTeamGroupHost, tq: q}, nil
 	case *db.TeamGroupImageQuery:
 		return &query[*db.TeamGroupImageQuery, predicate.TeamGroupImage, teamgroupimage.OrderOption]{typ: db.TypeTeamGroupImage, tq: q}, nil
+	case *db.TeamGroupMCPUpstreamQuery:
+		return &query[*db.TeamGroupMCPUpstreamQuery, predicate.TeamGroupMCPUpstream, teamgroupmcpupstream.OrderOption]{typ: db.TypeTeamGroupMCPUpstream, tq: q}, nil
 	case *db.TeamGroupMemberQuery:
 		return &query[*db.TeamGroupMemberQuery, predicate.TeamGroupMember, teamgroupmember.OrderOption]{typ: db.TypeTeamGroupMember, tq: q}, nil
 	case *db.TeamGroupModelQuery:

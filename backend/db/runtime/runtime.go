@@ -25,6 +25,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptoolcall"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -48,6 +49,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
@@ -474,27 +476,87 @@ func init() {
 		}
 	}()
 	// mcptoolDescPrice is the schema descriptor for price field.
-	mcptoolDescPrice := mcptoolFields[8].Descriptor()
+	mcptoolDescPrice := mcptoolFields[9].Descriptor()
 	// mcptool.DefaultPrice holds the default value on creation for the price field.
 	mcptool.DefaultPrice = mcptoolDescPrice.Default.(int64)
 	// mcptoolDescEnabled is the schema descriptor for enabled field.
-	mcptoolDescEnabled := mcptoolFields[9].Descriptor()
+	mcptoolDescEnabled := mcptoolFields[10].Descriptor()
 	// mcptool.DefaultEnabled holds the default value on creation for the enabled field.
 	mcptool.DefaultEnabled = mcptoolDescEnabled.Default.(bool)
 	// mcptoolDescVersionHash is the schema descriptor for version_hash field.
-	mcptoolDescVersionHash := mcptoolFields[10].Descriptor()
+	mcptoolDescVersionHash := mcptoolFields[11].Descriptor()
 	// mcptool.VersionHashValidator is a validator for the "version_hash" field. It is called by the builders before save.
 	mcptool.VersionHashValidator = mcptoolDescVersionHash.Validators[0].(func(string) error)
 	// mcptoolDescCreatedAt is the schema descriptor for created_at field.
-	mcptoolDescCreatedAt := mcptoolFields[12].Descriptor()
+	mcptoolDescCreatedAt := mcptoolFields[13].Descriptor()
 	// mcptool.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mcptool.DefaultCreatedAt = mcptoolDescCreatedAt.Default.(func() time.Time)
 	// mcptoolDescUpdatedAt is the schema descriptor for updated_at field.
-	mcptoolDescUpdatedAt := mcptoolFields[13].Descriptor()
+	mcptoolDescUpdatedAt := mcptoolFields[14].Descriptor()
 	// mcptool.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	mcptool.DefaultUpdatedAt = mcptoolDescUpdatedAt.Default.(func() time.Time)
 	// mcptool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	mcptool.UpdateDefaultUpdatedAt = mcptoolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	mcptoolcallFields := schema.MCPToolCall{}.Fields()
+	_ = mcptoolcallFields
+	// mcptoolcallDescRequestID is the schema descriptor for request_id field.
+	mcptoolcallDescRequestID := mcptoolcallFields[1].Descriptor()
+	// mcptoolcall.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	mcptoolcall.RequestIDValidator = func() func(string) error {
+		validators := mcptoolcallDescRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(request_id string) error {
+			for _, fn := range fns {
+				if err := fn(request_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcptoolcallDescToolNameSnapshot is the schema descriptor for tool_name_snapshot field.
+	mcptoolcallDescToolNameSnapshot := mcptoolcallFields[6].Descriptor()
+	// mcptoolcall.ToolNameSnapshotValidator is a validator for the "tool_name_snapshot" field. It is called by the builders before save.
+	mcptoolcall.ToolNameSnapshotValidator = func() func(string) error {
+		validators := mcptoolcallDescToolNameSnapshot.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(tool_name_snapshot string) error {
+			for _, fn := range fns {
+				if err := fn(tool_name_snapshot); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// mcptoolcallDescPriceSnapshot is the schema descriptor for price_snapshot field.
+	mcptoolcallDescPriceSnapshot := mcptoolcallFields[8].Descriptor()
+	// mcptoolcall.DefaultPriceSnapshot holds the default value on creation for the price_snapshot field.
+	mcptoolcall.DefaultPriceSnapshot = mcptoolcallDescPriceSnapshot.Default.(int64)
+	// mcptoolcallDescErrorMessage is the schema descriptor for error_message field.
+	mcptoolcallDescErrorMessage := mcptoolcallFields[12].Descriptor()
+	// mcptoolcall.DefaultErrorMessage holds the default value on creation for the error_message field.
+	mcptoolcall.DefaultErrorMessage = mcptoolcallDescErrorMessage.Default.(string)
+	// mcptoolcallDescUpstreamRequestID is the schema descriptor for upstream_request_id field.
+	mcptoolcallDescUpstreamRequestID := mcptoolcallFields[13].Descriptor()
+	// mcptoolcall.UpstreamRequestIDValidator is a validator for the "upstream_request_id" field. It is called by the builders before save.
+	mcptoolcall.UpstreamRequestIDValidator = mcptoolcallDescUpstreamRequestID.Validators[0].(func(string) error)
+	// mcptoolcallDescCreatedAt is the schema descriptor for created_at field.
+	mcptoolcallDescCreatedAt := mcptoolcallFields[16].Descriptor()
+	// mcptoolcall.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mcptoolcall.DefaultCreatedAt = mcptoolcallDescCreatedAt.Default.(func() time.Time)
+	// mcptoolcallDescUpdatedAt is the schema descriptor for updated_at field.
+	mcptoolcallDescUpdatedAt := mcptoolcallFields[17].Descriptor()
+	// mcptoolcall.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mcptoolcall.DefaultUpdatedAt = mcptoolcallDescUpdatedAt.Default.(func() time.Time)
+	// mcptoolcall.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mcptoolcall.UpdateDefaultUpdatedAt = mcptoolcallDescUpdatedAt.UpdateDefault.(func() time.Time)
 	mcpupstreamMixin := schema.MCPUpstream{}.Mixin()
 	mcpupstreamMixinHooks0 := mcpupstreamMixin[0].Hooks()
 	mcpupstream.Hooks[0] = mcpupstreamMixinHooks0[0]
@@ -539,7 +601,7 @@ func init() {
 		}
 	}()
 	// mcpupstreamDescType is the schema descriptor for type field.
-	mcpupstreamDescType := mcpupstreamFields[5].Descriptor()
+	mcpupstreamDescType := mcpupstreamFields[6].Descriptor()
 	// mcpupstream.DefaultType holds the default value on creation for the type field.
 	mcpupstream.DefaultType = mcpupstreamDescType.Default.(string)
 	// mcpupstream.TypeValidator is a validator for the "type" field. It is called by the builders before save.
@@ -559,15 +621,15 @@ func init() {
 		}
 	}()
 	// mcpupstreamDescURL is the schema descriptor for url field.
-	mcpupstreamDescURL := mcpupstreamFields[6].Descriptor()
+	mcpupstreamDescURL := mcpupstreamFields[7].Descriptor()
 	// mcpupstream.URLValidator is a validator for the "url" field. It is called by the builders before save.
 	mcpupstream.URLValidator = mcpupstreamDescURL.Validators[0].(func(string) error)
 	// mcpupstreamDescEnabled is the schema descriptor for enabled field.
-	mcpupstreamDescEnabled := mcpupstreamFields[9].Descriptor()
+	mcpupstreamDescEnabled := mcpupstreamFields[10].Descriptor()
 	// mcpupstream.DefaultEnabled holds the default value on creation for the enabled field.
 	mcpupstream.DefaultEnabled = mcpupstreamDescEnabled.Default.(bool)
 	// mcpupstreamDescHealthStatus is the schema descriptor for health_status field.
-	mcpupstreamDescHealthStatus := mcpupstreamFields[10].Descriptor()
+	mcpupstreamDescHealthStatus := mcpupstreamFields[11].Descriptor()
 	// mcpupstream.DefaultHealthStatus holds the default value on creation for the health_status field.
 	mcpupstream.DefaultHealthStatus = mcpupstreamDescHealthStatus.Default.(string)
 	// mcpupstream.HealthStatusValidator is a validator for the "health_status" field. It is called by the builders before save.
@@ -587,7 +649,7 @@ func init() {
 		}
 	}()
 	// mcpupstreamDescSyncStatus is the schema descriptor for sync_status field.
-	mcpupstreamDescSyncStatus := mcpupstreamFields[11].Descriptor()
+	mcpupstreamDescSyncStatus := mcpupstreamFields[12].Descriptor()
 	// mcpupstream.DefaultSyncStatus holds the default value on creation for the sync_status field.
 	mcpupstream.DefaultSyncStatus = mcpupstreamDescSyncStatus.Default.(string)
 	// mcpupstream.SyncStatusValidator is a validator for the "sync_status" field. It is called by the builders before save.
@@ -607,11 +669,11 @@ func init() {
 		}
 	}()
 	// mcpupstreamDescCreatedAt is the schema descriptor for created_at field.
-	mcpupstreamDescCreatedAt := mcpupstreamFields[14].Descriptor()
+	mcpupstreamDescCreatedAt := mcpupstreamFields[15].Descriptor()
 	// mcpupstream.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mcpupstream.DefaultCreatedAt = mcpupstreamDescCreatedAt.Default.(func() time.Time)
 	// mcpupstreamDescUpdatedAt is the schema descriptor for updated_at field.
-	mcpupstreamDescUpdatedAt := mcpupstreamFields[15].Descriptor()
+	mcpupstreamDescUpdatedAt := mcpupstreamFields[16].Descriptor()
 	// mcpupstream.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	mcpupstream.DefaultUpdatedAt = mcpupstreamDescUpdatedAt.Default.(func() time.Time)
 	// mcpupstream.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -1125,6 +1187,18 @@ func init() {
 	teamgroupimageDescCreatedAt := teamgroupimageFields[3].Descriptor()
 	// teamgroupimage.DefaultCreatedAt holds the default value on creation for the created_at field.
 	teamgroupimage.DefaultCreatedAt = teamgroupimageDescCreatedAt.Default.(func() time.Time)
+	teamgroupmcpupstreamFields := schema.TeamGroupMCPUpstream{}.Fields()
+	_ = teamgroupmcpupstreamFields
+	// teamgroupmcpupstreamDescCreatedAt is the schema descriptor for created_at field.
+	teamgroupmcpupstreamDescCreatedAt := teamgroupmcpupstreamFields[4].Descriptor()
+	// teamgroupmcpupstream.DefaultCreatedAt holds the default value on creation for the created_at field.
+	teamgroupmcpupstream.DefaultCreatedAt = teamgroupmcpupstreamDescCreatedAt.Default.(func() time.Time)
+	// teamgroupmcpupstreamDescUpdatedAt is the schema descriptor for updated_at field.
+	teamgroupmcpupstreamDescUpdatedAt := teamgroupmcpupstreamFields[5].Descriptor()
+	// teamgroupmcpupstream.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	teamgroupmcpupstream.DefaultUpdatedAt = teamgroupmcpupstreamDescUpdatedAt.Default.(func() time.Time)
+	// teamgroupmcpupstream.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	teamgroupmcpupstream.UpdateDefaultUpdatedAt = teamgroupmcpupstreamDescUpdatedAt.UpdateDefault.(func() time.Time)
 	teamgroupmemberFields := schema.TeamGroupMember{}.Fields()
 	_ = teamgroupmemberFields
 	// teamgroupmemberDescCreatedAt is the schema descriptor for created_at field.

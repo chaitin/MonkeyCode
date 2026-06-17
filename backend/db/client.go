@@ -35,6 +35,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptoolcall"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -58,6 +59,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
@@ -115,6 +117,8 @@ type Client struct {
 	Image *ImageClient
 	// MCPTool is the client for interacting with the MCPTool builders.
 	MCPTool *MCPToolClient
+	// MCPToolCall is the client for interacting with the MCPToolCall builders.
+	MCPToolCall *MCPToolCallClient
 	// MCPUpstream is the client for interacting with the MCPUpstream builders.
 	MCPUpstream *MCPUpstreamClient
 	// MCPUserToolSetting is the client for interacting with the MCPUserToolSetting builders.
@@ -161,6 +165,8 @@ type Client struct {
 	TeamGroupHost *TeamGroupHostClient
 	// TeamGroupImage is the client for interacting with the TeamGroupImage builders.
 	TeamGroupImage *TeamGroupImageClient
+	// TeamGroupMCPUpstream is the client for interacting with the TeamGroupMCPUpstream builders.
+	TeamGroupMCPUpstream *TeamGroupMCPUpstreamClient
 	// TeamGroupMember is the client for interacting with the TeamGroupMember builders.
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
@@ -211,6 +217,7 @@ func (c *Client) init() {
 	c.Host = NewHostClient(c.config)
 	c.Image = NewImageClient(c.config)
 	c.MCPTool = NewMCPToolClient(c.config)
+	c.MCPToolCall = NewMCPToolCallClient(c.config)
 	c.MCPUpstream = NewMCPUpstreamClient(c.config)
 	c.MCPUserToolSetting = NewMCPUserToolSettingClient(c.config)
 	c.Model = NewModelClient(c.config)
@@ -234,6 +241,7 @@ func (c *Client) init() {
 	c.TeamGroup = NewTeamGroupClient(c.config)
 	c.TeamGroupHost = NewTeamGroupHostClient(c.config)
 	c.TeamGroupImage = NewTeamGroupImageClient(c.config)
+	c.TeamGroupMCPUpstream = NewTeamGroupMCPUpstreamClient(c.config)
 	c.TeamGroupMember = NewTeamGroupMemberClient(c.config)
 	c.TeamGroupModel = NewTeamGroupModelClient(c.config)
 	c.TeamHost = NewTeamHostClient(c.config)
@@ -355,6 +363,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Host:                      NewHostClient(cfg),
 		Image:                     NewImageClient(cfg),
 		MCPTool:                   NewMCPToolClient(cfg),
+		MCPToolCall:               NewMCPToolCallClient(cfg),
 		MCPUpstream:               NewMCPUpstreamClient(cfg),
 		MCPUserToolSetting:        NewMCPUserToolSettingClient(cfg),
 		Model:                     NewModelClient(cfg),
@@ -378,6 +387,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		TeamGroup:                 NewTeamGroupClient(cfg),
 		TeamGroupHost:             NewTeamGroupHostClient(cfg),
 		TeamGroupImage:            NewTeamGroupImageClient(cfg),
+		TeamGroupMCPUpstream:      NewTeamGroupMCPUpstreamClient(cfg),
 		TeamGroupMember:           NewTeamGroupMemberClient(cfg),
 		TeamGroupModel:            NewTeamGroupModelClient(cfg),
 		TeamHost:                  NewTeamHostClient(cfg),
@@ -426,6 +436,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Host:                      NewHostClient(cfg),
 		Image:                     NewImageClient(cfg),
 		MCPTool:                   NewMCPToolClient(cfg),
+		MCPToolCall:               NewMCPToolCallClient(cfg),
 		MCPUpstream:               NewMCPUpstreamClient(cfg),
 		MCPUserToolSetting:        NewMCPUserToolSettingClient(cfg),
 		Model:                     NewModelClient(cfg),
@@ -449,6 +460,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		TeamGroup:                 NewTeamGroupClient(cfg),
 		TeamGroupHost:             NewTeamGroupHostClient(cfg),
 		TeamGroupImage:            NewTeamGroupImageClient(cfg),
+		TeamGroupMCPUpstream:      NewTeamGroupMCPUpstreamClient(cfg),
 		TeamGroupMember:           NewTeamGroupMemberClient(cfg),
 		TeamGroupModel:            NewTeamGroupModelClient(cfg),
 		TeamHost:                  NewTeamHostClient(cfg),
@@ -492,14 +504,14 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentRuleVersion, c.AgentSkill, c.AgentSkillGroupBinding, c.AgentSkillRepo,
 		c.AgentSkillVersion, c.AgentSyncJob, c.Audit, c.GitBot, c.GitBotTask,
 		c.GitBotUser, c.GitIdentity, c.GitTask, c.Host, c.Image, c.MCPTool,
-		c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey, c.ModelPricing,
-		c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
-		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
-		c.ProjectTask, c.Task, c.TaskModelSwitch, c.TaskUsageStat,
-		c.TaskVirtualMachine, c.Team, c.TeamExtensionImageArchive, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
-		c.UserIdentity, c.VirtualMachine,
+		c.MCPToolCall, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
+		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
+		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
+		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
+		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamExtensionImageArchive,
+		c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMCPUpstream,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
+		c.TeamModel, c.TeamOIDCConfig, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Use(hooks...)
 	}
@@ -513,14 +525,14 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentRuleVersion, c.AgentSkill, c.AgentSkillGroupBinding, c.AgentSkillRepo,
 		c.AgentSkillVersion, c.AgentSyncJob, c.Audit, c.GitBot, c.GitBotTask,
 		c.GitBotUser, c.GitIdentity, c.GitTask, c.Host, c.Image, c.MCPTool,
-		c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey, c.ModelPricing,
-		c.NotifyChannel, c.NotifySendLog, c.NotifySubscription, c.Project,
-		c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue, c.ProjectIssueComment,
-		c.ProjectTask, c.Task, c.TaskModelSwitch, c.TaskUsageStat,
-		c.TaskVirtualMachine, c.Team, c.TeamExtensionImageArchive, c.TeamGroup,
-		c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMember, c.TeamGroupModel,
-		c.TeamHost, c.TeamImage, c.TeamMember, c.TeamModel, c.TeamOIDCConfig, c.User,
-		c.UserIdentity, c.VirtualMachine,
+		c.MCPToolCall, c.MCPUpstream, c.MCPUserToolSetting, c.Model, c.ModelApiKey,
+		c.ModelPricing, c.NotifyChannel, c.NotifySendLog, c.NotifySubscription,
+		c.Project, c.ProjectCollaborator, c.ProjectGitBot, c.ProjectIssue,
+		c.ProjectIssueComment, c.ProjectTask, c.Task, c.TaskModelSwitch,
+		c.TaskUsageStat, c.TaskVirtualMachine, c.Team, c.TeamExtensionImageArchive,
+		c.TeamGroup, c.TeamGroupHost, c.TeamGroupImage, c.TeamGroupMCPUpstream,
+		c.TeamGroupMember, c.TeamGroupModel, c.TeamHost, c.TeamImage, c.TeamMember,
+		c.TeamModel, c.TeamOIDCConfig, c.User, c.UserIdentity, c.VirtualMachine,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -567,6 +579,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Image.mutate(ctx, m)
 	case *MCPToolMutation:
 		return c.MCPTool.mutate(ctx, m)
+	case *MCPToolCallMutation:
+		return c.MCPToolCall.mutate(ctx, m)
 	case *MCPUpstreamMutation:
 		return c.MCPUpstream.mutate(ctx, m)
 	case *MCPUserToolSettingMutation:
@@ -613,6 +627,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.TeamGroupHost.mutate(ctx, m)
 	case *TeamGroupImageMutation:
 		return c.TeamGroupImage.mutate(ctx, m)
+	case *TeamGroupMCPUpstreamMutation:
+		return c.TeamGroupMCPUpstream.mutate(ctx, m)
 	case *TeamGroupMemberMutation:
 		return c.TeamGroupMember.mutate(ctx, m)
 	case *TeamGroupModelMutation:
@@ -3847,6 +3863,171 @@ func (c *MCPToolClient) mutate(ctx context.Context, m *MCPToolMutation) (Value, 
 	}
 }
 
+// MCPToolCallClient is a client for the MCPToolCall schema.
+type MCPToolCallClient struct {
+	config
+}
+
+// NewMCPToolCallClient returns a client for the MCPToolCall from the given config.
+func NewMCPToolCallClient(c config) *MCPToolCallClient {
+	return &MCPToolCallClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mcptoolcall.Hooks(f(g(h())))`.
+func (c *MCPToolCallClient) Use(hooks ...Hook) {
+	c.hooks.MCPToolCall = append(c.hooks.MCPToolCall, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mcptoolcall.Intercept(f(g(h())))`.
+func (c *MCPToolCallClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MCPToolCall = append(c.inters.MCPToolCall, interceptors...)
+}
+
+// Create returns a builder for creating a MCPToolCall entity.
+func (c *MCPToolCallClient) Create() *MCPToolCallCreate {
+	mutation := newMCPToolCallMutation(c.config, OpCreate)
+	return &MCPToolCallCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MCPToolCall entities.
+func (c *MCPToolCallClient) CreateBulk(builders ...*MCPToolCallCreate) *MCPToolCallCreateBulk {
+	return &MCPToolCallCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MCPToolCallClient) MapCreateBulk(slice any, setFunc func(*MCPToolCallCreate, int)) *MCPToolCallCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MCPToolCallCreateBulk{err: fmt.Errorf("calling to MCPToolCallClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MCPToolCallCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MCPToolCallCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MCPToolCall.
+func (c *MCPToolCallClient) Update() *MCPToolCallUpdate {
+	mutation := newMCPToolCallMutation(c.config, OpUpdate)
+	return &MCPToolCallUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MCPToolCallClient) UpdateOne(_m *MCPToolCall) *MCPToolCallUpdateOne {
+	mutation := newMCPToolCallMutation(c.config, OpUpdateOne, withMCPToolCall(_m))
+	return &MCPToolCallUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MCPToolCallClient) UpdateOneID(id uuid.UUID) *MCPToolCallUpdateOne {
+	mutation := newMCPToolCallMutation(c.config, OpUpdateOne, withMCPToolCallID(id))
+	return &MCPToolCallUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MCPToolCall.
+func (c *MCPToolCallClient) Delete() *MCPToolCallDelete {
+	mutation := newMCPToolCallMutation(c.config, OpDelete)
+	return &MCPToolCallDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MCPToolCallClient) DeleteOne(_m *MCPToolCall) *MCPToolCallDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MCPToolCallClient) DeleteOneID(id uuid.UUID) *MCPToolCallDeleteOne {
+	builder := c.Delete().Where(mcptoolcall.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MCPToolCallDeleteOne{builder}
+}
+
+// Query returns a query builder for MCPToolCall.
+func (c *MCPToolCallClient) Query() *MCPToolCallQuery {
+	return &MCPToolCallQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMCPToolCall},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MCPToolCall entity by its id.
+func (c *MCPToolCallClient) Get(ctx context.Context, id uuid.UUID) (*MCPToolCall, error) {
+	return c.Query().Where(mcptoolcall.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MCPToolCallClient) GetX(ctx context.Context, id uuid.UUID) *MCPToolCall {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUpstream queries the upstream edge of a MCPToolCall.
+func (c *MCPToolCallClient) QueryUpstream(_m *MCPToolCall) *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcptoolcall.Table, mcptoolcall.FieldID, id),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, mcptoolcall.UpstreamTable, mcptoolcall.UpstreamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTool queries the tool edge of a MCPToolCall.
+func (c *MCPToolCallClient) QueryTool(_m *MCPToolCall) *MCPToolQuery {
+	query := (&MCPToolClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcptoolcall.Table, mcptoolcall.FieldID, id),
+			sqlgraph.To(mcptool.Table, mcptool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, mcptoolcall.ToolTable, mcptoolcall.ToolColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *MCPToolCallClient) Hooks() []Hook {
+	return c.hooks.MCPToolCall
+}
+
+// Interceptors returns the client interceptors.
+func (c *MCPToolCallClient) Interceptors() []Interceptor {
+	return c.inters.MCPToolCall
+}
+
+func (c *MCPToolCallClient) mutate(ctx context.Context, m *MCPToolCallMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MCPToolCallCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MCPToolCallUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MCPToolCallUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MCPToolCallDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown MCPToolCall mutation op: %q", m.Op())
+	}
+}
+
 // MCPUpstreamClient is a client for the MCPUpstream schema.
 type MCPUpstreamClient struct {
 	config
@@ -3980,6 +4161,54 @@ func (c *MCPUpstreamClient) QueryUser(_m *MCPUpstream) *UserQuery {
 			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, id),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, mcpupstream.UserTable, mcpupstream.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeam queries the team edge of a MCPUpstream.
+func (c *MCPUpstreamClient) QueryTeam(_m *MCPUpstream) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, mcpupstream.TeamTable, mcpupstream.TeamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroups queries the groups edge of a MCPUpstream.
+func (c *MCPUpstreamClient) QueryGroups(_m *MCPUpstream) *TeamGroupQuery {
+	query := (&TeamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, id),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, mcpupstream.GroupsTable, mcpupstream.GroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamGroupMcpUpstreams queries the team_group_mcp_upstreams edge of a MCPUpstream.
+func (c *MCPUpstreamClient) QueryTeamGroupMcpUpstreams(_m *MCPUpstream) *TeamGroupMCPUpstreamQuery {
+	query := (&TeamGroupMCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, id),
+			sqlgraph.To(teamgroupmcpupstream.Table, teamgroupmcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, mcpupstream.TeamGroupMcpUpstreamsTable, mcpupstream.TeamGroupMcpUpstreamsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -7361,6 +7590,22 @@ func (c *TeamClient) QueryExtensionImageArchives(_m *Team) *TeamExtensionImageAr
 	return query
 }
 
+// QueryMcpUpstreams queries the mcp_upstreams edge of a Team.
+func (c *TeamClient) QueryMcpUpstreams(_m *Team) *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, id),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, team.McpUpstreamsTable, team.McpUpstreamsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamMembers queries the team_members edge of a Team.
 func (c *TeamClient) QueryTeamMembers(_m *Team) *TeamMemberQuery {
 	query := (&TeamMemberClient{config: c.config}).Query()
@@ -7789,6 +8034,22 @@ func (c *TeamGroupClient) QueryHosts(_m *TeamGroup) *HostQuery {
 	return query
 }
 
+// QueryMcpUpstreams queries the mcp_upstreams edge of a TeamGroup.
+func (c *TeamGroupClient) QueryMcpUpstreams(_m *TeamGroup) *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, teamgroup.McpUpstreamsTable, teamgroup.McpUpstreamsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryTeamGroupMembers queries the team_group_members edge of a TeamGroup.
 func (c *TeamGroupClient) QueryTeamGroupMembers(_m *TeamGroup) *TeamGroupMemberQuery {
 	query := (&TeamGroupMemberClient{config: c.config}).Query()
@@ -7846,6 +8107,22 @@ func (c *TeamGroupClient) QueryTeamGroupHosts(_m *TeamGroup) *TeamGroupHostQuery
 			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
 			sqlgraph.To(teamgrouphost.Table, teamgrouphost.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupHostsTable, teamgroup.TeamGroupHostsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTeamGroupMcpUpstreams queries the team_group_mcp_upstreams edge of a TeamGroup.
+func (c *TeamGroupClient) QueryTeamGroupMcpUpstreams(_m *TeamGroup) *TeamGroupMCPUpstreamQuery {
+	query := (&TeamGroupMCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, id),
+			sqlgraph.To(teamgroupmcpupstream.Table, teamgroupmcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupMcpUpstreamsTable, teamgroup.TeamGroupMcpUpstreamsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -8207,6 +8484,187 @@ func (c *TeamGroupImageClient) mutate(ctx context.Context, m *TeamGroupImageMuta
 		return (&TeamGroupImageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("db: unknown TeamGroupImage mutation op: %q", m.Op())
+	}
+}
+
+// TeamGroupMCPUpstreamClient is a client for the TeamGroupMCPUpstream schema.
+type TeamGroupMCPUpstreamClient struct {
+	config
+}
+
+// NewTeamGroupMCPUpstreamClient returns a client for the TeamGroupMCPUpstream from the given config.
+func NewTeamGroupMCPUpstreamClient(c config) *TeamGroupMCPUpstreamClient {
+	return &TeamGroupMCPUpstreamClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `teamgroupmcpupstream.Hooks(f(g(h())))`.
+func (c *TeamGroupMCPUpstreamClient) Use(hooks ...Hook) {
+	c.hooks.TeamGroupMCPUpstream = append(c.hooks.TeamGroupMCPUpstream, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `teamgroupmcpupstream.Intercept(f(g(h())))`.
+func (c *TeamGroupMCPUpstreamClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TeamGroupMCPUpstream = append(c.inters.TeamGroupMCPUpstream, interceptors...)
+}
+
+// Create returns a builder for creating a TeamGroupMCPUpstream entity.
+func (c *TeamGroupMCPUpstreamClient) Create() *TeamGroupMCPUpstreamCreate {
+	mutation := newTeamGroupMCPUpstreamMutation(c.config, OpCreate)
+	return &TeamGroupMCPUpstreamCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TeamGroupMCPUpstream entities.
+func (c *TeamGroupMCPUpstreamClient) CreateBulk(builders ...*TeamGroupMCPUpstreamCreate) *TeamGroupMCPUpstreamCreateBulk {
+	return &TeamGroupMCPUpstreamCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TeamGroupMCPUpstreamClient) MapCreateBulk(slice any, setFunc func(*TeamGroupMCPUpstreamCreate, int)) *TeamGroupMCPUpstreamCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TeamGroupMCPUpstreamCreateBulk{err: fmt.Errorf("calling to TeamGroupMCPUpstreamClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TeamGroupMCPUpstreamCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TeamGroupMCPUpstreamCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TeamGroupMCPUpstream.
+func (c *TeamGroupMCPUpstreamClient) Update() *TeamGroupMCPUpstreamUpdate {
+	mutation := newTeamGroupMCPUpstreamMutation(c.config, OpUpdate)
+	return &TeamGroupMCPUpstreamUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TeamGroupMCPUpstreamClient) UpdateOne(_m *TeamGroupMCPUpstream) *TeamGroupMCPUpstreamUpdateOne {
+	mutation := newTeamGroupMCPUpstreamMutation(c.config, OpUpdateOne, withTeamGroupMCPUpstream(_m))
+	return &TeamGroupMCPUpstreamUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TeamGroupMCPUpstreamClient) UpdateOneID(id uuid.UUID) *TeamGroupMCPUpstreamUpdateOne {
+	mutation := newTeamGroupMCPUpstreamMutation(c.config, OpUpdateOne, withTeamGroupMCPUpstreamID(id))
+	return &TeamGroupMCPUpstreamUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TeamGroupMCPUpstream.
+func (c *TeamGroupMCPUpstreamClient) Delete() *TeamGroupMCPUpstreamDelete {
+	mutation := newTeamGroupMCPUpstreamMutation(c.config, OpDelete)
+	return &TeamGroupMCPUpstreamDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TeamGroupMCPUpstreamClient) DeleteOne(_m *TeamGroupMCPUpstream) *TeamGroupMCPUpstreamDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TeamGroupMCPUpstreamClient) DeleteOneID(id uuid.UUID) *TeamGroupMCPUpstreamDeleteOne {
+	builder := c.Delete().Where(teamgroupmcpupstream.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TeamGroupMCPUpstreamDeleteOne{builder}
+}
+
+// Query returns a query builder for TeamGroupMCPUpstream.
+func (c *TeamGroupMCPUpstreamClient) Query() *TeamGroupMCPUpstreamQuery {
+	return &TeamGroupMCPUpstreamQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTeamGroupMCPUpstream},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TeamGroupMCPUpstream entity by its id.
+func (c *TeamGroupMCPUpstreamClient) Get(ctx context.Context, id uuid.UUID) (*TeamGroupMCPUpstream, error) {
+	return c.Query().Where(teamgroupmcpupstream.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TeamGroupMCPUpstreamClient) GetX(ctx context.Context, id uuid.UUID) *TeamGroupMCPUpstream {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTeam queries the team edge of a TeamGroupMCPUpstream.
+func (c *TeamGroupMCPUpstreamClient) QueryTeam(_m *TeamGroupMCPUpstream) *TeamQuery {
+	query := (&TeamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroupmcpupstream.Table, teamgroupmcpupstream.FieldID, id),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgroupmcpupstream.TeamTable, teamgroupmcpupstream.TeamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a TeamGroupMCPUpstream.
+func (c *TeamGroupMCPUpstreamClient) QueryGroup(_m *TeamGroupMCPUpstream) *TeamGroupQuery {
+	query := (&TeamGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroupmcpupstream.Table, teamgroupmcpupstream.FieldID, id),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgroupmcpupstream.GroupTable, teamgroupmcpupstream.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryUpstream queries the upstream edge of a TeamGroupMCPUpstream.
+func (c *TeamGroupMCPUpstreamClient) QueryUpstream(_m *TeamGroupMCPUpstream) *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(teamgroupmcpupstream.Table, teamgroupmcpupstream.FieldID, id),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, teamgroupmcpupstream.UpstreamTable, teamgroupmcpupstream.UpstreamColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TeamGroupMCPUpstreamClient) Hooks() []Hook {
+	return c.hooks.TeamGroupMCPUpstream
+}
+
+// Interceptors returns the client interceptors.
+func (c *TeamGroupMCPUpstreamClient) Interceptors() []Interceptor {
+	return c.inters.TeamGroupMCPUpstream
+}
+
+func (c *TeamGroupMCPUpstreamClient) mutate(ctx context.Context, m *TeamGroupMCPUpstreamMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TeamGroupMCPUpstreamCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TeamGroupMCPUpstreamUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TeamGroupMCPUpstreamUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TeamGroupMCPUpstreamDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("db: unknown TeamGroupMCPUpstream mutation op: %q", m.Op())
 	}
 }
 
@@ -10208,25 +10666,27 @@ type (
 		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
 		AgentSkill, AgentSkillGroupBinding, AgentSkillRepo, AgentSkillVersion,
 		AgentSyncJob, Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask,
-		Host, Image, MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey,
-		ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription, Project,
-		ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
+		Host, Image, MCPTool, MCPToolCall, MCPUpstream, MCPUserToolSetting, Model,
+		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
+		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
 		ProjectTask, Task, TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
 		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
-		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
-		TeamOIDCConfig, User, UserIdentity, VirtualMachine []ent.Hook
+		TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
+		VirtualMachine []ent.Hook
 	}
 	inters struct {
 		AgentPlugin, AgentPluginRepo, AgentPluginVersion, AgentRule, AgentRuleVersion,
 		AgentSkill, AgentSkillGroupBinding, AgentSkillRepo, AgentSkillVersion,
 		AgentSyncJob, Audit, GitBot, GitBotTask, GitBotUser, GitIdentity, GitTask,
-		Host, Image, MCPTool, MCPUpstream, MCPUserToolSetting, Model, ModelApiKey,
-		ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription, Project,
-		ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
+		Host, Image, MCPTool, MCPToolCall, MCPUpstream, MCPUserToolSetting, Model,
+		ModelApiKey, ModelPricing, NotifyChannel, NotifySendLog, NotifySubscription,
+		Project, ProjectCollaborator, ProjectGitBot, ProjectIssue, ProjectIssueComment,
 		ProjectTask, Task, TaskModelSwitch, TaskUsageStat, TaskVirtualMachine, Team,
 		TeamExtensionImageArchive, TeamGroup, TeamGroupHost, TeamGroupImage,
-		TeamGroupMember, TeamGroupModel, TeamHost, TeamImage, TeamMember, TeamModel,
-		TeamOIDCConfig, User, UserIdentity, VirtualMachine []ent.Interceptor
+		TeamGroupMCPUpstream, TeamGroupMember, TeamGroupModel, TeamHost, TeamImage,
+		TeamMember, TeamModel, TeamOIDCConfig, User, UserIdentity,
+		VirtualMachine []ent.Interceptor
 	}
 )
 

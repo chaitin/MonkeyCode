@@ -81,6 +81,11 @@ func UserID(v uuid.UUID) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldEQ(FieldUserID, v))
 }
 
+// TeamID applies equality check predicate on the "team_id" field. It's identical to TeamIDEQ.
+func TeamID(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldEQ(FieldTeamID, v))
+}
+
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldEQ(FieldDescription, v))
@@ -384,6 +389,56 @@ func UserIDIsNil() predicate.MCPTool {
 // UserIDNotNil applies the NotNil predicate on the "user_id" field.
 func UserIDNotNil() predicate.MCPTool {
 	return predicate.MCPTool(sql.FieldNotNull(FieldUserID))
+}
+
+// TeamIDEQ applies the EQ predicate on the "team_id" field.
+func TeamIDEQ(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldEQ(FieldTeamID, v))
+}
+
+// TeamIDNEQ applies the NEQ predicate on the "team_id" field.
+func TeamIDNEQ(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldNEQ(FieldTeamID, v))
+}
+
+// TeamIDIn applies the In predicate on the "team_id" field.
+func TeamIDIn(vs ...uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldIn(FieldTeamID, vs...))
+}
+
+// TeamIDNotIn applies the NotIn predicate on the "team_id" field.
+func TeamIDNotIn(vs ...uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldNotIn(FieldTeamID, vs...))
+}
+
+// TeamIDGT applies the GT predicate on the "team_id" field.
+func TeamIDGT(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldGT(FieldTeamID, v))
+}
+
+// TeamIDGTE applies the GTE predicate on the "team_id" field.
+func TeamIDGTE(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldGTE(FieldTeamID, v))
+}
+
+// TeamIDLT applies the LT predicate on the "team_id" field.
+func TeamIDLT(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldLT(FieldTeamID, v))
+}
+
+// TeamIDLTE applies the LTE predicate on the "team_id" field.
+func TeamIDLTE(v uuid.UUID) predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldLTE(FieldTeamID, v))
+}
+
+// TeamIDIsNil applies the IsNil predicate on the "team_id" field.
+func TeamIDIsNil() predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldIsNull(FieldTeamID))
+}
+
+// TeamIDNotNil applies the NotNil predicate on the "team_id" field.
+func TeamIDNotNil() predicate.MCPTool {
+	return predicate.MCPTool(sql.FieldNotNull(FieldTeamID))
 }
 
 // DescriptionEQ applies the EQ predicate on the "description" field.

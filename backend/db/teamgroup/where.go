@@ -411,6 +411,29 @@ func HasHostsWith(preds ...predicate.Host) predicate.TeamGroup {
 	})
 }
 
+// HasMcpUpstreams applies the HasEdge predicate on the "mcp_upstreams" edge.
+func HasMcpUpstreams() predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, McpUpstreamsTable, McpUpstreamsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasMcpUpstreamsWith applies the HasEdge predicate on the "mcp_upstreams" edge with a given conditions (other predicates).
+func HasMcpUpstreamsWith(preds ...predicate.MCPUpstream) predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := newMcpUpstreamsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamGroupMembers applies the HasEdge predicate on the "team_group_members" edge.
 func HasTeamGroupMembers() predicate.TeamGroup {
 	return predicate.TeamGroup(func(s *sql.Selector) {
@@ -495,6 +518,29 @@ func HasTeamGroupHosts() predicate.TeamGroup {
 func HasTeamGroupHostsWith(preds ...predicate.TeamGroupHost) predicate.TeamGroup {
 	return predicate.TeamGroup(func(s *sql.Selector) {
 		step := newTeamGroupHostsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTeamGroupMcpUpstreams applies the HasEdge predicate on the "team_group_mcp_upstreams" edge.
+func HasTeamGroupMcpUpstreams() predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupMcpUpstreamsTable, TeamGroupMcpUpstreamsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTeamGroupMcpUpstreamsWith applies the HasEdge predicate on the "team_group_mcp_upstreams" edge with a given conditions (other predicates).
+func HasTeamGroupMcpUpstreamsWith(preds ...predicate.TeamGroupMCPUpstream) predicate.TeamGroup {
+	return predicate.TeamGroup(func(s *sql.Selector) {
+		step := newTeamGroupMcpUpstreamsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

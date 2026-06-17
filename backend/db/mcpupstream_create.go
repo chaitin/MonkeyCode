@@ -14,6 +14,9 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
+	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -68,6 +71,20 @@ func (_c *MCPUpstreamCreate) SetUserID(v uuid.UUID) *MCPUpstreamCreate {
 func (_c *MCPUpstreamCreate) SetNillableUserID(v *uuid.UUID) *MCPUpstreamCreate {
 	if v != nil {
 		_c.SetUserID(*v)
+	}
+	return _c
+}
+
+// SetTeamID sets the "team_id" field.
+func (_c *MCPUpstreamCreate) SetTeamID(v uuid.UUID) *MCPUpstreamCreate {
+	_c.mutation.SetTeamID(v)
+	return _c
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (_c *MCPUpstreamCreate) SetNillableTeamID(v *uuid.UUID) *MCPUpstreamCreate {
+	if v != nil {
+		_c.SetTeamID(*v)
 	}
 	return _c
 }
@@ -234,6 +251,41 @@ func (_c *MCPUpstreamCreate) AddTools(v ...*MCPTool) *MCPUpstreamCreate {
 // SetUser sets the "user" edge to the User entity.
 func (_c *MCPUpstreamCreate) SetUser(v *User) *MCPUpstreamCreate {
 	return _c.SetUserID(v.ID)
+}
+
+// SetTeam sets the "team" edge to the Team entity.
+func (_c *MCPUpstreamCreate) SetTeam(v *Team) *MCPUpstreamCreate {
+	return _c.SetTeamID(v.ID)
+}
+
+// AddGroupIDs adds the "groups" edge to the TeamGroup entity by IDs.
+func (_c *MCPUpstreamCreate) AddGroupIDs(ids ...uuid.UUID) *MCPUpstreamCreate {
+	_c.mutation.AddGroupIDs(ids...)
+	return _c
+}
+
+// AddGroups adds the "groups" edges to the TeamGroup entity.
+func (_c *MCPUpstreamCreate) AddGroups(v ...*TeamGroup) *MCPUpstreamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddGroupIDs(ids...)
+}
+
+// AddTeamGroupMcpUpstreamIDs adds the "team_group_mcp_upstreams" edge to the TeamGroupMCPUpstream entity by IDs.
+func (_c *MCPUpstreamCreate) AddTeamGroupMcpUpstreamIDs(ids ...uuid.UUID) *MCPUpstreamCreate {
+	_c.mutation.AddTeamGroupMcpUpstreamIDs(ids...)
+	return _c
+}
+
+// AddTeamGroupMcpUpstreams adds the "team_group_mcp_upstreams" edges to the TeamGroupMCPUpstream entity.
+func (_c *MCPUpstreamCreate) AddTeamGroupMcpUpstreams(v ...*TeamGroupMCPUpstream) *MCPUpstreamCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamGroupMcpUpstreamIDs(ids...)
 }
 
 // Mutation returns the MCPUpstreamMutation object of the builder.
@@ -502,6 +554,59 @@ func (_c *MCPUpstreamCreate) createSpec() (*MCPUpstream, *sqlgraph.CreateSpec) {
 		_node.UserID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.TeamIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   mcpupstream.TeamTable,
+			Columns: []string{mcpupstream.TeamColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(team.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.TeamID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   mcpupstream.GroupsTable,
+			Columns: mcpupstream.GroupsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroup.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupMCPUpstreamCreate{config: _c.config, mutation: newTeamGroupMCPUpstreamMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TeamGroupMcpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   mcpupstream.TeamGroupMcpUpstreamsTable,
+			Columns: []string{mcpupstream.TeamGroupMcpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupmcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -623,6 +728,24 @@ func (u *MCPUpstreamUpsert) UpdateUserID() *MCPUpstreamUpsert {
 // ClearUserID clears the value of the "user_id" field.
 func (u *MCPUpstreamUpsert) ClearUserID() *MCPUpstreamUpsert {
 	u.SetNull(mcpupstream.FieldUserID)
+	return u
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *MCPUpstreamUpsert) SetTeamID(v uuid.UUID) *MCPUpstreamUpsert {
+	u.Set(mcpupstream.FieldTeamID, v)
+	return u
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *MCPUpstreamUpsert) UpdateTeamID() *MCPUpstreamUpsert {
+	u.SetExcluded(mcpupstream.FieldTeamID)
+	return u
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *MCPUpstreamUpsert) ClearTeamID() *MCPUpstreamUpsert {
+	u.SetNull(mcpupstream.FieldTeamID)
 	return u
 }
 
@@ -911,6 +1034,27 @@ func (u *MCPUpstreamUpsertOne) UpdateUserID() *MCPUpstreamUpsertOne {
 func (u *MCPUpstreamUpsertOne) ClearUserID() *MCPUpstreamUpsertOne {
 	return u.Update(func(s *MCPUpstreamUpsert) {
 		s.ClearUserID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *MCPUpstreamUpsertOne) SetTeamID(v uuid.UUID) *MCPUpstreamUpsertOne {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *MCPUpstreamUpsertOne) UpdateTeamID() *MCPUpstreamUpsertOne {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *MCPUpstreamUpsertOne) ClearTeamID() *MCPUpstreamUpsertOne {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.ClearTeamID()
 	})
 }
 
@@ -1392,6 +1536,27 @@ func (u *MCPUpstreamUpsertBulk) UpdateUserID() *MCPUpstreamUpsertBulk {
 func (u *MCPUpstreamUpsertBulk) ClearUserID() *MCPUpstreamUpsertBulk {
 	return u.Update(func(s *MCPUpstreamUpsert) {
 		s.ClearUserID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *MCPUpstreamUpsertBulk) SetTeamID(v uuid.UUID) *MCPUpstreamUpsertBulk {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *MCPUpstreamUpsertBulk) UpdateTeamID() *MCPUpstreamUpsertBulk {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *MCPUpstreamUpsertBulk) ClearTeamID() *MCPUpstreamUpsertBulk {
+	return u.Update(func(s *MCPUpstreamUpsert) {
+		s.ClearTeamID()
 	})
 }
 

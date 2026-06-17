@@ -56,6 +56,8 @@ type TeamEdges struct {
 	Images []*Image `json:"images,omitempty"`
 	// ExtensionImageArchives holds the value of the extension_image_archives edge.
 	ExtensionImageArchives []*TeamExtensionImageArchive `json:"extension_image_archives,omitempty"`
+	// McpUpstreams holds the value of the mcp_upstreams edge.
+	McpUpstreams []*MCPUpstream `json:"mcp_upstreams,omitempty"`
 	// TeamMembers holds the value of the team_members edge.
 	TeamMembers []*TeamMember `json:"team_members,omitempty"`
 	// TeamModels holds the value of the team_models edge.
@@ -64,7 +66,7 @@ type TeamEdges struct {
 	TeamImages []*TeamImage `json:"team_images,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [8]bool
+	loadedTypes [9]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -112,10 +114,19 @@ func (e TeamEdges) ExtensionImageArchivesOrErr() ([]*TeamExtensionImageArchive, 
 	return nil, &NotLoadedError{edge: "extension_image_archives"}
 }
 
+// McpUpstreamsOrErr returns the McpUpstreams value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamEdges) McpUpstreamsOrErr() ([]*MCPUpstream, error) {
+	if e.loadedTypes[5] {
+		return e.McpUpstreams, nil
+	}
+	return nil, &NotLoadedError{edge: "mcp_upstreams"}
+}
+
 // TeamMembersOrErr returns the TeamMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TeamMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_members"}
@@ -124,7 +135,7 @@ func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
 // TeamModelsOrErr returns the TeamModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.TeamModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_models"}
@@ -133,7 +144,7 @@ func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
 // TeamImagesOrErr returns the TeamImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamImagesOrErr() ([]*TeamImage, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[8] {
 		return e.TeamImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_images"}
@@ -271,6 +282,11 @@ func (_m *Team) QueryImages() *ImageQuery {
 // QueryExtensionImageArchives queries the "extension_image_archives" edge of the Team entity.
 func (_m *Team) QueryExtensionImageArchives() *TeamExtensionImageArchiveQuery {
 	return NewTeamClient(_m.config).QueryExtensionImageArchives(_m)
+}
+
+// QueryMcpUpstreams queries the "mcp_upstreams" edge of the Team entity.
+func (_m *Team) QueryMcpUpstreams() *MCPUpstreamQuery {
+	return NewTeamClient(_m.config).QueryMcpUpstreams(_m)
 }
 
 // QueryTeamMembers queries the "team_members" edge of the Team entity.

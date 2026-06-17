@@ -77,6 +77,20 @@ func (_c *MCPToolCreate) SetNillableUserID(v *uuid.UUID) *MCPToolCreate {
 	return _c
 }
 
+// SetTeamID sets the "team_id" field.
+func (_c *MCPToolCreate) SetTeamID(v uuid.UUID) *MCPToolCreate {
+	_c.mutation.SetTeamID(v)
+	return _c
+}
+
+// SetNillableTeamID sets the "team_id" field if the given value is not nil.
+func (_c *MCPToolCreate) SetNillableTeamID(v *uuid.UUID) *MCPToolCreate {
+	if v != nil {
+		_c.SetTeamID(*v)
+	}
+	return _c
+}
+
 // SetDescription sets the "description" field.
 func (_c *MCPToolCreate) SetDescription(v string) *MCPToolCreate {
 	_c.mutation.SetDescription(v)
@@ -359,6 +373,10 @@ func (_c *MCPToolCreate) createSpec() (*MCPTool, *sqlgraph.CreateSpec) {
 		_spec.SetField(mcptool.FieldUserID, field.TypeUUID, value)
 		_node.UserID = &value
 	}
+	if value, ok := _c.mutation.TeamID(); ok {
+		_spec.SetField(mcptool.FieldTeamID, field.TypeUUID, value)
+		_node.TeamID = &value
+	}
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(mcptool.FieldDescription, field.TypeString, value)
 		_node.Description = value
@@ -541,6 +559,24 @@ func (u *MCPToolUpsert) UpdateUserID() *MCPToolUpsert {
 // ClearUserID clears the value of the "user_id" field.
 func (u *MCPToolUpsert) ClearUserID() *MCPToolUpsert {
 	u.SetNull(mcptool.FieldUserID)
+	return u
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *MCPToolUpsert) SetTeamID(v uuid.UUID) *MCPToolUpsert {
+	u.Set(mcptool.FieldTeamID, v)
+	return u
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *MCPToolUpsert) UpdateTeamID() *MCPToolUpsert {
+	u.SetExcluded(mcptool.FieldTeamID)
+	return u
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *MCPToolUpsert) ClearTeamID() *MCPToolUpsert {
+	u.SetNull(mcptool.FieldTeamID)
 	return u
 }
 
@@ -813,6 +849,27 @@ func (u *MCPToolUpsertOne) UpdateUserID() *MCPToolUpsertOne {
 func (u *MCPToolUpsertOne) ClearUserID() *MCPToolUpsertOne {
 	return u.Update(func(s *MCPToolUpsert) {
 		s.ClearUserID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *MCPToolUpsertOne) SetTeamID(v uuid.UUID) *MCPToolUpsertOne {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *MCPToolUpsertOne) UpdateTeamID() *MCPToolUpsertOne {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *MCPToolUpsertOne) ClearTeamID() *MCPToolUpsertOne {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.ClearTeamID()
 	})
 }
 
@@ -1273,6 +1330,27 @@ func (u *MCPToolUpsertBulk) UpdateUserID() *MCPToolUpsertBulk {
 func (u *MCPToolUpsertBulk) ClearUserID() *MCPToolUpsertBulk {
 	return u.Update(func(s *MCPToolUpsert) {
 		s.ClearUserID()
+	})
+}
+
+// SetTeamID sets the "team_id" field.
+func (u *MCPToolUpsertBulk) SetTeamID(v uuid.UUID) *MCPToolUpsertBulk {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.SetTeamID(v)
+	})
+}
+
+// UpdateTeamID sets the "team_id" field to the value that was provided on create.
+func (u *MCPToolUpsertBulk) UpdateTeamID() *MCPToolUpsertBulk {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.UpdateTeamID()
+	})
+}
+
+// ClearTeamID clears the value of the "team_id" field.
+func (u *MCPToolUpsertBulk) ClearTeamID() *MCPToolUpsertBulk {
+	return u.Update(func(s *MCPToolUpsert) {
+		s.ClearTeamID()
 	})
 }
 

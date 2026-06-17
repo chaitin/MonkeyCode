@@ -36,8 +36,9 @@ func (MCPTool) Fields() []ent.Field {
 		field.UUID("upstream_id", uuid.UUID{}),
 		field.String("name").NotEmpty().MaxLen(256),
 		field.String("namespaced_name").NotEmpty().MaxLen(320),
-		field.Enum("scope").Values("user", "platform"),
+		field.Enum("scope").Values("user", "platform", "team"),
 		field.UUID("user_id", uuid.UUID{}).Optional().Nillable(),
+		field.UUID("team_id", uuid.UUID{}).Optional().Nillable(),
 		field.Text("description").Optional(),
 		field.JSON("input_schema", map[string]any{}).Optional(),
 		field.Int64("price").Default(0),
@@ -51,7 +52,13 @@ func (MCPTool) Fields() []ent.Field {
 
 func (MCPTool) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("scope", "user_id", "namespaced_name").Unique(),
+		index.Fields("scope", "user_id", "namespaced_name").
+			Unique().
+			Annotations(entsql.IndexWhere("team_id IS NULL")),
+		index.Fields("scope", "team_id", "namespaced_name").
+			Unique().
+			Annotations(entsql.IndexWhere("team_id IS NOT NULL")),
+		index.Fields("team_id"),
 	}
 }
 

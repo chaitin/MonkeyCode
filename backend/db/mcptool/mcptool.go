@@ -28,6 +28,8 @@ const (
 	FieldScope = "scope"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldTeamID holds the string denoting the team_id field in the database.
+	FieldTeamID = "team_id"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
 	// FieldInputSchema holds the string denoting the input_schema field in the database.
@@ -66,6 +68,7 @@ var Columns = []string{
 	FieldNamespacedName,
 	FieldScope,
 	FieldUserID,
+	FieldTeamID,
 	FieldDescription,
 	FieldInputSchema,
 	FieldPrice,
@@ -119,6 +122,7 @@ type Scope string
 const (
 	ScopeUser     Scope = "user"
 	ScopePlatform Scope = "platform"
+	ScopeTeam     Scope = "team"
 )
 
 func (s Scope) String() string {
@@ -128,7 +132,7 @@ func (s Scope) String() string {
 // ScopeValidator is a validator for the "scope" field enum values. It is called by the builders before save.
 func ScopeValidator(s Scope) error {
 	switch s {
-	case ScopeUser, ScopePlatform:
+	case ScopeUser, ScopePlatform, ScopeTeam:
 		return nil
 	default:
 		return fmt.Errorf("mcptool: invalid enum value for scope field: %q", s)
@@ -171,6 +175,11 @@ func ByScope(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByTeamID orders the results by the team_id field.
+func ByTeamID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTeamID, opts...).ToFunc()
 }
 
 // ByDescription orders the results by the description field.

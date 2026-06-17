@@ -35,8 +35,9 @@ func (MCPUpstream) Fields() []ent.Field {
 		field.UUID("id", uuid.UUID{}).Unique(),
 		field.String("name").NotEmpty().MaxLen(128),
 		field.String("slug").NotEmpty().MaxLen(64),
-		field.Enum("scope").Values("user", "platform"),
+		field.Enum("scope").Values("user", "platform", "team"),
 		field.UUID("user_id", uuid.UUID{}).Optional().Nillable(),
+		field.UUID("team_id", uuid.UUID{}).Optional().Nillable(),
 		field.String("type").NotEmpty().MaxLen(16).Default("server"),
 		field.Text("url").NotEmpty(),
 		field.JSON("headers", map[string]string{}).Optional(),
@@ -55,7 +56,11 @@ func (MCPUpstream) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("scope", "user_id", "slug").
 			Unique().
-			Annotations(entsql.IndexWhere("deleted_at IS NULL")),
+			Annotations(entsql.IndexWhere("deleted_at IS NULL AND team_id IS NULL")),
+		index.Fields("scope", "team_id", "slug").
+			Unique().
+			Annotations(entsql.IndexWhere("deleted_at IS NULL AND team_id IS NOT NULL")),
+		index.Fields("team_id"),
 	}
 }
 
@@ -63,5 +68,7 @@ func (MCPUpstream) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("tools", MCPTool.Type),
 		edge.From("user", User.Type).Field("user_id").Ref("mcp_upstreams").Unique(),
+		edge.From("team", Team.Type).Field("team_id").Ref("mcp_upstreams").Unique(),
+		edge.From("groups", TeamGroup.Type).Ref("mcp_upstreams").Through("team_group_mcp_upstreams", TeamGroupMCPUpstream.Type),
 	}
 }
