@@ -596,6 +596,29 @@ func HasExtensionImageArchivesWith(preds ...predicate.TeamExtensionImageArchive)
 	})
 }
 
+// HasMcpUpstreams applies the HasEdge predicate on the "mcp_upstreams" edge.
+func HasMcpUpstreams() predicate.Team {
+	return predicate.Team(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, McpUpstreamsTable, McpUpstreamsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasMcpUpstreamsWith applies the HasEdge predicate on the "mcp_upstreams" edge with a given conditions (other predicates).
+func HasMcpUpstreamsWith(preds ...predicate.MCPUpstream) predicate.Team {
+	return predicate.Team(func(s *sql.Selector) {
+		step := newMcpUpstreamsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasTeamMembers applies the HasEdge predicate on the "team_members" edge.
 func HasTeamMembers() predicate.Team {
 	return predicate.Team(func(s *sql.Selector) {

@@ -14,6 +14,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
+	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
@@ -199,30 +202,65 @@ func (r *mcpRepo) ListVisibleTools(ctx context.Context, uid uuid.UUID) ([]*domai
 	if err != nil {
 		return nil, fmt.Errorf("list user mcp tools: %w", err)
 	}
+	teamUpstreamIDs, err := r.listAuthorizedTeamUpstreamIDs(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	var teamRows []*db.MCPTool
+	if len(teamUpstreamIDs) > 0 {
+		teamRows, err = r.db.MCPTool.Query().
+			Where(
+				mcptool.ScopeEQ(mcptool.ScopeTeam),
+				mcptool.UpstreamIDIn(teamUpstreamIDs...),
+				mcptool.Enabled(true),
+				mcptool.DeletedAtIsNil(),
+			).
+			Order(mcptool.ByNamespacedName(sql.OrderAsc())).
+			All(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list team mcp tools: %w", err)
+		}
+	}
 
-	items := make([]*domain.MCPTool, 0, len(platformRows)+len(userRows))
+	items := make([]*domain.MCPTool, 0, len(platformRows)+len(userRows)+len(teamRows))
 	for _, row := range platformRows {
 		items = append(items, cvt.From(row, &domain.MCPTool{}))
 	}
 	for _, row := range userRows {
 		items = append(items, cvt.From(row, &domain.MCPTool{}))
 	}
+	for _, row := range teamRows {
+		items = append(items, cvt.From(row, &domain.MCPTool{}))
+	}
 	return items, nil
 }
 
 func (r *mcpRepo) GetVisibleTool(ctx context.Context, uid, toolID uuid.UUID) (*domain.MCPTool, error) {
+	preds := []predicate.MCPTool{
+		mcptool.And(
+			mcptool.ScopeEQ(mcptool.ScopePlatform),
+		),
+		mcptool.And(
+			mcptool.ScopeEQ(mcptool.ScopeUser),
+			mcptool.UserID(uid),
+		),
+	}
+	teamUpstreamIDs, err := r.listAuthorizedTeamUpstreamIDs(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	if len(teamUpstreamIDs) > 0 {
+		preds = append(preds, mcptool.And(
+			mcptool.ScopeEQ(mcptool.ScopeTeam),
+			mcptool.UpstreamIDIn(teamUpstreamIDs...),
+		))
+	}
 	row, err := r.db.MCPTool.Query().
 		Where(
 			mcptool.ID(toolID),
 			mcptool.Enabled(true),
 			mcptool.DeletedAtIsNil(),
-			mcptool.Or(
-				mcptool.ScopeEQ(mcptool.ScopePlatform),
-				mcptool.And(
-					mcptool.ScopeEQ(mcptool.ScopeUser),
-					mcptool.UserID(uid),
-				),
-			),
+			mcptool.Or(preds...),
 		).
 		Only(ctx)
 	if err != nil {
@@ -254,8 +292,18 @@ func (r *mcpRepo) UpsertToolSetting(ctx context.Context, uid, toolID uuid.UUID, 
 		return err
 	}
 
-	if tool.Scope == mcptool.ScopePlatform {
+	if tool.Scope == mcptool.ScopePlatform || tool.Scope == mcptool.ScopeTeam {
+		if tool.Scope == mcptool.ScopeTeam {
+			teamUpstreamIDs, err := r.listAuthorizedTeamUpstreamIDs(ctx, uid)
+			if err != nil {
+				return err
+			}
+			if !containsUUID(teamUpstreamIDs, tool.UpstreamID) {
+				return errcode.ErrNotFound.Wrap(fmt.Errorf("team mcp tool is not visible to user"))
+			}
+		}
 		return r.db.MCPUserToolSetting.Create().
+			SetID(uuid.New()).
 			SetUserID(uid).
 			SetToolID(toolID).
 			SetEnabled(enabled).
@@ -277,6 +325,52 @@ func (r *mcpRepo) UpsertToolSetting(ctx context.Context, uid, toolID uuid.UUID, 
 		Where(mcptool.UserID(uid)).
 		SetEnabled(enabled).
 		Exec(ctx)
+}
+
+func (r *mcpRepo) listAuthorizedTeamUpstreamIDs(ctx context.Context, uid uuid.UUID) ([]uuid.UUID, error) {
+	memberships, err := r.db.TeamGroupMember.Query().
+		Where(teamgroupmember.UserID(uid)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query team group memberships: %w", err)
+	}
+	if len(memberships) == 0 {
+		return nil, nil
+	}
+	groupIDs := make([]uuid.UUID, 0, len(memberships))
+	for _, membership := range memberships {
+		groupIDs = append(groupIDs, membership.GroupID)
+	}
+
+	bindings, err := r.db.TeamGroupMCPUpstream.Query().
+		Where(teamgroupmcpupstream.GroupIDIn(groupIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query team mcp upstream bindings: %w", err)
+	}
+	if len(bindings) == 0 {
+		return nil, nil
+	}
+
+	upstreamIDs := make([]uuid.UUID, 0, len(bindings))
+	seen := make(map[uuid.UUID]struct{}, len(bindings))
+	for _, binding := range bindings {
+		if _, ok := seen[binding.UpstreamID]; ok {
+			continue
+		}
+		seen[binding.UpstreamID] = struct{}{}
+		upstreamIDs = append(upstreamIDs, binding.UpstreamID)
+	}
+	return upstreamIDs, nil
+}
+
+func containsUUID(ids []uuid.UUID, id uuid.UUID) bool {
+	for _, current := range ids {
+		if current == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *mcpRepo) getUserUpstreamRow(ctx context.Context, uid, id uuid.UUID) (*db.MCPUpstream, error) {

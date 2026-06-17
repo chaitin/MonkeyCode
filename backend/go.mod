@@ -25,6 +25,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lib/pq v1.10.9
+	github.com/mark3labs/mcp-go v0.39.1
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/palantir/go-githubapp v0.38.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -127,6 +128,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect

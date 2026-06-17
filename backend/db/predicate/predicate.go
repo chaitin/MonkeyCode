@@ -63,6 +63,9 @@ type Image func(*sql.Selector)
 // MCPTool is the predicate function for mcptool builders.
 type MCPTool func(*sql.Selector)
 
+// MCPToolCall is the predicate function for mcptoolcall builders.
+type MCPToolCall func(*sql.Selector)
+
 // MCPUpstream is the predicate function for mcpupstream builders.
 type MCPUpstream func(*sql.Selector)
 
@@ -131,6 +134,9 @@ type TeamGroupHost func(*sql.Selector)
 
 // TeamGroupImage is the predicate function for teamgroupimage builders.
 type TeamGroupImage func(*sql.Selector)
+
+// TeamGroupMCPUpstream is the predicate function for teamgroupmcpupstream builders.
+type TeamGroupMCPUpstream func(*sql.Selector)
 
 // TeamGroupMember is the predicate function for teamgroupmember builders.
 type TeamGroupMember func(*sql.Selector)

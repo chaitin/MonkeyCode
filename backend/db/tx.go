@@ -52,6 +52,8 @@ type Tx struct {
 	Image *ImageClient
 	// MCPTool is the client for interacting with the MCPTool builders.
 	MCPTool *MCPToolClient
+	// MCPToolCall is the client for interacting with the MCPToolCall builders.
+	MCPToolCall *MCPToolCallClient
 	// MCPUpstream is the client for interacting with the MCPUpstream builders.
 	MCPUpstream *MCPUpstreamClient
 	// MCPUserToolSetting is the client for interacting with the MCPUserToolSetting builders.
@@ -98,6 +100,8 @@ type Tx struct {
 	TeamGroupHost *TeamGroupHostClient
 	// TeamGroupImage is the client for interacting with the TeamGroupImage builders.
 	TeamGroupImage *TeamGroupImageClient
+	// TeamGroupMCPUpstream is the client for interacting with the TeamGroupMCPUpstream builders.
+	TeamGroupMCPUpstream *TeamGroupMCPUpstreamClient
 	// TeamGroupMember is the client for interacting with the TeamGroupMember builders.
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
@@ -268,6 +272,7 @@ func (tx *Tx) init() {
 	tx.Host = NewHostClient(tx.config)
 	tx.Image = NewImageClient(tx.config)
 	tx.MCPTool = NewMCPToolClient(tx.config)
+	tx.MCPToolCall = NewMCPToolCallClient(tx.config)
 	tx.MCPUpstream = NewMCPUpstreamClient(tx.config)
 	tx.MCPUserToolSetting = NewMCPUserToolSettingClient(tx.config)
 	tx.Model = NewModelClient(tx.config)
@@ -291,6 +296,7 @@ func (tx *Tx) init() {
 	tx.TeamGroup = NewTeamGroupClient(tx.config)
 	tx.TeamGroupHost = NewTeamGroupHostClient(tx.config)
 	tx.TeamGroupImage = NewTeamGroupImageClient(tx.config)
+	tx.TeamGroupMCPUpstream = NewTeamGroupMCPUpstreamClient(tx.config)
 	tx.TeamGroupMember = NewTeamGroupMemberClient(tx.config)
 	tx.TeamGroupModel = NewTeamGroupModelClient(tx.config)
 	tx.TeamHost = NewTeamHostClient(tx.config)

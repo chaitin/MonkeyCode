@@ -237,6 +237,18 @@ func (f MCPToolFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.MCPToolMutation", m)
 }
 
+// The MCPToolCallFunc type is an adapter to allow the use of ordinary
+// function as MCPToolCall mutator.
+type MCPToolCallFunc func(context.Context, *db.MCPToolCallMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MCPToolCallFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.MCPToolCallMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.MCPToolCallMutation", m)
+}
+
 // The MCPUpstreamFunc type is an adapter to allow the use of ordinary
 // function as MCPUpstream mutator.
 type MCPUpstreamFunc func(context.Context, *db.MCPUpstreamMutation) (db.Value, error)
@@ -511,6 +523,18 @@ func (f TeamGroupImageFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupImageMutation", m)
+}
+
+// The TeamGroupMCPUpstreamFunc type is an adapter to allow the use of ordinary
+// function as TeamGroupMCPUpstream mutator.
+type TeamGroupMCPUpstreamFunc func(context.Context, *db.TeamGroupMCPUpstreamMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TeamGroupMCPUpstreamFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.TeamGroupMCPUpstreamMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupMCPUpstreamMutation", m)
 }
 
 // The TeamGroupMemberFunc type is an adapter to allow the use of ordinary

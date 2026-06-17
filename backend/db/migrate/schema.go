@@ -612,8 +612,9 @@ var (
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString, Size: 256},
 		{Name: "namespaced_name", Type: field.TypeString, Size: 320},
-		{Name: "scope", Type: field.TypeEnum, Enums: []string{"user", "platform"}},
+		{Name: "scope", Type: field.TypeEnum, Enums: []string{"user", "platform", "team"}},
 		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "team_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "input_schema", Type: field.TypeJSON, Nullable: true},
 		{Name: "price", Type: field.TypeInt64, Default: 0},
@@ -632,7 +633,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "mcp_tools_mcp_upstreams_tools",
-				Columns:    []*schema.Column{McpToolsColumns[14]},
+				Columns:    []*schema.Column{McpToolsColumns[15]},
 				RefColumns: []*schema.Column{McpUpstreamsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -642,6 +643,90 @@ var (
 				Name:    "mcptool_scope_user_id_namespaced_name",
 				Unique:  true,
 				Columns: []*schema.Column{McpToolsColumns[4], McpToolsColumns[5], McpToolsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "team_id IS NULL",
+				},
+			},
+			{
+				Name:    "mcptool_scope_team_id_namespaced_name",
+				Unique:  true,
+				Columns: []*schema.Column{McpToolsColumns[4], McpToolsColumns[6], McpToolsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "team_id IS NOT NULL",
+				},
+			},
+			{
+				Name:    "mcptool_team_id",
+				Unique:  false,
+				Columns: []*schema.Column{McpToolsColumns[6]},
+			},
+		},
+	}
+	// McpToolCallsColumns holds the columns for the "mcp_tool_calls" table.
+	McpToolCallsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "request_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "task_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "tool_name_snapshot", Type: field.TypeString, Size: 320},
+		{Name: "tool_scope_snapshot", Type: field.TypeEnum, Enums: []string{"platform", "user", "team"}, Default: "platform"},
+		{Name: "price_snapshot", Type: field.TypeInt64, Default: 0},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "success", "failed", "unknown", "refunded"}, Default: "pending"},
+		{Name: "args_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "result_json", Type: field.TypeJSON, Nullable: true},
+		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "upstream_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "upstream_id", Type: field.TypeUUID},
+		{Name: "tool_id", Type: field.TypeUUID},
+	}
+	// McpToolCallsTable holds the schema information for the "mcp_tool_calls" table.
+	McpToolCallsTable = &schema.Table{
+		Name:       "mcp_tool_calls",
+		Columns:    McpToolCallsColumns,
+		PrimaryKey: []*schema.Column{McpToolCallsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "mcp_tool_calls_mcp_upstreams_upstream",
+				Columns:    []*schema.Column{McpToolCallsColumns[16]},
+				RefColumns: []*schema.Column{McpUpstreamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "mcp_tool_calls_mcp_tools_tool",
+				Columns:    []*schema.Column{McpToolCallsColumns[17]},
+				RefColumns: []*schema.Column{McpToolsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mcptoolcall_task_id",
+				Unique:  false,
+				Columns: []*schema.Column{McpToolCallsColumns[2]},
+			},
+			{
+				Name:    "mcptoolcall_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{McpToolCallsColumns[3]},
+			},
+			{
+				Name:    "mcptoolcall_upstream_id",
+				Unique:  false,
+				Columns: []*schema.Column{McpToolCallsColumns[16]},
+			},
+			{
+				Name:    "mcptoolcall_tool_id",
+				Unique:  false,
+				Columns: []*schema.Column{McpToolCallsColumns[17]},
+			},
+			{
+				Name:    "mcptoolcall_status",
+				Unique:  false,
+				Columns: []*schema.Column{McpToolCallsColumns[7]},
 			},
 		},
 	}
@@ -651,7 +736,7 @@ var (
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
 		{Name: "name", Type: field.TypeString, Size: 128},
 		{Name: "slug", Type: field.TypeString, Size: 64},
-		{Name: "scope", Type: field.TypeEnum, Enums: []string{"user", "platform"}},
+		{Name: "scope", Type: field.TypeEnum, Enums: []string{"user", "platform", "team"}},
 		{Name: "type", Type: field.TypeString, Size: 16, Default: "server"},
 		{Name: "url", Type: field.TypeString, Size: 2147483647},
 		{Name: "headers", Type: field.TypeJSON, Nullable: true},
@@ -663,6 +748,7 @@ var (
 		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// McpUpstreamsTable holds the schema information for the "mcp_upstreams" table.
@@ -672,8 +758,14 @@ var (
 		PrimaryKey: []*schema.Column{McpUpstreamsColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
-				Symbol:     "mcp_upstreams_users_mcp_upstreams",
+				Symbol:     "mcp_upstreams_teams_mcp_upstreams",
 				Columns:    []*schema.Column{McpUpstreamsColumns[16]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "mcp_upstreams_users_mcp_upstreams",
+				Columns:    []*schema.Column{McpUpstreamsColumns[17]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -682,10 +774,23 @@ var (
 			{
 				Name:    "mcpupstream_scope_user_id_slug",
 				Unique:  true,
+				Columns: []*schema.Column{McpUpstreamsColumns[4], McpUpstreamsColumns[17], McpUpstreamsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL AND team_id IS NULL",
+				},
+			},
+			{
+				Name:    "mcpupstream_scope_team_id_slug",
+				Unique:  true,
 				Columns: []*schema.Column{McpUpstreamsColumns[4], McpUpstreamsColumns[16], McpUpstreamsColumns[3]},
 				Annotation: &entsql.IndexAnnotation{
-					Where: "deleted_at IS NULL",
+					Where: "deleted_at IS NULL AND team_id IS NOT NULL",
 				},
+			},
+			{
+				Name:    "mcpupstream_team_id",
+				Unique:  false,
+				Columns: []*schema.Column{McpUpstreamsColumns[16]},
 			},
 		},
 	}
@@ -1449,6 +1554,58 @@ var (
 			},
 		},
 	}
+	// TeamGroupMcpUpstreamsColumns holds the columns for the "team_group_mcp_upstreams" table.
+	TeamGroupMcpUpstreamsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "team_id", Type: field.TypeUUID},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "upstream_id", Type: field.TypeUUID},
+	}
+	// TeamGroupMcpUpstreamsTable holds the schema information for the "team_group_mcp_upstreams" table.
+	TeamGroupMcpUpstreamsTable = &schema.Table{
+		Name:       "team_group_mcp_upstreams",
+		Columns:    TeamGroupMcpUpstreamsColumns,
+		PrimaryKey: []*schema.Column{TeamGroupMcpUpstreamsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "team_group_mcp_upstreams_teams_team",
+				Columns:    []*schema.Column{TeamGroupMcpUpstreamsColumns[3]},
+				RefColumns: []*schema.Column{TeamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_group_mcp_upstreams_team_groups_group",
+				Columns:    []*schema.Column{TeamGroupMcpUpstreamsColumns[4]},
+				RefColumns: []*schema.Column{TeamGroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "team_group_mcp_upstreams_mcp_upstreams_upstream",
+				Columns:    []*schema.Column{TeamGroupMcpUpstreamsColumns[5]},
+				RefColumns: []*schema.Column{McpUpstreamsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "teamgroupmcpupstream_group_id_upstream_id",
+				Unique:  true,
+				Columns: []*schema.Column{TeamGroupMcpUpstreamsColumns[4], TeamGroupMcpUpstreamsColumns[5]},
+			},
+			{
+				Name:    "teamgroupmcpupstream_team_id",
+				Unique:  false,
+				Columns: []*schema.Column{TeamGroupMcpUpstreamsColumns[3]},
+			},
+			{
+				Name:    "teamgroupmcpupstream_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{TeamGroupMcpUpstreamsColumns[4]},
+			},
+		},
+	}
 	// TeamGroupMembersColumns holds the columns for the "team_group_members" table.
 	TeamGroupMembersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID, Unique: true},
@@ -1814,6 +1971,7 @@ var (
 		HostsTable,
 		ImagesTable,
 		McpToolsTable,
+		McpToolCallsTable,
 		McpUpstreamsTable,
 		McpUserToolSettingsTable,
 		ModelsTable,
@@ -1837,6 +1995,7 @@ var (
 		TeamGroupsTable,
 		TeamGroupHostsTable,
 		TeamGroupImagesTable,
+		TeamGroupMcpUpstreamsTable,
 		TeamGroupMembersTable,
 		TeamGroupModelsTable,
 		TeamHostsTable,
@@ -1926,7 +2085,13 @@ func init() {
 	McpToolsTable.Annotation = &entsql.Annotation{
 		Table: "mcp_tools",
 	}
-	McpUpstreamsTable.ForeignKeys[0].RefTable = UsersTable
+	McpToolCallsTable.ForeignKeys[0].RefTable = McpUpstreamsTable
+	McpToolCallsTable.ForeignKeys[1].RefTable = McpToolsTable
+	McpToolCallsTable.Annotation = &entsql.Annotation{
+		Table: "mcp_tool_calls",
+	}
+	McpUpstreamsTable.ForeignKeys[0].RefTable = TeamsTable
+	McpUpstreamsTable.ForeignKeys[1].RefTable = UsersTable
 	McpUpstreamsTable.Annotation = &entsql.Annotation{
 		Table: "mcp_upstreams",
 	}
@@ -2032,6 +2197,12 @@ func init() {
 	TeamGroupImagesTable.ForeignKeys[1].RefTable = ImagesTable
 	TeamGroupImagesTable.Annotation = &entsql.Annotation{
 		Table: "team_group_images",
+	}
+	TeamGroupMcpUpstreamsTable.ForeignKeys[0].RefTable = TeamsTable
+	TeamGroupMcpUpstreamsTable.ForeignKeys[1].RefTable = TeamGroupsTable
+	TeamGroupMcpUpstreamsTable.ForeignKeys[2].RefTable = McpUpstreamsTable
+	TeamGroupMcpUpstreamsTable.Annotation = &entsql.Annotation{
+		Table: "team_group_mcp_upstreams",
 	}
 	TeamGroupMembersTable.ForeignKeys[0].RefTable = TeamGroupsTable
 	TeamGroupMembersTable.ForeignKeys[1].RefTable = UsersTable

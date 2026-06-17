@@ -562,6 +562,16 @@ export interface DomainImportTeamExtensionPackageResp {
   version?: string;
 }
 
+export interface DomainCreateTeamMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  group_ids?: string[];
+  headers?: DomainMCPHeader[];
+  name: string;
+  slug: string;
+  url: string;
+}
+
 export interface DomainCreateUserMCPUpstreamReq {
   description?: string;
   enabled?: boolean;
@@ -879,6 +889,10 @@ export interface DomainListTeamModelsResp {
 
 export interface DomainListTeamOAuthSitesResp {
   sites?: DomainTeamOAuthSite[];
+}
+
+export interface DomainListTeamMCPUpstreamsResp {
+  items?: DomainTeamMCPUpstream[];
 }
 
 export interface DomainListTransactionResp {
@@ -1656,6 +1670,27 @@ export interface DomainTeamGroup {
   users?: DomainUser[];
 }
 
+export interface DomainTeamMCPUpstream {
+  created_at?: number;
+  description?: string;
+  enabled?: boolean;
+  groups?: DomainTeamGroup[];
+  headers?: DomainMCPHeader[];
+  health_checked_at?: number;
+  health_status?: string;
+  id?: string;
+  last_synced_at?: number;
+  name?: string;
+  scope?: GithubComChaitinMonkeyCodeBackendDbMcpupstreamScope;
+  slug?: string;
+  sync_status?: string;
+  team_id?: string;
+  tools?: DomainMCPTool[];
+  type?: string;
+  url?: string;
+  user?: DomainUser;
+}
+
 export interface DomainTeamProjectItem {
   branch?: string;
   created_at?: number;
@@ -1938,6 +1973,16 @@ export interface DomainUpdateTaskReq {
 
 export interface DomainUpdateTeamGroupReq {
   name: string;
+}
+
+export interface DomainUpdateTeamMCPUpstreamReq {
+  description?: string;
+  enabled?: boolean;
+  group_ids?: string[];
+  headers?: DomainMCPHeader[];
+  name?: string;
+  slug?: string;
+  url?: string;
 }
 
 export interface DomainUpdateTeamHostReq {
@@ -3288,6 +3333,118 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
       this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
         path: `/api/v1/teams/groups/${groupId}`,
         method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 获取团队 MCP Upstream 列表
+     *
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsList
+     * @summary 获取团队 MCP Upstream 列表
+     * @request GET:/api/v1/teams/mcp/upstreams
+     * @secure
+     */
+    v1TeamsMcpUpstreamsList: (params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainListTeamMCPUpstreamsResp;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/mcp/upstreams`,
+        method: "GET",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 创建团队 MCP Upstream
+     *
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsCreate
+     * @summary 创建团队 MCP Upstream
+     * @request POST:/api/v1/teams/mcp/upstreams
+     * @secure
+     */
+    v1TeamsMcpUpstreamsCreate: (req: DomainCreateTeamMCPUpstreamReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamMCPUpstream;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/mcp/upstreams`,
+        method: "POST",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 更新团队 MCP Upstream
+     *
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsUpdate
+     * @summary 更新团队 MCP Upstream
+     * @request PUT:/api/v1/teams/mcp/upstreams/{upstream_id}
+     * @secure
+     */
+    v1TeamsMcpUpstreamsUpdate: (upstreamId: string, req: DomainUpdateTeamMCPUpstreamReq, params: RequestParams = {}) =>
+      this.request<
+        GithubComGoYokoWebResp & {
+          data?: DomainTeamMCPUpstream;
+        },
+        GithubComGoYokoWebResp
+      >({
+        path: `/api/v1/teams/mcp/upstreams/${upstreamId}`,
+        method: "PUT",
+        body: req,
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 删除团队 MCP Upstream
+     *
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsDelete
+     * @summary 删除团队 MCP Upstream
+     * @request DELETE:/api/v1/teams/mcp/upstreams/{upstream_id}
+     * @secure
+     */
+    v1TeamsMcpUpstreamsDelete: (upstreamId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/teams/mcp/upstreams/${upstreamId}`,
+        method: "DELETE",
+        secure: true,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description 同步团队 MCP Upstream
+     *
+     * @tags 【Team 管理员】MCP 配置
+     * @name V1TeamsMcpUpstreamsSyncCreate
+     * @summary 同步团队 MCP Upstream
+     * @request POST:/api/v1/teams/mcp/upstreams/{upstream_id}/sync
+     * @secure
+     */
+    v1TeamsMcpUpstreamsSyncCreate: (upstreamId: string, params: RequestParams = {}) =>
+      this.request<GithubComGoYokoWebResp, GithubComGoYokoWebResp>({
+        path: `/api/v1/teams/mcp/upstreams/${upstreamId}/sync`,
+        method: "POST",
         secure: true,
         type: ContentType.Json,
         format: "json",

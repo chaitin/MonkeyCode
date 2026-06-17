@@ -35,6 +35,8 @@ const (
 	EdgeImages = "images"
 	// EdgeHosts holds the string denoting the hosts edge name in mutations.
 	EdgeHosts = "hosts"
+	// EdgeMcpUpstreams holds the string denoting the mcp_upstreams edge name in mutations.
+	EdgeMcpUpstreams = "mcp_upstreams"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
 	EdgeTeamGroupMembers = "team_group_members"
 	// EdgeTeamGroupModels holds the string denoting the team_group_models edge name in mutations.
@@ -43,6 +45,8 @@ const (
 	EdgeTeamGroupImages = "team_group_images"
 	// EdgeTeamGroupHosts holds the string denoting the team_group_hosts edge name in mutations.
 	EdgeTeamGroupHosts = "team_group_hosts"
+	// EdgeTeamGroupMcpUpstreams holds the string denoting the team_group_mcp_upstreams edge name in mutations.
+	EdgeTeamGroupMcpUpstreams = "team_group_mcp_upstreams"
 	// Table holds the table name of the teamgroup in the database.
 	Table = "team_groups"
 	// MembersTable is the table that holds the members relation/edge. The primary key declared below.
@@ -72,6 +76,11 @@ const (
 	// HostsInverseTable is the table name for the Host entity.
 	// It exists in this package in order to avoid circular dependency with the "host" package.
 	HostsInverseTable = "hosts"
+	// McpUpstreamsTable is the table that holds the mcp_upstreams relation/edge. The primary key declared below.
+	McpUpstreamsTable = "team_group_mcp_upstreams"
+	// McpUpstreamsInverseTable is the table name for the MCPUpstream entity.
+	// It exists in this package in order to avoid circular dependency with the "mcpupstream" package.
+	McpUpstreamsInverseTable = "mcp_upstreams"
 	// TeamGroupMembersTable is the table that holds the team_group_members relation/edge.
 	TeamGroupMembersTable = "team_group_members"
 	// TeamGroupMembersInverseTable is the table name for the TeamGroupMember entity.
@@ -100,6 +109,13 @@ const (
 	TeamGroupHostsInverseTable = "team_group_hosts"
 	// TeamGroupHostsColumn is the table column denoting the team_group_hosts relation/edge.
 	TeamGroupHostsColumn = "group_id"
+	// TeamGroupMcpUpstreamsTable is the table that holds the team_group_mcp_upstreams relation/edge.
+	TeamGroupMcpUpstreamsTable = "team_group_mcp_upstreams"
+	// TeamGroupMcpUpstreamsInverseTable is the table name for the TeamGroupMCPUpstream entity.
+	// It exists in this package in order to avoid circular dependency with the "teamgroupmcpupstream" package.
+	TeamGroupMcpUpstreamsInverseTable = "team_group_mcp_upstreams"
+	// TeamGroupMcpUpstreamsColumn is the table column denoting the team_group_mcp_upstreams relation/edge.
+	TeamGroupMcpUpstreamsColumn = "group_id"
 )
 
 // Columns holds all SQL columns for teamgroup fields.
@@ -125,6 +141,9 @@ var (
 	// HostsPrimaryKey and HostsColumn2 are the table columns denoting the
 	// primary key for the hosts relation (M2M).
 	HostsPrimaryKey = []string{"group_id", "host_id"}
+	// McpUpstreamsPrimaryKey and McpUpstreamsColumn2 are the table columns denoting the
+	// primary key for the mcp_upstreams relation (M2M).
+	McpUpstreamsPrimaryKey = []string{"group_id", "upstream_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -249,6 +268,20 @@ func ByHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByMcpUpstreamsCount orders the results by mcp_upstreams count.
+func ByMcpUpstreamsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newMcpUpstreamsStep(), opts...)
+	}
+}
+
+// ByMcpUpstreams orders the results by mcp_upstreams terms.
+func ByMcpUpstreams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newMcpUpstreamsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamGroupMembersCount orders the results by team_group_members count.
 func ByTeamGroupMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -304,6 +337,20 @@ func ByTeamGroupHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newTeamGroupHostsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByTeamGroupMcpUpstreamsCount orders the results by team_group_mcp_upstreams count.
+func ByTeamGroupMcpUpstreamsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTeamGroupMcpUpstreamsStep(), opts...)
+	}
+}
+
+// ByTeamGroupMcpUpstreams orders the results by team_group_mcp_upstreams terms.
+func ByTeamGroupMcpUpstreams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTeamGroupMcpUpstreamsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -339,6 +386,13 @@ func newHostsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, false, HostsTable, HostsPrimaryKey...),
 	)
 }
+func newMcpUpstreamsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(McpUpstreamsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, McpUpstreamsTable, McpUpstreamsPrimaryKey...),
+	)
+}
 func newTeamGroupMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -365,5 +419,12 @@ func newTeamGroupHostsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TeamGroupHostsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupHostsTable, TeamGroupHostsColumn),
+	)
+}
+func newTeamGroupMcpUpstreamsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TeamGroupMcpUpstreamsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupMcpUpstreamsTable, TeamGroupMcpUpstreamsColumn),
 	)
 }

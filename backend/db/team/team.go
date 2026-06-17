@@ -45,6 +45,8 @@ const (
 	EdgeImages = "images"
 	// EdgeExtensionImageArchives holds the string denoting the extension_image_archives edge name in mutations.
 	EdgeExtensionImageArchives = "extension_image_archives"
+	// EdgeMcpUpstreams holds the string denoting the mcp_upstreams edge name in mutations.
+	EdgeMcpUpstreams = "mcp_upstreams"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
 	EdgeTeamMembers = "team_members"
 	// EdgeTeamModels holds the string denoting the team_models edge name in mutations.
@@ -82,6 +84,13 @@ const (
 	ExtensionImageArchivesInverseTable = "team_extension_image_archives"
 	// ExtensionImageArchivesColumn is the table column denoting the extension_image_archives relation/edge.
 	ExtensionImageArchivesColumn = "team_id"
+	// McpUpstreamsTable is the table that holds the mcp_upstreams relation/edge.
+	McpUpstreamsTable = "mcp_upstreams"
+	// McpUpstreamsInverseTable is the table name for the MCPUpstream entity.
+	// It exists in this package in order to avoid circular dependency with the "mcpupstream" package.
+	McpUpstreamsInverseTable = "mcp_upstreams"
+	// McpUpstreamsColumn is the table column denoting the mcp_upstreams relation/edge.
+	McpUpstreamsColumn = "team_id"
 	// TeamMembersTable is the table that holds the team_members relation/edge.
 	TeamMembersTable = "team_members"
 	// TeamMembersInverseTable is the table name for the TeamMember entity.
@@ -298,6 +307,20 @@ func ByExtensionImageArchives(term sql.OrderTerm, terms ...sql.OrderTerm) OrderO
 	}
 }
 
+// ByMcpUpstreamsCount orders the results by mcp_upstreams count.
+func ByMcpUpstreamsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newMcpUpstreamsStep(), opts...)
+	}
+}
+
+// ByMcpUpstreams orders the results by mcp_upstreams terms.
+func ByMcpUpstreams(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newMcpUpstreamsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByTeamMembersCount orders the results by team_members count.
 func ByTeamMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -372,6 +395,13 @@ func newExtensionImageArchivesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ExtensionImageArchivesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ExtensionImageArchivesTable, ExtensionImageArchivesColumn),
+	)
+}
+func newMcpUpstreamsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(McpUpstreamsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, McpUpstreamsTable, McpUpstreamsColumn),
 	)
 }
 func newTeamMembersStep() *sqlgraph.Step {

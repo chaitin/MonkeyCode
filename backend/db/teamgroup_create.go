@@ -14,11 +14,13 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
@@ -158,6 +160,21 @@ func (_c *TeamGroupCreate) AddHosts(v ...*Host) *TeamGroupCreate {
 	return _c.AddHostIDs(ids...)
 }
 
+// AddMcpUpstreamIDs adds the "mcp_upstreams" edge to the MCPUpstream entity by IDs.
+func (_c *TeamGroupCreate) AddMcpUpstreamIDs(ids ...uuid.UUID) *TeamGroupCreate {
+	_c.mutation.AddMcpUpstreamIDs(ids...)
+	return _c
+}
+
+// AddMcpUpstreams adds the "mcp_upstreams" edges to the MCPUpstream entity.
+func (_c *TeamGroupCreate) AddMcpUpstreams(v ...*MCPUpstream) *TeamGroupCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddMcpUpstreamIDs(ids...)
+}
+
 // AddTeamGroupMemberIDs adds the "team_group_members" edge to the TeamGroupMember entity by IDs.
 func (_c *TeamGroupCreate) AddTeamGroupMemberIDs(ids ...uuid.UUID) *TeamGroupCreate {
 	_c.mutation.AddTeamGroupMemberIDs(ids...)
@@ -216,6 +233,21 @@ func (_c *TeamGroupCreate) AddTeamGroupHosts(v ...*TeamGroupHost) *TeamGroupCrea
 		ids[i] = v[i].ID
 	}
 	return _c.AddTeamGroupHostIDs(ids...)
+}
+
+// AddTeamGroupMcpUpstreamIDs adds the "team_group_mcp_upstreams" edge to the TeamGroupMCPUpstream entity by IDs.
+func (_c *TeamGroupCreate) AddTeamGroupMcpUpstreamIDs(ids ...uuid.UUID) *TeamGroupCreate {
+	_c.mutation.AddTeamGroupMcpUpstreamIDs(ids...)
+	return _c
+}
+
+// AddTeamGroupMcpUpstreams adds the "team_group_mcp_upstreams" edges to the TeamGroupMCPUpstream entity.
+func (_c *TeamGroupCreate) AddTeamGroupMcpUpstreams(v ...*TeamGroupMCPUpstream) *TeamGroupCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTeamGroupMcpUpstreamIDs(ids...)
 }
 
 // Mutation returns the TeamGroupMutation object of the builder.
@@ -438,6 +470,26 @@ func (_c *TeamGroupCreate) createSpec() (*TeamGroup, *sqlgraph.CreateSpec) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.McpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: false,
+			Table:   teamgroup.McpUpstreamsTable,
+			Columns: teamgroup.McpUpstreamsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &TeamGroupMCPUpstreamCreate{config: _c.config, mutation: newTeamGroupMCPUpstreamMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.TeamGroupMembersIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -495,6 +547,22 @@ func (_c *TeamGroupCreate) createSpec() (*TeamGroup, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamgrouphost.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TeamGroupMcpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   teamgroup.TeamGroupMcpUpstreamsTable,
+			Columns: []string{teamgroup.TeamGroupMcpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(teamgroupmcpupstream.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

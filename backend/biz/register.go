@@ -11,6 +11,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/git"
 	"github.com/chaitin/MonkeyCode/backend/biz/host"
 	"github.com/chaitin/MonkeyCode/backend/biz/llmproxy"
+	"github.com/chaitin/MonkeyCode/backend/biz/mcphub"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
 	"github.com/chaitin/MonkeyCode/backend/biz/plugin"
 	"github.com/chaitin/MonkeyCode/backend/biz/project"
@@ -69,6 +70,7 @@ func RegisterOpenSource(i *do.Injector) {
 	subscription.ProvideSubscription(i)
 	uploader.ProvideUploader(i)
 	llmproxy.ProvideLLMProxy(i)
+	mcphub.ProvideMCPHub(i)
 	static.ProviderStatic(i)
 	do.ProvideValue[domain.TaskHook](i, &taskhook{})
 }
@@ -77,6 +79,7 @@ func InvokeOpenSource(i *do.Injector) {
 	subscription.InvokeSubscription(i)
 	uploader.InvokeUploader(i)
 	llmproxy.InvokeLLMProxy(i)
+	mcphub.InvokeMCPHub(i)
 	static.InvokeStatic(i)
 }
 

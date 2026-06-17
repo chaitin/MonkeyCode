@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -287,6 +288,21 @@ func (_u *TeamUpdate) AddExtensionImageArchives(v ...*TeamExtensionImageArchive)
 	return _u.AddExtensionImageArchiveIDs(ids...)
 }
 
+// AddMcpUpstreamIDs adds the "mcp_upstreams" edge to the MCPUpstream entity by IDs.
+func (_u *TeamUpdate) AddMcpUpstreamIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.AddMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// AddMcpUpstreams adds the "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *TeamUpdate) AddMcpUpstreams(v ...*MCPUpstream) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddMcpUpstreamIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *TeamUpdate) AddTeamMemberIDs(ids ...uuid.UUID) *TeamUpdate {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -440,6 +456,27 @@ func (_u *TeamUpdate) RemoveExtensionImageArchives(v ...*TeamExtensionImageArchi
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveExtensionImageArchiveIDs(ids...)
+}
+
+// ClearMcpUpstreams clears all "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *TeamUpdate) ClearMcpUpstreams() *TeamUpdate {
+	_u.mutation.ClearMcpUpstreams()
+	return _u
+}
+
+// RemoveMcpUpstreamIDs removes the "mcp_upstreams" edge to MCPUpstream entities by IDs.
+func (_u *TeamUpdate) RemoveMcpUpstreamIDs(ids ...uuid.UUID) *TeamUpdate {
+	_u.mutation.RemoveMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// RemoveMcpUpstreams removes "mcp_upstreams" edges to MCPUpstream entities.
+func (_u *TeamUpdate) RemoveMcpUpstreams(v ...*MCPUpstream) *TeamUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveMcpUpstreamIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -871,6 +908,51 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.McpUpstreamsTable,
+			Columns: []string{team.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedMcpUpstreamsIDs(); len(nodes) > 0 && !_u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.McpUpstreamsTable,
+			Columns: []string{team.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.McpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.McpUpstreamsTable,
+			Columns: []string{team.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.TeamMembersCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1277,6 +1359,21 @@ func (_u *TeamUpdateOne) AddExtensionImageArchives(v ...*TeamExtensionImageArchi
 	return _u.AddExtensionImageArchiveIDs(ids...)
 }
 
+// AddMcpUpstreamIDs adds the "mcp_upstreams" edge to the MCPUpstream entity by IDs.
+func (_u *TeamUpdateOne) AddMcpUpstreamIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.AddMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// AddMcpUpstreams adds the "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *TeamUpdateOne) AddMcpUpstreams(v ...*MCPUpstream) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddMcpUpstreamIDs(ids...)
+}
+
 // AddTeamMemberIDs adds the "team_members" edge to the TeamMember entity by IDs.
 func (_u *TeamUpdateOne) AddTeamMemberIDs(ids ...uuid.UUID) *TeamUpdateOne {
 	_u.mutation.AddTeamMemberIDs(ids...)
@@ -1430,6 +1527,27 @@ func (_u *TeamUpdateOne) RemoveExtensionImageArchives(v ...*TeamExtensionImageAr
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveExtensionImageArchiveIDs(ids...)
+}
+
+// ClearMcpUpstreams clears all "mcp_upstreams" edges to the MCPUpstream entity.
+func (_u *TeamUpdateOne) ClearMcpUpstreams() *TeamUpdateOne {
+	_u.mutation.ClearMcpUpstreams()
+	return _u
+}
+
+// RemoveMcpUpstreamIDs removes the "mcp_upstreams" edge to MCPUpstream entities by IDs.
+func (_u *TeamUpdateOne) RemoveMcpUpstreamIDs(ids ...uuid.UUID) *TeamUpdateOne {
+	_u.mutation.RemoveMcpUpstreamIDs(ids...)
+	return _u
+}
+
+// RemoveMcpUpstreams removes "mcp_upstreams" edges to MCPUpstream entities.
+func (_u *TeamUpdateOne) RemoveMcpUpstreams(v ...*MCPUpstream) *TeamUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveMcpUpstreamIDs(ids...)
 }
 
 // ClearTeamMembers clears all "team_members" edges to the TeamMember entity.
@@ -1884,6 +2002,51 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamextensionimagearchive.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.McpUpstreamsTable,
+			Columns: []string{team.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedMcpUpstreamsIDs(); len(nodes) > 0 && !_u.mutation.McpUpstreamsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.McpUpstreamsTable,
+			Columns: []string{team.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.McpUpstreamsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   team.McpUpstreamsTable,
+			Columns: []string{team.McpUpstreamsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(mcpupstream.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

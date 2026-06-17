@@ -31,6 +31,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/host"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptoolcall"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpusertoolsetting"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
@@ -54,6 +55,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
@@ -143,6 +145,7 @@ func checkColumn(t, c string) error {
 			host.Table:                      host.ValidColumn,
 			image.Table:                     image.ValidColumn,
 			mcptool.Table:                   mcptool.ValidColumn,
+			mcptoolcall.Table:               mcptoolcall.ValidColumn,
 			mcpupstream.Table:               mcpupstream.ValidColumn,
 			mcpusertoolsetting.Table:        mcpusertoolsetting.ValidColumn,
 			model.Table:                     model.ValidColumn,
@@ -166,6 +169,7 @@ func checkColumn(t, c string) error {
 			teamgroup.Table:                 teamgroup.ValidColumn,
 			teamgrouphost.Table:             teamgrouphost.ValidColumn,
 			teamgroupimage.Table:            teamgroupimage.ValidColumn,
+			teamgroupmcpupstream.Table:      teamgroupmcpupstream.ValidColumn,
 			teamgroupmember.Table:           teamgroupmember.ValidColumn,
 			teamgroupmodel.Table:            teamgroupmodel.ValidColumn,
 			teamhost.Table:                  teamhost.ValidColumn,

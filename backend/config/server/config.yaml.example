@@ -45,6 +45,7 @@ mcp_hub:
   enabled: false
   url: "http://mcp-hub:8897/mcp"
   token: ""
+  upstream_timeout: "60s"
 
 vm_idle:
   sleep_seconds: 600

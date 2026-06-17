@@ -47,6 +47,8 @@ type TeamGroupEdges struct {
 	Images []*Image `json:"images,omitempty"`
 	// Hosts holds the value of the hosts edge.
 	Hosts []*Host `json:"hosts,omitempty"`
+	// McpUpstreams holds the value of the mcp_upstreams edge.
+	McpUpstreams []*MCPUpstream `json:"mcp_upstreams,omitempty"`
 	// TeamGroupMembers holds the value of the team_group_members edge.
 	TeamGroupMembers []*TeamGroupMember `json:"team_group_members,omitempty"`
 	// TeamGroupModels holds the value of the team_group_models edge.
@@ -55,9 +57,11 @@ type TeamGroupEdges struct {
 	TeamGroupImages []*TeamGroupImage `json:"team_group_images,omitempty"`
 	// TeamGroupHosts holds the value of the team_group_hosts edge.
 	TeamGroupHosts []*TeamGroupHost `json:"team_group_hosts,omitempty"`
+	// TeamGroupMcpUpstreams holds the value of the team_group_mcp_upstreams edge.
+	TeamGroupMcpUpstreams []*TeamGroupMCPUpstream `json:"team_group_mcp_upstreams,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [9]bool
+	loadedTypes [11]bool
 }
 
 // MembersOrErr returns the Members value or an error if the edge
@@ -107,10 +111,19 @@ func (e TeamGroupEdges) HostsOrErr() ([]*Host, error) {
 	return nil, &NotLoadedError{edge: "hosts"}
 }
 
+// McpUpstreamsOrErr returns the McpUpstreams value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamGroupEdges) McpUpstreamsOrErr() ([]*MCPUpstream, error) {
+	if e.loadedTypes[5] {
+		return e.McpUpstreams, nil
+	}
+	return nil, &NotLoadedError{edge: "mcp_upstreams"}
+}
+
 // TeamGroupMembersOrErr returns the TeamGroupMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[6] {
 		return e.TeamGroupMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_members"}
@@ -119,7 +132,7 @@ func (e TeamGroupEdges) TeamGroupMembersOrErr() ([]*TeamGroupMember, error) {
 // TeamGroupModelsOrErr returns the TeamGroupModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[7] {
 		return e.TeamGroupModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_models"}
@@ -128,7 +141,7 @@ func (e TeamGroupEdges) TeamGroupModelsOrErr() ([]*TeamGroupModel, error) {
 // TeamGroupImagesOrErr returns the TeamGroupImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[8] {
 		return e.TeamGroupImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_images"}
@@ -137,10 +150,19 @@ func (e TeamGroupEdges) TeamGroupImagesOrErr() ([]*TeamGroupImage, error) {
 // TeamGroupHostsOrErr returns the TeamGroupHosts value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamGroupEdges) TeamGroupHostsOrErr() ([]*TeamGroupHost, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[9] {
 		return e.TeamGroupHosts, nil
 	}
 	return nil, &NotLoadedError{edge: "team_group_hosts"}
+}
+
+// TeamGroupMcpUpstreamsOrErr returns the TeamGroupMcpUpstreams value or an error if the edge
+// was not loaded in eager-loading.
+func (e TeamGroupEdges) TeamGroupMcpUpstreamsOrErr() ([]*TeamGroupMCPUpstream, error) {
+	if e.loadedTypes[10] {
+		return e.TeamGroupMcpUpstreams, nil
+	}
+	return nil, &NotLoadedError{edge: "team_group_mcp_upstreams"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -243,6 +265,11 @@ func (_m *TeamGroup) QueryHosts() *HostQuery {
 	return NewTeamGroupClient(_m.config).QueryHosts(_m)
 }
 
+// QueryMcpUpstreams queries the "mcp_upstreams" edge of the TeamGroup entity.
+func (_m *TeamGroup) QueryMcpUpstreams() *MCPUpstreamQuery {
+	return NewTeamGroupClient(_m.config).QueryMcpUpstreams(_m)
+}
+
 // QueryTeamGroupMembers queries the "team_group_members" edge of the TeamGroup entity.
 func (_m *TeamGroup) QueryTeamGroupMembers() *TeamGroupMemberQuery {
 	return NewTeamGroupClient(_m.config).QueryTeamGroupMembers(_m)
@@ -261,6 +288,11 @@ func (_m *TeamGroup) QueryTeamGroupImages() *TeamGroupImageQuery {
 // QueryTeamGroupHosts queries the "team_group_hosts" edge of the TeamGroup entity.
 func (_m *TeamGroup) QueryTeamGroupHosts() *TeamGroupHostQuery {
 	return NewTeamGroupClient(_m.config).QueryTeamGroupHosts(_m)
+}
+
+// QueryTeamGroupMcpUpstreams queries the "team_group_mcp_upstreams" edge of the TeamGroup entity.
+func (_m *TeamGroup) QueryTeamGroupMcpUpstreams() *TeamGroupMCPUpstreamQuery {
+	return NewTeamGroupClient(_m.config).QueryTeamGroupMcpUpstreams(_m)
 }
 
 // Update returns a builder for updating this TeamGroup.

@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
+	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -38,6 +39,7 @@ type TeamQuery struct {
 	withModels                 *ModelQuery
 	withImages                 *ImageQuery
 	withExtensionImageArchives *TeamExtensionImageArchiveQuery
+	withMcpUpstreams           *MCPUpstreamQuery
 	withTeamMembers            *TeamMemberQuery
 	withTeamModels             *TeamModelQuery
 	withTeamImages             *TeamImageQuery
@@ -181,6 +183,28 @@ func (_q *TeamQuery) QueryExtensionImageArchives() *TeamExtensionImageArchiveQue
 			sqlgraph.From(team.Table, team.FieldID, selector),
 			sqlgraph.To(teamextensionimagearchive.Table, teamextensionimagearchive.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, team.ExtensionImageArchivesTable, team.ExtensionImageArchivesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryMcpUpstreams chains the current query on the "mcp_upstreams" edge.
+func (_q *TeamQuery) QueryMcpUpstreams() *MCPUpstreamQuery {
+	query := (&MCPUpstreamClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(team.Table, team.FieldID, selector),
+			sqlgraph.To(mcpupstream.Table, mcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, team.McpUpstreamsTable, team.McpUpstreamsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -451,6 +475,7 @@ func (_q *TeamQuery) Clone() *TeamQuery {
 		withModels:                 _q.withModels.Clone(),
 		withImages:                 _q.withImages.Clone(),
 		withExtensionImageArchives: _q.withExtensionImageArchives.Clone(),
+		withMcpUpstreams:           _q.withMcpUpstreams.Clone(),
 		withTeamMembers:            _q.withTeamMembers.Clone(),
 		withTeamModels:             _q.withTeamModels.Clone(),
 		withTeamImages:             _q.withTeamImages.Clone(),
@@ -513,6 +538,17 @@ func (_q *TeamQuery) WithExtensionImageArchives(opts ...func(*TeamExtensionImage
 		opt(query)
 	}
 	_q.withExtensionImageArchives = query
+	return _q
+}
+
+// WithMcpUpstreams tells the query-builder to eager-load the nodes that are connected to
+// the "mcp_upstreams" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *TeamQuery) WithMcpUpstreams(opts ...func(*MCPUpstreamQuery)) *TeamQuery {
+	query := (&MCPUpstreamClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withMcpUpstreams = query
 	return _q
 }
 
@@ -627,12 +663,13 @@ func (_q *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 	var (
 		nodes       = []*Team{}
 		_spec       = _q.querySpec()
-		loadedTypes = [8]bool{
+		loadedTypes = [9]bool{
 			_q.withGroups != nil,
 			_q.withMembers != nil,
 			_q.withModels != nil,
 			_q.withImages != nil,
 			_q.withExtensionImageArchives != nil,
+			_q.withMcpUpstreams != nil,
 			_q.withTeamMembers != nil,
 			_q.withTeamModels != nil,
 			_q.withTeamImages != nil,
@@ -693,6 +730,13 @@ func (_q *TeamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Team, e
 			func(n *Team, e *TeamExtensionImageArchive) {
 				n.Edges.ExtensionImageArchives = append(n.Edges.ExtensionImageArchives, e)
 			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withMcpUpstreams; query != nil {
+		if err := _q.loadMcpUpstreams(ctx, query, nodes,
+			func(n *Team) { n.Edges.McpUpstreams = []*MCPUpstream{} },
+			func(n *Team, e *MCPUpstream) { n.Edges.McpUpstreams = append(n.Edges.McpUpstreams, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -958,6 +1002,39 @@ func (_q *TeamQuery) loadExtensionImageArchives(ctx context.Context, query *Team
 		node, ok := nodeids[fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "team_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *TeamQuery) loadMcpUpstreams(ctx context.Context, query *MCPUpstreamQuery, nodes []*Team, init func(*Team), assign func(*Team, *MCPUpstream)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Team)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(mcpupstream.FieldTeamID)
+	}
+	query.Where(predicate.MCPUpstream(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(team.McpUpstreamsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TeamID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "team_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "team_id" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

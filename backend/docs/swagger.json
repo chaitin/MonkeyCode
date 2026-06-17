@@ -1307,6 +1307,220 @@
                 }
             }
         },
+        "/api/v1/teams/mcp/upstreams": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】MCP 配置"
+                ],
+                "summary": "获取团队 MCP Upstream 列表",
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ListTeamMCPUpstreamsResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】MCP 配置"
+                ],
+                "summary": "创建团队 MCP Upstream",
+                "parameters": [
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CreateTeamMCPUpstreamReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamMCPUpstream"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/mcp/upstreams/{upstream_id}": {
+            "put": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】MCP 配置"
+                ],
+                "summary": "更新团队 MCP Upstream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "MCP Upstream ID",
+                        "name": "upstream_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "请求参数",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.UpdateTeamMCPUpstreamReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.TeamMCPUpstream"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】MCP 配置"
+                ],
+                "summary": "删除团队 MCP Upstream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "MCP Upstream ID",
+                        "name": "upstream_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/mcp/upstreams/{upstream_id}/sync": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】MCP 配置"
+                ],
+                "summary": "同步团队 MCP Upstream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "MCP Upstream ID",
+                        "name": "upstream_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/models": {
             "get": {
                 "security": [
@@ -10466,6 +10680,43 @@
                 }
             }
         },
+        "domain.CreateTeamMCPUpstreamReq": {
+            "type": "object",
+            "required": [
+                "name",
+                "slug",
+                "url"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "group_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "headers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MCPHeader"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.CreateUserMCPUpstreamReq": {
             "type": "object",
             "properties": {
@@ -11048,6 +11299,17 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/domain.TeamImage"
+                    }
+                }
+            }
+        },
+        "domain.ListTeamMCPUpstreamsResp": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TeamMCPUpstream"
                     }
                 }
             }
@@ -12729,6 +12991,74 @@
                 }
             }
         },
+        "domain.TeamMCPUpstream": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SkillGroupRef"
+                    }
+                },
+                "headers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MCPHeader"
+                    }
+                },
+                "health_checked_at": {
+                    "type": "integer"
+                },
+                "health_status": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_synced_at": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "$ref": "#/definitions/mcpupstream.Scope"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "sync_status": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "string"
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MCPTool"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/domain.User"
+                }
+            }
+        },
         "domain.TeamMember": {
             "type": "object",
             "properties": {
@@ -13445,6 +13775,38 @@
                 }
             }
         },
+        "domain.UpdateTeamMCPUpstreamReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "group_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "headers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MCPHeader"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.UpdateTeamModelReq": {
             "type": "object",
             "properties": {
@@ -13881,22 +14243,26 @@
             "type": "string",
             "enum": [
                 "user",
-                "platform"
+                "platform",
+                "team"
             ],
             "x-enum-varnames": [
                 "ScopeUser",
-                "ScopePlatform"
+                "ScopePlatform",
+                "ScopeTeam"
             ]
         },
         "mcpupstream.Scope": {
             "type": "string",
             "enum": [
                 "user",
-                "platform"
+                "platform",
+                "team"
             ],
             "x-enum-varnames": [
                 "ScopeUser",
-                "ScopePlatform"
+                "ScopePlatform",
+                "ScopeTeam"
             ]
         },
         "taskflow.File": {

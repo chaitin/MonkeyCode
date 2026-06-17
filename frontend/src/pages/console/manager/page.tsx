@@ -44,6 +44,9 @@ export default function ManagerConsolePage() {
     "/manager/skills": [
       { label: "Skills", href: "/manager/skills" },
     ],
+    "/manager/mcp": [
+      { label: "MCP", href: "/manager/mcp" },
+    ],
     "/manager/hosts": [
       { label: "设置", href: "/manager/settings" },
     ],

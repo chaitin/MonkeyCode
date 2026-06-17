@@ -16,6 +16,9 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/db/mcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
+	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
+	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmcpupstream"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -23,13 +26,16 @@ import (
 // MCPUpstreamQuery is the builder for querying MCPUpstream entities.
 type MCPUpstreamQuery struct {
 	config
-	ctx        *QueryContext
-	order      []mcpupstream.OrderOption
-	inters     []Interceptor
-	predicates []predicate.MCPUpstream
-	withTools  *MCPToolQuery
-	withUser   *UserQuery
-	modifiers  []func(*sql.Selector)
+	ctx                       *QueryContext
+	order                     []mcpupstream.OrderOption
+	inters                    []Interceptor
+	predicates                []predicate.MCPUpstream
+	withTools                 *MCPToolQuery
+	withUser                  *UserQuery
+	withTeam                  *TeamQuery
+	withGroups                *TeamGroupQuery
+	withTeamGroupMcpUpstreams *TeamGroupMCPUpstreamQuery
+	modifiers                 []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -103,6 +109,72 @@ func (_q *MCPUpstreamQuery) QueryUser() *UserQuery {
 			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, mcpupstream.UserTable, mcpupstream.UserColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTeam chains the current query on the "team" edge.
+func (_q *MCPUpstreamQuery) QueryTeam() *TeamQuery {
+	query := (&TeamClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, selector),
+			sqlgraph.To(team.Table, team.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, mcpupstream.TeamTable, mcpupstream.TeamColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGroups chains the current query on the "groups" edge.
+func (_q *MCPUpstreamQuery) QueryGroups() *TeamGroupQuery {
+	query := (&TeamGroupClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, selector),
+			sqlgraph.To(teamgroup.Table, teamgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, mcpupstream.GroupsTable, mcpupstream.GroupsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTeamGroupMcpUpstreams chains the current query on the "team_group_mcp_upstreams" edge.
+func (_q *MCPUpstreamQuery) QueryTeamGroupMcpUpstreams() *TeamGroupMCPUpstreamQuery {
+	query := (&TeamGroupMCPUpstreamClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(mcpupstream.Table, mcpupstream.FieldID, selector),
+			sqlgraph.To(teamgroupmcpupstream.Table, teamgroupmcpupstream.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, mcpupstream.TeamGroupMcpUpstreamsTable, mcpupstream.TeamGroupMcpUpstreamsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -297,13 +369,16 @@ func (_q *MCPUpstreamQuery) Clone() *MCPUpstreamQuery {
 		return nil
 	}
 	return &MCPUpstreamQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]mcpupstream.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.MCPUpstream{}, _q.predicates...),
-		withTools:  _q.withTools.Clone(),
-		withUser:   _q.withUser.Clone(),
+		config:                    _q.config,
+		ctx:                       _q.ctx.Clone(),
+		order:                     append([]mcpupstream.OrderOption{}, _q.order...),
+		inters:                    append([]Interceptor{}, _q.inters...),
+		predicates:                append([]predicate.MCPUpstream{}, _q.predicates...),
+		withTools:                 _q.withTools.Clone(),
+		withUser:                  _q.withUser.Clone(),
+		withTeam:                  _q.withTeam.Clone(),
+		withGroups:                _q.withGroups.Clone(),
+		withTeamGroupMcpUpstreams: _q.withTeamGroupMcpUpstreams.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -330,6 +405,39 @@ func (_q *MCPUpstreamQuery) WithUser(opts ...func(*UserQuery)) *MCPUpstreamQuery
 		opt(query)
 	}
 	_q.withUser = query
+	return _q
+}
+
+// WithTeam tells the query-builder to eager-load the nodes that are connected to
+// the "team" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *MCPUpstreamQuery) WithTeam(opts ...func(*TeamQuery)) *MCPUpstreamQuery {
+	query := (&TeamClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTeam = query
+	return _q
+}
+
+// WithGroups tells the query-builder to eager-load the nodes that are connected to
+// the "groups" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *MCPUpstreamQuery) WithGroups(opts ...func(*TeamGroupQuery)) *MCPUpstreamQuery {
+	query := (&TeamGroupClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGroups = query
+	return _q
+}
+
+// WithTeamGroupMcpUpstreams tells the query-builder to eager-load the nodes that are connected to
+// the "team_group_mcp_upstreams" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *MCPUpstreamQuery) WithTeamGroupMcpUpstreams(opts ...func(*TeamGroupMCPUpstreamQuery)) *MCPUpstreamQuery {
+	query := (&TeamGroupMCPUpstreamClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTeamGroupMcpUpstreams = query
 	return _q
 }
 
@@ -411,9 +519,12 @@ func (_q *MCPUpstreamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*MCPUpstream{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [5]bool{
 			_q.withTools != nil,
 			_q.withUser != nil,
+			_q.withTeam != nil,
+			_q.withGroups != nil,
+			_q.withTeamGroupMcpUpstreams != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -447,6 +558,28 @@ func (_q *MCPUpstreamQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
 			func(n *MCPUpstream, e *User) { n.Edges.User = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTeam; query != nil {
+		if err := _q.loadTeam(ctx, query, nodes, nil,
+			func(n *MCPUpstream, e *Team) { n.Edges.Team = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGroups; query != nil {
+		if err := _q.loadGroups(ctx, query, nodes,
+			func(n *MCPUpstream) { n.Edges.Groups = []*TeamGroup{} },
+			func(n *MCPUpstream, e *TeamGroup) { n.Edges.Groups = append(n.Edges.Groups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTeamGroupMcpUpstreams; query != nil {
+		if err := _q.loadTeamGroupMcpUpstreams(ctx, query, nodes,
+			func(n *MCPUpstream) { n.Edges.TeamGroupMcpUpstreams = []*TeamGroupMCPUpstream{} },
+			func(n *MCPUpstream, e *TeamGroupMCPUpstream) {
+				n.Edges.TeamGroupMcpUpstreams = append(n.Edges.TeamGroupMcpUpstreams, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -515,6 +648,129 @@ func (_q *MCPUpstreamQuery) loadUser(ctx context.Context, query *UserQuery, node
 	}
 	return nil
 }
+func (_q *MCPUpstreamQuery) loadTeam(ctx context.Context, query *TeamQuery, nodes []*MCPUpstream, init func(*MCPUpstream), assign func(*MCPUpstream, *Team)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*MCPUpstream)
+	for i := range nodes {
+		if nodes[i].TeamID == nil {
+			continue
+		}
+		fk := *nodes[i].TeamID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(team.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "team_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *MCPUpstreamQuery) loadGroups(ctx context.Context, query *TeamGroupQuery, nodes []*MCPUpstream, init func(*MCPUpstream), assign func(*MCPUpstream, *TeamGroup)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[uuid.UUID]*MCPUpstream)
+	nids := make(map[uuid.UUID]map[*MCPUpstream]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(mcpupstream.GroupsTable)
+		s.Join(joinT).On(s.C(teamgroup.FieldID), joinT.C(mcpupstream.GroupsPrimaryKey[0]))
+		s.Where(sql.InValues(joinT.C(mcpupstream.GroupsPrimaryKey[1]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(mcpupstream.GroupsPrimaryKey[1]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(uuid.UUID)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := *values[0].(*uuid.UUID)
+				inValue := *values[1].(*uuid.UUID)
+				if nids[inValue] == nil {
+					nids[inValue] = map[*MCPUpstream]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*TeamGroup](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "groups" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
+func (_q *MCPUpstreamQuery) loadTeamGroupMcpUpstreams(ctx context.Context, query *TeamGroupMCPUpstreamQuery, nodes []*MCPUpstream, init func(*MCPUpstream), assign func(*MCPUpstream, *TeamGroupMCPUpstream)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*MCPUpstream)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(teamgroupmcpupstream.FieldUpstreamID)
+	}
+	query.Where(predicate.TeamGroupMCPUpstream(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(mcpupstream.TeamGroupMcpUpstreamsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UpstreamID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "upstream_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
 
 func (_q *MCPUpstreamQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -546,6 +802,9 @@ func (_q *MCPUpstreamQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withUser != nil {
 			_spec.Node.AddColumnOnce(mcpupstream.FieldUserID)
+		}
+		if _q.withTeam != nil {
+			_spec.Node.AddColumnOnce(mcpupstream.FieldTeamID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

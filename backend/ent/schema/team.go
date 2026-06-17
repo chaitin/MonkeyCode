@@ -54,5 +54,6 @@ func (Team) Edges() []ent.Edge {
 		edge.To("models", Model.Type).Through("team_models", TeamModel.Type),
 		edge.To("images", Image.Type).Through("team_images", TeamImage.Type),
 		edge.To("extension_image_archives", TeamExtensionImageArchive.Type),
+		edge.To("mcp_upstreams", MCPUpstream.Type),
 	}
 }
