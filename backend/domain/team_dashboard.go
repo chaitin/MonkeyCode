@@ -134,19 +134,19 @@ type TeamDashboardListReq struct {
 
 type TeamProjectListResp struct {
 	Projects []*TeamProjectItem `json:"projects"`
-	Page     *db.Cursor          `json:"page"`
+	Page     *db.Cursor         `json:"page"`
 }
 
 type TeamProjectItem struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	RepoURL   string    `json:"repo_url"`
-	Branch    string    `json:"branch"`
-	Creator   *User     `json:"creator"`
-	TaskCount int       `json:"task_count"`
-	IssueCount int      `json:"issue_count"`
-	CreatedAt int64     `json:"created_at"`
-	UpdatedAt int64     `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	RepoURL    string    `json:"repo_url"`
+	Branch     string    `json:"branch"`
+	Creator    *User     `json:"creator"`
+	TaskCount  int       `json:"task_count"`
+	IssueCount int       `json:"issue_count"`
+	CreatedAt  int64     `json:"created_at"`
+	UpdatedAt  int64     `json:"updated_at"`
 }
 
 type TeamTaskListResp struct {
@@ -169,7 +169,7 @@ type TeamTaskItem struct {
 
 type TeamConversationListResp struct {
 	Conversations []*TeamConversationItem `json:"conversations"`
-	Page          *db.Cursor               `json:"page"`
+	Page          *db.Cursor              `json:"page"`
 }
 
 type TeamConversationItem struct {
@@ -178,8 +178,8 @@ type TeamConversationItem struct {
 	TaskTitle       string    `json:"task_title"`
 	ProjectID       uuid.UUID `json:"project_id"`
 	ProjectName     string    `json:"project_name"`
-	Creator          *User     `json:"creator"`
-	Content          string    `json:"content"`
+	Creator         *User     `json:"creator"`
+	Content         string    `json:"content"`
 	AttachmentCount int       `json:"attachment_count"`
 	CreatedAt       int64     `json:"created_at"`
 }

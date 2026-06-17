@@ -30,6 +30,8 @@ import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 import ModelSelect from "./model-select";
 import { TaskSkillSelector } from "./task-skill-selector";
+import { TaskPluginSelector } from "./task-plugin-selector";
+import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api";
 import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
 
 interface RepoOption {
@@ -73,6 +75,9 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills);
   const [skillList, setSkillList] = useState<DomainSkill[]>([]);
   const [activeSkillTag, setActiveSkillTag] = useState<string>("全部");
+  const [pluginPopoverOpen, setPluginPopoverOpen] = useState<boolean>(false);
+  const [pluginList, setPluginList] = useState<PluginListItem[]>([]);
+  const [selectedPlugin, setSelectedPlugin] = useState<string[]>([]);
 
   // 运行参数状态（工具固定为 opencode）
   const [selectedModelId, setSelectedModelId] = useState<string>("");
@@ -115,6 +120,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
   useEffect(() => {
     fetchSkillList();
+    fetchPluginList();
   }, []);
 
 
@@ -129,6 +135,28 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       } else {
         toast.error(resp.message || '获取技能列表失败');
       }
+    });
+  };
+
+  const fetchPluginList = async () => {
+    if (IS_OFFLINE_EDITION) {
+      return;
+    }
+    try {
+      const items = await fetchPluginListing();
+      setPluginList(items);
+    } catch (err) {
+      // Plugin picker is optional/best-effort; warn rather than block the form.
+      toast.error((err as Error).message || '获取插件列表失败');
+    }
+  };
+
+  const handlePluginChange = (pluginId: string, checked: boolean) => {
+    setSelectedPlugin(prev => {
+      if (checked) {
+        return prev.includes(pluginId) ? prev : [...prev, pluginId];
+      }
+      return prev.filter(id => id !== pluginId);
     });
   };
 
@@ -300,6 +328,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       },
       extra: {
         skill_ids: selectedSkill,
+        plugin_ids: selectedPlugin,
       },
       resource: {
         core: 2,
@@ -648,6 +677,17 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 activeSkillTag={activeSkillTag}
                 onActiveSkillTagChange={setActiveSkillTag}
                 onSkillChange={handleSkillChange}
+                triggerClassName="rounded-full"
+                labelClassName="hidden sm:block"
+              />
+            )}
+            {!IS_OFFLINE_EDITION && (
+              <TaskPluginSelector
+                open={pluginPopoverOpen}
+                onOpenChange={setPluginPopoverOpen}
+                selectedPlugins={selectedPlugin}
+                plugins={pluginList}
+                onPluginChange={handlePluginChange}
                 triggerClassName="rounded-full"
                 labelClassName="hidden sm:block"
               />

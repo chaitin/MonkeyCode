@@ -49,8 +49,6 @@ const (
 	EdgeModels = "models"
 	// EdgeImages holds the string denoting the images edge name in mutations.
 	EdgeImages = "images"
-	// EdgeSkills holds the string denoting the skills edge name in mutations.
-	EdgeSkills = "skills"
 	// EdgeHosts holds the string denoting the hosts edge name in mutations.
 	EdgeHosts = "hosts"
 	// EdgeVms holds the string denoting the vms edge name in mutations.
@@ -121,13 +119,6 @@ const (
 	ImagesInverseTable = "images"
 	// ImagesColumn is the table column denoting the images relation/edge.
 	ImagesColumn = "user_id"
-	// SkillsTable is the table that holds the skills relation/edge.
-	SkillsTable = "skills"
-	// SkillsInverseTable is the table name for the Skill entity.
-	// It exists in this package in order to avoid circular dependency with the "skill" package.
-	SkillsInverseTable = "skills"
-	// SkillsColumn is the table column denoting the skills relation/edge.
-	SkillsColumn = "user_id"
 	// HostsTable is the table that holds the hosts relation/edge.
 	HostsTable = "hosts"
 	// HostsInverseTable is the table name for the Host entity.
@@ -433,20 +424,6 @@ func ByImages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// BySkillsCount orders the results by skills count.
-func BySkillsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newSkillsStep(), opts...)
-	}
-}
-
-// BySkills orders the results by skills terms.
-func BySkills(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newSkillsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByHostsCount orders the results by hosts count.
 func ByHostsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -696,13 +673,6 @@ func newImagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ImagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ImagesTable, ImagesColumn),
-	)
-}
-func newSkillsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(SkillsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, SkillsTable, SkillsColumn),
 	)
 }
 func newHostsStep() *sqlgraph.Step {

@@ -6,6 +6,36 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// AgentPlugin is the predicate function for agentplugin builders.
+type AgentPlugin func(*sql.Selector)
+
+// AgentPluginRepo is the predicate function for agentpluginrepo builders.
+type AgentPluginRepo func(*sql.Selector)
+
+// AgentPluginVersion is the predicate function for agentpluginversion builders.
+type AgentPluginVersion func(*sql.Selector)
+
+// AgentRule is the predicate function for agentrule builders.
+type AgentRule func(*sql.Selector)
+
+// AgentRuleVersion is the predicate function for agentruleversion builders.
+type AgentRuleVersion func(*sql.Selector)
+
+// AgentSkill is the predicate function for agentskill builders.
+type AgentSkill func(*sql.Selector)
+
+// AgentSkillGroupBinding is the predicate function for agentskillgroupbinding builders.
+type AgentSkillGroupBinding func(*sql.Selector)
+
+// AgentSkillRepo is the predicate function for agentskillrepo builders.
+type AgentSkillRepo func(*sql.Selector)
+
+// AgentSkillVersion is the predicate function for agentskillversion builders.
+type AgentSkillVersion func(*sql.Selector)
+
+// AgentSyncJob is the predicate function for agentsyncjob builders.
+type AgentSyncJob func(*sql.Selector)
+
 // Audit is the predicate function for audit builders.
 type Audit func(*sql.Selector)
 
@@ -75,9 +105,6 @@ type ProjectIssueComment func(*sql.Selector)
 // ProjectTask is the predicate function for projecttask builders.
 type ProjectTask func(*sql.Selector)
 
-// Skill is the predicate function for skill builders.
-type Skill func(*sql.Selector)
-
 // Task is the predicate function for task builders.
 type Task func(*sql.Selector)
 
@@ -111,9 +138,6 @@ type TeamGroupMember func(*sql.Selector)
 // TeamGroupModel is the predicate function for teamgroupmodel builders.
 type TeamGroupModel func(*sql.Selector)
 
-// TeamGroupSkill is the predicate function for teamgroupskill builders.
-type TeamGroupSkill func(*sql.Selector)
-
 // TeamHost is the predicate function for teamhost builders.
 type TeamHost func(*sql.Selector)
 
@@ -128,9 +152,6 @@ type TeamModel func(*sql.Selector)
 
 // TeamOIDCConfig is the predicate function for teamoidcconfig builders.
 type TeamOIDCConfig func(*sql.Selector)
-
-// TeamSkill is the predicate function for teamskill builders.
-type TeamSkill func(*sql.Selector)
 
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

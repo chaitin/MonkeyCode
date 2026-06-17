@@ -43,8 +43,6 @@ const (
 	EdgeModels = "models"
 	// EdgeImages holds the string denoting the images edge name in mutations.
 	EdgeImages = "images"
-	// EdgeSkills holds the string denoting the skills edge name in mutations.
-	EdgeSkills = "skills"
 	// EdgeExtensionImageArchives holds the string denoting the extension_image_archives edge name in mutations.
 	EdgeExtensionImageArchives = "extension_image_archives"
 	// EdgeTeamMembers holds the string denoting the team_members edge name in mutations.
@@ -53,8 +51,6 @@ const (
 	EdgeTeamModels = "team_models"
 	// EdgeTeamImages holds the string denoting the team_images edge name in mutations.
 	EdgeTeamImages = "team_images"
-	// EdgeTeamSkills holds the string denoting the team_skills edge name in mutations.
-	EdgeTeamSkills = "team_skills"
 	// Table holds the table name of the team in the database.
 	Table = "teams"
 	// GroupsTable is the table that holds the groups relation/edge.
@@ -79,11 +75,6 @@ const (
 	// ImagesInverseTable is the table name for the Image entity.
 	// It exists in this package in order to avoid circular dependency with the "image" package.
 	ImagesInverseTable = "images"
-	// SkillsTable is the table that holds the skills relation/edge. The primary key declared below.
-	SkillsTable = "team_skills"
-	// SkillsInverseTable is the table name for the Skill entity.
-	// It exists in this package in order to avoid circular dependency with the "skill" package.
-	SkillsInverseTable = "skills"
 	// ExtensionImageArchivesTable is the table that holds the extension_image_archives relation/edge.
 	ExtensionImageArchivesTable = "team_extension_image_archives"
 	// ExtensionImageArchivesInverseTable is the table name for the TeamExtensionImageArchive entity.
@@ -112,13 +103,6 @@ const (
 	TeamImagesInverseTable = "team_images"
 	// TeamImagesColumn is the table column denoting the team_images relation/edge.
 	TeamImagesColumn = "team_id"
-	// TeamSkillsTable is the table that holds the team_skills relation/edge.
-	TeamSkillsTable = "team_skills"
-	// TeamSkillsInverseTable is the table name for the TeamSkill entity.
-	// It exists in this package in order to avoid circular dependency with the "teamskill" package.
-	TeamSkillsInverseTable = "team_skills"
-	// TeamSkillsColumn is the table column denoting the team_skills relation/edge.
-	TeamSkillsColumn = "team_id"
 )
 
 // Columns holds all SQL columns for team fields.
@@ -146,9 +130,6 @@ var (
 	// ImagesPrimaryKey and ImagesColumn2 are the table columns denoting the
 	// primary key for the images relation (M2M).
 	ImagesPrimaryKey = []string{"team_id", "image_id"}
-	// SkillsPrimaryKey and SkillsColumn2 are the table columns denoting the
-	// primary key for the skills relation (M2M).
-	SkillsPrimaryKey = []string{"team_id", "skill_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -303,20 +284,6 @@ func ByImages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// BySkillsCount orders the results by skills count.
-func BySkillsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newSkillsStep(), opts...)
-	}
-}
-
-// BySkills orders the results by skills terms.
-func BySkills(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newSkillsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByExtensionImageArchivesCount orders the results by extension_image_archives count.
 func ByExtensionImageArchivesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -372,20 +339,6 @@ func ByTeamImages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newTeamImagesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
-
-// ByTeamSkillsCount orders the results by team_skills count.
-func ByTeamSkillsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newTeamSkillsStep(), opts...)
-	}
-}
-
-// ByTeamSkills orders the results by team_skills terms.
-func ByTeamSkills(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newTeamSkillsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
 func newGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -414,13 +367,6 @@ func newImagesStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, false, ImagesTable, ImagesPrimaryKey...),
 	)
 }
-func newSkillsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(SkillsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2M, false, SkillsTable, SkillsPrimaryKey...),
-	)
-}
 func newExtensionImageArchivesStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -447,12 +393,5 @@ func newTeamImagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TeamImagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, TeamImagesTable, TeamImagesColumn),
-	)
-}
-func newTeamSkillsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(TeamSkillsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, true, TeamSkillsTable, TeamSkillsColumn),
 	)
 }

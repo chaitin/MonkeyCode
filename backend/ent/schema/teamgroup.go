@@ -50,6 +50,5 @@ func (TeamGroup) Edges() []ent.Edge {
 		edge.To("models", Model.Type).Through("team_group_models", TeamGroupModel.Type),
 		edge.To("images", Image.Type).Through("team_group_images", TeamGroupImage.Type),
 		edge.To("hosts", Host.Type).Through("team_group_hosts", TeamGroupHost.Type),
-		edge.To("skills", Skill.Type).Through("team_group_skills", TeamGroupSkill.Type),
 	}
 }

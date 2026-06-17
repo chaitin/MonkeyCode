@@ -9,6 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -366,6 +367,11 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 			return err
 		}
 		if err := r.ensureInitTeamMember(ctx, tx, initTeam.ID, email, name, hashedPassword, defaultGroup.ID); err != nil {
+			return err
+		}
+		// Provision team 私有的 bare skill_repo / plugin_repo,供团队管理员
+		// 后续上传 zip 时挂载子 skill。幂等(已存在则跳过)。
+		if _, _, err := agentresource.EnsureTeamBareReposTx(ctx, tx, initTeam.ID, initUser.ID); err != nil {
 			return err
 		}
 		return r.initTeamImage(ctx, tx, initTeam.ID, defaultGroup.ID, initUser.ID, imageName)

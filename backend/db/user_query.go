@@ -26,7 +26,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -52,7 +51,6 @@ type UserQuery struct {
 	withGroups               *TeamGroupQuery
 	withModels               *ModelQuery
 	withImages               *ImageQuery
-	withSkills               *SkillQuery
 	withHosts                *HostQuery
 	withVms                  *VirtualMachineQuery
 	withTasks                *TaskQuery
@@ -230,28 +228,6 @@ func (_q *UserQuery) QueryImages() *ImageQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(image.Table, image.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.ImagesTable, user.ImagesColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QuerySkills chains the current query on the "skills" edge.
-func (_q *UserQuery) QuerySkills() *SkillQuery {
-	query := (&SkillClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, selector),
-			sqlgraph.To(skill.Table, skill.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.SkillsTable, user.SkillsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -787,7 +763,6 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withGroups:               _q.withGroups.Clone(),
 		withModels:               _q.withModels.Clone(),
 		withImages:               _q.withImages.Clone(),
-		withSkills:               _q.withSkills.Clone(),
 		withHosts:                _q.withHosts.Clone(),
 		withVms:                  _q.withVms.Clone(),
 		withTasks:                _q.withTasks.Clone(),
@@ -873,17 +848,6 @@ func (_q *UserQuery) WithImages(opts ...func(*ImageQuery)) *UserQuery {
 		opt(query)
 	}
 	_q.withImages = query
-	return _q
-}
-
-// WithSkills tells the query-builder to eager-load the nodes that are connected to
-// the "skills" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *UserQuery) WithSkills(opts ...func(*SkillQuery)) *UserQuery {
-	query := (&SkillClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withSkills = query
 	return _q
 }
 
@@ -1130,14 +1094,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [22]bool{
+		loadedTypes = [21]bool{
 			_q.withIdentities != nil,
 			_q.withAudits != nil,
 			_q.withTeams != nil,
 			_q.withGroups != nil,
 			_q.withModels != nil,
 			_q.withImages != nil,
-			_q.withSkills != nil,
 			_q.withHosts != nil,
 			_q.withVms != nil,
 			_q.withTasks != nil,
@@ -1215,13 +1178,6 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadImages(ctx, query, nodes,
 			func(n *User) { n.Edges.Images = []*Image{} },
 			func(n *User, e *Image) { n.Edges.Images = append(n.Edges.Images, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withSkills; query != nil {
-		if err := _q.loadSkills(ctx, query, nodes,
-			func(n *User) { n.Edges.Skills = []*Skill{} },
-			func(n *User, e *Skill) { n.Edges.Skills = append(n.Edges.Skills, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1564,36 +1520,6 @@ func (_q *UserQuery) loadImages(ctx context.Context, query *ImageQuery, nodes []
 	}
 	query.Where(predicate.Image(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.ImagesColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.UserID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *UserQuery) loadSkills(ctx context.Context, query *SkillQuery, nodes []*User, init func(*User), assign func(*User, *Skill)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[uuid.UUID]*User)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(skill.FieldUserID)
-	}
-	query.Where(predicate.Skill(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(user.SkillsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

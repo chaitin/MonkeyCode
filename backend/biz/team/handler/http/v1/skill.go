@@ -1,3 +1,6 @@
+// Package v1 — 团队管理员 skill 管理 HTTP 入口。契约对齐 main 上的
+// /api/v1/teams/skills/* 5 端点(对前端透明),底层换成 agent_skill bare repo
+// 模型(scope_type=team, source_type=bare)。
 package v1
 
 import (
@@ -15,6 +18,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/middleware"
 )
+
+const defaultSkillPackageMaxSize int64 = 50 << 20 // 50 MiB fallback
 
 type TeamSkillHandler struct {
 	usecase domain.TeamSkillUsecase
@@ -43,29 +48,29 @@ func NewTeamSkillHandler(i *do.Injector) (*TeamSkillHandler, error) {
 }
 
 type addTeamSkillPackageFormReq struct {
-	Name        string                `form:"name" validate:"required"`
-	Description string                `form:"description" validate:"required"`
-	Tags        string                `form:"tags"`
-	Content     string                `form:"content" validate:"required"`
-	GroupIDs    string                `form:"group_ids"`
-	SourceType  string                `form:"source_type" validate:"required"`
-	SourceLabel string                `form:"source_label" validate:"required"`
-	SkillMDPath string                `form:"skill_md_path"`
-	File        *multipart.FileHeader `form:"file" validate:"required"`
+	Name            string                `form:"name" validate:"required"`
+	Description     string                `form:"description" validate:"required"`
+	Tags            string                `form:"tags"`
+	Content         string                `form:"content"`
+	GroupIDs        string                `form:"group_ids"`
+	SkillMDPath     string                `form:"skill_md_path"`
+	IsForceDelivery bool                  `form:"is_force_delivery"`
+	SourceType      string                `form:"source_type"`
+	SourceLabel     string                `form:"source_label"`
+	File            *multipart.FileHeader `form:"file" validate:"required"`
 }
 
-// List 获取团队 Skill 列表
+// List 团队 Skill 列表
 //
-//	@Summary		获取团队 Skill 列表
-//	@Description	获取团队 Skill 列表
-//	@Tags			【Team 管理员】Skill 管理
-//	@Accept			json
-//	@Produce		json
-//	@Security		MonkeyCodeAITeamAuth
-//	@Success		200	{object}	web.Resp{data=domain.ListTeamSkillsResp}	"成功"
-//	@Failure		401	{object}	web.Resp									"未授权"
-//	@Failure		500	{object}	web.Resp									"服务器内部错误"
-//	@Router			/api/v1/teams/skills [get]
+//	@Summary	获取团队 Skill 列表
+//	@Tags		【Team 管理员】Skill 管理
+//	@Accept		json
+//	@Produce	json
+//	@Security	MonkeyCodeAITeamAuth
+//	@Success	200	{object}	web.Resp{data=domain.ListTeamSkillsResp}	"成功"
+//	@Failure	401	{object}	web.Resp									"未授权"
+//	@Failure	500	{object}	web.Resp									"服务器内部错误"
+//	@Router		/api/v1/teams/skills [get]
 func (h *TeamSkillHandler) List(c *web.Context) error {
 	teamUser := middleware.GetTeamUser(c)
 	resp, err := h.usecase.List(c.Request().Context(), teamUser)
@@ -75,19 +80,18 @@ func (h *TeamSkillHandler) List(c *web.Context) error {
 	return c.Success(resp)
 }
 
-// Add 添加团队 Skill
+// Add 通过 JSON 添加(content 字段为 SKILL.md 全文)
 //
-//	@Summary		添加团队 Skill
-//	@Description	添加团队 Skill
-//	@Tags			【Team 管理员】Skill 管理
-//	@Accept			json
-//	@Produce		json
-//	@Security		MonkeyCodeAITeamAuth
-//	@Param			req	body		domain.AddTeamSkillReq			true	"请求参数"
-//	@Success		200	{object}	web.Resp{data=domain.TeamSkill}	"成功"
-//	@Failure		401	{object}	web.Resp						"未授权"
-//	@Failure		500	{object}	web.Resp						"服务器内部错误"
-//	@Router			/api/v1/teams/skills [post]
+//	@Summary	添加团队 Skill (JSON)
+//	@Tags		【Team 管理员】Skill 管理
+//	@Accept		json
+//	@Produce	json
+//	@Security	MonkeyCodeAITeamAuth
+//	@Param		req	body		domain.AddTeamSkillReq			true	"请求参数"
+//	@Success	200	{object}	web.Resp{data=domain.TeamSkill}	"成功"
+//	@Failure	401	{object}	web.Resp						"未授权"
+//	@Failure	500	{object}	web.Resp						"服务器内部错误"
+//	@Router		/api/v1/teams/skills [post]
 func (h *TeamSkillHandler) Add(c *web.Context, req domain.AddTeamSkillReq) error {
 	teamUser := middleware.GetTeamUser(c)
 	resp, err := h.usecase.Add(c.Request().Context(), teamUser, &req)
@@ -97,27 +101,24 @@ func (h *TeamSkillHandler) Add(c *web.Context, req domain.AddTeamSkillReq) error
 	return c.Success(resp)
 }
 
-// AddPackage 上传团队 Skill zip 包
+// AddPackage multipart 上传 zip
 //
-//	@Summary		上传团队 Skill zip 包
-//	@Description	上传团队 Skill zip 包
-//	@Tags			【Team 管理员】Skill 管理
-//	@Accept			multipart/form-data
-//	@Produce		json
-//	@Security		MonkeyCodeAITeamAuth
-//	@Param			name			formData	string							true	"Skill 名称"
-//	@Param			description		formData	string							true	"Skill 描述"
-//	@Param			tags			formData	string							false	"JSON 字符串数组"
-//	@Param			content			formData	string							true	"SKILL.md 原文"
-//	@Param			group_ids		formData	string							false	"JSON 字符串数组"
-//	@Param			source_type		formData	string							true	"来源类型"
-//	@Param			source_label	formData	string							true	"来源标签"
-//	@Param			skill_md_path	formData	string							false	"zip 内 SKILL.md 路径"
-//	@Param			file			formData	file							true	"Skill zip 包"
-//	@Success		200				{object}	web.Resp{data=domain.TeamSkill}	"成功"
-//	@Failure		401				{object}	web.Resp						"未授权"
-//	@Failure		500				{object}	web.Resp						"服务器内部错误"
-//	@Router			/api/v1/teams/skills/package [post]
+//	@Summary	添加团队 Skill (multipart zip)
+//	@Tags		【Team 管理员】Skill 管理
+//	@Security	MonkeyCodeAITeamAuth
+//	@Accept		multipart/form-data
+//	@Produce	json
+//	@Param		name			formData	string							true	"Skill 名称"
+//	@Param		description		formData	string							true	"Skill 描述"
+//	@Param		tags			formData	string							false	"JSON 字符串数组"
+//	@Param		content			formData	string							false	"SKILL.md 原文(可选)"
+//	@Param		group_ids		formData	string							false	"JSON 字符串数组"
+//	@Param		skill_md_path	formData	string							false	"zip 内 SKILL.md 路径"
+//	@Param		file			formData	file							true	"Skill zip 包"
+//	@Success	200				{object}	web.Resp{data=domain.TeamSkill}	"成功"
+//	@Failure	401				{object}	web.Resp						"未授权"
+//	@Failure	500				{object}	web.Resp						"服务器内部错误"
+//	@Router		/api/v1/teams/skills/package [post]
 func (h *TeamSkillHandler) AddPackage(c *web.Context, req addTeamSkillPackageFormReq) error {
 	teamUser := middleware.GetTeamUser(c)
 	data, err := h.readPackageFile(req.File)
@@ -134,14 +135,15 @@ func (h *TeamSkillHandler) AddPackage(c *web.Context, req addTeamSkillPackageFor
 	}
 	resp, err := h.usecase.AddPackage(c.Request().Context(), teamUser, &domain.AddTeamSkillPackageReq{
 		AddTeamSkillReq: domain.AddTeamSkillReq{
-			Name:        req.Name,
-			Description: req.Description,
-			Tags:        tags,
-			Content:     req.Content,
-			GroupIDs:    groupIDs,
-			SourceType:  req.SourceType,
-			SourceLabel: req.SourceLabel,
-			SkillMDPath: req.SkillMDPath,
+			Name:            req.Name,
+			Description:     req.Description,
+			Tags:            tags,
+			Content:         req.Content,
+			GroupIDs:        groupIDs,
+			SkillMDPath:     req.SkillMDPath,
+			IsForceDelivery: req.IsForceDelivery,
+			SourceType:      req.SourceType,
+			SourceLabel:     req.SourceLabel,
 		},
 		PackageFilename: req.File.Filename,
 		PackageData:     data,
@@ -155,7 +157,7 @@ func (h *TeamSkillHandler) AddPackage(c *web.Context, req addTeamSkillPackageFor
 // Update 更新团队 Skill
 //
 //	@Summary		更新团队 Skill
-//	@Description	更新团队 Skill
+//	@Description	请求参数的 content 非空时，后端将 SKILL.md 重新打包上传 OSS 并创建新的 agent_skill_versions 并切到 active version 到新版本，否则仅更新当前版本的 description / tags / is_force_delivery / group_ids
 //	@Tags			【Team 管理员】Skill 管理
 //	@Accept			json
 //	@Produce		json
@@ -175,16 +177,16 @@ func (h *TeamSkillHandler) Update(c *web.Context, req domain.UpdateTeamSkillReq)
 	return c.Success(resp)
 }
 
-// Delete 删除团队 Skill
+// Delete 删除团队 Skill (软删 agent_skill 行,bare repo 本体不动)
 //
 //	@Summary		删除团队 Skill
-//	@Description	删除团队 Skill
+//	@Description	从本团队 skill repo 中软删所选 agent skill
 //	@Tags			【Team 管理员】Skill 管理
 //	@Accept			json
 //	@Produce		json
 //	@Security		MonkeyCodeAITeamAuth
 //	@Param			skill_id	path		string		true	"Skill ID"
-//	@Success		200			{object}	web.Resp{}	"成功"
+//	@Success		200			{object}	web.Resp	"成功"
 //	@Failure		401			{object}	web.Resp	"未授权"
 //	@Failure		500			{object}	web.Resp	"服务器内部错误"
 //	@Router			/api/v1/teams/skills/{skill_id} [delete]
@@ -196,13 +198,15 @@ func (h *TeamSkillHandler) Delete(c *web.Context, req domain.DeleteTeamSkillReq)
 	return c.Success(nil)
 }
 
+// ---- helpers ----
+
 func (h *TeamSkillHandler) readPackageFile(fileHeader *multipart.FileHeader) ([]byte, error) {
 	if fileHeader == nil {
 		return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("file is required"))
 	}
 	maxSize := h.cfg.ObjectStorage.MaxSize
 	if maxSize <= 0 {
-		maxSize = 50 << 20
+		maxSize = defaultSkillPackageMaxSize
 	}
 	if fileHeader.Size > maxSize {
 		return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("file exceeds limit"))

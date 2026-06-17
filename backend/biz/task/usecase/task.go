@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -18,6 +17,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
+	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
 	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
@@ -60,6 +61,8 @@ type TaskUsecase struct {
 	projectRepo           domain.ProjectRepo
 	taskActivityRefresher service.TaskActivityRefresher
 	idleRefresher         vmidle.VMIdleRefresher
+	dbClient              *db.Client
+	resolver              agentresource.ResolverInterface
 }
 
 // NewTaskUsecase 创建任务业务逻辑实例
@@ -80,6 +83,13 @@ func NewTaskUsecase(i *do.Injector) (domain.TaskUsecase, error) {
 		projectRepo:           do.MustInvoke[domain.ProjectRepo](i),
 		taskActivityRefresher: do.MustInvoke[service.TaskActivityRefresher](i),
 		idleRefresher:         do.MustInvoke[vmidle.VMIdleRefresher](i),
+		dbClient:              do.MustInvoke[*db.Client](i),
+	}
+
+	// agentresource.ResolverInterface 注入失败时降级为 nil — getCodingConfigs
+	// 内部 nil-check，跳过 rule/skill/plugin 注入，并打 warn 日志。
+	if r, err := do.Invoke[agentresource.ResolverInterface](i); err == nil {
+		u.resolver = r
 	}
 
 	// 可选注入 TaskHook
@@ -191,13 +201,14 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 		}
 	}
 
-	coding, configs, err := a.getCodingConfigs(t.CliName, model, nil)
+	coding, configs, agentRes, err := a.getCodingConfigs(ctx, t.CliName, model, nil, nil, a.userScope(ctx, user))
 	if err != nil {
 		return nil, err
 	}
 	if coding != taskflow.CodingAgentOpenCode {
 		return nil, fmt.Errorf("switch model only supports opencode runtime")
 	}
+	_ = agentRes // switch-model path does not currently forward AgentResources to taskflow.
 
 	envs := map[string]string{
 		"OPENAI_API_KEY":                   model.APIKey,
@@ -544,7 +555,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 			token = keys[0].APIKey
 		}
 
-		coding, configs, err := a.getCodingConfigs(req.CliName, m, req.Extra.SkillIDs)
+		coding, configs, agentRes, err := a.getCodingConfigs(ctx, req.CliName, m, req.Extra.SkillIDs, req.Extra.PluginIDs, a.userScope(ctx, user))
 		if err != nil {
 			return nil, err
 		}
@@ -580,7 +591,24 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 
 		mcps := a.buildMCPConfigs(t.ID, token)
 
-		// 存储 CreateTaskReq 到 Redis，供 Lifecycle Manager 消费
+		// DEBUG: 把准备透传给 taskflow → codingmatrix 的整组 ConfigFile
+		// marshal 成一个 JSON 串、一行日志打出来。仅在 DEBUG 级别开启，
+		// 生产无噪声。
+		if a.logger.Enabled(ctx, slog.LevelDebug) {
+			if payload, err := json.Marshal(configs); err != nil {
+				a.logger.WarnContext(ctx, "tasker configs marshal failed",
+					slog.String("task_id", t.ID.String()),
+					slog.Any("err", err))
+			} else {
+				a.logger.DebugContext(ctx, "tasker configs",
+					slog.String("task_id", t.ID.String()),
+					slog.Int("count", len(configs)),
+					slog.String("configs", string(payload)),
+				)
+			}
+		}
+
+		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
 		createTaskReq := &taskflow.CreateTaskReq{
 			ID:           t.ID,
 			VMID:         vm.ID,
@@ -594,9 +622,10 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 				Model:   m.Model,
 				ApiType: m.InterfaceType,
 			},
-			Configs:    configs,
-			McpConfigs: mcps,
-			LogStore:   normalizeTaskLogStore(t.LogStore),
+			Configs:        configs,
+			McpConfigs:     mcps,
+			LogStore:       normalizeTaskLogStore(t.LogStore),
+			AgentResources: agentRes,
 		}
 		b, err := json.Marshal(createTaskReq)
 		if err != nil {
@@ -727,12 +756,92 @@ func modelRuntimeDefaults(m *db.Model) (thinking bool, contextLimit int, outputL
 	return thinking, contextLimit, outputLimit
 }
 
-func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs []string) (taskflow.CodingAgent, []taskflow.ConfigFile, error) {
+// agentRuleBaseDir / agentSkillBaseDir / agentPluginBaseDir 是 codingmatrix 在
+// VM 内部约定的 .ai-ready/ 投放路径。rule 走 .md 平铺；skill / plugin 解 zip
+// 后按目录结构展开；plugin 的 entry 字段再以 file:// 注入到 opencode.json 的
+// `plugin` 数组里。Claude / Codex 不消费 plugin（spec §6.3）。
+const (
+	agentRuleBaseDir   = "/tmp/codingmatrix-project-tpl/.ai-ready/rules/"
+	agentSkillBaseDir  = "/tmp/codingmatrix-project-tpl/.ai-ready/skills/"
+	agentPluginBaseDir = "/tmp/codingmatrix-project-tpl/.ai-ready/plugins/"
+)
+
+// parseStringUUIDs 把字符串切片解析成 uuid.UUID 切片。单条解析失败时打一条
+// WARN 日志后跳过，避免一个脏 ID 把整个 task 创建打挂（resolver 内部对
+// per-resource fetch 失败也是 skip-and-log 的策略，这里保持一致）。
+//
+// kind 用来在日志里区分是 skill_ids 还是 plugin_ids。
+func (a *TaskUsecase) parseStringUUIDs(ctx context.Context, kind string, raw []string) []uuid.UUID {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]uuid.UUID, 0, len(raw))
+	for _, s := range raw {
+		trimmed := strings.TrimSpace(s)
+		id, err := uuid.Parse(trimmed)
+		if err != nil {
+			a.logger.WarnContext(ctx, "getCodingConfigs: skip invalid uuid",
+				slog.String("kind", kind),
+				slog.String("value", s),
+				slog.Any("err", err))
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+// injectOpenCodePlugins 重写 cfs 中 path==opencodePath 的那个 ConfigFile，
+// 把 file:// URL 列表注入到 JSON 的 `plugin` 数组。opencode.json 模板里
+// 没有 plugin 字段是有意为之（plugin 列表是运行时动态的），所以这里走渲染后
+// 后置处理而不是 fork 模板。
+func injectOpenCodePlugins(cfs []taskflow.ConfigFile, opencodePath string, pluginURLs []string) ([]taskflow.ConfigFile, error) {
+	for i, c := range cfs {
+		if c.Path != opencodePath {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(c.Content), &obj); err != nil {
+			return nil, fmt.Errorf("unmarshal opencode.json: %w", err)
+		}
+		obj["plugin"] = pluginURLs
+		out, err := json.MarshalIndent(obj, "", "  ")
+		if err != nil {
+			return nil, fmt.Errorf("marshal opencode.json: %w", err)
+		}
+		cfs[i].Content = string(out)
+		return cfs, nil
+	}
+	return nil, fmt.Errorf("opencode.json ConfigFile not found at %s", opencodePath)
+}
+
+// userScope 从 DB 查用户所在 team,不依赖 session 里的 Team 字段。
+func (a *TaskUsecase) userScope(ctx context.Context, user *domain.User) agentresource.ScopeFilter {
+	f := agentresource.ScopeFilter{IncludeGlobal: true}
+	if user == nil || a.dbClient == nil {
+		return f
+	}
+	member, err := a.dbClient.TeamMember.Query().
+		Where(teammember.UserIDEQ(user.ID)).
+		First(ctx)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.WarnContext(ctx, "userScope: query team_members failed",
+				"user_id", user.ID, "error", err)
+		}
+		return f
+	}
+	teamID := member.TeamID
+	f.TeamID = &teamID
+	return f
+}
+
+func (a *TaskUsecase) getCodingConfigs(ctx context.Context, cli consts.CliName, m *db.Model, skillIDs []string, pluginIDs []string, scope agentresource.ScopeFilter) (taskflow.CodingAgent, []taskflow.ConfigFile, *taskflow.AgentResources, error) {
 	var tmp string
 	var path string
 	var coding taskflow.CodingAgent
 	if m == nil {
-		return coding, nil, fmt.Errorf("model is nil")
+		return coding, nil, nil, fmt.Errorf("model is nil")
 	}
 	npmPackage := "@ai-sdk/openai-compatible"
 	thinkingEnabled, contextLimit, outputLimit := modelRuntimeDefaults(m)
@@ -757,19 +866,19 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		var err error
 		npmPackage, err = opencodeNpmPackage(m.InterfaceType)
 		if err != nil {
-			return coding, nil, err
+			return coding, nil, nil, err
 		}
 
 		authtemp, err := template.New("auth").Parse(string(templates.OpenCodeAuth))
 		if err != nil {
-			return coding, nil, err
+			return coding, nil, nil, err
 		}
 
 		var authBuf bytes.Buffer
 		if err := authtemp.Execute(&authBuf, map[string]any{
 			"api_key": m.APIKey,
 		}); err != nil {
-			return coding, nil, err
+			return coding, nil, nil, err
 		}
 		authMode := uint32(0o600)
 		cfs = append(cfs, taskflow.ConfigFile{
@@ -779,12 +888,12 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		})
 
 	default:
-		return coding, nil, fmt.Errorf("unexpected consts.CliName: %#v", cli)
+		return coding, nil, nil, fmt.Errorf("unexpected consts.CliName: %#v", cli)
 	}
 
 	temp, err := template.New("config").Parse(tmp)
 	if err != nil {
-		return coding, nil, err
+		return coding, nil, nil, err
 	}
 
 	var buf bytes.Buffer
@@ -799,7 +908,7 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		"context_limit":    contextLimit,
 		"output_limit":     outputLimit,
 	}); err != nil {
-		return coding, nil, err
+		return coding, nil, nil, err
 	}
 
 	cfs = append(cfs, taskflow.ConfigFile{
@@ -807,41 +916,94 @@ func (a *TaskUsecase) getCodingConfigs(cli consts.CliName, m *db.Model, skillIDs
 		Content: buf.String(),
 	})
 
-	if len(skillIDs) == 0 {
-		return coding, cfs, nil
+	// 注入 agent-resource：rule 仍走 ConfigFile inline（DB content 小，对
+	// gRPC 4MiB ceiling 不构成压力）；skill / plugin 走 AgentResources
+	// presigned URL，由 codingmatrix agent 在 VM 内 HTTP GET + 解压。
+	// resolver==nil 时（zero-value TaskUsecase{} 单测）整个块跳过。
+	var agentRes *taskflow.AgentResources
+	if a.resolver == nil {
+		if a.logger != nil {
+			a.logger.WarnContext(ctx, "getCodingConfigs: resolver is nil, skipping rule/skill/plugin injection")
+		}
+		return coding, cfs, nil, nil
 	}
 
-	for _, skillID := range skillIDs {
-		skilldir := filepath.Join(consts.SkillBaseDir, skillID)
-		if _, err := os.Stat(skilldir); os.IsNotExist(err) {
-			continue
-		}
-		filepath.Walk(skilldir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			content, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			// 获取相对于 skilldir 的相对路径，保留目录结构
-			relPath, err := filepath.Rel(skilldir, path)
-			if err != nil {
-				return err
-			}
-			realSkillID := filepath.Base(skilldir)
-			agentSkillDir := "/tmp/codingmatrix-project-tpl/.ai-ready/skills/"
+	// rule — 三种 CLI 都下发（仍走 inline ConfigFile）
+	if materializedRules, err := a.resolver.Rules(ctx); err != nil {
+		a.logger.WarnContext(ctx, "getCodingConfigs: list rules failed, continuing without rules",
+			slog.Any("err", err))
+	} else {
+		for _, r := range materializedRules {
 			cfs = append(cfs, taskflow.ConfigFile{
-				Path:    filepath.Join(agentSkillDir, realSkillID, relPath),
-				Content: string(content),
+				Path:    filepath.Join(agentRuleBaseDir, r.Name+".md"),
+				Content: r.Content,
 			})
-			return nil
-		})
+		}
 	}
-	return coding, cfs, nil
+
+	// skill — 三种 CLI 都下发；resolver 内部按 scope 过滤 + 用户选中 ∪
+	// force_delivery + name 覆盖(user>team>global) + 跳过 enabled=false。
+	skillUUIDs := a.parseStringUUIDs(ctx, "skill_ids", skillIDs)
+	if skillRefs, err := a.resolver.SkillRefsScoped(ctx, agentresource.SkillSelection{
+		Scope:           scope,
+		UserSelectedIDs: skillUUIDs,
+	}); err != nil {
+		a.logger.WarnContext(ctx, "getCodingConfigs: list skill refs failed, continuing without skills",
+			slog.Any("err", err))
+	} else if len(skillRefs) > 0 {
+		if agentRes == nil {
+			agentRes = &taskflow.AgentResources{}
+		}
+		for _, s := range skillRefs {
+			agentRes.Skills = append(agentRes.Skills, &taskflow.AgentResourceAssetRef{
+				Name:    s.Name,
+				Version: s.Version,
+				ZipURL:  s.ZipURL,
+			})
+		}
+	}
+
+	// plugin — 仅 OpenCode 下发；其它 CLI 跳过省一次 S3 round-trip
+	if cli == consts.CliNameOpencode {
+		pluginUUIDs := a.parseStringUUIDs(ctx, "plugin_ids", pluginIDs)
+		if pluginRefs, err := a.resolver.PluginRefsScoped(ctx, agentresource.SkillSelection{
+			Scope:           scope,
+			UserSelectedIDs: pluginUUIDs,
+		}); err != nil {
+			a.logger.WarnContext(ctx, "getCodingConfigs: list plugin refs failed, continuing without plugins",
+				slog.Any("err", err))
+		} else if len(pluginRefs) > 0 {
+			pluginURLs := make([]string, 0, len(pluginRefs))
+			if agentRes == nil {
+				agentRes = &taskflow.AgentResources{}
+			}
+			for _, p := range pluginRefs {
+				agentRes.Plugins = append(agentRes.Plugins, &taskflow.AgentResourceAssetRef{
+					Name:          p.Name,
+					Version:       p.Version,
+					ZipURL:        p.ZipURL,
+					EntryFilename: p.EntryFilename,
+				})
+				if p.EntryFilename == "" {
+					a.logger.WarnContext(ctx, "getCodingConfigs: plugin missing entry, skipping opencode.json registration",
+						slog.String("plugin", p.Name))
+					continue
+				}
+				pluginURLs = append(pluginURLs,
+					"file://"+filepath.Join(agentPluginBaseDir, p.Name, p.EntryFilename))
+			}
+			if len(pluginURLs) > 0 {
+				if patched, err := injectOpenCodePlugins(cfs, path, pluginURLs); err != nil {
+					a.logger.WarnContext(ctx, "getCodingConfigs: inject plugin array into opencode.json failed",
+						slog.Any("err", err))
+				} else {
+					cfs = patched
+				}
+			}
+		}
+	}
+
+	return coding, cfs, agentRes, nil
 }
 
 // Update implements domain.TaskUsecase.

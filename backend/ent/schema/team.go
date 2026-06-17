@@ -53,7 +53,6 @@ func (Team) Edges() []ent.Edge {
 		edge.From("members", User.Type).Ref("teams").Through("team_members", TeamMember.Type),
 		edge.To("models", Model.Type).Through("team_models", TeamModel.Type),
 		edge.To("images", Image.Type).Through("team_images", TeamImage.Type),
-		edge.To("skills", Skill.Type).Through("team_skills", TeamSkill.Type),
 		edge.To("extension_image_archives", TeamExtensionImageArchive.Type),
 	}
 }

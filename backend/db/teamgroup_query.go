@@ -17,14 +17,12 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgrouphost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
-	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -41,12 +39,10 @@ type TeamGroupQuery struct {
 	withModels           *ModelQuery
 	withImages           *ImageQuery
 	withHosts            *HostQuery
-	withSkills           *SkillQuery
 	withTeamGroupMembers *TeamGroupMemberQuery
 	withTeamGroupModels  *TeamGroupModelQuery
 	withTeamGroupImages  *TeamGroupImageQuery
 	withTeamGroupHosts   *TeamGroupHostQuery
-	withTeamGroupSkills  *TeamGroupSkillQuery
 	modifiers            []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -194,28 +190,6 @@ func (_q *TeamGroupQuery) QueryHosts() *HostQuery {
 	return query
 }
 
-// QuerySkills chains the current query on the "skills" edge.
-func (_q *TeamGroupQuery) QuerySkills() *SkillQuery {
-	query := (&SkillClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, selector),
-			sqlgraph.To(skill.Table, skill.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, teamgroup.SkillsTable, teamgroup.SkillsPrimaryKey...),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
 // QueryTeamGroupMembers chains the current query on the "team_group_members" edge.
 func (_q *TeamGroupQuery) QueryTeamGroupMembers() *TeamGroupMemberQuery {
 	query := (&TeamGroupMemberClient{config: _q.config}).Query()
@@ -297,28 +271,6 @@ func (_q *TeamGroupQuery) QueryTeamGroupHosts() *TeamGroupHostQuery {
 			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, selector),
 			sqlgraph.To(teamgrouphost.Table, teamgrouphost.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupHostsTable, teamgroup.TeamGroupHostsColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryTeamGroupSkills chains the current query on the "team_group_skills" edge.
-func (_q *TeamGroupQuery) QueryTeamGroupSkills() *TeamGroupSkillQuery {
-	query := (&TeamGroupSkillClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(teamgroup.Table, teamgroup.FieldID, selector),
-			sqlgraph.To(teamgroupskill.Table, teamgroupskill.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, true, teamgroup.TeamGroupSkillsTable, teamgroup.TeamGroupSkillsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -523,12 +475,10 @@ func (_q *TeamGroupQuery) Clone() *TeamGroupQuery {
 		withModels:           _q.withModels.Clone(),
 		withImages:           _q.withImages.Clone(),
 		withHosts:            _q.withHosts.Clone(),
-		withSkills:           _q.withSkills.Clone(),
 		withTeamGroupMembers: _q.withTeamGroupMembers.Clone(),
 		withTeamGroupModels:  _q.withTeamGroupModels.Clone(),
 		withTeamGroupImages:  _q.withTeamGroupImages.Clone(),
 		withTeamGroupHosts:   _q.withTeamGroupHosts.Clone(),
-		withTeamGroupSkills:  _q.withTeamGroupSkills.Clone(),
 		// clone intermediate query.
 		sql:       _q.sql.Clone(),
 		path:      _q.path,
@@ -591,17 +541,6 @@ func (_q *TeamGroupQuery) WithHosts(opts ...func(*HostQuery)) *TeamGroupQuery {
 	return _q
 }
 
-// WithSkills tells the query-builder to eager-load the nodes that are connected to
-// the "skills" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *TeamGroupQuery) WithSkills(opts ...func(*SkillQuery)) *TeamGroupQuery {
-	query := (&SkillClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withSkills = query
-	return _q
-}
-
 // WithTeamGroupMembers tells the query-builder to eager-load the nodes that are connected to
 // the "team_group_members" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *TeamGroupQuery) WithTeamGroupMembers(opts ...func(*TeamGroupMemberQuery)) *TeamGroupQuery {
@@ -643,17 +582,6 @@ func (_q *TeamGroupQuery) WithTeamGroupHosts(opts ...func(*TeamGroupHostQuery)) 
 		opt(query)
 	}
 	_q.withTeamGroupHosts = query
-	return _q
-}
-
-// WithTeamGroupSkills tells the query-builder to eager-load the nodes that are connected to
-// the "team_group_skills" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *TeamGroupQuery) WithTeamGroupSkills(opts ...func(*TeamGroupSkillQuery)) *TeamGroupQuery {
-	query := (&TeamGroupSkillClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withTeamGroupSkills = query
 	return _q
 }
 
@@ -735,18 +663,16 @@ func (_q *TeamGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Te
 	var (
 		nodes       = []*TeamGroup{}
 		_spec       = _q.querySpec()
-		loadedTypes = [11]bool{
+		loadedTypes = [9]bool{
 			_q.withMembers != nil,
 			_q.withTeam != nil,
 			_q.withModels != nil,
 			_q.withImages != nil,
 			_q.withHosts != nil,
-			_q.withSkills != nil,
 			_q.withTeamGroupMembers != nil,
 			_q.withTeamGroupModels != nil,
 			_q.withTeamGroupImages != nil,
 			_q.withTeamGroupHosts != nil,
-			_q.withTeamGroupSkills != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -804,13 +730,6 @@ func (_q *TeamGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Te
 			return nil, err
 		}
 	}
-	if query := _q.withSkills; query != nil {
-		if err := _q.loadSkills(ctx, query, nodes,
-			func(n *TeamGroup) { n.Edges.Skills = []*Skill{} },
-			func(n *TeamGroup, e *Skill) { n.Edges.Skills = append(n.Edges.Skills, e) }); err != nil {
-			return nil, err
-		}
-	}
 	if query := _q.withTeamGroupMembers; query != nil {
 		if err := _q.loadTeamGroupMembers(ctx, query, nodes,
 			func(n *TeamGroup) { n.Edges.TeamGroupMembers = []*TeamGroupMember{} },
@@ -836,13 +755,6 @@ func (_q *TeamGroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Te
 		if err := _q.loadTeamGroupHosts(ctx, query, nodes,
 			func(n *TeamGroup) { n.Edges.TeamGroupHosts = []*TeamGroupHost{} },
 			func(n *TeamGroup, e *TeamGroupHost) { n.Edges.TeamGroupHosts = append(n.Edges.TeamGroupHosts, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withTeamGroupSkills; query != nil {
-		if err := _q.loadTeamGroupSkills(ctx, query, nodes,
-			func(n *TeamGroup) { n.Edges.TeamGroupSkills = []*TeamGroupSkill{} },
-			func(n *TeamGroup, e *TeamGroupSkill) { n.Edges.TeamGroupSkills = append(n.Edges.TeamGroupSkills, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1122,67 +1034,6 @@ func (_q *TeamGroupQuery) loadHosts(ctx context.Context, query *HostQuery, nodes
 	}
 	return nil
 }
-func (_q *TeamGroupQuery) loadSkills(ctx context.Context, query *SkillQuery, nodes []*TeamGroup, init func(*TeamGroup), assign func(*TeamGroup, *Skill)) error {
-	edgeIDs := make([]driver.Value, len(nodes))
-	byID := make(map[uuid.UUID]*TeamGroup)
-	nids := make(map[uuid.UUID]map[*TeamGroup]struct{})
-	for i, node := range nodes {
-		edgeIDs[i] = node.ID
-		byID[node.ID] = node
-		if init != nil {
-			init(node)
-		}
-	}
-	query.Where(func(s *sql.Selector) {
-		joinT := sql.Table(teamgroup.SkillsTable)
-		s.Join(joinT).On(s.C(skill.FieldID), joinT.C(teamgroup.SkillsPrimaryKey[1]))
-		s.Where(sql.InValues(joinT.C(teamgroup.SkillsPrimaryKey[0]), edgeIDs...))
-		columns := s.SelectedColumns()
-		s.Select(joinT.C(teamgroup.SkillsPrimaryKey[0]))
-		s.AppendSelect(columns...)
-		s.SetDistinct(false)
-	})
-	if err := query.prepareQuery(ctx); err != nil {
-		return err
-	}
-	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
-		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
-			assign := spec.Assign
-			values := spec.ScanValues
-			spec.ScanValues = func(columns []string) ([]any, error) {
-				values, err := values(columns[1:])
-				if err != nil {
-					return nil, err
-				}
-				return append([]any{new(uuid.UUID)}, values...), nil
-			}
-			spec.Assign = func(columns []string, values []any) error {
-				outValue := *values[0].(*uuid.UUID)
-				inValue := *values[1].(*uuid.UUID)
-				if nids[inValue] == nil {
-					nids[inValue] = map[*TeamGroup]struct{}{byID[outValue]: {}}
-					return assign(columns[1:], values[1:])
-				}
-				nids[inValue][byID[outValue]] = struct{}{}
-				return nil
-			}
-		})
-	})
-	neighbors, err := withInterceptors[[]*Skill](ctx, query, qr, query.inters)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		nodes, ok := nids[n.ID]
-		if !ok {
-			return fmt.Errorf(`unexpected "skills" node returned %v`, n.ID)
-		}
-		for kn := range nodes {
-			assign(kn, n)
-		}
-	}
-	return nil
-}
 func (_q *TeamGroupQuery) loadTeamGroupMembers(ctx context.Context, query *TeamGroupMemberQuery, nodes []*TeamGroup, init func(*TeamGroup), assign func(*TeamGroup, *TeamGroupMember)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[uuid.UUID]*TeamGroup)
@@ -1288,36 +1139,6 @@ func (_q *TeamGroupQuery) loadTeamGroupHosts(ctx context.Context, query *TeamGro
 	}
 	query.Where(predicate.TeamGroupHost(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(teamgroup.TeamGroupHostsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.GroupID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "group_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *TeamGroupQuery) loadTeamGroupSkills(ctx context.Context, query *TeamGroupSkillQuery, nodes []*TeamGroup, init func(*TeamGroup), assign func(*TeamGroup, *TeamGroupSkill)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[uuid.UUID]*TeamGroup)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(teamgroupskill.FieldGroupID)
-	}
-	query.Where(predicate.TeamGroupSkill(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(teamgroup.TeamGroupSkillsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
