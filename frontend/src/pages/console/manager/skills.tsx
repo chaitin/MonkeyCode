@@ -562,17 +562,30 @@ function AddSkillDialog({
           <DialogTitle>添加 Skill</DialogTitle>
         </DialogHeader>
         <div className="grid gap-5">
-          <Tabs defaultValue="upload">
+          <Tabs defaultValue="paste">
             <TabsList>
+              <TabsTrigger value="paste">
+                <ClipboardPaste className="size-4" />
+                输入文本
+              </TabsTrigger>
               <TabsTrigger value="upload">
                 <Upload className="size-4" />
                 上传文件
               </TabsTrigger>
-              <TabsTrigger value="paste">
-                <ClipboardPaste className="size-4" />
-                粘贴文本
-              </TabsTrigger>
             </TabsList>
+            <TabsContent value="paste" className="space-y-3">
+              <Field>
+                <FieldLabel>SKILL.md 内容</FieldLabel>
+                <FieldContent>
+                  <Textarea
+                    value={pastedText}
+                    onChange={(event) => handlePastedTextChange(event.target.value)}
+                    placeholder="粘贴完整 SKILL.md 内容"
+                    className="min-h-40 font-mono text-sm"
+                  />
+                </FieldContent>
+              </Field>
+            </TabsContent>
             <TabsContent value="upload" className="space-y-3">
               <Field>
                 <FieldLabel>Skill 文件</FieldLabel>
@@ -590,25 +603,12 @@ function AddSkillDialog({
                 </FieldContent>
               </Field>
             </TabsContent>
-            <TabsContent value="paste" className="space-y-3">
-              <Field>
-                <FieldLabel>SKILL.md 内容</FieldLabel>
-                <FieldContent>
-                  <Textarea
-                    value={pastedText}
-                    onChange={(event) => handlePastedTextChange(event.target.value)}
-                    placeholder="粘贴完整 SKILL.md 内容"
-                    className="min-h-40 font-mono text-sm"
-                  />
-                </FieldContent>
-              </Field>
-            </TabsContent>
           </Tabs>
 
-          <ParseState source={source} parseError={parseError} parsing={parsing} />
+          <ParseState parseError={parseError} parsing={parsing} />
 
           <SkillMetaForm
-            disabled={!formEnabled}
+            disabled={false}
             name={name}
             description={description}
             tagsText={tagsText}
@@ -886,11 +886,9 @@ function GroupMultiSelect({
 }
 
 function ParseState({
-  source,
   parseError,
   parsing,
 }: {
-  source: SkillSourceState | null
   parseError: string
   parsing: boolean
 }) {
@@ -898,15 +896,6 @@ function ParseState({
     return (
       <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
         正在解析 Skill...
-      </div>
-    )
-  }
-
-  if (source) {
-    return (
-      <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
-        已解析：{source.label}
-        {source.skillMdPath ? ` · ${source.skillMdPath}` : ""}
       </div>
     )
   }
@@ -919,11 +908,7 @@ function ParseState({
     )
   }
 
-  return (
-    <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-      请选择文件或粘贴完整 SKILL.md 内容。
-    </div>
-  )
+  return null
 }
 
 function SkillSourceIcon({ type }: { type: SkillSourceType }) {

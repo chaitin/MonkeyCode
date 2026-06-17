@@ -27,6 +27,39 @@ test("解析 SKILL.md frontmatter 生成可确认的 Skill 表单草稿", () => 
   assert.equal(parsed.content, skillMarkdown);
 });
 
+test("允许无 frontmatter 的 SKILL.md 由用户手动填写元数据", () => {
+  const content = `# 自定义 Skill
+
+这里是 Skill 正文。
+`;
+
+  const parsed = parseSkillMarkdown(content);
+
+  assert.equal(parsed.name, "");
+  assert.equal(parsed.description, "");
+  assert.deepEqual(parsed.tags, []);
+  assert.equal(parsed.content, content);
+  assert.equal(parsed.body, content);
+});
+
+test("frontmatter 缺少部分元数据时保留已解析字段并留空缺失字段", () => {
+  const content = `---
+name: 只有名称
+tags:
+  - 测试
+---
+
+# 正文
+`;
+
+  const parsed = parseSkillMarkdown(content);
+
+  assert.equal(parsed.name, "只有名称");
+  assert.equal(parsed.description, "");
+  assert.deepEqual(parsed.tags, ["测试"]);
+  assert.equal(parsed.content, content);
+});
+
 test("标签输入支持数组、逗号字符串并去重", () => {
   assert.deepEqual(normalizeSkillTags(["前端", "设计", "前端", " "]), ["前端", "设计"]);
   assert.deepEqual(normalizeSkillTags("前端, 设计，测试\n开发"), ["前端", "设计", "测试", "开发"]);

@@ -33,6 +33,7 @@ import { TaskSkillSelector } from "./task-skill-selector";
 import { TaskPluginSelector } from "./task-plugin-selector";
 import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api";
 import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
+import { filterSelectableSkillIds } from "./task-skill-selection";
 
 interface RepoOption {
   gitIdentityId: string;
@@ -125,13 +126,11 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
 
   const fetchSkillList = () => {
-    if (IS_OFFLINE_EDITION) {
-      return;
-    }
-
     apiRequest('v1SkillsList', {}, [], (resp) => {
       if (resp.code === 0) {
-        setSkillList(resp.data || []);
+        const skills = resp.data || [];
+        setSkillList(skills);
+        setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills));
       } else {
         toast.error(resp.message || '获取技能列表失败');
       }
@@ -667,20 +666,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 </DropdownMenuSub>
               </DropdownMenuContent>
             </DropdownMenu>
-            {!IS_OFFLINE_EDITION && (
-              <TaskSkillSelector
-                open={skillPopoverOpen}
-                onOpenChange={setSkillPopoverOpen}
-                selectedSkills={selectedSkill}
-                skills={skillList}
-                skillTags={skillTags}
-                activeSkillTag={activeSkillTag}
-                onActiveSkillTagChange={setActiveSkillTag}
-                onSkillChange={handleSkillChange}
-                triggerClassName="rounded-full"
-                labelClassName="hidden sm:block"
-              />
-            )}
+            <TaskSkillSelector
+              open={skillPopoverOpen}
+              onOpenChange={setSkillPopoverOpen}
+              selectedSkills={selectedSkill}
+              skills={skillList}
+              skillTags={skillTags}
+              activeSkillTag={activeSkillTag}
+              onActiveSkillTagChange={setActiveSkillTag}
+              onSkillChange={handleSkillChange}
+              triggerClassName="rounded-full"
+              labelClassName="hidden sm:block"
+            />
             {!IS_OFFLINE_EDITION && (
               <TaskPluginSelector
                 open={pluginPopoverOpen}

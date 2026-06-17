@@ -78,6 +78,7 @@ import ModelSelect from "./model-select"
 import { TaskSkillSelector } from "./task-skill-selector"
 import { TaskPluginSelector } from "./task-plugin-selector"
 import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api"
+import { filterSelectableSkillIds } from "./task-skill-selection"
 
 interface CreateDefaultTaskDialogProps {
   open: boolean
@@ -163,7 +164,11 @@ export default function CreateDefaultTaskDialog({
       setSelectedRepoFromMyRepos(false)
       setSelectedZipFile(null)
       setIdentitySearch({})
-      setSelectedSkill(defaultSkills)
+      setSelectedSkill(
+        skillList.length > 0
+          ? filterSelectableSkillIds(defaultSkills, skillList)
+          : defaultSkills
+      )
       setActiveSkillTag("全部")
       setPluginPopoverOpen(false)
       setSelectedPlugin([])
@@ -176,18 +181,22 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    if (IS_OFFLINE_EDITION) {
-      return
-    }
-
     if (skillList.length === 0) {
       apiRequest("v1SkillsList", {}, [], (resp) => {
         if (resp.code === 0) {
-          setSkillList(resp.data || [])
+          const skills = resp.data || []
+          setSkillList(skills)
+          setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills))
         } else {
           toast.error(resp.message || "获取技能列表失败")
         }
       })
+    } else {
+      setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
+    }
+
+    if (IS_OFFLINE_EDITION) {
+      return
     }
 
     if (pluginList.length === 0) {
@@ -777,19 +786,17 @@ export default function CreateDefaultTaskDialog({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {!IS_OFFLINE_EDITION && (
-              <TaskSkillSelector
-                open={skillPopoverOpen}
-                onOpenChange={setSkillPopoverOpen}
-                selectedSkills={selectedSkill}
-                skills={skillList}
-                skillTags={skillTags}
-                activeSkillTag={activeSkillTag}
-                onActiveSkillTagChange={setActiveSkillTag}
-                onSkillChange={handleSkillChange}
-                triggerClassName="rounded-md"
-              />
-            )}
+            <TaskSkillSelector
+              open={skillPopoverOpen}
+              onOpenChange={setSkillPopoverOpen}
+              selectedSkills={selectedSkill}
+              skills={skillList}
+              skillTags={skillTags}
+              activeSkillTag={activeSkillTag}
+              onActiveSkillTagChange={setActiveSkillTag}
+              onSkillChange={handleSkillChange}
+              triggerClassName="rounded-md"
+            />
             {!IS_OFFLINE_EDITION && (
               <TaskPluginSelector
                 open={pluginPopoverOpen}

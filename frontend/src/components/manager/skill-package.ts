@@ -35,14 +35,6 @@ export function parseSkillMarkdown(content: string): ParsedSkillMarkdown {
   const name = toTrimmedString(parsed.data.name)
   const description = toTrimmedString(parsed.data.description)
 
-  if (!name) {
-    throw new Error("SKILL.md 缺少 name")
-  }
-
-  if (!description) {
-    throw new Error("SKILL.md 缺少 description")
-  }
-
   return {
     name,
     description,
