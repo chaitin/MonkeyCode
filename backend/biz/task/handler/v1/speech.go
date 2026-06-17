@@ -174,13 +174,13 @@ var speechStreamAllowedFormats = map[string]struct{}{
 //	@Description	### 1) start (第一帧必须是它)
 //	@Description	```json
 //	@Description	{
-//	@Description	  "type": "start",
-//	@Description	  "format": "pcm",
-//	@Description	  "disfluency": false
+//	@Description	"type": "start",
+//	@Description	"format": "pcm",
+//	@Description	"disfluency": false
 //	@Description	}
 //	@Description	```
 //	@Description	- `format` 可选,默认 `pcm`。支持 `pcm` / `wav` / `ogg` / `mp3`,单声道、16-bit、采样率固定 16000Hz
-//	@Description	  - `pcm` / `wav` 内部音频流必须是 `pcm_s16le`;`ogg` 必须为 `opus` 编码;`mp3` 由远端解码
+//	@Description	- `pcm` / `wav` 内部音频流必须是 `pcm_s16le`;`ogg` 必须为 `opus` 编码;`mp3` 由远端解码
 //	@Description	- `disfluency` 可选,默认 `false`。`true` 时启用语义顺滑(过滤"嗯/啊"等口头禅、语义重复词)
 //	@Description	- 服务端校验通过 → 与豆包建立 WSS → 收到首个响应后向客户端下发 `ready` 事件(带 `logid`)
 //	@Description	- **客户端必须在收到 `ready` 之后才能发 Binary 音频帧**
@@ -233,23 +233,23 @@ var speechStreamAllowedFormats = map[string]struct{}{
 //	@Description	豆包远端错误:
 //	@Description	```json
 //	@Description	{
-//	@Description	  "type": "error",
-//	@Description	  "logid": "202407261553070FACFE6D19421815D605",
-//	@Description	  "error": {
-//	@Description	    "code": 45000001,
-//	@Description	    "message": "请求参数无效",
-//	@Description	    "request_id": "67ee89ba-7050-4c04-a3d7-ac61a63499b3",
-//	@Description	    "logid": "202407261553070FACFE6D19421815D605"
-//	@Description	  },
-//	@Description	  "timestamp": 1733299205000
+//	@Description	"type": "error",
+//	@Description	"logid": "202407261553070FACFE6D19421815D605",
+//	@Description	"error": {
+//	@Description	"code": 45000001,
+//	@Description	"message": "请求参数无效",
+//	@Description	"request_id": "67ee89ba-7050-4c04-a3d7-ac61a63499b3",
+//	@Description	"logid": "202407261553070FACFE6D19421815D605"
+//	@Description	},
+//	@Description	"timestamp": 1733299205000
 //	@Description	}
 //	@Description	```
 //	@Description	本服务前置校验错误(远端连接前):`code=0`,在 `message` 描述原因:
 //	@Description	```json
 //	@Description	{
-//	@Description	  "type": "error",
-//	@Description	  "error": { "code": 0, "message": "first message must be a 'start' control message" },
-//	@Description	  "timestamp": 1733299205000
+//	@Description	"type": "error",
+//	@Description	"error": { "code": 0, "message": "first message must be a 'start' control message" },
+//	@Description	"timestamp": 1733299205000
 //	@Description	}
 //	@Description	```
 //	@Description
@@ -281,13 +281,13 @@ var speechStreamAllowedFormats = map[string]struct{}{
 //	@Description	- POST /speech-to-text:整段录音 → SSE 单段结果,适合短语音 ≤60s
 //	@Description	- 本接口:WS 双向实时流,支持长语音、句级 final、可被打断,适合 Web/移动端边说边显示
 //	@Description
-//	@Tags			【用户】任务管理
-//	@Security		MonkeyCodeAIAuth
-//	@Param			start	body		domain.SpeechStreamStartReq	false	"[WS 协议] 客户端连接后首帧 JSON Text 控制消息 schema;不是 HTTP body,仅供前端代码生成 TS 类型,实际通过 WS Text 帧发送"
-//	@Success		101		{object}	domain.SpeechStreamEvent	"WebSocket 升级成功;此后通过 WS 帧通信,事件结构见上方说明"
-//	@Failure		401		{object}	web.Resp					"未授权"
-//	@Failure		500		{object}	web.Resp					"服务器内部错误(ASR 服务未配置等)"
-//	@Router			/api/v1/users/tasks/speech-to-text-stream [get]
+//	@Tags		【用户】任务管理
+//	@Security	MonkeyCodeAIAuth
+//	@Param		start	body		domain.SpeechStreamStartReq	false	"[WS 协议] 客户端连接后首帧 JSON Text 控制消息 schema;不是 HTTP body,仅供前端代码生成 TS 类型,实际通过 WS Text 帧发送"
+//	@Success	101		{object}	domain.SpeechStreamEvent	"WebSocket 升级成功;此后通过 WS 帧通信,事件结构见上方说明"
+//	@Failure	401		{object}	web.Resp					"未授权"
+//	@Failure	500		{object}	web.Resp					"服务器内部错误(ASR 服务未配置等)"
+//	@Router		/api/v1/users/tasks/speech-to-text-stream [get]
 func (h *TaskHandler) SpeechToTextStream(c *web.Context) error {
 	logger := h.logger.With("fn", "task.speech_to_text_stream")
 

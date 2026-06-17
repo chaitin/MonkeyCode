@@ -9,6 +9,126 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 )
 
+// The AgentPluginFunc type is an adapter to allow the use of ordinary
+// function as AgentPlugin mutator.
+type AgentPluginFunc func(context.Context, *db.AgentPluginMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentPluginFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentPluginMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentPluginMutation", m)
+}
+
+// The AgentPluginRepoFunc type is an adapter to allow the use of ordinary
+// function as AgentPluginRepo mutator.
+type AgentPluginRepoFunc func(context.Context, *db.AgentPluginRepoMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentPluginRepoFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentPluginRepoMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentPluginRepoMutation", m)
+}
+
+// The AgentPluginVersionFunc type is an adapter to allow the use of ordinary
+// function as AgentPluginVersion mutator.
+type AgentPluginVersionFunc func(context.Context, *db.AgentPluginVersionMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentPluginVersionFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentPluginVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentPluginVersionMutation", m)
+}
+
+// The AgentRuleFunc type is an adapter to allow the use of ordinary
+// function as AgentRule mutator.
+type AgentRuleFunc func(context.Context, *db.AgentRuleMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentRuleFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentRuleMutation", m)
+}
+
+// The AgentRuleVersionFunc type is an adapter to allow the use of ordinary
+// function as AgentRuleVersion mutator.
+type AgentRuleVersionFunc func(context.Context, *db.AgentRuleVersionMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentRuleVersionFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentRuleVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentRuleVersionMutation", m)
+}
+
+// The AgentSkillFunc type is an adapter to allow the use of ordinary
+// function as AgentSkill mutator.
+type AgentSkillFunc func(context.Context, *db.AgentSkillMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentSkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentSkillMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentSkillMutation", m)
+}
+
+// The AgentSkillGroupBindingFunc type is an adapter to allow the use of ordinary
+// function as AgentSkillGroupBinding mutator.
+type AgentSkillGroupBindingFunc func(context.Context, *db.AgentSkillGroupBindingMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentSkillGroupBindingFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentSkillGroupBindingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentSkillGroupBindingMutation", m)
+}
+
+// The AgentSkillRepoFunc type is an adapter to allow the use of ordinary
+// function as AgentSkillRepo mutator.
+type AgentSkillRepoFunc func(context.Context, *db.AgentSkillRepoMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentSkillRepoFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentSkillRepoMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentSkillRepoMutation", m)
+}
+
+// The AgentSkillVersionFunc type is an adapter to allow the use of ordinary
+// function as AgentSkillVersion mutator.
+type AgentSkillVersionFunc func(context.Context, *db.AgentSkillVersionMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentSkillVersionFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentSkillVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentSkillVersionMutation", m)
+}
+
+// The AgentSyncJobFunc type is an adapter to allow the use of ordinary
+// function as AgentSyncJob mutator.
+type AgentSyncJobFunc func(context.Context, *db.AgentSyncJobMutation) (db.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AgentSyncJobFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+	if mv, ok := m.(*db.AgentSyncJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.AgentSyncJobMutation", m)
+}
+
 // The AuditFunc type is an adapter to allow the use of ordinary
 // function as Audit mutator.
 type AuditFunc func(context.Context, *db.AuditMutation) (db.Value, error)
@@ -285,18 +405,6 @@ func (f ProjectTaskFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.ProjectTaskMutation", m)
 }
 
-// The SkillFunc type is an adapter to allow the use of ordinary
-// function as Skill mutator.
-type SkillFunc func(context.Context, *db.SkillMutation) (db.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f SkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
-	if mv, ok := m.(*db.SkillMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.SkillMutation", m)
-}
-
 // The TaskFunc type is an adapter to allow the use of ordinary
 // function as Task mutator.
 type TaskFunc func(context.Context, *db.TaskMutation) (db.Value, error)
@@ -429,18 +537,6 @@ func (f TeamGroupModelFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupModelMutation", m)
 }
 
-// The TeamGroupSkillFunc type is an adapter to allow the use of ordinary
-// function as TeamGroupSkill mutator.
-type TeamGroupSkillFunc func(context.Context, *db.TeamGroupSkillMutation) (db.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f TeamGroupSkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
-	if mv, ok := m.(*db.TeamGroupSkillMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamGroupSkillMutation", m)
-}
-
 // The TeamHostFunc type is an adapter to allow the use of ordinary
 // function as TeamHost mutator.
 type TeamHostFunc func(context.Context, *db.TeamHostMutation) (db.Value, error)
@@ -499,18 +595,6 @@ func (f TeamOIDCConfigFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamOIDCConfigMutation", m)
-}
-
-// The TeamSkillFunc type is an adapter to allow the use of ordinary
-// function as TeamSkill mutator.
-type TeamSkillFunc func(context.Context, *db.TeamSkillMutation) (db.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f TeamSkillFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
-	if mv, ok := m.(*db.TeamSkillMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.TeamSkillMutation", m)
 }
 
 // The UserFunc type is an adapter to allow the use of ordinary

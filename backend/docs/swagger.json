@@ -4,6 +4,55 @@
         "contact": {}
     },
     "paths": {
+        "/api/v1/plugins": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "并集返回 (global ∪ 用户 active team) 两级 scope 下的 plugin,同名 team\u003eglobal 覆盖;disabled 仍返回但 enabled=false。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【公共】plugin"
+                ],
+                "summary": "获取 Plugins 列表",
+                "responses": {
+                    "200": {
+                        "description": "获取成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.PluginListItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/public/captcha/challenge": {
             "post": {
                 "description": "CreateCaptcha",
@@ -56,6 +105,55 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/gocap.VerificationResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/skills": {
+            "get": {
+                "security": [
+                    {
+                        "MonkeyCodeAIAuth": []
+                    }
+                ],
+                "description": "并集返回 (global ∪ 用户 active team ∪ 用户个人) 三级 scope 下的 skill，禁用的 skill 返回 enabled=false。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【用户】任务管理"
+                ],
+                "summary": "获取本用户的 Skill 列表",
+                "responses": {
+                    "200": {
+                        "description": "获取成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/domain.SkillListItem"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
                         }
                     }
                 }
@@ -309,6 +407,67 @@
                                     "properties": {
                                         "data": {
                                             "$ref": "#/definitions/domain.TeamDashboardResp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/web.Resp"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/extension-packages": {
+            "post": {
+                "security": [
+                    {
+                        "MonkeyCodeAITeamAuth": []
+                    }
+                ],
+                "description": "上传团队扩展包并导入 Skills 和团队镜像记录",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "【Team 管理员】扩展包管理"
+                ],
+                "summary": "上传团队扩展包",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "扩展包 zip",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/web.Resp"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ImportTeamExtensionPackageResp"
                                         }
                                     }
                                 }
@@ -2058,7 +2217,6 @@
                         "MonkeyCodeAITeamAuth": []
                     }
                 ],
-                "description": "获取团队 Skill 列表",
                 "consumes": [
                     "application/json"
                 ],
@@ -2108,7 +2266,6 @@
                         "MonkeyCodeAITeamAuth": []
                     }
                 ],
-                "description": "添加团队 Skill",
                 "consumes": [
                     "application/json"
                 ],
@@ -2118,7 +2275,7 @@
                 "tags": [
                     "【Team 管理员】Skill 管理"
                 ],
-                "summary": "添加团队 Skill",
+                "summary": "添加团队 Skill (JSON)",
                 "parameters": [
                     {
                         "description": "请求参数",
@@ -2171,7 +2328,6 @@
                         "MonkeyCodeAITeamAuth": []
                     }
                 ],
-                "description": "上传团队 Skill zip 包",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -2181,7 +2337,7 @@
                 "tags": [
                     "【Team 管理员】Skill 管理"
                 ],
-                "summary": "上传团队 Skill zip 包",
+                "summary": "添加团队 Skill (multipart zip)",
                 "parameters": [
                     {
                         "type": "string",
@@ -2205,30 +2361,15 @@
                     },
                     {
                         "type": "string",
-                        "description": "SKILL.md 原文",
+                        "description": "SKILL.md 原文(可选)",
                         "name": "content",
-                        "in": "formData",
-                        "required": true
+                        "in": "formData"
                     },
                     {
                         "type": "string",
                         "description": "JSON 字符串数组",
                         "name": "group_ids",
                         "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "来源类型",
-                        "name": "source_type",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "来源标签",
-                        "name": "source_label",
-                        "in": "formData",
-                        "required": true
                     },
                     {
                         "type": "string",
@@ -2285,7 +2426,7 @@
                         "MonkeyCodeAITeamAuth": []
                     }
                 ],
-                "description": "更新团队 Skill",
+                "description": "请求参数的 content 非空时，后端将 SKILL.md 重新打包上传 OSS 并创建新的 agent_skill_versions 并切到 active version 到新版本，否则仅更新当前版本的 description / tags / is_force_delivery / group_ids",
                 "consumes": [
                     "application/json"
                 ],
@@ -2353,7 +2494,7 @@
                         "MonkeyCodeAITeamAuth": []
                     }
                 ],
-                "description": "删除团队 Skill",
+                "description": "从本团队 skill repo 中软删所选 agent skill",
                 "consumes": [
                     "application/json"
                 ],
@@ -9770,12 +9911,11 @@
             "required": [
                 "content",
                 "description",
-                "name",
-                "source_label",
-                "source_type"
+                "name"
             ],
             "properties": {
                 "content": {
+                    "description": "SKILL.md 原文",
                     "type": "string"
                 },
                 "description": {
@@ -9787,6 +9927,9 @@
                         "type": "string"
                     }
                 },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -9797,6 +9940,7 @@
                     "type": "string"
                 },
                 "source_type": {
+                    "description": "SourceType ∈ {\"zip\",\"markdown\",\"text\"};SourceLabel 为文件名或 \"粘贴文本\"。\n纯展示元数据,存进 active version 的 parsed_meta。",
                     "type": "string"
                 },
                 "tags": {
@@ -10693,6 +10837,29 @@
                 }
             }
         },
+        "domain.ImportTeamExtensionPackageResp": {
+            "type": "object",
+            "properties": {
+                "created_images": {
+                    "type": "integer"
+                },
+                "created_skills": {
+                    "type": "integer"
+                },
+                "package_id": {
+                    "type": "string"
+                },
+                "updated_images": {
+                    "type": "integer"
+                },
+                "updated_skills": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.InstallCommand": {
             "type": "object",
             "properties": {
@@ -11238,6 +11405,35 @@
                 }
             }
         },
+        "domain.PluginListItem": {
+            "type": "object",
+            "properties": {
+                "active_version": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "entry": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "$ref": "#/definitions/domain.SkillScope"
+                }
+            }
+        },
         "domain.Project": {
             "type": "object",
             "properties": {
@@ -11717,6 +11913,72 @@
                 }
             }
         },
+        "domain.SkillGroupRef": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SkillListItem": {
+            "type": "object",
+            "properties": {
+                "active_version": {
+                    "type": "string"
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SkillGroupRef"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "$ref": "#/definitions/domain.SkillScope"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "domain.SkillScope": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.SpeechRecognitionData": {
             "type": "object",
             "properties": {
@@ -12002,6 +12264,13 @@
             "properties": {
                 "issue_id": {
                     "type": "string"
+                },
+                "plugin_ids": {
+                    "description": "Plugin IDs 数组（仅 OpenCode 真正下发）",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "project_id": {
                     "type": "string"
@@ -12702,7 +12971,17 @@
         "domain.TeamSkill": {
             "type": "object",
             "properties": {
+                "active_version": {
+                    "type": "string"
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "content": {
+                    "description": "SKILL.md 文本,从 active version 当时入库时记录",
                     "type": "string"
                 },
                 "created_at": {
@@ -12711,22 +12990,25 @@
                 "description": {
                     "type": "string"
                 },
+                "enabled": {
+                    "type": "boolean"
+                },
                 "groups": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/domain.TeamGroup"
+                        "$ref": "#/definitions/domain.SkillGroupRef"
                     }
                 },
                 "id": {
                     "type": "string"
                 },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
-                "package_object_key": {
-                    "type": "string"
-                },
-                "package_url": {
+                "s3_key": {
                     "type": "string"
                 },
                 "skill_md_path": {
@@ -12843,6 +13125,9 @@
                     "type": "boolean"
                 },
                 "sleep_seconds": {
+                    "type": "integer"
+                },
+                "task_concurrency_limit": {
                     "type": "integer"
                 },
                 "team_id": {
@@ -13219,7 +13504,11 @@
                         "type": "string"
                     }
                 },
+                "is_force_delivery": {
+                    "type": "boolean"
+                },
                 "name": {
+                    "description": "当前不允许改 name(unique 索引硬约束),保留位",
                     "type": "string"
                 },
                 "skill_md_path": {
@@ -13252,6 +13541,9 @@
                     "type": "boolean"
                 },
                 "sleep_seconds": {
+                    "type": "integer"
+                },
+                "task_concurrency_limit": {
                     "type": "integer"
                 }
             }

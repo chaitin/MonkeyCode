@@ -601,19 +601,39 @@ type McpServerConfig struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
+// AgentResourceAssetRef mirrors codingmatrix proto
+// agent.AgentResources_AssetRef. Skills + plugins share the same shape.
+type AgentResourceAssetRef struct {
+	Name          string `json:"name,omitempty"`
+	Version       string `json:"version,omitempty"`
+	ZipURL        string `json:"zip_url,omitempty"`
+	EntryFilename string `json:"entry_filename,omitempty"`
+}
+
+// AgentResources mirrors codingmatrix proto agent.AgentResources. Skills /
+// Plugins are pointer slices so a nil AgentResources or nil sub-slice
+// serializes as JSON null / "absent" — matching the proto wire behaviour.
+// Rules and opencode.json travel on the legacy ConfigFile inline channel,
+// not here.
+type AgentResources struct {
+	Skills  []*AgentResourceAssetRef `json:"skills,omitempty"`
+	Plugins []*AgentResourceAssetRef `json:"plugins,omitempty"`
+}
+
 // CreateTaskReq 创建任务请求
 type CreateTaskReq struct {
-	ID           uuid.UUID         `json:"id"`
-	VMID         string            `json:"vm_id"`
-	SystemPrompt string            `json:"system_prompt,omitempty"`
-	Text         string            `json:"text,omitempty"`
-	Attachments  []Attachment      `json:"attachments,omitempty"`
-	LLM          LLM               `json:"llm,omitzero"`
-	CodingAgent  CodingAgent       `json:"coding_agent,omitempty"`
-	Configs      []ConfigFile      `json:"configs,omitzero"`
-	McpConfigs   []McpServerConfig `json:"mcp_configs,omitzero"`
-	Env          map[string]string `json:"env,omitempty"`
-	LogStore     string            `json:"log_store,omitempty"`
+	ID             uuid.UUID         `json:"id"`
+	VMID           string            `json:"vm_id"`
+	SystemPrompt   string            `json:"system_prompt,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	Attachments    []Attachment      `json:"attachments,omitempty"`
+	LLM            LLM               `json:"llm,omitzero"`
+	CodingAgent    CodingAgent       `json:"coding_agent,omitempty"`
+	Configs        []ConfigFile      `json:"configs,omitzero"`
+	McpConfigs     []McpServerConfig `json:"mcp_configs,omitzero"`
+	Env            map[string]string `json:"env,omitempty"`
+	LogStore       string            `json:"log_store,omitempty"`
+	AgentResources *AgentResources   `json:"agent_resources,omitempty"` // skill/plugin presigned URLs + rule content forwarded to codingmatrix agent
 }
 
 // ==================== VirtualMachine 查询类型 ====================

@@ -25,7 +25,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectcollaborator"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
@@ -308,21 +307,6 @@ func (_u *UserUpdate) AddImages(v ...*Image) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddImageIDs(ids...)
-}
-
-// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
-func (_u *UserUpdate) AddSkillIDs(ids ...uuid.UUID) *UserUpdate {
-	_u.mutation.AddSkillIDs(ids...)
-	return _u
-}
-
-// AddSkills adds the "skills" edges to the Skill entity.
-func (_u *UserUpdate) AddSkills(v ...*Skill) *UserUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddSkillIDs(ids...)
 }
 
 // AddHostIDs adds the "hosts" edge to the Host entity by IDs.
@@ -679,27 +663,6 @@ func (_u *UserUpdate) RemoveImages(v ...*Image) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveImageIDs(ids...)
-}
-
-// ClearSkills clears all "skills" edges to the Skill entity.
-func (_u *UserUpdate) ClearSkills() *UserUpdate {
-	_u.mutation.ClearSkills()
-	return _u
-}
-
-// RemoveSkillIDs removes the "skills" edge to Skill entities by IDs.
-func (_u *UserUpdate) RemoveSkillIDs(ids ...uuid.UUID) *UserUpdate {
-	_u.mutation.RemoveSkillIDs(ids...)
-	return _u
-}
-
-// RemoveSkills removes "skills" edges to Skill entities.
-func (_u *UserUpdate) RemoveSkills(v ...*Skill) *UserUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveSkillIDs(ids...)
 }
 
 // ClearHosts clears all "hosts" edges to the Host entity.
@@ -1422,51 +1385,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.SkillsTable,
-			Columns: []string{user.SkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedSkillsIDs(); len(nodes) > 0 && !_u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.SkillsTable,
-			Columns: []string{user.SkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.SkillsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.SkillsTable,
-			Columns: []string{user.SkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -2450,21 +2368,6 @@ func (_u *UserUpdateOne) AddImages(v ...*Image) *UserUpdateOne {
 	return _u.AddImageIDs(ids...)
 }
 
-// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
-func (_u *UserUpdateOne) AddSkillIDs(ids ...uuid.UUID) *UserUpdateOne {
-	_u.mutation.AddSkillIDs(ids...)
-	return _u
-}
-
-// AddSkills adds the "skills" edges to the Skill entity.
-func (_u *UserUpdateOne) AddSkills(v ...*Skill) *UserUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddSkillIDs(ids...)
-}
-
 // AddHostIDs adds the "hosts" edge to the Host entity by IDs.
 func (_u *UserUpdateOne) AddHostIDs(ids ...string) *UserUpdateOne {
 	_u.mutation.AddHostIDs(ids...)
@@ -2819,27 +2722,6 @@ func (_u *UserUpdateOne) RemoveImages(v ...*Image) *UserUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveImageIDs(ids...)
-}
-
-// ClearSkills clears all "skills" edges to the Skill entity.
-func (_u *UserUpdateOne) ClearSkills() *UserUpdateOne {
-	_u.mutation.ClearSkills()
-	return _u
-}
-
-// RemoveSkillIDs removes the "skills" edge to Skill entities by IDs.
-func (_u *UserUpdateOne) RemoveSkillIDs(ids ...uuid.UUID) *UserUpdateOne {
-	_u.mutation.RemoveSkillIDs(ids...)
-	return _u
-}
-
-// RemoveSkills removes "skills" edges to Skill entities.
-func (_u *UserUpdateOne) RemoveSkills(v ...*Skill) *UserUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveSkillIDs(ids...)
 }
 
 // ClearHosts clears all "hosts" edges to the Host entity.
@@ -3592,51 +3474,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(image.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.SkillsTable,
-			Columns: []string{user.SkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedSkillsIDs(); len(nodes) > 0 && !_u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.SkillsTable,
-			Columns: []string{user.SkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.SkillsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.SkillsTable,
-			Columns: []string{user.SkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

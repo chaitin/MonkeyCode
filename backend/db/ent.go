@@ -12,6 +12,16 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/chaitin/MonkeyCode/backend/db/agentplugin"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentpluginversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentrule"
+	"github.com/chaitin/MonkeyCode/backend/db/agentruleversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillgroupbinding"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
+	"github.com/chaitin/MonkeyCode/backend/db/agentsyncjob"
 	"github.com/chaitin/MonkeyCode/backend/db/audit"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbot"
 	"github.com/chaitin/MonkeyCode/backend/db/gitbottask"
@@ -35,7 +45,6 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/projectissue"
 	"github.com/chaitin/MonkeyCode/backend/db/projectissuecomment"
 	"github.com/chaitin/MonkeyCode/backend/db/projecttask"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/task"
 	"github.com/chaitin/MonkeyCode/backend/db/taskmodelswitch"
 	"github.com/chaitin/MonkeyCode/backend/db/taskusagestat"
@@ -47,13 +56,11 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmember"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroupmodel"
-	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
 	"github.com/chaitin/MonkeyCode/backend/db/teamhost"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
 	"github.com/chaitin/MonkeyCode/backend/db/teamoidcconfig"
-	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/db/useridentity"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
@@ -117,6 +124,16 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			agentplugin.Table:               agentplugin.ValidColumn,
+			agentpluginrepo.Table:           agentpluginrepo.ValidColumn,
+			agentpluginversion.Table:        agentpluginversion.ValidColumn,
+			agentrule.Table:                 agentrule.ValidColumn,
+			agentruleversion.Table:          agentruleversion.ValidColumn,
+			agentskill.Table:                agentskill.ValidColumn,
+			agentskillgroupbinding.Table:    agentskillgroupbinding.ValidColumn,
+			agentskillrepo.Table:            agentskillrepo.ValidColumn,
+			agentskillversion.Table:         agentskillversion.ValidColumn,
+			agentsyncjob.Table:              agentsyncjob.ValidColumn,
 			audit.Table:                     audit.ValidColumn,
 			gitbot.Table:                    gitbot.ValidColumn,
 			gitbottask.Table:                gitbottask.ValidColumn,
@@ -140,7 +157,6 @@ func checkColumn(t, c string) error {
 			projectissue.Table:              projectissue.ValidColumn,
 			projectissuecomment.Table:       projectissuecomment.ValidColumn,
 			projecttask.Table:               projecttask.ValidColumn,
-			skill.Table:                     skill.ValidColumn,
 			task.Table:                      task.ValidColumn,
 			taskmodelswitch.Table:           taskmodelswitch.ValidColumn,
 			taskusagestat.Table:             taskusagestat.ValidColumn,
@@ -152,13 +168,11 @@ func checkColumn(t, c string) error {
 			teamgroupimage.Table:            teamgroupimage.ValidColumn,
 			teamgroupmember.Table:           teamgroupmember.ValidColumn,
 			teamgroupmodel.Table:            teamgroupmodel.ValidColumn,
-			teamgroupskill.Table:            teamgroupskill.ValidColumn,
 			teamhost.Table:                  teamhost.ValidColumn,
 			teamimage.Table:                 teamimage.ValidColumn,
 			teammember.Table:                teammember.ValidColumn,
 			teammodel.Table:                 teammodel.ValidColumn,
 			teamoidcconfig.Table:            teamoidcconfig.ValidColumn,
-			teamskill.Table:                 teamskill.ValidColumn,
 			user.Table:                      user.ValidColumn,
 			useridentity.Table:              useridentity.ValidColumn,
 			virtualmachine.Table:            virtualmachine.ValidColumn,

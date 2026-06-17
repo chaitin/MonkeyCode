@@ -35,8 +35,6 @@ const (
 	EdgeImages = "images"
 	// EdgeHosts holds the string denoting the hosts edge name in mutations.
 	EdgeHosts = "hosts"
-	// EdgeSkills holds the string denoting the skills edge name in mutations.
-	EdgeSkills = "skills"
 	// EdgeTeamGroupMembers holds the string denoting the team_group_members edge name in mutations.
 	EdgeTeamGroupMembers = "team_group_members"
 	// EdgeTeamGroupModels holds the string denoting the team_group_models edge name in mutations.
@@ -45,8 +43,6 @@ const (
 	EdgeTeamGroupImages = "team_group_images"
 	// EdgeTeamGroupHosts holds the string denoting the team_group_hosts edge name in mutations.
 	EdgeTeamGroupHosts = "team_group_hosts"
-	// EdgeTeamGroupSkills holds the string denoting the team_group_skills edge name in mutations.
-	EdgeTeamGroupSkills = "team_group_skills"
 	// Table holds the table name of the teamgroup in the database.
 	Table = "team_groups"
 	// MembersTable is the table that holds the members relation/edge. The primary key declared below.
@@ -76,11 +72,6 @@ const (
 	// HostsInverseTable is the table name for the Host entity.
 	// It exists in this package in order to avoid circular dependency with the "host" package.
 	HostsInverseTable = "hosts"
-	// SkillsTable is the table that holds the skills relation/edge. The primary key declared below.
-	SkillsTable = "team_group_skills"
-	// SkillsInverseTable is the table name for the Skill entity.
-	// It exists in this package in order to avoid circular dependency with the "skill" package.
-	SkillsInverseTable = "skills"
 	// TeamGroupMembersTable is the table that holds the team_group_members relation/edge.
 	TeamGroupMembersTable = "team_group_members"
 	// TeamGroupMembersInverseTable is the table name for the TeamGroupMember entity.
@@ -109,13 +100,6 @@ const (
 	TeamGroupHostsInverseTable = "team_group_hosts"
 	// TeamGroupHostsColumn is the table column denoting the team_group_hosts relation/edge.
 	TeamGroupHostsColumn = "group_id"
-	// TeamGroupSkillsTable is the table that holds the team_group_skills relation/edge.
-	TeamGroupSkillsTable = "team_group_skills"
-	// TeamGroupSkillsInverseTable is the table name for the TeamGroupSkill entity.
-	// It exists in this package in order to avoid circular dependency with the "teamgroupskill" package.
-	TeamGroupSkillsInverseTable = "team_group_skills"
-	// TeamGroupSkillsColumn is the table column denoting the team_group_skills relation/edge.
-	TeamGroupSkillsColumn = "group_id"
 )
 
 // Columns holds all SQL columns for teamgroup fields.
@@ -141,9 +125,6 @@ var (
 	// HostsPrimaryKey and HostsColumn2 are the table columns denoting the
 	// primary key for the hosts relation (M2M).
 	HostsPrimaryKey = []string{"group_id", "host_id"}
-	// SkillsPrimaryKey and SkillsColumn2 are the table columns denoting the
-	// primary key for the skills relation (M2M).
-	SkillsPrimaryKey = []string{"group_id", "skill_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -268,20 +249,6 @@ func ByHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// BySkillsCount orders the results by skills count.
-func BySkillsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newSkillsStep(), opts...)
-	}
-}
-
-// BySkills orders the results by skills terms.
-func BySkills(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newSkillsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByTeamGroupMembersCount orders the results by team_group_members count.
 func ByTeamGroupMembersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -337,20 +304,6 @@ func ByTeamGroupHosts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newTeamGroupHostsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
-
-// ByTeamGroupSkillsCount orders the results by team_group_skills count.
-func ByTeamGroupSkillsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newTeamGroupSkillsStep(), opts...)
-	}
-}
-
-// ByTeamGroupSkills orders the results by team_group_skills terms.
-func ByTeamGroupSkills(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newTeamGroupSkillsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
 func newMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -386,13 +339,6 @@ func newHostsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.M2M, false, HostsTable, HostsPrimaryKey...),
 	)
 }
-func newSkillsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(SkillsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.M2M, false, SkillsTable, SkillsPrimaryKey...),
-	)
-}
 func newTeamGroupMembersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -419,12 +365,5 @@ func newTeamGroupHostsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TeamGroupHostsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupHostsTable, TeamGroupHostsColumn),
-	)
-}
-func newTeamGroupSkillsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(TeamGroupSkillsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupSkillsTable, TeamGroupSkillsColumn),
 	)
 }

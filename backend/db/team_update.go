@@ -14,14 +14,12 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/image"
 	"github.com/chaitin/MonkeyCode/backend/db/model"
 	"github.com/chaitin/MonkeyCode/backend/db/predicate"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
 	"github.com/chaitin/MonkeyCode/backend/db/teamimage"
 	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/db/teammodel"
-	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/google/uuid"
 )
@@ -274,21 +272,6 @@ func (_u *TeamUpdate) AddImages(v ...*Image) *TeamUpdate {
 	return _u.AddImageIDs(ids...)
 }
 
-// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
-func (_u *TeamUpdate) AddSkillIDs(ids ...uuid.UUID) *TeamUpdate {
-	_u.mutation.AddSkillIDs(ids...)
-	return _u
-}
-
-// AddSkills adds the "skills" edges to the Skill entity.
-func (_u *TeamUpdate) AddSkills(v ...*Skill) *TeamUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddSkillIDs(ids...)
-}
-
 // AddExtensionImageArchiveIDs adds the "extension_image_archives" edge to the TeamExtensionImageArchive entity by IDs.
 func (_u *TeamUpdate) AddExtensionImageArchiveIDs(ids ...uuid.UUID) *TeamUpdate {
 	_u.mutation.AddExtensionImageArchiveIDs(ids...)
@@ -347,21 +330,6 @@ func (_u *TeamUpdate) AddTeamImages(v ...*TeamImage) *TeamUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamImageIDs(ids...)
-}
-
-// AddTeamSkillIDs adds the "team_skills" edge to the TeamSkill entity by IDs.
-func (_u *TeamUpdate) AddTeamSkillIDs(ids ...uuid.UUID) *TeamUpdate {
-	_u.mutation.AddTeamSkillIDs(ids...)
-	return _u
-}
-
-// AddTeamSkills adds the "team_skills" edges to the TeamSkill entity.
-func (_u *TeamUpdate) AddTeamSkills(v ...*TeamSkill) *TeamUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddTeamSkillIDs(ids...)
 }
 
 // Mutation returns the TeamMutation object of the builder.
@@ -453,27 +421,6 @@ func (_u *TeamUpdate) RemoveImages(v ...*Image) *TeamUpdate {
 	return _u.RemoveImageIDs(ids...)
 }
 
-// ClearSkills clears all "skills" edges to the Skill entity.
-func (_u *TeamUpdate) ClearSkills() *TeamUpdate {
-	_u.mutation.ClearSkills()
-	return _u
-}
-
-// RemoveSkillIDs removes the "skills" edge to Skill entities by IDs.
-func (_u *TeamUpdate) RemoveSkillIDs(ids ...uuid.UUID) *TeamUpdate {
-	_u.mutation.RemoveSkillIDs(ids...)
-	return _u
-}
-
-// RemoveSkills removes "skills" edges to Skill entities.
-func (_u *TeamUpdate) RemoveSkills(v ...*Skill) *TeamUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveSkillIDs(ids...)
-}
-
 // ClearExtensionImageArchives clears all "extension_image_archives" edges to the TeamExtensionImageArchive entity.
 func (_u *TeamUpdate) ClearExtensionImageArchives() *TeamUpdate {
 	_u.mutation.ClearExtensionImageArchives()
@@ -556,27 +503,6 @@ func (_u *TeamUpdate) RemoveTeamImages(v ...*TeamImage) *TeamUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamImageIDs(ids...)
-}
-
-// ClearTeamSkills clears all "team_skills" edges to the TeamSkill entity.
-func (_u *TeamUpdate) ClearTeamSkills() *TeamUpdate {
-	_u.mutation.ClearTeamSkills()
-	return _u
-}
-
-// RemoveTeamSkillIDs removes the "team_skills" edge to TeamSkill entities by IDs.
-func (_u *TeamUpdate) RemoveTeamSkillIDs(ids ...uuid.UUID) *TeamUpdate {
-	_u.mutation.RemoveTeamSkillIDs(ids...)
-	return _u
-}
-
-// RemoveTeamSkills removes "team_skills" edges to TeamSkill entities.
-func (_u *TeamUpdate) RemoveTeamSkills(v ...*TeamSkill) *TeamUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveTeamSkillIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -900,63 +826,6 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: false,
-			Table:   team.SkillsTable,
-			Columns: team.SkillsPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		createE := &TeamSkillCreate{config: _u.config, mutation: newTeamSkillMutation(_u.config, OpCreate)}
-		createE.defaults()
-		_, specE := createE.createSpec()
-		edge.Target.Fields = specE.Fields
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedSkillsIDs(); len(nodes) > 0 && !_u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: false,
-			Table:   team.SkillsTable,
-			Columns: team.SkillsPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		createE := &TeamSkillCreate{config: _u.config, mutation: newTeamSkillMutation(_u.config, OpCreate)}
-		createE.defaults()
-		_, specE := createE.createSpec()
-		edge.Target.Fields = specE.Fields
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.SkillsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: false,
-			Table:   team.SkillsTable,
-			Columns: team.SkillsPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		createE := &TeamSkillCreate{config: _u.config, mutation: newTeamSkillMutation(_u.config, OpCreate)}
-		createE.defaults()
-		_, specE := createE.createSpec()
-		edge.Target.Fields = specE.Fields
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
 	if _u.mutation.ExtensionImageArchivesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1130,51 +999,6 @@ func (_u *TeamUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.TeamSkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   team.TeamSkillsTable,
-			Columns: []string{team.TeamSkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamskill.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedTeamSkillsIDs(); len(nodes) > 0 && !_u.mutation.TeamSkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   team.TeamSkillsTable,
-			Columns: []string{team.TeamSkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamskill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.TeamSkillsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   team.TeamSkillsTable,
-			Columns: []string{team.TeamSkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamskill.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1438,21 +1262,6 @@ func (_u *TeamUpdateOne) AddImages(v ...*Image) *TeamUpdateOne {
 	return _u.AddImageIDs(ids...)
 }
 
-// AddSkillIDs adds the "skills" edge to the Skill entity by IDs.
-func (_u *TeamUpdateOne) AddSkillIDs(ids ...uuid.UUID) *TeamUpdateOne {
-	_u.mutation.AddSkillIDs(ids...)
-	return _u
-}
-
-// AddSkills adds the "skills" edges to the Skill entity.
-func (_u *TeamUpdateOne) AddSkills(v ...*Skill) *TeamUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddSkillIDs(ids...)
-}
-
 // AddExtensionImageArchiveIDs adds the "extension_image_archives" edge to the TeamExtensionImageArchive entity by IDs.
 func (_u *TeamUpdateOne) AddExtensionImageArchiveIDs(ids ...uuid.UUID) *TeamUpdateOne {
 	_u.mutation.AddExtensionImageArchiveIDs(ids...)
@@ -1511,21 +1320,6 @@ func (_u *TeamUpdateOne) AddTeamImages(v ...*TeamImage) *TeamUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.AddTeamImageIDs(ids...)
-}
-
-// AddTeamSkillIDs adds the "team_skills" edge to the TeamSkill entity by IDs.
-func (_u *TeamUpdateOne) AddTeamSkillIDs(ids ...uuid.UUID) *TeamUpdateOne {
-	_u.mutation.AddTeamSkillIDs(ids...)
-	return _u
-}
-
-// AddTeamSkills adds the "team_skills" edges to the TeamSkill entity.
-func (_u *TeamUpdateOne) AddTeamSkills(v ...*TeamSkill) *TeamUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddTeamSkillIDs(ids...)
 }
 
 // Mutation returns the TeamMutation object of the builder.
@@ -1617,27 +1411,6 @@ func (_u *TeamUpdateOne) RemoveImages(v ...*Image) *TeamUpdateOne {
 	return _u.RemoveImageIDs(ids...)
 }
 
-// ClearSkills clears all "skills" edges to the Skill entity.
-func (_u *TeamUpdateOne) ClearSkills() *TeamUpdateOne {
-	_u.mutation.ClearSkills()
-	return _u
-}
-
-// RemoveSkillIDs removes the "skills" edge to Skill entities by IDs.
-func (_u *TeamUpdateOne) RemoveSkillIDs(ids ...uuid.UUID) *TeamUpdateOne {
-	_u.mutation.RemoveSkillIDs(ids...)
-	return _u
-}
-
-// RemoveSkills removes "skills" edges to Skill entities.
-func (_u *TeamUpdateOne) RemoveSkills(v ...*Skill) *TeamUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveSkillIDs(ids...)
-}
-
 // ClearExtensionImageArchives clears all "extension_image_archives" edges to the TeamExtensionImageArchive entity.
 func (_u *TeamUpdateOne) ClearExtensionImageArchives() *TeamUpdateOne {
 	_u.mutation.ClearExtensionImageArchives()
@@ -1720,27 +1493,6 @@ func (_u *TeamUpdateOne) RemoveTeamImages(v ...*TeamImage) *TeamUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveTeamImageIDs(ids...)
-}
-
-// ClearTeamSkills clears all "team_skills" edges to the TeamSkill entity.
-func (_u *TeamUpdateOne) ClearTeamSkills() *TeamUpdateOne {
-	_u.mutation.ClearTeamSkills()
-	return _u
-}
-
-// RemoveTeamSkillIDs removes the "team_skills" edge to TeamSkill entities by IDs.
-func (_u *TeamUpdateOne) RemoveTeamSkillIDs(ids ...uuid.UUID) *TeamUpdateOne {
-	_u.mutation.RemoveTeamSkillIDs(ids...)
-	return _u
-}
-
-// RemoveTeamSkills removes "team_skills" edges to TeamSkill entities.
-func (_u *TeamUpdateOne) RemoveTeamSkills(v ...*TeamSkill) *TeamUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveTeamSkillIDs(ids...)
 }
 
 // Where appends a list predicates to the TeamUpdate builder.
@@ -2094,63 +1846,6 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: false,
-			Table:   team.SkillsTable,
-			Columns: team.SkillsPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		createE := &TeamSkillCreate{config: _u.config, mutation: newTeamSkillMutation(_u.config, OpCreate)}
-		createE.defaults()
-		_, specE := createE.createSpec()
-		edge.Target.Fields = specE.Fields
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedSkillsIDs(); len(nodes) > 0 && !_u.mutation.SkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: false,
-			Table:   team.SkillsTable,
-			Columns: team.SkillsPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		createE := &TeamSkillCreate{config: _u.config, mutation: newTeamSkillMutation(_u.config, OpCreate)}
-		createE.defaults()
-		_, specE := createE.createSpec()
-		edge.Target.Fields = specE.Fields
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.SkillsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.M2M,
-			Inverse: false,
-			Table:   team.SkillsTable,
-			Columns: team.SkillsPrimaryKey,
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(skill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		createE := &TeamSkillCreate{config: _u.config, mutation: newTeamSkillMutation(_u.config, OpCreate)}
-		createE.defaults()
-		_, specE := createE.createSpec()
-		edge.Target.Fields = specE.Fields
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
 	if _u.mutation.ExtensionImageArchivesCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2324,51 +2019,6 @@ func (_u *TeamUpdateOne) sqlSave(ctx context.Context) (_node *Team, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(teamimage.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.TeamSkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   team.TeamSkillsTable,
-			Columns: []string{team.TeamSkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamskill.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedTeamSkillsIDs(); len(nodes) > 0 && !_u.mutation.TeamSkillsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   team.TeamSkillsTable,
-			Columns: []string{team.TeamSkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamskill.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.TeamSkillsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: true,
-			Table:   team.TeamSkillsTable,
-			Columns: []string{team.TeamSkillsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(teamskill.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

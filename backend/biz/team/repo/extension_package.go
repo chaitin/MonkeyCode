@@ -11,7 +11,6 @@ import (
 
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/image"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
 	"github.com/chaitin/MonkeyCode/backend/db/team"
 	"github.com/chaitin/MonkeyCode/backend/db/teamextensionimagearchive"
 	"github.com/chaitin/MonkeyCode/backend/domain"
@@ -33,19 +32,8 @@ func NewTeamExtensionPackageRepo(i *do.Injector) (domain.TeamExtensionPackageRep
 
 func (r *teamExtensionPackageRepo) ImportResources(ctx context.Context, teamID, userID uuid.UUID, req *domain.TeamExtensionImport) (*domain.TeamExtensionImportResult, error) {
 	result := &domain.TeamExtensionImportResult{}
+	// Skill 导入已移到 usecase 层(走 TeamSkillUsecase.Add),这里只处理 images。
 	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		for _, item := range req.Skills {
-			created, err := r.upsertSkill(ctx, tx, teamID, userID, req, item)
-			if err != nil {
-				return err
-			}
-			if created {
-				result.CreatedSkills++
-			} else {
-				result.UpdatedSkills++
-			}
-		}
-
 		for _, item := range req.Images {
 			if err := r.checkImageNameConflict(ctx, tx, teamID, req.PackageID, item); err != nil {
 				return err
@@ -85,74 +73,6 @@ func (r *teamExtensionPackageRepo) ListImageArchives(ctx context.Context, teamID
 		return nil, errcode.ErrDatabaseQuery.Wrap(err)
 	}
 	return archives, nil
-}
-
-func (r *teamExtensionPackageRepo) upsertSkill(ctx context.Context, tx *db.Tx, teamID, userID uuid.UUID, req *domain.TeamExtensionImport, item domain.TeamExtensionSkillImport) (bool, error) {
-	existing, err := tx.Skill.Query().
-		Where(
-			skill.HasTeamsWith(team.ID(teamID)),
-			skill.ExtensionPackageID(req.PackageID),
-			skill.ExtensionSkillID(item.SkillID),
-		).
-		Only(ctx)
-	if err != nil && !db.IsNotFound(err) {
-		return false, errcode.ErrDatabaseQuery.Wrap(err)
-	}
-	if err == nil {
-		if err := tx.Skill.UpdateOneID(existing.ID).
-			Where(skill.HasTeamsWith(team.ID(teamID))).
-			SetName(item.Name).
-			SetDescription(item.Description).
-			SetTags(item.Tags).
-			SetContent(item.Content).
-			SetPackageObjectKey(item.PackageObjectKey).
-			SetPackageURL(item.PackageURL).
-			SetSourceType("extension-package").
-			SetSourceLabel(req.PackageID).
-			SetSkillMdPath(item.Path).
-			SetExtensionPackageID(req.PackageID).
-			SetExtensionSkillID(item.SkillID).
-			SetExtensionVersion(req.Version).
-			Exec(ctx); err != nil {
-			return false, errcode.ErrDatabaseOperation.Wrap(err)
-		}
-		return false, nil
-	}
-
-	newSkill, err := tx.Skill.Create().
-		SetID(uuid.New()).
-		SetUserID(userID).
-		SetName(item.Name).
-		SetDescription(item.Description).
-		SetTags(item.Tags).
-		SetContent(item.Content).
-		SetPackageObjectKey(item.PackageObjectKey).
-		SetPackageURL(item.PackageURL).
-		SetSourceType("extension-package").
-		SetSourceLabel(req.PackageID).
-		SetSkillMdPath(item.Path).
-		SetExtensionPackageID(req.PackageID).
-		SetExtensionSkillID(item.SkillID).
-		SetExtensionVersion(req.Version).
-		Save(ctx)
-	if err != nil {
-		return false, errcode.ErrDatabaseOperation.Wrap(err)
-	}
-	if err := tx.TeamSkill.Create().
-		SetID(uuid.New()).
-		SetTeamID(teamID).
-		SetSkillID(newSkill.ID).
-		Exec(ctx); err != nil {
-		return false, errcode.ErrDatabaseOperation.Wrap(err)
-	}
-	groupIDs, err := ensureDefaultGroupIDs(ctx, tx, teamID, nil)
-	if err != nil {
-		return false, errcode.ErrDatabaseQuery.Wrap(err)
-	}
-	if err := replaceTeamSkillGroups(ctx, tx, newSkill.ID, groupIDs); err != nil {
-		return false, errcode.ErrDatabaseOperation.Wrap(err)
-	}
-	return true, nil
 }
 
 func (r *teamExtensionPackageRepo) checkImageNameConflict(ctx context.Context, tx *db.Tx, teamID uuid.UUID, packageID string, item domain.TeamExtensionImageImport) error {

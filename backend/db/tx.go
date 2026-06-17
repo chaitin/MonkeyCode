@@ -14,6 +14,26 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// AgentPlugin is the client for interacting with the AgentPlugin builders.
+	AgentPlugin *AgentPluginClient
+	// AgentPluginRepo is the client for interacting with the AgentPluginRepo builders.
+	AgentPluginRepo *AgentPluginRepoClient
+	// AgentPluginVersion is the client for interacting with the AgentPluginVersion builders.
+	AgentPluginVersion *AgentPluginVersionClient
+	// AgentRule is the client for interacting with the AgentRule builders.
+	AgentRule *AgentRuleClient
+	// AgentRuleVersion is the client for interacting with the AgentRuleVersion builders.
+	AgentRuleVersion *AgentRuleVersionClient
+	// AgentSkill is the client for interacting with the AgentSkill builders.
+	AgentSkill *AgentSkillClient
+	// AgentSkillGroupBinding is the client for interacting with the AgentSkillGroupBinding builders.
+	AgentSkillGroupBinding *AgentSkillGroupBindingClient
+	// AgentSkillRepo is the client for interacting with the AgentSkillRepo builders.
+	AgentSkillRepo *AgentSkillRepoClient
+	// AgentSkillVersion is the client for interacting with the AgentSkillVersion builders.
+	AgentSkillVersion *AgentSkillVersionClient
+	// AgentSyncJob is the client for interacting with the AgentSyncJob builders.
+	AgentSyncJob *AgentSyncJobClient
 	// Audit is the client for interacting with the Audit builders.
 	Audit *AuditClient
 	// GitBot is the client for interacting with the GitBot builders.
@@ -60,8 +80,6 @@ type Tx struct {
 	ProjectIssueComment *ProjectIssueCommentClient
 	// ProjectTask is the client for interacting with the ProjectTask builders.
 	ProjectTask *ProjectTaskClient
-	// Skill is the client for interacting with the Skill builders.
-	Skill *SkillClient
 	// Task is the client for interacting with the Task builders.
 	Task *TaskClient
 	// TaskModelSwitch is the client for interacting with the TaskModelSwitch builders.
@@ -84,8 +102,6 @@ type Tx struct {
 	TeamGroupMember *TeamGroupMemberClient
 	// TeamGroupModel is the client for interacting with the TeamGroupModel builders.
 	TeamGroupModel *TeamGroupModelClient
-	// TeamGroupSkill is the client for interacting with the TeamGroupSkill builders.
-	TeamGroupSkill *TeamGroupSkillClient
 	// TeamHost is the client for interacting with the TeamHost builders.
 	TeamHost *TeamHostClient
 	// TeamImage is the client for interacting with the TeamImage builders.
@@ -96,8 +112,6 @@ type Tx struct {
 	TeamModel *TeamModelClient
 	// TeamOIDCConfig is the client for interacting with the TeamOIDCConfig builders.
 	TeamOIDCConfig *TeamOIDCConfigClient
-	// TeamSkill is the client for interacting with the TeamSkill builders.
-	TeamSkill *TeamSkillClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserIdentity is the client for interacting with the UserIdentity builders.
@@ -235,6 +249,16 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.AgentPlugin = NewAgentPluginClient(tx.config)
+	tx.AgentPluginRepo = NewAgentPluginRepoClient(tx.config)
+	tx.AgentPluginVersion = NewAgentPluginVersionClient(tx.config)
+	tx.AgentRule = NewAgentRuleClient(tx.config)
+	tx.AgentRuleVersion = NewAgentRuleVersionClient(tx.config)
+	tx.AgentSkill = NewAgentSkillClient(tx.config)
+	tx.AgentSkillGroupBinding = NewAgentSkillGroupBindingClient(tx.config)
+	tx.AgentSkillRepo = NewAgentSkillRepoClient(tx.config)
+	tx.AgentSkillVersion = NewAgentSkillVersionClient(tx.config)
+	tx.AgentSyncJob = NewAgentSyncJobClient(tx.config)
 	tx.Audit = NewAuditClient(tx.config)
 	tx.GitBot = NewGitBotClient(tx.config)
 	tx.GitBotTask = NewGitBotTaskClient(tx.config)
@@ -258,7 +282,6 @@ func (tx *Tx) init() {
 	tx.ProjectIssue = NewProjectIssueClient(tx.config)
 	tx.ProjectIssueComment = NewProjectIssueCommentClient(tx.config)
 	tx.ProjectTask = NewProjectTaskClient(tx.config)
-	tx.Skill = NewSkillClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
 	tx.TaskModelSwitch = NewTaskModelSwitchClient(tx.config)
 	tx.TaskUsageStat = NewTaskUsageStatClient(tx.config)
@@ -270,13 +293,11 @@ func (tx *Tx) init() {
 	tx.TeamGroupImage = NewTeamGroupImageClient(tx.config)
 	tx.TeamGroupMember = NewTeamGroupMemberClient(tx.config)
 	tx.TeamGroupModel = NewTeamGroupModelClient(tx.config)
-	tx.TeamGroupSkill = NewTeamGroupSkillClient(tx.config)
 	tx.TeamHost = NewTeamHostClient(tx.config)
 	tx.TeamImage = NewTeamImageClient(tx.config)
 	tx.TeamMember = NewTeamMemberClient(tx.config)
 	tx.TeamModel = NewTeamModelClient(tx.config)
 	tx.TeamOIDCConfig = NewTeamOIDCConfigClient(tx.config)
-	tx.TeamSkill = NewTeamSkillClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserIdentity = NewUserIdentityClient(tx.config)
 	tx.VirtualMachine = NewVirtualMachineClient(tx.config)
@@ -289,7 +310,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Audit.QueryXXX(), the query will be executed
+// applies a query, for example: AgentPlugin.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

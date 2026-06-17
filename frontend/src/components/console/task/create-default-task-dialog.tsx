@@ -76,6 +76,8 @@ import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog"
 import ModelSelect from "./model-select"
 import { TaskSkillSelector } from "./task-skill-selector"
+import { TaskPluginSelector } from "./task-plugin-selector"
+import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api"
 
 interface CreateDefaultTaskDialogProps {
   open: boolean
@@ -122,6 +124,9 @@ export default function CreateDefaultTaskDialog({
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills)
   const [skillList, setSkillList] = useState<DomainSkill[]>([])
   const [activeSkillTag, setActiveSkillTag] = useState("全部")
+  const [pluginPopoverOpen, setPluginPopoverOpen] = useState(false)
+  const [pluginList, setPluginList] = useState<PluginListItem[]>([])
+  const [selectedPlugin, setSelectedPlugin] = useState<string[]>([])
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState("")
   const [selectedHostId, setSelectedHostId] = useState("")
@@ -160,6 +165,8 @@ export default function CreateDefaultTaskDialog({
       setIdentitySearch({})
       setSelectedSkill(defaultSkills)
       setActiveSkillTag("全部")
+      setPluginPopoverOpen(false)
+      setSelectedPlugin([])
       setAdvancedOptionsOpen(false)
       setSelectedModelId("")
       setSelectedHostId("")
@@ -169,18 +176,29 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    if (IS_OFFLINE_EDITION || skillList.length > 0) {
+    if (IS_OFFLINE_EDITION) {
       return
     }
 
-    apiRequest("v1SkillsList", {}, [], (resp) => {
-      if (resp.code === 0) {
-        setSkillList(resp.data || [])
-      } else {
-        toast.error(resp.message || "获取技能列表失败")
-      }
-    })
-  }, [open, skillList.length])
+    if (skillList.length === 0) {
+      apiRequest("v1SkillsList", {}, [], (resp) => {
+        if (resp.code === 0) {
+          setSkillList(resp.data || [])
+        } else {
+          toast.error(resp.message || "获取技能列表失败")
+        }
+      })
+    }
+
+    if (pluginList.length === 0) {
+      // Plugin picker is best-effort — surface but do not block the dialog.
+      fetchPluginListing()
+        .then((items) => setPluginList(items))
+        .catch((err: Error) => {
+          toast.error(err.message || "获取插件列表失败")
+        })
+    }
+  }, [open, skillList.length, pluginList.length])
 
   useEffect(() => {
     if (!open) {
@@ -308,6 +326,15 @@ export default function CreateDefaultTaskDialog({
     })
   }
 
+  const handlePluginChange = (pluginId: string, checked: boolean) => {
+    setSelectedPlugin((prev) => {
+      if (checked) {
+        return prev.includes(pluginId) ? prev : [...prev, pluginId]
+      }
+      return prev.filter((id) => id !== pluginId)
+    })
+  }
+
   const setDefaultConfig = () => {
     const storedParams = readStoredTaskDialogParams()
     setSelectedModelId(selectPreferredTaskModel(models, subscription))
@@ -428,6 +455,7 @@ export default function CreateDefaultTaskDialog({
       },
       extra: {
         skill_ids: selectedSkill,
+        plugin_ids: selectedPlugin,
       },
       resource: {
         core: 2,
@@ -759,6 +787,16 @@ export default function CreateDefaultTaskDialog({
                 activeSkillTag={activeSkillTag}
                 onActiveSkillTagChange={setActiveSkillTag}
                 onSkillChange={handleSkillChange}
+                triggerClassName="rounded-md"
+              />
+            )}
+            {!IS_OFFLINE_EDITION && (
+              <TaskPluginSelector
+                open={pluginPopoverOpen}
+                onOpenChange={setPluginPopoverOpen}
+                selectedPlugins={selectedPlugin}
+                plugins={pluginList}
+                onPluginChange={handlePluginChange}
                 triggerClassName="rounded-md"
               />
             )}

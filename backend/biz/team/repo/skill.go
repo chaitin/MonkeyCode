@@ -1,208 +1,293 @@
+// Package repo — 团队管理员侧的 agent_skill CRUD,对应 docs/skill-architecture.md
+// 中"团队管理员通过团队后台手动上传"的链路。
+//
+// 所有写入都把 skill 挂到 team 的 bare repo 下(scope_type=team, source_type=bare),
+// agent_skill_versions 走标准的 active_version_id 切换语义,group bindings 用
+// agent_skill_group_bindings 表显式 join。
 package repo
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
-	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
 	"github.com/chaitin/MonkeyCode/backend/db"
-	"github.com/chaitin/MonkeyCode/backend/db/skill"
-	"github.com/chaitin/MonkeyCode/backend/db/team"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskill"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillgroupbinding"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillrepo"
+	"github.com/chaitin/MonkeyCode/backend/db/agentskillversion"
 	"github.com/chaitin/MonkeyCode/backend/db/teamgroup"
-	"github.com/chaitin/MonkeyCode/backend/db/teamgroupskill"
-	"github.com/chaitin/MonkeyCode/backend/db/teamskill"
 	"github.com/chaitin/MonkeyCode/backend/domain"
-	"github.com/chaitin/MonkeyCode/backend/errcode"
-	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
+	"github.com/chaitin/MonkeyCode/backend/ent/types"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
 type teamSkillRepo struct {
-	db     *db.Client
-	logger *slog.Logger
+	client *db.Client
 }
 
+// NewTeamSkillRepo 注入 ent client。
 func NewTeamSkillRepo(i *do.Injector) (domain.TeamSkillRepo, error) {
-	return &teamSkillRepo{
-		db:     do.MustInvoke[*db.Client](i),
-		logger: do.MustInvoke[*slog.Logger](i),
-	}, nil
+	return &teamSkillRepo{client: do.MustInvoke[*db.Client](i)}, nil
 }
 
-func (r *teamSkillRepo) List(ctx context.Context, teamID uuid.UUID) ([]*db.Skill, error) {
-	tss, err := r.db.TeamSkill.Query().
-		WithSkill(func(sq *db.SkillQuery) {
-			sq.WithGroups()
-		}).
-		Where(teamskill.TeamID(teamID)).
-		Order(teamskill.ByCreatedAt(sql.OrderDesc())).
-		All(ctx)
+func (r *teamSkillRepo) List(ctx context.Context, teamID uuid.UUID) ([]*db.AgentSkill, error) {
+	repoID, err := r.GetBareRepoID(ctx, teamID)
 	if err != nil {
-		return nil, errcode.ErrDatabaseQuery.Wrap(err)
+		return nil, err
 	}
-	return cvt.Iter(tss, func(_ int, ts *db.TeamSkill) *db.Skill {
-		return ts.Edges.Skill
-	}), nil
+	return r.client.AgentSkill.Query().
+		Where(
+			agentskill.RepoIDEQ(repoID),
+			agentskill.IsDeletedEQ(false),
+			agentskill.ScopeTypeEQ(agentskill.ScopeTypeTeam),
+			agentskill.ScopeIDEQ(teamID.String()),
+		).
+		Order(db.Asc(agentskill.FieldName)).
+		All(ctx)
 }
 
-func (r *teamSkillRepo) Create(ctx context.Context, teamID, userID uuid.UUID, req *domain.AddTeamSkillReq) (*db.Skill, error) {
-	var skillID uuid.UUID
-	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		groupIDs, err := resolveTeamSkillGroupIDs(ctx, tx, teamID, req.GroupIDs)
-		if err != nil {
-			return err
-		}
+func (r *teamSkillRepo) GetSkill(ctx context.Context, teamID, skillID uuid.UUID) (*db.AgentSkill, error) {
+	return r.client.AgentSkill.Query().
+		Where(
+			agentskill.IDEQ(skillID),
+			agentskill.ScopeTypeEQ(agentskill.ScopeTypeTeam),
+			agentskill.ScopeIDEQ(teamID.String()),
+			agentskill.IsDeletedEQ(false),
+		).
+		First(ctx)
+}
 
-		newSkill, err := tx.Skill.Create().
+func (r *teamSkillRepo) GetBareRepoID(ctx context.Context, teamID uuid.UUID) (uuid.UUID, error) {
+	row, err := r.client.AgentSkillRepo.Query().
+		Where(
+			agentskillrepo.ScopeTypeEQ(agentskillrepo.ScopeTypeTeam),
+			agentskillrepo.ScopeIDEQ(teamID.String()),
+			agentskillrepo.SourceTypeEQ(agentskillrepo.SourceTypeBare),
+			agentskillrepo.IsDeletedEQ(false),
+		).
+		First(ctx)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("team_skill_repo: bare repo missing for team %s: %w", teamID, err)
+	}
+	return row.ID, nil
+}
+
+func (r *teamSkillRepo) UpsertSkill(ctx context.Context, teamID, repoID, userID uuid.UUID, name, description string, isForceDelivery bool, extensionPackageID string) (*db.AgentSkill, error) {
+	existing, err := r.client.AgentSkill.Query().
+		Where(
+			agentskill.RepoIDEQ(repoID),
+			agentskill.NameEQ(name),
+			agentskill.IsDeletedEQ(false),
+		).
+		First(ctx)
+	if err == nil {
+		return existing, nil
+	}
+	if !db.IsNotFound(err) {
+		return nil, err
+	}
+	return r.client.AgentSkill.Create().
+		SetID(uuid.New()).
+		SetRepoID(repoID).
+		SetName(name).
+		SetDescription(description).
+		SetScopeType(agentskill.ScopeTypeTeam).
+		SetScopeID(teamID.String()).
+		SetCreatedBy(userID).
+		SetIsForceDelivery(isForceDelivery).
+		SetEnabled(true).
+		SetNillableExtensionPackageID(nillableString(extensionPackageID)).
+		Save(ctx)
+}
+
+func (r *teamSkillRepo) CreateVersion(ctx context.Context, skillID uuid.UUID, version, s3Key string, meta domain.SkillVersionMeta) (*db.AgentSkillVersion, error) {
+	var out *db.AgentSkillVersion
+	err := entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		v, err := tx.AgentSkillVersion.Create().
 			SetID(uuid.New()).
-			SetUserID(userID).
-			SetName(req.Name).
-			SetDescription(req.Description).
-			SetTags(req.Tags).
-			SetContent(req.Content).
-			SetPackageObjectKey(req.PackageObjectKey).
-			SetPackageURL(req.PackageURL).
-			SetSourceType(req.SourceType).
-			SetSourceLabel(req.SourceLabel).
-			SetSkillMdPath(req.SkillMDPath).
+			SetResourceID(skillID).
+			SetVersion(version).
+			SetS3Key(s3Key).
+			SetParsedMeta(types.SkillParsedMeta{
+				Description: meta.Description,
+				Categories:  meta.Categories,
+				Tags:        meta.Tags,
+				SourceType:  meta.SourceType,
+				SourceLabel: meta.SourceLabel,
+			}).
 			Save(ctx)
 		if err != nil {
 			return err
 		}
-		skillID = newSkill.ID
-
-		if err := tx.TeamSkill.Create().
-			SetID(uuid.New()).
-			SetTeamID(teamID).
-			SetSkillID(newSkill.ID).
-			Exec(ctx); err != nil {
+		if _, err := tx.AgentSkill.UpdateOneID(skillID).
+			SetActiveVersionID(v.ID).
+			SetUpdatedAt(time.Now()).
+			Save(ctx); err != nil {
 			return err
 		}
-
-		return replaceTeamSkillGroups(ctx, tx, newSkill.ID, groupIDs)
+		out = v
+		return nil
 	})
-	if err != nil {
-		r.logger.Error("create team skill", "error", err)
-		return nil, errcode.ErrDatabaseOperation.Wrap(err)
-	}
-	return r.get(ctx, teamID, skillID)
+	return out, err
 }
 
-func (r *teamSkillRepo) Update(ctx context.Context, teamID uuid.UUID, req *domain.UpdateTeamSkillReq) (*db.Skill, error) {
-	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		groupIDs, err := resolveTeamSkillGroupIDs(ctx, tx, teamID, req.GroupIDs)
+func (r *teamSkillRepo) UpdateMeta(ctx context.Context, teamID, skillID uuid.UUID, name string, description *string, isForceDelivery *bool) (*db.AgentSkill, error) {
+	u := r.client.AgentSkill.UpdateOneID(skillID).
+		Where(
+			agentskill.ScopeTypeEQ(agentskill.ScopeTypeTeam),
+			agentskill.ScopeIDEQ(teamID.String()),
+			agentskill.IsDeletedEQ(false),
+		).
+		SetUpdatedAt(time.Now())
+	if strings.TrimSpace(name) != "" {
+		u = u.SetName(name)
+	}
+	if description != nil {
+		u = u.SetDescription(*description)
+	}
+	if isForceDelivery != nil {
+		u = u.SetIsForceDelivery(*isForceDelivery)
+	}
+	return u.Save(ctx)
+}
+
+func (r *teamSkillRepo) UpdateActiveVersionTags(ctx context.Context, skillID uuid.UUID, tags []string) error {
+	skill, err := r.client.AgentSkill.Get(ctx, skillID)
+	if err != nil {
+		return err
+	}
+	if skill.ActiveVersionID == nil {
+		return nil
+	}
+	ver, err := r.client.AgentSkillVersion.Get(ctx, *skill.ActiveVersionID)
+	if err != nil {
+		return err
+	}
+	meta := ver.ParsedMeta
+	meta.Tags = tags
+	_, err = r.client.AgentSkillVersion.UpdateOneID(ver.ID).
+		SetParsedMeta(meta).
+		Save(ctx)
+	return err
+}
+
+func (r *teamSkillRepo) SoftDeleteSkill(ctx context.Context, teamID, skillID uuid.UUID) error {
+	_, err := r.client.AgentSkill.UpdateOneID(skillID).
+		Where(
+			agentskill.ScopeTypeEQ(agentskill.ScopeTypeTeam),
+			agentskill.ScopeIDEQ(teamID.String()),
+		).
+		SetIsDeleted(true).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
+	return err
+}
+
+func (r *teamSkillRepo) ReplaceGroupBindings(ctx context.Context, teamID, skillID uuid.UUID, groupIDs []uuid.UUID) error {
+	// 仅在 group_id 属于该 team 时才接受,防止跨 team 越权关联。
+	if len(groupIDs) > 0 {
+		cnt, err := r.client.TeamGroup.Query().
+			Where(teamgroup.IDIn(groupIDs...), teamgroup.TeamIDEQ(teamID)).
+			Count(ctx)
 		if err != nil {
 			return err
 		}
-
-		upt := tx.Skill.UpdateOneID(req.SkillID).Where(skill.HasTeamsWith(team.ID(teamID)))
-		if req.Name != "" {
-			upt.SetName(req.Name)
+		if cnt != len(groupIDs) {
+			return fmt.Errorf("team_skill_repo: some group ids do not belong to team %s", teamID)
 		}
-		if req.Description != "" {
-			upt.SetDescription(req.Description)
-		}
-		if req.Tags != nil {
-			upt.SetTags(req.Tags)
-		}
-		if req.Content != "" {
-			upt.SetContent(req.Content)
-		}
-		if req.SourceType != "" {
-			upt.SetSourceType(req.SourceType)
-		}
-		if req.SourceLabel != "" {
-			upt.SetSourceLabel(req.SourceLabel)
-		}
-		if req.SkillMDPath != nil {
-			upt.SetSkillMdPath(*req.SkillMDPath)
-		}
-		if err := upt.Exec(ctx); err != nil {
-			return err
-		}
-
-		if req.GroupIDs != nil {
-			return replaceTeamSkillGroups(ctx, tx, req.SkillID, groupIDs)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, errcode.ErrDatabaseOperation.Wrap(err)
 	}
-	return r.get(ctx, teamID, req.SkillID)
-}
-
-func (r *teamSkillRepo) Delete(ctx context.Context, teamID, skillID uuid.UUID) error {
-	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
-		if err := tx.Skill.DeleteOneID(skillID).Where(skill.HasTeamsWith(team.ID(teamID))).Exec(ctx); err != nil {
-			return err
-		}
-		if _, err := tx.TeamSkill.Delete().
-			Where(teamskill.TeamID(teamID)).
-			Where(teamskill.SkillID(skillID)).
+	return entx.WithTx2(ctx, r.client, func(tx *db.Tx) error {
+		if _, err := tx.AgentSkillGroupBinding.Delete().
+			Where(agentskillgroupbinding.SkillIDEQ(skillID)).
 			Exec(ctx); err != nil {
 			return err
 		}
-		_, err := tx.TeamGroupSkill.Delete().Where(teamgroupskill.SkillIDEQ(skillID)).Exec(ctx)
-		return err
+		for _, gid := range groupIDs {
+			if _, err := tx.AgentSkillGroupBinding.Create().
+				SetID(uuid.New()).
+				SetSkillID(skillID).
+				SetGroupID(gid).
+				Save(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
-	if err != nil {
-		r.logger.Error("delete team skill", "error", err)
-		return errcode.ErrDatabaseOperation.Wrap(err)
-	}
-	return nil
 }
 
-func (r *teamSkillRepo) get(ctx context.Context, teamID, skillID uuid.UUID) (*db.Skill, error) {
-	ts, err := r.db.TeamSkill.Query().
-		WithSkill(func(sq *db.SkillQuery) {
-			sq.WithGroups()
-		}).
-		Where(teamskill.TeamID(teamID)).
-		Where(teamskill.SkillID(skillID)).
-		First(ctx)
+func (r *teamSkillRepo) GetActiveVersion(ctx context.Context, skillID uuid.UUID) (*db.AgentSkillVersion, error) {
+	skill, err := r.client.AgentSkill.Get(ctx, skillID)
 	if err != nil {
-		return nil, errcode.ErrDatabaseQuery.Wrap(err)
+		return nil, err
 	}
-	return ts.Edges.Skill, nil
+	if skill.ActiveVersionID == nil {
+		return nil, nil
+	}
+	return r.client.AgentSkillVersion.Get(ctx, *skill.ActiveVersionID)
 }
 
-func resolveTeamSkillGroupIDs(ctx context.Context, tx *db.Tx, teamID uuid.UUID, reqGroupIDs []uuid.UUID) ([]uuid.UUID, error) {
-	useDefaultGroup := len(reqGroupIDs) == 0
-	groups, err := tx.TeamGroup.Query().
-		Where(teamgroup.TeamID(teamID)).
-		Where(teamgroup.IDIn(reqGroupIDs...)).
+func (r *teamSkillRepo) NextVersionFor(ctx context.Context, skillID uuid.UUID) (string, error) {
+	versions, err := r.client.AgentSkillVersion.Query().
+		Where(agentskillversion.ResourceIDEQ(skillID)).
+		All(ctx)
+	if err != nil {
+		return "", err
+	}
+	max := 0
+	for _, v := range versions {
+		// version 形如 "v3" / "v10";容错:非 vN 形式跳过。
+		s := strings.TrimPrefix(v.Version, "v")
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			continue
+		}
+		if n > max {
+			max = n
+		}
+	}
+	return fmt.Sprintf("v%d", max+1), nil
+}
+
+func (r *teamSkillRepo) LoadGroups(ctx context.Context, skillID uuid.UUID) ([]domain.SkillGroupRef, error) {
+	bindings, err := r.client.AgentSkillGroupBinding.Query().
+		Where(agentskillgroupbinding.SkillIDEQ(skillID)).
 		All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	groupIDs := cvt.Iter(groups, func(_ int, group *db.TeamGroup) uuid.UUID {
-		return group.ID
-	})
-	if useDefaultGroup {
-		return ensureDefaultGroupIDs(ctx, tx, teamID, groupIDs)
+	if len(bindings) == 0 {
+		return nil, nil
 	}
-	return groupIDs, nil
+	groupIDs := make([]uuid.UUID, 0, len(bindings))
+	for _, b := range bindings {
+		groupIDs = append(groupIDs, b.GroupID)
+	}
+	groups, err := r.client.TeamGroup.Query().
+		Where(teamgroup.IDIn(groupIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SkillGroupRef, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, domain.SkillGroupRef{ID: g.ID.String(), Name: g.Name})
+	}
+	return out, nil
 }
 
-func replaceTeamSkillGroups(ctx context.Context, tx *db.Tx, skillID uuid.UUID, groupIDs []uuid.UUID) error {
-	if _, err := tx.TeamGroupSkill.Delete().Where(teamgroupskill.SkillIDEQ(skillID)).Exec(ctx); err != nil {
-		return err
-	}
-
-	builders := make([]*db.TeamGroupSkillCreate, 0, len(groupIDs))
-	for _, groupID := range groupIDs {
-		builders = append(builders, tx.TeamGroupSkill.Create().
-			SetID(uuid.New()).
-			SetGroupID(groupID).
-			SetSkillID(skillID))
-	}
-	if len(builders) == 0 {
+// agentresource 引用仅用于 enum 字符串常量校验/IDE 跳转;实际未使用。
+func nillableString(s string) *string {
+	if s == "" {
 		return nil
 	}
-	_, err := tx.TeamGroupSkill.CreateBulk(builders...).Save(ctx)
-	return err
+	return &s
 }
+
+var _ = agentresource.BareRepoSourceType

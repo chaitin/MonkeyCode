@@ -411,29 +411,6 @@ func HasHostsWith(preds ...predicate.Host) predicate.TeamGroup {
 	})
 }
 
-// HasSkills applies the HasEdge predicate on the "skills" edge.
-func HasSkills() predicate.TeamGroup {
-	return predicate.TeamGroup(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, SkillsTable, SkillsPrimaryKey...),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasSkillsWith applies the HasEdge predicate on the "skills" edge with a given conditions (other predicates).
-func HasSkillsWith(preds ...predicate.Skill) predicate.TeamGroup {
-	return predicate.TeamGroup(func(s *sql.Selector) {
-		step := newSkillsStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
 // HasTeamGroupMembers applies the HasEdge predicate on the "team_group_members" edge.
 func HasTeamGroupMembers() predicate.TeamGroup {
 	return predicate.TeamGroup(func(s *sql.Selector) {
@@ -518,29 +495,6 @@ func HasTeamGroupHosts() predicate.TeamGroup {
 func HasTeamGroupHostsWith(preds ...predicate.TeamGroupHost) predicate.TeamGroup {
 	return predicate.TeamGroup(func(s *sql.Selector) {
 		step := newTeamGroupHostsStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasTeamGroupSkills applies the HasEdge predicate on the "team_group_skills" edge.
-func HasTeamGroupSkills() predicate.TeamGroup {
-	return predicate.TeamGroup(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, true, TeamGroupSkillsTable, TeamGroupSkillsColumn),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasTeamGroupSkillsWith applies the HasEdge predicate on the "team_group_skills" edge with a given conditions (other predicates).
-func HasTeamGroupSkillsWith(preds ...predicate.TeamGroupSkill) predicate.TeamGroup {
-	return predicate.TeamGroup(func(s *sql.Selector) {
-		step := newTeamGroupSkillsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

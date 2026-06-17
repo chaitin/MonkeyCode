@@ -54,8 +54,6 @@ type TeamEdges struct {
 	Models []*Model `json:"models,omitempty"`
 	// Images holds the value of the images edge.
 	Images []*Image `json:"images,omitempty"`
-	// Skills holds the value of the skills edge.
-	Skills []*Skill `json:"skills,omitempty"`
 	// ExtensionImageArchives holds the value of the extension_image_archives edge.
 	ExtensionImageArchives []*TeamExtensionImageArchive `json:"extension_image_archives,omitempty"`
 	// TeamMembers holds the value of the team_members edge.
@@ -64,11 +62,9 @@ type TeamEdges struct {
 	TeamModels []*TeamModel `json:"team_models,omitempty"`
 	// TeamImages holds the value of the team_images edge.
 	TeamImages []*TeamImage `json:"team_images,omitempty"`
-	// TeamSkills holds the value of the team_skills edge.
-	TeamSkills []*TeamSkill `json:"team_skills,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [10]bool
+	loadedTypes [8]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -107,19 +103,10 @@ func (e TeamEdges) ImagesOrErr() ([]*Image, error) {
 	return nil, &NotLoadedError{edge: "images"}
 }
 
-// SkillsOrErr returns the Skills value or an error if the edge
-// was not loaded in eager-loading.
-func (e TeamEdges) SkillsOrErr() ([]*Skill, error) {
-	if e.loadedTypes[4] {
-		return e.Skills, nil
-	}
-	return nil, &NotLoadedError{edge: "skills"}
-}
-
 // ExtensionImageArchivesOrErr returns the ExtensionImageArchives value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) ExtensionImageArchivesOrErr() ([]*TeamExtensionImageArchive, error) {
-	if e.loadedTypes[5] {
+	if e.loadedTypes[4] {
 		return e.ExtensionImageArchives, nil
 	}
 	return nil, &NotLoadedError{edge: "extension_image_archives"}
@@ -128,7 +115,7 @@ func (e TeamEdges) ExtensionImageArchivesOrErr() ([]*TeamExtensionImageArchive, 
 // TeamMembersOrErr returns the TeamMembers value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
-	if e.loadedTypes[6] {
+	if e.loadedTypes[5] {
 		return e.TeamMembers, nil
 	}
 	return nil, &NotLoadedError{edge: "team_members"}
@@ -137,7 +124,7 @@ func (e TeamEdges) TeamMembersOrErr() ([]*TeamMember, error) {
 // TeamModelsOrErr returns the TeamModels value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
-	if e.loadedTypes[7] {
+	if e.loadedTypes[6] {
 		return e.TeamModels, nil
 	}
 	return nil, &NotLoadedError{edge: "team_models"}
@@ -146,19 +133,10 @@ func (e TeamEdges) TeamModelsOrErr() ([]*TeamModel, error) {
 // TeamImagesOrErr returns the TeamImages value or an error if the edge
 // was not loaded in eager-loading.
 func (e TeamEdges) TeamImagesOrErr() ([]*TeamImage, error) {
-	if e.loadedTypes[8] {
+	if e.loadedTypes[7] {
 		return e.TeamImages, nil
 	}
 	return nil, &NotLoadedError{edge: "team_images"}
-}
-
-// TeamSkillsOrErr returns the TeamSkills value or an error if the edge
-// was not loaded in eager-loading.
-func (e TeamEdges) TeamSkillsOrErr() ([]*TeamSkill, error) {
-	if e.loadedTypes[9] {
-		return e.TeamSkills, nil
-	}
-	return nil, &NotLoadedError{edge: "team_skills"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -290,11 +268,6 @@ func (_m *Team) QueryImages() *ImageQuery {
 	return NewTeamClient(_m.config).QueryImages(_m)
 }
 
-// QuerySkills queries the "skills" edge of the Team entity.
-func (_m *Team) QuerySkills() *SkillQuery {
-	return NewTeamClient(_m.config).QuerySkills(_m)
-}
-
 // QueryExtensionImageArchives queries the "extension_image_archives" edge of the Team entity.
 func (_m *Team) QueryExtensionImageArchives() *TeamExtensionImageArchiveQuery {
 	return NewTeamClient(_m.config).QueryExtensionImageArchives(_m)
@@ -313,11 +286,6 @@ func (_m *Team) QueryTeamModels() *TeamModelQuery {
 // QueryTeamImages queries the "team_images" edge of the Team entity.
 func (_m *Team) QueryTeamImages() *TeamImageQuery {
 	return NewTeamClient(_m.config).QueryTeamImages(_m)
-}
-
-// QueryTeamSkills queries the "team_skills" edge of the Team entity.
-func (_m *Team) QueryTeamSkills() *TeamSkillQuery {
-	return NewTeamClient(_m.config).QueryTeamSkills(_m)
 }
 
 // Update returns a builder for updating this Team.

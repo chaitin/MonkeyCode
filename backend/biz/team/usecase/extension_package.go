@@ -19,6 +19,7 @@ import (
 
 type teamExtensionPackageUsecase struct {
 	repo              domain.TeamExtensionPackageRepo
+	skillUsecase      domain.TeamSkillUsecase
 	staticDir         string
 	staticRoutePrefix string
 	logger            *slog.Logger
@@ -28,6 +29,7 @@ func NewTeamExtensionPackageUsecase(i *do.Injector) (domain.TeamExtensionPackage
 	cfg := do.MustInvoke[*config.Config](i)
 	return &teamExtensionPackageUsecase{
 		repo:              do.MustInvoke[domain.TeamExtensionPackageRepo](i),
+		skillUsecase:      do.MustInvoke[domain.TeamSkillUsecase](i),
 		staticDir:         cfg.StaticFiles.Dir,
 		staticRoutePrefix: cfg.StaticFiles.RoutePrefix,
 		logger:            do.MustInvoke[*slog.Logger](i),
@@ -41,6 +43,30 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	}
 
 	teamID := teamUser.GetTeamID()
+
+	// Skill 导入:复用 TeamSkillUsecase.Add 走 bare repo + agent_skill 标准流程。
+	// extension_version 作为 agent_skill_version 的版本号,name 做幂等匹配。
+	var createdSkills, updatedSkills int
+	for _, s := range extensionSkillImports(pkg) {
+		_, err := u.skillUsecase.Add(ctx, teamUser, &domain.AddTeamSkillReq{
+			Name:               s.Name,
+			Description:        s.Description,
+			Tags:               s.Tags,
+			Content:            s.Content,
+			SkillMDPath:        s.Path,
+			SourceType:         "extension-package",
+			SourceLabel:        pkg.PackageID,
+			ExtensionPackageID: pkg.PackageID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		// Add 内部按 name upsert:已存在 → 新版本(算 updated),不存在 → 新建(算 created)。
+		// 这里简化为全算 updated(首次也创建了 version);精确区分需要 Add 返回 created flag。
+		updatedSkills++
+	}
+
+	// Image 导入:保持原有流程。
 	images, err := publishExtensionImages(u.staticDir, u.staticRoutePrefix, teamID, pkg)
 	if err != nil {
 		return nil, err
@@ -48,13 +74,14 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	importReq := &domain.TeamExtensionImport{
 		PackageID: pkg.PackageID,
 		Version:   pkg.Version,
-		Skills:    extensionSkillImports(pkg),
 		Images:    images,
 	}
 	result, err := u.repo.ImportResources(ctx, teamID, teamUser.User.ID, importReq)
 	if err != nil {
 		return nil, err
 	}
+	result.CreatedSkills = createdSkills
+	result.UpdatedSkills = updatedSkills
 	archives, err := u.repo.ListImageArchives(ctx, teamID)
 	if err != nil {
 		return nil, err

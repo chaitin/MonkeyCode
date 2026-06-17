@@ -28,6 +28,8 @@ github.com/aliyun/alibaba-cloud-sdk-go v1.61.1376 h1:lExo7heZgdFn5AbaNJEllbA0KSJ
 github.com/aliyun/alibaba-cloud-sdk-go v1.61.1376/go.mod h1:9CMdKNL3ynIGPpfTcdwTvIm8SGuAZYYC4jFVSSvE1YQ=
 github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1 h1:LjItoNZuu5xHlsByFo+kr3nGa4LRIESCGWhfurayxBg=
 github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1/go.mod h1:4BDMUKpEaP/Ct79w0ozR0nbnEj49g1k3mrgX/IKG5I4=
+github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible h1:8psS8a+wKfiLt1iVDX79F7Y6wUM49Lcha2FMXt4UM8g=
+github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible/go.mod h1:T/Aws4fEfogEE9v+HPhhw+CntffsBHJ8nXQCwKr0/g8=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/anthropics/anthropic-sdk-go v1.40.0 h1:+lhHU2LdeRlVsazVXHswFMpWr2Q11ShL+gjBNzX36Rw=
