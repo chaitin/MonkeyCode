@@ -10,6 +10,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
+	"github.com/chaitin/MonkeyCode/backend/db/mcptool"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/google/uuid"
 )
@@ -281,5 +282,86 @@ func TestDeleteUserUpstreamMarksDeletedAt(t *testing.T) {
 	}
 	if !deletedAt.Valid {
 		t.Fatal("deleted_at is NULL, want soft-deleted upstream")
+	}
+}
+
+func TestListVisibleToolsIncludesAuthorizedTeamToolsAndUsesUserSettings(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:user-mcp-visible-team-tools?mode=memory&cache=shared&_fk=1")
+	t.Cleanup(func() { _ = client.Close() })
+
+	teamID := uuid.New()
+	userID := uuid.New()
+	groupID := uuid.New()
+	upstreamID := uuid.New()
+	toolID := uuid.New()
+
+	client.Team.Create().SetID(teamID).SetName("team").SetMemberLimit(10).SaveX(ctx)
+	client.User.Create().
+		SetID(userID).
+		SetName("member").
+		SetEmail("member@example.com").
+		SetRole(consts.UserRoleSubAccount).
+		SetStatus(consts.UserStatusActive).
+		SaveX(ctx)
+	client.TeamMember.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetUserID(userID).
+		SetRole(consts.TeamMemberRoleUser).
+		SaveX(ctx)
+	client.TeamGroup.Create().SetID(groupID).SetTeamID(teamID).SetName("group").SaveX(ctx)
+	client.TeamGroupMember.Create().SetID(uuid.New()).SetGroupID(groupID).SetUserID(userID).SaveX(ctx)
+	client.MCPUpstream.Create().
+		SetID(upstreamID).
+		SetName("Team Docs").
+		SetSlug("team-docs").
+		SetScope("team").
+		SetTeamID(teamID).
+		SetType("server").
+		SetURL("https://team.example.com/mcp").
+		SetHeaders(map[string]string{}).
+		SaveX(ctx)
+	client.TeamGroupMCPUpstream.Create().
+		SetID(uuid.New()).
+		SetTeamID(teamID).
+		SetGroupID(groupID).
+		SetUpstreamID(upstreamID).
+		SaveX(ctx)
+	client.MCPTool.Create().
+		SetID(toolID).
+		SetUpstreamID(upstreamID).
+		SetName("search").
+		SetNamespacedName("team-docs__search").
+		SetScope("team").
+		SetTeamID(teamID).
+		SetInputSchema(map[string]any{}).
+		SetEnabled(true).
+		SaveX(ctx)
+
+	repo := &mcpRepo{db: client}
+	tools, err := repo.ListVisibleTools(ctx, userID)
+	if err != nil {
+		t.Fatalf("ListVisibleTools() error = %v", err)
+	}
+	if len(tools) != 1 || tools[0].ID != toolID {
+		t.Fatalf("tools = %+v, want team tool %s", tools, toolID)
+	}
+
+	if err := repo.UpsertToolSetting(ctx, userID, toolID, false); err != nil {
+		t.Fatalf("UpsertToolSetting() error = %v", err)
+	}
+	setting, err := client.MCPUserToolSetting.Query().Only(ctx)
+	if err != nil {
+		t.Fatalf("query user tool setting: %v", err)
+	}
+	if setting.UserID != userID || setting.ToolID != toolID || setting.Enabled {
+		t.Fatalf("setting = %+v, want disabled user setting for team tool", setting)
+	}
+	tool := client.MCPTool.GetX(ctx, toolID)
+	if tool.Scope != mcptool.ScopeTeam || !tool.Enabled {
+		t.Fatalf("team tool mutated: scope=%s enabled=%v", tool.Scope, tool.Enabled)
 	}
 }

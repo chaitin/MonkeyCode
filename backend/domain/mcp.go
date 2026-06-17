@@ -13,6 +13,7 @@ import (
 const (
 	MCPScopePlatform = "platform"
 	MCPScopeUser     = "user"
+	MCPScopeTeam     = "team"
 )
 
 type MCPHeader struct {
