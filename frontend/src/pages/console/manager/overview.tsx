@@ -275,7 +275,7 @@ export default function TeamManagerOverview() {
         if (resp.code === 0) {
           setData(resp.data)
         } else {
-          toast.error(resp.message || "获取团队概览失败")
+          toast.error(resp.message || "获取团队仪表盘失败")
         }
         setLoading(false)
       },
@@ -300,10 +300,10 @@ export default function TeamManagerOverview() {
       className="flex flex-col gap-6 [--dashboard-brand:oklch(0.555_0.163_48.998)] [--dashboard-brand-border:oklch(0.555_0.163_48.998_/_28%)] [--dashboard-brand-muted:oklch(0.555_0.163_48.998_/_12%)]"
     >
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
+        <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-normal">
-              团队管理概览
+            <h1 className="text-xl font-semibold tracking-normal">
+              团队管理仪表盘
             </h1>
             {loading && data && (
               <Badge variant="outline" className="font-normal">
@@ -311,12 +311,8 @@ export default function TeamManagerOverview() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            项目、任务、对话与资源消耗
-          </p>
         </div>
-        <div className="flex shrink-0 flex-col gap-2">
-          <div className="text-sm font-medium">统计周期</div>
+        <div className="flex shrink-0 justify-start md:justify-end">
           <TimeRangeTabs value={range} onChange={setRange} />
         </div>
       </div>
@@ -327,7 +323,7 @@ export default function TeamManagerOverview() {
             <EmptyMedia variant="icon">
               <Spinner className="size-6" />
             </EmptyMedia>
-            <EmptyTitle>正在加载团队概览</EmptyTitle>
+            <EmptyTitle>正在加载团队仪表盘</EmptyTitle>
           </EmptyHeader>
         </Empty>
       ) : (

@@ -1,4 +1,4 @@
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export type DashboardRange = "today" | "7d" | "30d"
 
@@ -16,21 +16,21 @@ export function TimeRangeTabs({
   onChange: (value: DashboardRange) => void
 }) {
   return (
-    <ToggleGroup
-      type="single"
+    <Tabs
       value={value}
-      className="justify-start"
-      onValueChange={(next) => {
+      onValueChange={(next: string) => {
         if (next === "today" || next === "7d" || next === "30d") {
           onChange(next)
         }
       }}
     >
-      {(Object.keys(labels) as DashboardRange[]).map((key) => (
-        <ToggleGroupItem key={key} value={key} size="sm">
-          {labels[key]}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+      <TabsList>
+        {(Object.keys(labels) as DashboardRange[]).map((key) => (
+          <TabsTrigger key={key} value={key}>
+            {labels[key]}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
