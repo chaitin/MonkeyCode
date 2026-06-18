@@ -761,9 +761,9 @@ func modelRuntimeDefaults(m *db.Model) (thinking bool, contextLimit int, outputL
 // 后按目录结构展开；plugin 的 entry 字段再以 file:// 注入到 opencode.json 的
 // `plugin` 数组里。Claude / Codex 不消费 plugin（spec §6.3）。
 const (
-	agentRuleBaseDir   = "/tmp/codingmatrix-project-tpl/.ai-ready/rules/"
-	agentSkillBaseDir  = "/tmp/codingmatrix-project-tpl/.ai-ready/skills/"
-	agentPluginBaseDir = "/tmp/codingmatrix-project-tpl/.ai-ready/plugins/"
+	agentRuleBaseDir   = "${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/"
+	agentSkillBaseDir  = "${HOME}/.codingmatrix/project-tpl/.ai-ready/skills/"
+	agentPluginBaseDir = "${HOME}/.codingmatrix/project-tpl/.ai-ready/plugins/"
 )
 
 // parseStringUUIDs 把字符串切片解析成 uuid.UUID 切片。单条解析失败时打一条

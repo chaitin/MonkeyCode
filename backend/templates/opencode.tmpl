@@ -39,5 +39,8 @@
   },
   "model": "monkeycode-ai/{{.model}}",
   "disabled_providers": ["openai", "opencode"],
-  "instructions": ["/tmp/codingmatrix-project-tpl/.ai-ready/rules/*.md"]
+  "instructions": ["${HOME}/.codingmatrix/project-tpl/.ai-ready/rules/*.md"],
+  "skills": {
+    "paths": ["${HOME}/.codingmatrix/project-tpl/.ai-ready/skills/"]
+  }
 }
