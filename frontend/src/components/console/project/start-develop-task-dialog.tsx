@@ -1,19 +1,31 @@
 import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
+import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import ModelSelect from "@/components/console/task/model-select"
 import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "@/components/console/task/task-content-limit"
-import { TASK_PROMPT_PLACEHOLDER, selectHost, selectImage, selectPreferredTaskModel } from "@/utils/common"
+import {
+  getImageShortName,
+  getOSFromImageName,
+  getOwnerTypeBadge,
+  TASK_PROMPT_PLACEHOLDER,
+  selectHost,
+  selectImage,
+  selectPreferredTaskModel,
+} from "@/utils/common"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconSparkles } from "@tabler/icons-react"
+import { cn } from "@/lib/utils"
+import { IconChevronDown, IconSparkles } from "@tabler/icons-react"
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -40,6 +52,8 @@ export default function StartDevelopTaskDialog({
   const [userMessage, setUserMessage] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const [selectedHostId, setSelectedHostId] = useState<string>('')
+  const [selectedImageId, setSelectedImageId] = useState<string>('')
+  const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false)
   const { images, models, hosts, subscription } = useCommonData()
   const branchRequestIdRef = useRef(0)
   const branchTouchedRef = useRef(false)
@@ -170,14 +184,16 @@ export default function StartDevelopTaskDialog({
         setUserMessage('')
         setSelectedModelId(selectPreferredTaskModel(models, subscription))
         setSelectedHostId(selectDefaultHostId())
+        setSelectedImageId(selectImage(images, true))
         setSelectedBranch('main')
       }
     } else {
       prevOpenRef.current = false
       branchRequestIdRef.current += 1
       setSelectedHostId('')
+      setSelectedImageId('')
     }
-  }, [open, models, subscription, selectDefaultHostId])
+  }, [open, models, subscription, images, selectDefaultHostId])
 
   useEffect(() => {
     if (!open) {
@@ -203,6 +219,16 @@ export default function StartDevelopTaskDialog({
       setSelectedHostId("public_host")
     }
   }, [selectedPublicModel, selectedHostId])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    if (!selectedImageId || !images.some((image) => image.id === selectedImageId)) {
+      setSelectedImageId(selectImage(images, true))
+    }
+  }, [images, open, selectedImageId])
 
   useEffect(() => {
     if (!open || !branchSourceKey) return
@@ -240,6 +266,11 @@ export default function StartDevelopTaskDialog({
       return
     }
 
+    if (!selectedImageId) {
+      toast.error('请选择系统镜像')
+      return
+    }
+
     if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId !== "public_host") {
       toast.warning('内置模型只能在内置宿主机上使用')
       return
@@ -252,7 +283,7 @@ export default function StartDevelopTaskDialog({
       content: userMessage.trim(),
       cli_name: ConstsCliName.CliNameOpencode,
       model_id: selectedModelId,
-      image_id: selectImage(images, false),
+      image_id: selectedImageId,
       host_id: selectedHostId,
       repo: {
         branch: project?.platform === ConstsGitPlatform.GitPlatformInternal ? '' : selectedBranch.trim(),
@@ -329,45 +360,92 @@ export default function StartDevelopTaskDialog({
               )}
             </div>
           )}
-          <div className="space-y-2">
-            <Label>大模型</Label>
-            <ModelSelect
-              models={models}
-              selectedModel={selectedModel}
-              selectedModelId={selectedModelId}
-              setSelectedModelId={setSelectedModelId}
-              subscription={subscription}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>宿主机</Label>
-            <Select value={selectedHostId} onValueChange={setSelectedHostId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="请选择宿主机" />
-              </SelectTrigger>
-              <SelectContent>
-                {!IS_OFFLINE_EDITION && (
-                  <SelectItem value="public_host">
-                    <div className="flex items-center gap-2">
-                      <span>MonkeyCode</span>
-                      <Badge className="!text-primary-foreground">免费</Badge>
-                    </div>
-                  </SelectItem>
-                )}
-                {hosts.map((host) => (
-                  <SelectItem
-                    key={host.id}
-                    value={host.id!}
-                    disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Collapsible
+            open={advancedOptionsOpen}
+            onOpenChange={setAdvancedOptionsOpen}
+            className="rounded-lg border"
+          >
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
+              >
+                <span className="font-medium">高级选项</span>
+                <IconChevronDown
+                  className={cn(
+                    "size-4 text-muted-foreground transition-transform",
+                    advancedOptionsOpen && "rotate-180"
+                  )}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+              <div className="space-y-2">
+                <Label>大模型</Label>
+                <ModelSelect
+                  models={models}
+                  selectedModel={selectedModel}
+                  selectedModelId={selectedModelId}
+                  setSelectedModelId={setSelectedModelId}
+                  subscription={subscription}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>宿主机</Label>
+                <Select value={selectedHostId} onValueChange={setSelectedHostId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="请选择宿主机" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!IS_OFFLINE_EDITION && (
+                      <SelectItem value="public_host">
+                        <div className="flex items-center gap-2">
+                          <span>MonkeyCode</span>
+                          <Badge className="!text-primary-foreground">免费</Badge>
+                        </div>
+                      </SelectItem>
+                    )}
+                    {hosts.map((host) => (
+                      <SelectItem
+                        key={host.id}
+                        value={host.id!}
+                        disabled={host.status !== ConstsHostStatus.HostStatusOnline || (!IS_OFFLINE_EDITION && selectedPublicModel)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>{host.remark || `${host.name}-${host.external_ip}`}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>系统镜像</Label>
+                <Select value={selectedImageId} onValueChange={setSelectedImageId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择系统镜像" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {images.filter((image) => image.id).map((image) => (
+                      <SelectItem key={image.id} value={image.id!}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-2">
+                              <Icon name={getOSFromImageName(image.name || "")} className="h-4 w-4" />
+                              <span>{image.remark || getImageShortName(image.name || "")}</span>
+                              {getOwnerTypeBadge(image.owner)}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{image.name}</TooltipContent>
+                        </Tooltip>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
           <div className="space-y-2">
             <Label>任务内容</Label>
             <div className="space-y-1">

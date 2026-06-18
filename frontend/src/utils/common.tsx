@@ -848,11 +848,20 @@ export function selectPreferredTaskModel(models: DomainModel[], subscription?: D
       return (left.model || "").localeCompare(right.model || "")
     })[0]
 
-  if (!preferredModel?.id) {
+  if (preferredModel?.id) {
+    return preferredModel.id
+  }
+
+  const fallbackModel = models.find((model) => (
+    model.id
+    && canUseModelBySubscription(model, subscription)
+  ))
+
+  if (!fallbackModel?.id) {
     return ""
   }
 
-  return preferredModel.id
+  return fallbackModel.id
 }
 
 
