@@ -18,13 +18,13 @@ import (
 	"github.com/samber/do"
 
 	"github.com/chaitin/MonkeyCode/backend/biz/agentresource"
-	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	gituc "github.com/chaitin/MonkeyCode/backend/biz/git/usecase"
 	"github.com/chaitin/MonkeyCode/backend/biz/task/service"
 	vmidle "github.com/chaitin/MonkeyCode/backend/biz/vmidle/usecase"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
+	"github.com/chaitin/MonkeyCode/backend/db/teammember"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
 	"github.com/chaitin/MonkeyCode/backend/pkg/cvt"
@@ -535,112 +535,124 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	}
 	ctx = entx.WithTaskConcurrencyLimit(ctx, limit)
 
-	var createdVm *taskflow.VirtualMachine
-	pt, err := a.repo.Create(ctx, user, req, token, func(pt *db.ProjectTask, m *db.Model, i *db.Image) (*taskflow.VirtualMachine, error) {
-		t := pt.Edges.Task
-		if t == nil {
-			return nil, fmt.Errorf("task edge is nil")
-		}
-		if git.URL == "" {
-			git.URL = pt.RepoURL
-		}
-		// Codeup 仓库 URL 必须带 .git 后缀才能 clone，做一次兜底归一化
-		// （覆盖用户手输仓库地址未带后缀的场景）
-		git.URL = giturl.NormalizeCloneURL(git.URL)
-
-		var token string
-		if keys := m.Edges.Apikeys; len(keys) > 0 {
-			m.APIKey = keys[0].APIKey
-			m.BaseURL = a.cfg.LLMProxy.BaseURL + "/v1"
-			token = keys[0].APIKey
-		}
-
-		coding, configs, agentRes, err := a.getCodingConfigs(ctx, req.CliName, m, req.Extra.SkillIDs, req.Extra.PluginIDs, a.userScope(ctx, user))
-		if err != nil {
-			return nil, err
-		}
-
-		vm, err := a.taskflow.VirtualMachiner().Create(ctx, &taskflow.CreateVirtualMachineReq{
-			UserID:   user.ID.String(),
-			HostID:   req.HostID,
-			HostName: t.ID.String(),
-			Git:      git,
-			ZipUrl:   req.RepoReq.ZipURL,
-			ImageURL: cmp.Or(imageName, i.Name),
-			ProxyURL: "",
-			TaskID:   t.ID,
-			LLM: taskflow.LLMProviderReq{
-				Provider: taskflow.LlmProviderOpenAI,
-				ApiKey:   m.APIKey,
-				BaseURL:  m.BaseURL,
-				Model:    m.Model,
-			},
-			Cores:    "2",
-			Memory:   8 << 30,
-			Envs:     env,
-			LogStore: normalizeTaskLogStore(t.LogStore),
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		if vm == nil {
-			return nil, fmt.Errorf("vm is nil")
-		}
-		createdVm = vm
-
-		mcps := a.buildMCPConfigs(t.ID, token)
-
-		// DEBUG: 把准备透传给 taskflow → codingmatrix 的整组 ConfigFile
-		// marshal 成一个 JSON 串、一行日志打出来。仅在 DEBUG 级别开启，
-		// 生产无噪声。
-		if a.logger.Enabled(ctx, slog.LevelDebug) {
-			if payload, err := json.Marshal(configs); err != nil {
-				a.logger.WarnContext(ctx, "tasker configs marshal failed",
-					slog.String("task_id", t.ID.String()),
-					slog.Any("err", err))
-			} else {
-				a.logger.DebugContext(ctx, "tasker configs",
-					slog.String("task_id", t.ID.String()),
-					slog.Int("count", len(configs)),
-					slog.String("configs", string(payload)),
-				)
-			}
-		}
-
-		// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
-		createTaskReq := &taskflow.CreateTaskReq{
-			ID:           t.ID,
-			VMID:         vm.ID,
-			Text:         req.Content,
-			Attachments:  taskAttachmentsToTaskflow(req.Attachments),
-			SystemPrompt: req.SystemPrompt,
-			CodingAgent:  coding,
-			LLM: taskflow.LLM{
-				ApiKey:  m.APIKey,
-				BaseURL: m.BaseURL,
-				Model:   m.Model,
-				ApiType: m.InterfaceType,
-			},
-			Configs:        configs,
-			McpConfigs:     mcps,
-			LogStore:       normalizeTaskLogStore(t.LogStore),
-			AgentResources: agentRes,
-		}
-		b, err := json.Marshal(createTaskReq)
-		if err != nil {
-			return vm, err
-		}
-		reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
-		if err := a.redis.Set(ctx, reqKey, string(b), createReqTTL(a.cfg)).Err(); err != nil {
-			a.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
-		}
-
-		return vm, nil
-	})
+	vmID := fmt.Sprintf("agent_%s", uuid.NewString())
+	prepared, err := a.repo.PrepareCreate(ctx, user, req, token, vmID)
 	if err != nil {
 		a.logger.With("error", err, "req", req).ErrorContext(ctx, "failed to create task")
 		return nil, err
+	}
+	if prepared == nil || prepared.ProjectTask == nil || prepared.Model == nil || prepared.Image == nil {
+		return nil, fmt.Errorf("failed to prepare task")
+	}
+	pt := prepared.ProjectTask
+	m := prepared.Model
+	i := prepared.Image
+	t := pt.Edges.Task
+	if t == nil {
+		return nil, fmt.Errorf("task edge is nil")
+	}
+	if git.URL == "" {
+		git.URL = pt.RepoURL
+	}
+	// Codeup 仓库 URL 必须带 .git 后缀才能 clone，做一次兜底归一化
+	// （覆盖用户手输仓库地址未带后缀的场景）
+	git.URL = giturl.NormalizeCloneURL(git.URL)
+
+	var runtimeToken string
+	if keys := m.Edges.Apikeys; len(keys) > 0 {
+		m.APIKey = keys[0].APIKey
+		m.BaseURL = a.cfg.LLMProxy.BaseURL + "/v1"
+		runtimeToken = keys[0].APIKey
+	}
+
+	coding, configs, agentRes, err := a.getCodingConfigs(ctx, req.CliName, m, req.Extra.SkillIDs, req.Extra.PluginIDs, a.userScope(ctx, user))
+	if err != nil {
+		return nil, err
+	}
+
+	createdVm, err := a.taskflow.VirtualMachiner().Create(ctx, &taskflow.CreateVirtualMachineReq{
+		ID:       vmID,
+		UserID:   user.ID.String(),
+		HostID:   req.HostID,
+		HostName: t.ID.String(),
+		Git:      git,
+		ZipUrl:   req.RepoReq.ZipURL,
+		ImageURL: cmp.Or(imageName, i.Name),
+		ProxyURL: "",
+		TaskID:   t.ID,
+		LLM: taskflow.LLMProviderReq{
+			Provider: taskflow.LlmProviderOpenAI,
+			ApiKey:   m.APIKey,
+			BaseURL:  m.BaseURL,
+			Model:    m.Model,
+		},
+		Cores:    "2",
+		Memory:   8 << 30,
+		Envs:     env,
+		LogStore: normalizeTaskLogStore(t.LogStore),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if createdVm == nil {
+		return nil, fmt.Errorf("vm is nil")
+	}
+	if createdVm.ID == "" {
+		createdVm.ID = vmID
+	}
+	if createdVm.ID != vmID {
+		return nil, fmt.Errorf("taskflow returned vm id %s, want %s", createdVm.ID, vmID)
+	}
+	if err := a.repo.CompleteCreate(ctx, vmID, createdVm); err != nil {
+		return nil, err
+	}
+
+	mcps := a.buildMCPConfigs(t.ID, runtimeToken)
+
+	// DEBUG: 把准备透传给 taskflow → codingmatrix 的整组 ConfigFile
+	// marshal 成一个 JSON 串、一行日志打出来。仅在 DEBUG 级别开启，
+	// 生产无噪声。
+	if a.logger.Enabled(ctx, slog.LevelDebug) {
+		if payload, err := json.Marshal(configs); err != nil {
+			a.logger.WarnContext(ctx, "tasker configs marshal failed",
+				slog.String("task_id", t.ID.String()),
+				slog.Any("err", err))
+		} else {
+			a.logger.DebugContext(ctx, "tasker configs",
+				slog.String("task_id", t.ID.String()),
+				slog.Int("count", len(configs)),
+				slog.String("configs", string(payload)),
+			)
+		}
+	}
+
+	// 存储 CreateTaskReq 到 Redis（10 分钟过期），供 Lifecycle Manager 消费
+	createTaskReq := &taskflow.CreateTaskReq{
+		ID:           t.ID,
+		VMID:         createdVm.ID,
+		Text:         req.Content,
+		Attachments:  taskAttachmentsToTaskflow(req.Attachments),
+		SystemPrompt: req.SystemPrompt,
+		CodingAgent:  coding,
+		LLM: taskflow.LLM{
+			ApiKey:  m.APIKey,
+			BaseURL: m.BaseURL,
+			Model:   m.Model,
+			ApiType: m.InterfaceType,
+		},
+		Configs:        configs,
+		McpConfigs:     mcps,
+		LogStore:       normalizeTaskLogStore(t.LogStore),
+		AgentResources: agentRes,
+	}
+	b, err := json.Marshal(createTaskReq)
+	if err != nil {
+		return nil, err
+	}
+	reqKey := fmt.Sprintf("task:create_req:%s", t.ID.String())
+	if err := a.redis.Set(ctx, reqKey, string(b), createReqTTL(a.cfg)).Err(); err != nil {
+		a.logger.WarnContext(ctx, "failed to store CreateTaskReq in Redis", "error", err)
 	}
 	a.logger.With("req", req).InfoContext(ctx, "task created")
 	taskMeta := lifecycle.TaskMetadata{
@@ -665,11 +677,11 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 	if err := a.IncrUserInputCount(ctx, user.ID, pt.Edges.Task.ID); err != nil {
 		a.logger.WarnContext(ctx, "failed to incr user input count on create", "error", err)
 	}
-	vmID := ""
+	refreshVMID := ""
 	if createdVm != nil {
-		vmID = createdVm.ID
+		refreshVMID = createdVm.ID
 	}
-	a.refreshCreatedTaskState(ctx, pt.TaskID, vmID)
+	a.refreshCreatedTaskState(ctx, pt.TaskID, refreshVMID)
 
 	result := cvt.From(pt, &domain.ProjectTask{})
 

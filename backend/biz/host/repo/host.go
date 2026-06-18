@@ -443,6 +443,169 @@ func (h *HostRepo) CreateVirtualMachine(ctx context.Context, u *domain.User, req
 	return res, err
 }
 
+func (h *HostRepo) PrepareCreateVirtualMachine(ctx context.Context, u *domain.User, req *domain.CreateVMReq, id string) (*domain.PreparedVirtualMachine, error) {
+	var res *domain.PreparedVirtualMachine
+	err := entx.WithTx2(ctx, h.db, func(tx *db.Tx) error {
+		dbHost, err := tx.Host.Query().
+			WithUser().
+			WithGroups().
+			Where(hostWithUserPredicate(u.ID)).
+			Where(host.ID(req.HostID)).
+			First(ctx)
+		if err != nil {
+			return errcode.ErrPermision.Wrap(err)
+		}
+
+		if u := dbHost.Edges.User; u != nil && u.Role == consts.UserRoleAdmin {
+			if req.Life > 3*60*60 || req.Life <= 0 {
+				return errcode.ErrPublicHostBeyondLimit
+			}
+		}
+
+		if len(dbHost.Edges.Groups) > 0 && (req.Life <= 0 || req.Life > 7*24*60*60) {
+			return errcode.ErrVmBeyondExpireTime.Wrap(fmt.Errorf("团队宿主机不支持创建永久虚拟机"))
+		}
+
+		if req.UsePublicHost && h.cfg.PublicHost.CountLimit > 0 {
+			cnt, err := tx.VirtualMachine.Query().
+				Where(virtualmachine.UserID(u.ID)).
+				Where(virtualmachine.HasHostWith(host.HasUserWith(user.Role(consts.UserRoleAdmin)))).
+				Where(virtualmachine.ExpiredAtGT(time.Now())).
+				Count(ctx)
+			if err != nil {
+				return errcode.ErrDatabaseOperation.Wrap(err)
+			}
+			if cnt >= h.cfg.PublicHost.CountLimit {
+				return errcode.ErrPublicHostBeyondLimit.Wrap(fmt.Errorf("public host limit reached: %d", h.cfg.PublicHost.CountLimit))
+			}
+		}
+
+		var m *db.Model
+		if len(req.ModelID) > 0 {
+			switch req.ModelID {
+			case "economy":
+				m, err = tx.Model.Query().
+					WithPricing().
+					WithUser().
+					Where(model.HasUserWith(user.Role(consts.UserRoleAdmin))).
+					Where(model.Remark(req.ModelID)).
+					First(ctx)
+				if err != nil {
+					return err
+				}
+			default:
+				mid, err := uuid.Parse(req.ModelID)
+				if err != nil {
+					return err
+				}
+				m, err = tx.Model.Query().WithPricing().WithUser().Where(model.ID(mid)).First(ctx)
+				if err != nil {
+					return err
+				}
+			}
+
+			if m != nil {
+				if p := m.Edges.Pricing; p != nil {
+					apikey := uuid.NewString()
+					mak, err := tx.ModelApiKey.Create().
+						SetAPIKey(apikey).
+						SetUserID(u.ID).
+						SetModelID(m.ID).
+						SetVirtualmachineID(id).
+						Save(ctx)
+					if err != nil {
+						return err
+					}
+					m.Edges.Apikeys = append(m.Edges.Apikeys, mak)
+				}
+			}
+		}
+
+		repoURL := ""
+		repoFilename := ""
+		branch := ""
+		if req.RepoReq != nil {
+			repoURL = req.RepoReq.RepoURL
+			repoFilename = req.RepoReq.RepoFilename
+			branch = req.RepoReq.Branch
+		}
+
+		img, err := tx.Image.Get(ctx, req.ImageID)
+		if err != nil {
+			return err
+		}
+
+		var expiredAt *time.Time
+		if req.Life > 0 {
+			t := req.Now.Add(time.Duration(req.Life) * time.Second)
+			expiredAt = &t
+		}
+
+		crt := tx.VirtualMachine.Create().
+			SetID(id).
+			SetUserID(u.ID).
+			SetName(req.Name).
+			SetHostID(dbHost.ID).
+			SetCores(req.Resource.CPU).
+			SetMemory(req.Resource.Memory).
+			SetRepoURL(repoURL).
+			SetRepoFilename(repoFilename).
+			SetBranch(branch).
+			SetCreatedAt(req.Now)
+		if expiredAt != nil {
+			crt.SetExpiredAt(*expiredAt)
+		}
+		if len(req.ModelID) > 0 {
+			crt.SetModelID(m.ID)
+		}
+		if req.GitIdentityID != uuid.Nil {
+			crt.SetGitIdentityID(req.GitIdentityID)
+		}
+		if err := crt.Exec(ctx); err != nil {
+			return err
+		}
+
+		res = &domain.PreparedVirtualMachine{
+			VirtualMachine: &domain.VirtualMachine{
+				ID:              id,
+				Name:            req.Name,
+				LifeTimeSeconds: req.Life,
+				Host:            cvt.From(dbHost, &domain.Host{}),
+			},
+			Model: m,
+			Image: img,
+		}
+		return nil
+	})
+	return res, err
+}
+
+func (h *HostRepo) CompleteCreateVirtualMachine(ctx context.Context, id string, vm *taskflow.VirtualMachine) (*domain.VirtualMachine, error) {
+	var res *db.VirtualMachine
+	err := entx.WithTx2(ctx, h.db, func(tx *db.Tx) error {
+		up := tx.VirtualMachine.UpdateOneID(id).
+			SetEnvironmentID(vm.EnvironmentID)
+		if vm.AccessToken != "" {
+			up.SetAccessToken(vm.AccessToken)
+		}
+		if err := up.Exec(ctx); err != nil {
+			return err
+		}
+
+		var err error
+		res, err = tx.VirtualMachine.Query().
+			WithHost(func(hq *db.HostQuery) { hq.WithUser() }).
+			WithUser().
+			Where(virtualmachine.ID(id)).
+			First(ctx)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cvt.From(res, &domain.VirtualMachine{}), nil
+}
+
 // DeleteVirtualMachine implements domain.HostRepo.
 func (h *HostRepo) DeleteVirtualMachine(ctx context.Context, uid uuid.UUID, hostID, id string, fn func(*db.VirtualMachine) error) error {
 	return entx.WithTx2(ctx, h.db, func(tx *db.Tx) error {

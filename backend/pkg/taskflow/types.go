@@ -121,6 +121,7 @@ type VirtualMachineCondition struct {
 
 // CreateVirtualMachineReq 创建虚拟机请求
 type CreateVirtualMachineReq struct {
+	ID                  string         `json:"id,omitempty"`
 	UserID              string         `json:"user_id" validate:"required"`
 	HostID              string         `json:"host_id" validate:"required"`
 	HostName            string         `json:"hostname"`

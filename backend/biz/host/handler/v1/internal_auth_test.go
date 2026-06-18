@@ -255,6 +255,14 @@ func (s *internalHostRepoStub) CreateVirtualMachine(context.Context, *domain.Use
 	return nil, errors.New("not implemented")
 }
 
+func (s *internalHostRepoStub) PrepareCreateVirtualMachine(context.Context, *domain.User, *domain.CreateVMReq, string) (*domain.PreparedVirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *internalHostRepoStub) CompleteCreateVirtualMachine(context.Context, string, *taskflow.VirtualMachine) (*domain.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *internalHostRepoStub) PastHourVirtualMachine(context.Context) ([]*db.VirtualMachine, error) {
 	return nil, errors.New("not implemented")
 }

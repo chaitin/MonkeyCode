@@ -180,6 +180,14 @@ func (s *refreshHostRepoStub) CreateVirtualMachine(context.Context, *domain.User
 	return nil, errors.New("not implemented")
 }
 
+func (s *refreshHostRepoStub) PrepareCreateVirtualMachine(context.Context, *domain.User, *domain.CreateVMReq, string) (*domain.PreparedVirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *refreshHostRepoStub) CompleteCreateVirtualMachine(context.Context, string, *taskflow.VirtualMachine) (*domain.VirtualMachine, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *refreshHostRepoStub) PastHourVirtualMachine(context.Context) ([]*db.VirtualMachine, error) {
 	return nil, errors.New("not implemented")
 }

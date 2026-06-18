@@ -412,110 +412,117 @@ func (h *HostUsecase) CreateVM(ctx context.Context, user *domain.User, req *doma
 	}
 
 	req.Now = time.Now()
-	vm, err := h.repo.CreateVirtualMachine(ctx, user, req, nil, func(model *db.Model, image *db.Image) (*domain.VirtualMachine, error) {
-		kind := taskflow.TTLCountDown
-		if req.Life == 0 {
-			kind = taskflow.TTLForever
-		}
-
-		h.logger.InfoContext(ctx, "create vm", "req", req, "kind", kind, "seconds", req.Life)
-
-		temperature := new(float32)
-		if model != nil {
-			if keys := model.Edges.Apikeys; len(keys) > 0 {
-				model.APIKey = keys[0].APIKey
-				model.BaseURL = h.cfg.LLMProxy.BaseURL + "/v1"
-			}
-		}
-		var LLMConfig taskflow.LLMProviderReq
-		if model != nil {
-			LLMConfig = taskflow.LLMProviderReq{
-				Provider:    taskflow.LlmProviderOpenAI,
-				ApiKey:      model.APIKey,
-				Model:       model.Model,
-				Temperature: temperature,
-				BaseURL:     model.BaseURL,
-			}
-		}
-
-		repoURL := ""
-		branch := ""
-		zipURL := ""
-		if req.RepoReq != nil {
-			repoURL = req.RepoReq.RepoURL
-			branch = req.RepoReq.Branch
-			zipURL = req.RepoReq.ZipURL
-		}
-
-		git := taskflow.Git{
-			URL:    repoURL,
-			Branch: branch,
-		}
-		if req.GitIdentityID != uuid.Nil {
-			identity, err := h.girepo.Get(ctx, req.GitIdentityID)
-			if err != nil {
-				return nil, fmt.Errorf("get git identity: %w", err)
-			}
-			t, err := h.tokenProvider.GetToken(ctx, req.GitIdentityID)
-			if err != nil {
-				return nil, fmt.Errorf("get git token: %w", err)
-			}
-			git.Token = t
-			git.Username = identity.Username
-			git.Email = identity.Email
-		}
-
-		tfvm, err := h.taskflow.VirtualMachiner().Create(
-			ctx,
-			&taskflow.CreateVirtualMachineReq{
-				UserID:              user.ID.String(),
-				HostID:              req.HostID,
-				Git:                 git,
-				ZipUrl:              zipURL,
-				ProxyURL:            "",
-				ImageURL:            image.Name,
-				LLM:                 LLMConfig,
-				Cores:               strconv.Itoa(req.Resource.CPU),
-				Memory:              uint64(req.Resource.Memory),
-				InstallCodingAgents: req.InstallCodingAgents,
-			})
-		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to create vm", "error", err)
-			return nil, err
-		}
-		if tfvm == nil {
-			return nil, fmt.Errorf("failed to create vm, vm is nil")
-		}
-
-		h.logger.InfoContext(ctx, "create vm success", "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID)
-
-		// 手动创建的 VM 使用 expired_at 过期逻辑，任务创建的 VM 使用空闲检测逻辑
-		// 通过 Life 参数区分：Life > 0 为手动创建的 VM，使用过期时间逻辑
-		if req.Life > 0 {
-			expiredAt := req.Now.Add(time.Duration(req.Life) * time.Second)
-			if _, err := h.vmexpireQueue.Enqueue(ctx, VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
-				UID:    user.ID,
-				VmID:   tfvm.ID,
-				HostID: req.HostID,
-				EnvID:  tfvm.EnvironmentID,
-			}, expiredAt, tfvm.ID); err != nil {
-				h.logger.With("error", err, "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID).ErrorContext(ctx, "failed to enqueue countdown vm")
-			}
-		}
-
-		return &domain.VirtualMachine{
-			ID:            tfvm.ID,
-			AccessToken:   tfvm.AccessToken,
-			EnvironmentID: tfvm.EnvironmentID,
-			Name:          req.Name,
-			Host: &domain.Host{
-				ID: req.HostID,
-			},
-			LifeTimeSeconds: req.Life,
-		}, nil
-	})
+	vmID := fmt.Sprintf("agent_%s", uuid.NewString())
+	prepared, err := h.repo.PrepareCreateVirtualMachine(ctx, user, req, vmID)
 	if err != nil {
 		return nil, err
+	}
+	if prepared == nil || prepared.VirtualMachine == nil || prepared.Image == nil {
+		return nil, fmt.Errorf("failed to prepare vm")
+	}
+
+	kind := taskflow.TTLCountDown
+	if req.Life == 0 {
+		kind = taskflow.TTLForever
+	}
+
+	h.logger.InfoContext(ctx, "create vm", "req", req, "kind", kind, "seconds", req.Life, "vm_id", vmID)
+
+	model := prepared.Model
+	image := prepared.Image
+	temperature := new(float32)
+	if model != nil {
+		if keys := model.Edges.Apikeys; len(keys) > 0 {
+			model.APIKey = keys[0].APIKey
+			model.BaseURL = h.cfg.LLMProxy.BaseURL + "/v1"
+		}
+	}
+	var LLMConfig taskflow.LLMProviderReq
+	if model != nil {
+		LLMConfig = taskflow.LLMProviderReq{
+			Provider:    taskflow.LlmProviderOpenAI,
+			ApiKey:      model.APIKey,
+			Model:       model.Model,
+			Temperature: temperature,
+			BaseURL:     model.BaseURL,
+		}
+	}
+
+	repoURL := ""
+	branch := ""
+	zipURL := ""
+	if req.RepoReq != nil {
+		repoURL = req.RepoReq.RepoURL
+		branch = req.RepoReq.Branch
+		zipURL = req.RepoReq.ZipURL
+	}
+
+	git := taskflow.Git{
+		URL:    repoURL,
+		Branch: branch,
+	}
+	if req.GitIdentityID != uuid.Nil {
+		identity, err := h.girepo.Get(ctx, req.GitIdentityID)
+		if err != nil {
+			return nil, fmt.Errorf("get git identity: %w", err)
+		}
+		t, err := h.tokenProvider.GetToken(ctx, req.GitIdentityID)
+		if err != nil {
+			return nil, fmt.Errorf("get git token: %w", err)
+		}
+		git.Token = t
+		git.Username = identity.Username
+		git.Email = identity.Email
+	}
+
+	tfvm, err := h.taskflow.VirtualMachiner().Create(
+		ctx,
+		&taskflow.CreateVirtualMachineReq{
+			ID:                  vmID,
+			UserID:              user.ID.String(),
+			HostID:              req.HostID,
+			Git:                 git,
+			ZipUrl:              zipURL,
+			ProxyURL:            "",
+			ImageURL:            image.Name,
+			LLM:                 LLMConfig,
+			Cores:               strconv.Itoa(req.Resource.CPU),
+			Memory:              uint64(req.Resource.Memory),
+			InstallCodingAgents: req.InstallCodingAgents,
+		})
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to create vm", "error", err, "vm_id", vmID)
+		return nil, err
+	}
+	if tfvm == nil {
+		return nil, fmt.Errorf("failed to create vm, vm is nil")
+	}
+	if tfvm.ID == "" {
+		tfvm.ID = vmID
+	}
+	if tfvm.ID != vmID {
+		return nil, fmt.Errorf("taskflow returned vm id %s, want %s", tfvm.ID, vmID)
+	}
+
+	h.logger.InfoContext(ctx, "create vm success", "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID)
+
+	vm, err := h.repo.CompleteCreateVirtualMachine(ctx, vmID, tfvm)
+	if err != nil {
+		return nil, err
+	}
+
+	// 手动创建的 VM 使用 expired_at 过期逻辑，任务创建的 VM 使用空闲检测逻辑
+	// 通过 Life 参数区分：Life > 0 为手动创建的 VM，使用过期时间逻辑
+	if req.Life > 0 {
+		expiredAt := req.Now.Add(time.Duration(req.Life) * time.Second)
+		if _, err := h.vmexpireQueue.Enqueue(ctx, VM_EXPIRE_QUEUE_KEY, &domain.VmExpireInfo{
+			UID:    user.ID,
+			VmID:   tfvm.ID,
+			HostID: req.HostID,
+			EnvID:  tfvm.EnvironmentID,
+		}, expiredAt, tfvm.ID); err != nil {
+			h.logger.With("error", err, "vm_id", tfvm.ID, "environment_id", tfvm.EnvironmentID).ErrorContext(ctx, "failed to enqueue countdown vm")
+		}
 	}
 	if vm == nil {
 		return nil, fmt.Errorf("failed to create vm")

@@ -118,6 +118,14 @@ func (s *taskHookRepoStub) Create(context.Context, *domain.User, domain.CreateTa
 	panic("unexpected call to Create")
 }
 
+func (s *taskHookRepoStub) PrepareCreate(context.Context, *domain.User, domain.CreateTaskReq, string, string) (*domain.PreparedProjectTask, error) {
+	panic("unexpected call to PrepareCreate")
+}
+
+func (s *taskHookRepoStub) CompleteCreate(context.Context, string, *taskflow.VirtualMachine) error {
+	panic("unexpected call to CompleteCreate")
+}
+
 func (s *taskHookRepoStub) Update(ctx context.Context, _ *domain.User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error {
 	up := s.client.Task.UpdateOneID(id)
 	if err := fn(up); err != nil {

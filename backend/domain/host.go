@@ -52,6 +52,8 @@ type HostRepo interface {
 	BatchGetVmIDsByEnvironmentIDs(ctx context.Context, envIDs []string) (map[string]string, error)
 	GetVirtualMachineWithUser(ctx context.Context, uid uuid.UUID, id string) (*db.VirtualMachine, error)
 	CreateVirtualMachine(ctx context.Context, user *User, req *CreateVMReq, getRepoToken func(context.Context) (string, error), fn func(*db.Model, *db.Image) (*VirtualMachine, error)) (*VirtualMachine, error)
+	PrepareCreateVirtualMachine(ctx context.Context, user *User, req *CreateVMReq, id string) (*PreparedVirtualMachine, error)
+	CompleteCreateVirtualMachine(ctx context.Context, id string, vm *taskflow.VirtualMachine) (*VirtualMachine, error)
 	PastHourVirtualMachine(ctx context.Context) ([]*db.VirtualMachine, error)
 	AllCountDownVirtualMachine(ctx context.Context) ([]*db.VirtualMachine, error)
 	DeleteVirtualMachine(ctx context.Context, uid uuid.UUID, hostID, id string, fn func(*db.VirtualMachine) error) error
@@ -71,6 +73,12 @@ type GitCredentialInfo struct {
 	GitIdentityID uuid.UUID
 	Platform      consts.GitPlatform
 	GitUsername   string
+}
+
+type PreparedVirtualMachine struct {
+	VirtualMachine *VirtualMachine
+	Model          *db.Model
+	Image          *db.Image
 }
 
 // VmIdleInfo 空闲队列 payload（任务创建的 VM）
