@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
@@ -14,7 +15,9 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/redis/go-redis/v9"
+	"github.com/samber/do"
 
+	"github.com/chaitin/MonkeyCode/backend/biz/host/repo"
 	"github.com/chaitin/MonkeyCode/backend/config"
 	"github.com/chaitin/MonkeyCode/backend/consts"
 	"github.com/chaitin/MonkeyCode/backend/db"
@@ -334,6 +337,79 @@ func TestHostUsecase_markRecycledTasksFinished(t *testing.T) {
 	}
 }
 
+func TestHostUsecase_CreateVMPreinsertsVirtualMachineBeforeTaskflowCreate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:host-usecase-create-vm-preinsert-test?mode=memory&cache=shared&_fk=1")
+	defer client.Close()
+
+	userID := uuid.New()
+	imageID := uuid.New()
+	if _, err := client.User.Create().
+		SetID(userID).
+		SetName("tester").
+		SetRole(consts.UserRoleIndividual).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if _, err := client.Host.Create().
+		SetID("host-1").
+		SetUserID(userID).
+		SetHostname("host").
+		Save(ctx); err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+	if _, err := client.Image.Create().
+		SetID(imageID).
+		SetUserID(userID).
+		SetName("image").
+		Save(ctx); err != nil {
+		t.Fatalf("create image: %v", err)
+	}
+
+	i := do.New()
+	do.ProvideValue(i, &config.Config{})
+	do.ProvideValue(i, client)
+	do.ProvideValue(i, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	do.ProvideValue(i, rdb)
+	hostRepo, err := repo.NewHostRepo(i)
+	if err != nil {
+		t.Fatalf("new host repo: %v", err)
+	}
+
+	vmCreate := &preinsertVMCreateStub{db: client}
+	u := &HostUsecase{
+		cfg:      &config.Config{},
+		repo:     hostRepo,
+		taskflow: &preinsertTaskflowStub{vm: vmCreate},
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	vm, err := u.CreateVM(ctx, &domain.User{ID: userID}, &domain.CreateVMReq{
+		HostID:  "host-1",
+		ImageID: imageID,
+		Name:    "manual-vm",
+		Resource: &domain.Resource{
+			CPU:    2,
+			Memory: 4096,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateVM() error = %v", err)
+	}
+	if vmCreate.seenID == "" {
+		t.Fatal("expected taskflow create to receive preallocated vm id")
+	}
+	if vm.ID != vmCreate.seenID {
+		t.Fatalf("created vm id = %q, want %q", vm.ID, vmCreate.seenID)
+	}
+}
+
 type hostTaskRepoStub struct {
 	client     *db.Client
 	updatedIDs []uuid.UUID
@@ -374,6 +450,14 @@ func (s *hostTaskRepoStub) Create(context.Context, *domain.User, domain.CreateTa
 	panic("unexpected call to Create")
 }
 
+func (s *hostTaskRepoStub) PrepareCreate(context.Context, *domain.User, domain.CreateTaskReq, string, string) (*domain.PreparedProjectTask, error) {
+	panic("unexpected call to PrepareCreate")
+}
+
+func (s *hostTaskRepoStub) CompleteCreate(context.Context, string, *taskflow.VirtualMachine) error {
+	panic("unexpected call to CompleteCreate")
+}
+
 func (s *hostTaskRepoStub) Update(ctx context.Context, _ *domain.User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error {
 	s.updatedIDs = append(s.updatedIDs, id)
 	up := s.client.Task.UpdateOneID(id)
@@ -409,4 +493,86 @@ func (s *hostTaskRepoStub) FinishModelSwitch(context.Context, uuid.UUID, bool, s
 
 func (s *hostTaskRepoStub) CompleteModelSwitch(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, bool, string, string) error {
 	panic("unexpected call to CompleteModelSwitch")
+}
+
+type preinsertTaskflowStub struct {
+	vm taskflow.VirtualMachiner
+}
+
+func (s *preinsertTaskflowStub) VirtualMachiner() taskflow.VirtualMachiner { return s.vm }
+func (s *preinsertTaskflowStub) Host() taskflow.Hoster {
+	return preinsertHosterStub{}
+}
+func (s *preinsertTaskflowStub) FileManager() taskflow.FileManager     { return nil }
+func (s *preinsertTaskflowStub) TaskManager() taskflow.TaskManager     { return nil }
+func (s *preinsertTaskflowStub) PortForwarder() taskflow.PortForwarder { return nil }
+func (s *preinsertTaskflowStub) Stats(context.Context) (*taskflow.Stats, error) {
+	return nil, nil
+}
+func (s *preinsertTaskflowStub) TaskLive(context.Context, string, bool, func(*taskflow.TaskChunk) error) error {
+	return nil
+}
+
+type preinsertHosterStub struct{}
+
+func (preinsertHosterStub) List(context.Context, string) (map[string]*taskflow.Host, error) {
+	return nil, nil
+}
+func (preinsertHosterStub) IsOnline(_ context.Context, req *taskflow.IsOnlineReq[string]) (*taskflow.IsOnlineResp, error) {
+	online := make(map[string]bool, len(req.IDs))
+	for _, id := range req.IDs {
+		online[id] = true
+	}
+	return &taskflow.IsOnlineResp{OnlineMap: online}, nil
+}
+
+type preinsertVMCreateStub struct {
+	db     *db.Client
+	seenID string
+}
+
+func (s *preinsertVMCreateStub) Create(ctx context.Context, req *taskflow.CreateVirtualMachineReq) (*taskflow.VirtualMachine, error) {
+	if req.ID == "" {
+		return nil, fmt.Errorf("taskflow create req id is empty")
+	}
+	if _, err := s.db.VirtualMachine.Get(ctx, req.ID); err != nil {
+		return nil, fmt.Errorf("virtual machine %s not visible before taskflow create: %w", req.ID, err)
+	}
+	s.seenID = req.ID
+	return &taskflow.VirtualMachine{
+		ID:            req.ID,
+		AccessToken:   "access-" + req.ID,
+		EnvironmentID: "env-" + req.ID,
+		HostID:        req.HostID,
+	}, nil
+}
+func (s *preinsertVMCreateStub) Delete(context.Context, *taskflow.DeleteVirtualMachineReq) error {
+	return nil
+}
+func (s *preinsertVMCreateStub) Hibernate(context.Context, *taskflow.HibernateVirtualMachineReq) error {
+	return nil
+}
+func (s *preinsertVMCreateStub) Resume(context.Context, *taskflow.ResumeVirtualMachineReq) error {
+	return nil
+}
+func (s *preinsertVMCreateStub) List(context.Context, string) ([]*taskflow.VirtualMachine, error) {
+	return nil, nil
+}
+func (s *preinsertVMCreateStub) Info(context.Context, taskflow.VirtualMachineInfoReq) (*taskflow.VirtualMachine, error) {
+	return nil, nil
+}
+func (s *preinsertVMCreateStub) Terminal(context.Context, *taskflow.TerminalReq) (taskflow.Sheller, error) {
+	return nil, nil
+}
+func (s *preinsertVMCreateStub) Reports(context.Context, taskflow.ReportSubscribeReq) (taskflow.Reporter, error) {
+	return nil, nil
+}
+func (s *preinsertVMCreateStub) TerminalList(context.Context, string) ([]*taskflow.Terminal, error) {
+	return nil, nil
+}
+func (s *preinsertVMCreateStub) CloseTerminal(context.Context, *taskflow.CloseTerminalReq) error {
+	return nil
+}
+func (s *preinsertVMCreateStub) IsOnline(context.Context, *taskflow.IsOnlineReq[string]) (*taskflow.IsOnlineResp, error) {
+	return nil, nil
 }

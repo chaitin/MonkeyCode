@@ -505,3 +505,146 @@ func (t *TaskRepo) Create(ctx context.Context, u *domain.User, req domain.Create
 
 	return res, err
 }
+
+func (t *TaskRepo) PrepareCreate(ctx context.Context, u *domain.User, req domain.CreateTaskReq, token, vmID string) (*domain.PreparedProjectTask, error) {
+	resource := req.Resource
+
+	var res *domain.PreparedProjectTask
+	err := entx.WithTx2(ctx, t.db, func(tx *db.Tx) error {
+		h, err := tx.Host.Query().Where(host.ID(req.HostID)).First(ctx)
+		if err != nil {
+			return err
+		}
+
+		if req.UsePublicHost {
+			cnt, err := tx.VirtualMachine.Query().
+				Where(virtualmachine.UserID(u.ID)).
+				Where(virtualmachine.HasHostWith(host.HasUserWith(user.Role(consts.UserRoleAdmin)))).
+				Where(virtualmachine.ExpiredAtGT(time.Now())).
+				Count(ctx)
+			if err != nil {
+				return errcode.ErrDatabaseOperation.Wrap(err)
+			}
+			if cnt >= t.cfg.PublicHost.CountLimit {
+				return errcode.ErrPublicHostBeyondLimit.Wrap(fmt.Errorf("public host limit reached"))
+			}
+		}
+
+		mid, err := uuid.Parse(req.ModelID)
+		if err != nil {
+			return errcode.ErrModelAccessDenied.Wrap(err)
+		}
+		m, err := tx.Model.Query().
+			WithPricing().
+			WithUser().
+			Where(model.ID(mid)).
+			First(ctx)
+		if err != nil {
+			return err
+		}
+
+		apikey := uuid.NewString()
+		mak, err := tx.ModelApiKey.Create().
+			SetID(uuid.New()).
+			SetAPIKey(apikey).
+			SetUserID(u.ID).
+			SetModelID(m.ID).
+			SetVirtualmachineID(vmID).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		m.Edges.Apikeys = append(m.Edges.Apikeys, mak)
+
+		img, err := tx.Image.Query().Where(image.ID(req.ImageID)).First(ctx)
+		if err != nil {
+			return err
+		}
+
+		id := uuid.New()
+		tk, err := tx.Task.Create().
+			SetID(id).
+			SetKind(req.Type).
+			SetSubType(req.SubType).
+			SetContent(req.Content).
+			SetUserID(u.ID).
+			SetStatus(consts.TaskStatusPending).
+			SetLogStore(consts.LogStoreClickHouse).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+
+		if tk == nil {
+			return fmt.Errorf("created task is nil")
+		}
+
+		crt := tx.ProjectTask.Create().
+			SetID(uuid.New()).
+			SetImageID(img.ID).
+			SetModelID(m.ID).
+			SetTaskID(tk.ID).
+			SetRepoURL(req.RepoReq.RepoURL).
+			SetRepoFilename(req.RepoReq.RepoFilename).
+			SetBranch(req.RepoReq.Branch).
+			SetCliName(req.CliName)
+
+		if req.GitIdentityID != uuid.Nil {
+			crt.SetGitIdentityID(req.GitIdentityID)
+		}
+		if req.Extra.ProjectID != uuid.Nil {
+			crt.SetProjectID(req.Extra.ProjectID)
+		}
+		if req.Extra.IssueID != uuid.Nil {
+			crt.SetIssueID(req.Extra.IssueID)
+		}
+		pt, err := crt.Save(ctx)
+		if err != nil {
+			return err
+		}
+		pt.Edges.Task = tk
+		pt.Edges.Model = m
+		pt.Edges.Image = img
+
+		vmCrt := tx.VirtualMachine.Create().
+			SetID(vmID).
+			SetUserID(u.ID).
+			SetName(fmt.Sprintf("task-%s", id.String())).
+			SetHostID(h.ID).
+			SetCores(resource.Core).
+			SetMemory(int64(resource.Memory)).
+			SetModelID(m.ID).
+			SetCreatedAt(req.Now).
+			SetRepoURL(req.RepoReq.RepoURL).
+			SetRepoFilename(req.RepoReq.RepoFilename).
+			SetBranch(req.RepoReq.Branch)
+		if err := vmCrt.Exec(ctx); err != nil {
+			return fmt.Errorf("failed to create virtual machine %s", err)
+		}
+
+		tvm := tx.TaskVirtualMachine.Create().
+			SetID(uuid.New()).
+			SetTaskID(tk.ID).
+			SetVirtualmachineID(vmID)
+		if err := tvm.Exec(ctx); err != nil {
+			return err
+		}
+
+		res = &domain.PreparedProjectTask{
+			ProjectTask: pt,
+			Model:       m,
+			Image:       img,
+		}
+		return nil
+	})
+	return res, err
+}
+
+func (t *TaskRepo) CompleteCreate(ctx context.Context, vmID string, vm *taskflow.VirtualMachine) error {
+	up := t.db.VirtualMachine.UpdateOneID(vmID).
+		SetEnvironmentID(vm.EnvironmentID)
+	if vm.AccessToken != "" {
+		up.SetAccessToken(vm.AccessToken)
+	}
+	return up.Exec(ctx)
+}

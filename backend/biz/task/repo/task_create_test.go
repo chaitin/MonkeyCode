@@ -16,6 +16,8 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/modelapikey"
+	"github.com/chaitin/MonkeyCode/backend/db/taskvirtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/taskflow"
 )
@@ -78,6 +80,78 @@ func TestTaskRepoCreateCreatesModelApiKeyWithoutPricing(t *testing.T) {
 	}
 	if keys[0].VirtualmachineID != vmID {
 		t.Fatalf("virtualmachine id = %q, want %q", keys[0].VirtualmachineID, vmID)
+	}
+}
+
+func TestTaskRepoPrepareCreatePersistsVirtualMachineBeforeTaskflowCreate(t *testing.T) {
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:task-repo-prepare-create-vm-test?mode=memory&cache=shared&_fk=1")
+	t.Cleanup(func() { _ = client.Close() })
+
+	userID := uuid.New()
+	modelID := uuid.New()
+	imageID := uuid.New()
+	hostID := "host-task-prepare"
+	vmID := "agent_preallocated"
+
+	if _, err := client.User.Create().SetID(userID).SetName("user").SetRole(consts.UserRoleIndividual).SetStatus(consts.UserStatusActive).Save(ctx); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if _, err := client.Host.Create().SetID(hostID).SetUserID(userID).Save(ctx); err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+	if _, err := client.Model.Create().SetID(modelID).SetUserID(userID).SetProvider("OpenAI").SetAPIKey("secret").SetBaseURL("https://api.example.com").SetModel("gpt-4o").Save(ctx); err != nil {
+		t.Fatalf("create model: %v", err)
+	}
+	if _, err := client.Image.Create().SetID(imageID).SetUserID(userID).SetName("image").Save(ctx); err != nil {
+		t.Fatalf("create image: %v", err)
+	}
+
+	repo := &TaskRepo{
+		cfg:    &config.Config{},
+		db:     client,
+		logger: slog.Default(),
+	}
+	req := domain.CreateTaskReq{
+		Content: "content",
+		HostID:  hostID,
+		ImageID: imageID,
+		ModelID: modelID.String(),
+		Resource: &domain.VMResource{
+			Core:   1,
+			Memory: 1024,
+		},
+		Type: consts.TaskTypeDevelop,
+		Now:  time.Now(),
+	}
+
+	prepared, err := repo.PrepareCreate(ctx, &domain.User{ID: userID}, req, "", vmID)
+	if err != nil {
+		t.Fatalf("PrepareCreate() error = %v", err)
+	}
+	if prepared.ProjectTask.Edges.Task == nil {
+		t.Fatal("prepared project task missing task edge")
+	}
+
+	vm, err := client.VirtualMachine.Query().Where(virtualmachine.ID(vmID)).Only(ctx)
+	if err != nil {
+		t.Fatalf("query prepared vm: %v", err)
+	}
+	if vm.EnvironmentID != "" {
+		t.Fatalf("prepared vm environment_id = %q, want empty before taskflow create", vm.EnvironmentID)
+	}
+	if _, err := client.TaskVirtualMachine.Query().
+		Where(taskvirtualmachine.VirtualmachineIDEQ(vmID), taskvirtualmachine.TaskID(prepared.ProjectTask.TaskID)).
+		Only(ctx); err != nil {
+		t.Fatalf("query task vm relation: %v", err)
+	}
+
+	keys, err := client.ModelApiKey.Query().Where(modelapikey.ModelID(modelID), modelapikey.UserID(userID)).All(ctx)
+	if err != nil {
+		t.Fatalf("query model api keys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].VirtualmachineID != vmID {
+		t.Fatalf("model api keys = %#v, want one key bound to %s", keys, vmID)
 	}
 }
 

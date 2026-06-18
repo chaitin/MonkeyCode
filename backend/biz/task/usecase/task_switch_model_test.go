@@ -304,6 +304,12 @@ func (r *switchModelTaskRepo) List(context.Context, *domain.User, domain.TaskLis
 func (r *switchModelTaskRepo) Create(context.Context, *domain.User, domain.CreateTaskReq, string, func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error) {
 	return nil, errors.New("unused")
 }
+func (r *switchModelTaskRepo) PrepareCreate(context.Context, *domain.User, domain.CreateTaskReq, string, string) (*domain.PreparedProjectTask, error) {
+	return nil, errors.New("unused")
+}
+func (r *switchModelTaskRepo) CompleteCreate(context.Context, string, *taskflow.VirtualMachine) error {
+	return errors.New("unused")
+}
 func (r *switchModelTaskRepo) Update(context.Context, *domain.User, uuid.UUID, func(*db.TaskUpdateOne) error) error {
 	return errors.New("unused")
 }

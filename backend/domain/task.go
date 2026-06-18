@@ -41,6 +41,8 @@ type TaskRepo interface {
 	Info(ctx context.Context, user *User, id uuid.UUID, isPrivileged bool) (*db.Task, error)
 	List(ctx context.Context, user *User, req TaskListReq) ([]*db.ProjectTask, *db.PageInfo, error)
 	Create(ctx context.Context, user *User, req CreateTaskReq, token string, fn func(*db.ProjectTask, *db.Model, *db.Image) (*taskflow.VirtualMachine, error)) (*db.ProjectTask, error)
+	PrepareCreate(ctx context.Context, user *User, req CreateTaskReq, token, vmID string) (*PreparedProjectTask, error)
+	CompleteCreate(ctx context.Context, vmID string, vm *taskflow.VirtualMachine) error
 	Update(ctx context.Context, user *User, id uuid.UUID, fn func(up *db.TaskUpdateOne) error) error
 	RefreshLastActiveAt(ctx context.Context, id uuid.UUID, at time.Time, minInterval time.Duration) error
 	Stop(ctx context.Context, user *User, id uuid.UUID, fn func(*db.Task) error) error
@@ -49,6 +51,12 @@ type TaskRepo interface {
 	CreateModelSwitch(ctx context.Context, item *TaskModelSwitch) error
 	FinishModelSwitch(ctx context.Context, id uuid.UUID, success bool, message, sessionID string) error
 	CompleteModelSwitch(ctx context.Context, id, taskID, modelID uuid.UUID, success bool, message, sessionID string) error
+}
+
+type PreparedProjectTask struct {
+	ProjectTask *db.ProjectTask
+	Model       *db.Model
+	Image       *db.Image
 }
 
 // repoFullName 从 repo_url 中提取 full_name

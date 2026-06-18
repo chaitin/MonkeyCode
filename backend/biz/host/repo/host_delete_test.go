@@ -12,6 +12,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db"
 	"github.com/chaitin/MonkeyCode/backend/db/enttest"
 	"github.com/chaitin/MonkeyCode/backend/db/virtualmachine"
+	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/pkg/entx"
 )
 
@@ -149,6 +150,69 @@ func TestHostRepo_CountDownQueriesUseExpiredAt(t *testing.T) {
 	}
 	if len(allCountdown) != 2 {
 		t.Fatalf("all countdown ids = %v, want vm-expiring and vm-old", vmIDs(allCountdown))
+	}
+}
+
+func TestHostRepo_PrepareCreateVirtualMachinePersistsBeforeTaskflowCreate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := enttest.Open(t, "sqlite3", "file:host-prepare-create-vm-test?mode=memory&cache=shared&_fk=1")
+	defer client.Close()
+
+	repo := &HostRepo{db: client}
+	uid := uuid.New()
+	imageID := uuid.New()
+	now := time.Now()
+
+	if _, err := client.User.Create().
+		SetID(uid).
+		SetName("tester").
+		SetRole(consts.UserRoleIndividual).
+		SetStatus(consts.UserStatusActive).
+		Save(ctx); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if _, err := client.Host.Create().
+		SetID("host-1").
+		SetUserID(uid).
+		SetHostname("host").
+		Save(ctx); err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+	if _, err := client.Image.Create().
+		SetID(imageID).
+		SetUserID(uid).
+		SetName("image").
+		Save(ctx); err != nil {
+		t.Fatalf("create image: %v", err)
+	}
+
+	prepared, err := repo.PrepareCreateVirtualMachine(ctx, &domain.User{ID: uid}, &domain.CreateVMReq{
+		HostID:  "host-1",
+		ImageID: imageID,
+		Name:    "manual-vm",
+		Resource: &domain.Resource{
+			CPU:    2,
+			Memory: 4096,
+		},
+		Now: now,
+	}, "agent_preallocated")
+	if err != nil {
+		t.Fatalf("prepare create virtual machine: %v", err)
+	}
+	if prepared.VirtualMachine.ID != "agent_preallocated" {
+		t.Fatalf("prepared vm id = %q, want agent_preallocated", prepared.VirtualMachine.ID)
+	}
+
+	vm, err := client.VirtualMachine.Query().
+		Where(virtualmachine.ID("agent_preallocated")).
+		Only(ctx)
+	if err != nil {
+		t.Fatalf("query prepared vm before taskflow create: %v", err)
+	}
+	if vm.EnvironmentID != "" {
+		t.Fatalf("prepared vm environment_id = %q, want empty before taskflow create", vm.EnvironmentID)
 	}
 }
 

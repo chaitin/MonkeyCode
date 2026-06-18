@@ -81,6 +81,22 @@ func TestCreateVirtualMachineReqIncludesLogStore(t *testing.T) {
 	}
 }
 
+func TestCreateVirtualMachineReqIncludesID(t *testing.T) {
+	req := CreateVirtualMachineReq{
+		ID:     "agent_preallocated",
+		UserID: "u-1",
+		HostID: "h-1",
+	}
+
+	b, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"id":"agent_preallocated"`) {
+		t.Fatalf("marshaled request missing id: %s", string(b))
+	}
+}
+
 func TestRestartTaskReqIncludesLogStore(t *testing.T) {
 	req := RestartTaskReq{
 		ID:        uuid.MustParse("22222222-2222-2222-2222-222222222222"),
