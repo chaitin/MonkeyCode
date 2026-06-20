@@ -11,9 +11,11 @@ import {
 import {
   Command,
   CommandEmpty,
+  CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
 } from "@/components/ui/command"
 import {
   Dialog,
@@ -30,9 +32,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import { getGitPlatformIcon } from "@/utils/common"
+import { getGithubAppInstallUrl, getGitPlatformIcon } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconCheck, IconChevronDown, IconGitBranch, IconLoader, IconReload } from "@tabler/icons-react"
+import { IconCheck, IconChevronDown, IconGitBranch, IconLink, IconLoader, IconReload } from "@tabler/icons-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useSettingsDialog } from "@/pages/console/user/page"
@@ -75,6 +77,8 @@ export default function AddProjectDialog({
     () => identities.find((i) => i.id === selectedIdentityId),
     [identities, selectedIdentityId]
   )
+  const selectedIdentityIsGithub =
+    selectedIdentity?.platform === ConstsGitPlatform.GitPlatformGithub
 
   const selectedRepo = identityRepoOptions.find(
     (o) => `${o.gitIdentityId}:${o.repository.url || ""}` === selectedRepoValue
@@ -136,6 +140,15 @@ export default function AddProjectDialog({
       setSelectedRepoValue("")
     }
   }, [selectedIdentityId])
+
+  const handleAuthorizeGithubRepos = () => {
+    const popup = window.open(getGithubAppInstallUrl(), "_blank", "noopener,noreferrer")
+    if (!popup) {
+      toast.error("浏览器拦截了新页面，请允许弹出窗口后重试")
+      return
+    }
+    toast.success("已打开 GitHub 配置页，完成授权后请返回并刷新仓库列表")
+  }
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -310,59 +323,119 @@ export default function AddProjectDialog({
                           </div>
                         ) : identityRepoOptions.length === 0 ? (
                           <div className="p-4">
-                            <p className="mb-3 text-sm">暂无仓库或获取失败，请点击重试。</p>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => loadReposForIdentity(selectedIdentityId)}
-                            >
-                              重试
-                            </Button>
+                            <div className="rounded-lg border border-dashed bg-muted/20 p-4">
+                              <p className="text-sm font-medium">当前没有可用仓库</p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {selectedIdentityIsGithub
+                                  ? "完成 GitHub 授权后，返回这里点击刷新仓库列表。"
+                                  : "请点击刷新重新获取仓库列表。"}
+                              </p>
+                              <div className="mt-3 flex items-center gap-2">
+                                {selectedIdentityIsGithub ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleAuthorizeGithubRepos}
+                                  >
+                                    授权其他仓库
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => loadReposForIdentity(selectedIdentityId)}
+                                >
+                                  重试
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         ) : (
                           <Command>
                             <CommandInput placeholder="搜索仓库..." />
                             <CommandList className="max-h-48 p-1">
-                              <CommandEmpty>未找到匹配的仓库</CommandEmpty>
-                              {identityRepoOptions.map((option) => {
-                                const value = `${option.gitIdentityId}:${option.repository.url || ""}`
-                                const repoName = (
-                                  option.repository.full_name || option.repository.url || ""
-                                ).replace(`${option.username}/`, "")
-                                const desc = option.repository.description
-                                return (
-                                  <CommandItem
-                                    key={value}
-                                    value={`${repoName} ${desc || ""} ${option.username}`}
-                                    onSelect={() => {
-                                      setSelectedRepoValue(value)
-                                      setRepoPopoverOpen(false)
-                                    }}
-                                    className={cn(
-                                      "cursor-pointer flex flex-col items-start gap-0.5 py-1 [&>svg:last-child]:hidden",
-                                      selectedRepoValue === value &&
-                                        "bg-muted/50 data-[selected=true]:bg-muted/70"
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-2 w-full min-w-0">
-                                      <IconGitBranch className="size-4 shrink-0" />
-                                      <span className="truncate flex-1 text-sm">{repoName}</span>
-                                      <IconCheck
-                                        className={cn(
-                                          "size-4 shrink-0",
-                                          selectedRepoValue === value ? "opacity-100" : "opacity-0"
-                                        )}
-                                      />
-                                    </div>
-                                    <span
-                                      className="text-xs text-muted-foreground truncate w-full pl-6"
-                                      title={desc || undefined}
+                              <CommandEmpty className="py-4">
+                                <div className="flex flex-col items-center gap-3 text-center">
+                                  <p className="text-sm text-muted-foreground">
+                                    未找到匹配的仓库
+                                  </p>
+                                  {selectedIdentityIsGithub ? (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={handleAuthorizeGithubRepos}
                                     >
-                                      {desc || "暂无描述"}
-                                    </span>
-                                  </CommandItem>
-                                )
-                              })}
+                                      授权其他仓库
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </CommandEmpty>
+                              <CommandGroup>
+                                {identityRepoOptions.map((option) => {
+                                  const value = `${option.gitIdentityId}:${option.repository.url || ""}`
+                                  const repoName = (
+                                    option.repository.full_name || option.repository.url || ""
+                                  ).replace(`${option.username}/`, "")
+                                  const desc = option.repository.description
+                                  return (
+                                    <CommandItem
+                                      key={value}
+                                      value={`${repoName} ${desc || ""} ${option.username}`}
+                                      onSelect={() => {
+                                        setSelectedRepoValue(value)
+                                        setRepoPopoverOpen(false)
+                                      }}
+                                      className={cn(
+                                        "cursor-pointer flex flex-col items-start gap-0.5 py-1 [&>svg:last-child]:hidden",
+                                        selectedRepoValue === value &&
+                                          "bg-muted/50 data-[selected=true]:bg-muted/70"
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-2 w-full min-w-0">
+                                        <IconGitBranch className="size-4 shrink-0" />
+                                        <span className="truncate flex-1 text-sm">{repoName}</span>
+                                        <IconCheck
+                                          className={cn(
+                                            "size-4 shrink-0",
+                                            selectedRepoValue === value ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                      </div>
+                                      <span
+                                        className="text-xs text-muted-foreground truncate w-full pl-6"
+                                        title={desc || undefined}
+                                      >
+                                        {desc || "暂无描述"}
+                                      </span>
+                                    </CommandItem>
+                                  )
+                                })}
+                              </CommandGroup>
+                              {selectedIdentityIsGithub ? (
+                                <>
+                                  <CommandSeparator className="my-1" />
+                                  <CommandGroup>
+                                    <CommandItem
+                                      value="authorize more github repositories"
+                                      onSelect={() => {
+                                        handleAuthorizeGithubRepos()
+                                        setRepoPopoverOpen(false)
+                                      }}
+                                      className="cursor-pointer flex flex-col items-start gap-0.5 py-1 [&>svg:last-child]:hidden"
+                                    >
+                                      <div className="flex items-center gap-2 w-full min-w-0">
+                                        <IconLink className="size-4 shrink-0 text-muted-foreground" />
+                                        <span className="truncate flex-1 text-sm font-medium">授权其他仓库</span>
+                                      </div>
+                                      <span className="text-xs text-muted-foreground truncate w-full pl-6">
+                                        前往 GitHub 调整 MonkeyCode App 的仓库权限
+                                      </span>
+                                    </CommandItem>
+                                  </CommandGroup>
+                                </>
+                              ) : null}
                             </CommandList>
                           </Command>
                         )}
