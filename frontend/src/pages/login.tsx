@@ -26,6 +26,7 @@ import { captchaChallenge } from "@/utils/common"
 import { ArrowLeft, Eye, EyeOff } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import type { DomainTeamOIDCPublicConfigResp, GithubComGoYokoWebResp } from "@/api/Api"
+import { useTranslation } from "react-i18next"
 
 const USER_STORAGE_KEY = 'login_user'
 const MANAGER_STORAGE_KEY = 'login_manager'
@@ -45,15 +46,16 @@ export default function LoginPage({
   const [agreedToTerms, setAgreedToTerms] = React.useState(true)
   const [defaultOIDCConfig, setDefaultOIDCConfig] = React.useState<DomainTeamOIDCPublicConfigResp | null>(null)
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const inviterId = typeof window !== 'undefined' ? (localStorage.getItem('ic') || '') : ''
   const userLoginHref = `/api/v1/users/login?redirect=&inviter_id=${inviterId}`
   const defaultOIDCLoginURL = defaultOIDCConfig?.enabled ? defaultOIDCConfig.login_url : ''
 
   const ensureTermsAccepted = React.useCallback(() => {
     if (agreedToTerms) return true
-    toast.error('请先阅读并同意用户协议')
+    toast.error(t("login.toast.acceptTerms"))
     return false
-  }, [agreedToTerms])
+  }, [agreedToTerms, t])
 
   React.useEffect(() => {
     try {
@@ -99,7 +101,7 @@ export default function LoginPage({
     if (!ensureTermsAccepted()) return
 
     if (userEmail.trim() === '' || userPassword.trim() === '') {
-      toast.error('请输入账号和密码')
+      toast.error(t("login.toast.missingCredentials"))
       return
     }
 
@@ -116,11 +118,11 @@ export default function LoginPage({
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ email: userEmail.trim(), password: userPassword.trim() }))
           navigate('/console/')
         } else {
-          toast.error('登录失败，请重试')
+          toast.error(t("login.toast.loginFailed"))
         }
       })
     } else {
-      toast.error('验证码验证失败')
+      toast.error(t("login.toast.captchaFailed"))
     }
     setLogging(false)
   }
@@ -129,7 +131,7 @@ export default function LoginPage({
     if (!ensureTermsAccepted()) return
 
     if (teamManagerEmail.trim() === '' || teamManagerPassword.trim() === '') {
-      toast.error('请输入账号和密码')
+      toast.error(t("login.toast.missingCredentials"))
       return
     }
 
@@ -147,11 +149,11 @@ export default function LoginPage({
           localStorage.setItem(MANAGER_STORAGE_KEY, JSON.stringify({ email: teamManagerEmail.trim(), password: teamManagerPassword.trim() }))
           navigate('/manager/')
         } else {
-          toast.error('登录失败，请重试')
+          toast.error(t("login.toast.loginFailed"))
         }
       })
     } else {
-      toast.error('验证码验证失败')
+      toast.error(t("login.toast.captchaFailed"))
     }
     setLogging(false)
 
@@ -162,20 +164,20 @@ export default function LoginPage({
       <div className="w-full max-w-sm">
         <div className={cn("flex flex-col gap-6", className)} {...props}>
           <Link to="/">
-            <h1 className="text-2xl hover:font-bold">MonkeyCode 智能开发平台</h1>
+            <h1 className="text-2xl hover:font-bold">{t("login.title")}</h1>
           </Link>
           <Card>
             <CardContent>
               <Tabs defaultValue="user">
                 <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="user">普通用户</TabsTrigger>
-                  <TabsTrigger value="manager">团队管理员</TabsTrigger>
+                  <TabsTrigger value="user">{t("login.tabs.user")}</TabsTrigger>
+                  <TabsTrigger value="manager">{t("login.tabs.manager")}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="user" className="mt-4">
                   {userLoginView === 'choices' ? (
                     <div className="mt-1 flex flex-col gap-4">
-                      <div className="text-sm font-medium">选择登录方式</div>
+                      <div className="text-sm font-medium">{t("login.choices.title")}</div>
                       {!IS_OFFLINE_EDITION && (
                         <Button size="lg" className="w-full" asChild>
                           <a
@@ -186,7 +188,7 @@ export default function LoginPage({
                               }
                             }}
                           >
-                            百智云登录 - 推荐
+                            {t("login.choices.baizhi")}
                           </a>
                         </Button>
                       )}
@@ -200,7 +202,7 @@ export default function LoginPage({
                               }
                             }}
                           >
-                            {defaultOIDCConfig?.display_name || '企业登录'}
+                            {defaultOIDCConfig?.display_name || t("login.choices.oidc")}
                           </a>
                         </Button>
                       )}
@@ -211,7 +213,7 @@ export default function LoginPage({
                         className="w-full"
                         onClick={() => setUserLoginView('password')}
                       >
-                        账号密码登录
+                        {t("login.choices.password")}
                       </Button>
                       {!IS_OFFLINE_EDITION && (
                         <Button size="lg" variant="secondary" className="w-full" asChild>
@@ -223,7 +225,7 @@ export default function LoginPage({
                               }
                             }}
                           >
-                            快速注册
+                            {t("login.choices.signup")}
                           </a>
                         </Button>
                       )}
@@ -231,16 +233,16 @@ export default function LoginPage({
                   ) : (
                     <div className="mt-1 flex flex-col gap-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium">账号密码登录</div>
+                        <div className="text-sm font-medium">{t("login.choices.password")}</div>
                         <Button type="button" variant="secondary" size="sm" onClick={() => setUserLoginView('choices')}>
                           <ArrowLeft size={14} />
-                          返回
+                          {t("login.actions.back")}
                         </Button>
                       </div>
                       <form onSubmit={(e) => { e.preventDefault(); handleUserLogin(); }}>
                         <FieldGroup className="gap-5">
                           <Field>
-                            <FieldLabel htmlFor="user-email">账号</FieldLabel>
+                            <FieldLabel htmlFor="user-email">{t("login.fields.account")}</FieldLabel>
                             <Input
                               value={userEmail}
                               placeholder="monkeycode@example.com"
@@ -253,10 +255,10 @@ export default function LoginPage({
                           </Field>
                           <Field>
                             <div className="flex flex-row items-center justify-between">
-                              <FieldLabel htmlFor="user-password">密码</FieldLabel>
+                              <FieldLabel htmlFor="user-password">{t("login.fields.password")}</FieldLabel>
                               {!IS_OFFLINE_EDITION && (
                                 <Link to="/findpassword" tabIndex={-1} className="text-sm text-muted-foreground hover:underline">
-                                  找回密码
+                                  {t("login.actions.forgotPassword")}
                                 </Link>
                               )}
                             </div>
@@ -284,7 +286,7 @@ export default function LoginPage({
                           <Field>
                             <Button type="submit" disabled={logging || !agreedToTerms} className="w-full">
                               {logging && <Spinner className="mr-2" />}
-                              登录
+                              {t("login.actions.login")}
                             </Button>
                           </Field>
                         </FieldGroup>
@@ -296,7 +298,7 @@ export default function LoginPage({
                   <form onSubmit={(e) => { e.preventDefault(); handleTeamManagerLogin(); }}>
                     <FieldGroup>
                       <Field>
-                        <FieldLabel htmlFor="email">账号</FieldLabel>
+                        <FieldLabel htmlFor="email">{t("login.fields.account")}</FieldLabel>
                         <Input
                           value={teamManagerEmail}
                           placeholder="monkeycode@example.com"
@@ -308,7 +310,7 @@ export default function LoginPage({
                         />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="password">密码</FieldLabel>
+                        <FieldLabel htmlFor="password">{t("login.fields.password")}</FieldLabel>
                         <div className="relative">
                           <Input
                             id="password"
@@ -333,7 +335,7 @@ export default function LoginPage({
                       <Field>
                         <Button type="submit" disabled={logging || !agreedToTerms}>
                         {logging && <Spinner />}
-                        登录
+                        {t("login.actions.login")}
                       </Button>
                     </Field>
                   </FieldGroup>
@@ -348,10 +350,10 @@ export default function LoginPage({
                   className="mt-px size-3.5 rounded-[3px] [&_[data-slot=checkbox-indicator]>svg]:size-3"
                 />
                 <label htmlFor="login-user-agreement" className="text-[13px] leading-[18px] text-muted-foreground">
-                  我已阅读并同意
+                  {t("login.agreement.prefix")}
                   {" "}
                   <Link to="/user-agreement" target="_blank" rel="noreferrer" className="text-foreground hover:underline">
-                    《用户协议》
+                    {t("login.agreement.link")}
                   </Link>
                 </label>
               </div>
