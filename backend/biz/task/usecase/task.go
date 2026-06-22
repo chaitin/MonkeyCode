@@ -201,7 +201,7 @@ func (a *TaskUsecase) SwitchModel(ctx context.Context, user *domain.User, taskID
 		}
 	}
 
-	coding, configs, agentRes, err := a.getCodingConfigs(ctx, t.CliName, model, nil, nil, a.userScope(ctx, user))
+	coding, configs, agentRes, err := a.getCodingConfigs(ctx, t.CliName, model, nil, nil, a.userScope(ctx, user), false)
 	if err != nil {
 		return nil, err
 	}
@@ -565,7 +565,7 @@ func (a *TaskUsecase) Create(ctx context.Context, user *domain.User, req domain.
 		runtimeToken = keys[0].APIKey
 	}
 
-	coding, configs, agentRes, err := a.getCodingConfigs(ctx, req.CliName, m, req.Extra.SkillIDs, req.Extra.PluginIDs, a.userScope(ctx, user))
+	coding, configs, agentRes, err := a.getCodingConfigs(ctx, req.CliName, m, req.Extra.SkillIDs, req.Extra.PluginIDs, a.userScope(ctx, user), true)
 	if err != nil {
 		return nil, err
 	}
@@ -848,7 +848,7 @@ func (a *TaskUsecase) userScope(ctx context.Context, user *domain.User) agentres
 	return f
 }
 
-func (a *TaskUsecase) getCodingConfigs(ctx context.Context, cli consts.CliName, m *db.Model, skillIDs []string, pluginIDs []string, scope agentresource.ScopeFilter) (taskflow.CodingAgent, []taskflow.ConfigFile, *taskflow.AgentResources, error) {
+func (a *TaskUsecase) getCodingConfigs(ctx context.Context, cli consts.CliName, m *db.Model, skillIDs []string, pluginIDs []string, scope agentresource.ScopeFilter, includeRules bool) (taskflow.CodingAgent, []taskflow.ConfigFile, *taskflow.AgentResources, error) {
 	var tmp string
 	var path string
 	var coding taskflow.CodingAgent
@@ -940,16 +940,18 @@ func (a *TaskUsecase) getCodingConfigs(ctx context.Context, cli consts.CliName, 
 		return coding, cfs, nil, nil
 	}
 
-	// rule — 三种 CLI 都下发（仍走 inline ConfigFile）
-	if materializedRules, err := a.resolver.Rules(ctx); err != nil {
-		a.logger.WarnContext(ctx, "getCodingConfigs: list rules failed, continuing without rules",
-			slog.Any("err", err))
-	} else {
-		for _, r := range materializedRules {
-			cfs = append(cfs, taskflow.ConfigFile{
-				Path:    filepath.Join(agentRuleBaseDir, r.Name+".md"),
-				Content: r.Content,
-			})
+	// rule — 仅 Create 路径下发；切模型等 rebuild 路径跳过避免重复覆盖。
+	if includeRules {
+		if materializedRules, err := a.resolver.Rules(ctx); err != nil {
+			a.logger.WarnContext(ctx, "getCodingConfigs: list rules failed, continuing without rules",
+				slog.Any("err", err))
+		} else {
+			for _, r := range materializedRules {
+				cfs = append(cfs, taskflow.ConfigFile{
+					Path:    filepath.Join(agentRuleBaseDir, r.Name+".md"),
+					Content: r.Content,
+				})
+			}
 		}
 	}
 
