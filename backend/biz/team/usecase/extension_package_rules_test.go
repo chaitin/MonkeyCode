@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -57,6 +59,14 @@ func TestExtensionRuleImporterCreatesGlobalRule(t *testing.T) {
 	if rule.ActiveVersionID == nil {
 		t.Fatal("active version id is nil")
 	}
+	version, err := client.AgentRuleVersion.Get(ctx, *rule.ActiveVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRuleVersionFormat(t, version.Version)
+	if version.Version == pkg.Version {
+		t.Fatalf("rule version should not use package version %q", pkg.Version)
+	}
 }
 
 func TestExtensionRuleImporterUpdatesSamePackageRule(t *testing.T) {
@@ -93,6 +103,28 @@ func TestExtensionRuleImporterUpdatesSamePackageRule(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("version count = %d", count)
 	}
+	versions, err := client.AgentRuleVersion.Query().All(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range versions {
+		assertRuleVersionFormat(t, version.Version)
+		if strings.HasPrefix(version.Version, "1.0.") {
+			t.Fatalf("rule version should not use package version %q", version.Version)
+		}
+	}
+	rule, err := client.AgentRule.Query().Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := client.AgentRuleVersion.Get(ctx, *rule.ActiveVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRuleVersionFormat(t, active.Version)
+	if active.Content != "v2" {
+		t.Fatalf("active content = %q, want v2", active.Content)
+	}
 }
 
 func TestExtensionRuleImporterRejectsNameConflict(t *testing.T) {
@@ -124,5 +156,15 @@ func TestExtensionRuleImporterRejectsNameConflict(t *testing.T) {
 	}
 	if _, err := importer.ImportRules(ctx, userID, second); err == nil {
 		t.Fatal("ImportRules should reject same rule name from different package")
+	}
+}
+
+func assertRuleVersionFormat(t *testing.T, version string) {
+	t.Helper()
+	if len(version) != 14 {
+		t.Fatalf("rule version = %q, want 14-char timestamp", version)
+	}
+	if _, err := time.Parse(VersionFormat, version); err != nil {
+		t.Fatalf("rule version = %q does not match %s: %v", version, VersionFormat, err)
 	}
 }
