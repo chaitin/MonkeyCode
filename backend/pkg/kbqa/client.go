@@ -25,6 +25,21 @@ type Client struct {
 // defaultModel 未配置 model 时的兜底模型
 const defaultModel = "deepseek-v3.2"
 
+// answerCharBudget 让模型自我约束的答案字数预算。微信文本气泡里太长既超被动回复
+// 字节上限、读着也累；给模型一个明确预算，使它在篇幅内自然收尾，而不是被下游硬截断出"…"。
+// 取值需小于 usecase 的硬截断上限（wechatMPAnswerMaxRunes），保证正常情况下硬截断不触发。
+const answerCharBudget = 450
+
+// maxTokens 是输出 token 的兜底上限，仅防模型跑飞，取值远高于 answerCharBudget 对应的
+// token 量，正常的预算内回答不会被它截断。
+const maxTokens = 1024
+
+// systemPrompt 指导模型在字数预算内给出完整、纯文本、能自然收尾的回答。
+var systemPrompt = fmt.Sprintf(
+	"你是公众号知识库助手，回答会显示在微信对话气泡里。请用简洁的纯文本作答，"+
+		"控制在 %d 字以内，并确保回答完整、能自然收尾，不要在句子或链接中途断开。"+
+		"不要使用 markdown 标题、加粗、表格等格式。", answerCharBudget)
+
 // NewClient 创建客户端。baseURL 形如 https://monkeycode.docs.baizhi.cloud
 func NewClient(baseURL, apiKey, model string) *Client {
 	if model == "" {
@@ -44,9 +59,10 @@ type chatMessage struct {
 }
 
 type chatReq struct {
-	Model    string        `json:"model"`
-	Stream   bool          `json:"stream"`
-	Messages []chatMessage `json:"messages"`
+	Model     string        `json:"model"`
+	Stream    bool          `json:"stream"`
+	MaxTokens int           `json:"max_tokens,omitempty"`
+	Messages  []chatMessage `json:"messages"`
 }
 
 type chatResp struct {
@@ -89,9 +105,13 @@ func cleanForWeChat(s string) string {
 // Ask 单轮问答，返回清洗后的完整答案。
 func (c *Client) Ask(ctx context.Context, question string) (string, error) {
 	payload, err := json.Marshal(&chatReq{
-		Model:    c.model,
-		Stream:   false,
-		Messages: []chatMessage{{Role: "user", Content: question}},
+		Model:     c.model,
+		Stream:    false,
+		MaxTokens: maxTokens,
+		Messages: []chatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: question},
+		},
 	})
 	if err != nil {
 		return "", fmt.Errorf("kbqa: marshal request: %w", err)

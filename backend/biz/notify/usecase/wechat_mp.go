@@ -44,10 +44,18 @@ type WechatMPUsecaseImpl struct {
 // NewWechatMPUsecase 创建微信公众号绑定 usecase
 func NewWechatMPUsecase(i *do.Injector) (domain.WechatMPUsecase, error) {
 	cfg := do.MustInvoke[*config.Config](i)
+	logger := do.MustInvoke[*slog.Logger](i).With("module", "wechat_mp.usecase")
 
 	var kb *kbqa.Client
 	if qa := cfg.Wechat.MP.QA; qa.Enabled && qa.BaseURL != "" && qa.APIKey != "" {
 		kb = kbqa.NewClient(qa.BaseURL, qa.APIKey, qa.Model)
+		logger.Info("wechat mp qa: enabled", "base_url", qa.BaseURL, "model", qa.Model)
+	} else {
+		// 文本消息只会回固定文案。打清楚原因，避免"只回收到您的消息"无从排查。
+		logger.Warn("wechat mp qa: disabled, text messages reply with fixed text",
+			"enabled", cfg.Wechat.MP.QA.Enabled,
+			"base_url_set", cfg.Wechat.MP.QA.BaseURL != "",
+			"api_key_set", cfg.Wechat.MP.QA.APIKey != "")
 	}
 
 	return &WechatMPUsecaseImpl{
@@ -55,7 +63,7 @@ func NewWechatMPUsecase(i *do.Injector) (domain.WechatMPUsecase, error) {
 		wechatClient: do.MustInvoke[*msgpush.WechatClient](i),
 		redis:        do.MustInvoke[*redis.Client](i),
 		config:       cfg,
-		logger:       do.MustInvoke[*slog.Logger](i).With("module", "wechat_mp.usecase"),
+		logger:       logger,
 		kb:           kb,
 	}, nil
 }
