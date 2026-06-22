@@ -20,16 +20,23 @@ import (
 type teamExtensionPackageUsecase struct {
 	repo              domain.TeamExtensionPackageRepo
 	skillUsecase      domain.TeamSkillUsecase
+	ruleImporter      extensionPackageRuleImporter
 	staticDir         string
 	staticRoutePrefix string
 	logger            *slog.Logger
 }
 
+type extensionPackageRuleImporter interface {
+	ImportRules(ctx context.Context, userID uuid.UUID, pkg *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error)
+}
+
 func NewTeamExtensionPackageUsecase(i *do.Injector) (domain.TeamExtensionPackageUsecase, error) {
 	cfg := do.MustInvoke[*config.Config](i)
+	dbClient := do.MustInvoke[*db.Client](i)
 	return &teamExtensionPackageUsecase{
 		repo:              do.MustInvoke[domain.TeamExtensionPackageRepo](i),
 		skillUsecase:      do.MustInvoke[domain.TeamSkillUsecase](i),
+		ruleImporter:      &extensionRuleImporter{db: dbClient},
 		staticDir:         cfg.StaticFiles.Dir,
 		staticRoutePrefix: cfg.StaticFiles.RoutePrefix,
 		logger:            do.MustInvoke[*slog.Logger](i),
@@ -43,6 +50,14 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	}
 
 	teamID := teamUser.GetTeamID()
+
+	var ruleResult domain.ExtensionRuleImportResult
+	if u.ruleImporter != nil {
+		ruleResult, err = u.ruleImporter.ImportRules(ctx, teamUser.User.ID, pkg)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Skill 导入:复用 TeamSkillUsecase.Add 走 bare repo + agent_skill 标准流程。
 	// extension_version 作为 agent_skill_version 的版本号,name 做幂等匹配。
@@ -92,11 +107,19 @@ func (u *teamExtensionPackageUsecase) Import(ctx context.Context, teamUser *doma
 	return &domain.ImportTeamExtensionPackageResp{
 		PackageID:     pkg.PackageID,
 		Version:       pkg.Version,
+		CreatedRules:  ruleResult.CreatedRules,
+		UpdatedRules:  ruleResult.UpdatedRules,
 		CreatedSkills: result.CreatedSkills,
 		UpdatedSkills: result.UpdatedSkills,
 		CreatedImages: result.CreatedImages,
 		UpdatedImages: result.UpdatedImages,
 	}, nil
+}
+
+type noopExtensionPackageRuleImporter struct{}
+
+func (noopExtensionPackageRuleImporter) ImportRules(context.Context, uuid.UUID, *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
+	return domain.ExtensionRuleImportResult{}, nil
 }
 
 func extensionSkillImports(pkg *parsedExtensionPackage) []domain.TeamExtensionSkillImport {
