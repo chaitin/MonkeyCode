@@ -93,6 +93,48 @@ func (_c *AgentRuleCreate) SetNillableActiveVersionID(v *uuid.UUID) *AgentRuleCr
 	return _c
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_c *AgentRuleCreate) SetExtensionPackageID(v string) *AgentRuleCreate {
+	_c.mutation.SetExtensionPackageID(v)
+	return _c
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_c *AgentRuleCreate) SetNillableExtensionPackageID(v *string) *AgentRuleCreate {
+	if v != nil {
+		_c.SetExtensionPackageID(*v)
+	}
+	return _c
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (_c *AgentRuleCreate) SetExtensionRuleID(v string) *AgentRuleCreate {
+	_c.mutation.SetExtensionRuleID(v)
+	return _c
+}
+
+// SetNillableExtensionRuleID sets the "extension_rule_id" field if the given value is not nil.
+func (_c *AgentRuleCreate) SetNillableExtensionRuleID(v *string) *AgentRuleCreate {
+	if v != nil {
+		_c.SetExtensionRuleID(*v)
+	}
+	return _c
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_c *AgentRuleCreate) SetExtensionVersion(v string) *AgentRuleCreate {
+	_c.mutation.SetExtensionVersion(v)
+	return _c
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_c *AgentRuleCreate) SetNillableExtensionVersion(v *string) *AgentRuleCreate {
+	if v != nil {
+		_c.SetExtensionVersion(*v)
+	}
+	return _c
+}
+
 // SetIsDeleted sets the "is_deleted" field.
 func (_c *AgentRuleCreate) SetIsDeleted(v bool) *AgentRuleCreate {
 	_c.mutation.SetIsDeleted(v)
@@ -318,6 +360,18 @@ func (_c *AgentRuleCreate) createSpec() (*AgentRule, *sqlgraph.CreateSpec) {
 		_spec.SetField(agentrule.FieldActiveVersionID, field.TypeUUID, value)
 		_node.ActiveVersionID = &value
 	}
+	if value, ok := _c.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(agentrule.FieldExtensionPackageID, field.TypeString, value)
+		_node.ExtensionPackageID = &value
+	}
+	if value, ok := _c.mutation.ExtensionRuleID(); ok {
+		_spec.SetField(agentrule.FieldExtensionRuleID, field.TypeString, value)
+		_node.ExtensionRuleID = &value
+	}
+	if value, ok := _c.mutation.ExtensionVersion(); ok {
+		_spec.SetField(agentrule.FieldExtensionVersion, field.TypeString, value)
+		_node.ExtensionVersion = &value
+	}
 	if value, ok := _c.mutation.IsDeleted(); ok {
 		_spec.SetField(agentrule.FieldIsDeleted, field.TypeBool, value)
 		_node.IsDeleted = value
@@ -479,6 +533,60 @@ func (u *AgentRuleUpsert) UpdateActiveVersionID() *AgentRuleUpsert {
 // ClearActiveVersionID clears the value of the "active_version_id" field.
 func (u *AgentRuleUpsert) ClearActiveVersionID() *AgentRuleUpsert {
 	u.SetNull(agentrule.FieldActiveVersionID)
+	return u
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *AgentRuleUpsert) SetExtensionPackageID(v string) *AgentRuleUpsert {
+	u.Set(agentrule.FieldExtensionPackageID, v)
+	return u
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *AgentRuleUpsert) UpdateExtensionPackageID() *AgentRuleUpsert {
+	u.SetExcluded(agentrule.FieldExtensionPackageID)
+	return u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *AgentRuleUpsert) ClearExtensionPackageID() *AgentRuleUpsert {
+	u.SetNull(agentrule.FieldExtensionPackageID)
+	return u
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (u *AgentRuleUpsert) SetExtensionRuleID(v string) *AgentRuleUpsert {
+	u.Set(agentrule.FieldExtensionRuleID, v)
+	return u
+}
+
+// UpdateExtensionRuleID sets the "extension_rule_id" field to the value that was provided on create.
+func (u *AgentRuleUpsert) UpdateExtensionRuleID() *AgentRuleUpsert {
+	u.SetExcluded(agentrule.FieldExtensionRuleID)
+	return u
+}
+
+// ClearExtensionRuleID clears the value of the "extension_rule_id" field.
+func (u *AgentRuleUpsert) ClearExtensionRuleID() *AgentRuleUpsert {
+	u.SetNull(agentrule.FieldExtensionRuleID)
+	return u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *AgentRuleUpsert) SetExtensionVersion(v string) *AgentRuleUpsert {
+	u.Set(agentrule.FieldExtensionVersion, v)
+	return u
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *AgentRuleUpsert) UpdateExtensionVersion() *AgentRuleUpsert {
+	u.SetExcluded(agentrule.FieldExtensionVersion)
+	return u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *AgentRuleUpsert) ClearExtensionVersion() *AgentRuleUpsert {
+	u.SetNull(agentrule.FieldExtensionVersion)
 	return u
 }
 
@@ -661,6 +769,69 @@ func (u *AgentRuleUpsertOne) UpdateActiveVersionID() *AgentRuleUpsertOne {
 func (u *AgentRuleUpsertOne) ClearActiveVersionID() *AgentRuleUpsertOne {
 	return u.Update(func(s *AgentRuleUpsert) {
 		s.ClearActiveVersionID()
+	})
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *AgentRuleUpsertOne) SetExtensionPackageID(v string) *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetExtensionPackageID(v)
+	})
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *AgentRuleUpsertOne) UpdateExtensionPackageID() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateExtensionPackageID()
+	})
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *AgentRuleUpsertOne) ClearExtensionPackageID() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.ClearExtensionPackageID()
+	})
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (u *AgentRuleUpsertOne) SetExtensionRuleID(v string) *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetExtensionRuleID(v)
+	})
+}
+
+// UpdateExtensionRuleID sets the "extension_rule_id" field to the value that was provided on create.
+func (u *AgentRuleUpsertOne) UpdateExtensionRuleID() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateExtensionRuleID()
+	})
+}
+
+// ClearExtensionRuleID clears the value of the "extension_rule_id" field.
+func (u *AgentRuleUpsertOne) ClearExtensionRuleID() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.ClearExtensionRuleID()
+	})
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *AgentRuleUpsertOne) SetExtensionVersion(v string) *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetExtensionVersion(v)
+	})
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *AgentRuleUpsertOne) UpdateExtensionVersion() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateExtensionVersion()
+	})
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *AgentRuleUpsertOne) ClearExtensionVersion() *AgentRuleUpsertOne {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.ClearExtensionVersion()
 	})
 }
 
@@ -1016,6 +1187,69 @@ func (u *AgentRuleUpsertBulk) UpdateActiveVersionID() *AgentRuleUpsertBulk {
 func (u *AgentRuleUpsertBulk) ClearActiveVersionID() *AgentRuleUpsertBulk {
 	return u.Update(func(s *AgentRuleUpsert) {
 		s.ClearActiveVersionID()
+	})
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (u *AgentRuleUpsertBulk) SetExtensionPackageID(v string) *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetExtensionPackageID(v)
+	})
+}
+
+// UpdateExtensionPackageID sets the "extension_package_id" field to the value that was provided on create.
+func (u *AgentRuleUpsertBulk) UpdateExtensionPackageID() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateExtensionPackageID()
+	})
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (u *AgentRuleUpsertBulk) ClearExtensionPackageID() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.ClearExtensionPackageID()
+	})
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (u *AgentRuleUpsertBulk) SetExtensionRuleID(v string) *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetExtensionRuleID(v)
+	})
+}
+
+// UpdateExtensionRuleID sets the "extension_rule_id" field to the value that was provided on create.
+func (u *AgentRuleUpsertBulk) UpdateExtensionRuleID() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateExtensionRuleID()
+	})
+}
+
+// ClearExtensionRuleID clears the value of the "extension_rule_id" field.
+func (u *AgentRuleUpsertBulk) ClearExtensionRuleID() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.ClearExtensionRuleID()
+	})
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (u *AgentRuleUpsertBulk) SetExtensionVersion(v string) *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.SetExtensionVersion(v)
+	})
+}
+
+// UpdateExtensionVersion sets the "extension_version" field to the value that was provided on create.
+func (u *AgentRuleUpsertBulk) UpdateExtensionVersion() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.UpdateExtensionVersion()
+	})
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (u *AgentRuleUpsertBulk) ClearExtensionVersion() *AgentRuleUpsertBulk {
+	return u.Update(func(s *AgentRuleUpsert) {
+		s.ClearExtensionVersion()
 	})
 }
 

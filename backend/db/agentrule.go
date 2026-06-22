@@ -30,6 +30,12 @@ type AgentRule struct {
 	CreatedBy uuid.UUID `json:"created_by,omitempty"`
 	// ActiveVersionID holds the value of the "active_version_id" field.
 	ActiveVersionID *uuid.UUID `json:"active_version_id,omitempty"`
+	// ExtensionPackageID holds the value of the "extension_package_id" field.
+	ExtensionPackageID *string `json:"extension_package_id,omitempty"`
+	// ExtensionRuleID holds the value of the "extension_rule_id" field.
+	ExtensionRuleID *string `json:"extension_rule_id,omitempty"`
+	// ExtensionVersion holds the value of the "extension_version" field.
+	ExtensionVersion *string `json:"extension_version,omitempty"`
 	// IsDeleted holds the value of the "is_deleted" field.
 	IsDeleted bool `json:"is_deleted,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -69,7 +75,7 @@ func (*AgentRule) scanValues(columns []string) ([]any, error) {
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case agentrule.FieldIsDeleted:
 			values[i] = new(sql.NullBool)
-		case agentrule.FieldName, agentrule.FieldDescription, agentrule.FieldScopeType, agentrule.FieldScopeID:
+		case agentrule.FieldName, agentrule.FieldDescription, agentrule.FieldScopeType, agentrule.FieldScopeID, agentrule.FieldExtensionPackageID, agentrule.FieldExtensionRuleID, agentrule.FieldExtensionVersion:
 			values[i] = new(sql.NullString)
 		case agentrule.FieldCreatedAt, agentrule.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -132,6 +138,27 @@ func (_m *AgentRule) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ActiveVersionID = new(uuid.UUID)
 				*_m.ActiveVersionID = *value.S.(*uuid.UUID)
+			}
+		case agentrule.FieldExtensionPackageID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_package_id", values[i])
+			} else if value.Valid {
+				_m.ExtensionPackageID = new(string)
+				*_m.ExtensionPackageID = value.String
+			}
+		case agentrule.FieldExtensionRuleID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_rule_id", values[i])
+			} else if value.Valid {
+				_m.ExtensionRuleID = new(string)
+				*_m.ExtensionRuleID = value.String
+			}
+		case agentrule.FieldExtensionVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field extension_version", values[i])
+			} else if value.Valid {
+				_m.ExtensionVersion = new(string)
+				*_m.ExtensionVersion = value.String
 			}
 		case agentrule.FieldIsDeleted:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -210,6 +237,21 @@ func (_m *AgentRule) String() string {
 	if v := _m.ActiveVersionID; v != nil {
 		builder.WriteString("active_version_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ExtensionPackageID; v != nil {
+		builder.WriteString("extension_package_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ExtensionRuleID; v != nil {
+		builder.WriteString("extension_rule_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ExtensionVersion; v != nil {
+		builder.WriteString("extension_version=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("is_deleted=")

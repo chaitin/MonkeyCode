@@ -131,6 +131,9 @@ var (
 		{Name: "scope_id", Type: field.TypeString, Default: "global"},
 		{Name: "created_by", Type: field.TypeUUID},
 		{Name: "active_version_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "extension_package_id", Type: field.TypeString, Nullable: true},
+		{Name: "extension_rule_id", Type: field.TypeString, Nullable: true},
+		{Name: "extension_version", Type: field.TypeString, Nullable: true},
 		{Name: "is_deleted", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -150,6 +153,11 @@ var (
 				Name:    "agentrule_active_version_id",
 				Unique:  false,
 				Columns: []*schema.Column{AgentRulesColumns[6]},
+			},
+			{
+				Name:    "agentrule_extension_package_id_extension_rule_id",
+				Unique:  false,
+				Columns: []*schema.Column{AgentRulesColumns[7], AgentRulesColumns[8]},
 			},
 		},
 	}

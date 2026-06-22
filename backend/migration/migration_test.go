@@ -74,3 +74,28 @@ func TestTeamMCPHubMigrationAddsTeamScopeAndCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentRulesExtensionSourceMigrationExists(t *testing.T) {
+	up, err := os.ReadFile("000021_agent_rules_extension_source.up.sql")
+	if err != nil {
+		t.Fatalf("read up migration: %v", err)
+	}
+	for _, want := range []string{
+		"extension_package_id",
+		"extension_rule_id",
+		"extension_version",
+		"idx_agent_rules_extension_source",
+	} {
+		if !strings.Contains(string(up), want) {
+			t.Fatalf("up migration missing %q", want)
+		}
+	}
+
+	down, err := os.ReadFile("000021_agent_rules_extension_source.down.sql")
+	if err != nil {
+		t.Fatalf("read down migration: %v", err)
+	}
+	if !strings.Contains(string(down), "DROP COLUMN IF EXISTS extension_package_id") {
+		t.Fatalf("down migration does not drop extension source columns")
+	}
+}
