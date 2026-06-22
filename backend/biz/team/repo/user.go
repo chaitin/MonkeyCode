@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"entgo.io/ent/dialect/sql"
@@ -295,8 +296,9 @@ func (r *TeamGroupUserRepo) GetMember(ctx context.Context, teamID, userID uuid.U
 }
 
 // InitTeam 初始化团队：创建管理员、普通成员、团队和默认资源。
-func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string, imageName string) error {
-	return entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
+func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name string, password string, imageName string) (*domain.InitTeamResult, error) {
+	var result *domain.InitTeamResult
+	err := entx.WithTx2(ctx, r.db, func(tx *db.Tx) error {
 		hashedPassword, err := crypto.HashPassword(password)
 		if err != nil {
 			return err
@@ -352,7 +354,7 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 				First(ctx)
 			if err != nil {
 				if db.IsNotFound(err) {
-					return nil
+					return fmt.Errorf("init team user %s has no team member", email)
 				}
 				return err
 			}
@@ -374,8 +376,16 @@ func (r *TeamGroupUserRepo) InitTeam(ctx context.Context, email string, name str
 		if _, _, err := agentresource.EnsureTeamBareReposTx(ctx, tx, initTeam.ID, initUser.ID); err != nil {
 			return err
 		}
-		return r.initTeamImage(ctx, tx, initTeam.ID, defaultGroup.ID, initUser.ID, imageName)
+		if err := r.initTeamImage(ctx, tx, initTeam.ID, defaultGroup.ID, initUser.ID, imageName); err != nil {
+			return err
+		}
+		result = &domain.InitTeamResult{TeamID: initTeam.ID, UserID: initUser.ID}
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (r *TeamGroupUserRepo) ensureInitTeamMember(ctx context.Context, tx *db.Tx, teamID uuid.UUID, email, name, hashedPassword string, groupID uuid.UUID) error {

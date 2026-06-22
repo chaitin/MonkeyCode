@@ -2,8 +2,13 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -20,13 +25,14 @@ import (
 
 // TeamGroupUserUsecase 团队分组成员业务逻辑层
 type TeamGroupUserUsecase struct {
-	repo        domain.TeamGroupUserRepo
-	activeRepo  domain.UserActiveRepo
-	logger      *slog.Logger
-	config      *config.Config
-	smtpClient  domain.EmailSender
-	redisClient *redis.Client
-	teamHook    domain.TeamHook
+	repo                    domain.TeamGroupUserRepo
+	activeRepo              domain.UserActiveRepo
+	logger                  *slog.Logger
+	config                  *config.Config
+	smtpClient              domain.EmailSender
+	redisClient             *redis.Client
+	teamHook                domain.TeamHook
+	extensionPackageUsecase domain.TeamExtensionPackageUsecase
 }
 
 // NewTeamGroupUserUsecase 创建团队分组成员业务逻辑层实例
@@ -45,6 +51,9 @@ func NewTeamGroupUserUsecase(i *do.Injector) (domain.TeamGroupUserUsecase, error
 	if hook, err := do.Invoke[domain.TeamHook](i); err == nil {
 		t.teamHook = hook
 	}
+	if extensionPackageUsecase, err := do.Invoke[domain.TeamExtensionPackageUsecase](i); err == nil {
+		t.extensionPackageUsecase = extensionPackageUsecase
+	}
 
 	go t.initTeam()
 
@@ -62,11 +71,61 @@ func (u *TeamGroupUserUsecase) initTeam() {
 	}
 
 	ctx := context.Background()
-	if err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password, u.config.InitTeam.Image); err != nil {
+	result, err := u.repo.InitTeam(ctx, u.config.InitTeam.Email, name, u.config.InitTeam.Password, u.config.InitTeam.Image)
+	if err != nil {
 		u.logger.ErrorContext(ctx, "init team failed", "error", err)
 		return
 	}
 	u.logger.InfoContext(ctx, "init team success", "email", u.config.InitTeam.Email)
+	u.importInitTeamExtensionPackages(ctx, result)
+}
+
+func (u *TeamGroupUserUsecase) importInitTeamExtensionPackages(ctx context.Context, result *domain.InitTeamResult) {
+	if u.extensionPackageUsecase == nil || result == nil {
+		return
+	}
+	dir := strings.TrimSpace(u.config.InitTeam.ExtensionPackageDir)
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			u.logger.InfoContext(ctx, "init team extension package dir not found", "dir", dir)
+			return
+		}
+		u.logger.ErrorContext(ctx, "read init team extension package dir failed", "dir", dir, "error", err)
+		return
+	}
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".zip") {
+			continue
+		}
+		files = append(files, entry.Name())
+	}
+	sort.Strings(files)
+	teamUser := &domain.TeamUser{
+		User: &domain.User{ID: result.UserID},
+		Team: &domain.Team{ID: result.TeamID},
+	}
+	for _, name := range files {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			u.logger.ErrorContext(ctx, "read init team extension package failed", "path", path, "error", err)
+			continue
+		}
+		_, err = u.extensionPackageUsecase.Import(ctx, teamUser, &domain.ImportTeamExtensionPackageReq{
+			Filename: name,
+			Data:     data,
+		})
+		if err != nil {
+			u.logger.ErrorContext(ctx, "import init team extension package failed", "path", path, "error", err)
+			continue
+		}
+		u.logger.InfoContext(ctx, "import init team extension package success", "path", path)
+	}
 }
 
 // List 获取团队分组列表
