@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -15,6 +16,9 @@ import (
 type extensionRuleImporter struct {
 	db *db.Client
 }
+
+// VersionFormat is the time layout for rule version identifiers: yyyymmddhhmmss.
+const VersionFormat = "20060102150405"
 
 func (i *extensionRuleImporter) ImportRules(ctx context.Context, userID uuid.UUID, pkg *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
 	var result domain.ExtensionRuleImportResult
@@ -44,7 +48,7 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, userID uuid.UUID
 		return false, err
 	}
 	if existingBySource != nil {
-		version, err := i.createRuleVersion(ctx, existingBySource.ID, pkg.Version, item.Content)
+		version, err := i.createRuleVersion(ctx, existingBySource.ID, item.Content)
 		if err != nil {
 			return false, err
 		}
@@ -85,7 +89,7 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, userID uuid.UUID
 	if err != nil {
 		return false, err
 	}
-	version, err := i.createRuleVersion(ctx, rule.ID, pkg.Version, item.Content)
+	version, err := i.createRuleVersion(ctx, rule.ID, item.Content)
 	if err != nil {
 		return false, err
 	}
@@ -93,14 +97,14 @@ func (i *extensionRuleImporter) importRule(ctx context.Context, userID uuid.UUID
 	return true, err
 }
 
-func (i *extensionRuleImporter) createRuleVersion(ctx context.Context, ruleID uuid.UUID, version, content string) (*db.AgentRuleVersion, error) {
-	if len(version) > 14 {
-		version = version[:14]
-	}
+func (i *extensionRuleImporter) createRuleVersion(ctx context.Context, ruleID uuid.UUID, content string) (*db.AgentRuleVersion, error) {
+	now := time.Now()
+	version := now.UTC().Format(VersionFormat)
 	return i.db.AgentRuleVersion.Create().
 		SetID(uuid.New()).
 		SetRuleID(ruleID).
 		SetVersion(version).
 		SetContent(content).
+		SetCreatedAt(now).
 		Save(ctx)
 }
