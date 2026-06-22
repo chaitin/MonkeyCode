@@ -25,10 +25,13 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 
 type TeamMCPUpstreamPayload =
   | DomainCreateTeamMCPUpstreamReq
   | DomainUpdateTeamMCPUpstreamReq
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
 
 interface TeamMCPServerDialogProps {
   groups: DomainTeamGroup[]
@@ -62,14 +65,14 @@ function headersToJson(headers?: DomainMCPHeader[]) {
     : ""
 }
 
-function parseHeaders(headersJson: string) {
+function parseHeaders(headersJson: string, t: Translate) {
   if (!headersJson.trim()) {
     return undefined
   }
 
   const parsed = JSON.parse(headersJson)
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("HTTP Header 必须是 JSON 对象")
+    throw new Error(t("managerMcp.toast.headerMustBeObject"))
   }
 
   return Object.entries(parsed).map(([key, value]) => ({
@@ -86,6 +89,7 @@ export default function TeamMCPServerDialog({
   saving = false,
   server = null,
 }: TeamMCPServerDialogProps) {
+  const { t } = useTranslation()
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
   const [description, setDescription] = useState("")
@@ -112,26 +116,26 @@ export default function TeamMCPServerDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error("请输入 MCP 服务器名称")
+      toast.error(t("managerMcp.toast.nameRequired"))
       return
     }
 
     if (!url.trim()) {
-      toast.error("请输入 MCP 服务器地址")
+      toast.error(t("managerMcp.toast.urlRequired"))
       return
     }
 
     const slug = generateMcpSlug(name.trim())
     if (!slug) {
-      toast.error("无法根据名称生成有效的工具前缀")
+      toast.error(t("managerMcp.toast.invalidSlug"))
       return
     }
 
     let parsedHeaders: DomainMCPHeader[] | undefined
     try {
-      parsedHeaders = parseHeaders(headersJson)
+      parsedHeaders = parseHeaders(headersJson, t)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "HTTP Header JSON 格式不正确")
+      toast.error(error instanceof Error ? error.message : t("managerMcp.toast.headerJsonInvalid"))
       return
     }
 
@@ -154,15 +158,15 @@ export default function TeamMCPServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEditMode ? "修改团队 MCP 服务器" : "添加团队 MCP 服务器"}</DialogTitle>
+          <DialogTitle>{isEditMode ? t("managerMcp.dialog.editTitle") : t("managerMcp.dialog.addTitle")}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4">
           <Field>
-            <FieldLabel>名称</FieldLabel>
+            <FieldLabel>{t("managerMcp.fields.name")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入 MCP 服务器名称"
+                placeholder={t("managerMcp.fields.namePlaceholder")}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 disabled={saving}
@@ -171,10 +175,10 @@ export default function TeamMCPServerDialog({
           </Field>
 
           <Field>
-            <FieldLabel>MCP 服务器地址</FieldLabel>
+            <FieldLabel>{t("managerMcp.fields.url")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="例如: https://mcp.example.com/sse"
+                placeholder={t("managerMcp.fields.urlPlaceholder")}
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
                 disabled={saving}
@@ -183,11 +187,11 @@ export default function TeamMCPServerDialog({
           </Field>
 
           <Field>
-            <FieldLabel>描述</FieldLabel>
+            <FieldLabel>{t("managerMcp.fields.description")}</FieldLabel>
             <FieldContent>
               <Textarea
                 className="min-h-20"
-                placeholder="用于区分该 MCP 服务的用途"
+                placeholder={t("managerMcp.fields.descriptionPlaceholder")}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 disabled={saving}
@@ -196,7 +200,7 @@ export default function TeamMCPServerDialog({
           </Field>
 
           <Field>
-            <FieldLabel>可使用该服务的分组</FieldLabel>
+            <FieldLabel>{t("managerMcp.fields.groups")}</FieldLabel>
             <FieldContent>
               <GroupMultiSelect
                 disabled={saving}
@@ -223,10 +227,10 @@ export default function TeamMCPServerDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
+            {t("managerShell.common.cancel")}
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={saving}>
-            {isEditMode ? "保存" : "添加"}
+            {isEditMode ? t("managerMcp.actions.save") : t("managerMcp.actions.addShort")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -245,6 +249,7 @@ function GroupMultiSelect({
   selectedGroupIds: string[]
   onSelectedGroupIdsChange: (value: string[]) => void
 }) {
+  const { t } = useTranslation()
   const selectedGroups = useMemo(
     () => groups.filter((group) => group.id && selectedGroupIds.includes(group.id)),
     [groups, selectedGroupIds]
@@ -252,10 +257,10 @@ function GroupMultiSelect({
 
   const selectedLabel =
     selectedGroups.length === 0
-      ? "未选择时使用默认分组"
+      ? t("managerMcp.groups.defaultSelection")
       : selectedGroups.length === 1
-        ? selectedGroups[0]?.name || "已选择 1 个分组"
-        : `已选择 ${selectedGroups.length} 个分组`
+        ? selectedGroups[0]?.name || t("managerMcp.groups.selectedOne")
+        : t("managerMcp.groups.selectedMany", { count: selectedGroups.length })
 
   const toggleGroup = (groupId: string, checked: boolean) => {
     if (checked) {
@@ -288,7 +293,7 @@ function GroupMultiSelect({
         <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1">
           <div className="max-h-[300px] overflow-auto">
             {groups.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">暂无分组</div>
+              <div className="py-6 text-center text-sm text-muted-foreground">{t("managerMcp.groups.empty")}</div>
             ) : (
               groups.map((group) => {
                 const groupId = group.id || ""

@@ -16,6 +16,7 @@ import { toast } from "sonner"
 import type { DomainTeamGroup } from "@/api/Api"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 
 interface AddImageProps {
   open: boolean
@@ -28,6 +29,7 @@ export default function AddImage({
   onOpenChange,
   onRefresh,
 }: AddImageProps) {
+  const { t } = useTranslation()
   const [imageName, setImageName] = useState("")
   const [remark, setRemark] = useState("")
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
@@ -62,7 +64,7 @@ export default function AddImage({
       if (resp.code === 0) {
         setGroups(resp.data?.groups || [])
       } else {
-        toast.error("获取分组列表失败: " + resp.message);
+        toast.error(t("managerImages.toast.groupFetchFailedWithMessage", { message: resp.message }));
       }
     })
   }
@@ -77,7 +79,7 @@ export default function AddImage({
 
   const handleSave = () => {
     if (!imageName.trim()) {
-      toast.error("请输入镜像名称")
+      toast.error(t("managerImages.toast.nameRequired"))
       return
     }
 
@@ -87,14 +89,14 @@ export default function AddImage({
       group_ids: selectedGroupIds
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("镜像绑定成功")
+        toast.success(t("managerImages.toast.bound"))
         setImageName("")
         setRemark("")
         setSelectedGroupIds([])
         onOpenChange(false)
         onRefresh?.()
       } else {
-        toast.error("绑定镜像失败: " + resp.message);
+        toast.error(t("managerImages.toast.bindFailedWithMessage", { message: resp.message }));
       }
     })
   }
@@ -110,15 +112,15 @@ export default function AddImage({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant={"outline"} size="sm">绑定</Button>
+        <Button variant={"outline"} size="sm">{t("managerImages.actions.bind")}</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>绑定系统镜像</DialogTitle>
+          <DialogTitle>{t("managerImages.add.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <Field>
-            <FieldLabel>镜像名称</FieldLabel>
+            <FieldLabel>{t("managerImages.fields.name")}</FieldLabel>
             <FieldContent>
               <Input
                 placeholder="docker.io/library/ubuntu:24.04"
@@ -128,7 +130,7 @@ export default function AddImage({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("managerImages.fields.remark")}</FieldLabel>
             <FieldContent>
               <Input
                 value={remark}
@@ -137,7 +139,7 @@ export default function AddImage({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>可使用该配置的分组</FieldLabel>
+            <FieldLabel>{t("managerImages.fields.groups")}</FieldLabel>
             <FieldContent>
               <div className="relative" ref={selectRef}>
                 <Button
@@ -150,10 +152,10 @@ export default function AddImage({
                 >
                   <span className="truncate">
                     {selectedGroupIds.length === 0
-                      ? "请选择分组"
+                      ? t("managerImages.groups.select")
                       : selectedGroupIds.length === 1
-                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
-                      : `已选择 ${selectedGroupIds.length} 个分组`}
+                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || t("managerImages.groups.selectedOne")
+                      : t("managerImages.groups.selectedMany", { count: selectedGroupIds.length })}
                   </span>
                   <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
                 </Button>
@@ -162,7 +164,7 @@ export default function AddImage({
                     <div className="max-h-[300px] overflow-auto p-1">
                       {groups.length === 0 ? (
                         <div className="py-6 text-center text-sm text-muted-foreground">
-                          暂无分组
+                          {t("managerImages.groups.empty")}
                         </div>
                       ) : (
                         groups.map((group) => {
@@ -192,14 +194,13 @@ export default function AddImage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("managerImages.actions.cancel")}
           </Button>
           <Button onClick={handleSave}>
-            保存
+            {t("managerImages.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

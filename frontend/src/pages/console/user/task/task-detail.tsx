@@ -52,14 +52,15 @@ import { IconChevronDown, IconDeviceDesktop, IconFile, IconReload, IconTerminal2
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 type SidePanelType = "files"
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
 
 const BUILTIN_TASK_MODEL_OPTIONS = [
-  { model: "monkeycode-basic", label: "基础模型", badge: "免费使用", badgeVariant: "default" as const, iconName: "gift" },
-  { model: "monkeycode-pro", label: "专业模型", badge: "专业会员可免费使用", badgeVariant: "secondary" as const, iconName: "vip-1" },
-  { model: "monkeycode-ultra", label: "旗舰模型", badge: "旗舰会员可免费使用", badgeVariant: "secondary" as const, iconName: "vip-2" },
+  { model: "monkeycode-basic", labelKey: "basic", badgeKey: "basicBadge", badgeVariant: "default" as const, iconName: "gift" },
+  { model: "monkeycode-pro", labelKey: "pro", badgeKey: "proBadge", badgeVariant: "secondary" as const, iconName: "vip-1" },
+  { model: "monkeycode-ultra", labelKey: "ultra", badgeKey: "ultraBadge", badgeVariant: "secondary" as const, iconName: "vip-2" },
 ] as const
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 type MessageSource = "live" | "history"
@@ -69,6 +70,7 @@ export default function TaskDetailPage() {
   const { taskId } = useParams()
   const { setTaskName } = useBreadcrumbTask() ?? {}
   const { models, loadingModels, subscription } = useCommonData()
+  const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [task, setTask] = React.useState<DomainProjectTask | null>(null)
   const [activeSidePanel, setActiveSidePanel] = React.useState<SidePanelType | null>(null)
@@ -169,20 +171,20 @@ export default function TaskDetailPage() {
 
             const streamClient = streamClientRef.current
             if (!streamClient) {
-              toast.error("当前连接不可用，问题已过期")
+              toast.error(t("taskDetail.page.askUser.connectionUnavailable"))
               return "rejected"
             }
 
             const result = streamClient.sendReplyQuestion(nextAskId, answers)
             if (result === "rejected") {
-              toast.error("当前连接已结束，无法提交回答")
+              toast.error(t("taskDetail.page.askUser.connectionClosed"))
             }
             return result
           }
           : undefined,
       }
     })
-  }, [queuedReplyIdSet, streamConnectionState, submittingReplyIdSet])
+  }, [queuedReplyIdSet, streamConnectionState, submittingReplyIdSet, t])
   const historyMessages = React.useMemo(() => decorateMessages(rawHistoryMessages, "history"), [decorateMessages, rawHistoryMessages])
   const liveMessages = React.useMemo(() => decorateMessages(rawLiveMessages, "live"), [decorateMessages, rawLiveMessages])
   const handleReloadSession = React.useCallback(async () => {
@@ -248,6 +250,23 @@ export default function TaskDetailPage() {
   const currentModelId = task?.model?.id ?? ""
   const currentModelName = task?.model?.model ?? ""
   const currentModel = task?.model
+  const builtinTaskModelOptions = React.useMemo(() => [
+    {
+      ...BUILTIN_TASK_MODEL_OPTIONS[0],
+      label: t("taskDetail.page.models.basic"),
+      badge: t("taskDetail.page.models.basicBadge"),
+    },
+    {
+      ...BUILTIN_TASK_MODEL_OPTIONS[1],
+      label: t("taskDetail.page.models.pro"),
+      badge: t("taskDetail.page.models.proBadge"),
+    },
+    {
+      ...BUILTIN_TASK_MODEL_OPTIONS[2],
+      label: t("taskDetail.page.models.ultra"),
+      badge: t("taskDetail.page.models.ultraBadge"),
+    },
+  ], [t])
   const supportedModels = React.useMemo(
     () => models.filter((model) => model.id || model.model),
     [models]
@@ -255,7 +274,7 @@ export default function TaskDetailPage() {
   const modelGroups = React.useMemo(() => {
     const builtinModelGroups = IS_OFFLINE_EDITION
       ? []
-      : BUILTIN_TASK_MODEL_OPTIONS.map((option) => ({
+      : builtinTaskModelOptions.map((option) => ({
         key: option.model,
         label: option.label,
         badge: option.badge,
@@ -278,7 +297,7 @@ export default function TaskDetailPage() {
           && !getBuiltinModelName(model.model)
         ))
         .reduce((groups, model) => {
-          const teamName = model.owner?.name || "团队模型"
+          const teamName = model.owner?.name || t("taskDetail.page.models.team")
           const teamId = model.owner?.id || teamName
           const groupKey = `${teamId}:${teamName}`
           const group = groups.get(groupKey) || { key: groupKey, label: teamName, iconName: "team", models: [] as DomainModel[] }
@@ -293,20 +312,20 @@ export default function TaskDetailPage() {
       ...builtinModelGroups,
       {
         key: "paid-models",
-        label: "付费模型",
-        badge: "消耗积分使用",
+        label: t("taskDetail.page.models.paid"),
+        badge: t("taskDetail.page.models.paidBadge"),
         iconName: "qiandaizi",
         models: paidModels,
       },
       {
         key: "private-models",
-        label: "我的模型",
+        label: t("taskDetail.page.models.private"),
         iconName: "a-AIshezhi",
         models: privateModels,
       },
       ...teamModelGroups,
     ].filter((group) => group.models.length > 0)
-  }, [supportedModels])
+  }, [builtinTaskModelOptions, supportedModels, t])
 
   const toggleSidePanel = (panel: SidePanelType) => {
     setActiveSidePanel((prev) => (prev === panel ? null : panel))
@@ -460,7 +479,6 @@ export default function TaskDetailPage() {
     })
   }, [disconnectStreamClient, rawLiveMessages, taskId])
 
-  // taskId 变化时重置状态
   React.useEffect(() => {
     if (!taskId) return
     disconnectStreamClient()
@@ -503,11 +521,11 @@ export default function TaskDetailPage() {
         result = resp.data
         if (!cancelledRef.current) setTask(resp.data)
       } else {
-        toast.error(resp.message || "获取任务详情失败")
+        toast.error(resp.message || t("taskDetail.page.toast.fetchTaskFailed"))
       }
     })
     return result
-  }, [taskId])
+  }, [taskId, t])
 
   const syncFileChangesCount = React.useCallback(async () => {
     const changes = await taskControlClientRef.current?.getFileChanges()
@@ -612,7 +630,7 @@ export default function TaskDetailPage() {
           setHistoryLoaded(true)
           historyLoadedRef.current = true
         } else {
-          toast.error(resp.message || "获取任务历史消息失败")
+          toast.error(resp.message || t("taskDetail.rounds.loadFailed"))
         }
       },
       () => undefined,
@@ -621,7 +639,7 @@ export default function TaskDetailPage() {
     if (!cancelledRef.current) {
       setHistoryLoading(false)
     }
-  }, [taskId])
+  }, [taskId, t])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -641,10 +659,10 @@ export default function TaskDetailPage() {
   React.useEffect(() => {
     if (!setTaskName) return
     if (task) {
-      setTaskName(getTaskDisplayName(task, "未知任务名称"))
+      setTaskName(getTaskDisplayName(task, t("taskDetail.page.task.unknownName")))
     }
     return () => setTaskName?.(null)
-  }, [task, setTaskName])
+  }, [task, setTaskName, t])
 
   React.useEffect(() => {
     if (!taskId || !task) return
@@ -700,7 +718,7 @@ export default function TaskDetailPage() {
 
   const handleRequestModelSwitch = React.useCallback((model: DomainModel) => {
     if (!model.id) {
-      toast.error("模型信息无效，无法切换")
+      toast.error(t("taskDetail.page.toast.invalidModel"))
       return
     }
 
@@ -710,7 +728,7 @@ export default function TaskDetailPage() {
 
     setPendingSwitchModel(model)
     setModelSwitchDialogOpen(true)
-  }, [currentModelId, currentModelName])
+  }, [currentModelId, currentModelName, t])
 
   const handleOpenSubscriptionPlan = React.useCallback(() => {
     window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
@@ -744,14 +762,14 @@ export default function TaskDetailPage() {
 
   const getCurrentModelDisplayName = React.useCallback(() => {
     const builtinModelName = getBuiltinModelName(currentModelName)
-    const builtinOption = BUILTIN_TASK_MODEL_OPTIONS.find((option) => option.model === builtinModelName)
+    const builtinOption = builtinTaskModelOptions.find((option) => option.model === builtinModelName)
     if (builtinOption && currentModel) {
       const nestedModelName = getModelOptionDisplayName(currentModel, true)
       return isMobile ? nestedModelName : `${builtinOption.label} / ${nestedModelName}`
     }
 
     return currentModel ? getModelOptionDisplayName(currentModel) : getModelDisplayName(currentModelName)
-  }, [currentModel, currentModelName, getModelOptionDisplayName, isMobile])
+  }, [builtinTaskModelOptions, currentModel, currentModelName, getModelOptionDisplayName, isMobile])
 
   const getRecommendedModelBadge = React.useCallback((modelName?: string | null) => {
     const normalizedModelName = modelName?.trim().toLowerCase()
@@ -769,14 +787,14 @@ export default function TaskDetailPage() {
       || (builtinModelName === "monkeycode-pro" && nestedModelName === "qwen3.6-plus")
       || (builtinModelName === "monkeycode-ultra" && nestedModelName === "gpt-5.5")
     ) {
-      return "推荐"
+      return t("taskDetail.page.models.recommended")
     }
 
     return null
-  }, [])
+  }, [t])
 
   const renderModelSwitchOption = React.useCallback((model: DomainModel, nested = false, indented = false) => {
-    const modelName = model.model || "未知模型"
+    const modelName = model.model || t("taskDetail.page.models.unknown")
     const isSelected = model.id === currentModelId || (!currentModelId && model.model === currentModelName)
     const canUseModel = canUseModelBySubscription(model, subscription)
     const displayName = getModelOptionDisplayName(model, nested)
@@ -883,7 +901,7 @@ export default function TaskDetailPage() {
     setModelSwitchSubmitting(false)
 
     if (!response) {
-      toast.error("切换模型超时，请稍后重试")
+      toast.error(t("taskDetail.page.toast.modelSwitchTimeout"))
       return
     }
 
@@ -891,14 +909,14 @@ export default function TaskDetailPage() {
       setTask((prev) => prev ? { ...prev, model: nextModel } : prev)
       setModelSwitchDialogOpen(false)
       setPendingSwitchModel(null)
-      toast.success(response.message || "模型已切换")
+      toast.success(response.message || t("taskDetail.page.toast.modelSwitched"))
       return
     }
 
     setModelSwitchDialogOpen(false)
     setPendingSwitchModel(null)
-    toast.error(response.message || "切换模型失败")
-  }, [modelSwitchSubmitting, pendingSwitchModel])
+    toast.error(response.message || t("taskDetail.page.toast.modelSwitchFailed"))
+  }, [modelSwitchSubmitting, pendingSwitchModel, t])
 
   const handleCancel = React.useCallback(() => {
     streamClientRef.current?.sendCancel()
@@ -919,12 +937,12 @@ export default function TaskDetailPage() {
     if (success) {
       setResetContextDialogOpen(false)
       setContextUsage((prev) => ({ ...prev, used: 0 }))
-      toast.success("上下文已重置")
+      toast.success(t("taskDetail.restart.reset"))
       return
     }
 
-    toast.error("重置上下文失败")
-  }, [handleResetSession, resetContextSubmitting])
+    toast.error(t("taskDetail.page.toast.resetContextFailed"))
+  }, [handleResetSession, resetContextSubmitting, t])
 
   const handleRequestRestartAgent = React.useCallback((clearContext: boolean) => {
     if (!canInput) return
@@ -944,12 +962,12 @@ export default function TaskDetailPage() {
       if (restartAgentClearContext) {
         setContextUsage((prev) => ({ ...prev, used: 0 }))
       }
-      toast.success(restartAgentClearContext ? "Agent 已重启，上下文已清空" : "Agent 已重启")
+      toast.success(restartAgentClearContext ? t("taskDetail.page.toast.agentRestartedContextCleared") : t("taskDetail.page.toast.agentRestarted"))
       return
     }
 
-    toast.error(restartAgentClearContext ? "重启 Agent 并清空上下文失败" : "重启 Agent 失败")
-  }, [restartAgentClearContext, restartAgentSubmitting])
+    toast.error(restartAgentClearContext ? t("taskDetail.page.toast.restartAgentClearFailed") : t("taskDetail.page.toast.restartAgentFailed"))
+  }, [restartAgentClearContext, restartAgentSubmitting, t])
 
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
@@ -1110,15 +1128,15 @@ export default function TaskDetailPage() {
                 className="h-7 max-w-[220px] shrink-0 gap-1 px-2 text-xs font-normal"
                 disabled={!canSwitchModel}
               >
-                <span className="truncate">{getCurrentModelDisplayName() || "未知模型"}</span>
+                <span className="truncate">{getCurrentModelDisplayName() || t("taskDetail.page.models.unknown")}</span>
                 <IconChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] min-w-[320px] overflow-y-auto max-sm:w-[calc(100vw-2rem)] max-sm:min-w-0">
               {loadingModels ? (
-                <DropdownMenuItem disabled>加载中...</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("taskDetail.common.loading")}</DropdownMenuItem>
               ) : supportedModels.length === 0 ? (
-                <DropdownMenuItem disabled>暂无可用模型</DropdownMenuItem>
+                <DropdownMenuItem disabled>{t("taskDetail.page.models.empty")}</DropdownMenuItem>
               ) : (
                 <DropdownMenuRadioGroup value={currentModelId}>
                   {isMobile ? modelGroups.map((group) => (
@@ -1145,7 +1163,7 @@ export default function TaskDetailPage() {
                   <button
                     type="button"
                     className="inline-flex shrink-0 items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    aria-label="查看上下文使用情况"
+                    aria-label={t("taskDetail.page.context.usageAria")}
                   >
                     <CircularProgress
                       value={contextUsage.used ?? 0}
@@ -1172,20 +1190,20 @@ export default function TaskDetailPage() {
                       />
                       <div className="min-w-0">
                         <div className={cn("text-sm font-medium", contextProgressClassName)}>
-                          上下文已使用 {contextUsagePercent}
+                          {t("taskDetail.page.context.usedPercent", { percent: contextUsagePercent })}
                         </div>
                       </div>
                     </div>
                     <div className="px-3 py-2.5 text-xs leading-5 text-foreground">
-                      上下文过大可能导致 AI 模型响应变慢、token 消耗量增多。
+                      {t("taskDetail.page.context.warning")}
                     </div>
                     <div className="space-y-2 border-t bg-muted/15 p-2">
                       <div className="rounded-md border bg-background px-3 py-2.5 shadow-xs">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-sm font-medium">压缩上下文</div>
+                            <div className="text-sm font-medium">{t("taskDetail.page.context.compactTitle")}</div>
                             <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                              尽量保留关键信息，减少上下文占用。
+                              {t("taskDetail.page.context.compactDescription")}
                             </div>
                           </div>
                           <Button
@@ -1196,16 +1214,16 @@ export default function TaskDetailPage() {
                             disabled={!canInput}
                             onClick={handleCompactContext}
                           >
-                            压缩
+                            {t("taskDetail.page.context.compactAction")}
                           </Button>
                         </div>
                       </div>
                       <div className="rounded-md border bg-background px-3 py-2.5 shadow-xs">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-sm font-medium">重置上下文</div>
+                            <div className="text-sm font-medium">{t("taskDetail.page.context.resetTitle")}</div>
                             <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                              直接清空当前上下文，重新开始后续对话。
+                              {t("taskDetail.page.context.resetDescription")}
                             </div>
                           </div>
                           <Button
@@ -1219,7 +1237,7 @@ export default function TaskDetailPage() {
                               setResetContextDialogOpen(true)
                             }}
                           >
-                            重置
+                            {t("taskDetail.page.context.resetAction")}
                           </Button>
                         </div>
                       </div>
@@ -1230,7 +1248,7 @@ export default function TaskDetailPage() {
             )}
             {totalTokens > 0 && (
               <span className="hidden shrink-0 lg:inline">
-                累计消耗 {formatTokens(totalTokens)} tokens
+                {t("taskDetail.page.tokenUsage", { total: formatTokens(totalTokens) })}
               </span>
             )}
           </div>
@@ -1245,7 +1263,7 @@ export default function TaskDetailPage() {
               disabled={!taskInteractive}
             >
               <IconTerminal2 className="size-3.5" />
-              终端
+              {t("taskDetail.panels.terminal")}
             </Button>
             <Button
               variant="ghost"
@@ -1255,7 +1273,7 @@ export default function TaskDetailPage() {
               disabled={!taskInteractive}
             >
               <IconFile className="size-3.5" />
-              文件{fileChangesCount > 0 ? ` (${fileChangesCount})` : ""}
+              {t("taskDetail.panels.files")}{fileChangesCount > 0 ? ` (${fileChangesCount})` : ""}
             </Button>
             <Button
               variant="ghost"
@@ -1265,7 +1283,7 @@ export default function TaskDetailPage() {
               disabled={!taskInteractive}
             >
               <IconDeviceDesktop className="size-3.5" />
-              预览{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
+              {t("taskDetail.panels.preview")}{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
             </Button>
           </div>
         </div>
@@ -1288,13 +1306,15 @@ export default function TaskDetailPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>切换模型</AlertDialogTitle>
+            <AlertDialogTitle>{t("taskDetail.page.dialogs.switchModel.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              即将把当前任务模型切换为 {pendingSwitchModel ? getModelOptionDisplayName(pendingSwitchModel) : "所选模型"}。请确认是否继续。
+              {t("taskDetail.page.dialogs.switchModel.description", {
+                model: pendingSwitchModel ? getModelOptionDisplayName(pendingSwitchModel) : t("taskDetail.page.dialogs.switchModel.selectedModel"),
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={modelSwitchSubmitting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={modelSwitchSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
               type="button"
               onClick={() => {
@@ -1303,7 +1323,7 @@ export default function TaskDetailPage() {
               disabled={modelSwitchSubmitting}
             >
               {modelSwitchSubmitting && <Spinner className="mr-2 size-4" />}
-              确认切换
+              {t("taskDetail.page.dialogs.switchModel.confirm")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1317,13 +1337,13 @@ export default function TaskDetailPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>重置上下文</AlertDialogTitle>
+            <AlertDialogTitle>{t("taskDetail.page.dialogs.resetContext.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要重置当前上下文吗？后续操作将会基于新的上下文进行。
+              {t("taskDetail.page.dialogs.resetContext.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={resetContextSubmitting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={resetContextSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
               type="button"
               onClick={() => {
@@ -1332,7 +1352,7 @@ export default function TaskDetailPage() {
               disabled={resetContextSubmitting}
             >
               {resetContextSubmitting && <Spinner className="mr-2 size-4" />}
-              确认
+              {t("taskDetail.page.dialogs.confirm")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1347,16 +1367,18 @@ export default function TaskDetailPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {restartAgentClearContext ? "重启 Agent 并清空上下文" : "重启 Agent"}
+              {restartAgentClearContext
+                ? t("taskDetail.page.dialogs.restartAgent.clearTitle")
+                : t("taskDetail.page.dialogs.restartAgent.title")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {restartAgentClearContext
-                ? "确定要重启 Agent 并清空当前上下文吗？完成后 AI 会失去之前的记忆，后续操作将会基于新的上下文进行。"
-                : "确定要重启 Agent 吗？当前上下文会被保留。"}
+                ? t("taskDetail.page.dialogs.restartAgent.clearDescription")
+                : t("taskDetail.page.dialogs.restartAgent.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={restartAgentSubmitting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={restartAgentSubmitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
               type="button"
               onClick={() => {
@@ -1365,7 +1387,7 @@ export default function TaskDetailPage() {
               disabled={restartAgentSubmitting}
             >
               {restartAgentSubmitting && <Spinner className="mr-2 size-4" />}
-              确认
+              {t("taskDetail.page.dialogs.confirm")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1378,7 +1400,6 @@ export default function TaskDetailPage() {
             <ResizablePanelGroup orientation="horizontal">
               <ResizablePanel id="chat" defaultSize={hasSidePanel ? 50 : 100} minSize={hasSidePanel ? 30 : 100} className="min-w-0">
                 <div className={cn("flex flex-col h-full min-h-0 gap-2 flex-1 min-w-0")}>
-                  {/* 消息列表 */}
                   <div ref={chatScrollRootRef} className="flex-1 min-h-0 min-w-0 relative">
                     <ScrollArea className="h-full [&>[data-radix-scroll-area-viewport]>div]:!block">
                       <TaskMessageVirtualList
@@ -1403,7 +1424,6 @@ export default function TaskDetailPage() {
                       loadMoreHistory={() => fetchTaskRounds(historyCursorRef.current ?? undefined, 1)}
                     />
                   </div>
-                  {/* 输入框 */}
                   <div className={cn("shrink-0", hasSidePanel ? "w-full" : "mx-auto max-w-[960px] w-full")}>
                     {taskInteractive && plan.entries.length > 0 && (
                       <div className="mb-2">
@@ -1425,7 +1445,7 @@ export default function TaskDetailPage() {
                       />
                     ) : (
                       <div className="flex items-center justify-center w-full border bg-muted/50 rounded-md p-2 text-xs text-muted-foreground">
-                        任务已结束
+                        {t("taskDetail.page.task.ended")}
                       </div>
                     )}
                   </div>
@@ -1469,7 +1489,7 @@ export default function TaskDetailPage() {
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
         <DialogContent>
           <DialogHeader className="flex-row items-center justify-start gap-2 pr-8">
-            <DialogTitle>在线预览</DialogTitle>
+            <DialogTitle>{t("taskDetail.panels.preview")}</DialogTitle>
             <Button
               variant="ghost"
               size="icon-sm"

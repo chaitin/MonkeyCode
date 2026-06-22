@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ProjectIssueList from "@/components/console/project/issue-list"
 import ViewIssueDialog from "@/components/console/project/issue-detail"
 import CreateIssueDialog from "@/components/console/project/create-issue"
-import { getStatusName } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface ProjectOverviewIssuesTabProps {
   projectId: string
@@ -23,27 +23,26 @@ interface ProjectOverviewIssuesTabProps {
 const STATUS_ALL = "__all__"
 const PRIORITY_ALL = "__all__"
 
-const STATUS_OPTIONS = [
-  { value: STATUS_ALL, label: "全部状态" },
-  { value: ConstsProjectIssueStatus.ProjectIssueStatusOpen, label: getStatusName(ConstsProjectIssueStatus.ProjectIssueStatusOpen) },
-  { value: ConstsProjectIssueStatus.ProjectIssueStatusCompleted, label: getStatusName(ConstsProjectIssueStatus.ProjectIssueStatusCompleted) },
-  { value: ConstsProjectIssueStatus.ProjectIssueStatusClosed, label: getStatusName(ConstsProjectIssueStatus.ProjectIssueStatusClosed) },
-]
-
-const PRIORITY_OPTIONS = [
-  { value: PRIORITY_ALL, label: "全部优先级" },
-  { value: "3", label: "高" },
-  { value: "2", label: "中" },
-  { value: "1", label: "低" },
-]
-
 export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCreated }: ProjectOverviewIssuesTabProps) {
+  const { t } = useTranslation()
   const [issues, setIssues] = useState<DomainProjectIssue[]>([])
   const [statusFilter, setStatusFilter] = useState<string>(STATUS_ALL)
   const [priorityFilter, setPriorityFilter] = useState<string>(PRIORITY_ALL)
   const [isCreateIssueDialogOpen, setIsCreateIssueDialogOpen] = useState(false)
   const [viewingIssue, setViewingIssue] = useState<DomainProjectIssue | undefined>(undefined)
   const [viewIssueDialogOpen, setViewIssueDialogOpen] = useState(false)
+  const statusOptions = [
+    { value: STATUS_ALL, label: t("projectOverview.issues.allStatuses") },
+    { value: ConstsProjectIssueStatus.ProjectIssueStatusOpen, label: t("projectOverview.issues.status.open") },
+    { value: ConstsProjectIssueStatus.ProjectIssueStatusCompleted, label: t("projectOverview.issues.status.completed") },
+    { value: ConstsProjectIssueStatus.ProjectIssueStatusClosed, label: t("projectOverview.issues.status.closed") },
+  ]
+  const priorityOptions = [
+    { value: PRIORITY_ALL, label: t("projectOverview.issues.allPriorities") },
+    { value: "3", label: t("projectOverview.issues.priority.high") },
+    { value: "2", label: t("projectOverview.issues.priority.medium") },
+    { value: "1", label: t("projectOverview.issues.priority.low") },
+  ]
 
   const filteredIssues = useMemo(() => {
     return issues.filter((issue) => {
@@ -69,10 +68,10 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
         })
         setIssues(sorted)
       } else {
-        toast.error(resp.message || "获取项目需求失败")
+        toast.error(resp.message || t("projectOverview.toast.fetchIssuesFailed"))
       }
     })
-  }, [projectId])
+  }, [projectId, t])
 
   const handleViewIssue = (issue: DomainProjectIssue) => {
     setViewingIssue(issue)
@@ -80,9 +79,21 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
   }
 
   useEffect(() => {
-    if (projectId) {
+    if (!projectId) {
+      return
+    }
+
+    let active = true
+    queueMicrotask(() => {
+      if (!active) {
+        return
+      }
       setIssues([])
       fetchProjectIssues()
+    })
+
+    return () => {
+      active = false
     }
   }, [projectId, fetchProjectIssues])
 
@@ -91,10 +102,10 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
       <div className="flex flex-row gap-2 items-center shrink-0">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[120px] h-8 text-sm">
-            <SelectValue placeholder="全部状态" />
+            <SelectValue placeholder={t("projectOverview.issues.allStatuses")} />
           </SelectTrigger>
           <SelectContent>
-            {STATUS_OPTIONS.map((opt) => (
+            {statusOptions.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
               </SelectItem>
@@ -103,10 +114,10 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
         </Select>
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
           <SelectTrigger className="w-[120px] h-8 text-sm">
-            <SelectValue placeholder="全部优先级" />
+            <SelectValue placeholder={t("projectOverview.issues.allPriorities")} />
           </SelectTrigger>
           <SelectContent>
-            {PRIORITY_OPTIONS.map((opt) => (
+            {priorityOptions.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
               </SelectItem>
@@ -115,7 +126,7 @@ export default function ProjectOverviewIssuesTab({ projectId, project, onTaskCre
         </Select>
         <Button variant="default" size="sm" className="ml-auto" onClick={() => setIsCreateIssueDialogOpen(true)}>
           <IconPlus />
-          创建需求
+          {t("projectOverview.issues.create")}
         </Button>
       </div>
       <div className="flex-1 min-h-0 overflow-auto">

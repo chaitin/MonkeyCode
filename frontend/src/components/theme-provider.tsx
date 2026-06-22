@@ -1,23 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocation } from "react-router-dom"
-
-type Theme = "dark" | "light" | "system"
-type AppliedTheme = "dark" | "light"
+import { ThemeProviderContext, useTheme, type AppliedTheme, type Theme } from "./theme-context"
 
 type ThemeProviderProps = {
   children: React.ReactNode
   defaultTheme?: Theme
   storageKey?: string
 }
-
-type ThemeProviderState = {
-  theme: Theme
-  resolvedTheme: AppliedTheme
-  setPathname: (pathname: string) => void
-  setTheme: (theme: Theme) => void
-}
-
-const ThemeProviderContext = createContext<ThemeProviderState | undefined>(undefined)
 
 function isTheme(value: string | null): value is Theme {
   return value === "dark" || value === "light" || value === "system"
@@ -63,7 +52,6 @@ function applyTheme(resolvedTheme: AppliedTheme) {
   root.style.colorScheme = resolvedTheme
 }
 
-// 用于在 Router 内部监听路径变化的组件
 export function ThemePathListener() {
   const { setPathname } = useTheme()
   const location = useLocation()
@@ -101,7 +89,6 @@ export function ThemeProvider({
     return () => mediaQuery.removeListener(handleChange)
   }, [])
 
-  // 初始加载时的主题设置（路径检查由 ThemePathListener 处理）
   useEffect(() => {
     applyTheme(resolvedTheme)
   }, [resolvedTheme])
@@ -121,13 +108,4 @@ export function ThemeProvider({
       {children}
     </ThemeProviderContext.Provider>
   )
-}
-
-export const useTheme = () => {
-  const context = useContext(ThemeProviderContext)
-
-  if (context === undefined)
-    throw new Error("useTheme must be used within a ThemeProvider")
-
-  return context
 }

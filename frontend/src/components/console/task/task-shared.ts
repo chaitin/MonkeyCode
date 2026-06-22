@@ -1,4 +1,5 @@
 import { b64decode } from "@/utils/common"
+import { taskDetailT } from "./task-i18n"
 
 export interface AvailableCommand {
   name: string
@@ -55,7 +56,7 @@ export function isTaskImageAttachment(filename: string) {
 }
 
 function fallbackFilenameFromUrl(url: string, index: number) {
-  const fallbackName = `附件 ${index + 1}`
+  const fallbackName = taskDetailT("attachment.fallbackName", { index: index + 1 })
   try {
     const parsedUrl = new URL(url)
     const name = parsedUrl.pathname.split("/").filter(Boolean).pop()

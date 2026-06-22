@@ -24,8 +24,9 @@ import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconAccessPoint, IconAlertCircle, IconCopy, IconDotsVertical, IconHandStop, IconReload, IconTrash } from "@tabler/icons-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface VmPortForwardDialogProps {
   open: boolean
@@ -42,6 +43,7 @@ export function VmPortForwardDialog({
   vmId,
   onSuccess,
 }: VmPortForwardDialogProps) {
+  const { t } = useTranslation()
   const [ports, setPorts] = useState<DomainVMPort[] | undefined>(undefined)
   const [portsLoading, setPortsLoading] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -53,7 +55,7 @@ export function VmPortForwardDialog({
   const [whitelistInput, setWhitelistInput] = useState("")
   const [whitelistSaving, setWhitelistSaving] = useState(false)
 
-  const fetchPorts = async () => {
+  const fetchPorts = useCallback(async () => {
     if (!hostId || !vmId) {
       setPorts(undefined)
       return
@@ -72,21 +74,21 @@ export function VmPortForwardDialog({
       if (resp.code === 0) {
         setPorts(resp.data || [])
       } else {
-        toast.error(resp.message || "获取端口列表失败")
+        toast.error(resp.message || t("consoleVm.port.fetchFailed"))
       }
     } catch (error) {
-      toast.error((error as Error)?.message || "获取端口列表失败")
+      toast.error((error as Error)?.message || t("consoleVm.port.fetchFailed"))
     } finally {
       setPortsLoading(false)
     }
-  }
+  }, [hostId, t, vmId])
 
   useEffect(() => {
     if (!open) {
       return
     }
     void fetchPorts()
-  }, [open, hostId, vmId])
+  }, [fetchPorts, open])
 
   const confirmDeletePort = () => {
     if (!hostId || !vmId || !portToDelete) {
@@ -101,11 +103,11 @@ export function VmPortForwardDialog({
       forward_id: portToDelete.forward_id
     }, [hostId, vmId, String(portToDelete.port)], (resp) => {
       if (resp.code === 0) {
-        toast.success("端口已关闭访问")
+        toast.success(t("consoleVm.port.closed"))
         void fetchPorts()
         onSuccess?.()
       } else {
-        toast.error(resp.message || "关闭访问失败")
+        toast.error(resp.message || t("consoleVm.port.closeFailed"))
       }
       setPortToClose(0)
     })
@@ -122,7 +124,7 @@ export function VmPortForwardDialog({
       }
       const data = await resp.json()
       return data.ip
-    } catch (e) {
+    } catch {
       return null
     }
   }
@@ -134,9 +136,9 @@ export function VmPortForwardDialog({
 
     setPortToOpen(port)
 
-    let ip = await getMyIP()
+    const ip = await getMyIP()
     if (!ip) {
-      toast.error("获取本机 IP 失败")
+      toast.error(t("consoleVm.port.getIpFailed"))
       setPortToOpen(0)
       return
     } 
@@ -148,11 +150,11 @@ export function VmPortForwardDialog({
       white_list: [ip]
     }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0 && resp.data?.success) {
-        toast.success("端口开放成功")
+        toast.success(t("consoleVm.port.opened"))
         void fetchPorts()
         onSuccess?.()
       } else {
-        toast.error(resp.message || "端口开放失败")
+        toast.error(resp.message || t("consoleVm.port.openFailed"))
       }
     })
 
@@ -176,7 +178,7 @@ export function VmPortForwardDialog({
       .filter(ip => ip.length > 0)
 
     if (whitelistArray.length === 0) {
-      toast.error("请至少输入一个 IP 地址")
+      toast.error(t("consoleVm.port.whitelistRequired"))
       return
     }
 
@@ -187,12 +189,12 @@ export function VmPortForwardDialog({
       white_list: whitelistArray
     }, [hostId, vmId], (resp: GithubComGoYokoWebResp) => {
       if (resp.code === 0) {
-        toast.success("白名单更新成功")
+        toast.success(t("consoleVm.port.whitelistUpdated"))
         setWhitelistDialogOpen(false)
         void fetchPorts()
         onSuccess?.()
       } else {
-        toast.error(resp.message || "白名单更新失败")
+        toast.error(resp.message || t("consoleVm.port.whitelistUpdateFailed"))
       }
     })
     setWhitelistSaving(false)
@@ -202,27 +204,27 @@ export function VmPortForwardDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader className="flex-row items-center gap-3 pr-10">
-          <DialogTitle>端口管理</DialogTitle>
+          <DialogTitle>{t("consoleVm.port.title")}</DialogTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size="icon-sm"
                 variant="outline"
-                aria-label="刷新端口列表"
+                aria-label={t("consoleVm.port.refresh")}
                 onClick={() => void fetchPorts()}
                 disabled={portsLoading || !hostId || !vmId}
               >
                 {portsLoading ? <Spinner className="size-3.5" /> : <IconReload className="size-3.5" />}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>刷新端口列表</TooltipContent>
+            <TooltipContent>{t("consoleVm.port.refresh")}</TooltipContent>
           </Tooltip>
         </DialogHeader>
         <ItemGroup className="gap-3">
           {portsLoading ? (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               <Spinner className="mr-2" />
-              正在加载端口列表
+              {t("consoleVm.port.loading")}
             </div>
           ) : null}
           {(!portsLoading && ports && ports.length > 0) ? ports.map((port: DomainVMPort) => (
@@ -235,7 +237,7 @@ export function VmPortForwardDialog({
                       if (port.status === ConstsPortStatus.PortStatusConnected) {
                         window.open(port.preview_url, '_blank')
                       } else {
-                        toast.error('端口未开放')
+                        toast.error(t("consoleVm.port.notOpen"))
                       }
                     }}
                   >
@@ -252,20 +254,22 @@ export function VmPortForwardDialog({
                   {port.status === ConstsPortStatus.PortStatusConnected && <Badge variant="secondary">http</Badge>}
                 </ItemTitle>
                 <ItemDescription>
-                  {port.status === ConstsPortStatus.PortStatusConnected && port.white_list && port.white_list.length > 0 ? `允许 ${port.white_list?.join(', ')} 访问` : '未开放访问'}
+                  {port.status === ConstsPortStatus.PortStatusConnected && port.white_list && port.white_list.length > 0
+                    ? t("consoleVm.port.allowedList", { ips: port.white_list?.join(', ') })
+                    : t("consoleVm.port.notOpenAccess")}
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
                 {port.status === ConstsPortStatus.PortStatusReversed && (
                   <Button size="sm" variant="secondary" onClick={() => handleOpenPort(port.port as number, port.forward_id as string)}>
                     {portToOpen === port.port && <Spinner />}
-                    开放访问
+                    {t("consoleVm.port.openAccess")}
                   </Button>
                 )}
                 {port.status === ConstsPortStatus.PortStatusConnected && (
                   <Button size="sm" variant="secondary" onClick={() => window.open(port.preview_url, '_blank')}>
                     {portToClose === port.port && <Spinner />}
-                    访问
+                    {t("consoleVm.port.visit")}
                   </Button>
                 )}
                 <DropdownMenu>
@@ -281,26 +285,26 @@ export function VmPortForwardDialog({
                         if (port.preview_url) {
                           try {
                             await navigator.clipboard.writeText(port.preview_url)
-                            toast.success("访问地址已复制到剪贴板")
+                            toast.success(t("consoleVm.port.copySuccess"))
                           } catch {
-                            toast.error(`复制失败，请手动复制：${port.preview_url}`)
+                            toast.error(t("consoleVm.port.copyFailed", { url: port.preview_url }))
                           }
                         }
                       }}
                     >
                       <IconCopy />
-                      复制地址
+                      {t("consoleVm.port.copyAddress")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleOpenWhitelistDialog(port)} disabled={port.status !== ConstsPortStatus.PortStatusConnected}>
                       <IconHandStop />
-                      白名单 IP
+                      {t("consoleVm.port.whitelistIp")}
                     </DropdownMenuItem>
                     <DropdownMenuItem disabled={port.status !== ConstsPortStatus.PortStatusConnected} onClick={() => {
                       setPortToDelete(port)
                       setDeleteDialogOpen(true)
                     }}>
                       <IconTrash />
-                      关闭访问
+                      {t("consoleVm.port.closeAccess")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -315,7 +319,7 @@ export function VmPortForwardDialog({
                 <IconAccessPoint className="size-6" />
               </EmptyMedia>
               <EmptyDescription>
-                开发环境中没有发现正在监听的端口
+                {t("consoleVm.port.empty")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -325,19 +329,19 @@ export function VmPortForwardDialog({
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认回收</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleVm.port.recycleTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要回收端口 "{portToDelete?.port}" 吗？此操作不可撤销。
+              {t("consoleVm.port.recycleDescription", { port: portToDelete?.port })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => {
               setDeleteDialogOpen(false)
             }}>
-              取消
+              {t("consoleVm.common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeletePort}>
-              确认回收
+              {t("consoleVm.port.confirmRecycle")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -345,25 +349,25 @@ export function VmPortForwardDialog({
       <Dialog open={whitelistDialogOpen} onOpenChange={setWhitelistDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>编辑白名单 IP - 端口 {portToEditWhitelist?.port}</DialogTitle>
+            <DialogTitle>{t("consoleVm.port.whitelistTitle", { port: portToEditWhitelist?.port })}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
-              每行输入一个 IP 地址，只有白名单中的 IP 才能访问此端口。
+              {t("consoleVm.port.whitelistDescription")}
             </div>
             <textarea
               className="w-full h-32 p-3 text-sm border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-background"
-              placeholder="例如：&#10;192.168.1.1&#10;10.0.0.1"
+              placeholder={t("consoleVm.port.whitelistPlaceholder")}
               value={whitelistInput}
               onChange={(e) => setWhitelistInput(e.target.value)}
             />
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setWhitelistDialogOpen(false)}>
-                取消
+                {t("consoleVm.common.cancel")}
               </Button>
               <Button onClick={handleSaveWhitelist} disabled={whitelistSaving}>
                 {whitelistSaving && <Spinner />}
-                保存
+                {t("consoleVm.common.save")}
               </Button>
             </div>
           </div>

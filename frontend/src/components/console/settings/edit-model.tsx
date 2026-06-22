@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Spinner } from "@/components/ui/spinner"
-import { getModelDisplayName, getModelUrlDescription, modelProviderList } from "@/utils/common"
+import { getModelDisplayName, modelProviderList } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface EditModelProps {
   open: boolean
@@ -40,6 +41,7 @@ export default function EditModel({
   model,
   onRefresh,
 }: EditModelProps) {
+  const { t } = useTranslation()
   const [apiToken, setApiToken] = useState("")
   const [baseUrl, setBaseUrl] = useState("")
   const [selectedModel, setSelectedModel] = useState("")
@@ -90,7 +92,7 @@ export default function EditModel({
 
     const parsedValue = Number(trimmedValue)
     if (!Number.isInteger(parsedValue) || parsedValue < 1) {
-      toast.error(`${label}必须为大于 0 的整数`)
+      toast.error(t("consoleSettings.models.toast.positiveInteger", { label }))
       return null
     }
 
@@ -99,7 +101,7 @@ export default function EditModel({
 
   const fetchModelList = async () => {
     if (!apiToken.trim()) {
-      toast.error("请先输入 API Token")
+      toast.error(t("consoleSettings.models.toast.apiTokenFirst"))
       return
     }
 
@@ -122,12 +124,12 @@ export default function EditModel({
         setModelList(models)
         setModelListFetchFailed(false)
         if (models.length === 0) {
-          toast.warning("未获取到可用模型，可手动填写模型名称")
+          toast.warning(t("consoleSettings.models.toast.noProviderModels"))
         } else {
-          toast.success(`获取到 ${models.length} 个可用模型`)
+          toast.success(t("consoleSettings.models.toast.providerModelsLoaded", { count: models.length }))
         }
       } else {
-        toast.error("获取模型列表失败: " + resp.message + "，可手动填写模型名称")
+        toast.error(t("consoleSettings.models.toast.providerModelsFailed", { message: resp.message }))
         setModelList([])
         setModelListFetchFailed(true)
       }
@@ -137,34 +139,34 @@ export default function EditModel({
 
   const handleSave = async () => {
     if (!model?.id) {
-      toast.error("模型信息不完整")
+      toast.error(t("consoleSettings.models.toast.incomplete"))
       return
     }
 
     if (!apiToken.trim()) {
-      toast.error("请输入 API Token")
+      toast.error(t("consoleSettings.models.toast.apiTokenRequired"))
       return
     }
     if (!selectedModel.trim()) {
-      toast.error("请选择模型名称")
+      toast.error(t("consoleSettings.models.toast.modelRequired"))
       return
     }
     if (!baseUrl.trim()) {
-      toast.error("请输入模型 API 地址")
+      toast.error(t("consoleSettings.models.toast.baseUrlRequired"))
       return
     }
-    const parsedContextLimit = parseOptionalPositiveInteger(contextLimit, "上下文长度")
+    const parsedContextLimit = parseOptionalPositiveInteger(contextLimit, t("consoleSettings.models.labels.contextLimit"))
     if (parsedContextLimit === null) {
       return
     }
-    const parsedOutputLimit = parseOptionalPositiveInteger(outputLimit, "输出长度")
+    const parsedOutputLimit = parseOptionalPositiveInteger(outputLimit, t("consoleSettings.models.labels.outputLimit"))
     if (parsedOutputLimit === null) {
       return
     }
 
     setSaving(true)
 
-    // 先进行健康检查
+    // Run a health check before saving.
     const provider = model.provider || "BaiZhiCloud"
     const healthCheckData = {
       api_key: apiToken.trim(),
@@ -177,7 +179,6 @@ export default function EditModel({
     await apiRequest('v1UsersModelsHealthCheckCreate', healthCheckData, [], async (resp) => {
       if (resp.code === 0) {
         if (resp.data?.success) {
-          // 健康检查通过，继续保存
           const requestData: any = {
             api_key: apiToken.trim(),
             model: selectedModel.trim(),
@@ -196,14 +197,14 @@ export default function EditModel({
             requestData.output_limit = parsedOutputLimit
           }
 
-          // 如果 provider 存在，也一起更新
+          // Preserve the provider when the existing model has one.
           if (model.provider) {
             requestData.provider = model.provider
           }
 
           await apiRequest('v1UsersModelsUpdate', requestData, [model.id!], (resp) => {
             if (resp.code === 0) {
-              toast.success("模型修改成功")
+              toast.success(t("consoleSettings.models.toast.updateSuccess"))
               setApiToken("")
               setBaseUrl("")
               setSelectedModel("")
@@ -219,7 +220,7 @@ export default function EditModel({
             }
           })
         } else {
-          toast.error("模型配置检查失败: " + resp.data?.error)
+          toast.error(t("consoleSettings.models.toast.healthCheckFailed", { message: resp.data?.error }))
         }
       }
     })
@@ -241,14 +242,41 @@ export default function EditModel({
     onOpenChange(false)
   }
 
-  // 对模型列表进行分组和排序
+  const modelApiDescription = () => {
+    let url = baseUrl.trim()
+
+    if (!url) {
+      return t("consoleSettings.models.descriptionText.apiUrlUnset")
+    }
+
+    if (!url.endsWith('/')) {
+      url += '/'
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return t("consoleSettings.models.descriptionText.apiUrlInvalid")
+    }
+
+    switch (interfaceType) {
+      case ConstsInterfaceType.InterfaceTypeOpenAIResponse:
+        return url + "responses"
+      case ConstsInterfaceType.InterfaceTypeOpenAIChat:
+        return url + "chat/completions"
+      case ConstsInterfaceType.InterfaceTypeAnthropic:
+        return url + "v1/messages"
+      default:
+        return t("consoleSettings.models.descriptionText.apiUrlInvalid")
+    }
+  }
+
+  // Group and sort provider model options.
   const getGroupedModels = () => {
     const groups: Record<string, DomainProviderModelListItem[]> = {}
     
     modelList.forEach((item) => {
       const modelName = item.model || ""
       const parts = modelName.split("-")
-      const groupKey = parts.length > 0 ? parts[0] : "其他"
+      const groupKey = parts.length > 0 ? parts[0] : t("consoleSettings.models.fallback.other")
       
       if (!groups[groupKey]) {
         groups[groupKey] = []
@@ -256,7 +284,7 @@ export default function EditModel({
       groups[groupKey].push(item)
     })
     
-    // 对每个组内的模型按字符串排序
+    // Sort each group by model id.
     Object.keys(groups).forEach((key) => {
       groups[key].sort((a, b) => {
         const aName = a.model || ""
@@ -265,7 +293,7 @@ export default function EditModel({
       })
     })
     
-    // 对组名进行排序
+    // Sort group names.
     const sortedGroupKeys = Object.keys(groups).sort()
     
     return { groups, sortedGroupKeys }
@@ -275,18 +303,18 @@ export default function EditModel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>修改 AI 大模型</DialogTitle>
+          <DialogTitle>{t("consoleSettings.models.edit.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain pr-1">
           <Field>
-            <FieldLabel>接口格式</FieldLabel>
+            <FieldLabel>{t("consoleSettings.models.labels.interfaceType")}</FieldLabel>
             <FieldContent>
               <Select
                 value={interfaceType}
                 onValueChange={(value) => setInterfaceType(value as ConstsInterfaceType)}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="请选择接口格式类型" />
+                  <SelectValue placeholder={t("consoleSettings.models.placeholders.interfaceType")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ConstsInterfaceType.InterfaceTypeOpenAIResponse}>
@@ -303,10 +331,10 @@ export default function EditModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>模型 API 地址</FieldLabel>
+            <FieldLabel>{t("consoleSettings.models.labels.baseUrl")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入模型 API 地址"
+                placeholder={t("consoleSettings.models.placeholders.baseUrl")}
                 value={baseUrl}
                 onChange={(e) => {
                   setBaseUrl(e.target.value)
@@ -315,14 +343,14 @@ export default function EditModel({
               />
             </FieldContent>
             <FieldDescription>
-              {getModelUrlDescription(baseUrl, interfaceType)}
+              {modelApiDescription()}
             </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>API Token</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入 API Token"
+                placeholder={t("consoleSettings.models.placeholders.apiToken")}
                 value={apiToken}
                 onChange={(e) => {
                   setApiToken(e.target.value)
@@ -332,19 +360,19 @@ export default function EditModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>模型名称</FieldLabel>
+            <FieldLabel>{t("consoleSettings.models.labels.modelName")}</FieldLabel>
             <FieldContent>
               {showManualModelInput ? (
                 <>
                   <Input
-                    placeholder="请输入模型名称（与服务商 API 一致）"
+                    placeholder={t("consoleSettings.models.placeholders.modelName")}
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                   />
                   <FieldDescription>
                     {modelListFetchFailed
-                      ? "无法拉取模型列表，请按服务商文档填写模型 ID。"
-                      : "当前未返回可用模型，请手动填写模型名称。"}
+                      ? t("consoleSettings.models.descriptionText.fetchFailedManual")
+                      : t("consoleSettings.models.descriptionText.emptyManual")}
                   </FieldDescription>
                 </>
               ) : (
@@ -359,13 +387,13 @@ export default function EditModel({
                   disabled={loadingModels || !apiToken.trim()}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={loadingModels ? "加载中..." : selectedModel || "请选择模型"} />
+                    <SelectValue placeholder={loadingModels ? t("consoleSettings.models.loadingShort") : selectedModel || t("consoleSettings.models.placeholders.selectModel")} />
                   </SelectTrigger>
                   <SelectContent>
                     {loadingModels ? (
                       <div className="flex items-center justify-center py-4">
                         <Spinner />
-                        <span className="ml-2 text-sm text-muted-foreground">加载模型中...</span>
+                        <span className="ml-2 text-sm text-muted-foreground">{t("consoleSettings.models.loadingModels")}</span>
                       </div>
                     ) : modelList.length > 0 ? (() => {
                       const { groups, sortedGroupKeys } = getGroupedModels()
@@ -389,7 +417,7 @@ export default function EditModel({
                       </SelectItem>
                     ) : (
                       <div className="py-4 text-center text-sm text-muted-foreground">
-                        {apiToken.trim() ? "暂无可用模型" : "请先输入 API Token"}
+                        {apiToken.trim() ? t("consoleSettings.models.emptyProviderModels") : t("consoleSettings.models.apiTokenFirst")}
                       </div>
                     )}
                   </SelectContent>
@@ -398,10 +426,10 @@ export default function EditModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("consoleSettings.models.labels.remark")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入备注（选填）"
+                placeholder={t("consoleSettings.models.placeholders.remark")}
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
               />
@@ -409,26 +437,26 @@ export default function EditModel({
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field>
-              <FieldLabel>上下文长度</FieldLabel>
+              <FieldLabel>{t("consoleSettings.models.labels.contextLimit")}</FieldLabel>
               <FieldContent>
                 <Input
                   type="number"
                   min={1}
                   step={1}
-                  placeholder="请输入上下文长度"
+                  placeholder={t("consoleSettings.models.placeholders.contextLimit")}
                   value={contextLimit}
                   onChange={(e) => setContextLimit(e.target.value)}
                 />
               </FieldContent>
             </Field>
             <Field>
-              <FieldLabel>输出长度</FieldLabel>
+              <FieldLabel>{t("consoleSettings.models.labels.outputLimit")}</FieldLabel>
               <FieldContent>
                 <Input
                   type="number"
                   min={1}
                   step={1}
-                  placeholder="请输入输出长度"
+                  placeholder={t("consoleSettings.models.placeholders.outputLimit")}
                   value={outputLimit}
                   onChange={(e) => setOutputLimit(e.target.value)}
                 />
@@ -436,11 +464,11 @@ export default function EditModel({
             </Field>
           </div>
           <Field>
-            <FieldLabel>推理 / 思考</FieldLabel>
+            <FieldLabel>{t("consoleSettings.models.labels.thinking")}</FieldLabel>
             <FieldContent>
               <div className="flex items-center justify-between rounded-md border px-3 py-2">
                 <span className="text-sm text-muted-foreground">
-                  {thinkingEnabled ? "启用" : "禁用"}
+                  {thinkingEnabled ? t("consoleSettings.models.status.enabled") : t("consoleSettings.models.status.disabled")}
                 </span>
                 <Switch
                   checked={thinkingEnabled}
@@ -451,11 +479,11 @@ export default function EditModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>图片识别</FieldLabel>
+            <FieldLabel>{t("consoleSettings.models.labels.imageRecognition")}</FieldLabel>
             <FieldContent>
               <div className="flex items-center justify-between rounded-md border px-3 py-2">
                 <span className="text-sm text-muted-foreground">
-                  {supportImage ? "支持" : "不支持"}
+                  {supportImage ? t("consoleSettings.models.status.supported") : t("consoleSettings.models.status.unsupported")}
                 </span>
                 <Switch
                   checked={supportImage}
@@ -464,16 +492,16 @@ export default function EditModel({
                 />
               </div>
             </FieldContent>
-            <FieldDescription>开启后，该模型可接收图片输入用于识别和分析。</FieldDescription>
+            <FieldDescription>{t("consoleSettings.models.descriptionText.imageRecognition")}</FieldDescription>
           </Field>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={saving}>
-            取消
+            {t("consoleSettings.models.actions.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={!selectedModel.trim() || saving}>
             {saving && <Spinner className="size-4" />}
-            保存
+            {t("consoleSettings.models.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

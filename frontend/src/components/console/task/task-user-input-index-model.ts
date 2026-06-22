@@ -33,13 +33,10 @@ export interface UserInputViewportCandidate {
   bottom: number
 }
 
-// 统一把任何精度的时间戳归一化到 纳秒，并截到 10ms 边界：
-//   - 后端 REST `/user-inputs` 返回纳秒
-//   - 后端 REST `/rounds`  返回纳秒
-//   - 后端 WebSocket 推送的 chunk.timestamp 是毫秒（task.go: chunk.Timestamp/1e6）
-//   纳秒时间戳（~1.7e18）超出 Number.MAX_SAFE_INTEGER（~9e15），不同 API 返回的同一
-//   条消息经 JSON 解析后浮点精度损失（~256ns）可能不同，截到 1ms 边界偶发跨界。
-//   截到 10ms 彻底避免此问题（256ns << 10ms），同时兼容 WS 已丢失 sub-ms 精度的场景。
+// Normalize timestamps with any precision to nanoseconds, then snap them to a 10 ms boundary.
+// REST endpoints return nanoseconds, while WebSocket chunks return milliseconds.
+// Nanosecond timestamps exceed Number.MAX_SAFE_INTEGER, so JSON parsing can introduce tiny
+// precision drift. A 10 ms boundary keeps IDs stable across REST and WebSocket sources.
 function normalizeTimestampToNs(ts: number): number {
   if (!Number.isFinite(ts) || ts <= 0) return 0
   let ns: number

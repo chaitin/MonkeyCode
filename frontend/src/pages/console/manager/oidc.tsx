@@ -9,6 +9,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { apiRequest } from '@/utils/requestUtils'
+import { useTranslation } from 'react-i18next'
 
 type OIDCForm = {
   enabled: boolean
@@ -25,9 +26,9 @@ type OIDCForm = {
   has_client_secret?: boolean
 }
 
-const defaultForm: OIDCForm = {
+const baseDefaultForm: OIDCForm = {
   enabled: false,
-  display_name: '企业登录',
+  display_name: '',
   issuer: '',
   client_id: '',
   client_secret: '',
@@ -38,6 +39,11 @@ const defaultForm: OIDCForm = {
 }
 
 export default function TeamManagerOIDC() {
+  const { t } = useTranslation()
+  const defaultForm = React.useMemo<OIDCForm>(() => ({
+    ...baseDefaultForm,
+    display_name: t("managerOidc.title"),
+  }), [t])
   const [form, setForm] = React.useState<OIDCForm>(defaultForm)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
@@ -48,7 +54,7 @@ export default function TeamManagerOIDC() {
       const cfg = resp.data?.config
       if (cfg) setForm({ ...defaultForm, ...cfg, client_secret: '' })
     })
-  }, [])
+  }, [defaultForm])
 
   React.useEffect(() => {
     load()
@@ -61,18 +67,18 @@ export default function TeamManagerOIDC() {
   const copy = async (value?: string) => {
     if (!value) return
     await navigator.clipboard.writeText(value)
-    toast.success('已复制')
+    toast.success(t("managerOidc.toast.copied"))
   }
 
   const save = async () => {
     setSaving(true)
     await apiRequest('v1TeamsOidcUpdate', form, [], (resp) => {
       if (resp.code === 0) {
-        toast.success('企业登录配置已保存')
+        toast.success(t("managerOidc.toast.saved"))
         const cfg = resp.data?.config
         if (cfg) setForm({ ...defaultForm, ...cfg, client_secret: '' })
       } else {
-        toast.error(resp.message || '保存失败')
+        toast.error(resp.message || t("managerOidc.toast.saveFailed"))
       }
     })
     setSaving(false)
@@ -81,8 +87,8 @@ export default function TeamManagerOIDC() {
   const test = async () => {
     setTesting(true)
     await apiRequest('v1TeamsOidcTestCreate', form, [], (resp) => {
-      if (resp.code === 0) toast.success('连接测试通过')
-      else toast.error(resp.message || '连接测试失败')
+      if (resp.code === 0) toast.success(t("managerOidc.toast.testPassed"))
+      else toast.error(resp.message || t("managerOidc.toast.testFailed"))
     })
     setTesting(false)
   }
@@ -93,20 +99,20 @@ export default function TeamManagerOIDC() {
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ShieldCheck size={18} />
-            企业登录
+            {t("managerOidc.title")}
           </CardTitle>
           <Button variant="outline" onClick={() => setDialogOpen(true)}>
-            配置
+            {t("managerOidc.actions.configure")}
           </Button>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <SummaryItem label="启用状态" value={form.enabled ? '已启用' : '未启用'} />
-            <SummaryItem label="登录按钮名称" value={form.display_name || '未配置'} />
-            <SummaryItem label="Issuer" value={form.issuer || '未配置'} />
-            <SummaryItem label="邮箱域名限制" value={form.email_domain || '未限制'} />
-            <SummaryItem label="自动创建成员" value={form.auto_create_member ? '允许' : '不允许'} />
-            <SummaryItem label="账号密码登录" value={form.allow_password_login ? '允许' : '不允许'} />
+            <SummaryItem label={t("managerOidc.summary.enabled")} value={form.enabled ? t("managerOidc.values.enabled") : t("managerOidc.values.disabled")} />
+            <SummaryItem label={t("managerOidc.summary.displayName")} value={form.display_name || t("managerOidc.values.notConfigured")} />
+            <SummaryItem label="Issuer" value={form.issuer || t("managerOidc.values.notConfigured")} />
+            <SummaryItem label={t("managerOidc.summary.emailDomain")} value={form.email_domain || t("managerOidc.values.unrestricted")} />
+            <SummaryItem label={t("managerOidc.summary.autoCreateMember")} value={form.auto_create_member ? t("managerOidc.values.allowed") : t("managerOidc.values.notAllowed")} />
+            <SummaryItem label={t("managerOidc.summary.passwordLogin")} value={form.allow_password_login ? t("managerOidc.values.allowed") : t("managerOidc.values.notAllowed")} />
           </div>
         </CardContent>
       </Card>
@@ -114,25 +120,25 @@ export default function TeamManagerOIDC() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>企业登录配置</DialogTitle>
-            <DialogDescription>配置团队成员使用企业 OIDC 身份源登录。</DialogDescription>
+            <DialogTitle>{t("managerOidc.dialog.title")}</DialogTitle>
+            <DialogDescription>{t("managerOidc.dialog.description")}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <div className="grid gap-4 md:grid-cols-2">
               <Field>
-                <FieldLabel>启用企业登录</FieldLabel>
+                <FieldLabel>{t("managerOidc.fields.enabled")}</FieldLabel>
                 <Switch checked={form.enabled} onCheckedChange={(value) => update('enabled', value)} />
               </Field>
               <Field>
-                <FieldLabel>允许自动创建成员</FieldLabel>
+                <FieldLabel>{t("managerOidc.fields.autoCreateMember")}</FieldLabel>
                 <Switch checked={form.auto_create_member} onCheckedChange={(value) => update('auto_create_member', value)} />
               </Field>
               <Field>
-                <FieldLabel>允许账号密码登录</FieldLabel>
+                <FieldLabel>{t("managerOidc.fields.passwordLogin")}</FieldLabel>
                 <Switch checked={form.allow_password_login} onCheckedChange={(value) => update('allow_password_login', value)} />
               </Field>
               <Field>
-                <FieldLabel>登录按钮名称</FieldLabel>
+                <FieldLabel>{t("managerOidc.fields.displayName")}</FieldLabel>
                 <Input value={form.display_name} onChange={(event) => update('display_name', event.target.value)} />
               </Field>
             </div>
@@ -146,12 +152,15 @@ export default function TeamManagerOIDC() {
               <Input value={form.client_id} onChange={(event) => update('client_id', event.target.value)} />
             </Field>
             <Field>
-              <FieldLabel>Client Secret{form.has_client_secret ? '（已配置）' : ''}</FieldLabel>
+              <FieldLabel>
+                {t("managerOidc.fields.clientSecret")}
+                {form.has_client_secret ? t("managerOidc.values.configuredSuffix") : ''}
+              </FieldLabel>
               <Input
                 type="password"
                 value={form.client_secret}
                 onChange={(event) => update('client_secret', event.target.value)}
-                placeholder={form.has_client_secret ? '留空表示不修改' : ''}
+                placeholder={form.has_client_secret ? t("managerOidc.placeholders.keepSecret") : ''}
               />
             </Field>
             <Field>
@@ -159,24 +168,24 @@ export default function TeamManagerOIDC() {
               <Input value={form.scopes} onChange={(event) => update('scopes', event.target.value)} />
             </Field>
             <Field>
-              <FieldLabel>邮箱域名限制</FieldLabel>
+              <FieldLabel>{t("managerOidc.fields.emailDomain")}</FieldLabel>
               <Input value={form.email_domain} placeholder="example.com" onChange={(event) => update('email_domain', event.target.value)} />
             </Field>
           </FieldGroup>
 
           <div className="mt-6 grid gap-3">
             <ReadonlyCopy label="Redirect URI" value={form.redirect_uri} onCopy={copy} />
-            <ReadonlyCopy label="团队登录链接" value={form.login_url} onCopy={copy} />
+            <ReadonlyCopy label={t("managerOidc.fields.teamLoginUrl")} value={form.login_url} onCopy={copy} />
           </div>
 
           <div className="mt-6 flex gap-3">
             <Button onClick={save} disabled={saving}>
               <Save size={16} />
-              {saving ? '保存中...' : '保存'}
+              {saving ? t("managerOidc.actions.saving") : t("managerOidc.actions.save")}
             </Button>
             <Button variant="outline" onClick={test} disabled={testing}>
               <TestTube2 size={16} />
-              {testing ? '测试中...' : '测试连接'}
+              {testing ? t("managerOidc.actions.testing") : t("managerOidc.actions.test")}
             </Button>
           </div>
         </DialogContent>

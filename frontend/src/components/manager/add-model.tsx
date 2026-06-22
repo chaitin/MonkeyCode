@@ -30,6 +30,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { CircleQuestionMark } from 'lucide-react'
 import { Switch } from "@/components/ui/switch"
+import { useTranslation } from "react-i18next"
 
 interface AddModelProps {
   open: boolean
@@ -42,6 +43,7 @@ export default function AddModel({
   onOpenChange,
   onRefresh,
 }: AddModelProps) {
+  const { t } = useTranslation()
   const [model, setModel] = useState("")
   const [apiToken, setApiToken] = useState("")
   const [baseUrl, setBaseUrl] = useState("https://model-square.app.baizhi.cloud/v1")
@@ -99,7 +101,7 @@ export default function AddModel({
       if (resp.code === 0) {
         setGroups(resp.data?.groups || [])
       } else {
-        toast.error("获取分组列表失败: " + resp.message);
+        toast.error(t("managerModels.toast.groupFetchFailedWithMessage", { message: resp.message }));
       }
     })
   }
@@ -114,7 +116,7 @@ export default function AddModel({
 
   const fetchModelList = async () => {
     if (!apiToken.trim()) {
-      toast.error("请先输入 API Token")
+      toast.error(t("managerModels.toast.apiTokenFirst"))
       return
     }
 
@@ -137,14 +139,14 @@ export default function AddModel({
           setModelList(models)
           setModelListFetchFailed(false)
           if (models.length === 0) {
-            toast.warning("未获取到可用模型，可手动填写模型名称")
+            toast.warning(t("managerModels.toast.noModelsManual"))
           } else {
-            toast.success(`获取到 ${models.length} 个可用模型`)
+            toast.success(t("managerModels.toast.fetchedModels", { count: models.length }))
           }
         } else {
           setModelList([])
           setModelListFetchFailed(true)
-          toast.error("获取模型列表失败: " + resp.message + "，可手动填写模型名称")
+          toast.error(t("managerModels.toast.fetchModelsFailedManual", { message: resp.message }))
         }
       })
     setLoadingModels(false)
@@ -152,21 +154,20 @@ export default function AddModel({
 
   const handleSave = async () => {
     if (!apiToken.trim()) {
-      toast.error("请输入 API Token")
+      toast.error(t("managerModels.toast.apiTokenRequired"))
       return
     }
     if (!baseUrl.trim()) {
-      toast.error("请输入模型 API 地址")
+      toast.error(t("managerModels.toast.baseUrlRequired"))
       return
     }
     if (!model.trim()) {
-      toast.error("请选择模型名称")
+      toast.error(t("managerModels.toast.modelRequired"))
       return
     }
 
     setSaving(true)
 
-    // 先进行健康检查
     const healthCheckData = {
       api_key: apiToken.trim(),
       model: model.trim(),
@@ -178,7 +179,6 @@ export default function AddModel({
     await apiRequest('v1TeamsModelsHealthCheckCreate', healthCheckData, [], async (resp) => {
       if (resp.code === 0) {
         if (resp.data?.success) {
-          // 健康检查通过，继续保存
           const requestData: any = {
             provider: "BaiZhiCloud",
             model: model.trim(),
@@ -191,7 +191,7 @@ export default function AddModel({
 
           await apiRequest('v1TeamsModelsCreate', requestData, [], (resp) => {
             if (resp.code === 0) {
-              toast.success("模型绑定成功")
+              toast.success(t("managerModels.toast.bindSuccess"))
               setModel("")
               setApiToken("")
               setBaseUrl("https://model-square.app.baizhi.cloud/v1")
@@ -203,11 +203,11 @@ export default function AddModel({
               onOpenChange(false)
               onRefresh?.()
             } else {
-              toast.error("绑定模型失败: " + resp.message);
+              toast.error(t("managerModels.toast.bindFailedWithMessage", { message: resp.message }));
             }
           })
         } else {
-          toast.error("模型配置检查失败: " + resp.data?.error)
+          toast.error(t("managerModels.toast.configCheckFailedWithMessage", { message: resp.data?.error }))
         }
       }
     })
@@ -227,14 +227,14 @@ export default function AddModel({
     onOpenChange(false)
   }
 
-  // 对模型列表进行分组和排序
+  // Group and sort provider model options.
   const getGroupedModels = () => {
     const groups: Record<string, DomainProviderModelListItem[]> = {}
     
     modelList.forEach((item) => {
       const modelName = item.model || ""
       const parts = modelName.split("-")
-      const groupKey = parts.length > 0 ? parts[0] : "其他"
+      const groupKey = parts.length > 0 ? parts[0] : t("managerModels.fallback.otherGroup")
       
       if (!groups[groupKey]) {
         groups[groupKey] = []
@@ -242,7 +242,7 @@ export default function AddModel({
       groups[groupKey].push(item)
     })
     
-    // 对每个组内的模型按字符串排序
+    // Sort models inside each group by name.
     Object.keys(groups).forEach((key) => {
       groups[key].sort((a, b) => {
         const aName = a.model || ""
@@ -251,7 +251,7 @@ export default function AddModel({
       })
     })
     
-    // 对组名进行排序
+    // Sort group names.
     const sortedGroupKeys = Object.keys(groups).sort()
     
     return { groups, sortedGroupKeys }
@@ -260,22 +260,22 @@ export default function AddModel({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant={"outline"} size="sm">绑定</Button>
+        <Button variant={"outline"} size="sm">{t("managerModels.actions.bind")}</Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>绑定 AI 大模型</DialogTitle>
+          <DialogTitle>{t("managerModels.form.addTitle")}</DialogTitle>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain pr-1">
           <Field>
-            <FieldLabel>接口格式</FieldLabel>
+            <FieldLabel>{t("managerModels.form.interfaceFormat")}</FieldLabel>
             <FieldContent>
               <Select
                 value={interfaceType}
                 onValueChange={(value) => setInterfaceType(value as ConstsInterfaceType)}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="请选择接口格式类型" />
+                  <SelectValue placeholder={t("managerModels.form.interfacePlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ConstsInterfaceType.InterfaceTypeOpenAIResponse}>
@@ -292,10 +292,10 @@ export default function AddModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>模型 API 地址</FieldLabel>
+            <FieldLabel>{t("managerModels.form.modelApiUrl")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入模型 API 地址"
+                placeholder={t("managerModels.form.modelApiUrlPlaceholder")}
                 value={baseUrl}
                 onChange={(e) => {
                   setBaseUrl(e.target.value)
@@ -316,13 +316,14 @@ export default function AddModel({
                 className="h-auto p-0 text-foreground"
               >
                 <a href="https://monkeycode.docs.baizhi.cloud/" target="_blank">
-                  <CircleQuestionMark />如何获得
+                  <CircleQuestionMark />
+                  {t("managerModels.actions.howToGet")}
                 </a>
               </Button>
             </div>
             <FieldContent>
               <Input
-                placeholder="请输入 API Token"
+                placeholder={t("managerModels.form.apiTokenPlaceholder")}
                 value={apiToken}
                 onChange={(e) => {
                   setApiToken(e.target.value)
@@ -332,19 +333,19 @@ export default function AddModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>模型名称</FieldLabel>
+            <FieldLabel>{t("managerModels.form.modelName")}</FieldLabel>
             <FieldContent>
               {showManualModelInput ? (
                 <>
                   <Input
-                    placeholder="请输入模型名称（与服务商 API 一致）"
+                    placeholder={t("managerModels.form.modelNamePlaceholder")}
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                   />
                   <FieldDescription>
                     {modelListFetchFailed
-                      ? "无法拉取模型列表，请按服务商文档填写模型 ID。"
-                      : "当前未返回可用模型，请手动填写模型名称。"}
+                      ? t("managerModels.form.fetchFailedDescription")
+                      : t("managerModels.form.emptyModelsDescription")}
                   </FieldDescription>
                 </>
               ) : (
@@ -359,13 +360,17 @@ export default function AddModel({
                   disabled={loadingModels || !apiToken.trim()}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={loadingModels ? "加载中..." : "请选择模型"} />
+                    <SelectValue
+                      placeholder={loadingModels ? t("managerModels.form.loading") : t("managerModels.form.selectModel")}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {loadingModels ? (
                       <div className="flex items-center justify-center py-4">
                         <Spinner />
-                        <span className="ml-2 text-sm text-muted-foreground">加载模型中...</span>
+                        <span className="ml-2 text-sm text-muted-foreground">
+                          {t("managerModels.form.loadingModels")}
+                        </span>
                       </div>
                     ) : modelList.length > 0 ? (() => {
                       const { groups, sortedGroupKeys } = getGroupedModels()
@@ -385,7 +390,9 @@ export default function AddModel({
                       )
                     })() : (
                       <div className="py-4 text-center text-sm text-muted-foreground">
-                        {apiToken.trim() ? "暂无可用模型" : "请先输入 API Token"}
+                        {apiToken.trim()
+                          ? t("managerModels.form.noModels")
+                          : t("managerModels.toast.apiTokenFirst")}
                       </div>
                     )}
                   </SelectContent>
@@ -394,7 +401,7 @@ export default function AddModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>可使用该配置的分组</FieldLabel>
+            <FieldLabel>{t("managerModels.form.groupsLabel")}</FieldLabel>
             <FieldContent>
               <div className="relative" ref={selectRef}>
                 <Button
@@ -407,10 +414,10 @@ export default function AddModel({
                 >
                   <span className="truncate">
                     {selectedGroupIds.length === 0
-                      ? "请选择分组"
+                      ? t("managerModels.form.selectGroups")
                       : selectedGroupIds.length === 1
-                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
-                      : `已选择 ${selectedGroupIds.length} 个分组`}
+                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || t("managerModels.form.selectedOne")
+                      : t("managerModels.form.selectedMany", { count: selectedGroupIds.length })}
                   </span>
                   <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
                 </Button>
@@ -419,7 +426,7 @@ export default function AddModel({
                     <div className="max-h-[300px] overflow-auto p-1">
                       {groups.length === 0 ? (
                         <div className="py-6 text-center text-sm text-muted-foreground">
-                          暂无分组
+                          {t("managerModels.fallback.noGroups")}
                         </div>
                       ) : (
                         groups.map((group) => {
@@ -447,11 +454,11 @@ export default function AddModel({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>图片识别</FieldLabel>
+            <FieldLabel>{t("managerModels.form.imageSupport")}</FieldLabel>
             <FieldContent>
               <div className="flex items-center justify-between rounded-md border px-3 py-2">
                 <span className="text-sm text-muted-foreground">
-                  {supportImage ? "支持" : "不支持"}
+                  {supportImage ? t("managerModels.form.supported") : t("managerModels.form.unsupported")}
                 </span>
                 <Switch
                   checked={supportImage}
@@ -460,16 +467,16 @@ export default function AddModel({
                 />
               </div>
             </FieldContent>
-            <FieldDescription>开启后，该模型可接收图片输入用于识别和分析。</FieldDescription>
+            <FieldDescription>{t("managerModels.form.imageSupportDescription")}</FieldDescription>
           </Field>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={saving}>
-            取消
+            {t("managerModels.actions.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={!model.trim() || saving}>
             {saving && <Spinner className="size-4" />}
-            保存
+            {t("managerModels.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

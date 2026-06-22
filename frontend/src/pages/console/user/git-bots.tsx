@@ -7,8 +7,10 @@ import { GitBotConfig, type GitBotConfigRef } from "@/components/console/git-bot
 import type { DomainGitBot } from "@/api/Api"
 import { CreateGitBotDialog } from "@/components/console/git-bot/create-git-bot-dialog"
 import { IconReload } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 export default function GitBotsPage() {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("tasks")
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const gitBotTasksRef = useRef<GitBotTasksRef>(null)
@@ -26,18 +28,18 @@ export default function GitBotsPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex flex-row justify-between">
             <TabsList>
-              <TabsTrigger value="tasks">审查任务</TabsTrigger>
-              <TabsTrigger value="config">机器人</TabsTrigger>
+              <TabsTrigger value="tasks">{t("consoleGitBot.tabs.tasks")}</TabsTrigger>
+              <TabsTrigger value="config">{t("consoleGitBot.tabs.config")}</TabsTrigger>
             </TabsList>
 
             <div className="flex flex-row gap-2">
               {activeTab === "tasks" && <Button variant="outline" onClick={() => gitBotTasksRef.current?.fetchTasks()}>
                 <IconReload />
-                刷新
+                {t("consoleGitBot.actions.refresh")}
               </Button>}
               {activeTab === "config" && <Button variant="outline" onClick={() => setCreateDialogOpen(true)}>
                 <CirclePlusIcon />
-                创建审查机器人
+                {t("consoleGitBot.actions.create")}
               </Button>}
             </div>
           </div>

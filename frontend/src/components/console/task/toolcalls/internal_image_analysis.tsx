@@ -1,14 +1,15 @@
 import { IconSparkles, IconTargetArrow } from "@tabler/icons-react";
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 export const renderTitle = (message: MessageType) => {
   const prompt = message.data.rawInput?.prompt
   return typeof prompt === "string" && prompt.trim().length > 0
-    ? `图片识别 "${prompt.trim()}"`
-    : "图片识别"
+    ? `${taskDetailT("toolcall.imageAnalysis")} "${prompt.trim()}"`
+    : taskDetailT("toolcall.imageAnalysis")
 }
 
-export const renderResultTitle = () => "获取图片识别结果"
+export const renderResultTitle = () => taskDetailT("toolcall.imageAnalysisResultTitle")
 
 const getOutput = (message: MessageType) => {
   const rawOutput = message.data.rawOutput?.output
@@ -43,7 +44,7 @@ export const renderDetail = (message: MessageType) => {
             <div className="h-full w-full">
               <img
                 src={imageUrl}
-                alt="图片识别"
+                alt={taskDetailT("toolcall.imageAlt")}
                 className="h-full w-full object-cover"
                 loading="lazy"
               />
@@ -53,20 +54,20 @@ export const renderDetail = (message: MessageType) => {
         <div className="min-w-0 rounded-md border border-border/70 bg-background/80 px-3 py-2.5">
           <div className="mb-1.5 flex items-center gap-1.5 font-medium text-foreground">
             <IconTargetArrow className="size-4 text-primary" />
-            识别邀请
+            {taskDetailT("toolcall.imagePrompt")}
           </div>
           <pre className="whitespace-pre-wrap break-words text-muted-foreground">
-            {query || "暂无识别要求"}
+            {query || taskDetailT("toolcall.noImagePrompt")}
           </pre>
         </div>
       </div>
       <div className="mt-3 rounded-md border border-border/70 bg-background/80 px-3 py-2.5">
         <div className="mb-1.5 flex items-center gap-1.5 font-medium text-foreground">
           <IconSparkles className="size-4 text-primary" />
-          识别结果
+          {taskDetailT("toolcall.imageResult")}
         </div>
         <pre className="whitespace-pre-wrap break-words text-muted-foreground">
-          {output || "暂无图片识别结果"}
+          {output || taskDetailT("toolcall.noImageResult")}
         </pre>
       </div>
     </div>
@@ -79,7 +80,7 @@ export const renderResultDetail = (message: MessageType) => {
   return (
     <div className="p-3">
       <pre className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">
-        {output || "暂无图片识别结果"}
+        {output || taskDetailT("toolcall.noImageResult")}
       </pre>
     </div>
   )

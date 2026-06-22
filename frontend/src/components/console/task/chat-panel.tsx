@@ -4,6 +4,7 @@ import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { IconCircle, IconCircleCheck, IconLoader, IconSubtask } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 import type {
   PlanEntry,
   TaskPlan,
@@ -16,6 +17,7 @@ export interface PlanStepsBlockProps {
 }
 
 export function PlanStepsBlock({ plan, streamStatus }: PlanStepsBlockProps) {
+  const { t } = useTranslation()
   const [planOpened, setPlanOpened] = React.useState(false)
 
   if (!plan || plan.entries.length === 0) return null
@@ -65,7 +67,10 @@ export function PlanStepsBlock({ plan, streamStatus }: PlanStepsBlockProps) {
       <div className="flex items-center justify-between">
         <Label>
           <IconSubtask className="size-4 text-primary" />
-          执行步骤 ({plan.entries.filter((entry: PlanEntry) => entry.status === "completed").length}/{plan.entries.length})
+          {t("taskDetail.plan.title", {
+            completed: plan.entries.filter((entry: PlanEntry) => entry.status === "completed").length,
+            total: plan.entries.length,
+          })}
         </Label>
         <Button variant={planOpened ? "secondary" : "ghost"} size="icon-sm" className="size-5" onClick={() => setPlanOpened(!planOpened)}>
           {planOpened ? <ChevronsDownUp className="size-4" /> : <ChevronsUpDown className="size-4" />}

@@ -42,6 +42,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { UnifiedDiffViewer } from "./unified-diff-viewer"
+import { useTranslation } from "react-i18next"
 
 interface TaskFileExplorerProps {
   className?: string
@@ -53,7 +54,6 @@ interface TaskFileExplorerProps {
   envid?: string
 }
 
-// --- 文件树逻辑 ---
 const sortFiles = (files: RepoFileStatus[]) => {
   return files.sort((a, b) => {
     const getTypePriority = (file: RepoFileStatus) => {
@@ -182,7 +182,6 @@ interface DirNodeRef {
   refreshPaths: (paths: string[]) => Promise<void>
 }
 
-// --- FileNode (新样式) ---
 const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh, selectedPath }: {
   file: RepoFileStatus
   depth: number
@@ -218,7 +217,6 @@ const FileNode = ({ file, depth, onFileSelect, fileChangesMap, envid, onRefresh,
   )
 }
 
-// --- DirNode (新样式) ---
 const DirNode = forwardRef<DirNodeRef, {
   file?: RepoFileStatus
   depth: number
@@ -230,6 +228,7 @@ const DirNode = forwardRef<DirNodeRef, {
   onRefresh?: () => void
   selectedPath?: string | null
 }>(({ file, depth, onFileSelect, defaultExpanded = false, taskManager, fileChangesMap, envid, onRefresh, selectedPath }, ref) => {
+  const { t } = useTranslation()
   const [children, setChildren] = useState<RepoFileStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -305,7 +304,7 @@ const DirNode = forwardRef<DirNodeRef, {
             <EmptyMedia variant="icon">
               <IconLoader className="size-6 animate-spin" />
             </EmptyMedia>
-            <EmptyDescription>正在加载...</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.loading")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -317,7 +316,7 @@ const DirNode = forwardRef<DirNodeRef, {
             <EmptyMedia variant="icon">
               <IconFolder className="size-6 opacity-50" />
             </EmptyMedia>
-            <EmptyDescription>当前目录没有文件</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.emptyDirectory")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -400,6 +399,7 @@ export const TaskFileExplorer = ({
   onClosePanel,
   envid,
 }: TaskFileExplorerProps): React.JSX.Element => {
+  const { t } = useTranslation()
   const rootRef = useRef<DirNodeRef>(null)
   const lastRefreshSignalRef = useRef<number | undefined>(undefined)
   const pendingTreeRefreshRef = useRef(false)
@@ -520,11 +520,11 @@ export const TaskFileExplorer = ({
     setFileLoading(true)
     if (repository) {
       bytes = await repository.getFileContent(path)
-      if (!bytes) toast.error(`文件读取失败`)
+      if (!bytes) toast.error(t("taskDetail.files.readFailed"))
     }
     setFileLoading(false)
     return bytes
-  }, [repository])
+  }, [repository, t])
 
   const openFile = useCallback(async (path: string) => {
     if (!envid || !path) return null
@@ -623,7 +623,7 @@ export const TaskFileExplorer = ({
             <EmptyMedia variant="icon">
               <IconLoader className="size-6 animate-spin" />
             </EmptyMedia>
-            <EmptyDescription>加载中...</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.loading")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -635,7 +635,7 @@ export const TaskFileExplorer = ({
             <EmptyMedia variant="icon">
               <IconFileText className="size-6 opacity-50" />
             </EmptyMedia>
-            <EmptyDescription>文件太大不支持预览</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.tooLarge")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -658,7 +658,7 @@ export const TaskFileExplorer = ({
             <EmptyMedia variant="icon">
               <IconFileText className="size-6 opacity-50" />
             </EmptyMedia>
-            <EmptyDescription>二进制文件不支持预览</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.binaryUnsupported")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -689,7 +689,7 @@ export const TaskFileExplorer = ({
     return (
       <div className={cn("flex flex-col h-full min-h-0", className)}>
         <div className="flex items-center justify-between gap-2 px-4 py-1 min-h-11 border-b bg-muted/50 shrink-0">
-          <span className="text-sm font-medium">项目文件</span>
+          <span className="text-sm font-medium">{t("taskDetail.files.title")}</span>
           {onClosePanel && (
             <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={onClosePanel}>
               <IconX className="size-4" />
@@ -703,7 +703,7 @@ export const TaskFileExplorer = ({
                 <IconCloudOff className="size-6" />
               </EmptyMedia>
               <EmptyDescription>
-                开发环境未就绪，请先进入开发页面启动任务
+                {t("taskDetail.files.envNotReady")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -720,7 +720,7 @@ export const TaskFileExplorer = ({
             <EmptyMedia variant="icon">
               <IconLoader className="size-6 animate-spin" />
             </EmptyMedia>
-            <EmptyDescription>正在加载...</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.loading")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -733,7 +733,7 @@ export const TaskFileExplorer = ({
             <EmptyMedia variant="icon">
               <IconReport className="size-6 opacity-50" />
             </EmptyMedia>
-            <EmptyDescription>暂无文件变更</EmptyDescription>
+            <EmptyDescription>{t("taskDetail.files.noChanges")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )
@@ -809,8 +809,10 @@ export const TaskFileExplorer = ({
   )
 
   const dialogTitle = currentFile
-    ? panelMode === "changes" ? `文件变更：${currentFile.name}` : `文件预览：${currentFile.name}`
-    : "文件详情"
+    ? panelMode === "changes"
+      ? t("taskDetail.files.changesTitle", { fileName: currentFile.name })
+      : t("taskDetail.files.previewTitle", { fileName: currentFile.name })
+    : t("taskDetail.files.detail")
 
   return (
     <div className={cn("flex flex-col h-full min-h-0", className)}>
@@ -831,11 +833,11 @@ export const TaskFileExplorer = ({
             >
               <ToggleGroupItem value="tree" className="h-7 px-2 text-xs gap-1.5 data-[state=on]:text-primary hover:data-[state=on]:text-primary">
                 <IconFolder className="size-3.5" />
-                目录
+                {t("taskDetail.files.tree")}
               </ToggleGroupItem>
               <ToggleGroupItem value="changes" className="h-7 px-2 text-xs gap-1.5 data-[state=on]:text-primary hover:data-[state=on]:text-primary">
                 <IconFileDiff className="size-3.5" />
-                变更
+                {t("taskDetail.files.changes")}
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
@@ -846,7 +848,7 @@ export const TaskFileExplorer = ({
                   <IconReload className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>刷新</TooltipContent>
+              <TooltipContent>{t("taskDetail.files.refresh")}</TooltipContent>
             </Tooltip>
             {panelMode === "tree" && (
               <FileActionsDropdown
@@ -865,7 +867,7 @@ export const TaskFileExplorer = ({
                     <IconX className="size-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>关闭面板</TooltipContent>
+                <TooltipContent>{t("taskDetail.files.closePanel")}</TooltipContent>
               </Tooltip>
             )}
           </div>

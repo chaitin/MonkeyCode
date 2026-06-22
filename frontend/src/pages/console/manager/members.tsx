@@ -9,8 +9,10 @@ import {
   type LicenseSeatStatus,
 } from "./member-seat";
 import TeamManagerManager from "./manager";
+import { useTranslation } from "react-i18next";
 
 export default function TeamManagerMembers() {
+  const { t } = useTranslation();
   const [members, setMembers] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [fallbackMemberLimit, setFallbackMemberLimit] = useState(0);
@@ -25,7 +27,7 @@ export default function TeamManagerMembers() {
         setMembers(resp.data?.members || []);
         setFallbackMemberLimit(resp.data?.member_limit || 0);
       } else {
-        toast.error(resp.message || "获取成员列表失败")
+        toast.error(resp.message || t("managerMembers.toast.fetchMembersFailed"))
       }
     })
   }
@@ -43,7 +45,7 @@ export default function TeamManagerMembers() {
       if (resp.code === 0) {
         setGroups(resp.data?.groups || []);
       } else {
-        toast.error(resp.message || "获取分组列表失败")
+        toast.error(resp.message || t("managerMembers.toast.fetchGroupsFailed"))
       }
     })
   }
@@ -67,14 +69,14 @@ export default function TeamManagerMembers() {
     <div className="flex w-full flex-1 flex-col gap-6">
       <section className="flex flex-col gap-3">
         <div>
-          <h2 className="text-base font-semibold">管理员</h2>
+          <h2 className="text-base font-semibold">{t("managerMembers.sections.admins")}</h2>
         </div>
         <TeamManagerManager />
       </section>
 
       <section className="flex flex-col gap-3">
         <div>
-          <h2 className="text-base font-semibold">普通成员</h2>
+          <h2 className="text-base font-semibold">{t("managerMembers.sections.members")}</h2>
         </div>
         <div className="flex flex-col gap-4 xl:flex-row">
           <TeamMembersCard

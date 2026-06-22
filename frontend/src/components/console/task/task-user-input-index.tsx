@@ -2,6 +2,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type { MessageType } from "./message"
 import {
@@ -28,6 +29,7 @@ const MAX_INDEX_DOTS = 20
 
 export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
   const { taskId, liveMessages, getScrollContainer, scrollToMessage, historyHasMore, loadMoreHistory } = props
+  const { t } = useTranslation()
   const historyHasMoreRef = React.useRef(historyHasMore)
   React.useEffect(() => { historyHasMoreRef.current = historyHasMore }, [historyHasMore])
   const loadMoreHistoryRef = React.useRef(loadMoreHistory)
@@ -62,14 +64,14 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
           setHasMore(!!resp.data?.has_more)
           setInitialized(true)
         } else {
-          toast.error(resp.message || "获取对话列表失败")
+          toast.error(resp.message || t("taskDetail.userInputIndex.fetchFailed"))
         }
       },
       () => undefined,
     )
     loadingRef.current = false
     setLoading(false)
-  }, [taskId])
+  }, [taskId, t])
 
   React.useEffect(() => {
     if (!taskId) return
@@ -190,7 +192,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
         setJumpingId(null)
       }
       if (!target) {
-        toast.info("未找到对应消息")
+        toast.info(t("taskDetail.userInputIndex.notFound"))
         return
       }
     }
@@ -205,7 +207,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
     bubble.addEventListener("animationend", () => {
       bubble.classList.remove("jump-highlight")
     }, { once: true })
-  }, [getScrollContainer, scrollToMessage])
+  }, [getScrollContainer, scrollToMessage, t])
 
   if (mergedEntries.length <= 1 && !loading) return null
 
@@ -215,7 +217,6 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
     >
-      {/* 收起态：迷你竖条 */}
       <div className={cn(
         "flex flex-col items-center gap-[5px] rounded-full border bg-popover/90 p-3 shadow-md backdrop-blur-sm transition-opacity cursor-pointer",
         expanded ? "opacity-0 pointer-events-none absolute right-0 top-1/2 -translate-y-1/2" : "opacity-60 hover:opacity-100",
@@ -231,7 +232,6 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
         ))}
       </div>
 
-      {/* 展开态：完整列表 */}
       <div
         className={cn(
           "rounded-xl border bg-popover/95 shadow-xl backdrop-blur-sm transition-all origin-right overflow-y-auto overflow-x-hidden",
@@ -246,7 +246,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
             {jumpingId && (
               <div className="flex items-center gap-1.5 px-4 py-2 text-xs text-muted-foreground">
                 <Spinner className="size-3" />
-                正在定位消息...
+                {t("taskDetail.userInputIndex.locating")}
               </div>
             )}
             {hasMore && (
@@ -262,7 +262,7 @@ export function TaskUserInputIndex(props: TaskUserInputIndexProps) {
                   )}
                 >
                   {loading && <Spinner className="size-3.5" />}
-                  加载更多
+                  {t("taskDetail.userInputIndex.loadMore")}
                 </button>
               </div>
             )}

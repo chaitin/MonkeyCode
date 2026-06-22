@@ -1,122 +1,21 @@
 import { AuthProvider } from "@/components/auth-provider";
-import LegalTerminalPage, { type LegalSection } from "@/components/welcome/legal-terminal-page";
-
-const sections: LegalSection[] = [
-  {
-    id: "scope",
-    title: "协议适用范围",
-    content: [
-      "本协议适用于您访问、注册、登录或使用 MonkeyCode 智能开发平台及其相关网站、控制台、工具和服务的全部行为。",
-      "您在使用平台前，应仔细阅读并理解本协议内容。您开始使用平台，即视为已阅读并同意接受本协议约束。",
-    ],
-  },
-  {
-    id: "account",
-    title: "账号注册与使用",
-    items: [
-      "您应提供真实、准确、完整的注册信息，并及时更新。",
-      "您应妥善保管账号、密码及登录凭证，并对账号下的行为承担相应责任。",
-      "未经平台书面许可，您不得出租、出借、转让或售卖账号。",
-      "如发现账号异常、被盗用或存在安全风险，应及时通知平台。",
-      "账号仅限在合法、合规且经平台授权的范围内使用；如账号被用于违规、滥用、攻击、刷量或其他恶意目的，平台有权对账号采取限制、冻结或封禁等措施。",
-    ],
-  },
-  {
-    id: "service",
-    title: "服务内容与变更",
-    items: [
-      "平台提供 AI 开发、任务执行、项目协作、代码审查及相关辅助功能。",
-      "平台有权根据业务发展、合规要求或产品升级调整服务内容、收费策略、功能路径或技术方案。",
-      "平台会尽力保持服务连续稳定，但不对因维护、升级、网络波动或不可抗力造成的短时中断承担违约责任。",
-    ],
-  },
-  {
-    id: "rules",
-    title: "使用规范",
-    content: ["您在使用平台服务时，不得实施以下行为："],
-    items: [
-      "违反法律法规、监管要求或公序良俗。",
-      "上传、传播、存储非法、侵权、恶意或有害内容。",
-      "攻击、干扰、绕过或破坏平台系统、接口、安全机制或服务稳定性。",
-      "利用平台从事未经授权的数据抓取、作弊刷量、恶意调用或其他不正当行为。",
-      "侵犯他人的知识产权、商业秘密、个人信息或其他合法权益。",
-      "利用 MonkeyCode 制造、传播或协助开发带有网络攻击、入侵破坏、恶意控制、漏洞利用等性质的软件、脚本或工具。",
-      "直接使用 MonkeyCode 或借助平台生成内容发起网络攻击、渗透破坏、恶意扫描、批量漏洞利用、拒绝服务攻击或其他危害网络与信息系统安全的行为。",
-      "以盗取、冒用、转售、共享、绕过限制或其他未经授权的方式使用 MonkeyCode 的 API Token、账号能力或平台资源，并将其提供给其他 AI 工具、脚本、服务或第三方继续调用。",
-      "通过批量注册、伪造身份、作弊邀请、脚本刷量、异常设备或其他恶意方式套取、盗刷、骗取邀请注册积分、活动奖励、补贴或其他平台权益。",
-    ],
-  },
-  {
-    id: "content",
-    title: "用户内容与知识产权",
-    items: [
-      "您对自行上传、提交、输入或发布的内容依法享有相应权利，并应确保其来源合法。",
-      "为向您提供服务，您授权平台在必要范围内对相关内容进行存储、处理、传输与展示。",
-      "平台及其相关标识、页面设计、代码、文档和服务能力的知识产权归平台或权利人所有。",
-      "未经授权，任何人不得对平台内容进行复制、修改、反向工程、传播或商业化利用。",
-    ],
-  },
-  {
-    id: "fees",
-    title: "费用与结算",
-    content: [
-      "如平台部分服务涉及付费，您应按照页面展示或双方约定的规则完成购买、充值、结算或续费。",
-      "除法律法规另有规定或平台明确说明外，已支付费用通常不支持无理由退还。",
-    ],
-  },
-  {
-    id: "liability",
-    title: "责任限制",
-    items: [
-      "平台将尽合理努力保障服务可用性与结果质量，但 AI 生成内容可能存在偏差、遗漏或不完全准确，您应自行判断与复核。",
-      "对于因您违反本协议、提供不实信息、错误操作或第三方原因造成的损失，平台不承担责任。",
-      "在法律允许范围内，平台对间接损失、预期利益损失、数据附带损失不承担责任。",
-    ],
-  },
-  {
-    id: "termination",
-    title: "协议终止与违约处理",
-    content: [
-      "为保障平台、其他用户及第三方的安全与合法权益，如用户存在违规使用账号的情形，平台有权依据违规性质、影响范围和风险程度采取相应处置措施。",
-    ],
-    items: [
-      "如您违反本协议或相关规则，平台有权视情节采取警示、限制功能、暂停服务、封禁账号等措施。",
-      "您可依据平台提供的路径停止使用相关服务；账号注销后，平台将按规则处理相关数据。",
-      "如平台认定您存在违规、滥用、欺诈、攻击、盗用资源或其他危害平台、用户或第三方安全与权益的行为，平台有权在不事先通知的情况下，对相关账号采取临时限制、永久封禁、冻结权益、清除异常奖励、终止服务等处理措施，并保留追究法律责任的权利。",
-      "前述可导致封号或其他处置的行为，包括但不限于：使用 MonkeyCode 制造带有网络攻击性质的软件，直接使用 MonkeyCode 发起网络攻击，盗取或冒用 MonkeyCode API Token 供其他 AI 工具继续调用，以及通过批量注册、作弊邀请、脚本刷量等恶意行为盗刷邀请注册积分或其他平台权益。",
-    ],
-  },
-  {
-    id: "contact",
-    title: "联系我们",
-    content: [
-      "若您对本协议有任何疑问、建议或投诉，可通过官方渠道与我们联系。",
-    ],
-    footer: (
-      <>
-        官方渠道：
-        <a className="text-[var(--a-accent)] hover:underline" href="https://www.chaitin.cn/" target="_blank" rel="noreferrer">
-          长亭科技官网
-        </a>
-        {" "}或{" "}
-        <a className="text-[var(--a-accent)] hover:underline" href="https://www.baizhi.cloud/" target="_blank" rel="noreferrer">
-          长亭百智云官网
-        </a>
-        。
-      </>
-    ),
-  },
-];
+import LegalTerminalPage from "@/components/welcome/legal-terminal-page";
+import { useTranslation } from "react-i18next";
+import { type LegalPageCopy, renderOfficialChannels, withContactFooter } from "./legal-page-i18n";
 
 export default function UserAgreementPage() {
+  const { t } = useTranslation();
+  const page = t("legalPages.userAgreement", { returnObjects: true }) as LegalPageCopy;
+  const sections = withContactFooter(page.sections, renderOfficialChannels(t, "legalPages.userAgreement.contact"));
+
   return (
     <AuthProvider>
       <LegalTerminalPage
-        eyebrow="USER AGREEMENT"
-        title="用户协议"
-        subtitle="本协议用于说明您在使用 MonkeyCode 及相关服务时应遵守的规则，以及平台与您之间的权利义务关系。请在使用前认真阅读。"
+        eyebrow={page.eyebrow}
+        title={page.title}
+        subtitle={page.subtitle}
         lastUpdated="2026-03-24"
-        tags={["适用于官网与控制台服务", "使用服务即视为同意本协议"]}
+        tags={page.tags}
         sections={sections}
       />
     </AuthProvider>

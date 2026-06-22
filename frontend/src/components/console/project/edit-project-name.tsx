@@ -8,6 +8,7 @@ import { useEffect, useState } from "react"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { IconLoader } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 interface EditProjectNameDialogProps {
   open: boolean
@@ -25,6 +26,7 @@ export default function EditProjectNameDialog({
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (open && project) {
@@ -38,7 +40,7 @@ export default function EditProjectNameDialog({
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast.error("请输入项目名称")
+      toast.error(t("consoleProject.editName.toast.nameRequired"))
       return
     }
 
@@ -49,11 +51,11 @@ export default function EditProjectNameDialog({
       description: description.trim(),
     }, [project?.id!], (resp) => {
         if (resp.code === 0) {
-          toast.success("项目修改成功")
+          toast.success(t("consoleProject.editName.toast.updated"))
           onOpenChange(false)
           onSuccess?.()
         } else {
-          toast.error("修改项目失败: " + resp.message)
+          toast.error(t("consoleProject.editName.toast.updateFailed", { message: resp.message || t("consoleProject.common.unknownError") }))
         }
       }
     )
@@ -70,40 +72,39 @@ export default function EditProjectNameDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改项目</DialogTitle>
+          <DialogTitle>{t("consoleProject.editName.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="project-name">项目名称</Label>
+          <Label htmlFor="project-name">{t("consoleProject.editName.name")}</Label>
           <Input
             id="project-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="请输入项目名称"
+            placeholder={t("consoleProject.editName.namePlaceholder")}
             disabled={loading}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="project-description">项目描述</Label>
+          <Label htmlFor="project-description">{t("consoleProject.editName.description")}</Label>
           <Textarea
             id="project-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="请输入项目描述（选填）"
+            placeholder={t("consoleProject.editName.descriptionPlaceholder")}
             disabled={loading}
             className="break-all"
           />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleProject.common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading || !name.trim()}>
             {loading && <IconLoader className="size-4 animate-spin" />}
-            保存
+            {t("consoleProject.common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

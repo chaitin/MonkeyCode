@@ -8,10 +8,12 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useTranslation } from "react-i18next"
 
 type AskUserQuestionStatus = "pending" | "queued" | "submitting" | "completed" | "expired"
 
 export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: MessageType; onResponse?: (askId: string, answers: Record<string, string | string[]>) => "sent" | "queued" | "rejected" }) => {
+  const { t } = useTranslation()
   const questions = useMemo(() => message.data.questions || [], [message.data.questions])
   const status = (message.data.status || "pending") as AskUserQuestionStatus
   const isInteractive = status === "pending"
@@ -146,17 +148,17 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
   const footerText = useMemo(() => {
     switch (status) {
       case "queued":
-        return "等待重连后发送"
+        return t("taskDetail.askUser.queued")
       case "submitting":
-        return "提交中"
+        return t("taskDetail.askUser.submitting")
       case "completed":
-        return "已提交"
+        return t("taskDetail.askUser.completed")
       case "expired":
-        return "问题已过期"
+        return t("taskDetail.askUser.expired")
       default:
         return null
     }
-  }, [status])
+  }, [status, t])
 
   return (
     <div className="w-max-[80%] w-[80%] border rounded-md p-2">
@@ -204,7 +206,7 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
                           }}
                         />
                         <Label htmlFor={`${message.data.askId}-${questionIndex}-user-custom`} className="font-normal">
-                          其他 - 自定义
+                          {t("taskDetail.askUser.custom")}
                         </Label>
                       </Field>
                       {selectedSet.has("user-custom") && (
@@ -212,7 +214,7 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
                           <Input
                             value={userCustomAnswers[questionIndex] || ""}
                             disabled={!isInteractive}
-                            placeholder="请输入其他答案"
+                            placeholder={t("taskDetail.askUser.customPlaceholder")}
                             onChange={(e) => {
                               setUserCustomAnswers((prev) => {
                                 const nextAnswers = [...prev]
@@ -272,14 +274,14 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
                           value="user-custom"
                         />
                         <FieldLabel htmlFor={`${message.data.askId}-${questionIndex}-user-custom`} className="font-normal">
-                          其他 - 自定义
+                          {t("taskDetail.askUser.custom")}
                         </FieldLabel>
                       </Field>
                       {selectedSet.has("user-custom") && (
                         <Field orientation="horizontal">
                           <Input
                             value={userCustomAnswers[questionIndex] || ""}
-                            placeholder="请输入其他答案"
+                            placeholder={t("taskDetail.askUser.customPlaceholder")}
                             disabled={!isInteractive}
                             onChange={(e) => {
                               setUserCustomAnswers((prev) => {
@@ -318,7 +320,7 @@ export const AskUserQuestionMessageItem = ({ message, onResponse }: { message: M
 
       {status === "pending" ? (
         <Button variant="secondary" size="sm" className="mt-2 w-full" onClick={handleSubmit} disabled={!isAllQuestionsAnswered}>
-          {isAllQuestionsAnswered ? "提交" : "提交 (未完成)"}
+          {isAllQuestionsAnswered ? t("taskDetail.askUser.submit") : t("taskDetail.askUser.submitIncomplete")}
         </Button>
       ) : footerText ? (
         <div className="px-2 py-1 text-xs text-muted-foreground">

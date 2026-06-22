@@ -1,5 +1,5 @@
 import { BreadcrumbTaskProvider, useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
-import { createContext, Fragment, useContext, useState } from "react"
+import { Fragment, useState } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 import UserSidebar from "@/components/console/nav/user-sidebar"
 import { SettingsDialog } from "@/components/console/settings/settings-dialog"
@@ -26,15 +26,11 @@ import { DataProvider } from "@/components/console/data-provider"
 import FreeModelUsageIndicator from "@/components/console/nav/free-model-usage-indicator"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { ModeToggle } from "@/components/mode-toggle"
-
-const SettingsDialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
-export const useSettingsDialog = () => {
-  const ctx = useContext(SettingsDialogContext)
-  if (!ctx) throw new Error("useSettingsDialog must be used within SettingsDialogContext.Provider")
-  return ctx
-}
+import { useTranslation } from "react-i18next"
+import { SettingsDialogContext } from "./settings-dialog-context"
 
 function UserConsoleContent() {
+  const { t } = useTranslation()
   const location = useLocation()
   const { taskName } = useBreadcrumbTask() ?? { taskName: null }
 
@@ -43,35 +39,34 @@ function UserConsoleContent() {
     { label: string; href?: string }[]
   > = {
     "/console/dashboard": [
-      { label: "仪表盘", href: "/console/dashboard" },
+      { label: t("consoleShell.breadcrumbs.dashboard"), href: "/console/dashboard" },
     ],
     "/console/tasks": [
-      { label: "新任务", href: "/console/tasks" },
+      { label: t("consoleShell.breadcrumbs.tasks"), href: "/console/tasks" },
     ],
     "/console/projects": [
-      { label: "项目管理", href: "/console/projects" },
+      { label: t("consoleShell.breadcrumbs.projects"), href: "/console/projects" },
     ],
     "/console/vms": [
-      { label: "开发环境", href: "/console/vms" },
+      { label: t("consoleShell.breadcrumbs.vms"), href: "/console/vms" },
     ],
     "/console/gitbot": [
-      { label: "Git 机器人", href: "/console/gitbot" },
+      { label: t("consoleShell.breadcrumbs.gitBot"), href: "/console/gitbot" },
     ],
     "/console/ide": [
-      { label: "IDE 辅助工具", href: "/console/ide" },
+      { label: t("consoleShell.breadcrumbs.ide"), href: "/console/ide" },
     ],
   }
 
   const normalizedPath =
     location.pathname !== "/" ? location.pathname.replace(/\/$/, "") : location.pathname
 
-  // 动态路由的 breadcrumb：/console/task/:taskId（排除 develop）
   const taskDetailMatch = normalizedPath.match(/^\/console\/task\/(?!develop\/)(.+)$/)
   const breadcrumbSegments =
     breadcrumbSegmentsMap[normalizedPath] ??
     (taskDetailMatch
-      ? [{ label: "任务", href: "/console/tasks" }, { label: taskName ?? "未知任务名称" }]
-      : [{ label: "用户控制台" }])
+      ? [{ label: t("consoleShell.breadcrumbs.task"), href: "/console/tasks" }, { label: taskName ?? t("consoleShell.breadcrumbs.unknownTask") }]
+      : [{ label: t("consoleShell.breadcrumbs.console") }])
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [communityOpen, setCommunityOpen] = useState(false)
@@ -139,10 +134,10 @@ function UserConsoleContent() {
                 variant="ghost"
                 size="sm"
                 onClick={() => window.location.reload()}
-                title="刷新页面"
+                title={t("consoleShell.actions.refreshPage")}
               >
                 <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
-                刷新
+                {t("consoleShell.actions.refresh")}
               </Button>
               <ModeToggle />
             </div>

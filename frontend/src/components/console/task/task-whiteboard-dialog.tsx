@@ -14,6 +14,7 @@ import React from "react"
 import { toast } from "sonner"
 import type { TldrawProps } from "tldraw"
 import { uploadTaskFile, type TaskUploadedFile } from "./task-file-upload"
+import { useTranslation } from "react-i18next"
 
 const TaskWhiteboardCanvas = React.lazy(() => import("./task-whiteboard-canvas"))
 type TldrawEditor = Parameters<NonNullable<TldrawProps["onMount"]>>[0]
@@ -35,6 +36,7 @@ export function TaskWhiteboardDialog({
   canUploadAttachment,
   onUploaded,
 }: TaskWhiteboardDialogProps) {
+  const { t } = useTranslation()
   const [submitting, setSubmitting] = React.useState(false)
   const [resetDialogOpen, setResetDialogOpen] = React.useState(false)
   const editorRef = React.useRef<TldrawEditor | null>(null)
@@ -42,19 +44,19 @@ export function TaskWhiteboardDialog({
   const handleSubmit = React.useCallback(async () => {
     if (submitting) return
     if (!canUploadAttachment) {
-      toast.error("最多只能上传 3 个文件")
+      toast.error(t("taskDetail.whiteboard.maxFiles"))
       return
     }
 
     const editor = editorRef.current
     if (!editor) {
-      toast.error("画板尚未加载完成")
+      toast.error(t("taskDetail.whiteboard.notReady"))
       return
     }
 
     const shapes = editor.getCurrentPageShapes()
     if (shapes.length === 0) {
-      toast.error("画板为空，无法提交")
+      toast.error(t("taskDetail.whiteboard.empty"))
       return
     }
 
@@ -72,18 +74,18 @@ export function TaskWhiteboardDialog({
       const uploadedFile = await uploadTaskFile(file)
       onUploaded(uploadedFile)
       onOpenChange(false)
-      toast.success("画板已上传并添加到附件")
+      toast.success(t("taskDetail.whiteboard.uploaded"))
     } catch (error) {
-      toast.error((error as Error).message || "画板上传失败")
+      toast.error((error as Error).message || t("taskDetail.whiteboard.uploadFailed"))
     } finally {
       setSubmitting(false)
     }
-  }, [canUploadAttachment, fileName, onOpenChange, onUploaded, submitting])
+  }, [canUploadAttachment, fileName, onOpenChange, onUploaded, submitting, t])
 
   const handleReset = React.useCallback(() => {
     const editor = editorRef.current
     if (!editor) {
-      toast.error("画板尚未加载完成")
+      toast.error(t("taskDetail.whiteboard.notReady"))
       return
     }
 
@@ -93,8 +95,8 @@ export function TaskWhiteboardDialog({
     }
     editor.clearHistory()
     setResetDialogOpen(false)
-    toast.success("画板已清空")
-  }, [])
+    toast.success(t("taskDetail.whiteboard.cleared"))
+  }, [t])
 
   return (
     <Dialog
@@ -124,7 +126,7 @@ export function TaskWhiteboardDialog({
         <DialogFooter className="shrink-0">
           <DialogClose asChild>
             <Button type="button" variant="outline" disabled={submitting}>
-              关闭画板
+              {t("taskDetail.whiteboard.close")}
             </Button>
           </DialogClose>
           <Button
@@ -133,7 +135,7 @@ export function TaskWhiteboardDialog({
             disabled={submitting}
             onClick={() => setResetDialogOpen(true)}
           >
-            清空画板
+            {t("taskDetail.whiteboard.clear")}
           </Button>
           <Button
             type="button"
@@ -143,7 +145,7 @@ export function TaskWhiteboardDialog({
             }}
           >
             {submitting && <Spinner className="size-4" />}
-            提交
+            {t("taskDetail.whiteboard.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -156,20 +158,20 @@ export function TaskWhiteboardDialog({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>清空画板</AlertDialogTitle>
+            <AlertDialogTitle>{t("taskDetail.whiteboard.clearTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要清空当前画板内容吗？清空后无法从当前画板恢复。
+              {t("taskDetail.whiteboard.clearDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={submitting}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <Button
               type="button"
               variant="destructive"
               disabled={submitting}
               onClick={handleReset}
             >
-              确认清空
+              {t("taskDetail.whiteboard.confirmClear")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -23,6 +23,7 @@ import type { DomainGitIdentity } from "@/api/Api"
 import { ConstsGitPlatform } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { CircleQuestionMark } from 'lucide-react'
+import { useTranslation } from "react-i18next"
 
 interface EditIdentityProps {
   open: boolean
@@ -39,6 +40,7 @@ export default function EditIdentity({
   onRefresh,
   trigger,
 }: EditIdentityProps) {
+  const { t } = useTranslation()
   const [accessToken, setAccessToken] = useState("")
   const [baseUrl, setBaseUrl] = useState("")
   const [email, setEmail] = useState("")
@@ -48,15 +50,14 @@ export default function EditIdentity({
 
   const isInstallationApp = identity?.is_installation_app === true
 
-  // 验证邮箱格式
+  // Validate email format.
   const isValidEmail = (email: string): boolean => {
     const emailRegex = /^[a-zA-Z0-9+\-\_\.]+@[0-9a-zA-Z\.-]+$/
     return emailRegex.test(email)
   }
 
-  // 验证用户名格式（禁止括号、引号等特殊字符，允许 Unicode 字符）
+  // Validate username format while allowing Unicode characters.
   const isValidUsername = (username: string): boolean => {
-    // 禁止的字符：括号、引号、空格等
     const forbiddenChars = /[!@#$%\^\&\*\[\]\(\)\<\>'"]/
     return !forbiddenChars.test(username)
   }
@@ -75,32 +76,32 @@ export default function EditIdentity({
 
   const handleSave = () => {
     if (!identity?.id) {
-      toast.error("身份信息不完整")
+      toast.error(t("consoleSettings.identities.toast.incomplete"))
       return
     }
 
     if (!baseUrl.trim()) {
-      toast.error("请输入 Base URL")
+      toast.error(t("consoleSettings.identities.toast.baseUrlRequired"))
       return
     }
     if (!email.trim()) {
-      toast.error("请输入 Email")
+      toast.error(t("consoleSettings.identities.toast.emailRequired"))
       return
     }
     if (!isValidEmail(email.trim())) {
-      toast.error("请输入有效的邮箱地址")
+      toast.error(t("consoleSettings.identities.toast.invalidEmail"))
       return
     }
     if (!username.trim()) {
-      toast.error("请输入用户名")
+      toast.error(t("consoleSettings.identities.toast.usernameRequired"))
       return
     }
     if (!isValidUsername(username.trim())) {
-      toast.error("用户名不能包含括号、引号等特殊字符")
+      toast.error(t("consoleSettings.identities.toast.invalidUsername"))
       return
     }
     if (!platform) {
-      toast.error("请选择 Git 平台类型")
+      toast.error(t("consoleSettings.identities.toast.platformRequired"))
       return
     }
 
@@ -119,17 +120,17 @@ export default function EditIdentity({
       remark: remark.trim(),
     }
 
-    // 如果用户输入了 Access Token，则更新
+    // Update the token only when the user enters a new value.
     if (accessToken.trim()) {
       updateData.access_token = accessToken.trim()
     } else if (identity.access_token) {
-      // 如果用户没有输入新值，但原值存在，则保持原值
+      // Preserve the existing token when no new value is provided.
       updateData.access_token = identity.access_token
     }
 
     apiRequest('v1UsersGitIdentitiesUpdate', updateData, [identity.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("身份修改成功")
+        toast.success(t("consoleSettings.identities.toast.updateSuccess"))
         setAccessToken("")
         setBaseUrl("")
         setEmail("")
@@ -139,7 +140,7 @@ export default function EditIdentity({
         onOpenChange(false)
         onRefresh?.()
       } else {
-        toast.error("修改 Git 身份失败: " + resp.message)
+        toast.error(t("consoleSettings.identities.toast.updateFailed", { message: resp.message }))
       }
     })
   }
@@ -159,12 +160,12 @@ export default function EditIdentity({
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改 Git 身份</DialogTitle>
+          <DialogTitle>{t("consoleSettings.identities.edit.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="flex gap-4">
             <Field className="flex-1">
-              <FieldLabel>Git 平台类型</FieldLabel>
+              <FieldLabel>{t("consoleSettings.identities.labels.platformType")}</FieldLabel>
               <FieldContent>
                 <Select
                   value={platform}
@@ -172,7 +173,7 @@ export default function EditIdentity({
                   disabled
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="请选择" />
+                    <SelectValue placeholder={t("consoleSettings.identities.placeholders.select")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ConstsGitPlatform.GitPlatformGithub}>
@@ -201,10 +202,10 @@ export default function EditIdentity({
               </FieldContent>
             </Field>
             <Field className="flex-[2]">
-              <FieldLabel>Git 平台地址</FieldLabel>
+              <FieldLabel>{t("consoleSettings.identities.labels.platformUrl")}</FieldLabel>
               <FieldContent>
                 <Input
-                  placeholder="例如: https://github.com"
+                  placeholder={t("consoleSettings.identities.placeholders.githubUrl")}
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   disabled
@@ -224,13 +225,13 @@ export default function EditIdentity({
                   className="h-auto p-0 text-foreground"
                 >
                   <a href="https://monkeycode.docs.baizhi.cloud/node/019a95ee-6277-7412-842a-587f25330ae6" target="_blank" rel="noopener noreferrer">
-                    <CircleQuestionMark />如何获取
+                    <CircleQuestionMark />{t("consoleSettings.identities.help.howToGet")}
                   </a>
                 </Button>
               </div>
               <FieldContent>
                 <Input
-                  placeholder="请输入 Access Token"
+                  placeholder={t("consoleSettings.identities.placeholders.accessToken")}
                   value={accessToken}
                   onChange={(e) => setAccessToken(e.target.value)}
                 />
@@ -242,7 +243,7 @@ export default function EditIdentity({
               <FieldLabel>Username</FieldLabel>
               <FieldContent>
                 <Input
-                  placeholder="请输入用户名"
+                  placeholder={t("consoleSettings.identities.placeholders.username")}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
@@ -253,7 +254,7 @@ export default function EditIdentity({
               <FieldContent>
                 <Input
                   type="email"
-                  placeholder="请输入邮箱地址"
+                  placeholder={t("consoleSettings.identities.placeholders.email")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -261,10 +262,10 @@ export default function EditIdentity({
             </Field>
           </div>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("consoleSettings.identities.labels.remark")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="可选"
+                placeholder={t("consoleSettings.identities.placeholders.optional")}
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
               />
@@ -273,10 +274,10 @@ export default function EditIdentity({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleSettings.identities.actions.cancel")}
           </Button>
           <Button onClick={handleSave}>
-            保存
+            {t("consoleSettings.identities.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

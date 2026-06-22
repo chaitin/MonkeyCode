@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react"
+import { useCallback, useState, useEffect, Fragment } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { apiRequest } from "@/utils/requestUtils"
@@ -43,6 +43,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { useTranslation } from "react-i18next"
 
 type WindowWithSaveFilePicker = Window & {
   showSaveFilePicker?: (options?: {
@@ -50,21 +51,18 @@ type WindowWithSaveFilePicker = Window & {
   }) => Promise<FileSystemFileHandle>
 }
 
-const formatPermissions = (mode?: number) => {
-  if (typeof mode !== 'number') return '未知'
+const formatPermissions = (mode: number | undefined, unknownText: string) => {
+  if (typeof mode !== 'number') return unknownText
   
-  // 只取低9位（用户、组、其他用户的权限）
+  // Keep only the low 9 permission bits for user, group, and others.
   const perm = mode & 0o777
   
-  // 定义权限字符
   const perms = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx']
   
-  // 提取用户、组、其他用户的权限
   const user = perms[(perm >> 6) & 0o7]
   const group = perms[(perm >> 3) & 0o7]
   const others = perms[perm & 0o7]
   
-  // 检查是否是目录
   const isDirectory = (mode & 0o40000) !== 0
   
   return (isDirectory ? 'd' : '-') + user + group + others
@@ -80,10 +78,10 @@ const formatFileSize = (bytes?: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-const formatTimestamp = (timestamp?: number) => {
-  if (!timestamp) return '未知'
-  const date = new Date(timestamp * 1000) // 假设时间戳是秒级的
-  return date.toLocaleString('zh-CN', {
+const formatTimestamp = (timestamp: number | undefined, unknownText: string, locale: string) => {
+  if (!timestamp) return unknownText
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -96,10 +94,9 @@ const formatTimestamp = (timestamp?: number) => {
 
 const sortFiles = (files: TaskflowFile[]) => {
   return [...files].sort((a, b) => {
-    // 首先按类型排序：目录在前，文件在后，符号链接根据 symlink_kind 判断
+    // Directories first, then files; symlinks are ordered by their target kind.
     const getTypePriority = (file: TaskflowFile) => {
       if (file.kind === TaskflowFileKind.FileKindSymlink) {
-        // 符号链接根据 symlink_kind 判断类型
         return file.symlink_kind === TaskflowFileKind.FileKindDir ? 0 : 2
       }
       return file.kind === TaskflowFileKind.FileKindDir ? 0 : 2
@@ -112,7 +109,6 @@ const sortFiles = (files: TaskflowFile[]) => {
       return priorityA - priorityB
     }
     
-    // 类型相同时，按文件名字典序排序
     return (a.name || '').localeCompare(b.name || '')
   })
 }
@@ -131,6 +127,7 @@ const getFileIcon = (file: TaskflowFile) => {
 }
 
 export default function FileManagerPage() {
+  const { t, i18n } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [files, setFiles] = useState<TaskflowFile[]>([])
   const [loading, setLoading] = useState(true)
@@ -149,8 +146,8 @@ export default function FileManagerPage() {
   const [moveSourcePath, setMoveSourcePath] = useState('')
 
 
-  // 获取虚拟机详情
-  const fetchVMInfo = async () => {    
+  // Fetch virtual machine details.
+  const fetchVMInfo = useCallback(async () => {
     if (!envid) {
       return
     }
@@ -165,18 +162,10 @@ export default function FileManagerPage() {
     }, () => {
       setConnectionErrorDialogOpen(true)
     })
-  }
+  }, [envid])
 
-  useEffect(() => {
-    fetchVMInfo()
-  }, [])
-  
-  useEffect(() => {
-    fetchFiles()
-  }, [currentPath])
-  
-  // 获取文件列表
-  const fetchFiles = async () => {
+  // Fetch file list.
+  const fetchFiles = useCallback(async () => {
     if (!envid) {
       setFiles([])
       setLoading(false)
@@ -191,11 +180,20 @@ export default function FileManagerPage() {
       if (resp.code === 0) {
         setFiles(sortFiles(resp.data || []))
       } else {
-        toast.error(resp.message || "获取文件列表失败")
+        toast.error(resp.message || t("consoleFiles.toast.fetchFailed"))
       }
     })
     setLoading(false)
-  }
+  }, [currentPath, envid, t])
+
+  useEffect(() => {
+    fetchVMInfo()
+  }, [fetchVMInfo])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Load files when the controlled path changes.
+    fetchFiles()
+  }, [fetchFiles])
 
   const ChangeDirectory = (path: string) => {
     if (path.startsWith('/')) {
@@ -212,7 +210,7 @@ export default function FileManagerPage() {
       ChangeDirectory(file.name)
     } else if (file.kind === TaskflowFileKind.FileKindFile) {
       if (file.size && file.size > 1024 * 1024) {
-        toast.error('文件太大，禁止在线编辑（超过 1MB）')
+        toast.error(t("consoleFiles.toast.editTooLarge"))
         return
       }
       
@@ -227,17 +225,19 @@ export default function FileManagerPage() {
     }
 
     const filePath = normalizePath(currentPath + '/' + file.name)
-    const fileType = file.kind === TaskflowFileKind.FileKindDir || (file.kind === TaskflowFileKind.FileKindSymlink && file.symlink_kind === TaskflowFileKind.FileKindDir) ? '目录' : '文件'
+    const fileType = file.kind === TaskflowFileKind.FileKindDir || (file.kind === TaskflowFileKind.FileKindSymlink && file.symlink_kind === TaskflowFileKind.FileKindDir)
+      ? t("consoleFiles.types.directory")
+      : t("consoleFiles.types.file")
 
     await apiRequest('v1UsersFilesDelete',{
       id: envid,
       path: filePath
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已删除${fileType} "${file.name}"`)
+        toast.success(t("consoleFiles.toast.deleted", { type: fileType, name: file.name }))
         fetchFiles()
       } else {
-        toast.error(resp.message || "删除文件失败")
+        toast.error(resp.message || t("consoleFiles.toast.deleteFailed"))
       }
     })
   }
@@ -290,14 +290,16 @@ export default function FileManagerPage() {
           const writable = await fileHandle.createWritable()
 
           await downloadFile(envid, filePath, filename, undefined, undefined, writable)
-          toast.success(`已下载 "${filename}"`)
+          toast.success(t("consoleFiles.toast.downloaded", { name: filename }))
           return
         }
       }
 
       await downloadFile(envid, filePath, filename)
     } catch (error) {
-      toast.error('下载失败：' + (error instanceof Error ? error.message : '未知错误'))
+      toast.error(t("consoleFiles.toast.downloadFailed", {
+        message: error instanceof Error ? error.message : t("consoleFiles.common.unknownError"),
+      }))
     }
   }
 
@@ -331,7 +333,7 @@ export default function FileManagerPage() {
               <Badge variant="outline" className="hidden md:block cursor-default">{vm?.os}</Badge>
             </TooltipTrigger>
             <TooltipContent>
-              操作系统
+              {t("consoleFiles.labels.os")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -342,34 +344,34 @@ export default function FileManagerPage() {
           <div className="flex items-center gap-2 p-2">
             <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => ChangeDirectory('..')}>
               <IconArrowLeft />
-              上级目录
+              {t("consoleFiles.actions.parentDirectory")}
             </Button>
             <Breadcrumb className="flex-1 bg-muted rounded-md py-1.5 text-sm px-4">
               {breadcrumbList()}
             </Breadcrumb>
             <Button variant="outline" size="sm" className="hidden sm:flex" onClick={fetchFiles}>
               <IconReload />
-              重新加载
+              {t("consoleFiles.actions.reload")}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="hidden sm:flex">
                   <IconCirclePlus />
-                  新建
+                  {t("consoleFiles.actions.new")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setCreateFolderDialogOpen(true)}>
                   <IconFolder />
-                  创建文件夹
+                  {t("consoleFiles.actions.createFolder")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setCreateFileDialogOpen(true)}>
                   <IconFile />
-                  创建文件
+                  {t("consoleFiles.actions.createFile")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setUploadFileDialogOpen(true)}>
                   <IconUpload />
-                  上传文件
+                  {t("consoleFiles.actions.uploadFile")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -378,11 +380,11 @@ export default function FileManagerPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableHead className="w-[40%] pl-2">名称</TableHead>
-                <TableHead className="w-[10%]">大小</TableHead>
-                <TableHead className="hidden sm:table-cell w-[15%]">用户</TableHead>
-                <TableHead className="hidden md:table-cell w-[15%]">属性</TableHead>
-                <TableHead className="hidden lg:table-cell w-[15%]">修改时间</TableHead>
+                <TableHead className="w-[40%] pl-2">{t("consoleFiles.table.name")}</TableHead>
+                <TableHead className="w-[10%]">{t("consoleFiles.table.size")}</TableHead>
+                <TableHead className="hidden sm:table-cell w-[15%]">{t("consoleFiles.table.user")}</TableHead>
+                <TableHead className="hidden md:table-cell w-[15%]">{t("consoleFiles.table.permissions")}</TableHead>
+                <TableHead className="hidden lg:table-cell w-[15%]">{t("consoleFiles.table.modifiedAt")}</TableHead>
                 <TableHead className="w-[5%] pr-2"></TableHead>
               </TableRow>
             </TableHeader>
@@ -392,7 +394,7 @@ export default function FileManagerPage() {
                   <TableCell colSpan={6} className="text-center py-3.5">
                     <div className="flex items-center justify-center gap-2">
                       <Spinner className="size-4" />
-                      正在加载
+                      {t("consoleFiles.common.loading")}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -400,7 +402,7 @@ export default function FileManagerPage() {
               {files.length === 0 && !loading &&
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-3.5">
-                    无数据
+                    {t("consoleFiles.common.noData")}
                   </TableCell>
                 </TableRow>
               }
@@ -424,13 +426,13 @@ export default function FileManagerPage() {
                     {formatFileSize(file.size)}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    {file.user || '未知'}
+                    {file.user || t("consoleFiles.common.unknown")}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground">
-                    {formatPermissions(file.unix_mode)}
+                    {formatPermissions(file.unix_mode, t("consoleFiles.common.unknown"))}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-muted-foreground">
-                    {formatTimestamp(file.updated_at || file.created_at)}
+                    {formatTimestamp(file.updated_at || file.created_at, t("consoleFiles.common.unknown"), i18n.language === "cn" ? "zh-CN" : "en-US")}
                   </TableCell>
                   <TableCell className="pr-2">
                     <div className="flex justify-end">
@@ -443,33 +445,33 @@ export default function FileManagerPage() {
                         <DropdownMenuContent align="end">
                           {file.kind === TaskflowFileKind.FileKindFile && (
                             <DropdownMenuItem onClick={() => handleCopyFileClick(file)}>
-                              <IconCopy />复制
+                              <IconCopy />{t("consoleFiles.actions.copy")}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => handleMoveFileClick(file)}>
-                            <IconTransfer />移动
+                            <IconTransfer />{t("consoleFiles.actions.move")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
                             void handleDownloadFile(file)
                           }}>
-                            <IconDownload />下载
+                            <IconDownload />{t("consoleFiles.actions.download")}
                           </DropdownMenuItem>
                           {file.kind === TaskflowFileKind.FileKindFile && <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem className="text-destructive" onSelect={(e) => { e.preventDefault() }}>
-                                <IconTrash />删除
+                                <IconTrash />{t("consoleFiles.actions.delete")}
                               </DropdownMenuItem>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>确认删除</AlertDialogTitle>
+                                <AlertDialogTitle>{t("consoleFiles.dialog.deleteTitle")}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  确定要删除 "{normalizePath(currentPath + '/' + file.name)}" 吗？此操作不可撤销。
+                                  {t("consoleFiles.dialog.deleteDescription", { path: normalizePath(currentPath + '/' + file.name) })}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteFile(file)}>确认删除</AlertDialogAction>
+                                <AlertDialogCancel>{t("consoleFiles.actions.cancel")}</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteFile(file)}>{t("consoleFiles.actions.confirmDelete")}</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>}
@@ -490,7 +492,7 @@ export default function FileManagerPage() {
         envid={envid}
       />
       
-      {/* 创建文件夹对话框 */}
+      {/* Create folder dialog */}
       <CreateFolderDialog
         open={createFolderDialogOpen}
         onOpenChange={setCreateFolderDialogOpen}
@@ -499,7 +501,7 @@ export default function FileManagerPage() {
         onSuccess={fetchFiles}
       />
 
-      {/* 创建文件对话框 */}
+      {/* Create file dialog */}
       <CreateFileDialog
         open={createFileDialogOpen}
         onOpenChange={setCreateFileDialogOpen}
@@ -508,7 +510,7 @@ export default function FileManagerPage() {
         onSuccess={fetchFiles}
       />
 
-      {/* 上传文件对话框 */}
+      {/* Upload file dialog */}
       <UploadFileDialog
         open={uploadFileDialogOpen}
         onOpenChange={setUploadFileDialogOpen}
@@ -517,7 +519,7 @@ export default function FileManagerPage() {
         onSuccess={fetchFiles}
       />
 
-      {/* 复制文件对话框 */}
+      {/* Copy file dialog */}
       <CopyFileDialog
         open={copyFileDialogOpen}
         onOpenChange={setCopyFileDialogOpen}
@@ -529,7 +531,7 @@ export default function FileManagerPage() {
         }}
       />
 
-      {/* 移动文件对话框 */}
+      {/* Move file dialog */}
       <MoveFileDialog
         open={moveFileDialogOpen}
         onOpenChange={setMoveFileDialogOpen}
@@ -544,11 +546,11 @@ export default function FileManagerPage() {
       <AlertDialog open={connectionErrorDialogOpen} onOpenChange={setConnectionErrorDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>无法连接主机</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleFiles.alerts.hostConnectionFailed")}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => window.close()}>关闭</AlertDialogCancel>
-          <AlertDialogAction onClick={() => window.location.reload()}>刷新</AlertDialogAction>
+          <AlertDialogCancel onClick={() => window.close()}>{t("consoleFiles.actions.close")}</AlertDialogCancel>
+          <AlertDialogAction onClick={() => window.location.reload()}>{t("consoleFiles.actions.refresh")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

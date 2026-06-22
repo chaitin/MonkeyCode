@@ -6,7 +6,7 @@ import IssueMenu from "./issue-menu"
 import { IconChevronDown, IconCircleDot, IconCancel, IconCircleCheck, IconChevronUp, IconChevronsUp, IconAlertTriangle } from "@tabler/icons-react"
 import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
-import { getStatusName } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface IssueCardProps {
   issue: DomainProjectIssue
@@ -18,28 +18,42 @@ interface IssueCardProps {
 }
 
 export default function IssueCard({ issue, projectId, project, onViewIssue, onTaskCreated, onIssueDeleted }: IssueCardProps) {
+  const { t } = useTranslation()
+
+  const statusLabel = useMemo(() => {
+    switch (issue.status) {
+      case ConstsProjectIssueStatus.ProjectIssueStatusOpen:
+        return t("consoleProject.issue.status.open")
+      case ConstsProjectIssueStatus.ProjectIssueStatusCompleted:
+        return t("consoleProject.issue.status.completed")
+      case ConstsProjectIssueStatus.ProjectIssueStatusClosed:
+        return t("consoleProject.issue.status.closed")
+      default:
+        return issue.status || "-"
+    }
+  }, [issue.status, t])
 
   const priority = useMemo(() => {
     switch (issue.priority) {
       case ConstsProjectIssuePriority.ProjectIssuePriorityThree:
         return <>
           <IconChevronsUp className="text-primary" />
-          高优先级
+          {t("consoleProject.issue.priority.high")}
         </>
       case ConstsProjectIssuePriority.ProjectIssuePriorityTwo:
         return <>
           <IconChevronUp className="text-primary" />
-          中优先级
+          {t("consoleProject.issue.priority.medium")}
         </>
       case ConstsProjectIssuePriority.ProjectIssuePriorityOne:
         return <>
           <IconChevronDown className="" />
-          低优先级
+          {t("consoleProject.issue.priority.low")}
         </>
       default:
         return null
     }
-  }, [issue.priority])
+  }, [issue.priority, t])
 
   return (
     <div className={cn("border rounded-md flex flex-col group hover:border-primary/50 p-2 gap-1 cursor-default", issue.status === ConstsProjectIssueStatus.ProjectIssueStatusClosed ? "bg-muted/30" : "", issue.status === ConstsProjectIssueStatus.ProjectIssueStatusCompleted ? "bg-muted/30" : "")}>
@@ -54,7 +68,7 @@ export default function IssueCard({ issue, projectId, project, onViewIssue, onTa
           {issue.status === ConstsProjectIssueStatus.ProjectIssueStatusOpen ? <IconCircleDot /> : null}
           {issue.status === ConstsProjectIssueStatus.ProjectIssueStatusClosed ? <IconCancel /> : null}
           {issue.status === ConstsProjectIssueStatus.ProjectIssueStatusCompleted ? <IconCircleCheck /> : null}
-          {getStatusName(issue.status as ConstsProjectIssueStatus)}
+          {statusLabel}
         </Badge>
         <div 
           className={cn("flex-1 text-sm group-hover:text-primary cursor-pointer hover:underline line-clamp-1 break-all", issue.status === ConstsProjectIssueStatus.ProjectIssueStatusClosed && "line-through text-muted-foreground hover:line-through", issue.status === ConstsProjectIssueStatus.ProjectIssueStatusCompleted && "text-muted-foreground")}
@@ -72,9 +86,9 @@ export default function IssueCard({ issue, projectId, project, onViewIssue, onTa
         </Badge>
         {!issue.design_document && <Badge variant="outline" className={cn(issue.status === ConstsProjectIssueStatus.ProjectIssueStatusCompleted ? "text-muted-foreground" : "", issue.status === ConstsProjectIssueStatus.ProjectIssueStatusClosed ? "text-muted-foreground" : "")}>
           <IconAlertTriangle />
-          缺少设计文档
+          {t("consoleProject.issue.missingDesign")}
         </Badge>}
-        <div className="flex-1 text-right">{dayjs((issue.created_at || 0) * 1000).fromNow()}创建</div>
+        <div className="flex-1 text-right">{t("consoleProject.issue.createdAt", { time: dayjs((issue.created_at || 0) * 1000).fromNow() })}</div>
       </div>
     </div>
   )

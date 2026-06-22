@@ -2,6 +2,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { IconArrowRight, IconMenu2, IconPointFilled } from "@tabler/icons-react";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 const DOCS_LINK = "https://monkeycode.docs.baizhi.cloud/";
@@ -13,23 +14,23 @@ const CHAITIN_LINK = "https://www.chaitin.cn/";
 const BAIZHI_LINK = "https://www.baizhi.cloud/";
 
 const resourceLinks = [
-  { title: "产品文档", href: DOCS_LINK },
-  { title: "技术论坛", href: FORUM_LINK },
-  { title: "开源仓库", href: GITHUB_LINK },
-  { title: "模型广场", href: MODEL_SQUARE_LINK },
+  { titleKey: "welcomeShell.footer.productDocs", href: DOCS_LINK },
+  { titleKey: "welcomeShell.footer.forum", href: FORUM_LINK },
+  { titleKey: "welcomeShell.nav.openSourceRepo", href: GITHUB_LINK },
+  { titleKey: "welcomeShell.footer.modelSquare", href: MODEL_SQUARE_LINK },
 ];
 
 const aboutLinks = [
-  { title: "长亭科技", href: CHAITIN_LINK },
-  { title: "长亭百智云", href: BAIZHI_LINK },
-  { title: "隐私政策", href: "/privacy-policy" },
-  { title: "用户协议", href: "/user-agreement" },
+  { titleKey: "welcomeShell.footer.chaitin", href: CHAITIN_LINK },
+  { titleKey: "welcomeShell.footer.baizhi", href: BAIZHI_LINK },
+  { titleKey: "welcomeShell.nav.privacyPolicy", href: "/privacy-policy" },
+  { titleKey: "welcomeShell.nav.userAgreement", href: "/user-agreement" },
 ];
 
 const communityCards = [
-  { label: "微信群", src: "/wechat.png", alt: "微信二维码" },
-  { label: "飞书群", src: "/feishu.png", alt: "飞书群二维码" },
-  { label: "钉钉群", src: "/dingtalk.png", alt: "钉钉群二维码" },
+  { labelKey: "welcomeShell.community.wechat", src: "/wechat.png", altKey: "welcomeShell.community.wechatAlt" },
+  { labelKey: "welcomeShell.community.feishu", src: "/feishu.png", altKey: "welcomeShell.community.feishuAlt" },
+  { labelKey: "welcomeShell.community.dingtalk", src: "/dingtalk.png", altKey: "welcomeShell.community.dingtalkAlt" },
 ];
 
 function LogoWordmark({ href }: { href: string }) {
@@ -90,6 +91,7 @@ function FooterLinkItem({ title, href }: { title: string; href: string }) {
 
 export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }) {
   const { isLoggedIn } = useAuth();
+  const { t } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const inviterId = typeof window !== "undefined" ? localStorage.getItem("ic") || "" : "";
@@ -97,9 +99,9 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
   const navPrefix = homeAnchors ? "" : "/";
 
   const pageNav = [
-    { label: "作品集", href: SHOWCASE_LINK, external: true },
-    { label: "客户端", href: `${navPrefix}#mobile-client` },
-    { label: "私有化", href: `${navPrefix}#self-hosting` },
+    { labelKey: "welcomeShell.nav.showcase", href: SHOWCASE_LINK, external: true },
+    { labelKey: "welcomeShell.nav.client", href: `${navPrefix}#mobile-client` },
+    { labelKey: "welcomeShell.nav.selfHosting", href: `${navPrefix}#self-hosting` },
   ];
 
   React.useEffect(() => {
@@ -122,7 +124,7 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
             className="inline-flex size-10 items-center justify-center rounded-[4px] border border-[var(--a-line-2)] bg-[var(--a-panel)] text-[var(--a-fg)] transition-colors hover:bg-[#162019] md:hidden"
-            aria-label="切换导航菜单"
+            aria-label={t("welcomeShell.nav.toggleMenu")}
           >
             <IconMenu2 className="size-5" />
           </button>
@@ -134,21 +136,21 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
           {pageNav.map((item) =>
             item.external ? (
               <a
-                key={item.label}
+                key={item.labelKey}
                 href={item.href}
                 target="_blank"
                 rel="noreferrer"
                 className="px-2.5 py-1.5 text-[13px] text-[var(--a-fg-dim)] transition-colors hover:text-white"
               >
-                {item.label}
+                {t(item.labelKey)}
               </a>
             ) : (
               <a
-                key={item.label}
+                key={item.labelKey}
                 href={item.href}
                 className="px-2.5 py-1.5 text-[13px] text-[var(--a-fg-dim)] transition-colors hover:text-white"
               >
-                {item.label}
+                {t(item.labelKey)}
               </a>
             )
           )}
@@ -157,14 +159,14 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
         <div className="ml-auto hidden items-center gap-2 md:flex">
           {!isLoggedIn ? (
             <>
-              <HeaderAction href={signUpLink}>注册</HeaderAction>
+              <HeaderAction href={signUpLink}>{t("welcomeShell.actions.signUp")}</HeaderAction>
               <HeaderAction to="/login" primary>
-                登录
+                {t("welcomeShell.actions.login")}
               </HeaderAction>
             </>
           ) : (
             <HeaderAction to="/console" primary>
-              进入控制台 <IconArrowRight className="size-4" />
+              {t("welcomeShell.actions.console")} <IconArrowRight className="size-4" />
             </HeaderAction>
           )}
         </div>
@@ -173,29 +175,29 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
           <div className="mt-4 space-y-4 border-t border-[var(--a-line)] pt-4 md:hidden">
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-[var(--a-fg-dim)]">
               <IconPointFilled className="size-3 text-[var(--a-accent)]" />
-              System Online
+              {t("welcomeShell.terminal.systemOnline")}
             </div>
             <div className="grid gap-2">
               {pageNav.map((item) =>
                 item.external ? (
                   <a
-                    key={item.label}
+                    key={item.labelKey}
                     href={item.href}
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => setMenuOpen(false)}
                     className="rounded-[4px] border border-[var(--a-line)] px-4 py-3 text-sm text-[var(--a-fg)] transition-colors hover:bg-[#162019]"
                   >
-                    {item.label}
+                    {t(item.labelKey)}
                   </a>
                 ) : (
                   <a
-                    key={item.label}
+                    key={item.labelKey}
                     href={item.href}
                     onClick={() => setMenuOpen(false)}
                     className="rounded-[4px] border border-[var(--a-line)] px-4 py-3 text-sm text-[var(--a-fg)] transition-colors hover:bg-[#162019]"
                   >
-                    {item.label}
+                    {t(item.labelKey)}
                   </a>
                 )
               )}
@@ -203,14 +205,14 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
             <div className="grid gap-2 sm:grid-cols-2">
               {!isLoggedIn ? (
                 <>
-                  <HeaderAction href={signUpLink}>注册</HeaderAction>
+                  <HeaderAction href={signUpLink}>{t("welcomeShell.actions.signUp")}</HeaderAction>
                   <HeaderAction to="/login" primary>
-                    登录
+                    {t("welcomeShell.actions.login")}
                   </HeaderAction>
                 </>
               ) : (
                 <HeaderAction to="/console" primary>
-                  进入控制台 <IconArrowRight className="size-4" />
+                  {t("welcomeShell.actions.console")} <IconArrowRight className="size-4" />
                 </HeaderAction>
               )}
             </div>
@@ -222,6 +224,8 @@ export function TerminalHeader({ homeAnchors = true }: { homeAnchors?: boolean }
 }
 
 export function TerminalFooter() {
+  const { t } = useTranslation();
+
   return (
     <footer id="community" className="relative z-10 mt-10 border-t border-[var(--a-line)] px-5 pb-8 pt-14 sm:px-8">
       <div className="mx-auto max-w-[1280px]">
@@ -229,31 +233,31 @@ export function TerminalFooter() {
           <div>
             <LogoWordmark href="/#hero" />
             <p className="mt-5 max-w-[320px] text-sm leading-7 text-[var(--a-fg-dim)]">
-              免费使用，无需安装，内置云端开发环境，并支持业内最全的顶尖大模型。无论是开发项目、做调研、写文档，还是分析数据、处理任务，打开浏览器就能随时开始，让 AI 持续帮你推进工作。
+              {t("welcomeShell.footer.description")}
             </p>
           </div>
 
           <div>
-            <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># 资源</div>
+            <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># {t("welcomeShell.footer.resources")}</div>
             {resourceLinks.map((item) => (
-              <FooterLinkItem key={item.title} title={item.title} href={item.href} />
+              <FooterLinkItem key={item.titleKey} title={t(item.titleKey)} href={item.href} />
             ))}
           </div>
 
           <div>
-            <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># 关于我们</div>
+            <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># {t("welcomeShell.footer.about")}</div>
             {aboutLinks.map((item) => (
-              <FooterLinkItem key={item.title} title={item.title} href={item.href} />
+              <FooterLinkItem key={item.titleKey} title={t(item.titleKey)} href={item.href} />
             ))}
           </div>
 
           <div>
-            <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># 技术交流群</div>
+            <div className="mb-4 text-[11px] font-semibold tracking-[0.08em] text-[var(--a-fg)]"># {t("welcomeShell.footer.community")}</div>
             <div className="grid gap-4 sm:grid-cols-3">
               {communityCards.map((item) => (
-                <div key={item.label} className="text-center">
-                  <img src={item.src} alt={item.alt} className="mx-auto aspect-square w-full rounded-sm object-cover" />
-                  <div className="mt-2 text-[11px] tracking-[0.04em] text-[var(--a-fg-dim)]">{item.label}</div>
+                <div key={item.labelKey} className="text-center">
+                  <img src={item.src} alt={t(item.altKey)} className="mx-auto aspect-square w-full rounded-sm object-cover" />
+                  <div className="mt-2 text-[11px] tracking-[0.04em] text-[var(--a-fg-dim)]">{t(item.labelKey)}</div>
                 </div>
               ))}
             </div>
@@ -261,9 +265,9 @@ export function TerminalFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-dashed border-[var(--a-line-2)] pt-5 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)] sm:flex-row sm:items-center sm:justify-between">
-          <span>© 2026 MonkeyCode · 版权所有：北京长亭科技有限公司 · 本应用由 MonkeyCode 开发</span>
+          <span>{t("welcomeShell.footer.copyright")}</span>
           <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="transition-colors hover:text-[var(--a-fg)]">
-            京ICP备2024055124号-12
+            {t("welcomeShell.footer.icp")}
           </a>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { IS_OFFLINE_EDITION } from '@/utils/edition';
 import { apiRequest } from '@/utils/requestUtils';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 type CommonData = {
   user: DomainUser;
@@ -48,12 +49,12 @@ type CommonData = {
   loadingProjects: boolean;
   reloadProjects: () => void;
 
-  /** 未关联项目的任务（quick_start），用于侧边栏「空项目」分组展示 */
+  /** Unlinked quick_start tasks for the empty project group in the sidebar. */
   unlinkedTasks: DomainProjectTask[];
   loadingUnlinkedTasks: boolean;
   reloadUnlinkedTasks: () => void;
 
-  /** 最近任务，用于侧边栏「历史任务」分组展示 */
+  /** Recent tasks for the history group in the sidebar. */
   historicalTasks: DomainProjectTask[];
   loadingHistoricalTasks: boolean;
   reloadHistoricalTasks: () => void;
@@ -62,6 +63,7 @@ type CommonData = {
 const DataContext = createContext<CommonData | null>(null);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const [userInfo, setUserInfo] = useState<DomainUser>({});
   const [wechatMpBindDialogOpen, setWechatMpBindDialogOpen] = useState(false);
   const checkedWechatMpBindRef = useRef(false);
@@ -118,7 +120,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (resp.code === 0) {
         setHosts(resp.data?.hosts || [])
       } else {
-        toast.error("获取宿主机列表失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchHostsFailed", { message: resp.message }))
       }
     })
     setTimeout(() => {
@@ -135,16 +137,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const allVms = hosts.flatMap((host) => {
       const hostVms = host.virtualmachines || []
       return hostVms.map((vm) => {
-        // 为每个 VM 添加所属 host 信息
         const vmWithHost = {
           ...vm,
-          host: vm.host || host, // 如果 VM 本身已有 host 信息则保留，否则使用所属的 host
+          host: vm.host || host,
         }
         return vmWithHost
       })
     })
     const sortedVms = allVms.sort((a, b) => {
-      // 正在运行的排在最上面
       let aRunning = 0 
       if (a.status === 'offline') {
         aRunning = 5
@@ -170,32 +170,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           model.is_hidden !== true
         ));
         
-        // 排序：先按 owner.type (private > team > public)，然后按名字
         const sortedModels = [...modelsList].sort((a, b) => {
-        // 定义 owner.type 的优先级
         const getOwnerTypePriority = (type?: ConstsOwnerType): number => {
             if (type === ConstsOwnerType.OwnerTypePrivate) return 1;
             if (type === ConstsOwnerType.OwnerTypeTeam) return 2;
             if (type === ConstsOwnerType.OwnerTypePublic) return 0;
-            return 3; // 未知类型排在最后
+            return 3;
         };
         
         const priorityA = getOwnerTypePriority(a.owner?.type);
         const priorityB = getOwnerTypePriority(b.owner?.type);
         
-        // 先按 owner.type 排序
         if (priorityA !== priorityB) {
             return priorityA - priorityB;
         }
         
-        // 如果 owner.type 相同，按名字排序
-        const nameA = a.model || '未知模型';
-        const nameB = b.model || '未知模型';
+        const nameA = a.model || t("consoleDataProvider.fallback.unknownModel");
+        const nameB = b.model || t("consoleDataProvider.fallback.unknownModel");
         return nameA.localeCompare(nameB);
         });
         setModels(sortedModels);
       } else {
-        toast.error("获取模型列表失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchModelsFailed", { message: resp.message }))
       }
     });
     setTimeout(() => {
@@ -209,25 +205,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (resp.code === 0) {
         const imagesList = resp.data?.images || [];
         
-        // 排序：先按 owner.type (private > team > public)，然后按名字
         const sortedImages = [...imagesList].sort((a, b) => {
-          // 定义 owner.type 的优先级
           const getOwnerTypePriority = (type?: ConstsOwnerType): number => {
             if (type === ConstsOwnerType.OwnerTypePrivate) return 0;
             if (type === ConstsOwnerType.OwnerTypeTeam) return 1;
             if (type === ConstsOwnerType.OwnerTypePublic) return 2;
-            return 3; // 未知类型排在最后
+            return 3;
           };
           
           const priorityA = getOwnerTypePriority(a.owner?.type);
           const priorityB = getOwnerTypePriority(b.owner?.type);
           
-          // 先按 owner.type 排序
           if (priorityA !== priorityB) {
             return priorityA - priorityB;
           }
           
-          // 如果 owner.type 相同，按名字排序
           const nameA = a.remark || getImageShortName(a.name || '');
           const nameB = b.remark || getImageShortName(b.name || '');
           return nameA.localeCompare(nameB);
@@ -235,7 +227,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         setImages(sortedImages);
       } else {
-        toast.error("获取镜像列表失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchImagesFailed", { message: resp.message }))
       }
     })
     setTimeout(() => {
@@ -248,10 +240,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     apiRequest('v1UsersGitIdentitiesList', {}, [], (resp) => {
       if (resp.code === 0) {
         const list = resp.data || [];
-        // 隐藏 platform 为 internal 的身份凭证
         setIdentities(list.filter((i: DomainGitIdentity) => i.platform !== ConstsGitPlatform.GitPlatformInternal));
       } else {
-        toast.error("获取身份列表失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchIdentitiesFailed", { message: resp.message }))
       }
     })
     setTimeout(() => {
@@ -271,10 +262,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setDailyProTokenBalance(resp.data?.daily_pro_token_balance || 0);
         setDailyUltraTokenBalance(resp.data?.daily_ultra_token_balance || 0);
       } else {
-        toast.error("获取余额失败: " + resp.message);
+        toast.error(t("consoleDataProvider.toast.fetchBalanceFailed", { message: resp.message }));
       }
     })
-  }, [])
+  }, [t])
 
   const fetchCheckinStatus = async (showLoading = true) => {
     if (IS_OFFLINE_EDITION) {
@@ -314,7 +305,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (resp.code === 0) {
         setSubscription(resp.data || null)
       } else {
-        toast.error("获取会员信息失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchSubscriptionFailed", { message: resp.message }))
       }
     }, () => {
       if (showLoading) {
@@ -324,7 +315,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (showLoading) {
       setLoadingSubscription(false)
     }
-  }, [])
+  }, [t])
 
   const fetchMembers = async () => {
     setLoadingMembers(true)
@@ -332,7 +323,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (resp.code === 0) {
         setMembers(resp.data || [])
       } else {
-        toast.error("获取协作成员失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchMembersFailed", { message: resp.message }))
       }
     })
     setLoadingMembers(false)
@@ -345,7 +336,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (resp.code === 0) {
         setProjects(resp.data?.projects || [])
       } else {
-        toast.error("获取项目列表失败: " + resp.message)
+        toast.error(t("consoleDataProvider.toast.fetchProjectsFailed", { message: resp.message }))
       }
     })
 

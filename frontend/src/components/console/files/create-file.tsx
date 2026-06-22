@@ -10,7 +10,8 @@ import { normalizePath } from "@/utils/common"
 import AceEditor from "react-ace"
 import "ace-builds/src-noconflict/theme-github"
 import "ace-builds/src-noconflict/theme-terminal"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
+import { useTranslation } from "react-i18next"
 
 interface CreateFileDialogProps {
   open: boolean
@@ -29,6 +30,7 @@ export default function CreateFileDialog({
   baseDir = '',
   onSuccess,
 }: CreateFileDialogProps) {
+  const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const [fileName, setFileName] = useState('')
   const [fileContent, setFileContent] = useState('')
@@ -36,6 +38,7 @@ export default function CreateFileDialog({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset controlled dialog fields whenever the parent opens it.
       setFileName('')
       setFileContent('')
     }
@@ -43,7 +46,7 @@ export default function CreateFileDialog({
 
   const handleCreate = async () => {
     if (!fileName.trim() || !envid) {
-      toast.error('请输入文件名称')
+      toast.error(t("consoleFiles.toast.fileNameRequired"))
       return
     }
 
@@ -56,13 +59,13 @@ export default function CreateFileDialog({
       content: fileContent
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已创建文件 "${fileName.trim()}"`)
+        toast.success(t("consoleFiles.toast.fileCreated", { name: fileName.trim() }))
         onOpenChange(false)
         if (onSuccess) {
           onSuccess()
         }
       } else {
-        toast.error("创建文件失败: " + resp.message);
+        toast.error(t("consoleFiles.toast.fileCreateFailed", { message: resp.message }));
       }
     })
     setCreating(false)
@@ -76,11 +79,11 @@ export default function CreateFileDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>创建文件</DialogTitle>
+          <DialogTitle>{t("consoleFiles.actions.createFile")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field>
-            <FieldLabel>目标目录</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.targetDirectory")}</FieldLabel>
             <Input
               value={targetDir || './'}
               readOnly
@@ -88,7 +91,7 @@ export default function CreateFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>新文件名称</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.newFileName")}</FieldLabel>
             <Input
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
@@ -96,7 +99,7 @@ export default function CreateFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>文件内容</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.fileContent")}</FieldLabel>
             <div className="border rounded-md overflow-hidden p-0 overflow-y-hidden">
               <AceEditor
                 mode="text"
@@ -123,11 +126,11 @@ export default function CreateFileDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleCreate} disabled={!fileName.trim() || !fileContent.trim() || creating}>
             {creating && <Spinner />}
-            创建
+            {t("consoleFiles.actions.create")}
           </Button>
         </DialogFooter>
       </DialogContent>

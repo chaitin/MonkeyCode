@@ -20,40 +20,44 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
+import { useTranslation } from "react-i18next"
 
-function formatTime(value?: number) {
+type Translate = (key: string) => string
+
+function formatTime(value: number | undefined, language: string) {
   if (!value) return "-"
-  return new Date(value * 1000).toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")
+  const locale = language === "cn" ? "zh-CN" : "en-US"
+  return new Date(value * 1000).toLocaleString(locale, { hour12: false }).replace(/\//g, "-")
 }
 
-function taskTitle(task: DomainTeamTaskItem) {
-  return task.title || task.content || "未命名任务"
+function taskTitle(task: DomainTeamTaskItem, t: Translate) {
+  return task.title || task.content || t("managerTasks.fallback.unnamedTask")
 }
 
 function creatorName(task: DomainTeamTaskItem) {
   return task.creator?.name || task.creator?.email || "-"
 }
 
-function taskStatusMeta(status?: string) {
+function taskStatusMeta(status: string | undefined, t: Translate) {
   switch (status) {
     case "pending":
       return {
-        label: "准备中",
+        label: t("managerTasks.status.pending"),
         className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
       }
     case "processing":
       return {
-        label: "运行中",
+        label: t("managerTasks.status.processing"),
         className: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300",
       }
     case "finished":
       return {
-        label: "已完成",
+        label: t("managerTasks.status.finished"),
         className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
       }
     case "error":
       return {
-        label: "失败",
+        label: t("managerTasks.status.error"),
         className: "border-destructive/20 bg-destructive/10 text-destructive",
       }
     default:
@@ -64,33 +68,33 @@ function taskStatusMeta(status?: string) {
   }
 }
 
-function taskKindText(kind?: string) {
+function taskKindText(kind: string | undefined, t: Translate) {
   switch (kind) {
     case "develop":
-      return "开发"
+      return t("managerTasks.kind.develop")
     case "design":
-      return "设计"
+      return t("managerTasks.kind.design")
     case "review":
-      return "评审"
+      return t("managerTasks.kind.review")
     case "generate_docs":
-      return "生成文档"
+      return t("managerTasks.kind.generateDocs")
     case "generate_requirement":
-      return "生成需求"
+      return t("managerTasks.kind.generateRequirement")
     case "generate_design":
-      return "生成设计"
+      return t("managerTasks.kind.generateDesign")
     case "generate_tasklist":
-      return "生成任务"
+      return t("managerTasks.kind.generateTasklist")
     case "execute_task":
-      return "执行任务"
+      return t("managerTasks.kind.executeTask")
     case "pr_review":
-      return "PR 评审"
+      return t("managerTasks.kind.prReview")
     default:
       return kind || "-"
   }
 }
 
-function TaskStatusBadge({ status }: { status?: string }) {
-  const meta = taskStatusMeta(status)
+function TaskStatusBadge({ status, t }: { status?: string; t: Translate }) {
+  const meta = taskStatusMeta(status, t)
 
   return (
     <Badge variant="outline" className={cn(meta.className)}>
@@ -100,6 +104,7 @@ function TaskStatusBadge({ status }: { status?: string }) {
 }
 
 export default function TeamManagerTasks() {
+  const { i18n, t } = useTranslation()
   const [tasks, setTasks] = useState<DomainTeamTaskItem[]>([])
   const [loading, setLoading] = useState(true)
   const [pageSize, setPageSize] = useState(20)
@@ -118,7 +123,7 @@ export default function TeamManagerTasks() {
         setNextCursor(page?.cursor)
         setHasNextPage(!!page?.has_next_page)
       } else {
-        toast.error(resp.message || "获取任务列表失败")
+        toast.error(resp.message || t("managerTasks.toast.fetchFailed"))
       }
     })
     setLoading(false)
@@ -155,13 +160,13 @@ export default function TeamManagerTasks() {
   }
 
   if (loading && tasks.length === 0) {
-    return <ManagerListLoading title="正在加载任务" />
+    return <ManagerListLoading title={t("managerTasks.loading")} />
   }
 
   return (
     <ManagerListCard
-      title="任务"
-      description="查看团队任务的状态、归属项目、创建人和最后活动时间。"
+      title={t("managerTasks.title")}
+      description={t("managerTasks.description")}
       icon={<IconListCheck />}
       count={tasks.length}
       pagination={
@@ -181,36 +186,36 @@ export default function TeamManagerTasks() {
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableHead className="px-6">任务</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>类型</TableHead>
-            <TableHead>创建人</TableHead>
-            <TableHead>最后活动</TableHead>
+            <TableHead className="px-6">{t("managerTasks.columns.task")}</TableHead>
+            <TableHead>{t("managerTasks.columns.status")}</TableHead>
+            <TableHead>{t("managerTasks.columns.kind")}</TableHead>
+            <TableHead>{t("managerTasks.columns.creator")}</TableHead>
+            <TableHead>{t("managerTasks.columns.lastActive")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {!loading && tasks.length === 0 && (
             <ManagerListEmpty
               colSpan={5}
-              title="暂无任务"
-              description="团队成员创建任务后，这里会显示任务状态和活动时间。"
+              title={t("managerTasks.empty.title")}
+              description={t("managerTasks.empty.description")}
             />
           )}
           {tasks.map((task) => (
             <TableRow key={task.id}>
               <TableCell className="px-6">
                 <div className="max-w-[520px] space-y-1">
-                  <div className="truncate font-medium">{taskTitle(task)}</div>
+                  <div className="truncate font-medium">{taskTitle(task, t)}</div>
                   <div className="truncate text-xs leading-4 text-muted-foreground">
-                    {task.project_name || "未关联项目"}
+                    {task.project_name || t("managerTasks.fallback.unlinkedProject")}
                   </div>
                 </div>
               </TableCell>
               <TableCell>
-                <TaskStatusBadge status={task.status} />
+                <TaskStatusBadge status={task.status} t={t} />
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {taskKindText(task.kind)}
+                {taskKindText(task.kind, t)}
               </TableCell>
               <TableCell>
                 <div className="max-w-[180px] truncate text-sm">
@@ -219,9 +224,9 @@ export default function TeamManagerTasks() {
               </TableCell>
               <TableCell>
                 <div className="space-y-1">
-                  <div className="text-sm">{formatTime(task.last_active_at)}</div>
+                  <div className="text-sm">{formatTime(task.last_active_at, i18n.language)}</div>
                   <div className="text-xs leading-4 text-muted-foreground">
-                    创建于 {formatTime(task.created_at)}
+                    {t("managerTasks.createdAt", { time: formatTime(task.created_at, i18n.language) })}
                   </div>
                 </div>
               </TableCell>

@@ -1,18 +1,18 @@
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 
 
 export const renderTitle = (message: MessageType) => {
     const renderEditTitle = (filePath?: string) => {
       const action = message.data.status === "failed"
-        ? "修改文件失败"
+        ? taskDetailT("toolcall.editFailed")
         : message.data.status === "pending" || message.data.status === "in_progress"
-          ? "正在修改文件"
-          : "修改文件"
+          ? taskDetailT("toolcall.editingFile")
+          : taskDetailT("toolcall.editFile")
       return `${action}${filePath ? ` "${filePath}"` : ""}`
     }
 
-    // 如果 title 包含中文字符，直接返回
     if (typeof message.data?.title === 'string' && message.data?.title?.length < 20 && /[\u4e00-\u9fa5]/.test(message.data.title ?? "")) {
       return message.data.title;
     }
@@ -22,24 +22,24 @@ export const renderTitle = (message: MessageType) => {
 
     if (message.data.rawInput?.parsed_cmd?.length > 0) {
       if (message.data.kind === 'execute') {
-        return `执行命令 "${message.data.rawInput?.parsed_cmd[0]?.cmd}"`
+        return `${taskDetailT("toolcall.executeCommand")} "${message.data.rawInput?.parsed_cmd[0]?.cmd}"`
       } else if (message.data.kind === 'search') {
-        return `查找内容 "${message.data.rawInput?.parsed_cmd[0]?.cmd}"`
+        return `${taskDetailT("toolcall.searchContent")} "${message.data.rawInput?.parsed_cmd[0]?.cmd}"`
       } else if (message.data.kind === 'read') {
-        return `读取内容 "${message.data.rawInput?.parsed_cmd[0]?.path}"`
+        return `${taskDetailT("toolcall.readContent")} "${message.data.rawInput?.parsed_cmd[0]?.path}"`
       }
     } else if (message.data.kind === 'execute' && !!message.data.rawInput?.command) {
-      return `执行命令 "${message.data.rawInput.command}"`
+      return `${taskDetailT("toolcall.executeCommand")} "${message.data.rawInput.command}"`
     } else if (message.data.kind === 'search' && !!message.data.rawInput?.path && !!message.data.rawInput?.pattern) {
-      return `查找内容 "${message.data.rawInput.pattern} in ${message.data.rawInput.path}"`
+      return `${taskDetailT("toolcall.searchContent")} "${message.data.rawInput.pattern} in ${message.data.rawInput.path}"`
     } else if (message.data.kind === 'search' && !!message.data.rawInput?.pattern) {
-      return `查找内容 "${message.data.rawInput.pattern}"`
+      return `${taskDetailT("toolcall.searchContent")} "${message.data.rawInput.pattern}"`
     } else if (message.data.kind === 'read' && !!message.data.rawInput?.file_path) {
-      return `读取内容 "${message.data.rawInput.file_path}"`
+      return `${taskDetailT("toolcall.readContent")} "${message.data.rawInput.file_path}"`
     } else if (message.data.kind === 'read' && !!message.data.rawInput?.filePath) {
-      return `读取内容 "${message.data.rawInput.filePath}"`
+      return `${taskDetailT("toolcall.readContent")} "${message.data.rawInput.filePath}"`
     } else if (message.data.kind === 'read') {
-      return `读取内容`
+      return taskDetailT("toolcall.readContent")
     } else if (message.data.kind === 'edit' && !!message.data.rawInput?.file_path) {
       return renderEditTitle(message.data.rawInput.file_path)
     }  else if (message.data.kind === 'edit' && !!message.data.rawInput?.filePath) {
@@ -94,7 +94,7 @@ export const renderTitle = (message: MessageType) => {
           <code className="text-foreground">{input}</code>
         </pre>
         <pre className="">
-          <code className="text-muted-foreground">{output || '（命令输出为空）'}</code>
+          <code className="text-muted-foreground">{output || taskDetailT("toolcall.commandOutputEmpty")}</code>
         </pre>
       </div>
     }

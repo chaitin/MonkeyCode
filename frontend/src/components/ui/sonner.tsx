@@ -1,6 +1,6 @@
 "use client"
 
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { IconCircleCheck, IconInfoCircle, IconAlertTriangle, IconAlertOctagon, IconLoader } from "@tabler/icons-react"
 

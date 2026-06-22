@@ -11,6 +11,7 @@ import { IconAlertTriangle, IconCircleCheck, IconFolder, IconLoader, IconReload 
 import dayjs from "dayjs"
 import { BookOpenIcon } from "lucide-react"
 import { forwardRef, useCallback, useImperativeHandle, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const PAGE_SIZE = 24;
@@ -20,6 +21,7 @@ export interface GitBotTasksRef {
 }
 
 export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, ref) {
+  const { t } = useTranslation()
   const [tasks, setTasks] = useState<DomainGitBotTask[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
@@ -43,7 +45,7 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
         setHasMore(newTasks.length >= PAGE_SIZE)
         setPage(pageNum)
       } else {
-        toast.error("获取任务列表失败: " + resp.message)
+        toast.error(t("consoleGitBot.toast.fetchTasksFailed", { message: resp.message }))
       }
       resetLoading()
       setInitialLoading(false)
@@ -51,7 +53,7 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
       resetLoading()
       setInitialLoading(false)
     })
-  }, [])
+  }, [t])
 
   const fetchTasks = useCallback(async () => {
     setPage(1)
@@ -70,8 +72,8 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
   }))
 
   useEffect(() => {
-    fetchTasksImpl(1, false)
-  }, [])
+    queueMicrotask(() => fetchTasksImpl(1, false))
+  }, [fetchTasksImpl])
 
   useEffect(() => {
     const el = loadMoreRef.current
@@ -96,7 +98,7 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
             <EmptyMedia variant="icon">
               <IconLoader className="animate-spin" />
             </EmptyMedia>
-            <EmptyDescription>正在加载...</EmptyDescription>
+            <EmptyDescription>{t("consoleGitBot.common.loading")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -111,18 +113,18 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
             <EmptyMedia variant="icon">
               <IconFolder />
             </EmptyMedia>
-            <EmptyDescription>暂无任务</EmptyDescription>
+            <EmptyDescription>{t("consoleGitBot.tasks.empty")}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <div className="flex gap-2">
               <Button variant="outline" onClick={fetchTasks}>
                 <IconReload />
-                刷新
+                {t("consoleGitBot.actions.refresh")}
               </Button>
               <Button variant="default" asChild>
                 <a href="https://monkeycode.docs.baizhi.cloud/node/019bd94c-2fd8-7276-9382-74e3a0d4a397" target="_blank">
                   <BookOpenIcon />
-                  如何使用？
+                  {t("consoleGitBot.tasks.howToUse")}
                 </a>
               </Button>
             </div>
@@ -163,17 +165,17 @@ export const GitBotTasks = forwardRef<GitBotTasksRef>(function GitBotTasks(_, re
                       <span className="inline-flex">
                         <Badge variant="outline">
                           <IconCircleCheck />
-                          已终止
+                          {t("consoleGitBot.tasks.status.finished")}
                         </Badge>
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent>连续三天不对话的任务将自动回收</TooltipContent>
+                    <TooltipContent>{t("consoleGitBot.tasks.recycleTooltip")}</TooltipContent>
                   </Tooltip>
                 ) : (
                   <Badge variant="outline">
-                    {task.status === "error" && <><IconAlertTriangle />启动失败</>}
-                    {task.status === "pending" && <><Spinner />正在启动</>}
-                    {task.status === "processing" && <><Spinner />运行中</>}
+                    {task.status === "error" && <><IconAlertTriangle />{t("consoleGitBot.tasks.status.error")}</>}
+                    {task.status === "pending" && <><Spinner />{t("consoleGitBot.tasks.status.pending")}</>}
+                    {task.status === "processing" && <><Spinner />{t("consoleGitBot.tasks.status.processing")}</>}
                   </Badge>
                 )}
                 <Badge variant="outline">

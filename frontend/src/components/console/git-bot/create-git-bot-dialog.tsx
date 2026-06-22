@@ -24,6 +24,7 @@ import Icon from "@/components/common/Icon"
 import { Badge } from "@/components/ui/badge"
 import { useCommonData } from "../data-provider"
 import { getHostBadges } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface CreateGitBotDialogProps {
   open: boolean
@@ -32,6 +33,7 @@ interface CreateGitBotDialogProps {
 }
 
 export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitBotDialogProps) {
+  const { t } = useTranslation()
   const [remark, setRemark] = useState("")
   const [platform, setPlatform] = useState<ConstsGitPlatform>(ConstsGitPlatform.GitPlatformGitLab)
   const [accessToken, setAccessToken] = useState("")
@@ -42,7 +44,7 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
 
   useEffect(() => {
     if (open) {
-      const defaultHost = [...hosts].sort((a, _) => {
+      const defaultHost = [...hosts].sort((a) => {
         return a.status === ConstsHostStatus.HostStatusOnline ? -1 : 1
       }).find((host: DomainHost) => (
         host.status === ConstsHostStatus.HostStatusOnline
@@ -58,7 +60,7 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
 
   const handleSubmit = async () => {
     if (!accessToken) {
-      toast.error("请输入 Access Token")
+      toast.error(t("consoleGitBot.toast.missingAccessToken"))
       return
     }
     
@@ -72,7 +74,7 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
         platform: platform,
       })
       if (res.data.code === 0) {
-        toast.success("创建成功")
+        toast.success(t("consoleGitBot.toast.createSuccess"))
         onOpenChange(false)
         setRemark("")
         setPlatform(ConstsGitPlatform.GitPlatformGitLab)
@@ -82,10 +84,10 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
           onSuccess(res.data.data)
         }
       } else {
-        toast.error(res.data.message || "创建失败")
+        toast.error(res.data.message || t("consoleGitBot.toast.createFailed"))
       }
     } catch {
-      toast.error("创建失败")
+      toast.error(t("consoleGitBot.toast.createFailed"))
     } finally {
       setLoading(false)
     }
@@ -103,34 +105,34 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>创建审查机器人</DialogTitle>
+          <DialogTitle>{t("consoleGitBot.dialog.createTitle")}</DialogTitle>
           <DialogDescription>
-            配置一个新的机器人来自动审查你的合并请求
+            {t("consoleGitBot.dialog.createDescription")}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("consoleGitBot.fields.remark")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="输入备注"
+                placeholder={t("consoleGitBot.placeholders.remark")}
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
               />
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>宿主机</FieldLabel>
+            <FieldLabel>{t("consoleGitBot.fields.host")}</FieldLabel>
             <FieldContent>
               <Select value={selectedHostId} onValueChange={setSelectedHostId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="请选择宿主机" />
+                  <SelectValue placeholder={t("consoleGitBot.placeholders.host")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={"public_host"}>
                     <div className="flex items-center gap-2">
                       <span>MonkeyCode</span>
-                      <Badge variant="outline">平台内置</Badge>
+                      <Badge variant="outline">{t("consoleGitBot.fields.builtin")}</Badge>
                     </div>
                   </SelectItem>
                   {hosts.map((host) => {
@@ -148,11 +150,11 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>Git 平台类型</FieldLabel>
+            <FieldLabel>{t("consoleGitBot.fields.platform")}</FieldLabel>
             <FieldContent>
               <Select value={platform} onValueChange={(value) => setPlatform(value as ConstsGitPlatform)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="请选择" />
+                  <SelectValue placeholder={t("consoleGitBot.placeholders.select")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ConstsGitPlatform.GitPlatformGitLab}>
@@ -185,7 +187,7 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
             <FieldContent>
               <Input
                 type="password"
-                placeholder="请输入 Access Token"
+                placeholder={t("consoleGitBot.placeholders.accessToken")}
                 value={accessToken}
                 onChange={(e) => setAccessToken(e.target.value)}
               />
@@ -194,10 +196,10 @@ export function CreateGitBotDialog({ open, onOpenChange, onSuccess }: CreateGitB
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleGitBot.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "创建中..." : "创建"}
+            {loading ? t("consoleGitBot.actions.creating") : t("consoleGitBot.actions.createShort")}
           </Button>
         </DialogFooter>
       </DialogContent>

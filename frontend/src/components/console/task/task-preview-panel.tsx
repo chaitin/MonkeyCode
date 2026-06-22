@@ -4,6 +4,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { Item, ItemContent, ItemTitle, ItemGroup, ItemActions, ItemDescription } from "@/components/ui/item"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { IconAccessPoint, IconAlertCircle, IconCloudOff, IconReload, IconX } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 interface TaskPreviewPanelProps {
   ports: DomainVMPort[] | undefined
@@ -20,13 +21,14 @@ export function TaskPreviewPanel({
   onClosePanel,
   embedded = false,
 }: TaskPreviewPanelProps) {
+  const { t } = useTranslation()
 
   if (disabled) {
     return (
       <div className={embedded ? "flex flex-col h-full min-h-0" : "flex flex-col h-full min-h-0 rounded-lg border overflow-hidden"}>
         {!embedded && (
           <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-2 min-h-12 border-b bg-muted/50 shrink-0">
-            <span className="text-sm font-medium">在线预览</span>
+            <span className="text-sm font-medium">{t("taskDetail.preview.title")}</span>
             <div className="flex items-center gap-1 shrink-0">
               <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh || !!disabled}>
                 <IconReload className="size-4" />
@@ -46,7 +48,7 @@ export function TaskPreviewPanel({
                 <IconCloudOff className="size-6" />
               </EmptyMedia>
               <EmptyDescription>
-                开发环境未就绪，无法预览
+                {t("taskDetail.preview.envNotReady")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -60,7 +62,7 @@ export function TaskPreviewPanel({
       <div className={embedded ? "flex flex-col h-full min-h-0" : "flex flex-col h-full min-h-0 rounded-lg border overflow-hidden"}>
         {!embedded && (
           <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1 min-h-11 border-b bg-muted/30 shrink-0">
-            <span className="text-sm font-medium">在线预览</span>
+            <span className="text-sm font-medium">{t("taskDetail.preview.title")}</span>
             <div className="flex items-center gap-1 shrink-0">
               <Button variant="ghost" size="icon" className="size-8 shrink-0 hover:text-primary" onClick={() => onRefresh?.()} disabled={!onRefresh}>
                 <IconReload className="size-4" />
@@ -101,14 +103,14 @@ export function TaskPreviewPanel({
                 </ItemTitle>
                 {!canAccess && (
                   <ItemDescription>
-                    {port.error_message || "暂不可访问"}
+                    {port.error_message || t("taskDetail.preview.unavailable")}
                   </ItemDescription>
                 )}
               </ItemContent>
               {canAccess && port.preview_url && (
                 <ItemActions>
                   <Button size="sm" variant="default" onClick={() => window.open(port.preview_url, "_blank")}>
-                    访问
+                    {t("taskDetail.preview.open")}
                   </Button>
                 </ItemActions>
               )}
@@ -123,7 +125,7 @@ export function TaskPreviewPanel({
                   <IconAccessPoint className="size-6" />
                 </EmptyMedia>
                 <EmptyDescription>
-                  开发环境中没有发现正在监听的端口
+                  {t("taskDetail.preview.empty")}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

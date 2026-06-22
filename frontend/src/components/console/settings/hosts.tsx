@@ -51,8 +51,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
+import { useTranslation } from "react-i18next"
 
 export default function Hosts() {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [command, setCommand] = useState<string>("")
   const [loadingCommand, setLoadingCommand] = useState(false)
@@ -66,7 +68,7 @@ export default function Hosts() {
 
   const fetchInstallCommand = async () => {
     if (!canManageHosts) {
-      toast.error("仅团队空间支持绑定宿主机")
+      toast.error(t("consoleSettings.hosts.toast.teamOnly"))
       setOpen(false)
       return
     }
@@ -76,7 +78,7 @@ export default function Hosts() {
       if (resp.code === 0) {
         setCommand(resp.data?.command || "")
       } else {
-        toast.error("获取安装命令失败: " + resp.message)
+        toast.error(t("consoleSettings.hosts.toast.installCommandFailed", { message: resp.message }))
       }
     })
     setLoadingCommand(false)
@@ -93,25 +95,25 @@ export default function Hosts() {
     
     try {
       await navigator.clipboard.writeText(command)
-      toast.success("命令已复制到剪贴板")
+      toast.success(t("consoleSettings.hosts.toast.commandCopied"))
     } catch (error) {
-      toast.error("复制失败")
-      console.error("复制失败:", error)
+      toast.error(t("consoleSettings.hosts.toast.copyFailed"))
+      console.error("Copy failed:", error)
     }
   }
 
   const handleDelete = (host: DomainHost) => {
     if (!host.id) {
-      toast.error("宿主机信息不完整")
+      toast.error(t("consoleSettings.hosts.toast.incomplete"))
       return
     }
 
     apiRequest('v1UsersHostsDelete', {}, [host.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("宿主机移除成功")
+        toast.success(t("consoleSettings.hosts.toast.removeSuccess"))
         reloadHosts()
       } else {
-        toast.error("移除宿主机失败: " + resp.message)
+        toast.error(t("consoleSettings.hosts.toast.removeFailed", { message: resp.message }))
       }
     })
   }
@@ -124,20 +126,20 @@ export default function Hosts() {
 
   const handleUpdateRemark = async () => {
     if (!editingHost?.id) {
-      toast.error("宿主机信息不完整")
+      toast.error(t("consoleSettings.hosts.toast.incomplete"))
       return
     }
 
     setRemarkLoading(true)
     await apiRequest('v1UsersHostsUpdate', { remark: remarkInput }, [editingHost.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("备注修改成功")
+        toast.success(t("consoleSettings.hosts.toast.remarkUpdated"))
         setRemarkDialogOpen(false)
         setEditingHost(null)
         setRemarkInput("")
         reloadHosts?.()
       } else {
-        toast.error("修改备注失败: " + resp.message)
+        toast.error(t("consoleSettings.hosts.toast.remarkUpdateFailed", { message: resp.message }))
       }
     })
     setRemarkLoading(false)
@@ -151,7 +153,7 @@ export default function Hosts() {
             <Spinner className="size-6" />
           </EmptyMedia>
           <EmptyDescription>
-            正在加载宿主机列表...
+            {t("consoleSettings.hosts.loading")}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -166,7 +168,7 @@ export default function Hosts() {
             <IconAlertHexagon />
           </EmptyMedia>
           <EmptyDescription>
-            暂无配置，请先绑定宿主机
+            {t("consoleSettings.hosts.empty")}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -184,7 +186,10 @@ export default function Hosts() {
                 {getHostBadges(host)}
               </ItemTitle>
               <ItemDescription className="hidden md:block">
-                共 {host.virtualmachines?.length || 0} 个开发环境，{host.virtualmachines?.filter((vm) => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).length || 0} 个正在使用
+                {t("consoleSettings.hosts.vmSummary", {
+                  total: host.virtualmachines?.length || 0,
+                  active: host.virtualmachines?.filter((vm) => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).length || 0,
+                })}
               </ItemDescription>
             </ItemContent>
             <ItemActions>
@@ -197,7 +202,7 @@ export default function Hosts() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => handleOpenRemarkDialog(host)} disabled={host.owner?.type !== ConstsOwnerType.OwnerTypePrivate}>
                     <IconPencil />
-                    修改备注
+                    {t("consoleSettings.hosts.actions.editRemark")}
                   </DropdownMenuItem>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -207,24 +212,24 @@ export default function Hosts() {
                         disabled={host.owner?.type !== ConstsOwnerType.OwnerTypePrivate}
                       >
                         <IconTrash />
-                        移除
+                        {t("consoleSettings.hosts.actions.remove")}
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认移除</AlertDialogTitle>
+                        <AlertDialogTitle>{t("consoleSettings.hosts.remove.title")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          确定要移除宿主机 "{host.remark || `${host.name}-${host.external_ip}`}" 吗？此操作不可撤销。
+                          {t("consoleSettings.hosts.remove.description", { name: host.remark || `${host.name}-${host.external_ip}` })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t("consoleSettings.hosts.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => {
                             handleDelete(host)
                           }}
                         >
-                          确认移除
+                          {t("consoleSettings.hosts.remove.confirm")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -245,10 +250,10 @@ export default function Hosts() {
           <div>
             <div className="flex items-center gap-2 font-semibold leading-none">
               <HardDrive />
-              开发环境宿主机
+              {t("consoleSettings.hosts.title")}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              用于在宿主机上创建开发环境，当前能力仅对团队空间开放
+              {t("consoleSettings.hosts.description")}
             </p>
           </div>
           <Button
@@ -257,7 +262,7 @@ export default function Hosts() {
             onClick={() => setOpen(true)}
             disabled={!canManageHosts}
           >
-            绑定
+            {t("consoleSettings.hosts.actions.bind")}
           </Button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
@@ -268,11 +273,11 @@ export default function Hosts() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>绑定宿主机</DialogTitle>
+            <DialogTitle>{t("consoleSettings.hosts.bind.title")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              以 root 权限登录你的 Linux 服务器，并执行以下命令
+              {t("consoleSettings.hosts.bind.instruction")}
             </p>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -280,15 +285,15 @@ export default function Hosts() {
                   className="bg-muted p-4 rounded-md whitespace-pre-wrap break-words text-sm cursor-pointer hover:text-success"
                   onClick={handleCopy}
                 >
-                  <code className="code-font">{loadingCommand ? "正在生成安装命令..." : command}</code>
+                  <code className="code-font">{loadingCommand ? t("consoleSettings.hosts.bind.generatingCommand") : command}</code>
                 </pre>
               </TooltipTrigger>
               <TooltipContent>
-                <p>复制命令</p>
+                <p>{t("consoleSettings.hosts.actions.copyCommand")}</p>
               </TooltipContent>
             </Tooltip>
             <p className="text-sm text-muted-foreground">
-              执行完毕后刷新页面，你将会看到宿主机信息
+              {t("consoleSettings.hosts.bind.afterRun")}
             </p>
           </div>
         </DialogContent>
@@ -297,23 +302,23 @@ export default function Hosts() {
       <Dialog open={remarkDialogOpen} onOpenChange={setRemarkDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>修改备注</DialogTitle>
+            <DialogTitle>{t("consoleSettings.hosts.remark.title")}</DialogTitle>
             <DialogDescription>
-              为宿主机 "{editingHost?.remark || `${editingHost?.name}-${editingHost?.external_ip}`}" 设置备注
+              {t("consoleSettings.hosts.remark.description", { name: editingHost?.remark || `${editingHost?.name}-${editingHost?.external_ip}` })}
             </DialogDescription>
           </DialogHeader>
           <Input
             id="remark"
-            placeholder="请输入备注信息"
+            placeholder={t("consoleSettings.hosts.remark.placeholder")}
             value={remarkInput}
             onChange={(e) => setRemarkInput(e.target.value)}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemarkDialogOpen(false)}>
-              取消
+              {t("consoleSettings.hosts.actions.cancel")}
             </Button>
             <Button onClick={handleUpdateRemark} disabled={remarkLoading}>
-              {remarkLoading ? "保存中..." : "保存"}
+              {remarkLoading ? t("consoleSettings.hosts.actions.saving") : t("consoleSettings.hosts.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

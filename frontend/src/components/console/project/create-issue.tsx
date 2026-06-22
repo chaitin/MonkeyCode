@@ -7,6 +7,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { IconLoader } from "@tabler/icons-react"
 import MarkdownEditor from "@/components/common/markdown-editor"
+import { useTranslation } from "react-i18next"
 
 interface CreateIssueDialogProps {
   open: boolean
@@ -24,6 +25,7 @@ export default function CreateIssueDialog({
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [loading, setLoading] = useState(false)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (!open) {
@@ -34,7 +36,7 @@ export default function CreateIssueDialog({
 
   const handleSave = async () => {
     if (!title.trim()) {
-      toast.error("请输入需求标题")
+      toast.error(t("consoleProject.issue.create.toast.titleRequired"))
       return
     }
 
@@ -44,11 +46,11 @@ export default function CreateIssueDialog({
       requirement_document: body.trim() 
     }, [projectId], (resp) => {
         if (resp.code === 0) {
-          toast.success("需求创建成功")
+          toast.success(t("consoleProject.issue.create.toast.created"))
           onOpenChange(false)
           onSuccess?.()
         } else {
-          toast.error(resp.message || "创建需求失败")
+          toast.error(resp.message || t("consoleProject.issue.create.toast.createFailed"))
         }
       }
     )
@@ -65,21 +67,21 @@ export default function CreateIssueDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>创建需求</DialogTitle>
+          <DialogTitle>{t("consoleProject.issue.create.title")}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="title">需求标题</Label>
+            <Label htmlFor="title">{t("consoleProject.issue.create.titleLabel")}</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="请输入需求标题"
+              placeholder={t("consoleProject.issue.create.titlePlaceholder")}
               disabled={loading}
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="body">原始需求说明</Label>
+            <Label htmlFor="body">{t("consoleProject.issue.create.requirementLabel")}</Label>
             <MarkdownEditor
               value={body}
               onChange={setBody}
@@ -90,15 +92,14 @@ export default function CreateIssueDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleProject.common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading || !title.trim()}>
             {loading && <IconLoader className="size-4 animate-spin" />}
-            创建
+            {t("consoleProject.common.create")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

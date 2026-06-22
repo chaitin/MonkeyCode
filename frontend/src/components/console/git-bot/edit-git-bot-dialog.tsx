@@ -24,6 +24,7 @@ import Icon from "@/components/common/Icon"
 import { Badge } from "@/components/ui/badge"
 import { useCommonData } from "../data-provider"
 import { getHostBadges } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface EditGitBotDialogProps {
   open: boolean
@@ -33,6 +34,7 @@ interface EditGitBotDialogProps {
 }
 
 export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGitBotDialogProps) {
+  const { t } = useTranslation()
   const [name, setName] = useState("")
   const [token, setToken] = useState("")
   const [selectedHostId, setSelectedHostId] = useState<string>("")
@@ -43,21 +45,18 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
 
   useEffect(() => {
     if (open && bot) {
-      setName(bot.name || "")
-      setToken(bot.token || "")
-      setPlatform(bot.platform || ConstsGitPlatform.GitPlatformGitLab)
-      // 设置宿主机
-      if (bot.host?.id) {
-        setSelectedHostId(bot.host.id)
-      } else {
-        setSelectedHostId("public_host")
-      }
+      queueMicrotask(() => {
+        setName(bot.name || "")
+        setToken(bot.token || "")
+        setPlatform(bot.platform || ConstsGitPlatform.GitPlatformGitLab)
+        setSelectedHostId(bot.host?.id || "public_host")
+      })
     }
   }, [open, bot])
 
   const handleSubmit = async () => {
     if (!bot?.id) {
-      toast.error("机器人信息不完整")
+      toast.error(t("consoleGitBot.toast.incompleteBot"))
       return
     }
 
@@ -70,11 +69,11 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
       token: token || undefined,
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("更新成功")
+        toast.success(t("consoleGitBot.toast.updateSuccess"))
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error("更新失败: " + resp.message)
+        toast.error(t("consoleGitBot.toast.updateFailed", { message: resp.message }))
       }
     })
     setLoading(false)
@@ -92,30 +91,30 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改审查机器人</DialogTitle>
+          <DialogTitle>{t("consoleGitBot.dialog.editTitle")}</DialogTitle>
         </DialogHeader>
         <Field>
-          <FieldLabel>备注名称</FieldLabel>
+          <FieldLabel>{t("consoleGitBot.fields.remarkName")}</FieldLabel>
           <FieldContent>
             <Input
-              placeholder="输入备注名称"
+              placeholder={t("consoleGitBot.placeholders.remarkName")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </FieldContent>
         </Field>
         <Field>
-          <FieldLabel>宿主机</FieldLabel>
+          <FieldLabel>{t("consoleGitBot.fields.host")}</FieldLabel>
           <FieldContent>
             <Select value={selectedHostId} onValueChange={setSelectedHostId}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="请选择宿主机" />
+                <SelectValue placeholder={t("consoleGitBot.placeholders.host")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={"public_host"}>
                   <div className="flex items-center gap-2">
                     <span>MonkeyCode</span>
-                    <Badge variant="outline">平台内置</Badge>
+                    <Badge variant="outline">{t("consoleGitBot.fields.builtin")}</Badge>
                   </div>
                 </SelectItem>
                 {hosts.map((host) => {
@@ -133,11 +132,11 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
           </FieldContent>
         </Field>
         <Field>
-          <FieldLabel>Git 平台类型</FieldLabel>
+          <FieldLabel>{t("consoleGitBot.fields.platform")}</FieldLabel>
           <FieldContent>
             <Select value={platform} onValueChange={(value) => setPlatform(value as ConstsGitPlatform)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="请选择" />
+                <SelectValue placeholder={t("consoleGitBot.placeholders.select")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ConstsGitPlatform.GitPlatformGitLab}>
@@ -170,7 +169,7 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
           <FieldContent>
             <Input
               type="password"
-              placeholder="留空则不修改"
+              placeholder={t("consoleGitBot.placeholders.keepToken")}
               value={token}
               onChange={(e) => setToken(e.target.value)}
             />
@@ -178,10 +177,10 @@ export function EditGitBotDialog({ open, onOpenChange, bot, onSuccess }: EditGit
         </Field>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleGitBot.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "保存中..." : "保存"}
+            {loading ? t("consoleGitBot.actions.saving") : t("consoleGitBot.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

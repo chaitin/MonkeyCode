@@ -4,8 +4,8 @@ import { CircularProgress } from "@/components/ui/circular-progress"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useCommonData } from "../data-provider"
-import { getSubscriptionPlanLabel } from "@/utils/common"
 import { Crown } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
@@ -31,7 +31,6 @@ type PlanTokenLimitKey = keyof typeof PLAN_TOKEN_LIMITS
 type ModelQuotaKey = keyof (typeof PLAN_TOKEN_LIMITS)["basic"]
 type QuotaItem = {
   key: string
-  label: string
   total: number
   remaining: number
   used: number
@@ -93,9 +92,9 @@ function getQuotaItems(
   const limits = PLAN_TOKEN_LIMITS[plan]
 
   return [
-    { key: "basic", label: "基础模型", total: limits.basic },
-    { key: "pro", label: "专业模型", total: limits.pro },
-    { key: "ultra", label: "旗舰模型", total: limits.ultra },
+    { key: "basic", total: limits.basic },
+    { key: "pro", total: limits.pro },
+    { key: "ultra", total: limits.ultra },
   ].map((item) => {
     const remaining = clampTokenBalance(remainingByType[item.key as ModelQuotaKey], item.total)
     const used = Math.max(item.total - remaining, 0)
@@ -117,6 +116,7 @@ function openWalletSection(section: "earn" | "usage" | "plan") {
 }
 
 export function FreeModelQuotaIndicator() {
+  const { t } = useTranslation()
   const {
     dailyBasicTokenBalance,
     dailyProTokenBalance,
@@ -149,7 +149,7 @@ export function FreeModelQuotaIndicator() {
             indicatorClassName={getQuotaCircularProgressClassName(usedProgress)}
             aria-hidden="true"
           />
-          <span className="hidden lg:inline">免费额度</span>
+          <span className="hidden lg:inline">{t("consoleShell.rewards.quota.freeQuota")}</span>
           <span className="font-medium">{formatTokenNumber(remainingTokens)}</span>
         </button>
       </HoverCardTrigger>
@@ -162,9 +162,9 @@ export function FreeModelQuotaIndicator() {
           {quotaItems.map((item) => (
             <div key={item.key} className="rounded-lg border bg-muted/20 p-3">
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate font-medium">{item.label}</span>
+                <span className="truncate font-medium">{t(`consoleShell.rewards.quota.models.${item.key}`)}</span>
                 <span className={cn("text-xs", item.total > 0 ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                  {item.total > 0 ? `今日剩余 ${formatTokenNumber(item.remaining)}` : "无额度"}
+                  {item.total > 0 ? t("consoleShell.rewards.quota.remainingToday", { amount: formatTokenNumber(item.remaining) }) : t("consoleShell.rewards.quota.noQuota")}
                 </span>
               </div>
               <Progress
@@ -181,12 +181,13 @@ export function FreeModelQuotaIndicator() {
 }
 
 export function MembershipBalanceIndicator() {
+  const { t } = useTranslation()
   const {
     balance,
     subscription,
   } = useCommonData()
   const plan = normalizePlan(subscription?.plan)
-  const planLabel = getSubscriptionPlanLabel(subscription?.plan)
+  const planLabel = t(`consoleShell.rewards.plans.${plan}`)
   const balanceLabel = Math.floor(balance).toLocaleString("zh-CN")
   const canUpgradePlan = plan !== "ultra"
   const canRenewPlan = plan !== "basic"
@@ -199,7 +200,7 @@ export function MembershipBalanceIndicator() {
           className="hidden h-8 items-center gap-2 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left transition-colors hover:border-brand-border hover:bg-background md:inline-flex"
         >
           <span className="shrink-0 text-sm font-medium">{planLabel}</span>
-          <span className="shrink-0 rounded-sm bg-brand-muted px-1.5 py-0.5 text-xs text-brand">{balanceLabel} 积分</span>
+          <span className="shrink-0 rounded-sm bg-brand-muted px-1.5 py-0.5 text-xs text-brand">{t("consoleShell.rewards.quota.creditsWithValue", { value: balanceLabel })}</span>
         </button>
       </HoverCardTrigger>
       <HoverCardContent
@@ -218,18 +219,18 @@ export function MembershipBalanceIndicator() {
             <div className="flex shrink-0 items-center gap-1.5">
               {canUpgradePlan ? (
                 <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
-                  升级
+                  {t("consoleShell.rewards.quota.upgrade")}
                 </Button>
               ) : null}
               {canRenewPlan ? (
                 <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
-                  续费
+                  {t("consoleShell.rewards.quota.renew")}
                 </Button>
               ) : null}
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
-            <span className="text-muted-foreground">积分</span>
+            <span className="text-muted-foreground">{t("consoleShell.rewards.quota.credits")}</span>
             <span className="font-medium">{balanceLabel}</span>
           </div>
           <div className="mt-3 flex gap-2">
@@ -240,7 +241,7 @@ export function MembershipBalanceIndicator() {
               className="h-7 flex-1"
               onClick={() => openWalletSection("earn")}
             >
-              获得积分
+              {t("consoleShell.rewards.quota.earnCredits")}
             </Button>
             <Button
               type="button"
@@ -249,7 +250,7 @@ export function MembershipBalanceIndicator() {
               className="h-7 flex-1"
               onClick={() => openWalletSection("usage")}
             >
-              积分账单
+              {t("consoleShell.rewards.quota.creditBill")}
             </Button>
           </div>
         </div>

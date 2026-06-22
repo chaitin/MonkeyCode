@@ -40,7 +40,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { useSettingsDialog } from "@/pages/console/user/page"
+import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { defaultSkills } from "@/utils/config"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
@@ -52,7 +52,6 @@ import {
   getOwnerTypeBadge,
   getRepoIcon,
   getRepoNameFromUrl,
-  TASK_PROMPT_PLACEHOLDER,
   selectHost,
   selectImage,
   selectPreferredTaskModel,
@@ -60,7 +59,7 @@ import {
 } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage"
-import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
+import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 import {
   IconChevronDown,
   IconLink,
@@ -70,12 +69,13 @@ import {
   IconUser,
   IconXboxX,
 } from "@tabler/icons-react"
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog"
 import ModelSelect from "./model-select"
-import { TaskSkillSelector } from "./task-skill-selector"
+import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector"
 import { TaskPluginSelector } from "./task-plugin-selector"
 import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api"
 import { filterSelectableSkillIds } from "./task-skill-selection"
@@ -110,6 +110,7 @@ export default function CreateDefaultTaskDialog({
   const navigate = useNavigate()
   const { projects, unlinkedTasks, identities, models, hosts, images, user, subscription, reloadProjects, reloadUnlinkedTasks } = useCommonData()
   const { setOpen: setSettingsOpen } = useSettingsDialog()
+  const { t } = useTranslation()
 
   const [content, setContent] = useState("")
   const taskType = ConstsTaskType.TaskTypeDevelop
@@ -124,7 +125,7 @@ export default function CreateDefaultTaskDialog({
   const [identitySearch, setIdentitySearch] = useState<Record<string, string>>({})
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills)
   const [skillList, setSkillList] = useState<DomainSkill[]>([])
-  const [activeSkillTag, setActiveSkillTag] = useState("全部")
+  const [activeSkillTag, setActiveSkillTag] = useState(ALL_SKILLS_TAG)
   const [pluginPopoverOpen, setPluginPopoverOpen] = useState(false)
   const [pluginList, setPluginList] = useState<PluginListItem[]>([])
   const [selectedPlugin, setSelectedPlugin] = useState<string[]>([])
@@ -153,8 +154,35 @@ export default function CreateDefaultTaskDialog({
     return repos.filter((repo, index, arr) => arr.indexOf(repo) === index)
   }, [projects, unlinkedTasks])
 
+  const setDefaultConfig = useCallback(() => {
+    const storedParams = readStoredTaskDialogParams()
+    setSelectedModelId(selectPreferredTaskModel(models, subscription))
+
+    if (user.role === ConstsUserRole.UserRoleSubAccount) {
+      const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
+        ? (storedParams.hostId || "public_host")
+        : IS_OFFLINE_EDITION
+          ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
+          : selectHost(hosts, true)
+      const nextImageId = (
+        storedParams.imageId
+        && images.some((image) => image.id === storedParams.imageId)
+      )
+        ? storedParams.imageId
+        : selectImage(images, true)
+
+      setSelectedHostId(nextHostId)
+      setSelectedImageId(nextImageId)
+      return
+    }
+
+    setSelectedHostId(selectHost(hosts, false))
+    setSelectedImageId(selectImage(images, false))
+  }, [hosts, images, models, subscription, user.role])
+
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset dialog-local state when the parent closes the controlled dialog.
       setContent("")
       setCodeDropdownOpen(false)
       setSkillPopoverOpen(false)
@@ -169,7 +197,7 @@ export default function CreateDefaultTaskDialog({
           ? filterSelectableSkillIds(defaultSkills, skillList)
           : defaultSkills
       )
-      setActiveSkillTag("全部")
+      setActiveSkillTag(ALL_SKILLS_TAG)
       setPluginPopoverOpen(false)
       setSelectedPlugin([])
       setAdvancedOptionsOpen(false)
@@ -188,7 +216,7 @@ export default function CreateDefaultTaskDialog({
           setSkillList(skills)
           setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills))
         } else {
-          toast.error(resp.message || "获取技能列表失败")
+          toast.error(resp.message || t("taskWorkflow.toast.fetchSkillsFailed"))
         }
       })
     } else {
@@ -204,21 +232,20 @@ export default function CreateDefaultTaskDialog({
       fetchPluginListing()
         .then((items) => setPluginList(items))
         .catch((err: Error) => {
-          toast.error(err.message || "获取插件列表失败")
+          toast.error(err.message || t("taskWorkflow.toast.fetchPluginsFailed"))
         })
     }
-  }, [open, skillList.length, pluginList.length])
+  }, [open, skillList, skillList.length, pluginList.length, t])
 
   useEffect(() => {
     if (!open) {
       return
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize dialog defaults from loaded account data when the dialog opens.
     setDefaultConfig()
-  }, [open])
+  }, [open, setDefaultConfig])
 
-  // 用户已显式选定的身份（包括「我的仓库」精准带回、或选「匿名」）优先保留，
-  // 否则按 base_url 前缀 + hostname 推 platform 兜底自动匹配（覆盖 codeup/cnb/atomgit）。
   useEffect(() => {
     const userChoiceStillValid =
       selectedIdentityId === "none" ||
@@ -227,6 +254,7 @@ export default function CreateDefaultTaskDialog({
       return
     }
     const matched = findIdentitiesForRepoUrl(selectedRepo, identities)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the repository credential selection aligned with the selected repo.
     setSelectedIdentityId(matched[0]?.id || "none")
   }, [selectedRepo, identities, selectedIdentityId])
 
@@ -282,7 +310,7 @@ export default function CreateDefaultTaskDialog({
               .filter((repo: DomainAuthRepository) => !!repo.url?.trim())
               .map((repo: DomainAuthRepository) => ({
                 gitIdentityId: identityId,
-                username: identity.username || "未命名身份",
+                username: identity.username || t("taskWorkflow.repo.unnamedIdentity"),
                 repository: repo,
               }))
             nextLoading[identityId] = false
@@ -313,12 +341,13 @@ export default function CreateDefaultTaskDialog({
       (a, b) => (tagCountMap.get(b) || 0) - (tagCountMap.get(a) || 0)
     )
 
-    return ["全部", ...sortedTags]
+    return [ALL_SKILLS_TAG, ...sortedTags]
   }, [skillList])
 
   useEffect(() => {
     if (!skillTags.includes(activeSkillTag)) {
-      setActiveSkillTag(skillTags[0] || "全部")
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore the tab sentinel when the available skill tags change.
+      setActiveSkillTag(skillTags[0] || ALL_SKILLS_TAG)
     }
   }, [activeSkillTag, skillTags])
 
@@ -344,32 +373,6 @@ export default function CreateDefaultTaskDialog({
     })
   }
 
-  const setDefaultConfig = () => {
-    const storedParams = readStoredTaskDialogParams()
-    setSelectedModelId(selectPreferredTaskModel(models, subscription))
-
-    if (user.role === ConstsUserRole.UserRoleSubAccount) {
-      const nextHostId = hosts.some((host) => host.id === storedParams.hostId && host.status === ConstsHostStatus.HostStatusOnline)
-        ? (storedParams.hostId || "public_host")
-        : IS_OFFLINE_EDITION
-          ? (hosts.find((host) => host.id && host.status === ConstsHostStatus.HostStatusOnline)?.id || "")
-          : selectHost(hosts, true)
-      const nextImageId = (
-        storedParams.imageId
-        && images.some((image) => image.id === storedParams.imageId)
-      )
-        ? storedParams.imageId
-        : selectImage(images, true)
-
-      setSelectedHostId(nextHostId)
-      setSelectedImageId(nextImageId)
-      return
-    }
-
-    setSelectedHostId(selectHost(hosts, false))
-    setSelectedImageId(selectImage(images, false))
-  }
-
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
@@ -381,12 +384,12 @@ export default function CreateDefaultTaskDialog({
 
   const validateTaskContent = () => {
     if (!content.trim()) {
-      toast.error("请输入任务内容")
+      toast.error(t("taskWorkflow.toast.missingContent"))
       return false
     }
 
     if (contentTooLong) {
-      toast.error(getTaskContentLimitErrorMessage())
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
       return false
     }
 
@@ -395,6 +398,7 @@ export default function CreateDefaultTaskDialog({
 
   useEffect(() => {
     if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Built-in public models must stay pinned to the built-in host.
       setSelectedHostId("public_host")
     }
   }, [selectedPublicModel, selectedHostId])
@@ -413,7 +417,7 @@ export default function CreateDefaultTaskDialog({
     }
 
     if (!selectedModelId) {
-      toast.error("请选择大模型")
+      toast.error(t("taskWorkflow.toast.missingModel"))
       return
     }
 
@@ -422,7 +426,7 @@ export default function CreateDefaultTaskDialog({
     }
 
     if (!IS_OFFLINE_EDITION && selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
-      toast.warning("内置模型只能在内置宿主机上使用")
+      toast.warning(t("taskWorkflow.toast.builtinModelHostOnly"))
       return
     }
 
@@ -439,7 +443,7 @@ export default function CreateDefaultTaskDialog({
         const uploadedFile = await uploadFileWithPresignedUrl(selectedZipFile)
         zipUrl = uploadedFile.accessUrl
       } catch (error) {
-        toast.error("上传失败: " + (error as Error).message)
+        toast.error(t("taskWorkflow.toast.uploadFailed", { message: (error as Error).message }))
         setCreatingTask(false)
         return
       }
@@ -473,7 +477,7 @@ export default function CreateDefaultTaskDialog({
       },
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("任务启动成功")
+        toast.success(t("taskWorkflow.toast.taskStarted"))
         reloadProjects()
         reloadUnlinkedTasks()
         onOpenChange(false)
@@ -481,7 +485,7 @@ export default function CreateDefaultTaskDialog({
       } else if (resp.code === 10811) {
         setLimitDialogOpen(true)
       } else {
-        toast.error(resp.message || "任务启动失败")
+        toast.error(resp.message || t("taskWorkflow.toast.taskStartFailed"))
       }
     })
 
@@ -497,13 +501,13 @@ export default function CreateDefaultTaskDialog({
     e.target.value = ""
 
     if (!file.name.endsWith(".zip")) {
-      toast.error("请选择 ZIP 格式的文件")
+      toast.error(t("taskWorkflow.toast.invalidZipFile"))
       return
     }
 
     const maxSize = 10 * 1024 * 1024
     if (file.size > maxSize) {
-      toast.error("文件大小不能超过 10MB")
+      toast.error(t("taskWorkflow.toast.zipTooLarge"))
       return
     }
 
@@ -512,14 +516,14 @@ export default function CreateDefaultTaskDialog({
     setSelectedRepoDisplayName(file.name)
     setSelectedRepoFromMyRepos(false)
     setCodeDropdownOpen(false)
-    toast.success("ZIP 文件已选择，后续再接实际上传")
+    toast.success(t("taskWorkflow.toast.zipSelected"))
   }
 
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>创建任务</DialogTitle>
+          <DialogTitle>{t("taskWorkflow.dialog.create.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -534,13 +538,16 @@ export default function CreateDefaultTaskDialog({
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder={TASK_PROMPT_PLACEHOLDER}
+              placeholder={t("taskWorkflow.input.placeholder")}
               className="min-h-36 resize-none"
               aria-invalid={contentTooLong}
             />
             {contentTooLong && (
               <div className="px-1 text-xs text-destructive">
-                已超出 {contentLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+                {t("taskWorkflow.input.contentTooLongInline", {
+                  overCount: contentLength - MAX_TASK_CONTENT_LENGTH,
+                  maxCount: MAX_TASK_CONTENT_LENGTH,
+                })}
               </div>
             )}
           </div>
@@ -569,7 +576,7 @@ export default function CreateDefaultTaskDialog({
                   <span className="line-clamp-1 break-all text-ellipsis">
                     {selectedRepo
                       ? selectedRepoDisplayName || getRepoNameFromUrl(selectedRepo)
-                      : "代码"}
+                      : t("taskWorkflow.input.code")}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
@@ -584,23 +591,23 @@ export default function CreateDefaultTaskDialog({
                     }}
                   >
                     <IconXboxX className="size-4" />
-                    清空选择
+                    {t("taskWorkflow.input.clearSelection")}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                   <IconUpload className="size-4" />
-                  ZIP 文件
+                  {t("taskWorkflow.input.zipFile")}
                 </DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="w-full">
                     <IconUser className="size-4" />
-                    我的仓库
+                    {t("taskWorkflow.repo.myRepositories")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent className="min-w-[220px] p-0">
                       {selectableIdentities.length === 0 ? (
                         <div className="flex items-center justify-between gap-3 px-3 py-3">
-                          <span className="text-sm text-muted-foreground">尚未绑定 Git 账号，请先绑定</span>
+                          <span className="text-sm text-muted-foreground">{t("taskWorkflow.repo.unboundGitAccount")}</span>
                           <Button
                             variant="outline"
                             size="sm"
@@ -609,7 +616,7 @@ export default function CreateDefaultTaskDialog({
                               setSettingsOpen(true)
                             }}
                           >
-                            去设置
+                            {t("taskWorkflow.repo.goToSettings")}
                           </Button>
                         </div>
                       ) : (
@@ -619,7 +626,7 @@ export default function CreateDefaultTaskDialog({
                           const isLoading = loadingByIdentity[identityId]
                           const search = identitySearch[identityId] ?? ""
                           const identityLabel =
-                            identity.remark || identity.username || identity.base_url || "未命名身份"
+                            identity.remark || identity.username || identity.base_url || t("taskWorkflow.repo.unnamedIdentity")
                           const filteredRepos = repos.filter((option) => {
                             const kw = search.trim().toLowerCase()
                             if (!kw) {
@@ -643,7 +650,7 @@ export default function CreateDefaultTaskDialog({
                                   <div className="flex flex-col bg-popover p-2">
                                     <div className="flex items-center gap-2">
                                       <Input
-                                        placeholder="搜索仓库..."
+                                        placeholder={t("taskWorkflow.repo.searchPlaceholder")}
                                         className="min-w-0 text-sm"
                                         value={search}
                                         onChange={(e) => {
@@ -660,7 +667,7 @@ export default function CreateDefaultTaskDialog({
                                         variant="outline"
                                         className="shrink-0"
                                         disabled={isLoading}
-                                        aria-label="刷新仓库列表"
+                                        aria-label={t("taskWorkflow.repo.refreshList")}
                                         onClick={(e) => {
                                           e.stopPropagation()
                                           void loadReposForAllIdentities(true, identityId)
@@ -677,16 +684,16 @@ export default function CreateDefaultTaskDialog({
                                             <EmptyMedia variant="icon">
                                               <Spinner className="size-5" />
                                             </EmptyMedia>
-                                            <EmptyDescription>加载中...</EmptyDescription>
+                                            <EmptyDescription>{t("taskWorkflow.repo.loading")}</EmptyDescription>
                                           </EmptyHeader>
                                         </Empty>
                                       ) : repos.length === 0 ? (
                                         <div className="py-6 text-center text-sm text-muted-foreground">
-                                          没有仓库
+                                          {t("taskWorkflow.repo.empty")}
                                         </div>
                                       ) : filteredRepos.length === 0 ? (
                                         <div className="py-6 text-center text-sm text-muted-foreground">
-                                          {search.trim() ? "未找到匹配的仓库" : null}
+                                          {search.trim() ? t("taskWorkflow.repo.noMatches") : null}
                                         </div>
                                       ) : (
                                         filteredRepos.map((option) => {
@@ -721,7 +728,7 @@ export default function CreateDefaultTaskDialog({
                                                 className="w-full max-w-[400px] truncate pl-6 text-xs text-muted-foreground"
                                                 title={option.repository.description || undefined}
                                               >
-                                                {option.repository.description || "暂无描述"}
+                                                {option.repository.description || t("taskWorkflow.repo.noDescription")}
                                               </span>
                                             </DropdownMenuItem>
                                           )
@@ -741,12 +748,12 @@ export default function CreateDefaultTaskDialog({
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="w-full">
                     <IconLink className="size-4" />
-                    其他仓库
+                    {t("taskWorkflow.repo.otherRepositories")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent className="p-2">
                       <Input
-                        placeholder="输入代码仓库地址，按回车键确认"
+                        placeholder={t("taskWorkflow.repo.otherRepoPlaceholder")}
                         className="w-full text-sm"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
@@ -758,7 +765,7 @@ export default function CreateDefaultTaskDialog({
                               setSelectedRepo(searchInput)
                               setSelectedRepoDisplayName("")
                             } catch {
-                              toast.error("请输入正确的仓库地址")
+                              toast.error(t("taskWorkflow.toast.invalidRepoUrl"))
                             }
                           }
                         }}
@@ -823,7 +830,7 @@ export default function CreateDefaultTaskDialog({
                   variant="ghost"
                   className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
                 >
-                  <span className="font-medium">高级选项</span>
+                  <span className="font-medium">{t("taskWorkflow.dialog.params.advancedOptions")}</span>
                   <IconChevronDown
                     className={cn(
                       "size-4 text-muted-foreground transition-transform",
@@ -834,7 +841,7 @@ export default function CreateDefaultTaskDialog({
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-4 border-t px-3 py-3">
                     <Field>
-                      <FieldLabel>大模型</FieldLabel>
+                      <FieldLabel>{t("taskWorkflow.dialog.params.model")}</FieldLabel>
                       <FieldContent>
                         <ModelSelect
                           models={models}
@@ -849,12 +856,12 @@ export default function CreateDefaultTaskDialog({
                     {showRepoAdvancedOptions && (
                       <>
                         <Field>
-                          <FieldLabel>仓库分支</FieldLabel>
+                          <FieldLabel>{t("taskWorkflow.dialog.params.branch")}</FieldLabel>
                           <FieldContent>
                             <Input
                               value={branch}
                               onChange={(e) => setBranch(e.target.value)}
-                              placeholder="不填则为主分支"
+                              placeholder={t("taskWorkflow.dialog.params.branchPlaceholder")}
                               className="text-sm"
                             />
                           </FieldContent>
@@ -862,14 +869,14 @@ export default function CreateDefaultTaskDialog({
 
                         {!selectedRepoFromMyRepos && (
                           <Field>
-                            <FieldLabel>仓库身份凭证</FieldLabel>
+                            <FieldLabel>{t("taskWorkflow.dialog.params.identity")}</FieldLabel>
                             <FieldContent>
                               <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
                                 <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="选择身份" />
+                                  <SelectValue placeholder={t("taskWorkflow.dialog.params.selectIdentity")} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="none">匿名</SelectItem>
+                                  <SelectItem value="none">{t("taskWorkflow.dialog.params.anonymous")}</SelectItem>
                                   {(() => {
                                     const matched = findIdentitiesForRepoUrl(selectedRepo, identities)
                                     return matched.length > 0 ? (
@@ -880,7 +887,7 @@ export default function CreateDefaultTaskDialog({
                                         </SelectItem>
                                       ))
                                     ) : (
-                                      <SelectItem value="unknown" disabled>该仓库未配置身份凭证</SelectItem>
+                                      <SelectItem value="unknown" disabled>{t("taskWorkflow.dialog.params.noIdentity")}</SelectItem>
                                     )
                                   })()}
                                 </SelectContent>
@@ -893,18 +900,18 @@ export default function CreateDefaultTaskDialog({
 
                     {user.role === ConstsUserRole.UserRoleSubAccount && (
                       <Field>
-                        <FieldLabel>宿主机</FieldLabel>
+                        <FieldLabel>{t("taskWorkflow.dialog.params.host")}</FieldLabel>
                         <FieldContent>
                           <Select value={selectedHostId} onValueChange={setSelectedHostId}>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="选择开发工具" />
+                              <SelectValue placeholder={t("taskWorkflow.dialog.params.selectHost")} />
                             </SelectTrigger>
                             <SelectContent>
                               {!IS_OFFLINE_EDITION && (
                                 <SelectItem value="public_host">
                                   <div className="flex items-center gap-2">
                                     <span>MonkeyCode</span>
-                                    <Badge className="!text-primary-foreground">免费</Badge>
+                                    <Badge className="!text-primary-foreground">{t("taskWorkflow.dialog.params.free")}</Badge>
                                   </div>
                                 </SelectItem>
                               )}
@@ -928,11 +935,11 @@ export default function CreateDefaultTaskDialog({
 
                     {user.role === ConstsUserRole.UserRoleSubAccount && (
                       <Field>
-                        <FieldLabel>系统镜像</FieldLabel>
+                        <FieldLabel>{t("taskWorkflow.dialog.params.image")}</FieldLabel>
                         <FieldContent>
                           <Select value={selectedImageId} onValueChange={setSelectedImageId}>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="选择开发工具" />
+                              <SelectValue placeholder={t("taskWorkflow.dialog.params.selectImage")} />
                             </SelectTrigger>
                             <SelectContent>
                               {images.filter((image) => image.id).map((image) => (
@@ -961,11 +968,11 @@ export default function CreateDefaultTaskDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            {t("taskWorkflow.dialog.params.cancel")}
           </Button>
           <Button onClick={handleConfirmExecute} disabled={!content.trim() || creatingTask || contentTooLong}>
             {creatingTask && <Spinner />}
-            开始任务
+            {t("taskWorkflow.dialog.create.startTask")}
           </Button>
         </DialogFooter>
       </DialogContent>

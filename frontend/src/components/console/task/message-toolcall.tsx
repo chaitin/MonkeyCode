@@ -17,6 +17,7 @@ import * as internalWebsearchRender from "./toolcalls/internal_websearch"
 import * as internalImgsearchRender from "./toolcalls/internal_imgsearch"
 import * as internalImageAnalysisRender from "./toolcalls/internal_image_analysis"
 import { UnifiedDiffViewer } from "./unified-diff-viewer"
+import { taskDetailT } from "./task-i18n"
 
 type ToolCallRenderer = {
   match: (message: MessageType, cli?: ConstsCliName) => boolean
@@ -88,7 +89,10 @@ const toolCallRenderers: ToolCallRenderer[] = [
     ),
     renderTitle: (message) => {
       const port = message.data.rawInput?.port
-      return `请求预览${port !== undefined && port !== null ? ` ${port} 端口` : "端口"}`
+      const portLabel = port !== undefined && port !== null
+        ? `${port} ${taskDetailT("toolcall.port")}`
+        : taskDetailT("toolcall.port")
+      return taskDetailT("toolcall.previewRequest", { portLabel })
     },
     renderDetail: fallbackRender.renderDetail,
     expandable: false,
@@ -98,7 +102,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
       message.data.kind === "other"
       && message.data.title === "mcaiBuiltin_background_terminal_list"
     ),
-    renderTitle: () => "查看后台任务列表",
+    renderTitle: () => taskDetailT("toolcall.backgroundList"),
     renderDetail: fallbackRender.renderDetail,
     expandable: false,
   },
@@ -107,7 +111,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
       message.data.kind === "other"
       && message.data.title === "mcaiBuiltin_background_terminal_create"
     ),
-    renderTitle: () => "创建后台任务",
+    renderTitle: () => taskDetailT("toolcall.backgroundCreate"),
     renderDetail: fallbackRender.renderDetail,
   },
   {
@@ -115,7 +119,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
       message.data.kind === "other"
       && message.data.title === "mcaiBuiltin_background_terminal_output_path"
     ),
-    renderTitle: () => "查看后台任务的运行日志",
+    renderTitle: () => taskDetailT("toolcall.backgroundOutput"),
     renderDetail: fallbackRender.renderDetail,
     expandable: false,
   },
@@ -125,8 +129,8 @@ const toolCallRenderers: ToolCallRenderer[] = [
       && message.data.title === "apply_patch"
     ),
     renderTitle: (message) => {
-      if (message.data.status === "pending") return "正在修改文件"
-      if (message.data.status === "failed") return "修改文件失败"
+      if (message.data.status === "pending") return taskDetailT("toolcall.editingFile")
+      if (message.data.status === "failed") return taskDetailT("toolcall.editFailed")
       return message.data.title
     },
     renderDetail: fallbackRender.renderDetail,
@@ -139,7 +143,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
     ),
     renderTitle: (message) => {
       const fileLabel = getPatchUpdatedFileLabel(message)
-      return `修改文件${fileLabel ? ` "${fileLabel}"` : ""}`
+      return taskDetailT("toolcall.editFileWithLabel", { fileLabel: fileLabel ? ` "${fileLabel}"` : "" })
     },
     renderDetail: (message) => {
       const diff = getPatchUpdatedDiff(message)
@@ -149,7 +153,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
 
       return (
         <pre className="whitespace-pre-wrap break-words p-3 text-xs">
-          {message.data.rawInput?.patchText || "暂无 patch 内容"}
+          {message.data.rawInput?.patchText || taskDetailT("toolcall.patchEmpty")}
         </pre>
       )
     },
@@ -186,8 +190,8 @@ const toolCallRenderers: ToolCallRenderer[] = [
     renderTitle: (message) => {
       const prompt = message.data.rawInput?.prompt ?? message.data.rawInput?.query ?? message.data.rawInput?.description
       return typeof prompt === "string" && prompt.trim().length > 0
-        ? `生成图片 "${prompt.trim()}"`
-        : "生成图片"
+        ? `${taskDetailT("toolcall.generateImage")} "${prompt.trim()}"`
+        : taskDetailT("toolcall.generateImage")
     },
     renderDetail: fallbackRender.renderDetail,
     expandable: false,
@@ -197,7 +201,7 @@ const toolCallRenderers: ToolCallRenderer[] = [
       message.data.kind === "other"
       && message.data.title === "monkeycode-ai_MonkeyCode__image_generate_query_task"
     ),
-    renderTitle: () => "查询图片生成进度",
+    renderTitle: () => taskDetailT("toolcall.queryImageProgress"),
     renderDetail: fallbackRender.renderDetail,
     expandable: false,
   },

@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { normalizePath } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface UploadFileDialogProps {
   open: boolean
@@ -27,12 +28,14 @@ export default function UploadFileDialog({
   baseDir = '',
   onSuccess,
 }: UploadFileDialogProps) {
+  const { t } = useTranslation()
   const [fileName, setFileName] = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset controlled dialog fields whenever the parent opens it.
       setFileName('')
       setUploadFile(null)
     }
@@ -41,7 +44,7 @@ export default function UploadFileDialog({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null
     if (file && file.size > MAX_UPLOAD_FILE_SIZE) {
-      toast.error('文件大小不能超过 10MB')
+      toast.error(t("consoleFiles.toast.uploadTooLarge"))
       e.target.value = ''
       setUploadFile(null)
       setFileName('')
@@ -53,17 +56,17 @@ export default function UploadFileDialog({
 
   const handleUpload = async () => {
     if (!uploadFile || !envid) {
-      toast.error('请选择要上传的文件')
+      toast.error(t("consoleFiles.toast.uploadRequired"))
       return
     }
 
     if (!fileName.trim()) {
-      toast.error('请输入文件名称')
+      toast.error(t("consoleFiles.toast.fileNameRequired"))
       return
     }
 
     if (uploadFile.size > MAX_UPLOAD_FILE_SIZE) {
-      toast.error('文件大小不能超过 10MB')
+      toast.error(t("consoleFiles.toast.uploadTooLarge"))
       return
     }
 
@@ -75,13 +78,13 @@ export default function UploadFileDialog({
       path: filePath
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已上传文件 "${fileName.trim()}"`)
+        toast.success(t("consoleFiles.toast.uploaded", { name: fileName.trim() }))
         onOpenChange(false)
         if (onSuccess) {
           onSuccess()
         }
       } else {
-        toast.error("上传文件失败: " + resp.message);
+        toast.error(t("consoleFiles.toast.uploadFailed", { message: resp.message }));
       }
     }, undefined, {
       file: uploadFile
@@ -97,11 +100,11 @@ export default function UploadFileDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>上传文件</DialogTitle>
+          <DialogTitle>{t("consoleFiles.actions.uploadFile")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field>
-            <FieldLabel>目标目录</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.targetDirectory")}</FieldLabel>
             <Input
               value={targetDir || './'}
               readOnly
@@ -109,7 +112,7 @@ export default function UploadFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>新文件名称</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.newFileName")}</FieldLabel>
             <Input
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
@@ -117,7 +120,7 @@ export default function UploadFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>选择文件</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.selectFile")}</FieldLabel>
             <Input
               type="file"
               onChange={handleFileChange}
@@ -125,17 +128,17 @@ export default function UploadFileDialog({
           </Field>
           {uploadFile && (
             <p className="mt-2 text-sm text-muted-foreground">
-              已选择: {uploadFile.name} ({(uploadFile.size / 1024).toFixed(2)} KB)
+              {t("consoleFiles.labels.selectedFile", { name: uploadFile.name, size: (uploadFile.size / 1024).toFixed(2) })}
             </p>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleUpload} disabled={!uploadFile || !fileName.trim() || uploading}>
             {uploading && <Spinner />}
-            上传
+            {t("consoleFiles.actions.upload")}
           </Button>
         </DialogFooter>
       </DialogContent>

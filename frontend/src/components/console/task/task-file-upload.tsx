@@ -14,6 +14,7 @@ import { IconFile, IconTrash, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { toast } from "sonner"
 import { isTaskImageAttachment } from "./task-shared"
+import { useTranslation } from "react-i18next"
 
 export interface TaskUploadedFile {
   name: string
@@ -60,6 +61,7 @@ export function formatFileSize(size: number) {
 }
 
 export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenChange, onUploaded }: TaskFileUploadDialogProps) {
+  const { t } = useTranslation()
   const [uploading, setUploading] = React.useState(false)
   const [filePreviewUrl, setFilePreviewUrl] = React.useState<string | null>(null)
   const autoUploadStartedRef = React.useRef(false)
@@ -89,14 +91,14 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
     try {
       const uploadedFile = await uploadTaskFile(file)
       onUploaded(uploadedFile)
-      toast.success("文件上传成功")
+      toast.success(t("taskDetail.upload.success"))
       onOpenChange(false)
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
       setUploading(false)
     }
-  }, [file, onOpenChange, onUploaded, uploading])
+  }, [file, onOpenChange, onUploaded, uploading, t])
 
   React.useEffect(() => {
     if (!open || !file || !autoUpload || uploading || autoUploadStartedRef.current) {
@@ -117,9 +119,9 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>上传文件</DialogTitle>
+          <DialogTitle>{t("taskDetail.upload.title")}</DialogTitle>
           <DialogDescription>
-            确认文件信息后开始上传。
+            {t("taskDetail.upload.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -136,7 +138,7 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
               <div className="max-w-full truncate text-sm font-medium" title={file.name}>{file.name}</div>
               <div className="mt-1 flex max-w-full flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatFileSize(file.size)}</span>
-                <span>{file.type || "未知类型"}</span>
+                <span>{file.type || t("taskDetail.upload.unknownType")}</span>
               </div>
             </div>
           </div>
@@ -149,7 +151,7 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
             disabled={uploading}
             onClick={() => onOpenChange(false)}
           >
-            取消
+            {t("taskDetail.common.cancel")}
           </Button>
           <Button
             type="button"
@@ -157,7 +159,7 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
             onClick={handleUpload}
           >
             {uploading ? <Spinner className="size-4" /> : <IconUpload className="size-4" />}
-            上传
+            {t("taskDetail.upload.upload")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -166,6 +168,8 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
 }
 
 export function TaskUploadedFileItem({ file, onRemove, onPreview, className, disabled = false }: TaskUploadedFileItemProps) {
+  const { t } = useTranslation()
+
   return (
     <div
       className={cn(
@@ -180,7 +184,7 @@ export function TaskUploadedFileItem({ file, onRemove, onPreview, className, dis
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left disabled:cursor-not-allowed"
         disabled={disabled}
         onClick={disabled ? undefined : onPreview}
-        aria-label={`预览附件 ${file.name}`}
+        aria-label={t("taskDetail.upload.previewAria", { fileName: file.name })}
       >
         {isTaskImageAttachment(file.name) ? (
           <img src={file.accessUrl} alt={file.name} className="size-4 shrink-0 rounded-full border object-cover" />
@@ -197,7 +201,7 @@ export function TaskUploadedFileItem({ file, onRemove, onPreview, className, dis
         )}
         disabled={disabled}
         onClick={onRemove}
-        aria-label="删除已上传文件"
+        aria-label={t("taskDetail.upload.removeAria")}
       >
         <IconTrash className="size-3.5" />
       </button>

@@ -8,8 +8,13 @@ import { ConstsGitPlatform, ConstsHostStatus, ConstsInterfaceType, ConstsOwnerTy
 import { apiRequest } from "./requestUtils"
 import { remark } from "remark"
 import strip from "strip-markdown"
+import i18n from "@/i18n"
 
-/** GitHub App 安装地址：https://monkeycode-ai.com 用正式环境，其他域名用开发环境 */
+function commonText(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(key, options))
+}
+
+/** GitHub App install URL: production uses monkeycode-ai.com, other domains use the dev app. */
 export function getGithubAppInstallUrl(): string {
   if (typeof window !== "undefined" && window.location.origin === "https://monkeycode-ai.com") {
     return "https://github.com/apps/monkeycode-ai/installations/new"
@@ -21,9 +26,9 @@ export function getHostStatusBadge(status?: string) {
   if (status === "online") {
     return null
   } else if (status === "offline") {
-    return <Badge variant="destructive">离线</Badge>
+    return <Badge variant="destructive">{commonText("commonUtils.status.offline")}</Badge>
   }
-  return <Badge variant="outline">未知</Badge>
+  return <Badge variant="outline">{commonText("commonUtils.status.unknown")}</Badge>
 }
 
 export function getImageShortName(imageTag: string): string {
@@ -47,7 +52,7 @@ export function getOSFromImageName(imageTag: string): string {
 
   const lowerTag = imageTag.toLowerCase();
 
-  // 按顺序检查支持的操作系统
+  // Check supported operating systems in priority order.
   if (lowerTag.includes('centos')) {
     return 'centos';
   }
@@ -67,7 +72,7 @@ export function getOSFromImageName(imageTag: string): string {
     return 'debian';
   }
 
-  // 如果都匹配不到，fallback 到 linux
+  // Fall back to linux when no supported OS is detected.
   return 'linux';
 }
 
@@ -140,15 +145,15 @@ export function getModelDisplayName(modelName?: string | null): string {
 
   const builtinModelName = getBuiltinModelName(modelName);
   if (builtinModelName === 'monkeycode-basic') {
-    return '基础模型';
+    return String(i18n.t("commonUtils.model.basic"));
   }
 
   if (builtinModelName === 'monkeycode-pro') {
-    return '专业模型';
+    return commonText("commonUtils.model.pro");
   }
 
   if (builtinModelName === 'monkeycode-ultra') {
-    return '旗舰模型';
+    return commonText("commonUtils.model.ultra");
   }
 
   return modelName;
@@ -204,20 +209,24 @@ export const modelPricingList: readonly ModelPricingItem[] = [
   { model: "minimax-m2.7", credits: 250, score: 637, tags: [] },
   { model: "minimax-m2.5", credits: 150, score: 513, tags: [] },
   { model: "deepseek-v4-pro", credits: 600, score: 852, tags: [] },
-  { model: "qwen3.5-plus", credits: 150, score: 538, tags: ["长上下文"] },
-  { model: "gpt-5.5", credits: 1000, score: 967, tags: ["最新", "很强"] },
-  { model: "gpt-5.4", credits: 600, score: 922, tags: ["能力强"] },
-  { model: "gpt-5.3-codex", credits: 500, score: 918, tags: ["能力强"] },
+  { model: "qwen3.5-plus", credits: 150, score: 538, tags: ["Long context"] },
+  { model: "gpt-5.5", credits: 1000, score: 967, tags: ["Latest", "Very strong"] },
+  { model: "gpt-5.4", credits: 600, score: 922, tags: ["Strong"] },
+  { model: "gpt-5.3-codex", credits: 500, score: 918, tags: ["Strong"] },
   { model: "glm-5.1", credits: 800, score: 904, tags: [] },
   { model: "glm-5", credits: 600, score: 847, tags: [] },
   { model: "glm-4.7", credits: 400, score: 709, tags: [] },
   { model: "kimi-k2.6", credits: 700, score: 912, tags: [] },
   { model: "kimi-k2.5", credits: 150, score: 579, tags: [] },
-  { model: "qwen3.6-max", credits: 600, score: 892, tags: ["长上下文"] },
-  { model: "qwen3.6-plus", credits: 300, score: 751, tags: ["长上下文"] },
+  { model: "qwen3.6-max", credits: 600, score: 892, tags: ["Long context"] },
+  { model: "qwen3.6-plus", credits: 300, score: 751, tags: ["Long context"] },
 ]
 
-export const TASK_PROMPT_PLACEHOLDER = "你想让 MonkeyCode 做什么？例如：开发一个小游戏、实现一个新功能、做数据分析、做技术调研、写毕业论文等等。。。"
+export const TASK_PROMPT_PLACEHOLDER = "Ask MonkeyCode what to do. For example: build a mini game, implement a feature, analyze data, research a topic, or draft a paper."
+
+export function getTaskPromptPlaceholder(): string {
+  return commonText("commonUtils.taskPromptPlaceholder")
+}
 
 export function getModelPricingItem(modelName?: string): ModelPricingItem | undefined {
   if (!modelName) {
@@ -230,7 +239,7 @@ export function getModelPricingItem(modelName?: string): ModelPricingItem | unde
 }
 
 export function formatMemory(bytes?: number): string {
-  if (!bytes) return "未知"
+  if (!bytes) return commonText("commonUtils.status.unknown")
   const gb = bytes / (1024 * 1024 * 1024)
   return `${Math.ceil(gb)} GB`
 }
@@ -247,26 +256,26 @@ export function humanTime(seconds: number): string {
   seconds = seconds > 0 ? seconds : 0;
   
   if (seconds < 60) { 
-    return `${Math.floor(seconds)} 秒`;
+    return commonText("commonUtils.time.seconds", { count: Math.floor(seconds) });
   } else if (seconds < 60 * 60) { 
-    return `${Math.floor(seconds / 60)} 分钟`;
+    return commonText("commonUtils.time.minutes", { count: Math.floor(seconds / 60) });
   } else if (seconds < 60 * 60 * 24) { 
-    return `${Math.floor(seconds / 60 / 60)} 小时`;
+    return commonText("commonUtils.time.hours", { count: Math.floor(seconds / 60 / 60) });
   } else { 
-    return `${Math.floor(seconds / 60 / 60 / 24)} 天`;
+    return commonText("commonUtils.time.days", { count: Math.floor(seconds / 60 / 60 / 24) });
   } 
 };
 
 export function translateStatus(status?: TaskflowVirtualMachineStatus): string {
   switch (status) {
     case TaskflowVirtualMachineStatus.VirtualMachineStatusOnline:
-      return '正在运行'
+      return commonText("commonUtils.vmStatus.online")
     case TaskflowVirtualMachineStatus.VirtualMachineStatusPending:
-      return '正在准备'
+      return commonText("commonUtils.vmStatus.pending")
     case TaskflowVirtualMachineStatus.VirtualMachineStatusOffline:
-      return '已离线'
+      return commonText("commonUtils.vmStatus.offline")
     default:
-      return status || '未知'
+      return status || commonText("commonUtils.status.unknown")
   }
 }
 
@@ -360,9 +369,9 @@ export function getRepoIcon(url: string) {
   }
 }
 
-/** 根据仓库 URL 的 hostname 推断 git 平台，给身份自动匹配做兜底。
- *  说明：codeup/cnb/atomgit 身份的 base_url 存的是 API 域名，跟仓库 URL 的 hostname 不一致，
- *  所以单靠 startsWith(base_url) 匹配不上。 */
+/** Infer the git platform from a repository hostname as a fallback for identity matching.
+ *  codeup/cnb/atomgit identities store API domains as base_url, which do not match repository hostnames,
+ *  so startsWith(base_url) alone cannot match them. */
 export function detectGitPlatformFromUrl(url: string): ConstsGitPlatform | undefined {
   if (!url) {
     return undefined
@@ -394,9 +403,9 @@ export function detectGitPlatformFromUrl(url: string): ConstsGitPlatform | undef
   return undefined
 }
 
-/** 给定一个仓库 URL，挑出最匹配的 git 身份列表。
- *  1) 优先按 base_url 前缀匹配（github/gitlab/gitea/gitee 的现有行为）
- *  2) 匹不到再按 hostname 推 platform，按 identity.platform 兜底（覆盖 codeup/cnb/atomgit） */
+/** Find the most suitable git identities for a repository URL.
+ *  1. Prefer base_url prefix matching, which keeps the existing github/gitlab/gitea/gitee behavior.
+ *  2. If none match, infer platform from hostname and fall back to identity.platform for codeup/cnb/atomgit. */
 export function findIdentitiesForRepoUrl(
   repoUrl: string,
   identities: DomainGitIdentity[],
@@ -445,19 +454,19 @@ export function getGitPlatformIcon(platform?: string) {
 export function getTaskStatusText(status?: string): string {
   switch (status) {
     case 'started':
-      return '正在执行任务'
+      return String(i18n.t("commonUtils.taskStatus.started"))
     case 'pending':
-      return '正在为任务准备开发环境'
+      return commonText("commonUtils.taskStatus.pending")
     case 'stopped':
-      return '任务已终止'
+      return commonText("commonUtils.taskStatus.stopped")
     case 'ended':
-      return '请继续对话'
+      return commonText("commonUtils.taskStatus.ended")
     case 'error':
-      return '任务发生错误'
+      return commonText("commonUtils.taskStatus.error")
     case 'finished':
-      return '任务已结束'
+      return commonText("commonUtils.taskStatus.finished")
     default:
-      return '任务状态未知'
+      return commonText("commonUtils.taskStatus.unknown")
   }
 }
 
@@ -471,7 +480,7 @@ export function getRepoNameFromUrl(url?: string): string {
 }
 
 
-// 验证邮箱格式
+// Validate email format.
 export function isValidEmail(email: string): boolean {
   const emailRegex = /^[a-zA-Z0-9+\-\_\.]+@[0-9a-zA-Z\.-]+$/
   return emailRegex.test(email)
@@ -510,13 +519,13 @@ export function renderHoverCardContent(items: ({content: string, title: string} 
 export function getStatusName(status: ConstsProjectIssueStatus): string {
   switch (status) {
     case ConstsProjectIssueStatus.ProjectIssueStatusOpen:
-      return "进行中"
+      return commonText("commonUtils.issueStatus.open")
     case ConstsProjectIssueStatus.ProjectIssueStatusCompleted:
-      return "已完成"
+      return commonText("commonUtils.issueStatus.completed")
     case ConstsProjectIssueStatus.ProjectIssueStatusClosed:
-      return "已关闭"
+      return commonText("commonUtils.issueStatus.closed")
     default:
-      return "未知"
+      return commonText("commonUtils.status.unknown")
   }
 }
 
@@ -544,11 +553,11 @@ export function getOwnerTypeBadge(owner?: DomainOwner): React.ReactNode {
 
   switch (owner?.type) {
     case ConstsOwnerType.OwnerTypePrivate:
-      return <Badge variant="secondary">个人</Badge>
+      return <Badge variant="secondary">{commonText("commonUtils.owner.private")}</Badge>
     case ConstsOwnerType.OwnerTypeTeam:
       return <Badge variant="secondary">{owner?.name}</Badge>
     case ConstsOwnerType.OwnerTypePublic:
-      return <Badge variant="secondary">公共</Badge>
+      return <Badge variant="secondary">{commonText("commonUtils.owner.public")}</Badge>
     default:
       return null
   }
@@ -579,13 +588,13 @@ export function getSubscriptionPlanLabel(plan?: string | null): string {
   switch (plan) {
     case "flagship":
     case "ultra":
-      return "旗舰会员"
+      return commonText("commonUtils.subscription.flagship")
     case "pro":
-      return "专业会员"
+      return commonText("commonUtils.subscription.pro")
     case "basic":
-      return "基础会员"
+      return commonText("commonUtils.subscription.basic")
     default:
-      return "基础会员"
+      return commonText("commonUtils.subscription.basic")
   }
 }
 
@@ -593,13 +602,13 @@ export function getSubscriptionPlanShortLabel(plan?: string | null): string {
   switch (plan) {
     case "flagship":
     case "ultra":
-      return "旗舰会员"
+      return commonText("commonUtils.subscription.flagshipShort")
     case "pro":
-      return "专业会员"
+      return commonText("commonUtils.subscription.proShort")
     case "basic":
-      return "基础会员"
+      return commonText("commonUtils.subscription.basicShort")
     default:
-      return "基础会员"
+      return commonText("commonUtils.subscription.basicShort")
   }
 }
 
@@ -616,7 +625,9 @@ export function getHostBadges(host?: DomainHost): React.ReactNode {
     {getHostStatusBadge(host.status)}
     {getOwnerTypeBadge(host.owner)}
     {host.arch !== 'x86_64' && <Badge variant="secondary" className="hidden sm:inline">{host.arch}</Badge>}
-    <Badge variant="secondary" className="hidden sm:inline">{host.cores} 核</Badge>
+    <Badge variant="secondary" className="hidden sm:inline">
+      {commonText("commonUtils.host.cores", { count: host.cores })}
+    </Badge>
     <Badge variant="secondary" className="hidden sm:inline">{formatMemory(host.memory)}</Badge>
   </>
 }
@@ -641,29 +652,29 @@ export function getVmMessage(vm: DomainVirtualMachine | undefined): string {
 
 export function getConditionTypeText(conditions: GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesCondition[] | undefined): string {
   if (!conditions) {
-    return '未知状态'
+    return commonText("commonUtils.conditionStatus.unknown")
   }
 
   const lastCondition = conditions?.[conditions.length - 1]
   switch (lastCondition?.type) {
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeScheduled:
-      return '正在初始化'
+      return commonText("commonUtils.conditionStatus.scheduled")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeImagePulled:
-      return '正在拉取系统镜像'
+      return commonText("commonUtils.conditionStatus.imagePulled")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeProjectCloned:
-      return '正在克隆代码仓库'
+      return commonText("commonUtils.conditionStatus.projectCloned")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeImageBuilt:
-      return '正在构建系统镜像'
+      return commonText("commonUtils.conditionStatus.imageBuilt")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeContainerCreated:
-      return '正在创建开发环境'
+      return commonText("commonUtils.conditionStatus.containerCreated")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeContainerStarted:
-      return '正在启动开发环境'
+      return commonText("commonUtils.conditionStatus.containerStarted")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeReady:
-      return '开发环境已准备好'
+      return commonText("commonUtils.conditionStatus.ready")
     case GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeFailed:
-      return '无法创建开发环境'
+      return commonText("commonUtils.conditionStatus.failed")
     default:
-      return '未知状态'
+      return commonText("commonUtils.conditionStatus.unknown")
   }
 }
 
@@ -672,25 +683,25 @@ export function getFileName(path: string): string {
 }
 
 /**
- * 将文件列表打包成 zip 文件
- * @param files 文件列表
- * @param zipFilename 打包后的 zip 文件名，默认为 'project-files.zip'
- * @returns 打包后的 zip File 对象
+ * Package files into a zip file.
+ * @param files Files to package.
+ * @param zipFilename Output zip filename. Defaults to 'project-files.zip'.
+ * @returns The packaged zip File object.
  */
 export async function packFilesAsZip(
   files: File[],
   zipFilename: string = 'project-files.zip'
 ): Promise<File> {
   if (files.length === 0) {
-    throw new Error('文件列表不能为空')
+    throw new Error(commonText("commonUtils.file.emptyList"))
   }
 
-  // 如果只有一个文件且是 zip 格式，直接返回，不需要重新打包
+  // Return a single zip file directly; there is no need to repackage it.
   if (files.length === 1 && files[0].name.toLowerCase().endsWith('.zip')) {
     return files[0]
   }
 
-  // 动态导入 JSZip 并打包
+  // Dynamically import JSZip and package the files.
   const JSZip = (await import('jszip')).default
   const zip = new JSZip()
 
@@ -703,9 +714,9 @@ export async function packFilesAsZip(
 }
 
 /**
- * 使用后端返回的预签名地址上传文件
- * @param file 要上传的文件
- * @returns 上传成功后的访问地址和文件名，失败时抛出错误
+ * Upload a file with the presigned URL returned by the backend.
+ * @param file File to upload.
+ * @returns Uploaded access URL and filename, or throws on failure.
  */
 export async function uploadFileWithPresignedUrl(
   file: File
@@ -717,7 +728,7 @@ export async function uploadFileWithPresignedUrl(
       if (resp.code === 0 && resp.data?.upload_url && resp.data?.access_url) {
         resolve({ upload_url: resp.data.upload_url, access_url: resp.data.access_url })
       } else {
-        reject(new Error('获取上传地址失败: ' + (resp.message || '未知错误')))
+        reject(new Error(commonText("commonUtils.upload.presignFailed", { message: resp.message || commonText("commonUtils.status.unknown") })))
       }
     }, (error) => {
       reject(error)
@@ -730,7 +741,7 @@ export async function uploadFileWithPresignedUrl(
   })
 
   if (!uploadResponse.ok) {
-    throw new Error('文件上传失败: ' + uploadResponse.statusText)
+    throw new Error(commonText("commonUtils.upload.failed", { message: uploadResponse.statusText }))
   }
 
   return {
@@ -740,10 +751,10 @@ export async function uploadFileWithPresignedUrl(
 }
 
 /**
- * 将文件列表打包成 zip 并上传
- * @param files 文件列表
- * @param zipFilename 打包后的 zip 文件名，默认为 'project-files.zip'
- * @returns 上传成功后的访问地址和文件名，失败时抛出错误
+ * Package files into a zip and upload it.
+ * @param files Files to package.
+ * @param zipFilename Output zip filename. Defaults to 'project-files.zip'.
+ * @returns Uploaded access URL and filename, or throws on failure.
  */
 export async function packAndUploadFilesAsZip(
   files: File[],
@@ -754,9 +765,9 @@ export async function packAndUploadFilesAsZip(
 }
 
 /**
- * 将 markdown 文本转换为纯文字，去掉所有格式标记
- * @param markdown markdown 原文
- * @returns 去掉格式后的纯文字内容
+ * Convert markdown text to plain text by stripping formatting markers.
+ * @param markdown Original markdown content.
+ * @returns Plain text content.
  */
 export function stripMarkdown(markdown: string | undefined): string {
   if (!markdown) {
@@ -791,9 +802,9 @@ export function getTaskDisplayName(task?: Pick<DomainProjectTask, "title" | "sum
 }
 
 /**
- * 根据文件名获取扩展名（小写）
- * @param filename 文件名
- * @returns 小写的扩展名（不含点），如果没有扩展名则返回空字符串
+ * Get the lowercase extension from a filename.
+ * @param filename Filename.
+ * @returns Lowercase extension without the dot, or an empty string when absent.
  */
 export function getFileExtension(filename: string): string {
   if (!filename) {
@@ -891,11 +902,11 @@ export function selectImage(images: DomainImage[], followDefault: boolean = true
 }
 
 /**
- * 下载文件。传入 writableStream 时使用 fetch 流式写入；否则交给浏览器原生下载。
- * @param envid 环境 ID
- * @param path 文件路径
- * @param filename 下载时的文件名（可选，默认从路径中提取）
- * @throws 流式写入模式下，网络错误或下载失败时抛出错误
+ * Download a file. When writableStream is provided, fetch streams into it; otherwise native browser download is used.
+ * @param envid Environment ID.
+ * @param path File path.
+ * @param filename Download filename. Defaults to the basename from path.
+ * @throws Network or download errors in streaming mode.
  */
 export interface DownloadFileProgress {
   loaded: number
@@ -954,24 +965,24 @@ export async function downloadFile(
   
   const response = await fetch(url, { signal })
   
-  // 检查 x-internal-error header，如果存在则表示下载失败
+  // x-internal-error indicates a backend-side download failure.
   const internalError = response.headers.get('x-internal-error')
   if (internalError) {
     throw new Error(b64decode(internalError))
   }
   
   if (!response.body) {
-    throw new Error('无法获取文件流')
+    throw new Error(String(i18n.t("commonUtils.download.streamUnavailable")))
   }
 
   if (!response.ok) {
-    throw new Error(`下载失败（${response.status}）`)
+    throw new Error(commonText("commonUtils.download.failedWithStatus", { status: response.status }))
   }
   
   const contentLength = response.headers.get('content-length')
   const total = contentLength ? Number(contentLength) : null
   
-  // 使用调用方提供的浏览器/系统写入流，避免把大文件缓存在内存里。
+  // Use the caller-provided browser/system write stream to avoid buffering large files in memory.
   const fileStream = writableStream
   const reader = response.body.getReader()
   const writer = fileStream.getWriter()
@@ -1018,7 +1029,7 @@ export function getModelUrlDescription(baseUrl: string, interfaceType: ConstsInt
   let url = baseUrl.trim()
 
   if (!url) {
-    return "未设置模型 API 地址"
+    return commonText("commonUtils.modelUrl.notSet")
   }
 
   if (!url.endsWith('/')) {
@@ -1026,7 +1037,7 @@ export function getModelUrlDescription(baseUrl: string, interfaceType: ConstsInt
   }
 
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    return '模型地址不合法'
+    return commonText("commonUtils.modelUrl.invalid")
   }
 
   switch (interfaceType) {
@@ -1037,16 +1048,16 @@ export function getModelUrlDescription(baseUrl: string, interfaceType: ConstsInt
     case ConstsInterfaceType.InterfaceTypeAnthropic:
       return url + "v1/messages"
     default:
-      return '模型地址不合法'
+      return commonText("commonUtils.modelUrl.invalid")
   }
 }
 
 /**
- * 深拷贝合并对象
- * 递归地合并两个对象，对于嵌套对象会进行深度合并
- * @param target 目标对象
- * @param source 源对象，其属性会合并到目标对象中
- * @returns 合并后的新对象
+ * Deep merge objects.
+ * Recursively merges nested objects.
+ * @param target Target object.
+ * @param source Source object whose properties are merged into the target.
+ * @returns New merged object.
  */
 export function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
   const result = { ...target }
@@ -1064,10 +1075,10 @@ export function deepMerge<T extends Record<string, any>>(target: T, source: Part
         typeof targetValue === 'object' &&
         !Array.isArray(targetValue)
       ) {
-        // 如果两个值都是普通对象，递归合并
+        // Recursively merge plain objects.
         result[key] = deepMerge(targetValue, sourceValue) as T[Extract<keyof T, string>]
       } else {
-        // 否则直接覆盖
+        // Otherwise overwrite directly.
         result[key] = sourceValue as T[Extract<keyof T, string>]
       }
     }
@@ -1112,7 +1123,7 @@ export const modelProviderList: Record<string, DomainProviderModelListItem[]> = 
 export function getSkillTagIcon(tag: string): React.ReactNode {
   tag = tag.toLowerCase();
 
-  if (tag.includes("ui") || tag.includes("ux") || tag.includes("视觉")) {
+  if (tag.includes("ui") || tag.includes("ux") || tag.includes("\u89c6\u89c9")) {
     return <IconPalette className="size-3" />
   }
 
@@ -1120,35 +1131,35 @@ export function getSkillTagIcon(tag: string): React.ReactNode {
     return <IconBrandPython className="size-3" />
   }
   
-  if (tag.includes("前端")) {
+  if (tag.includes("\u524d\u7aef")) {
     return <IconBrandChrome className="size-3" />
   }
   
-  if (tag.includes("游戏")) {
+  if (tag.includes("\u6e38\u620f")) {
     return <IconDeviceGamepad2 className="size-3" />
   }
 
-  if (tag.includes("审计") || tag.includes("安全")) {
+  if (tag.includes("\u5ba1\u8ba1") || tag.includes("\u5b89\u5168")) {
     return <IconShieldChevron className="size-3" />
   }
 
-  if (tag.includes("开发")) {
+  if (tag.includes("\u5f00\u53d1")) {
     return <IconTerminal2 className="size-3" />
   }
 
-  if (tag.includes("审查") || tag.includes("review")) {
+  if (tag.includes("\u5ba1\u67e5") || tag.includes("review")) {
     return <IconBug className="size-3" />
   }
 
-  if (tag.includes("测试") || tag.includes("test")) {
+  if (tag.includes("\u6d4b\u8bd5") || tag.includes("test")) {
     return <IconTestPipe className="size-3" />
   }
 
-  if (tag.includes("文档")) {
+  if (tag.includes("\u6587\u6863")) {
     return <IconFileText className="size-3" />
   }
 
-  if (tag.includes("架构")) {
+  if (tag.includes("\u67b6\u6784")) {
     return <IconAssembly className="size-3" />
   }
 

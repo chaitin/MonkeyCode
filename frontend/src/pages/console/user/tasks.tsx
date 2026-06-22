@@ -262,7 +262,7 @@ export default function TasksPage() {
       ))}
       </div>
 
-      {/* 无限滚动触发点 */}
+      {/* Infinite scroll sentinel */}
       <div ref={loadMoreRef} className="flex justify-center py-8">
         {loading && <Spinner className="size-6" />}
       </div>

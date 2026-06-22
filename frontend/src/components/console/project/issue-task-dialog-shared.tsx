@@ -8,6 +8,7 @@ import { selectPreferredTaskModel } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 function getDefaultModelId(models: DomainModel[], subscription: DomainSubscriptionResp | null) {
   return selectPreferredTaskModel(models, subscription)
@@ -62,6 +63,7 @@ export function useIssueTaskModelSelection(
 }
 
 export function useProjectBranchSelection(open: boolean, project?: DomainProject) {
+  const { t } = useTranslation()
   const [branches, setBranches] = useState<string[]>([])
   const [selectedBranch, setSelectedBranch] = useState("")
   const [loadingBranches, setLoadingBranches] = useState(false)
@@ -106,7 +108,7 @@ export function useProjectBranchSelection(open: boolean, project?: DomainProject
       const escapedRepoFullName = project.full_name || ""
       if (!escapedRepoFullName) {
         if (requestId === branchRequestIdRef.current) {
-          toast.error("无法获取仓库信息")
+          toast.error(t("consoleProject.issueTask.toast.repositoryUnavailable"))
           setLoadingBranches(false)
         }
         return
@@ -130,18 +132,18 @@ export function useProjectBranchSelection(open: boolean, project?: DomainProject
             setSelectedBranch(branchList[0])
           }
         } else {
-          toast.error("获取分支列表失败: " + resp.message)
+          toast.error(t("consoleProject.issueTask.toast.fetchBranchesFailedWithMessage", { message: resp.message || t("consoleProject.common.unknownError") }))
         }
       })
     } catch (error) {
       console.error("Fetch branches error:", error)
-      toast.error("获取分支列表失败")
+      toast.error(t("consoleProject.issueTask.toast.fetchBranchesFailed"))
     } finally {
       if (requestId === branchRequestIdRef.current) {
         setLoadingBranches(false)
       }
     }
-  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name])
+  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name, t])
 
   useEffect(() => {
     if (!open) {
@@ -174,32 +176,34 @@ export function IssueTaskProjectFields({
   selectedBranch: string
   selectBranch: (branch: string) => void
 }) {
+  const { t } = useTranslation()
+
   return (
     <>
       {project && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>项目</Label>
+            <Label>{t("consoleProject.issueTask.project")}</Label>
             <Input value={project.name || "-"} readOnly className="bg-muted" />
           </div>
           <div className="space-y-2">
-            <Label>仓库地址</Label>
+            <Label>{t("consoleProject.issueTask.repositoryUrl")}</Label>
             <Input value={project.repo_url || "-"} readOnly className="bg-muted" />
           </div>
         </div>
       )}
       {project && project.platform !== ConstsGitPlatform.GitPlatformInternal && (
         <div className="space-y-2">
-          <Label>选择分支</Label>
+          <Label>{t("consoleProject.issueTask.branch")}</Label>
           <Select value={selectedBranch} onValueChange={selectBranch} disabled={loadingBranches || branches.length === 0}>
             <SelectTrigger className="w-full">
               {loadingBranches ? (
                 <div className="flex items-center gap-2">
                   <Spinner className="size-4" />
-                  <span>加载中...</span>
+                  <span>{t("consoleProject.common.loading")}</span>
                 </div>
               ) : (
-                <SelectValue placeholder="请选择分支" />
+                <SelectValue placeholder={t("consoleProject.issueTask.selectBranch")} />
               )}
             </SelectTrigger>
             <SelectContent>
@@ -229,9 +233,11 @@ export function IssueTaskModelSelect({
   setSelectedModelId: (modelId: string) => void
   subscription?: DomainSubscriptionResp | null
 }) {
+  const { t } = useTranslation()
+
   return (
     <div className="space-y-2">
-      <Label>大模型</Label>
+      <Label>{t("consoleProject.issueTask.model")}</Label>
       <ModelSelect
         models={models}
         selectedModel={selectedModel}

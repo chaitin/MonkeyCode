@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
 
 type LegalSection = {
@@ -38,6 +39,8 @@ export default function LegalTerminalPage({
   tags: string[];
   sections: LegalSection[];
 }) {
+  const { t } = useTranslation();
+
   return (
     <div style={themeVars} className="min-h-screen bg-[var(--a-bg)] text-[var(--a-fg)]">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(124,242,156,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(97,218,251,0.08),transparent_22%),linear-gradient(180deg,#090c09_0%,#0b0f0c_48%,#0a0d0a_100%)]" />
@@ -53,7 +56,9 @@ export default function LegalTerminalPage({
             <h1 className="mt-6 text-4xl font-semibold leading-[1.04] tracking-[-0.04em] text-white sm:text-5xl lg:text-[60px]">{title}</h1>
             <p className="mt-5 max-w-[820px] text-sm leading-8 text-[var(--a-fg-dim)] sm:text-[15px]">{subtitle}</p>
             <div className="mt-7 flex flex-wrap gap-3 text-[11px] tracking-[0.06em] text-[var(--a-fg-dim)]">
-              <span className="rounded border border-[var(--a-line-2)] bg-[var(--a-panel)] px-3 py-2">最近更新：{lastUpdated}</span>
+              <span className="rounded border border-[var(--a-line-2)] bg-[var(--a-panel)] px-3 py-2">
+                {t("welcomeShell.legal.lastUpdated", { date: lastUpdated })}
+              </span>
               {tags.map((tag) => (
                 <span key={tag} className="rounded border border-[var(--a-line-2)] bg-[var(--a-panel)] px-3 py-2">
                   {tag}
@@ -65,7 +70,7 @@ export default function LegalTerminalPage({
 
         <section className="mt-8 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="h-fit rounded-[20px] border border-[var(--a-line)] bg-[var(--a-panel)] p-5 lg:sticky lg:top-24">
-            <div className="text-[11px] tracking-[0.12em] text-[var(--a-accent)]"># 目录</div>
+            <div className="text-[11px] tracking-[0.12em] text-[var(--a-accent)]">{t("welcomeShell.legal.contents")}</div>
             <nav className="mt-4 space-y-1">
               {sections.map((section, index) => (
                 <a
@@ -90,7 +95,7 @@ export default function LegalTerminalPage({
                 className={cn(index === 0 ? "" : "mt-8 border-t border-[var(--a-line)] pt-8")}
               >
                 <div className="inline-flex items-center rounded-full border border-[rgba(124,242,156,0.16)] bg-[rgba(124,242,156,0.06)] px-3 py-1 text-[11px] tracking-[0.12em] text-[var(--a-accent)]">
-                  Section {String(index + 1).padStart(2, "0")}
+                  {t("welcomeShell.legal.section", { number: String(index + 1).padStart(2, "0") })}
                 </div>
                 <h2 className="mt-4 text-[28px] font-semibold tracking-[-0.03em] text-white">{section.title}</h2>
                 {section.content?.map((paragraph) => (

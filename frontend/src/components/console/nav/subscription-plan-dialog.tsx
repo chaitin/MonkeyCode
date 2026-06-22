@@ -23,9 +23,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
-import { getSubscriptionPlanShortLabel, hasProSubscription } from "@/utils/common"
+import { hasProSubscription } from "@/utils/common"
 import { useCommonData } from "../data-provider"
 import dayjs from "dayjs"
+import { useTranslation } from "react-i18next"
 
 type PersonalAccountPlanId = "basic" | "pro" | "ultra"
 type AccountPlanId = PersonalAccountPlanId | "team"
@@ -40,152 +41,18 @@ type AccountPlanCard = {
   id: AccountPlanId
   name: string
   desc: string
-  monthlyPrice: string
   monthlyAmount: number
-  monthlyUnit: string
-  yearlyPrice: string
   yearlyAmount: number
-  yearlyUnit: string
-  yearlyDiscount?: string
 }
 
-const accountPlanCards: AccountPlanCard[] = [
-  {
-    id: "basic",
-    name: "基础会员",
-    desc: "适合轻量办公和简单开发任务。",
-    monthlyPrice: "¥0",
-    monthlyAmount: 0,
-    monthlyUnit: "永久免费",
-    yearlyPrice: "¥0",
-    yearlyAmount: 0,
-    yearlyUnit: "永久免费",
-  },
-  {
-    id: "pro",
-    name: "专业会员",
-    desc: "适合日常高频使用。",
-    monthlyPrice: "¥99",
-    monthlyAmount: 99,
-    monthlyUnit: "/ 月",
-    yearlyPrice: "¥999",
-    yearlyAmount: 999,
-    yearlyUnit: "/ 年",
-    yearlyDiscount: "8.3 折",
-  },
-  {
-    id: "ultra",
-    name: "旗舰会员",
-    desc: "面向专业开发者和重度用户。",
-    monthlyPrice: "¥499",
-    monthlyAmount: 499,
-    monthlyUnit: "/ 月",
-    yearlyPrice: "¥4999",
-    yearlyAmount: 4999,
-    yearlyUnit: "/ 年",
-    yearlyDiscount: "8.3 折",
-  },
-  {
-    id: "team",
-    name: "团队版",
-    desc: "面向企业级开发团队。",
-    monthlyPrice: "联系销售",
-    monthlyAmount: 0,
-    monthlyUnit: "",
-    yearlyPrice: "联系销售",
-    yearlyAmount: 0,
-    yearlyUnit: "",
-  },
-]
-
-const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分"
-const enhancedCapabilitiesTooltip = "图片识别、文档解析、联网搜索等能力，调用时消耗积分"
-const basicModelsTooltip = "当前为 qwen3.6-plus"
-const proModelsTooltip = "上下文更大，能力更强，对标国内一线厂商的当前主力模型，如 qwen3.6-plus, minimax-m2.7, kimi-k2.6, glm-5.1 等"
-const ultraModelsTooltip = "超长的上下文和超强的能力，对标国际一线厂商的主力模型，如 gpt-5.5, claude-opus-4.6 等"
-const monthlyCreditsTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。"
-
-const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<PersonalAccountPlanId, AccountPlanFeature> }[] = [
-  {
-    label: "任务并发",
-    values: {
-      basic: { label: "1 个任务" },
-      pro: { label: "3 个任务" },
-      ultra: { label: "3 个任务" },
-    },
-  },
-  {
-    label: "云开发环境",
-    values: {
-      basic: { label: "1C / 4G" },
-      pro: { label: "2C / 8G" },
-      ultra: { label: "2C / 8G" },
-    },
-  },
-  {
-    label: "基础模型",
-    tooltip: basicModelsTooltip,
-    values: {
-      basic: { label: "每天 3000 万 Token" },
-      pro: { label: "每天 3000 万 Token" },
-      ultra: { label: "每天 6000 万 Token" },
-    },
-  },
-  {
-    label: "专业模型",
-    tooltip: proModelsTooltip,
-    values: {
-      basic: { label: "无额度", status: "unsupported" },
-      pro: { label: "每天 3000 万 Token" },
-      ultra: { label: "每天 6000 万 Token" },
-    },
-  },
-  {
-    label: "旗舰模型",
-    tooltip: ultraModelsTooltip,
-    values: {
-      basic: { label: "无额度", status: "unsupported" },
-      pro: { label: "无额度", status: "unsupported" },
-      ultra: { label: "每天 6000 万 Token" },
-    },
-  },
-  {
-    label: "每月赠送积分",
-    tooltip: monthlyCreditsTooltip,
-    values: {
-      basic: { label: "不赠送积分", status: "unsupported" },
-      pro: { label: "1 万积分" },
-      ultra: { label: "10 万积分" },
-    },
-  },
-  {
-    label: "更多第三方大模型",
-    tooltip: thirdPartyModelsTooltip,
-    values: {
-      basic: { label: "部分支持", status: "partial" },
-      pro: { label: "支持" },
-      ultra: { label: "支持" },
-    },
-  },
-  {
-    label: "更多增强能力",
-    tooltip: enhancedCapabilitiesTooltip,
-    values: {
-      basic: { label: "部分支持", status: "partial" },
-      pro: { label: "支持" },
-      ultra: { label: "支持" },
-    },
-  },
-]
-
-const teamPlanFeatures: AccountPlanFeature[] = [
-  { label: "统一额度池，团队成员共享使用" },
-  { label: "成员管理，支持按团队统一开通" },
-  { label: "用量统计，便于查看团队消耗" },
-  { label: "私有化部署，适配企业内网和合规要求" },
-  { label: "专属方案，按团队规模和模型需求配置" },
-  { label: "咨询留资，销售专人跟进" },
-]
+const teamPlanFeatureKeys = [
+  "sharedPool",
+  "memberManagement",
+  "usageStats",
+  "privateDeployment",
+  "customSolution",
+  "salesFollowUp",
+] as const
 const TEAM_CONSULT_URL = "https://baizhi.cloud/consult"
 
 const monthlyPeriodCounts = Array.from({ length: 12 }, (_, index) => index + 1)
@@ -198,20 +65,133 @@ interface SubscriptionPlanDialogProps {
 
 function formatSubscriptionExpiry(expiresAt?: string) {
   if (!expiresAt) {
-    return "长期有效"
+    return null
   }
 
   const parsed = dayjs(expiresAt)
   return parsed.isValid() ? parsed.format("YYYY-MM-DD") : expiresAt
 }
 
+function normalizeAccountPlanId(plan?: string | null): PersonalAccountPlanId {
+  if (plan === "pro") {
+    return "pro"
+  }
+  if (plan === "flagship" || plan === "ultra") {
+    return "ultra"
+  }
+  return "basic"
+}
+
 export default function SubscriptionPlanDialog({ open, onOpenChange }: SubscriptionPlanDialogProps) {
+  const { t } = useTranslation()
   const {
     loadingSubscription,
     reloadSubscription,
     subscription,
     user,
   } = useCommonData()
+  const accountPlanCards: AccountPlanCard[] = [
+    {
+      id: "basic",
+      name: t("subscriptionPlan.plans.basic.name"),
+      desc: t("subscriptionPlan.plans.basic.desc"),
+      monthlyAmount: 0,
+      yearlyAmount: 0,
+    },
+    {
+      id: "pro",
+      name: t("subscriptionPlan.plans.pro.name"),
+      desc: t("subscriptionPlan.plans.pro.desc"),
+      monthlyAmount: 99,
+      yearlyAmount: 999,
+    },
+    {
+      id: "ultra",
+      name: t("subscriptionPlan.plans.ultra.name"),
+      desc: t("subscriptionPlan.plans.ultra.desc"),
+      monthlyAmount: 499,
+      yearlyAmount: 4999,
+    },
+    {
+      id: "team",
+      name: t("subscriptionPlan.plans.team.name"),
+      desc: t("subscriptionPlan.plans.team.desc"),
+      monthlyAmount: 0,
+      yearlyAmount: 0,
+    },
+  ]
+  const accountPlanComparisonRows: { label: string; tooltip?: string; values: Record<PersonalAccountPlanId, AccountPlanFeature> }[] = [
+    {
+      label: t("subscriptionPlan.features.taskConcurrency.label"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.oneTask") },
+        pro: { label: t("subscriptionPlan.featureValues.threeTasks") },
+        ultra: { label: t("subscriptionPlan.featureValues.threeTasks") },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.cloudDevEnvironment.label"),
+      values: {
+        basic: { label: "1C / 4G" },
+        pro: { label: "2C / 8G" },
+        ultra: { label: "2C / 8G" },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.basicModels.label"),
+      tooltip: t("subscriptionPlan.features.basicModels.tooltip"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.dailyTokens30m") },
+        pro: { label: t("subscriptionPlan.featureValues.dailyTokens30m") },
+        ultra: { label: t("subscriptionPlan.featureValues.dailyTokens60m") },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.proModels.label"),
+      tooltip: t("subscriptionPlan.features.proModels.tooltip"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.noQuota"), status: "unsupported" },
+        pro: { label: t("subscriptionPlan.featureValues.dailyTokens30m") },
+        ultra: { label: t("subscriptionPlan.featureValues.dailyTokens60m") },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.ultraModels.label"),
+      tooltip: t("subscriptionPlan.features.ultraModels.tooltip"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.noQuota"), status: "unsupported" },
+        pro: { label: t("subscriptionPlan.featureValues.noQuota"), status: "unsupported" },
+        ultra: { label: t("subscriptionPlan.featureValues.dailyTokens60m") },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.monthlyCredits.label"),
+      tooltip: t("subscriptionPlan.features.monthlyCredits.tooltip"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.noCredits"), status: "unsupported" },
+        pro: { label: t("subscriptionPlan.featureValues.credits10k") },
+        ultra: { label: t("subscriptionPlan.featureValues.credits100k") },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.thirdPartyModels.label"),
+      tooltip: t("subscriptionPlan.features.thirdPartyModels.tooltip"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.partialSupport"), status: "partial" },
+        pro: { label: t("subscriptionPlan.featureValues.supported") },
+        ultra: { label: t("subscriptionPlan.featureValues.supported") },
+      },
+    },
+    {
+      label: t("subscriptionPlan.features.enhancedCapabilities.label"),
+      tooltip: t("subscriptionPlan.features.enhancedCapabilities.tooltip"),
+      values: {
+        basic: { label: t("subscriptionPlan.featureValues.partialSupport"), status: "partial" },
+        pro: { label: t("subscriptionPlan.featureValues.supported") },
+        ultra: { label: t("subscriptionPlan.featureValues.supported") },
+      },
+    },
+  ]
   const [selectedAccountPlanId, setSelectedAccountPlanId] = useState<AccountPlanId>("basic")
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<SubscriptionBillingPeriod>("monthly")
   const [selectedPeriodCount, setSelectedPeriodCount] = useState(1)
@@ -223,7 +203,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const isFlagshipPlan = subscription?.plan === "flagship" || subscription?.plan === "ultra"
   const hasAdvancedPlan = hasProSubscription(subscription)
   const isTeamUser = !!user?.team?.id
-  const triggerPlanLabel = getSubscriptionPlanShortLabel(subscription?.plan)
+  const triggerPlanLabel = t(`subscriptionPlan.plans.${normalizeAccountPlanId(subscription?.plan)}.name`)
   const isRenewingCurrentPlan = confirmSubscriptionPlan === "pro"
     ? isProPlan
     : confirmSubscriptionPlan === "ultra"
@@ -246,9 +226,12 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
   const canSubscribeSelectedPlan = selectedSubscriptionPlan === "pro" ? !isFlagshipPlan : selectedSubscriptionPlan === "ultra"
   const selectedPeriodAmount = selectedBillingPeriod === "monthly" ? selectedAccountPlan.monthlyAmount : selectedAccountPlan.yearlyAmount
   const selectedOrderTotal = selectedPeriodAmount * selectedPeriodCount
-  const selectedPeriodUnitText = selectedBillingPeriod === "monthly" ? "月" : "年"
   const selectedPeriodUnit = selectedBillingPeriod === "monthly" ? ConstsSubscriptionPeriodUnit.PeriodMonth : ConstsSubscriptionPeriodUnit.PeriodYear
   const subscriptionPeriodCounts = selectedBillingPeriod === "monthly" ? monthlyPeriodCounts : yearlyPeriodCounts
+  const selectedPeriodCountLabel = selectedBillingPeriod === "monthly"
+    ? t("subscriptionPlan.billing.monthCount", { count: selectedPeriodCount })
+    : t("subscriptionPlan.billing.yearCount", { count: selectedPeriodCount })
+  const subscriptionExpiry = formatSubscriptionExpiry(subscription?.expires_at)
 
   useEffect(() => {
     if (!open) {
@@ -263,7 +246,16 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       return
     }
 
-    setSelectedAccountPlanId(isFlagshipPlan ? "ultra" : isProPlan ? "pro" : "basic")
+    let active = true
+    queueMicrotask(() => {
+      if (active) {
+        setSelectedAccountPlanId(isFlagshipPlan ? "ultra" : isProPlan ? "pro" : "basic")
+      }
+    })
+
+    return () => {
+      active = false
+    }
   }, [isFlagshipPlan, isProPlan, open])
 
   const handleToggleAutoRenew = async (checked: boolean) => {
@@ -274,10 +266,10 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
     setIsAutoRenewLoading(true)
     await apiRequest("v1UsersSubscriptionAutoRenewUpdate", { auto_renew: checked }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success(checked ? "已开启自动续费" : "已关闭自动续费")
+        toast.success(checked ? t("subscriptionPlan.toast.autoRenewEnabled") : t("subscriptionPlan.toast.autoRenewDisabled"))
         reloadSubscription()
       } else {
-        toast.error(resp.message || "自动续费设置失败")
+        toast.error(resp.message || t("subscriptionPlan.toast.autoRenewFailed"))
       }
     })
     setIsAutoRenewLoading(false)
@@ -285,7 +277,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
 
   const handleSubscribePlan = async (plan: "pro" | "ultra") => {
     const setLoading = plan === "pro" ? setIsProLoading : setIsFlagshipLoading
-    const planLabel = plan === "pro" ? "专业会员" : "旗舰会员"
+    const planLabel = t(`subscriptionPlan.plans.${plan}.name`)
 
     setLoading(true)
     await apiRequest("v1UsersWalletRechargeCreate", {
@@ -299,7 +291,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
         onOpenChange(false)
         window.open(paymentUrl, "_blank", "noopener,noreferrer")
       } else {
-        toast.error(resp.message || `${isRenewingCurrentPlan ? "续费" : "开通"}${planLabel}失败`)
+        toast.error(resp.message || t(isRenewingCurrentPlan ? "subscriptionPlan.toast.renewFailed" : "subscriptionPlan.toast.subscribeFailed", { plan: planLabel }))
       }
     })
     setLoading(false)
@@ -319,7 +311,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex h-[60vh] max-h-[90vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 md:max-w-4xl">
           <DialogHeader className="px-5 py-4">
-            <DialogTitle>我的套餐</DialogTitle>
+            <DialogTitle>{t("subscriptionPlan.dialog.title")}</DialogTitle>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
             {!isTeamUser && hasAdvancedPlan ? (
@@ -327,12 +319,18 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge>{triggerPlanLabel}</Badge>
                   <span className="text-muted-foreground">
-                    {loadingSubscription ? `${triggerPlanLabel}到期时间加载中...` : `${triggerPlanLabel}将于 ${formatSubscriptionExpiry(subscription?.expires_at)} 到期`}
+                    {loadingSubscription
+                      ? t("subscriptionPlan.status.expiryLoading", { plan: triggerPlanLabel })
+                      : t("subscriptionPlan.status.expiresAt", { plan: triggerPlanLabel, date: subscriptionExpiry || t("subscriptionPlan.status.lifetime") })}
                   </span>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                   <span className="font-medium">
-                    {loadingSubscription ? "自动续费加载中..." : `自动续费${subscription?.auto_renew ? "已开启" : "已关闭"}`}
+                    {loadingSubscription
+                      ? t("subscriptionPlan.status.autoRenewLoading")
+                      : subscription?.auto_renew
+                        ? t("subscriptionPlan.status.autoRenewEnabled")
+                        : t("subscriptionPlan.status.autoRenewDisabled")}
                   </span>
                   <Switch
                     checked={!!subscription?.auto_renew}
@@ -365,7 +363,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                             <PlanIcon className={cn("size-4", isSelected ? "text-primary" : "text-muted-foreground")} />
                             {plan.name}
                           </div>
-                          {isCurrentPlan ? <Badge className="shrink-0">当前套餐</Badge> : null}
+                          {isCurrentPlan ? <Badge className="shrink-0">{t("subscriptionPlan.status.currentPlan")}</Badge> : null}
                         </div>
                         <div className="mt-3 text-xs leading-5 text-muted-foreground [@media(max-height:760px)]:hidden">{plan.desc}</div>
                       </button>
@@ -379,7 +377,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       <div className="flex items-center gap-2 text-sm font-medium">
                         <SelectedPlanIcon className="size-4 text-primary" />
                         {selectedAccountPlan.name}
-                        {isSelectedCurrentPlan ? <Badge>当前套餐</Badge> : null}
+                        {isSelectedCurrentPlan ? <Badge>{t("subscriptionPlan.status.currentPlan")}</Badge> : null}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">{selectedAccountPlan.desc}</div>
                     </div>
@@ -389,13 +387,15 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                     {isSelectedTeamPlan ? (
                       <div className="space-y-4">
                         <div className="rounded-md border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
-                          面向企业级开发团队，团队版支持团队内共享额度和私有化部署。
+                          {t("subscriptionPlan.team.intro")}
                         </div>
                         <div className="divide-y">
-                          {teamPlanFeatures.map((feature) => (
-                            <div key={feature.label} className="flex h-10 items-center gap-3 px-4 text-sm">
+                          {teamPlanFeatureKeys.map((featureKey) => (
+                            <div key={featureKey} className="flex h-10 items-center gap-3 px-4 text-sm">
                               <IconCheck className="size-4 shrink-0 text-primary" />
-                              <div className="min-w-0 flex-1 truncate text-foreground">{feature.label}</div>
+                              <div className="min-w-0 flex-1 truncate text-foreground">
+                                {t(`subscriptionPlan.team.features.${featureKey}`)}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -457,13 +457,13 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                   {isSelectedTeamPlan ? (
                     <>
                       <div className="text-sm text-muted-foreground">
-                        提交联系方式后，我们会根据团队规模和部署需求联系你。
+                        {t("subscriptionPlan.team.contactDescription")}
                       </div>
                       <Button
                         className="w-full md:w-40"
                         onClick={() => window.open(TEAM_CONSULT_URL, "_blank", "noopener,noreferrer")}
                       >
-                        联系销售
+                        {t("subscriptionPlan.team.contactSales")}
                       </Button>
                     </>
                   ) : (
@@ -477,8 +477,8 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       }}
                     >
                       <TabsList className="h-8 bg-muted group-data-horizontal/tabs:h-8">
-                        <TabsTrigger value="monthly" className="h-7 px-3 text-xs">月付</TabsTrigger>
-                        <TabsTrigger value="yearly" className="h-7 px-3 text-xs">年付</TabsTrigger>
+                        <TabsTrigger value="monthly" className="h-7 px-3 text-xs">{t("subscriptionPlan.billing.monthly")}</TabsTrigger>
+                        <TabsTrigger value="yearly" className="h-7 px-3 text-xs">{t("subscriptionPlan.billing.yearly")}</TabsTrigger>
                       </TabsList>
                     </Tabs>
                     <Select
@@ -491,7 +491,9 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                       <SelectContent>
                         {subscriptionPeriodCounts.map((count) => (
                           <SelectItem key={count} value={String(count)}>
-                            {count} {selectedBillingPeriod === "monthly" ? "个月" : "年"}
+                            {selectedBillingPeriod === "monthly"
+                              ? t("subscriptionPlan.billing.monthCount", { count })
+                              : t("subscriptionPlan.billing.yearCount", { count })}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -508,11 +510,13 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
                         disabled={isSelectedPlanLoading}
                       >
                         {isSelectedPlanLoading && <Spinner />}
-                        {isSelectedCurrentPlan ? "续费" : `开通${selectedAccountPlan.name}`}
+                        {isSelectedCurrentPlan
+                          ? t("subscriptionPlan.actions.renew")
+                          : t("subscriptionPlan.actions.subscribePlan", { plan: selectedAccountPlan.name })}
                       </Button>
                     ) : (
                       <div className="flex h-9 w-full items-center justify-center rounded-md border bg-background px-4 text-sm text-muted-foreground md:w-40">
-                        {isSelectedCurrentPlan ? "当前套餐" : "不可购买"}
+                        {isSelectedCurrentPlan ? t("subscriptionPlan.status.currentPlan") : t("subscriptionPlan.status.unavailable")}
                       </div>
                     )}
                   </div>
@@ -527,15 +531,20 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
       <AlertDialog open={confirmSubscriptionPlan !== null} onOpenChange={(nextOpen) => !nextOpen && setConfirmSubscriptionPlan(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{isRenewingCurrentPlan ? "确认续费套餐" : "确认开通套餐"}</AlertDialogTitle>
+            <AlertDialogTitle>{isRenewingCurrentPlan ? t("subscriptionPlan.confirm.renewTitle") : t("subscriptionPlan.confirm.subscribeTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmingPlanCard
-                ? `确认${isRenewingCurrentPlan ? "续费" : "开通"}${confirmingPlanCard.name}，购买 ${selectedPeriodCount} ${selectedPeriodUnitText}，合计 ¥${selectedOrderTotal}？`
+                ? t("subscriptionPlan.confirm.description", {
+                    action: isRenewingCurrentPlan ? t("subscriptionPlan.actions.renew") : t("subscriptionPlan.actions.subscribe"),
+                    plan: confirmingPlanCard.name,
+                    period: selectedPeriodCountLabel,
+                    total: selectedOrderTotal,
+                  })
                 : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProLoading || isFlagshipLoading}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProLoading || isFlagshipLoading}>{t("subscriptionPlan.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
@@ -544,7 +553,7 @@ export default function SubscriptionPlanDialog({ open, onOpenChange }: Subscript
               disabled={isProLoading || isFlagshipLoading}
             >
               {(isProLoading || isFlagshipLoading) && <Spinner className="mr-2 size-4" />}
-              {isRenewingCurrentPlan ? "确认续费" : "确认开通"}
+              {isRenewingCurrentPlan ? t("subscriptionPlan.confirm.renewAction") : t("subscriptionPlan.confirm.subscribeAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

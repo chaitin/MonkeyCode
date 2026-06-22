@@ -39,8 +39,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner"
 import { IconPencil, IconTrash } from "@tabler/icons-react"
 import AddMcpServerDialog from "./add-mcp-server-dialog"
+import { useTranslation } from "react-i18next"
 
 export default function ToolsAndMcp() {
+  const { t } = useTranslation()
   const [servers, setServers] = useState<DomainMCPUpstream[]>([])
   const [loading, setLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -63,10 +65,10 @@ export default function ToolsAndMcp() {
       if (upstreamsResp.data?.code === 0) {
         setServers(upstreamsResp.data?.data?.items || [])
       } else {
-        toast.error(upstreamsResp.data?.message || "加载 MCP 服务失败")
+        toast.error(upstreamsResp.data?.message || t("consoleSettings.mcp.toast.loadServersFailed"))
       }
     } catch {
-      toast.error("加载 MCP 配置失败")
+      toast.error(t("consoleSettings.mcp.toast.loadConfigFailed"))
     } finally {
       if (!silent) {
         setLoading(false)
@@ -86,15 +88,15 @@ export default function ToolsAndMcp() {
       const api = new Api()
       const resp = await api.api.v1UsersMcpUpstreamsCreate(payload)
       if (resp.data?.code === 0) {
-        toast.success("MCP 服务器创建成功")
+        toast.success(t("consoleSettings.mcp.toast.createSuccess"))
         await loadData()
         return true
       }
 
-      toast.error(resp.data?.message || "MCP 服务器创建失败")
+      toast.error(resp.data?.message || t("consoleSettings.mcp.toast.createFailed"))
       return false
     } catch {
-      toast.error("MCP 服务器创建失败")
+      toast.error(t("consoleSettings.mcp.toast.createFailed"))
       return false
     } finally {
       setIsCreating(false)
@@ -105,7 +107,7 @@ export default function ToolsAndMcp() {
     payload: DomainCreateUserMCPUpstreamReq
   ): Promise<boolean> => {
     if (!editingServer?.id) {
-      toast.error("MCP 服务器信息不完整")
+      toast.error(t("consoleSettings.mcp.toast.serverIncomplete"))
       return false
     }
 
@@ -114,15 +116,15 @@ export default function ToolsAndMcp() {
       const api = new Api()
       const resp = await api.api.v1UsersMcpUpstreamsUpdate(editingServer.id, payload)
       if (resp.data?.code === 0) {
-        toast.success("MCP 服务器修改成功")
+        toast.success(t("consoleSettings.mcp.toast.updateSuccess"))
         await loadData()
         return true
       }
 
-      toast.error(resp.data?.message || "MCP 服务器修改失败")
+      toast.error(resp.data?.message || t("consoleSettings.mcp.toast.updateFailed"))
       return false
     } catch {
-      toast.error("MCP 服务器修改失败")
+      toast.error(t("consoleSettings.mcp.toast.updateFailed"))
       return false
     } finally {
       setIsUpdating(false)
@@ -131,7 +133,7 @@ export default function ToolsAndMcp() {
 
   const handleSyncServer = async (server: DomainMCPUpstream) => {
     if (!server.id) {
-      toast.error("MCP 服务器信息不完整")
+      toast.error(t("consoleSettings.mcp.toast.serverIncomplete"))
       return
     }
 
@@ -140,13 +142,13 @@ export default function ToolsAndMcp() {
       const api = new Api()
       const resp = await api.api.v1UsersMcpUpstreamsSyncCreate(server.id)
       if (resp.data?.code === 0) {
-        toast.success("MCP 服务器同步成功")
+        toast.success(t("consoleSettings.mcp.toast.syncSuccess"))
         await loadData({ silent: true })
       } else {
-        toast.error(resp.data?.message || "MCP 服务器同步失败")
+        toast.error(resp.data?.message || t("consoleSettings.mcp.toast.syncFailed"))
       }
     } catch {
-      toast.error("MCP 服务器同步失败")
+      toast.error(t("consoleSettings.mcp.toast.syncFailed"))
     } finally {
       setSyncingServerId(null)
     }
@@ -154,7 +156,7 @@ export default function ToolsAndMcp() {
 
   const handleDeleteServer = async (server: DomainMCPUpstream) => {
     if (!server.id) {
-      toast.error("MCP 服务器信息不完整")
+      toast.error(t("consoleSettings.mcp.toast.serverIncomplete"))
       return
     }
 
@@ -163,13 +165,13 @@ export default function ToolsAndMcp() {
       const api = new Api()
       const resp = await api.api.v1UsersMcpUpstreamsDelete(server.id)
       if (resp.data?.code === 0) {
-        toast.success("MCP 服务器删除成功")
+        toast.success(t("consoleSettings.mcp.toast.deleteSuccess"))
         await loadData({ silent: true })
       } else {
-        toast.error(resp.data?.message || "MCP 服务器删除失败")
+        toast.error(resp.data?.message || t("consoleSettings.mcp.toast.deleteFailed"))
       }
     } catch {
-      toast.error("MCP 服务器删除失败")
+      toast.error(t("consoleSettings.mcp.toast.deleteFailed"))
     } finally {
       setDeletingServerId(null)
     }
@@ -177,7 +179,7 @@ export default function ToolsAndMcp() {
 
   const handleToggleTool = async (tool: DomainMCPTool, enabled: boolean) => {
     if (!tool.id) {
-      toast.error("工具信息不完整")
+      toast.error(t("consoleSettings.mcp.toast.toolIncomplete"))
       return
     }
 
@@ -200,10 +202,10 @@ export default function ToolsAndMcp() {
           }))
         )
       } else {
-        toast.error(resp.data?.message || "工具开关更新失败")
+        toast.error(resp.data?.message || t("consoleSettings.mcp.toast.toolToggleFailed"))
       }
     } catch {
-      toast.error("工具开关更新失败")
+      toast.error(t("consoleSettings.mcp.toast.toolToggleFailed"))
     } finally {
       setTogglingToolId(null)
     }
@@ -219,7 +221,7 @@ export default function ToolsAndMcp() {
     if (items.length === 0) {
       return (
         <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-          暂无工具
+          {t("consoleSettings.mcp.emptyTools")}
         </div>
       )
     }
@@ -238,7 +240,7 @@ export default function ToolsAndMcp() {
             <span className="truncate">{tool.name}</span>
             {tool.price && tool.price > 0 ? (
               <Badge variant="default" className="shrink-0">
-                {tool.price / 1000} 积分/次
+                {t("consoleSettings.mcp.pricePerUse", { price: tool.price / 1000 })}
               </Badge>
             ) : null}
           </div>
@@ -250,11 +252,11 @@ export default function ToolsAndMcp() {
                     ? "mt-1 line-clamp-1 text-xs text-muted-foreground"
                     : "mt-1 line-clamp-1 text-xs text-muted-foreground/60"}
                 >
-                  {tool.description || "暂无描述"}
+                  {tool.description || t("consoleSettings.mcp.noDescription")}
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-lg whitespace-pre-wrap break-words">
-                {tool.description || "暂无描述"}
+                {tool.description || t("consoleSettings.mcp.noDescription")}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -268,7 +270,7 @@ export default function ToolsAndMcp() {
               checked={Boolean(tool.enabled)}
               size="sm"
               disabled={togglingToolId === tool.id}
-              aria-label={`${tool.name} 启用状态`}
+              aria-label={t("consoleSettings.mcp.toolEnabledAria", { name: tool.name })}
               onCheckedChange={(checked) => handleToggleTool(tool, checked)}
             />
           </div>
@@ -277,7 +279,7 @@ export default function ToolsAndMcp() {
             checked={Boolean(tool.enabled)}
             size="sm"
             disabled
-            aria-label={`${tool.name} 启用状态`}
+            aria-label={t("consoleSettings.mcp.toolEnabledAria", { name: tool.name })}
           />
         )}
       </div>
@@ -335,7 +337,7 @@ export default function ToolsAndMcp() {
             </div>
             {isPlatform ? (
               <ItemActions className="shrink-0">
-                <Badge variant="outline">内置 MCP 服务</Badge>
+                <Badge variant="outline">{t("consoleSettings.mcp.builtInService")}</Badge>
               </ItemActions>
             ) : null}
             {editable ? (
@@ -349,10 +351,10 @@ export default function ToolsAndMcp() {
                   {syncing ? (
                     <>
                       <Spinner className="size-3.5" />
-                      同步中
+                      {t("consoleSettings.mcp.actions.syncing")}
                     </>
                   ) : (
-                    "同步"
+                    t("consoleSettings.mcp.actions.sync")
                   )}
                 </Button>
                 <DropdownMenu>
@@ -364,7 +366,7 @@ export default function ToolsAndMcp() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={onEdit} disabled={syncing || deleting}>
                       <IconPencil />
-                      修改
+                      {t("consoleSettings.mcp.actions.edit")}
                     </DropdownMenuItem>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -374,20 +376,20 @@ export default function ToolsAndMcp() {
                           disabled={syncing || deleting}
                         >
                           <IconTrash />
-                          {deleting ? "删除中" : "删除"}
+                          {deleting ? t("consoleSettings.mcp.actions.deleting") : t("consoleSettings.mcp.actions.delete")}
                         </DropdownMenuItem>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>确认删除</AlertDialogTitle>
+                          <AlertDialogTitle>{t("consoleSettings.mcp.delete.title")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            确定要删除 MCP 服务器 "{name}" 吗？此操作不可撤销。
+                            {t("consoleSettings.mcp.delete.description", { name })}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+                          <AlertDialogCancel disabled={deleting}>{t("consoleSettings.mcp.actions.cancel")}</AlertDialogCancel>
                           <AlertDialogAction onClick={onDelete} disabled={deleting}>
-                            {deleting ? "删除中..." : "确认删除"}
+                            {deleting ? t("consoleSettings.mcp.actions.deletingWithDots") : t("consoleSettings.mcp.delete.confirm")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -424,7 +426,7 @@ export default function ToolsAndMcp() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            正在加载 MCP 服务列表...
+            {t("consoleSettings.mcp.loading")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -449,10 +451,10 @@ export default function ToolsAndMcp() {
           <div>
             <div className="flex items-center gap-2 font-semibold leading-none">
               <Blocks />
-              MCP 与工具
+              {t("consoleSettings.mcp.title")}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              管理 MCP 服务器及其提供的工具能力。
+              {t("consoleSettings.mcp.description")}
             </p>
           </div>
           <Button
@@ -462,7 +464,7 @@ export default function ToolsAndMcp() {
             onClick={() => setIsAddDialogOpen(true)}
           >
             <Plus className="size-4" />
-            添加
+            {t("consoleSettings.mcp.actions.add")}
           </Button>
         </div>
 
@@ -474,7 +476,7 @@ export default function ToolsAndMcp() {
               {orderedServers.map((server) =>
                 renderServerCard({
                   key: server.id || server.name || server.url || Math.random().toString(36),
-                  name: server.name || "未命名 MCP 服务",
+                  name: server.name || t("consoleSettings.mcp.fallback.unnamedServer"),
                   url: server.url,
                   description: server.description,
                   tools: server.tools || [],

@@ -5,20 +5,20 @@ import type {
   TaskPlan,
 } from "./task-shared"
 import { parseTaskUserInputPayload, type TaskUserInputPayload } from "./task-shared"
+import { taskDetailT } from "./task-i18n"
 
 export type TaskMessageHandlerStatus = "inited" | "connected" | "finished" | "error"
 
-// 统一时间戳到纳秒：后端 REST 给纳秒、WebSocket 给毫秒，根据数量级判断单位。
-// 最后截到 10ms 边界——纳秒时间戳（~1.7e18）超出 Number.MAX_SAFE_INTEGER，不同 API
-// 返回的同一条消息经 JSON 解析后浮点精度损失（~256ns）可能不同，截到 1ms 偶发跨界，
-// 截到 10ms 彻底避免此问题，同时兼容 WS 已丢失 sub-ms 精度的场景。
+// Normalize timestamps to nanoseconds, then snap them to a 10 ms boundary.
+// REST returns nanoseconds while WebSocket chunks return milliseconds. Nanosecond
+// timestamps exceed Number.MAX_SAFE_INTEGER, so snapping keeps IDs stable.
 function normalizeTimestampToNs(ts: number): number {
   if (!Number.isFinite(ts) || ts <= 0) return 0
   let ns: number
-  if (ts >= 1e17) ns = ts                    // 已经是纳秒
-  else if (ts >= 1e14) ns = ts * 1_000       // 微秒 → 纳秒
-  else if (ts >= 1e11) ns = ts * 1_000_000   // 毫秒 → 纳秒
-  else ns = ts * 1_000_000_000               // 秒 → 纳秒
+  if (ts >= 1e17) ns = ts
+  else if (ts >= 1e14) ns = ts * 1_000
+  else if (ts >= 1e11) ns = ts * 1_000_000
+  else ns = ts * 1_000_000_000
   return Math.floor(ns / 10_000_000) * 10_000_000
 }
 
@@ -167,11 +167,6 @@ export class TaskMessageHandler {
   }
 
   private applyUserInput(data: TaskUserInputPayload, timestamp: number) {
-    // chunk.timestamp 不同来源单位不一致：
-    //   - REST /rounds 是纳秒（ClickHouse UnixNano）
-    //   - WebSocket 推送是毫秒（task.go: chunk.Timestamp / 1e6）
-    // 这里统一归一化到纳秒，保证 user-input 的 id 跨来源稳定（同一条消息只产生一条 React item）
-    // 且与后端 /user-inputs 返回的 id 严格对齐，方便侧边栏点击跳转。
     const tsNs = normalizeTimestampToNs(timestamp)
     const userInputId = tsNs > 0 ? `user-input-${tsNs}` : this.createMessageId()
 
@@ -200,7 +195,7 @@ export class TaskMessageHandler {
       id: this.createMessageId(),
       time: timestamp,
       role: "system",
-      data: { content: "用户取消当前任务" },
+      data: { content: taskDetailT("system.userCanceled") },
       type: "system_message",
     }
     this.state.messages.push(newMessage)
@@ -378,10 +373,10 @@ export class TaskMessageHandler {
 
   private applyLLMCallRetry(data: any, timestamp: number) {
     const update = data.update ?? {}
-    const errorMessage = update.message || "未知错误"
+    const errorMessage = update.message || taskDetailT("alert.unknownError")
     const text = typeof update.attempt === "number"
-      ? `模型调用失败，正在重试第 ${update.attempt} 次：${errorMessage}`
-      : `模型调用失败，正在重试：${errorMessage}`
+      ? taskDetailT("alert.llmRetryAttempt", { attempt: update.attempt, message: errorMessage })
+      : taskDetailT("alert.llmRetry", { message: errorMessage })
 
     this.applyAlertMessage(text, "warning", timestamp)
   }
@@ -390,9 +385,9 @@ export class TaskMessageHandler {
     const status = data.update?.status
 
     if (status === "started") {
-      this.applyAlertMessage("启动上下文压缩", "info", timestamp)
+      this.applyAlertMessage(taskDetailT("alert.compactStarted"), "info", timestamp)
     } else if (status === "ended") {
-      this.applyAlertMessage("上下文压缩完成", "info", timestamp)
+      this.applyAlertMessage(taskDetailT("alert.compactEnded"), "info", timestamp)
     }
   }
 

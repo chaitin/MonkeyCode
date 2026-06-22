@@ -59,16 +59,17 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "
 import { WechatMpBindDialog } from "@/components/console/wechat-mp-bind-dialog"
 import { useCommonData } from "@/components/console/data-provider"
 import { IS_ONLINE_EDITION } from "@/utils/edition"
+import { useTranslation } from "react-i18next"
 
-/** 接收端类型（UI 用，wechat_work 映射到 API 的 wecom） */
+/** Receiver type used by the UI; wechat_work maps to the API wecom kind. */
 export type ReceiverType = "dingtalk" | "feishu" | "wechat_work" | "webhook"
 type ApiReceiverKind = "dingtalk" | "feishu" | "wecom" | "webhook"
 
-const RECEIVER_TYPE_OPTIONS: { value: ReceiverType; label: string; icon: React.ReactNode }[] = [
-  { value: "dingtalk", label: "钉钉机器人", icon: <Icon name="dingtalk" className="size-4" /> },
-  { value: "feishu", label: "飞书机器人", icon: <Icon name="lark" className="size-4" /> },
-  { value: "wechat_work", label: "企业微信机器人", icon: <Icon name="wecom" className="size-4" /> },
-  { value: "webhook", label: "Webhook", icon: <Link2 className="size-4" /> },
+const RECEIVER_TYPE_OPTIONS: { value: ReceiverType; icon: React.ReactNode }[] = [
+  { value: "dingtalk", icon: <Icon name="dingtalk" className="size-4" /> },
+  { value: "feishu", icon: <Icon name="lark" className="size-4" /> },
+  { value: "wechat_work", icon: <Icon name="wecom" className="size-4" /> },
+  { value: "webhook", icon: <Link2 className="size-4" /> },
 ]
 
 const RECEIVER_TO_API_KIND: Record<ReceiverType, ApiReceiverKind> = {
@@ -95,15 +96,12 @@ function fromApiKind(kind?: ConstsNotifyChannelKind): ReceiverType {
   return kind ? API_KIND_TO_RECEIVER[kind] ?? "webhook" : "webhook"
 }
 
-function getReceiverTypeLabel(type: ReceiverType): string {
-  return RECEIVER_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
-}
-
 function getReceiverTypeIcon(type: ReceiverType): React.ReactNode {
   return RECEIVER_TYPE_OPTIONS.find((o) => o.value === type)?.icon ?? <Link2 className="size-4" />
 }
 
 export default function Notifications() {
+  const { t } = useTranslation()
   const { user, reloadUser } = useCommonData()
   const [channels, setChannels] = useState<DomainNotifyChannel[]>([])
   const [eventTypes, setEventTypes] = useState<ConstsNotifyEventTypeInfo[]>([])
@@ -127,6 +125,8 @@ export default function Notifications() {
   const [formEventTypes, setFormEventTypes] = useState<ConstsNotifyEventType[]>([])
 
   const api = new Api()
+  const getReceiverTypeLabel = (type: ReceiverType): string =>
+    t(`consoleSettings.notifications.receiverTypes.${type}`)
 
   const loadChannels = async () => {
     if (!IS_ONLINE_EDITION) {
@@ -141,7 +141,7 @@ export default function Notifications() {
         setChannels(res.data.data)
       }
     } catch {
-      toast.error("加载推送渠道失败")
+      toast.error(t("consoleSettings.notifications.toast.loadChannelsFailed"))
     } finally {
       setLoadingChannels(false)
     }
@@ -160,7 +160,7 @@ export default function Notifications() {
         setEventTypes(res.data.data)
       }
     } catch {
-      toast.error("加载事件类型失败")
+      toast.error(t("consoleSettings.notifications.toast.loadEventTypesFailed"))
     } finally {
       setLoadingEventTypes(false)
     }
@@ -197,13 +197,13 @@ export default function Notifications() {
 
   const handleSave = async () => {
     if (!formName.trim()) {
-      toast.error("请输入名称")
+      toast.error(t("consoleSettings.notifications.toast.nameRequired"))
       return
     }
     if (!formWebhookUrl.trim()) return
     const name = formName.trim()
     if (formEventTypes.length === 0) {
-      toast.error("请至少选择一种订阅事件")
+      toast.error(t("consoleSettings.notifications.toast.eventRequired"))
       return
     }
 
@@ -220,12 +220,12 @@ export default function Notifications() {
           }
         )
         if (res.data?.code === 0) {
-          toast.success("保存成功")
+          toast.success(t("consoleSettings.notifications.toast.saveSuccess"))
           setAddDialogOpen(false)
           resetForm()
           loadChannels()
         } else {
-          toast.error(res.data?.message ?? "保存失败")
+          toast.error(res.data?.message ?? t("consoleSettings.notifications.toast.saveFailed"))
         }
       } else {
         const res = await api.api.v1UsersNotifyChannelsCreate({
@@ -236,16 +236,16 @@ export default function Notifications() {
           ...(formSecret.trim() && { secret: formSecret.trim() }),
         })
         if (res.data?.code === 0) {
-          toast.success("添加成功")
+          toast.success(t("consoleSettings.notifications.toast.addSuccess"))
           setAddDialogOpen(false)
           resetForm()
           loadChannels()
         } else {
-          toast.error(res.data?.message ?? "添加失败")
+          toast.error(res.data?.message ?? t("consoleSettings.notifications.toast.addFailed"))
         }
       }
     } catch {
-      toast.error("操作失败")
+      toast.error(t("consoleSettings.notifications.toast.operationFailed"))
     } finally {
       setSaving(false)
     }
@@ -262,15 +262,15 @@ export default function Notifications() {
     try {
       const res = await api.api.v1UsersNotifyChannelsDelete(channelToDelete.id)
       if (res.data?.code === 0) {
-        toast.success("移除成功")
+        toast.success(t("consoleSettings.notifications.toast.removeSuccess"))
         setChannelToDelete(null)
         setDeleteDialogOpen(false)
         loadChannels()
       } else {
-        toast.error(res.data?.message ?? "移除失败")
+        toast.error(res.data?.message ?? t("consoleSettings.notifications.toast.removeFailed"))
       }
     } catch {
-      toast.error("移除失败")
+      toast.error(t("consoleSettings.notifications.toast.removeFailed"))
     } finally {
       setDeleting(false)
     }
@@ -282,12 +282,12 @@ export default function Notifications() {
     try {
       const res = await api.api.v1UsersNotifyChannelsTestCreate(ch.id)
       if (res.data?.code === 0) {
-        toast.success("测试消息已发送")
+        toast.success(t("consoleSettings.notifications.toast.testSent"))
       } else {
-        toast.error(res.data?.message ?? "测试失败")
+        toast.error(res.data?.message ?? t("consoleSettings.notifications.toast.testFailed"))
       }
     } catch {
-      toast.error("测试失败")
+      toast.error(t("consoleSettings.notifications.toast.testFailed"))
     } finally {
       setTestingId(null)
     }
@@ -298,14 +298,14 @@ export default function Notifications() {
     try {
       const res = await api.api.v1UsersWechatMpBindDelete()
       if (res.data?.code === 0) {
-        toast.success("已解除公众号绑定")
+        toast.success(t("consoleSettings.notifications.toast.wechatUnbound"))
         setWechatMpUnbindDialogOpen(false)
         await reloadUser()
       } else {
-        toast.error(res.data?.message ?? "解除绑定失败")
+        toast.error(res.data?.message ?? t("consoleSettings.notifications.toast.wechatUnbindFailed"))
       }
     } catch {
-      toast.error("解除绑定失败")
+      toast.error(t("consoleSettings.notifications.toast.wechatUnbindFailed"))
     } finally {
       setUnbindingWechatMp(false)
     }
@@ -331,14 +331,16 @@ export default function Notifications() {
             </div>
           </ItemMedia>
           <ItemContent>
-            <ItemTitle>{ch.name ?? "未命名"}</ItemTitle>
+            <ItemTitle>{ch.name ?? t("consoleSettings.notifications.fallback.unnamed")}</ItemTitle>
             <ItemDescription className="break-all">
-              {getReceiverTypeLabel(fromApiKind(ch.kind))} · 订阅{" "}
-              {(ch.event_types ?? []).length > 0
-                ? (ch.event_types ?? [])
-                    .map((t) => getEventTypeLabel(t))
-                    .join("、")
-                : "无"}
+              {t("consoleSettings.notifications.channelDescription", {
+                receiver: getReceiverTypeLabel(fromApiKind(ch.kind)),
+                events: (ch.event_types ?? []).length > 0
+                  ? (ch.event_types ?? [])
+                      .map((eventType) => getEventTypeLabel(eventType))
+                      .join(t("consoleSettings.notifications.eventSeparator"))
+                  : t("consoleSettings.notifications.none"),
+              })}
             </ItemDescription>
           </ItemContent>
           <ItemActions>
@@ -348,7 +350,7 @@ export default function Notifications() {
               onClick={() => handleTest(ch)}
               disabled={!!testingId}
             >
-              {testingId === ch.id ? <Spinner className="size-4" /> : "测试"}
+              {testingId === ch.id ? <Spinner className="size-4" /> : t("consoleSettings.notifications.actions.test")}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -359,14 +361,14 @@ export default function Notifications() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => openEditDialog(ch)}>
                   <IconPencil />
-                  编辑
+                  {t("consoleSettings.notifications.actions.edit")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-destructive"
                   onClick={() => handleDelete(ch)}
                 >
                   <IconTrash />
-                  移除
+                  {t("consoleSettings.notifications.actions.remove")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -384,7 +386,7 @@ export default function Notifications() {
         </EmptyMedia>
       </EmptyHeader>
       <EmptyContent>
-        <EmptyDescription>正在加载推送渠道...</EmptyDescription>
+        <EmptyDescription>{t("consoleSettings.notifications.loading")}</EmptyDescription>
       </EmptyContent>
     </Empty>
   )
@@ -399,13 +401,13 @@ export default function Notifications() {
       </ItemMedia>
       <ItemContent>
         <ItemTitle className="flex items-center gap-2">
-          微信公众号
+          {t("consoleSettings.notifications.wechat.title")}
           <Badge variant={wechatMpBound ? "default" : "outline"}>
-            {wechatMpBound ? "已绑定" : "未绑定"}
+            {wechatMpBound ? t("consoleSettings.notifications.wechat.bound") : t("consoleSettings.notifications.wechat.unbound")}
           </Badge>
         </ItemTitle>
         <ItemDescription>
-          订阅任务通知，避免任务自动终止后丢失工作文件。
+          {t("consoleSettings.notifications.wechat.description")}
         </ItemDescription>
       </ItemContent>
       <ItemActions>
@@ -416,7 +418,7 @@ export default function Notifications() {
             onClick={() => setWechatMpUnbindDialogOpen(true)}
             disabled={unbindingWechatMp}
           >
-            {unbindingWechatMp ? <Spinner className="size-4" /> : "解绑"}
+            {unbindingWechatMp ? <Spinner className="size-4" /> : t("consoleSettings.notifications.actions.unbind")}
           </Button>
         ) : (
           <Button
@@ -424,7 +426,7 @@ export default function Notifications() {
             size="sm"
             onClick={() => setWechatMpBindDialogOpen(true)}
           >
-            绑定
+            {t("consoleSettings.notifications.actions.bind")}
           </Button>
         )}
       </ItemActions>
@@ -437,10 +439,10 @@ export default function Notifications() {
         <div>
           <div className="flex items-center gap-2 font-semibold leading-none">
             <Bell />
-            消息通知
+            {t("consoleSettings.notifications.title")}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            配置任务、系统等消息的接收方式，支持钉钉、飞书、企业微信机器人和 Webhook
+            {t("consoleSettings.notifications.description")}
           </p>
         </div>
         <Button
@@ -450,7 +452,7 @@ export default function Notifications() {
           disabled={loadingEventTypes || eventTypes.length === 0}
         >
           <CirclePlus className="size-4" />
-          添加接收端
+          {t("consoleSettings.notifications.actions.addReceiver")}
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
@@ -466,7 +468,7 @@ export default function Notifications() {
                 <Bell className="size-6" />
               </EmptyMedia>
               <EmptyDescription>
-                添加接收端以接收任务、系统等消息通知
+                {t("consoleSettings.notifications.empty")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -476,11 +478,11 @@ export default function Notifications() {
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingChannel ? "编辑接收端" : "添加接收端"}</DialogTitle>
+            <DialogTitle>{editingChannel ? t("consoleSettings.notifications.dialog.editTitle") : t("consoleSettings.notifications.dialog.addTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>接收端类型</Label>
+              <Label>{t("consoleSettings.notifications.labels.receiverType")}</Label>
               <Select
                 value={formType}
                 onValueChange={(v) => setFormType(v as ReceiverType)}
@@ -494,27 +496,27 @@ export default function Notifications() {
                     <SelectItem key={opt.value} value={opt.value}>
                       <span className="flex items-center gap-2">
                         {opt.icon}
-                        {opt.label}
+                        {getReceiverTypeLabel(opt.value)}
                       </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {editingChannel && (
-                <p className="text-xs text-muted-foreground">编辑时不可修改接收端类型</p>
+                <p className="text-xs text-muted-foreground">{t("consoleSettings.notifications.receiverTypeLocked")}</p>
               )}
             </div>
             <div className="space-y-2">
-              <Label>名称</Label>
+              <Label>{t("consoleSettings.notifications.labels.name")}</Label>
               <Input
-                placeholder={`如：${getReceiverTypeLabel(formType)}-1`}
+                placeholder={t("consoleSettings.notifications.placeholders.name", { receiver: getReceiverTypeLabel(formType) })}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <Label>
-                {formType === "webhook" ? "Webhook 地址" : "机器人 Webhook 地址"}
+                {formType === "webhook" ? t("consoleSettings.notifications.labels.webhookUrl") : t("consoleSettings.notifications.labels.robotWebhookUrl")}
               </Label>
               <Input
                 placeholder="https://..."
@@ -523,22 +525,22 @@ export default function Notifications() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Secret（选填）</Label>
+              <Label>{t("consoleSettings.notifications.labels.secret")}</Label>
               <Input
                 type="password"
-                placeholder="用于签名验证，钉钉/飞书/企业微信机器人可选填"
+                placeholder={t("consoleSettings.notifications.placeholders.secret")}
                 value={formSecret}
                 onChange={(e) => setFormSecret(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                部分机器人需要配置 Secret 以验证消息来源
+                {t("consoleSettings.notifications.secretDescription")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label>订阅消息</Label>
+              <Label>{t("consoleSettings.notifications.labels.events")}</Label>
               <div className="flex flex-col gap-2 rounded-lg border p-3">
                 {eventTypes.length === 0 ? (
-                  <span className="text-sm text-muted-foreground">暂无可用事件类型</span>
+                  <span className="text-sm text-muted-foreground">{t("consoleSettings.notifications.noEventTypes")}</span>
                 ) : (
                   eventTypes.map((et) => (
                     <div
@@ -568,7 +570,7 @@ export default function Notifications() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-              取消
+              {t("consoleSettings.notifications.actions.cancel")}
             </Button>
             <Button
               onClick={handleSave}
@@ -579,7 +581,7 @@ export default function Notifications() {
                 saving
               }
             >
-              {saving ? <Spinner className="size-4" /> : editingChannel ? "保存" : "添加"}
+              {saving ? <Spinner className="size-4" /> : editingChannel ? t("consoleSettings.notifications.actions.save") : t("consoleSettings.notifications.actions.add")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -588,17 +590,17 @@ export default function Notifications() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认移除</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleSettings.notifications.remove.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要移除接收端「{channelToDelete?.name}」吗？此操作不可撤销。
+              {t("consoleSettings.notifications.remove.description", { name: channelToDelete?.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setChannelToDelete(null)} disabled={deleting}>
-              取消
+              {t("consoleSettings.notifications.actions.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
-              {deleting ? <Spinner className="size-4" /> : "确认移除"}
+              {deleting ? <Spinner className="size-4" /> : t("consoleSettings.notifications.remove.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -617,17 +619,17 @@ export default function Notifications() {
           <AlertDialog open={wechatMpUnbindDialogOpen} onOpenChange={setWechatMpUnbindDialogOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>确认解绑微信公众号</AlertDialogTitle>
+                <AlertDialogTitle>{t("consoleSettings.notifications.wechatUnbind.title")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  解绑后将无法通过微信公众号接收任务通知。确定要继续吗？
+                  {t("consoleSettings.notifications.wechatUnbind.description")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={unbindingWechatMp}>
-                  取消
+                  {t("consoleSettings.notifications.actions.cancel")}
                 </AlertDialogCancel>
                 <AlertDialogAction onClick={handleUnbindWechatMp} disabled={unbindingWechatMp}>
-                  {unbindingWechatMp ? <Spinner className="size-4" /> : "确认解绑"}
+                  {unbindingWechatMp ? <Spinner className="size-4" /> : t("consoleSettings.notifications.wechatUnbind.confirm")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

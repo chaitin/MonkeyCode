@@ -4,7 +4,7 @@
 // Plugins use a flat list (no tag tabs) because the listing surface is much
 // smaller than skills and the backend does not group them by tag. Like the
 // skill picker, plugins flagged `is_force_delivery=true` render as
-// checked-and-disabled chips with a 强制下发 badge — the backend re-injects
+// checked-and-disabled chips with a force-delivery badge; the backend re-injects
 // these IDs so the form does not submit them.
 
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { PluginListItem } from "@/lib/agent-resources-api"
 import { cn } from "@/lib/utils"
 import { IconPlug } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 interface TaskPluginSelectorProps {
   open: boolean
@@ -35,6 +36,8 @@ interface PluginRowProps {
 }
 
 function PluginRow({ plugin, selectedPlugins, onPluginChange }: PluginRowProps) {
+  const { t } = useTranslation()
+
   if (!plugin.id) {
     return null
   }
@@ -68,10 +71,10 @@ function PluginRow({ plugin, selectedPlugins, onPluginChange }: PluginRowProps) 
                   variant="secondary"
                   className="shrink-0 px-1.5 py-0 text-[10px] leading-4"
                 >
-                  强制下发
+                  {t("taskWorkflow.plugin.forceDelivery")}
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>由管理员强制下发，无需选择</TooltipContent>
+              <TooltipContent>{t("taskWorkflow.plugin.forceDeliveryTooltip")}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -94,6 +97,7 @@ export function TaskPluginSelector({
   triggerClassName,
   labelClassName,
 }: TaskPluginSelectorProps) {
+  const { t } = useTranslation()
   // Hide force-delivery plugins entirely — backend injects them server-side
   // regardless of user selection, so showing them in the picker is just noise.
   const visiblePlugins = plugins.filter((p) => !p.is_force_delivery)
@@ -111,8 +115,8 @@ export function TaskPluginSelector({
           <IconPlug />
           <span className={labelClassName}>
             {selectedPlugins.length > 0
-              ? `${selectedPlugins.length} 个插件`
-              : "插件"}
+              ? t("taskWorkflow.plugin.selectedCount", { count: selectedPlugins.length })
+              : t("taskWorkflow.plugin.label")}
           </span>
         </Button>
       </PopoverTrigger>
@@ -123,7 +127,7 @@ export function TaskPluginSelector({
         <div className="min-h-0 flex-1 overflow-y-auto rounded-md border bg-background p-1">
           {visiblePlugins.length === 0 ? (
             <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-              暂无可用插件
+              {t("taskWorkflow.plugin.empty")}
             </div>
           ) : (
             visiblePlugins.map((plugin) => (

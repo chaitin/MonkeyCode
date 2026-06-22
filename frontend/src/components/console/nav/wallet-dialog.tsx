@@ -8,6 +8,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item"
 import { IconChevronDown, IconCoin, IconGift } from "@tabler/icons-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import dayjs from "dayjs"
 
@@ -21,19 +22,20 @@ import { useCommonData } from "../data-provider"
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 const WALLET_NAV = [
-  { id: "earn", name: "我的积分", icon: IconGift },
-  { id: "usage", name: "积分账单", icon: IconCoin },
+  { id: "earn", icon: IconGift },
+  { id: "usage", icon: IconCoin },
 ] as const
 
 const COMMUNITY_GROUPS = [
-  { id: "wechat", src: "/wechat.png", alt: "微信二维码", label: "微信群", iconName: "wecom" },
-  { id: "dingtalk", src: "/dingtalk.png", alt: "钉钉群二维码", label: "钉钉群", iconName: "dingtalk" },
-  { id: "feishu", src: "/feishu.png", alt: "飞书群二维码", label: "飞书群", iconName: "lark" },
+  { id: "wechat", src: "/wechat.png", iconName: "wecom" },
+  { id: "dingtalk", src: "/dingtalk.png", iconName: "dingtalk" },
+  { id: "feishu", src: "/feishu.png", iconName: "lark" },
 ] as const
 
 type WalletSectionId = (typeof WALLET_NAV)[number]["id"]
 
 export default function WalletDialog() {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<WalletSectionId>("earn")
   const [transcations, setTranscations] = useState<DomainTransactionLog[]>([])
@@ -69,11 +71,15 @@ export default function WalletDialog() {
   const getInvitationInitial = (name?: string) => name?.trim().charAt(0).toUpperCase() || "?"
   const invitationLink = `https://monkeycode-ai.com/?ic=${user.id}`
   const rechargeOptions = [
-    { credits: 2000, price: 10, discountLabel: "无折扣" },
-    { credits: 15000, price: 50, discountLabel: "6.7 折" },
-    { credits: 100000, price: 250, discountLabel: "5.0 折" },
-    { credits: 500000, price: 1000, discountLabel: "4.0 折" },
+    { credits: 2000, price: 10, discountKey: "none" },
+    { credits: 15000, price: 50, discountKey: "sixSeven" },
+    { credits: 100000, price: 250, discountKey: "five" },
+    { credits: 500000, price: 1000, discountKey: "four" },
   ]
+  const navLabels = {
+    earn: t("walletDialog.nav.earn"),
+    usage: t("walletDialog.nav.usage"),
+  }
 
   const positiveKinds = new Set<string>([
     ConstsTransactionKind.TransactionKindSignupBonus,
@@ -110,37 +116,37 @@ export default function WalletDialog() {
   const getTransactionLabel = (kind?: ConstsTransactionKind) => {
     switch (kind) {
       case ConstsTransactionKind.TransactionKindSignupBonus:
-        return "新用户注册奖励"
+        return t("walletDialog.transactions.kinds.signupBonus")
       case ConstsTransactionKind.TransactionKindVoucherExchange:
-        return "通过兑换码领取"
+        return t("walletDialog.transactions.kinds.voucherExchange")
       case ConstsTransactionKind.TransactionKindInvitationReward:
-        return "邀请注册奖励"
+        return t("walletDialog.transactions.kinds.invitationReward")
       case ConstsTransactionKind.TransactionKindVMConsumption:
-        return "开发环境消耗"
+        return t("walletDialog.transactions.kinds.vmConsumption")
       case ConstsTransactionKind.TransactionKindModelConsumption:
-        return "大模型消耗"
+        return t("walletDialog.transactions.kinds.modelConsumption")
       case ConstsTransactionKind.TransactionKindMCPToolConsumption:
-        return "MCP 工具消耗"
+        return t("walletDialog.transactions.kinds.mcpToolConsumption")
       case ConstsTransactionKind.TransactionKindProSubscription:
-        return "兑换专业会员"
+        return t("walletDialog.transactions.kinds.proSubscription")
       case ConstsTransactionKind.TransactionKindProAutoRenew:
-        return "专业会员自动续费"
+        return t("walletDialog.transactions.kinds.proAutoRenew")
       case ConstsTransactionKind.TransactionKindUltraSubscription:
-        return "兑换旗舰会员"
+        return t("walletDialog.transactions.kinds.ultraSubscription")
       case ConstsTransactionKind.TransactionKindUltraAutoRenew:
-        return "旗舰会员自动续费"
+        return t("walletDialog.transactions.kinds.ultraAutoRenew")
       case ConstsTransactionKind.TransactionKindProUpgradeRefund:
-        return "套餐升级退款"
+        return t("walletDialog.transactions.kinds.proUpgradeRefund")
       case ConstsTransactionKind.TransactionKindDailyGrant:
-        return "当日钱包发放"
+        return t("walletDialog.transactions.kinds.dailyGrant")
       case ConstsTransactionKind.TransactionKindTopUp:
-        return "充值积分"
+        return t("walletDialog.transactions.kinds.topUp")
       case ConstsTransactionKind.TransactionKindCheckin:
-        return "每日签到奖励"
+        return t("walletDialog.transactions.kinds.checkin")
       case ConstsTransactionKind.TransactionKindViolationFine:
-        return "违规罚扣"
+        return t("walletDialog.transactions.kinds.violationFine")
       default:
-        return "交易记录"
+        return t("walletDialog.transactions.kinds.default")
     }
   }
 
@@ -157,11 +163,13 @@ export default function WalletDialog() {
 
   const formatInvitationTime = (timestamp?: number) => {
     if (!timestamp) {
-      return "注册时间未知"
+      return t("walletDialog.invite.unknownRegistrationTime")
     }
 
     const parsed = dayjs.unix(timestamp)
-    return parsed.isValid() ? `${parsed.fromNow()}注册` : "注册时间未知"
+    return parsed.isValid()
+      ? t("walletDialog.invite.registeredAgo", { time: parsed.fromNow() })
+      : t("walletDialog.invite.unknownRegistrationTime")
   }
 
   const fetchTranscations = useCallback(async (pageToLoad: number, replace = false) => {
@@ -176,11 +184,11 @@ export default function WalletDialog() {
         setHasNextPage(resp.data?.page?.has_next_page || false)
         setPage(pageToLoad + 1)
       } else {
-        toast.error(resp.message || "获取交易记录失败")
+        toast.error(resp.message || t("walletDialog.toast.fetchTransactionsFailed"))
       }
     })
     setIsLoadingMore(false)
-  }, [])
+  }, [t])
 
   const fetchInvitations = useCallback(async () => {
     setIsInvitationsLoading(true)
@@ -193,11 +201,11 @@ export default function WalletDialog() {
         setInvitations(items)
         setInvitationCount(resp.data?.count || items.length)
       } else {
-        toast.error(resp.message || "获取邀请用户列表失败")
+        toast.error(resp.message || t("walletDialog.toast.fetchInvitationsFailed"))
       }
     })
     setIsInvitationsLoading(false)
-  }, [])
+  }, [t])
 
   const loadMore = useCallback(() => {
     if (hasNextPage && !isLoadingMore) {
@@ -270,23 +278,23 @@ export default function WalletDialog() {
 
   const handleCopyInvitationLink = () => {
     navigator.clipboard.writeText(invitationLink)
-    toast.success("邀请链接已复制到剪贴板")
+    toast.success(t("walletDialog.toast.invitationCopied"))
   }
 
   const handleExchange = async () => {
     if (!exchangeCode.trim()) {
-      toast.error("请输入兑换码")
+      toast.error(t("walletDialog.toast.exchangeCodeRequired"))
       return
     }
 
     setIsExchangeLoading(true)
     await apiRequest("v1UsersWalletExchangeCreate", { code: exchangeCode.trim() }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("兑换成功")
+        toast.success(t("walletDialog.toast.exchangeSuccess"))
         setExchangeCode("")
         reloadWallet()
       } else {
-        toast.error(resp.message || "兑换失败")
+        toast.error(resp.message || t("walletDialog.toast.exchangeFailed"))
       }
     })
     setIsExchangeLoading(false)
@@ -294,7 +302,7 @@ export default function WalletDialog() {
 
   const handleRecharge = async () => {
     if (!selectedRechargeCredits) {
-      toast.error("请选择充值套餐")
+      toast.error(t("walletDialog.toast.selectRechargePackage"))
       return
     }
 
@@ -305,7 +313,7 @@ export default function WalletDialog() {
         setShowRechargeDialog(false)
         window.open(paymentUrl, "_blank", "noopener,noreferrer")
       } else {
-        toast.error(resp.message || "获取支付链接失败")
+        toast.error(resp.message || t("walletDialog.toast.paymentUrlFailed"))
       }
     })
     setRechargingCredits(null)
@@ -322,13 +330,13 @@ export default function WalletDialog() {
     }, [], (resp) => {
       if (resp.code === 0) {
         reloadSubscription()
-        toast.success(enabled ? "已允许额度耗尽后消耗积分" : "已关闭额度耗尽后消耗积分")
+        toast.success(enabled ? t("walletDialog.toast.creditConsumptionEnabled") : t("walletDialog.toast.creditConsumptionDisabled"))
         return
       }
 
-      toast.error(resp.message || "设置失败")
+      toast.error(resp.message || t("walletDialog.toast.settingFailed"))
     }, () => {
-      toast.error("设置失败")
+      toast.error(t("walletDialog.toast.settingFailed"))
     })
     setIsCreditConsumptionUpdating(false)
   }
@@ -342,7 +350,7 @@ export default function WalletDialog() {
 
     const captchaToken = await captchaChallenge()
     if (!captchaToken) {
-      toast.error("验证码验证失败")
+      toast.error(t("walletDialog.toast.captchaFailed"))
       setIsCheckinSubmitting(false)
       return
     }
@@ -356,14 +364,14 @@ export default function WalletDialog() {
           reloadWallet()
           reloadCheckinStatus()
           fetchTranscations(1, true)
-          toast.success("签到成功，已领取 100 积分")
+          toast.success(t("walletDialog.toast.checkinSuccess"))
           return
         }
 
-        toast.error(resp.message || "签到失败，请重试")
+        toast.error(resp.message || t("walletDialog.toast.checkinFailed"))
       },
       () => {
-        toast.error("签到失败，请重试")
+        toast.error(t("walletDialog.toast.checkinFailed"))
       },
     )
 
@@ -374,7 +382,7 @@ export default function WalletDialog() {
     <div className="space-y-4">
       <div className="rounded-md border p-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-md font-medium">当前可用积分</div>
+          <div className="text-md font-medium">{t("walletDialog.earn.balanceTitle")}</div>
           <Button
             variant="default"
             size="sm"
@@ -384,12 +392,12 @@ export default function WalletDialog() {
               setShowRechargeDialog(true)
             }}
           >
-            充值
+            {t("walletDialog.earn.recharge")}
           </Button>
         </div>
         <div className="mt-4 grid gap-3">
           <div className="rounded-md bg-muted/40 px-4 py-3">
-            <div className="text-xs text-muted-foreground">积分余额</div>
+            <div className="text-xs text-muted-foreground">{t("walletDialog.earn.balanceLabel")}</div>
             <div className="mt-2 text-lg font-medium tabular-nums">{formatPoints(balance)}</div>
           </div>
         </div>
@@ -397,9 +405,9 @@ export default function WalletDialog() {
       <div className="rounded-md border p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-md font-medium">邀请注册</div>
+            <div className="text-md font-medium">{t("walletDialog.invite.title")}</div>
             <div className="mt-2 text-sm text-muted-foreground">
-              将下方邀请链接分享给好友。好友通过该链接注册后，你将获得 5000 积分奖励。
+              {t("walletDialog.invite.description")}
             </div>
           </div>
           <div className="rounded-full bg-brand-muted px-2.5 py-1 text-xs font-medium text-brand">
@@ -408,7 +416,7 @@ export default function WalletDialog() {
         </div>
         <div className="mt-4 flex flex-row justify-between gap-2">
           <Input value={invitationLink} readOnly />
-          <Button variant="outline" onClick={handleCopyInvitationLink}>复制邀请链接</Button>
+          <Button variant="outline" onClick={handleCopyInvitationLink}>{t("walletDialog.invite.copyLink")}</Button>
         </div>
         <div className="mt-4">
           <button
@@ -416,9 +424,9 @@ export default function WalletDialog() {
             className="flex w-full items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
             onClick={() => setIsInvitationListExpanded((prev) => !prev)}
           >
-            <span className="text-sm font-medium">已邀请 {formatPoints(invitationCount)} 人</span>
+            <span className="text-sm font-medium">{t("walletDialog.invite.invitedCount", { count: formatPoints(invitationCount) })}</span>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              {isInvitationListExpanded ? "收起列表" : "展开列表"}
+              {isInvitationListExpanded ? t("walletDialog.invite.collapseList") : t("walletDialog.invite.expandList")}
               <IconChevronDown className={cn("size-4 transition-transform", isInvitationListExpanded && "rotate-180")} />
             </span>
           </button>
@@ -427,7 +435,7 @@ export default function WalletDialog() {
               {isInvitationsLoading ? (
                 <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
                   <Spinner />
-                  <span className="ml-2">加载邀请用户中...</span>
+                  <span className="ml-2">{t("walletDialog.invite.loading")}</span>
                 </div>
               ) : invitations.length > 0 ? (
                 invitations.map((invitation) => (
@@ -435,14 +443,14 @@ export default function WalletDialog() {
                     key={invitation.id || `${invitation.name || "unknown"}-${invitation.invited_at || 0}`}
                     className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar className="size-8">
-                        <AvatarImage src={invitation.avatar_url} alt={invitation.name || "邀请用户头像"} />
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar className="size-8">
+                        <AvatarImage src={invitation.avatar_url} alt={invitation.name || t("walletDialog.invite.avatarAlt")} />
                         <AvatarFallback>{getInvitationInitial(invitation.name)}</AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">
-                          {invitation.name || "未命名用户"}
+                          {invitation.name || t("walletDialog.invite.unnamedUser")}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {formatInvitationTime(invitation.invited_at)}
@@ -450,13 +458,13 @@ export default function WalletDialog() {
                       </div>
                     </div>
                     <div className="shrink-0 text-sm font-medium text-brand">
-                      +{formatPoints(invitation.credits || 0)} 积分
+                      {t("walletDialog.invite.creditReward", { points: formatPoints(invitation.credits || 0) })}
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="py-6 text-center text-sm text-muted-foreground">
-                  暂无邀请记录
+                  {t("walletDialog.invite.empty")}
                 </div>
               )}
             </div>
@@ -465,9 +473,9 @@ export default function WalletDialog() {
       </div>
       <div className="rounded-md border p-4">
         <div>
-          <div className="text-md font-medium">社区活动</div>
+          <div className="text-md font-medium">{t("walletDialog.community.title")}</div>
           <div className="mt-2 text-sm text-muted-foreground">
-            加入技术交流群，参与不定期社区活动与福利互动，赢取更多积分奖励。
+            {t("walletDialog.community.description")}
           </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
@@ -476,14 +484,14 @@ export default function WalletDialog() {
               <HoverCardTrigger asChild>
                 <Button variant="outline">
                   <Icon name={group.iconName} className="size-4" />
-                  {group.label}
+                  {t(`walletDialog.community.groups.${group.id}.label`)}
                 </Button>
               </HoverCardTrigger>
               <HoverCardContent className="w-auto p-3" side="top" align="center">
                 <div className="flex items-center justify-center">
                   <img
                     src={group.src}
-                    alt={group.alt}
+                    alt={t(`walletDialog.community.groups.${group.id}.alt`)}
                     className="h-40 w-40 rounded-lg object-contain"
                   />
                 </div>
@@ -495,13 +503,13 @@ export default function WalletDialog() {
       <div className="rounded-md border p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-md font-medium">每日签到</div>
+            <div className="text-md font-medium">{t("walletDialog.earn.dailyCheckin")}</div>
             <div className="mt-1 text-sm text-muted-foreground">
               {checkedInToday === true
-                ? "今日已领取 100 积分，明天可再次签到。"
+                ? t("walletDialog.earn.checkinDoneDescription")
                 : checkedInToday === false
-                  ? "每天可签到 1 次，完成后获得 100 积分奖励。"
-                  : "暂时无法确认签到状态，请稍后重试。"}
+                  ? t("walletDialog.earn.checkinAvailableDescription")
+                  : t("walletDialog.earn.checkinUnknownDescription")}
             </div>
           </div>
           <Button
@@ -511,15 +519,15 @@ export default function WalletDialog() {
             disabled={loadingCheckinStatus || isCheckinSubmitting || checkedInToday !== false}
           >
             {isCheckinSubmitting && <Spinner />}
-            {checkedInToday === true ? "今日已签到" : "签到领 100 积分"}
+            {checkedInToday === true ? t("walletDialog.earn.checkinDone") : t("walletDialog.earn.checkinAction")}
           </Button>
         </div>
       </div>
       <div className="rounded-md border p-4">
-        <div className="text-md font-medium">兑换积分</div>
+        <div className="text-md font-medium">{t("walletDialog.earn.exchangeTitle")}</div>
         <div className="mt-4 flex gap-2">
           <Input
-            placeholder="请输入兑换码"
+            placeholder={t("walletDialog.earn.exchangePlaceholder")}
             value={exchangeCode}
             onChange={(e) => setExchangeCode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleExchange()}
@@ -530,7 +538,7 @@ export default function WalletDialog() {
             disabled={isExchangeLoading}
           >
             {isExchangeLoading && <Spinner />}
-            兑换
+            {t("walletDialog.earn.exchange")}
           </Button>
         </div>
       </div>
@@ -542,9 +550,9 @@ export default function WalletDialog() {
       <div className="rounded-md border p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <div className="text-sm font-medium">额度耗尽后消耗积分</div>
+            <div className="text-sm font-medium">{t("walletDialog.usage.creditConsumptionTitle")}</div>
             <div className="mt-1 text-xs leading-5 text-muted-foreground">
-              开启后，基础模型、专业模型、旗舰模型的当日免费额度用完时，将继续消耗积分使用对应模型。
+              {t("walletDialog.usage.creditConsumptionDescription")}
             </div>
           </div>
           <Switch
@@ -599,12 +607,12 @@ export default function WalletDialog() {
 
   const sectionMeta = activeSection === "earn"
     ? {
-        title: "我的积分",
-        description: "查看当前积分，并通过签到、兑换码和邀请注册获得积分",
+        title: t("walletDialog.sections.earn.title"),
+        description: t("walletDialog.sections.earn.description"),
       }
     : {
-        title: "积分账单",
-        description: "查看积分充值、消耗和奖励记录",
+        title: t("walletDialog.sections.usage.title"),
+        description: t("walletDialog.sections.usage.description"),
       }
 
   return (
@@ -621,14 +629,14 @@ export default function WalletDialog() {
       >
         <DialogContent className="flex h-[60vh] max-h-[90vh] w-[90vw] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="sr-only">
-            <DialogTitle>钱包</DialogTitle>
-            <DialogDescription>查看积分余额、获取积分和积分账单</DialogDescription>
+            <DialogTitle>{t("walletDialog.dialog.title")}</DialogTitle>
+            <DialogDescription>{t("walletDialog.dialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 w-full flex-1 overflow-hidden">
             <aside className="w-12 shrink-0 border-r p-2 md:w-44">
               <div className="flex items-center gap-2 px-2 pt-2 pb-4 font-semibold text-md">
                 <IconCoin className="size-4 shrink-0" />
-                <span className="hidden sm:inline">钱包</span>
+                <span className="hidden sm:inline">{t("walletDialog.dialog.sidebarTitle")}</span>
               </div>
               <div className="space-y-1">
                 {WALLET_NAV.map((item) => (
@@ -640,7 +648,7 @@ export default function WalletDialog() {
                     onClick={() => initializeDialog(item.id)}
                   >
                     <item.icon className="size-4 shrink-0" />
-                    <span className="hidden sm:inline">{item.name}</span>
+                    <span className="hidden sm:inline">{navLabels[item.id]}</span>
                   </Button>
                 ))}
               </div>
@@ -668,8 +676,8 @@ export default function WalletDialog() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>充值积分</DialogTitle>
-            <DialogDescription>请选择一个充值档位，系统会为你打开支付页面。</DialogDescription>
+            <DialogTitle>{t("walletDialog.recharge.title")}</DialogTitle>
+            <DialogDescription>{t("walletDialog.recharge.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {rechargeOptions.map((option) => (
@@ -684,9 +692,11 @@ export default function WalletDialog() {
                 disabled={rechargingCredits !== null}
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="truncate text-sm font-medium">{formatPoints(option.credits)} 积分</div>
+                  <div className="truncate text-sm font-medium">
+                    {t("walletDialog.recharge.creditsLabel", { points: formatPoints(option.credits) })}
+                  </div>
                   <div className="shrink-0 rounded-full bg-brand-muted px-2 py-0.5 text-xs font-medium text-brand">
-                    {option.discountLabel}
+                    {t(`walletDialog.recharge.discounts.${option.discountKey}`)}
                   </div>
                 </div>
                 <div
@@ -711,14 +721,14 @@ export default function WalletDialog() {
               }}
               disabled={rechargingCredits !== null}
             >
-              取消
+              {t("walletDialog.recharge.cancel")}
             </Button>
             <Button
               onClick={() => void handleRecharge()}
               disabled={!selectedRechargeCredits || rechargingCredits !== null}
             >
               {rechargingCredits !== null && <Spinner className="mr-2 size-4" />}
-              确认充值
+              {t("walletDialog.recharge.confirm")}
             </Button>
           </div>
         </DialogContent>

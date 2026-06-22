@@ -9,9 +9,11 @@ import {
 import { IconReport, IconUsersGroup } from "@tabler/icons-react"
 import { Blocks, FolderGit2, KeyRound, LayoutDashboard, ListTodo, MessagesSquare, Settings, Sparkles } from "lucide-react"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import { useTranslation } from "react-i18next"
 
 export default function NavTeams() {
   const location = useLocation()
+  const { t } = useTranslation()
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -23,7 +25,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/overview">
               <LayoutDashboard />
-              <span>仪表盘</span>
+              <span>{t("managerShell.nav.overview")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -34,7 +36,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/projects">
               <FolderGit2 />
-              <span>项目</span>
+              <span>{t("managerShell.nav.projects")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -45,7 +47,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/tasks">
               <ListTodo />
-              <span>任务</span>
+              <span>{t("managerShell.nav.tasks")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -56,7 +58,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/conversations">
               <MessagesSquare />
-              <span>对话</span>
+              <span>{t("managerShell.nav.conversations")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -67,7 +69,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/members">
               <IconUsersGroup />
-              <span>成员与权限</span>
+              <span>{t("managerShell.nav.members")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -78,7 +80,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/skills">
               <Sparkles />
-              <span>Skills</span>
+              <span>{t("managerShell.nav.skills")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -89,7 +91,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/mcp">
               <Blocks />
-              <span>MCP</span>
+              <span>{t("managerShell.nav.mcp")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -100,7 +102,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/settings">
               <Settings />
-              <span>设置</span>
+              <span>{t("managerShell.nav.settings")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -112,7 +114,7 @@ export default function NavTeams() {
             >
               <Link to="/manager/license">
                 <KeyRound />
-                <span>License</span>
+                <span>{t("managerShell.nav.license")}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -124,7 +126,7 @@ export default function NavTeams() {
           >
             <Link to="/manager/logs">
               <IconReport />
-              <span>操作记录</span>
+              <span>{t("managerShell.nav.logs")}</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

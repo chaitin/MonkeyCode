@@ -1,6 +1,7 @@
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { IconPhotoSearch } from "@tabler/icons-react";
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 type ImgsearchResultItem = {
   title?: string
@@ -43,7 +44,7 @@ function parsePayload(message: MessageType): ImgsearchPayload | null {
 
 export const renderTitle = (message: MessageType) => {
   const query = message.data.rawInput?.query
-  return query ? `图片搜索 “${query}”` : "图片搜索 搜索结果"
+  return query ? `${taskDetailT("toolcall.imageSearch")} "${query}"` : taskDetailT("toolcall.imageSearchResults")
 }
 
 export const renderDetail = (message: MessageType) => {
@@ -57,7 +58,7 @@ export const renderDetail = (message: MessageType) => {
           <EmptyMedia variant="icon">
             <IconPhotoSearch className="size-5 opacity-60" />
           </EmptyMedia>
-          <EmptyDescription>没有图片结果</EmptyDescription>
+          <EmptyDescription>{taskDetailT("toolcall.noImageResults")}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -72,14 +73,14 @@ export const renderDetail = (message: MessageType) => {
             <div className="h-16 w-20 shrink-0 overflow-hidden rounded bg-muted">
               <img
                 src={imageUrl}
-                alt={result.title || "图片搜索结果"}
+                alt={result.title || taskDetailT("toolcall.imageSearchResultAlt")}
                 className="h-full w-full object-cover"
                 loading="lazy"
               />
             </div>
             <div className="min-w-0 flex-1 py-0.5">
               <div className="line-clamp-2 text-xs font-medium leading-4 text-foreground">
-                {result.title || "未命名图片"}
+                {result.title || taskDetailT("toolcall.untitledImage")}
               </div>
               {result.url && (
                 <div className="mt-1 truncate text-[11px] text-muted-foreground">

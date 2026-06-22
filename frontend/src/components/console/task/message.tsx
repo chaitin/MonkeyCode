@@ -102,7 +102,7 @@ const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType,
       case 'restart_session':
         return <RestartSessionMessageItem message={message} />
       default:
-        console.error('收到奇葩数据', message);
+        console.error('Received unknown message data', message);
         return null;
     }
   }

@@ -1,7 +1,8 @@
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 export const renderTitle = (_message: MessageType) => {
-  return "发现违规行为，已上报风控中心"
+  return taskDetailT("toolcall.abuseReported")
 }
 
 export const renderDetail = (_message: MessageType) => {

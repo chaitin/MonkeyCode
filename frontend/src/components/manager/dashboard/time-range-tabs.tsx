@@ -1,12 +1,7 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTranslation } from "react-i18next"
 
 export type DashboardRange = "today" | "7d" | "30d"
-
-const labels: Record<DashboardRange, string> = {
-  today: "今日",
-  "7d": "近 7 天",
-  "30d": "近 30 天",
-}
 
 export function TimeRangeTabs({
   value,
@@ -15,6 +10,13 @@ export function TimeRangeTabs({
   value: DashboardRange
   onChange: (value: DashboardRange) => void
 }) {
+  const { t } = useTranslation()
+  const labels: Record<DashboardRange, string> = {
+    today: t("managerOverview.ranges.today"),
+    "7d": t("managerOverview.ranges.last7Days"),
+    "30d": t("managerOverview.ranges.last30Days"),
+  }
+
   return (
     <Tabs
       value={value}

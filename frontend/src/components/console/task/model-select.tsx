@@ -26,23 +26,18 @@ import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { IconChevronDown } from "@tabler/icons-react"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 const BUILTIN_MODEL_OPTIONS = [
   {
     model: "monkeycode-basic",
-    label: "基础模型",
-    badge: "免费使用",
   },
   {
     model: "monkeycode-pro",
-    label: "专业模型",
-    badge: "专业会员可免费使用",
   },
   {
     model: "monkeycode-ultra",
-    label: "旗舰模型",
-    badge: "旗舰会员可免费使用",
   },
 ] as const
 
@@ -63,7 +58,32 @@ export default function ModelSelect({
   className,
   subscription,
 }: ModelSelectProps) {
+  const { t } = useTranslation()
   const isMobile = useIsMobile()
+  const getBuiltinModelLabel = useCallback((modelName?: string | null) => {
+    if (modelName === "monkeycode-basic") {
+      return t("taskWorkflow.model.basic")
+    }
+    if (modelName === "monkeycode-pro") {
+      return t("taskWorkflow.model.pro")
+    }
+    if (modelName === "monkeycode-ultra") {
+      return t("taskWorkflow.model.ultra")
+    }
+    return ""
+  }, [t])
+  const getBuiltinModelBadge = useCallback((modelName?: string | null) => {
+    if (modelName === "monkeycode-basic") {
+      return t("taskWorkflow.model.freeUsage")
+    }
+    if (modelName === "monkeycode-pro") {
+      return t("taskWorkflow.model.proUsage")
+    }
+    if (modelName === "monkeycode-ultra") {
+      return t("taskWorkflow.model.ultraUsage")
+    }
+    return undefined
+  }, [t])
   const supportedModels = useMemo(
     () => models.filter((model) => model.id || model.model),
     [models],
@@ -73,8 +93,8 @@ export default function ModelSelect({
       ? []
       : BUILTIN_MODEL_OPTIONS.map((option) => ({
         key: option.model,
-        label: option.label,
-        badge: option.badge,
+        label: getBuiltinModelLabel(option.model),
+        badge: getBuiltinModelBadge(option.model),
         badgeVariant: option.model === "monkeycode-basic" ? "default" as const : "secondary" as const,
         iconName: option.model === "monkeycode-basic"
           ? "gift"
@@ -83,7 +103,7 @@ export default function ModelSelect({
             : "vip-2",
         models: supportedModels.filter((model) => getBuiltinModelName(model.model) === option.model),
       })),
-    [supportedModels],
+    [supportedModels, getBuiltinModelLabel, getBuiltinModelBadge],
   )
   const privateModels = useMemo(
     () => supportedModels.filter((model) => (
@@ -107,7 +127,7 @@ export default function ModelSelect({
           && !getBuiltinModelName(model.model)
         ))
         .reduce((groups, model) => {
-          const teamName = model.owner?.name || "团队模型"
+          const teamName = model.owner?.name || t("taskWorkflow.model.team")
           const teamId = model.owner?.id || teamName
           const groupKey = `${teamId}:${teamName}`
           const group = groups.get(groupKey) || { key: groupKey, label: teamName, iconName: "team", models: [] as DomainModel[] }
@@ -117,27 +137,27 @@ export default function ModelSelect({
         }, new Map<string, { key: string; label: string; iconName: string; models: DomainModel[] }>())
         .values(),
     ),
-    [supportedModels],
+    [supportedModels, t],
   )
   const modelGroups = useMemo(
     () => [
       ...builtinModelGroups,
       {
         key: "other-public-models",
-        label: "付费模型",
-        badge: "消耗积分使用",
+        label: t("taskWorkflow.model.paid"),
+        badge: t("taskWorkflow.model.paidUsage"),
         iconName: "qiandaizi",
         models: otherPaidModels,
       },
       {
         key: "private-models",
-        label: "我的模型",
+        label: t("taskWorkflow.model.mine"),
         iconName: "a-AIshezhi",
         models: privateModels,
       },
       ...teamModelGroups,
     ].filter((group) => group.models.length > 0),
-    [builtinModelGroups, privateModels, otherPaidModels, teamModelGroups],
+    [builtinModelGroups, privateModels, otherPaidModels, teamModelGroups, t],
   )
   const hasSelectableModel = modelGroups.some((group) => group.models.some((model) => model.id))
   const [openModelGroupKey, setOpenModelGroupKey] = useState<string>()
@@ -171,7 +191,7 @@ export default function ModelSelect({
     const builtinOption = BUILTIN_MODEL_OPTIONS.find((option) => option.model === builtinModelName)
     if (builtinOption && selectedModel) {
       const nestedModelName = getModelOptionDisplayName(selectedModel, true)
-      return isMobile ? nestedModelName : `${builtinOption.label} / ${nestedModelName}`
+      return isMobile ? nestedModelName : `${getBuiltinModelLabel(builtinOption.model)} / ${nestedModelName}`
     }
 
     return selectedModel ? getModelOptionDisplayName(selectedModel) : ""
@@ -193,7 +213,7 @@ export default function ModelSelect({
       || (builtinModelName === "monkeycode-pro" && nestedModelName === "qwen3.6-plus")
       || (builtinModelName === "monkeycode-ultra" && nestedModelName === "gpt-5.5")
     ) {
-      return "推荐"
+      return t("taskWorkflow.model.recommended")
     }
 
     return null
@@ -305,7 +325,7 @@ export default function ModelSelect({
                   <span className="truncate">{getSelectedModelDisplayName()}</span>
                 </span>
               ) : (
-                <span className="truncate text-muted-foreground">选择模型</span>
+                <span className="truncate text-muted-foreground">{t("taskWorkflow.model.select")}</span>
               )}
               <IconChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
             </Button>

@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
+import { useTranslation } from "react-i18next"
 
 export function ManagerListCard({
   title,
@@ -19,6 +20,8 @@ export function ManagerListCard({
   children: ReactNode
   pagination: ReactNode
 }) {
+  const { t } = useTranslation()
+
   return (
     <Card className="min-h-0 flex-1 shadow-none">
       <CardHeader>
@@ -28,7 +31,7 @@ export function ManagerListCard({
         </CardTitle>
         <CardDescription>
           {description}
-          {typeof count === "number" && ` · 当前 ${count} 条`}
+          {typeof count === "number" && t("managerList.count", { count })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-0">

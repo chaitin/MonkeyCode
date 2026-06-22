@@ -43,8 +43,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
+import { useTranslation } from "react-i18next"
 
 export default function Images() {
+  const { t } = useTranslation()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingImage, setEditingImage] = useState<DomainImage | null>(null)
@@ -63,16 +65,16 @@ export default function Images() {
 
   const handleDelete = (image: DomainImage) => {
     if (!image.id) {
-      toast.error("镜像信息不完整")
+      toast.error(t("consoleSettings.images.toast.incomplete"))
       return
     }
 
     apiRequest('v1UsersImagesDelete', {}, [image.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("镜像移除成功")
+        toast.success(t("consoleSettings.images.toast.removeSuccess"))
         reloadImages()
       } else {
-        toast.error("移除镜像失败: " + resp.message)
+        toast.error(t("consoleSettings.images.toast.removeFailed", { message: resp.message }))
       }
     })
   }
@@ -87,7 +89,7 @@ export default function Images() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            正在加载镜像列表...
+            {t("consoleSettings.images.loading")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -104,7 +106,7 @@ export default function Images() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            暂无配置，请先绑定镜像
+            {t("consoleSettings.images.empty")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -142,7 +144,7 @@ export default function Images() {
                 <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => handleEdit(image)} disabled={image.owner?.type !== ConstsOwnerType.OwnerTypePrivate}>
                   <IconPencil />
-                  修改
+                  {t("consoleSettings.images.actions.edit")}
                 </DropdownMenuItem>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -151,24 +153,24 @@ export default function Images() {
                         onSelect={(e) => { e.preventDefault() }}
                       >
                         <IconTrash />
-                        移除
+                        {t("consoleSettings.images.actions.remove")}
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认移除</AlertDialogTitle>
+                        <AlertDialogTitle>{t("consoleSettings.images.delete.title")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          确定要移除镜像 "{image.remark || getImageShortName(image.name || '')}" 吗？此操作不可撤销。
+                          {t("consoleSettings.images.delete.description", { name: image.remark || getImageShortName(image.name || '') })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t("consoleSettings.images.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => {
                             handleDelete(image)
                           }}
                         >
-                          确认移除
+                          {t("consoleSettings.images.delete.confirm")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -188,10 +190,10 @@ export default function Images() {
         <div>
           <div className="flex items-center gap-2 font-semibold leading-none">
             <Box />
-            系统镜像
+            {t("consoleSettings.images.title")}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            使用 Docker 镜像，用于构建开发环境
+            {t("consoleSettings.images.description")}
           </p>
         </div>
         <AddImage

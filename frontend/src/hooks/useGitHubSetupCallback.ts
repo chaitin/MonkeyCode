@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
 export interface GitHubSetupResult {
@@ -11,6 +12,7 @@ export interface GitHubSetupResult {
 export function useGitHubSetupCallback(onSuccess?: () => void) {
   const [searchParams, setSearchParams] = useSearchParams()
   const [result, setResult] = useState<GitHubSetupResult | null>(null)
+  const { t } = useTranslation()
   const processed = useRef(false)
 
   useEffect(() => {
@@ -30,11 +32,11 @@ export function useGitHubSetupCallback(onSuccess?: () => void) {
       setResult({
         type: 'error',
         reason: searchParams.get('reason') || 'unknown',
-        message: searchParams.get('message') || '未知错误',
+        message: searchParams.get('message') || t('githubSetupCallback.unknownError'),
       })
     }
 
-    // 清理 URL 参数
+    // Clean up URL parameters after processing the callback.
     const newParams = new URLSearchParams(searchParams)
     newParams.delete('github_setup')
     newParams.delete('installation_id')
@@ -42,7 +44,7 @@ export function useGitHubSetupCallback(onSuccess?: () => void) {
     newParams.delete('reason')
     newParams.delete('message')
     setSearchParams(newParams, { replace: true })
-  }, [searchParams, setSearchParams, onSuccess])
+  }, [searchParams, setSearchParams, onSuccess, t])
 
   const dismiss = () => setResult(null)
 

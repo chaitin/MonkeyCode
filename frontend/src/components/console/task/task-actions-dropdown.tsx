@@ -8,7 +8,8 @@ import { apiRequest } from "@/utils/requestUtils"
 import { getTaskDisplayName } from "@/utils/common"
 import { toast } from "sonner"
 import { IconDotsVertical, IconLoader, IconPencil, IconPlayerStopFilled, IconTrash } from "@tabler/icons-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 type TaskActionsDropdownProps = {
   task: DomainProjectTask
@@ -27,37 +28,43 @@ export function TaskActionsDropdown({
   onStop,
   onDelete,
   onRenameSuccess,
-  renameLabel = "修改名称",
-  stopLabel = "终止任务",
-  deleteLabel = "删除任务",
+  renameLabel,
+  stopLabel,
+  deleteLabel,
   triggerClassName,
   contentClassName,
 }: TaskActionsDropdownProps) {
+  const { t } = useTranslation()
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [title, setTitle] = useState("")
   const [renaming, setRenaming] = useState(false)
+  const resolvedRenameLabel = renameLabel ?? t("taskWorkflow.actions.rename")
+  const resolvedStopLabel = stopLabel ?? t("taskWorkflow.actions.stop")
+  const resolvedDeleteLabel = deleteLabel ?? t("taskWorkflow.actions.delete")
   const canStop =
     task.status === ConstsTaskStatus.TaskStatusPending ||
     task.status === ConstsTaskStatus.TaskStatusProcessing
 
-  useEffect(() => {
-    if (renameDialogOpen) {
-      setTitle(getTaskDisplayName(task))
-      return
-    }
+  const openRenameDialog = () => {
+    setTitle(getTaskDisplayName(task))
+    setRenameDialogOpen(true)
+  }
+
+  const closeRenameDialog = () => {
+    setRenameDialogOpen(false)
     setTitle("")
     setRenaming(false)
-  }, [renameDialogOpen, task])
+  }
 
   const handleRename = async () => {
     if (!task.id) {
-      toast.error("任务信息无效")
+      toast.error(t("taskWorkflow.rename.invalidTask"))
       return
     }
 
     const nextTitle = title.trim()
     if (!nextTitle) {
-      toast.error("请输入任务名称")
+      toast.error(t("taskWorkflow.rename.emptyName"))
       return
     }
 
@@ -69,16 +76,16 @@ export function TaskActionsDropdown({
       (resp) => {
         setRenaming(false)
         if (resp.code === 0) {
-          toast.success("任务名称修改成功")
+          toast.success(t("taskWorkflow.rename.success"))
           onRenameSuccess?.(nextTitle)
-          setRenameDialogOpen(false)
+          closeRenameDialog()
         } else {
-          toast.error(resp.message || "修改任务名称失败")
+          toast.error(resp.message || t("taskWorkflow.rename.failed"))
         }
       },
       () => {
         setRenaming(false)
-        toast.error("修改任务名称失败")
+        toast.error(t("taskWorkflow.rename.failed"))
       }
     )
   }
@@ -103,10 +110,10 @@ export function TaskActionsDropdown({
         <DropdownMenuContent align="end" className={cn("py-1", contentClassName)}>
           {onRenameSuccess && (
             <DropdownMenuItem
-              onSelect={() => setRenameDialogOpen(true)}
+              onSelect={openRenameDialog}
             >
               <IconPencil className="mr-1" />
-              {renameLabel}
+              {resolvedRenameLabel}
             </DropdownMenuItem>
           )}
           {canStop && onStop && (
@@ -115,7 +122,7 @@ export function TaskActionsDropdown({
               onClick={() => onStop(task)}
             >
               <IconPlayerStopFilled className="mr-1" />
-              {stopLabel}
+              {resolvedStopLabel}
             </DropdownMenuItem>
           )}
           {onDelete && (
@@ -124,7 +131,7 @@ export function TaskActionsDropdown({
               onClick={() => onDelete(task)}
             >
               <IconTrash className="mr-1" />
-              {deleteLabel}
+              {resolvedDeleteLabel}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -132,19 +139,24 @@ export function TaskActionsDropdown({
       <Dialog
         open={renameDialogOpen}
         onOpenChange={(open) => {
-          if (!renaming) {
-            setRenameDialogOpen(open)
+          if (renaming) {
+            return
+          }
+          if (open) {
+            openRenameDialog()
+          } else {
+            closeRenameDialog()
           }
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>修改任务名称</DialogTitle>
+            <DialogTitle>{t("taskWorkflow.rename.title")}</DialogTitle>
           </DialogHeader>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="请输入任务名称"
+            placeholder={t("taskWorkflow.rename.emptyName")}
             disabled={renaming}
             autoFocus
             onKeyDown={(e) => {
@@ -155,12 +167,12 @@ export function TaskActionsDropdown({
             }}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameDialogOpen(false)} disabled={renaming}>
-              取消
+            <Button variant="outline" onClick={closeRenameDialog} disabled={renaming}>
+              {t("taskWorkflow.rename.cancel")}
             </Button>
             <Button onClick={() => void handleRename()} disabled={renaming || !title.trim()}>
               {renaming && <IconLoader className="size-4 animate-spin" />}
-              {renaming ? "提交中..." : "确定"}
+              {renaming ? t("taskWorkflow.rename.submitting") : t("taskWorkflow.rename.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

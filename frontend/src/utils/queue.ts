@@ -1,97 +1,96 @@
 /**
- * 通用队列数据结构
- * 支持泛型，提供标准队列操作
+ * Generic queue data structure with standard queue operations.
  */
 export class Queue<T> {
   private items: T[] = []
 
   /**
-   * 入队：将元素添加到队列末尾
+   * Adds an item to the end of the queue.
    */
   enqueue(item: T): void {
     this.items.push(item)
   }
 
   /**
-   * 批量入队：将多个元素添加到队列末尾
+   * Adds multiple items to the end of the queue.
    */
   enqueueAll(items: T[]): void {
     this.items.push(...items)
   }
 
   /**
-   * 出队：移除并返回队列头部元素
-   * 如果队列为空，返回 undefined
+   * Removes and returns the item at the front of the queue.
+   * Returns undefined when the queue is empty.
    */
   dequeue(): T | undefined {
     return this.items.shift()
   }
 
   /**
-   * 查看队首元素但不移除
+   * Returns the front item without removing it.
    */
   peek(): T | undefined {
     return this.items[0]
   }
 
   /**
-   * 查看队尾元素但不移除
+   * Returns the last item without removing it.
    */
   peekLast(): T | undefined {
     return this.items[this.items.length - 1]
   }
 
   /**
-   * 检查队列是否为空
+   * Checks whether the queue is empty.
    */
   isEmpty(): boolean {
     return this.items.length === 0
   }
 
   /**
-   * 获取队列长度
+   * Returns the queue length.
    */
   size(): number {
     return this.items.length
   }
 
   /**
-   * 清空队列
+   * Clears the queue.
    */
   clear(): void {
     this.items = []
   }
 
   /**
-   * 获取队列所有元素的副本（不修改原队列）
+   * Returns a copy of all queue items without modifying the queue.
    */
   toArray(): T[] {
     return [...this.items]
   }
 
   /**
-   * 遍历队列中的每个元素
+   * Iterates over each item in the queue.
    */
   forEach(callback: (item: T, index: number) => void): void {
     this.items.forEach(callback)
   }
 
   /**
-   * 查找满足条件的第一个元素
+   * Finds the first item matching the predicate.
    */
   find(predicate: (item: T) => boolean): T | undefined {
     return this.items.find(predicate)
   }
 
   /**
-   * 检查队列中是否包含满足条件的元素
+   * Checks whether any item matches the predicate.
    */
   some(predicate: (item: T) => boolean): boolean {
     return this.items.some(predicate)
   }
 
   /**
-   * 过滤队列，返回满足条件的元素组成的新队列
+   * Returns a new queue containing items that match the predicate.
    */
   filter(predicate: (item: T) => boolean): Queue<T> {
     const newQueue = new Queue<T>()
@@ -100,8 +99,8 @@ export class Queue<T> {
   }
 
   /**
-   * 移除满足条件的第一个元素
-   * @returns 是否成功移除
+   * Removes the first item matching the predicate.
+   * @returns Whether an item was removed.
    */
   remove(predicate: (item: T) => boolean): boolean {
     const index = this.items.findIndex(predicate)
@@ -113,8 +112,8 @@ export class Queue<T> {
   }
 
   /**
-   * 移除所有满足条件的元素
-   * @returns 移除的元素数量
+   * Removes all items matching the predicate.
+   * @returns The number of removed items.
    */
   removeAll(predicate: (item: T) => boolean): number {
     const originalLength = this.items.length

@@ -1,5 +1,6 @@
 import { apiRequest } from "@/utils/requestUtils"
 import type { MessageType } from "./message"
+import { taskDetailT } from "./task-i18n"
 import { TaskMessageHandler } from "./task-message-handler"
 
 export async function loadAllTaskRoundMessages(taskId: string, limit = 20): Promise<MessageType[]> {
@@ -22,7 +23,7 @@ export async function loadAllTaskRoundMessages(taskId: string, limit = 20): Prom
       (resp) => {
         pageLoaded = true
         if (resp.code !== 0) {
-          errorMessage = resp.message || "获取任务历史消息失败"
+          errorMessage = resp.message || taskDetailT("rounds.loadFailed")
           hasMore = false
           return
         }
@@ -39,7 +40,7 @@ export async function loadAllTaskRoundMessages(taskId: string, limit = 20): Prom
     )
 
     if (!pageLoaded) {
-      throw new Error("获取任务历史消息失败")
+      throw new Error(taskDetailT("rounds.loadFailed"))
     }
 
     if (errorMessage) {

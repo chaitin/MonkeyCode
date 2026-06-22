@@ -2,8 +2,10 @@ import "@/utils/plain-text-markdown.css"
 import type { MessageType } from "./message"
 import { useMemo } from "react"
 import { IconLoader } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 export const RestartSessionMessageItem = ({ message }: { message: MessageType }) => {
+  const { t } = useTranslation()
 
   const statusIcon = useMemo(() => {
     switch (message.data.status) {
@@ -17,24 +19,24 @@ export const RestartSessionMessageItem = ({ message }: { message: MessageType })
   const reloadText = useMemo(() => {
     switch (message.data.status) {
       case 'pending':
-        return '正在重新加载开发工具'
+        return t("taskDetail.restart.reloading")
       case 'completed':
-        return '开发工具已重新加载'
+        return t("taskDetail.restart.reloaded")
       default:
         return message.data.status
     }
-  }, [message.data.status])
+  }, [message.data.status, t])
 
   const resetText = useMemo(() => {
     switch (message.data.status) {
       case 'pending':
-        return '正在重置上下文'
+        return t("taskDetail.restart.resetting")
       case 'completed':
-        return '上下文已重置'
+        return t("taskDetail.restart.reset")
       default:
         return message.data.status
     }
-  }, [message.data.status])
+  }, [message.data.status, t])
 
   if (message.data.kind === 'reload') {
     return (

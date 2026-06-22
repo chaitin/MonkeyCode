@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import CommunityDialog from "./community-dialog"
+import { useTranslation } from "react-i18next"
 
 interface NavCommunityProps {
   menuClassName?: string
@@ -19,18 +20,19 @@ export default function NavCommunity({
   itemClassName,
   buttonClassName,
 }: NavCommunityProps = {}) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
   return (
     <SidebarMenu className={menuClassName}>
       <SidebarMenuItem className={itemClassName}>
         <SidebarMenuButton
-          tooltip="技术交流群"
+          tooltip={t("consoleShell.community.title")}
           className={cn("w-full", buttonClassName)}
           onClick={() => setOpen(true)}
         >
           <Users className="size-4" />
-          <span>技术交流群</span>
+          <span>{t("consoleShell.community.title")}</span>
         </SidebarMenuButton>
         <CommunityDialog open={open} onOpenChange={setOpen} />
       </SidebarMenuItem>

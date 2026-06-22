@@ -22,6 +22,7 @@ import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { useTranslation } from "react-i18next";
 
 type LicenseStatus = DomainLicenseStatusResp & {
   id?: string;
@@ -39,13 +40,23 @@ type LicenseMachineCodeResp = {
   machine_code?: string;
 };
 
-const stateLabels: Record<string, string> = {
-  [DomainLicenseState.LicenseStateMissing]: "未导入",
-  [DomainLicenseState.LicenseStateActive]: "有效",
-  valid: "有效",
-  [DomainLicenseState.LicenseStateExpired]: "已过期",
-  [DomainLicenseState.LicenseStateInvalid]: "无效",
-};
+type Translate = (key: string) => string;
+
+function stateLabel(state: string, t: Translate) {
+  switch (state) {
+    case DomainLicenseState.LicenseStateMissing:
+      return t("managerLicense.states.missing");
+    case DomainLicenseState.LicenseStateActive:
+    case "valid":
+      return t("managerLicense.states.active");
+    case DomainLicenseState.LicenseStateExpired:
+      return t("managerLicense.states.expired");
+    case DomainLicenseState.LicenseStateInvalid:
+      return t("managerLicense.states.invalid");
+    default:
+      return state;
+  }
+}
 
 function stateVariant(state?: string) {
   if (state === DomainLicenseState.LicenseStateActive || state === "valid")
@@ -55,11 +66,12 @@ function stateVariant(state?: string) {
   return "outline";
 }
 
-function formatTime(value?: string) {
+function formatTime(value?: string, language?: string) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-");
+  const locale = language === "cn" ? "zh-CN" : "en-US";
+  return date.toLocaleString(locale, { hour12: false }).replace(/\//g, "-");
 }
 
 function formatText(value?: string | number) {
@@ -68,6 +80,7 @@ function formatText(value?: string | number) {
 }
 
 export default function TeamManagerLicense() {
+  const { i18n, t } = useTranslation();
   const [status, setStatus] = useState<LicenseStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [machineCodeLoading, setMachineCodeLoading] = useState(true);
@@ -97,10 +110,10 @@ export default function TeamManagerLicense() {
       if (resp.data?.code === 0) {
         setStatus((resp.data.data ?? null) as LicenseStatus | null);
       } else {
-        toast.error(resp.data?.message || "获取 License 状态失败");
+        toast.error(resp.data?.message || t("managerLicense.toast.fetchStatusFailed"));
       }
     } catch (error) {
-      toast.error((error as Error).message || "获取 License 状态失败");
+      toast.error((error as Error).message || t("managerLicense.toast.fetchStatusFailed"));
     } finally {
       setLoading(false);
     }
@@ -115,10 +128,10 @@ export default function TeamManagerLicense() {
         const data = (resp.data.data ?? null) as LicenseMachineCodeResp | null;
         setMachineCode(data?.machine_code ?? "");
       } else {
-        toast.error(resp.data?.message || "获取机器码失败");
+        toast.error(resp.data?.message || t("managerLicense.toast.fetchMachineCodeFailed"));
       }
     } catch (error) {
-      toast.error((error as Error).message || "获取机器码失败");
+      toast.error((error as Error).message || t("managerLicense.toast.fetchMachineCodeFailed"));
     } finally {
       setMachineCodeLoading(false);
     }
@@ -130,21 +143,21 @@ export default function TeamManagerLicense() {
 
   const handleCopyMachineCode = async () => {
     if (!displayMachineCode) {
-      toast.error("暂无机器码");
+      toast.error(t("managerLicense.toast.noMachineCode"));
       return;
     }
     try {
       await navigator.clipboard.writeText(displayMachineCode);
-      toast.success("机器码已复制");
+      toast.success(t("managerLicense.toast.machineCodeCopied"));
     } catch (error) {
-      toast.error("复制失败");
-      console.error("复制机器码失败:", error);
+      toast.error(t("managerLicense.toast.copyFailed"));
+      console.error("Failed to copy machine code:", error);
     }
   };
 
   const handleImport = async () => {
     if (!selectedFile) {
-      toast.error("请选择 license.lic 文件");
+      toast.error(t("managerLicense.toast.selectFile"));
       return;
     }
     setUploading(true);
@@ -152,17 +165,17 @@ export default function TeamManagerLicense() {
       const api = new Api();
       const resp = await api.api.v1LicenseImportCreate({ file: selectedFile });
       if (resp.data?.code === 0) {
-        toast.success("License 已导入");
+        toast.success(t("managerLicense.toast.imported"));
         setSelectedFile(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
         await Promise.all([fetchStatus(), fetchMachineCode()]);
       } else {
-        toast.error(resp.data?.message || "导入 License 失败");
+        toast.error(resp.data?.message || t("managerLicense.toast.importFailed"));
       }
     } catch (error) {
-      toast.error((error as Error).message || "导入 License 失败");
+      toast.error((error as Error).message || t("managerLicense.toast.importFailed"));
     } finally {
       setUploading(false);
     }
@@ -177,7 +190,7 @@ export default function TeamManagerLicense() {
             License
           </CardTitle>
           <CardDescription>
-            查看当前私有化授权状态，复制机器码并导入 license.lic。
+            {t("managerLicense.description")}
           </CardDescription>
           <CardAction>
             <Button
@@ -196,7 +209,7 @@ export default function TeamManagerLicense() {
                     : "size-4"
                 }
               />
-              刷新
+              {t("managerLicense.actions.refresh")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -212,33 +225,43 @@ export default function TeamManagerLicense() {
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-md border p-3">
-                <div className="text-sm text-muted-foreground">授权状态</div>
+                <div className="text-sm text-muted-foreground">
+                  {t("managerLicense.fields.status")}
+                </div>
                 <div className="mt-2">
                   <Badge variant={stateVariant(state)}>
-                    {state ? (stateLabels[state] ?? state) : "-"}
+                    {state ? stateLabel(state, t) : "-"}
                   </Badge>
                 </div>
               </div>
               <div className="rounded-md border p-3">
-                <div className="text-sm text-muted-foreground">授权主体</div>
+                <div className="text-sm text-muted-foreground">
+                  {t("managerLicense.fields.subject")}
+                </div>
                 <div className="mt-2 break-words text-sm font-medium">
                   {formatText(customerName)}
                 </div>
               </div>
               <div className="rounded-md border p-3">
-                <div className="text-sm text-muted-foreground">成员席位</div>
+                <div className="text-sm text-muted-foreground">
+                  {t("managerLicense.fields.memberSeats")}
+                </div>
                 <div className="mt-2 text-sm font-medium">{usageText}</div>
               </div>
               <div className="rounded-md border p-3">
-                <div className="text-sm text-muted-foreground">并发任务</div>
+                <div className="text-sm text-muted-foreground">
+                  {t("managerLicense.fields.concurrentTasks")}
+                </div>
                 <div className="mt-2 text-sm font-medium">
                   {formatText(taskLimit)}
                 </div>
               </div>
               <div className="rounded-md border p-3">
-                <div className="text-sm text-muted-foreground">到期时间</div>
+                <div className="text-sm text-muted-foreground">
+                  {t("managerLicense.fields.expiresAt")}
+                </div>
                 <div className="mt-2 text-sm font-medium">
-                  {formatTime(status?.expires_at)}
+                  {formatTime(status?.expires_at, i18n.language)}
                 </div>
               </div>
               <div className="rounded-md border p-3 md:col-span-2 xl:col-span-4">
@@ -256,10 +279,10 @@ export default function TeamManagerLicense() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileKey2 />
-            机器码
+            {t("managerLicense.machineCode.title")}
           </CardTitle>
           <CardDescription>
-            将机器码提供给授权签发方，生成与当前私有化部署绑定的 license.lic。
+            {t("managerLicense.machineCode.description")}
           </CardDescription>
           <CardAction>
             <Button
@@ -270,7 +293,7 @@ export default function TeamManagerLicense() {
               onClick={() => void handleCopyMachineCode()}
             >
               <Copy className="size-4" />
-              复制机器码
+              {t("managerLicense.machineCode.copy")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -290,9 +313,9 @@ export default function TeamManagerLicense() {
           ) : (
             <Alert>
               <KeyRound className="size-4" />
-              <AlertTitle>暂无机器码</AlertTitle>
+              <AlertTitle>{t("managerLicense.machineCode.emptyTitle")}</AlertTitle>
               <AlertDescription>
-                获取机器码失败或当前接口没有返回机器码，请刷新页面后重试。
+                {t("managerLicense.machineCode.emptyDescription")}
               </AlertDescription>
             </Alert>
           )}
@@ -303,16 +326,16 @@ export default function TeamManagerLicense() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload />
-            导入 License
+            {t("managerLicense.import.title")}
           </CardTitle>
           <CardDescription>
-            上传签发后的 license.lic，导入成功后会自动刷新授权状态。
+            {t("managerLicense.import.description")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-3 md:max-w-xl">
             <div className="grid gap-2">
-              <Label htmlFor="license-file">License 文件</Label>
+              <Label htmlFor="license-file">{t("managerLicense.import.fileLabel")}</Label>
               <Input
                 ref={fileInputRef}
                 id="license-file"
@@ -334,10 +357,10 @@ export default function TeamManagerLicense() {
                 ) : (
                   <Upload className="size-4" />
                 )}
-                导入 License
+                {t("managerLicense.import.action")}
               </Button>
               <div className="min-w-0 truncate text-sm text-muted-foreground">
-                {selectedFile ? selectedFile.name : "未选择文件"}
+                {selectedFile ? selectedFile.name : t("managerLicense.import.noFile")}
               </div>
             </div>
           </div>

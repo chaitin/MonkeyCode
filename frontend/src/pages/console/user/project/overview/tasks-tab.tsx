@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils"
 import { useCommonData } from "@/components/console/data-provider"
 import { formatTokens, getModelDisplayNameForModel, getRepoNameFromUrl, getTaskDisplayName, renderHoverCardContent } from "@/utils/common"
 import dayjs from "dayjs"
+import { useTranslation } from "react-i18next"
 
 const TASKS_PAGE_SIZE = 24
 
@@ -40,6 +41,7 @@ interface ProjectOverviewTasksTabProps {
 }
 
 export default function ProjectOverviewTasksTab({ projectId, refreshKey }: ProjectOverviewTasksTabProps) {
+  const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
   const { reloadProjects, reloadUnlinkedTasks } = useCommonData()
@@ -69,7 +71,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
         setDeleting(false)
         setTaskToDelete(null)
         if (resp.code === 0) {
-          toast.success("任务已删除")
+          toast.success(t("projectOverview.tasks.toast.deleted"))
           setTasks((prev) => prev.filter((t) => t.id !== taskId))
           reloadProjects()
           reloadUnlinkedTasks()
@@ -77,7 +79,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
             navigate(`/console/project/${projectId}`)
           }
         } else {
-          toast.error(resp.message || "删除失败")
+          toast.error(resp.message || t("projectOverview.tasks.toast.deleteFailed"))
         }
       },
       () => {
@@ -111,7 +113,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
         setTasksHasMore(newTasks.length >= TASKS_PAGE_SIZE)
         setTasksPage(pageNum)
       } else {
-        toast.error("获取任务列表失败: " + resp.message)
+        toast.error(t("projectOverview.tasks.toast.fetchFailed", { message: resp.message || t("projectOverview.common.unknownError") }))
       }
       reset()
       setTasksInitialLoading(false)
@@ -119,19 +121,31 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
       reset()
       setTasksInitialLoading(false)
     })
-  }, [projectId])
+  }, [projectId, t])
 
   const loadMoreTasks = useCallback(() => {
     if (!tasksLoading && tasksHasMore) fetchTasks(tasksPage + 1, true)
   }, [tasksLoading, tasksHasMore, tasksPage, fetchTasks])
 
   useEffect(() => {
-    if (projectId) {
+    if (!projectId) {
+      return
+    }
+
+    let active = true
+    queueMicrotask(() => {
+      if (!active) {
+        return
+      }
       setTasks([])
       setTasksPage(1)
       setTasksHasMore(true)
       setTasksInitialLoading(true)
       fetchTasks(1, false)
+    })
+
+    return () => {
+      active = false
     }
   }, [projectId, refreshKey, fetchTasks])
 
@@ -164,8 +178,8 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
             <EmptyMedia variant="icon">
               <IconListDetails />
             </EmptyMedia>
-            <EmptyTitle>暂无任务</EmptyTitle>
-            <EmptyDescription>该项目下还没有创建任何任务</EmptyDescription>
+            <EmptyTitle>{t("projectOverview.tasks.emptyTitle")}</EmptyTitle>
+            <EmptyDescription>{t("projectOverview.tasks.emptyDescription")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -189,17 +203,17 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                     </ItemTitle>
                   </HoverCardTrigger>
                   {renderHoverCardContent([
-                    { title: "任务名称", content: getTaskDisplayName(task) },
-                    { title: "任务内容", content: task.content || "" },
-                    { title: "任务状态", content: task.status || "" },
-                    { title: "任务类型", content: `${task.type}/${task.sub_type}` || "" },
-                    task.repo_url ? { title: "代码仓库", content: task.repo_url } : null,
-                    task.repo_filename ? { title: "代码文件", content: task.repo_filename } : null,
-                    task.repo_url ? { title: "仓库分支", content: task.branch || "" } : null,
-                    { title: "开发工具", content: task.cli_name || "" },
-                    { title: "大模型", content: getModelDisplayNameForModel(task.model) },
+                    { title: t("projectOverview.tasks.hover.name"), content: getTaskDisplayName(task) },
+                    { title: t("projectOverview.tasks.hover.content"), content: task.content || "" },
+                    { title: t("projectOverview.tasks.hover.status"), content: task.status || "" },
+                    { title: t("projectOverview.tasks.hover.type"), content: task.type || task.sub_type ? `${task.type || ""}/${task.sub_type || ""}` : "" },
+                    task.repo_url ? { title: t("projectOverview.tasks.hover.repo"), content: task.repo_url } : null,
+                    task.repo_filename ? { title: t("projectOverview.tasks.hover.file"), content: task.repo_filename } : null,
+                    task.repo_url ? { title: t("projectOverview.tasks.hover.branch"), content: task.branch || "" } : null,
+                    { title: t("projectOverview.tasks.hover.cli"), content: task.cli_name || "" },
+                    { title: t("projectOverview.tasks.hover.model"), content: getModelDisplayNameForModel(task.model) },
                     {
-                      title: "创建时间",
+                      title: t("projectOverview.tasks.hover.createdAt"),
                       content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss"),
                     },
                   ])}
@@ -208,7 +222,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                   task={task}
                   onDelete={setTaskToDelete}
                   onRenameSuccess={(title) => handleTaskRenamed(task.id || "", title)}
-                  deleteLabel="删除"
+                  deleteLabel={t("projectOverview.tasks.delete.action")}
                   triggerClassName="text-muted-foreground/50 group-hover:text-primary hover:text-primary"
                 />
               </ItemHeader>
@@ -224,11 +238,11 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                       <span className="inline-flex">
                         <Badge variant="outline" className="text-muted-foreground">
                           <IconCircleCheck />
-                          已终止
+                          {t("projectOverview.tasks.status.stopped")}
                         </Badge>
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent>连续三天不对话的任务将自动回收</TooltipContent>
+                    <TooltipContent>{t("projectOverview.tasks.status.autoRecycleTip")}</TooltipContent>
                   </Tooltip>
                 ) : (
                   <Badge
@@ -240,19 +254,19 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
                     {task.status === "error" && (
                       <>
                         <IconAlertTriangle />
-                        启动失败
+                        {t("projectOverview.tasks.status.startFailed")}
                       </>
                     )}
                     {task.status === "pending" && (
                       <>
                         <Spinner />
-                        正在启动
+                        {t("projectOverview.tasks.status.starting")}
                       </>
                     )}
                     {task.status === "processing" && (
                       <>
                         <Spinner />
-                        运行中
+                        {t("projectOverview.tasks.status.running")}
                       </>
                     )}
                   </Badge>
@@ -274,13 +288,13 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+            <AlertDialogTitle>{t("projectOverview.tasks.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除任务「{getTaskDisplayName(taskToDelete)}」吗？此操作不可撤销。
+              {t("projectOverview.tasks.delete.description", { task: getTaskDisplayName(taskToDelete) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("projectOverview.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -289,7 +303,7 @@ export default function ProjectOverviewTasksTab({ projectId, refreshKey }: Proje
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "删除中..." : "删除"}
+              {deleting ? t("projectOverview.tasks.delete.deleting") : t("projectOverview.tasks.delete.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
-import { getSubscriptionPlanShortLabel, getTaskDisplayName, hasProSubscription } from "@/utils/common"
+import { getTaskDisplayName, hasProSubscription } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconPlayerStopFilled } from "@tabler/icons-react"
-import { useState, useEffect } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface TaskConcurrentLimitDialogProps {
   open: boolean
@@ -18,16 +19,27 @@ interface TaskConcurrentLimitDialogProps {
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: TaskConcurrentLimitDialogProps) {
+  const { t } = useTranslation()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [loading, setLoading] = useState(false)
   const [stoppingId, setStoppingId] = useState<string | null>(null)
   const { subscription } = useCommonData()
   const hasAdvancedPlan = hasProSubscription(subscription)
-  const planLabel = getSubscriptionPlanShortLabel(subscription?.plan)
+  const planLabel = (() => {
+    switch (subscription?.plan) {
+      case "flagship":
+      case "ultra":
+        return t("taskWorkflow.plan.ultra")
+      case "pro":
+        return t("taskWorkflow.plan.pro")
+      case "basic":
+      default:
+        return t("taskWorkflow.plan.basic")
+    }
+  })()
   const concurrentLimit = hasAdvancedPlan ? 3 : 1
 
-  useEffect(() => {
-    if (!open) return
+  const loadRunningTasks = useCallback(() => {
     setLoading(true)
     apiRequest("v1UsersTasksList", { page: 1, size: 10, status: "pending,processing" }, [], (resp) => {
       if (resp.code === 0) {
@@ -37,17 +49,24 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
       }
       setLoading(false)
     }, () => setLoading(false))
-  }, [open])
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const timer = window.setTimeout(loadRunningTasks, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [open, loadRunningTasks])
 
   const handleStop = async (taskId: string) => {
     setStoppingId(taskId)
     await apiRequest("v1UsersTasksStopUpdate", { id: taskId }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("任务已终止")
+        toast.success(t("taskWorkflow.concurrentLimit.stopped"))
         setTasks((prev) => prev.filter((t) => t.id !== taskId))
         onStopped?.()
       } else {
-        toast.error(resp.message || "终止失败")
+        toast.error(resp.message || t("taskWorkflow.concurrentLimit.stopFailed"))
       }
     })
     setStoppingId(null)
@@ -66,10 +85,10 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="min-w-0">
         <DialogHeader>
-          <DialogTitle>并发任务数已达上限</DialogTitle>
+          <DialogTitle>{t("taskWorkflow.concurrentLimit.title")}</DialogTitle>
         </DialogHeader>
         <div className="text-sm text-muted-foreground">
-          当前账号为{planLabel}，最多同时运行 {concurrentLimit} 个任务，请终止以下任务后再试。
+          {t("taskWorkflow.concurrentLimit.description", { planLabel, concurrentLimit })}
         </div>
         <div className="mt-2 flex min-w-0 flex-col gap-2">
           {loading ? (
@@ -77,13 +96,13 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
               <Spinner />
             </div>
           ) : tasks.length === 0 ? (
-            <div className="text-sm text-muted-foreground text-center py-4">暂无运行中的任务</div>
+            <div className="text-sm text-muted-foreground text-center py-4">{t("taskWorkflow.concurrentLimit.empty")}</div>
           ) : (
             tasks.map((task) => (
               <div key={task.id} className="flex min-w-0 items-center gap-3 overflow-hidden rounded-md border px-3 py-2">
                 <div className="w-0 min-w-0 flex-1 overflow-hidden">
                   <span className="block truncate text-sm">
-                    {getTaskDisplayName(task, "未命名任务")}
+                    {getTaskDisplayName(task, t("taskWorkflow.concurrentLimit.unnamedTask"))}
                   </span>
                 </div>
                 <Button
@@ -94,7 +113,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
                   onClick={() => handleStop(task.id!)}
                 >
                   {stoppingId === task.id ? <Spinner className="size-4" /> : <IconPlayerStopFilled className="size-4" />}
-                  终止
+                  {t("taskWorkflow.concurrentLimit.stop")}
                 </Button>
               </div>
             ))
@@ -107,7 +126,7 @@ export function TaskConcurrentLimitDialog({ open, onOpenChange, onStopped }: Tas
               className="text-primary underline-offset-4 hover:underline"
               onClick={handleUpgradePlan}
             >
-              升级专业会员或旗舰会员，可支持同时运行 3 个任务
+              {t("taskWorkflow.concurrentLimit.upgrade")}
             </button>
           </div>
         )}

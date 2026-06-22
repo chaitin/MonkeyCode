@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface EditImageProps {
   open: boolean
@@ -28,6 +29,7 @@ export default function EditImage({
   onRefresh,
   trigger,
 }: EditImageProps) {
+  const { t } = useTranslation()
   const [imageName, setImageName] = useState("")
   const [remark, setRemark] = useState("")
 
@@ -40,12 +42,12 @@ export default function EditImage({
 
   const handleSave = () => {
     if (!image?.id) {
-      toast.error("镜像信息不完整")
+      toast.error(t("consoleSettings.images.toast.incomplete"))
       return
     }
 
     if (!imageName.trim()) {
-      toast.error("请输入镜像名称")
+      toast.error(t("consoleSettings.images.toast.nameRequired"))
       return
     }
 
@@ -53,7 +55,7 @@ export default function EditImage({
       { image_name: imageName.trim(), remark: remark.trim() },
       [image.id],
       () => {
-        toast.success("镜像修改成功")
+        toast.success(t("consoleSettings.images.toast.updateSuccess"))
         setImageName("")
         setRemark("")
         onOpenChange(false)
@@ -73,11 +75,11 @@ export default function EditImage({
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改操作系统镜像</DialogTitle>
+          <DialogTitle>{t("consoleSettings.images.edit.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <Field>
-            <FieldLabel>镜像名称</FieldLabel>
+            <FieldLabel>{t("consoleSettings.images.labels.imageName")}</FieldLabel>
             <FieldContent>
               <Input
                 value={imageName}
@@ -86,7 +88,7 @@ export default function EditImage({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("consoleSettings.images.labels.remark")}</FieldLabel>
             <FieldContent>
               <Input
                 value={remark}
@@ -97,14 +99,13 @@ export default function EditImage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleSettings.images.actions.cancel")}
           </Button>
           <Button onClick={handleSave}>
-            保存
+            {t("consoleSettings.images.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

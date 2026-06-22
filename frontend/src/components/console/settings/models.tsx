@@ -41,8 +41,10 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "
 import { Spinner } from "@/components/ui/spinner"
 import { IconAlertHexagon, IconPencil, IconTrash } from "@tabler/icons-react"
 import { useCommonData } from "../data-provider"
+import { useTranslation } from "react-i18next"
 
 export default function Models() {
+  const { t } = useTranslation()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState<DomainModel | undefined>(undefined)
@@ -57,16 +59,16 @@ export default function Models() {
 
   const handleDelete = (model: DomainModel) => {
     if (!model.id) {
-      toast.error("模型信息不完整")
+      toast.error(t("consoleSettings.models.toast.incomplete"))
       return
     }
 
     apiRequest('v1UsersModelsDelete', {}, [model.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("模型移除成功")
+        toast.success(t("consoleSettings.models.toast.removeSuccess"))
         reloadModels?.()
       } else {
-        toast.error("移除模型失败: " + resp.message)
+        toast.error(t("consoleSettings.models.toast.removeFailed", { message: resp.message }))
       }
     })
   }
@@ -81,7 +83,7 @@ export default function Models() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            正在加载模型列表...
+            {t("consoleSettings.models.loading")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -98,7 +100,7 @@ export default function Models() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            暂无配置，请先绑定模型
+            {t("consoleSettings.models.empty")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -120,7 +122,7 @@ export default function Models() {
           </ItemMedia>
             <ItemContent>
               <ItemTitle className="break-all">
-              {getModelDisplayNameForModel(model) || '未知模型'}
+              {getModelDisplayNameForModel(model) || t("consoleSettings.models.fallback.unknownModel")}
               {getInterfaceTypeBadge(model.interface_type)}
               {getOwnerTypeBadge(model.owner)}
             </ItemTitle>
@@ -135,7 +137,7 @@ export default function Models() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => handleEdit(model)} disabled={model.owner?.type !== ConstsOwnerType.OwnerTypePrivate}>
                   <IconPencil />
-                  修改
+                  {t("consoleSettings.models.actions.edit")}
                 </DropdownMenuItem>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -145,24 +147,24 @@ export default function Models() {
                         disabled={model.owner?.type !== ConstsOwnerType.OwnerTypePrivate}
                       >
                         <IconTrash />
-                        移除
+                        {t("consoleSettings.models.actions.remove")}
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认移除</AlertDialogTitle>
+                        <AlertDialogTitle>{t("consoleSettings.models.remove.title")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          确定要移除模型 "{getModelDisplayNameForModel(model) || '未知模型'}" 吗？此操作不可撤销。
+                          {t("consoleSettings.models.remove.description", { name: getModelDisplayNameForModel(model) || t("consoleSettings.models.fallback.unknownModel") })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t("consoleSettings.models.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => {
                             handleDelete(model)
                           }}
                         >
-                          确认移除
+                          {t("consoleSettings.models.remove.confirm")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -183,10 +185,10 @@ export default function Models() {
         <div>
           <div className="flex items-center gap-2 font-semibold leading-none">
             <Bot />
-            AI 大模型
+            {t("consoleSettings.models.title")}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            配置 AI 大模型，用于代码生成和分析项目
+            {t("consoleSettings.models.description")}
           </p>
         </div>
         <AddModel

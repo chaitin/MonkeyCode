@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { apiRequest } from "@/utils/requestUtils"
 import { useCallback, useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 type WechatMpBindDialogProps = {
@@ -17,6 +18,7 @@ type WechatMpBindDialogProps = {
 }
 
 export function WechatMpBindDialog({ open, onOpenChange }: WechatMpBindDialogProps) {
+  const { t } = useTranslation()
   const [qrcodeUrl, setQrcodeUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -32,16 +34,16 @@ export function WechatMpBindDialog({ open, onOpenChange }: WechatMpBindDialogPro
           return
         }
 
-        const message = resp.message || "获取绑定二维码失败"
+        const message = resp.message || t("consoleWechatMp.fetchFailed")
         setError(message)
         toast.error(message)
       }, () => {
-        setError("获取绑定二维码失败")
+        setError(t("consoleWechatMp.fetchFailed"))
       })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!effectiveOpen || qrcodeUrl || loading) {
@@ -55,7 +57,7 @@ export function WechatMpBindDialog({ open, onOpenChange }: WechatMpBindDialogPro
     <Dialog open={effectiveOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>订阅重要通知</DialogTitle>
+          <DialogTitle>{t("consoleWechatMp.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4">
@@ -65,26 +67,26 @@ export function WechatMpBindDialog({ open, onOpenChange }: WechatMpBindDialogPro
             ) : qrcodeUrl ? (
               <img
                 src={qrcodeUrl}
-                alt="微信公众号绑定二维码"
+                alt={t("consoleWechatMp.qrcodeAlt")}
                 className="size-full rounded-sm object-contain"
               />
             ) : (
               <div className="px-4 text-center text-sm text-muted-foreground">
-                {error || "二维码暂不可用"}
+                {error || t("consoleWechatMp.qrcodeUnavailable")}
               </div>
             )}
           </div>
           <Alert className="py-2">
             <AlertTitle className="text-xs">
-              微信扫码关注公众号
+              {t("consoleWechatMp.scanTitle")}
             </AlertTitle>
             <AlertDescription className="text-xs">
-              扫码订阅任务通知，避免任务自动终止后丢失工作文件。
+              {t("consoleWechatMp.scanDescription")}
             </AlertDescription>
           </Alert>
           <Alert variant="destructive" className="py-2">
             <AlertDescription className="text-xs">
-              专属二维码，请勿与他人分享
+              {t("consoleWechatMp.privateWarning")}
             </AlertDescription>
           </Alert>
         </div>

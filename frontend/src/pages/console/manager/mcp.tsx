@@ -54,12 +54,16 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useTranslation } from "react-i18next"
 
 type TeamMCPUpstreamPayload =
   | DomainCreateTeamMCPUpstreamReq
   | DomainUpdateTeamMCPUpstreamReq
 
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
 export default function TeamManagerMCP() {
+  const { t } = useTranslation()
   const [servers, setServers] = useState<DomainTeamMCPUpstream[]>([])
   const [groups, setGroups] = useState<DomainTeamGroup[]>([])
   const [loading, setLoading] = useState(true)
@@ -86,16 +90,16 @@ export default function TeamManagerMCP() {
       if (upstreamsResp.data?.code === 0) {
         setServers(upstreamsResp.data.data?.items || [])
       } else {
-        toast.error(upstreamsResp.data?.message || "加载团队 MCP 服务失败")
+        toast.error(upstreamsResp.data?.message || t("managerMcp.toast.fetchServersFailed"))
       }
 
       if (groupsResp.data?.code === 0) {
         setGroups(groupsResp.data.data?.groups || [])
       } else {
-        toast.error(groupsResp.data?.message || "加载团队分组失败")
+        toast.error(groupsResp.data?.message || t("managerMcp.toast.fetchGroupsFailed"))
       }
     } catch {
-      toast.error("加载团队 MCP 配置失败")
+      toast.error(t("managerMcp.toast.fetchConfigFailed"))
     } finally {
       if (!silent) {
         setLoading(false)
@@ -123,15 +127,15 @@ export default function TeamManagerMCP() {
       const api = new Api()
       const resp = await api.api.v1TeamsMcpUpstreamsCreate(payload as DomainCreateTeamMCPUpstreamReq)
       if (resp.data?.code === 0) {
-        toast.success("团队 MCP 服务器创建成功")
+        toast.success(t("managerMcp.toast.created"))
         await loadData({ silent: true })
         return true
       }
 
-      toast.error(resp.data?.message || "团队 MCP 服务器创建失败")
+      toast.error(resp.data?.message || t("managerMcp.toast.createFailed"))
       return false
     } catch {
-      toast.error("团队 MCP 服务器创建失败")
+      toast.error(t("managerMcp.toast.createFailed"))
       return false
     } finally {
       setCreating(false)
@@ -140,7 +144,7 @@ export default function TeamManagerMCP() {
 
   const handleUpdateServer = async (payload: TeamMCPUpstreamPayload) => {
     if (!editingServer?.id) {
-      toast.error("MCP 服务器信息不完整")
+      toast.error(t("managerMcp.toast.incompleteServer"))
       return false
     }
 
@@ -152,15 +156,15 @@ export default function TeamManagerMCP() {
         payload as DomainUpdateTeamMCPUpstreamReq
       )
       if (resp.data?.code === 0) {
-        toast.success("团队 MCP 服务器修改成功")
+        toast.success(t("managerMcp.toast.updated"))
         await loadData({ silent: true })
         return true
       }
 
-      toast.error(resp.data?.message || "团队 MCP 服务器修改失败")
+      toast.error(resp.data?.message || t("managerMcp.toast.updateFailed"))
       return false
     } catch {
-      toast.error("团队 MCP 服务器修改失败")
+      toast.error(t("managerMcp.toast.updateFailed"))
       return false
     } finally {
       setUpdating(false)
@@ -169,7 +173,7 @@ export default function TeamManagerMCP() {
 
   const handleSyncServer = async (server: DomainTeamMCPUpstream) => {
     if (!server.id) {
-      toast.error("MCP 服务器信息不完整")
+      toast.error(t("managerMcp.toast.incompleteServer"))
       return
     }
 
@@ -178,14 +182,14 @@ export default function TeamManagerMCP() {
       const api = new Api()
       const resp = await api.api.v1TeamsMcpUpstreamsSyncCreate(server.id)
       if (resp.data?.code === 0) {
-        toast.success("团队 MCP 服务器同步成功")
+        toast.success(t("managerMcp.toast.synced"))
         await loadData({ silent: true })
         return
       }
 
-      toast.error(resp.data?.message || "团队 MCP 服务器同步失败")
+      toast.error(resp.data?.message || t("managerMcp.toast.syncFailed"))
     } catch {
-      toast.error("团队 MCP 服务器同步失败")
+      toast.error(t("managerMcp.toast.syncFailed"))
     } finally {
       setSyncingServerId(null)
     }
@@ -193,7 +197,7 @@ export default function TeamManagerMCP() {
 
   const handleDeleteServer = async (server: DomainTeamMCPUpstream) => {
     if (!server.id) {
-      toast.error("MCP 服务器信息不完整")
+      toast.error(t("managerMcp.toast.incompleteServer"))
       return
     }
 
@@ -202,14 +206,14 @@ export default function TeamManagerMCP() {
       const api = new Api()
       const resp = await api.api.v1TeamsMcpUpstreamsDelete(server.id)
       if (resp.data?.code === 0) {
-        toast.success("团队 MCP 服务器已删除")
+        toast.success(t("managerMcp.toast.deleted"))
         await loadData({ silent: true })
         return
       }
 
-      toast.error(resp.data?.message || "团队 MCP 服务器删除失败")
+      toast.error(resp.data?.message || t("managerMcp.toast.deleteFailed"))
     } catch {
-      toast.error("团队 MCP 服务器删除失败")
+      toast.error(t("managerMcp.toast.deleteFailed"))
     } finally {
       setDeletingServerId(null)
     }
@@ -225,12 +229,12 @@ export default function TeamManagerMCP() {
               MCP
             </CardTitle>
             <CardDescription>
-              管理团队 MCP 服务器和可使用分组，同步后团队成员可按授权分组使用工具。
+              {t("managerMcp.description")}
             </CardDescription>
             <CardAction>
               <Button type="button" onClick={() => setAddDialogOpen(true)}>
                 <Plus className="size-4" />
-                添加 MCP
+                {t("managerMcp.actions.add")}
               </Button>
             </CardAction>
           </CardHeader>
@@ -243,8 +247,8 @@ export default function TeamManagerMCP() {
                   <EmptyMedia variant="icon">
                     <Blocks className="size-6" />
                   </EmptyMedia>
-                  <EmptyTitle>暂无团队 MCP 服务器</EmptyTitle>
-                  <EmptyDescription>添加 MCP 服务器后，同步到的工具会显示在这里。</EmptyDescription>
+                  <EmptyTitle>{t("managerMcp.empty.title")}</EmptyTitle>
+                  <EmptyDescription>{t("managerMcp.empty.description")}</EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : (
@@ -330,6 +334,7 @@ function ServerItem({
   onSync: () => void
   onDelete: () => void
 }) {
+  const { t } = useTranslation()
   const tools = server.tools || []
   const groups = server.groups || []
   const editable = server.scope !== "platform"
@@ -345,7 +350,7 @@ function ServerItem({
         <ItemHeader className="items-start gap-3">
           <div className="min-w-0">
             <ItemTitle className="w-full min-w-0 flex-wrap">
-              <span className="truncate">{server.name || "未命名 MCP 服务"}</span>
+              <span className="truncate">{server.name || t("managerMcp.fallback.unnamedServer")}</span>
             </ItemTitle>
             {server.url ? (
               <div className="mt-1 break-all text-xs text-muted-foreground">{server.url}</div>
@@ -357,7 +362,7 @@ function ServerItem({
               <>
                 <Button type="button" variant="outline" size="sm" onClick={onSync} disabled={syncing || deleting}>
                   <IconRefresh className="size-4" />
-                  {syncing ? "同步中" : "同步"}
+                  {syncing ? t("managerMcp.actions.syncing") : t("managerMcp.actions.sync")}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -368,7 +373,7 @@ function ServerItem({
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={onEdit} disabled={syncing || deleting}>
                       <IconPencil />
-                      修改
+                      {t("managerMcp.actions.edit")}
                     </DropdownMenuItem>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -378,20 +383,20 @@ function ServerItem({
                           onSelect={(event) => event.preventDefault()}
                         >
                           <IconTrash />
-                          {deleting ? "删除中" : "删除"}
+                          {deleting ? t("managerMcp.actions.deleting") : t("managerMcp.actions.delete")}
                         </DropdownMenuItem>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>确认删除</AlertDialogTitle>
+                          <AlertDialogTitle>{t("managerMcp.delete.title")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            确定要删除 MCP 服务器 "{server.name || "未命名 MCP 服务"}" 吗？此操作不可撤销。
+                            {t("managerMcp.delete.description", { name: server.name || t("managerMcp.fallback.unnamedServer") })}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+                          <AlertDialogCancel disabled={deleting}>{t("managerShell.common.cancel")}</AlertDialogCancel>
                           <AlertDialogAction onClick={onDelete} disabled={deleting}>
-                            {deleting ? "删除中..." : "确认删除"}
+                            {deleting ? t("managerMcp.delete.deleting") : t("managerMcp.delete.confirm")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -415,7 +420,7 @@ function ServerItem({
               </Badge>
             ))
           ) : (
-            <span className="text-xs text-muted-foreground">未配置分组，使用默认分组</span>
+            <span className="text-xs text-muted-foreground">{t("managerMcp.groups.defaultGroup")}</span>
           )}
         </div>
 
@@ -430,26 +435,30 @@ function ServerItem({
 }
 
 function UpstreamStateBadges({ server }: { server: DomainTeamMCPUpstream }) {
+  const { t } = useTranslation()
+
   return (
     <div className="hidden flex-wrap justify-end gap-2 md:flex">
       <Badge variant={server.enabled === false ? "secondary" : "outline"}>
-        {server.enabled === false ? "已停用" : "已启用"}
+        {server.enabled === false ? t("managerMcp.status.disabled") : t("managerMcp.status.enabled")}
       </Badge>
       {server.sync_status ? (
-        <Badge variant="outline">同步: {formatStatus(server.sync_status)}</Badge>
+        <Badge variant="outline">{t("managerMcp.status.sync", { status: formatStatus(server.sync_status, t) })}</Badge>
       ) : null}
       {server.health_status ? (
-        <Badge variant="outline">健康: {formatStatus(server.health_status)}</Badge>
+        <Badge variant="outline">{t("managerMcp.status.health", { status: formatStatus(server.health_status, t) })}</Badge>
       ) : null}
     </div>
   )
 }
 
 function ToolList({ tools }: { tools: DomainMCPTool[] }) {
+  const { t } = useTranslation()
+
   if (tools.length === 0) {
     return (
       <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-        暂无工具，请同步 MCP 服务器
+        {t("managerMcp.tools.empty")}
       </div>
     )
   }
@@ -467,7 +476,7 @@ function ToolList({ tools }: { tools: DomainMCPTool[] }) {
               : "flex items-center gap-2 text-sm font-medium leading-none text-muted-foreground"
           }
         >
-          <span className="truncate">{tool.name || tool.namespaced_name || "未命名工具"}</span>
+          <span className="truncate">{tool.name || tool.namespaced_name || t("managerMcp.tools.unnamed")}</span>
         </div>
         <Tooltip delayDuration={500}>
           <TooltipTrigger asChild>
@@ -478,11 +487,11 @@ function ToolList({ tools }: { tools: DomainMCPTool[] }) {
                   : "mt-1 line-clamp-1 text-xs text-muted-foreground/60"
               }
             >
-              {tool.description || "暂无描述"}
+              {tool.description || t("managerMcp.tools.noDescription")}
             </div>
           </TooltipTrigger>
           <TooltipContent className="max-w-lg whitespace-pre-wrap break-words">
-            {tool.description || "暂无描述"}
+            {tool.description || t("managerMcp.tools.noDescription")}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -490,20 +499,20 @@ function ToolList({ tools }: { tools: DomainMCPTool[] }) {
         checked={Boolean(tool.enabled)}
         size="sm"
         disabled
-        aria-label={`${tool.name || tool.namespaced_name || "MCP 工具"} 启用状态`}
+        aria-label={t("managerMcp.tools.enabledAria", { name: tool.name || tool.namespaced_name || t("managerMcp.tools.unnamedAria") })}
       />
     </div>
   ))
 }
 
-function formatStatus(status: string) {
+function formatStatus(status: string, t: Translate) {
   const statusMap: Record<string, string> = {
-    healthy: "正常",
-    unhealthy: "异常",
-    success: "成功",
-    failed: "失败",
-    syncing: "同步中",
-    pending: "待同步",
+    healthy: t("managerMcp.status.values.healthy"),
+    unhealthy: t("managerMcp.status.values.unhealthy"),
+    success: t("managerMcp.status.values.success"),
+    failed: t("managerMcp.status.values.failed"),
+    syncing: t("managerMcp.status.values.syncing"),
+    pending: t("managerMcp.status.values.pending"),
   }
 
   return statusMap[status] || status

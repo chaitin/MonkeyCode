@@ -1,6 +1,16 @@
 import { Api } from '@/api/Api';
 import type { HttpResponse, RequestParams, GithubComGoYokoWebResp } from '@/api/Api';
 import { toast } from 'sonner';
+import i18n from '@/i18n';
+
+function requestText(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(`requestUtils.${key}`, options));
+}
+
+function getRequestErrorMessage(error: unknown): string {
+  const errorLike = error as { error?: { message?: string }; message?: string };
+  return errorLike.error?.message || errorLike.message || requestText('errors.network');
+}
 
 export const apiRequest = async (
   apiMethodName: keyof Api<unknown>['api'],
@@ -13,12 +23,10 @@ export const apiRequest = async (
   try {
     const api = new Api();
     
-    // 检查API方法是否存在
     if (!api.api[apiMethodName]) {
-      throw new Error(`API方法 "${apiMethodName}" 不存在`);
+      throw new Error(requestText('errors.methodMissing', { method: apiMethodName }));
     }
 
-    // 调用API方法
     let response: HttpResponse<any, any>;
     if (formData) {
       response = await (api.api[apiMethodName] as any)(...extrax, params, formData);
@@ -28,7 +36,7 @@ export const apiRequest = async (
 
     if (response.data?.code === undefined) {
       console.log(response);
-      throw new Error('API 返回的数据格式不正确');
+      throw new Error(requestText('errors.invalidResponse'));
     }
 
     const resp = response.data as GithubComGoYokoWebResp;
@@ -48,9 +56,12 @@ export const apiRequest = async (
     if (onError) {
       onError(e as Error);
     } else {
-      toast.error(`${apiMethodName} 请求失败：${((e as any)?.error) ? (e as any).error.message : (e as Error)?.message || '网络错误'}`);
+      toast.error(requestText('toast.requestFailed', {
+        method: apiMethodName,
+        message: getRequestErrorMessage(e),
+      }));
     }
 
-    console.log(`${apiMethodName} 请求失败：`, e);
+    console.log(`${apiMethodName} request failed:`, e);
   }
 };

@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -16,6 +17,7 @@ type PublicConfig = {
 }
 
 export default function TeamOIDCLoginPage() {
+  const { t } = useTranslation()
   const { teamId } = useParams()
   const [config, setConfig] = React.useState<PublicConfig | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -28,41 +30,41 @@ export default function TeamOIDCLoginPage() {
 
     apiRequest('v1UsersOidcTeamsDetail', {}, [teamId], (resp) => {
       if (resp.code === 0) setConfig(resp.data)
-      else toast.error(resp.message || '获取企业登录配置失败')
+      else toast.error(resp.message || t("auth.teamOidc.fetchFailed"))
       setLoading(false)
     }, () => {
       setLoading(false)
-      toast.error('获取企业登录配置失败')
+      toast.error(t("auth.teamOidc.fetchFailed"))
     })
-  }, [teamId])
+  }, [teamId, t])
 
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
         <Link to="/">
-          <h1 className="mb-6 text-2xl hover:font-bold">MonkeyCode 智能开发平台</h1>
+          <h1 className="mb-6 text-2xl hover:font-bold">{t("login.title")}</h1>
         </Link>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldCheck size={20} />
-              企业登录
+              {t("auth.teamOidc.title")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Spinner />
-                正在加载
+                {t("auth.teamOidc.loading")}
               </div>
             ) : config?.enabled ? (
               <Button size="lg" className="w-full" asChild>
                 <a href={config.login_url || `/api/v1/users/oidc/login?team_id=${teamId}`}>
-                  {config.display_name || '企业登录'}
+                  {config.display_name || t("auth.teamOidc.title")}
                 </a>
               </Button>
             ) : (
-              <div className="text-sm text-muted-foreground">该团队未启用企业登录。</div>
+              <div className="text-sm text-muted-foreground">{t("auth.teamOidc.disabled")}</div>
             )}
           </CardContent>
         </Card>

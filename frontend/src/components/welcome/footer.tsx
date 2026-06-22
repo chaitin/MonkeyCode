@@ -1,49 +1,50 @@
 
 import { Link } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 
 const LINKS = [
   {
-    title: "资源",
+    titleKey: "welcomeShell.footer.resources",
     links: [
       {
-        title: "产品文档",
+        titleKey: "welcomeShell.footer.productDocs",
         href: "https://monkeycode.docs.baizhi.cloud/"
       },
       {
-        title: "技术论坛",
+        titleKey: "welcomeShell.footer.forum",
         href: "https://bbs.baizhi.cloud/"
       },
       {
-        title: "开源仓库",
+        titleKey: "welcomeShell.nav.openSourceRepo",
         href: "https://github.com/chaitin/MonkeyCode/"
       },
       {
-        title: "模型广场",
+        titleKey: "welcomeShell.footer.modelSquare",
         href: "https://baizhi.cloud/landing/model-square"
       }
     ]
   },
   {
-    title: "关于我们",
+    titleKey: "welcomeShell.footer.about",
     links: [
       {
-        title: "长亭科技",
+        titleKey: "welcomeShell.footer.chaitin",
         href: "https://www.chaitin.cn/"
       },
       {
-        title: "长亭百智云",
+        titleKey: "welcomeShell.footer.baizhi",
         href: "https://www.baizhi.cloud/"
       },
       {
-        title: "隐私政策",
+        titleKey: "welcomeShell.nav.privacyPolicy",
         href: "/privacy-policy"
       },
       {
-        title: "用户协议",
+        titleKey: "welcomeShell.nav.userAgreement",
         href: "/user-agreement"
       },
       {
-        title: "京ICP备2024055124号-12",
+        titleKey: "welcomeShell.footer.icp",
         href: "https://beian.miit.gov.cn/"
       }
     ]
@@ -51,31 +52,33 @@ const LINKS = [
 ]
 
 const Footer = () => {
+  const { t } = useTranslation()
+
   return (
     <footer className="bg-primary px-10">
       <div className="flex flex-col lg:flex-row gap-10 lg:gap-0 justify-between mx-auto max-w-[1200px] py-10">
         <div className="flex flex-col gap-4">
           <h3 className="text-background flex flex-row items-center gap-4">
             <img src="/logo.png" className="size-8" />
-            MonkeyCode 智能开发平台
+            {t("welcomeShell.footer.brandTitle")}
           </h3>
           <p className="text-background/50 text-sm max-w-[350px]">
-          MonkeyCode 不是 AI 编程工具，是对传统研发模式的变革，是全新的 AI 编程体验，让你的研发团队效率 Max。
+            {t("welcomeShell.footer.brandDescription")}
           </p>
         </div>
         {LINKS.map((link) => (
-          <div key={link.title} className="flex flex-col gap-4">
-            <h3 className="text-background leading-8">{link.title}</h3>
+          <div key={link.titleKey} className="flex flex-col gap-4">
+            <h3 className="text-background leading-8">{t(link.titleKey)}</h3>
             <ul className="text-background/50 text-sm flex flex-col gap-2">
               {link.links.map((link) => (
-                <li key={link.title}>
+                <li key={link.titleKey}>
                   {link.href.startsWith("/") ? (
                     <Link to={link.href} className="flex items-center gap-2 hover:text-background">
-                      {link.title}
+                      {t(link.titleKey)}
                     </Link>
                   ) : (
                     <a href={link.href} target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-background">
-                      {link.title}
+                      {t(link.titleKey)}
                     </a>
                   )}
                 </li>
@@ -84,19 +87,19 @@ const Footer = () => {
           </div>
         ))}
         <div className="flex flex-col gap-4">
-          <h3 className="text-background leading-8">技术交流群</h3>
+          <h3 className="text-background leading-8">{t("welcomeShell.footer.community")}</h3>
           <div className="flex flex-wrap gap-4">
             <div className="flex flex-col items-center gap-2">
-              <img src="/wechat.png" className="size-30 rounded-sm" alt="微信二维码" />
-              <span className="text-background/70 text-xs">微信群</span>
+              <img src="/wechat.png" className="size-30 rounded-sm" alt={t("welcomeShell.community.wechatAlt")} />
+              <span className="text-background/70 text-xs">{t("welcomeShell.community.wechat")}</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <img src="/feishu.png" className="size-30 rounded-sm" alt="飞书群二维码" />
-              <span className="text-background/70 text-xs">飞书群</span>
+              <img src="/feishu.png" className="size-30 rounded-sm" alt={t("welcomeShell.community.feishuAlt")} />
+              <span className="text-background/70 text-xs">{t("welcomeShell.community.feishu")}</span>
             </div>
             <div className="flex flex-col items-center gap-2">
-              <img src="/dingtalk.png" className="size-30 rounded-sm" alt="钉钉群二维码" />
-              <span className="text-background/70 text-xs">钉钉群</span>
+              <img src="/dingtalk.png" className="size-30 rounded-sm" alt={t("welcomeShell.community.dingtalkAlt")} />
+              <span className="text-background/70 text-xs">{t("welcomeShell.community.dingtalk")}</span>
             </div>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 export const renderTitle = (message: MessageType) => {
-  return `加载技能 ${message.data.rawInput?.name ? ` "${message.data.rawInput?.name}"` : ''}`
+  return `${taskDetailT("toolcall.loadSkill")}${message.data.rawInput?.name ? ` "${message.data.rawInput?.name}"` : ''}`
 }
 
 export const renderDetail = (message: MessageType) => {

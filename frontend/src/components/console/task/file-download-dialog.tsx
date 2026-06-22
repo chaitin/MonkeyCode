@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { downloadFile, type DownloadFileProgress } from "@/utils/common"
 import { IconDownload } from "@tabler/icons-react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 type DownloadDialogStatus = "idle" | "downloading" | "completed" | "failed" | "canceled"
 
@@ -66,6 +67,7 @@ export function FileDownloadDialog({
   fileType,
   fileHandle,
 }: FileDownloadDialogProps) {
+  const { t } = useTranslation()
   const [status, setStatus] = useState<DownloadDialogStatus>("idle")
   const [progress, setProgress] = useState<DownloadFileProgress>(INITIAL_PROGRESS)
   const [errorMessage, setErrorMessage] = useState("")
@@ -118,7 +120,7 @@ export function FileDownloadDialog({
           percent: prev.total && prev.total > 0 ? 100 : prev.percent,
         }))
         setStatus("completed")
-        toast.success(`已下载${fileType} "${fileName}"`)
+        toast.success(t("taskDetail.download.successToast", { fileType, fileName }))
       } catch (error) {
         if (!active) {
           return
@@ -129,10 +131,10 @@ export function FileDownloadDialog({
           return
         }
 
-        const message = error instanceof Error ? error.message : "未知错误"
+        const message = error instanceof Error ? error.message : t("taskDetail.common.unknownError")
         setErrorMessage(message)
         setStatus("failed")
-        toast.error(`下载失败：${message}`)
+        toast.error(t("taskDetail.download.failedToast", { message }))
       }
     })()
 
@@ -145,14 +147,14 @@ export function FileDownloadDialog({
 
   const isDownloading = status === "downloading"
   const progressText = status === "completed"
-    ? `已接收 ${formatDownloadBytes(progress.loaded)}`
+    ? t("taskDetail.download.received", { bytes: formatDownloadBytes(progress.loaded) })
     : status === "failed"
-      ? `已接收 ${formatDownloadBytes(progress.loaded)}`
+      ? t("taskDetail.download.received", { bytes: formatDownloadBytes(progress.loaded) })
       : status === "canceled"
-        ? `已接收 ${formatDownloadBytes(progress.loaded)}`
+        ? t("taskDetail.download.received", { bytes: formatDownloadBytes(progress.loaded) })
         : progress.loaded > 0
-          ? `已接收 ${formatDownloadBytes(progress.loaded)}`
-          : "正在建立下载流"
+          ? t("taskDetail.download.received", { bytes: formatDownloadBytes(progress.loaded) })
+          : t("taskDetail.download.establishing")
 
   const handleCancelDownload = () => {
     if (!isDownloading) {
@@ -191,19 +193,19 @@ export function FileDownloadDialog({
         <DialogHeader className="min-w-0">
           <DialogTitle className="min-w-0 pr-8">
             {status === "completed"
-              ? "下载完成"
+              ? t("taskDetail.download.completed")
               : status === "failed"
-                ? "下载失败"
+                ? t("taskDetail.download.failed")
                 : status === "canceled"
-                  ? "下载已取消"
-                  : "正在下载"}
+                  ? t("taskDetail.download.canceled")
+                  : t("taskDetail.download.downloading")}
           </DialogTitle>
           <DialogDescription className="min-w-0 break-all">
             {status === "failed"
-              ? "下载过程中出现错误，请查看详细信息。"
+              ? t("taskDetail.download.failedDescription")
               : status === "canceled"
-                ? "下载已被手动取消。"
-              : `正在下载${fileType} "${displayPath}"`}
+                ? t("taskDetail.download.canceledDescription")
+              : t("taskDetail.download.downloadingDescription", { fileType, displayPath })}
           </DialogDescription>
         </DialogHeader>
 
@@ -237,26 +239,26 @@ export function FileDownloadDialog({
               <span>{progressText}</span>
               <span>
                 {status === "completed"
-                  ? "已完成"
+                  ? t("taskDetail.download.statusCompleted")
                   : status === "canceled"
-                    ? "已取消"
+                    ? t("taskDetail.download.statusCanceled")
                   : status === "failed"
-                    ? "已失败"
-                    : "传输中"}
+                    ? t("taskDetail.download.statusFailed")
+                    : t("taskDetail.download.statusTransferring")}
               </span>
             </div>
           </div>
 
           {status === "failed" && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              {errorMessage || "未知错误"}
+              {errorMessage || t("taskDetail.common.unknownError")}
             </div>
           )}
 
           {isDownloading && (
             <div className="flex justify-end">
               <Button type="button" variant="outline" size="sm" onClick={handleCancelDownload}>
-                取消下载
+                {t("taskDetail.download.cancel")}
               </Button>
             </div>
           )}

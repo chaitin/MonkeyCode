@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface TeamGroupsCardProps {
   groups: any[];
@@ -23,6 +24,7 @@ interface TeamGroupsCardProps {
 }
 
 export default function TeamGroupsCard({ groups, members, onRefreshGroups }: TeamGroupsCardProps) {
+  const { t } = useTranslation();
   const [addGroupDialogOpen, setAddGroupDialogOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -46,22 +48,23 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
   const [viewMembersDialogOpen, setViewMembersDialogOpen] = useState(false);
   const [viewingGroup, setViewingGroup] = useState<{ id: string; name: string } | null>(null);
   const [viewingGroupMembers, setViewingGroupMembers] = useState<any[]>([]);
+  const errorMessage = (message?: string) => message || t("managerShell.common.unknownError");
 
   const handleAddGroup = async () => {
     if (!groupName.trim()) {
-      toast.error("请输入分组名称");
+      toast.error(t("managerGroups.toast.nameRequired"));
       return;
     }
 
     setSubmitting(true);
     await apiRequest('v1TeamsGroupsCreate', { name: groupName.trim() }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("分组添加成功");
+        toast.success(t("managerGroups.toast.added"));
         setAddGroupDialogOpen(false);
         setGroupName("");
         onRefreshGroups();
       } else {
-        toast.error("添加分组失败: " + resp.message);
+        toast.error(t("managerGroups.toast.addFailed", { message: errorMessage(resp.message) }));
       }
     })
     setSubmitting(false);
@@ -84,13 +87,13 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
     setDeleting(true);
     await apiRequest('v1TeamsGroupsDelete', {}, [deletingGroupId], (resp) => {
       if (resp.code === 0) {
-        toast.success("分组删除成功");
+        toast.success(t("managerGroups.toast.deleted"));
         setDeleteDialogOpen(false);
         setDeletingGroupId(null);
         setDeletingGroupName("");
         onRefreshGroups();
       } else {
-        toast.error("删除分组失败: " + resp.message);
+        toast.error(t("managerGroups.toast.deleteFailed", { message: errorMessage(resp.message) }));
       }
     })
     setDeleting(false);
@@ -110,20 +113,20 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
 
   const handleUpdateGroup = async () => {
     if (!editingGroupId || !editingGroupName.trim()) {
-      toast.error("请输入分组名称");
+      toast.error(t("managerGroups.toast.nameRequired"));
       return;
     }
 
     setUpdating(true);
     await apiRequest('v1TeamsGroupsUpdate', { name: editingGroupName.trim() }, [editingGroupId], (resp) => {
         if (resp.code === 0) {
-          toast.success("分组更新成功");
+          toast.success(t("managerGroups.toast.updated"));
           setEditGroupDialogOpen(false);
           setEditingGroupId(null);
           setEditingGroupName("");
           onRefreshGroups();
         } else {
-          toast.error("更新分组失败: " + resp.message);
+          toast.error(t("managerGroups.toast.updateFailed", { message: errorMessage(resp.message) }));
         }
       })
     setUpdating(false);
@@ -141,7 +144,6 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
     setSelectOpen(false);
     setEditMembersDialogOpen(true);
     
-    // 获取当前分组的成员列表
     const currentUserIds = (group.users || []).map((user: any) => user.id).filter((id: string) => id);
     setSelectedMemberIds([...currentUserIds]);
   }
@@ -161,14 +163,14 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
     
     await apiRequest('v1TeamsGroupsUsersUpdate', { user_ids: selectedMemberIds }, [editingGroupMembersId], (resp) => {
       if (resp.code === 0) {
-        toast.success("成员更新成功");
+        toast.success(t("managerGroups.toast.membersUpdated"));
         setEditMembersDialogOpen(false);
         setEditingGroupMembersId(null);
         setEditingGroupMembersName("");
         setSelectedMemberIds([]);
         onRefreshGroups();
       } else {
-        toast.error("更新成员失败: " + resp.message);
+        toast.error(t("managerGroups.toast.membersUpdateFailed", { message: errorMessage(resp.message) }));
       }
     })
     
@@ -187,11 +189,9 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
     setViewingGroup({ id: group.id, name: group.name });
     setViewMembersDialogOpen(true);
     
-    // 获取分组的成员列表
     setViewingGroupMembers(group.users || []);
   }
 
-  // 点击外部关闭下拉框
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (selectRef.current && !selectRef.current.contains(event.target as Node)) {
@@ -208,35 +208,29 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
     };
   }, [selectOpen]);
 
-  // 更新 ref 以跟踪最新的选中状态
   useEffect(() => {
     selectedMemberIdsRef.current = selectedMemberIds;
   }, [selectedMemberIds]);
 
-  // 只在展开下拉框时排序成员列表
   useEffect(() => {
     if (selectOpen && members.length > 0) {
       const sorted = [...members].sort((a, b) => {
-        // 使用 ref 中的最新值，而不是闭包中的值
         const currentSelectedIds = selectedMemberIdsRef.current;
         const aChecked = currentSelectedIds.includes(a.user?.id || '');
         const bChecked = currentSelectedIds.includes(b.user?.id || '');
         
-        // 已选中的排在前面
         if (aChecked && !bChecked) return -1;
         if (!aChecked && bChecked) return 1;
         
-        // 相同选中状态下，按邮箱排序
         const aEmail = (a.user?.email || '').toLowerCase();
         const bEmail = (b.user?.email || '').toLowerCase();
         return aEmail.localeCompare(bEmail);
       });
       setSortedMembers(sorted);
     } else if (!selectOpen) {
-      // 关闭时清空排序列表
       setSortedMembers([]);
     }
-  }, [selectOpen, members]); // 不包含 selectedMemberIds，避免点击时重新排序
+  }, [selectOpen, members]);
 
 
   return (
@@ -245,15 +239,15 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <IconList />
-            分组
+            {t("managerGroups.title")}
           </CardTitle>
           <CardDescription>
-            团队分组列表
+            {t("managerGroups.description")}
           </CardDescription>
           <CardAction>
             <Button variant="outline" onClick={() => setAddGroupDialogOpen(true)}>
               <IconCirclePlus />
-              添加分组
+              {t("managerGroups.actions.add")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -269,7 +263,7 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
                       className="cursor-pointer hover:text-primary"
                       onClick={() => handleViewGroupMembers(group)}
                     >
-                      {group.users?.length || 0} 个成员
+                      {t("managerGroups.members.count", { count: group.users?.length || 0 })}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
@@ -282,18 +276,18 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleEditGroup(group)}>
                           <IconPencil />
-                          修改名称
+                          {t("managerGroups.actions.editName")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleEditGroupMembers(group)}>
                           <IconUserPlus />
-                          调整成员
+                          {t("managerGroups.actions.editMembers")}
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive" 
                           onClick={() => handleDeleteGroup(group)}
                         >
                           <IconTrash />
-                          删除
+                          {t("managerGroups.actions.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -308,17 +302,17 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
       <Dialog open={addGroupDialogOpen} onOpenChange={setAddGroupDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>添加分组</DialogTitle>
+            <DialogTitle>{t("managerGroups.dialogs.add.title")}</DialogTitle>
             <DialogDescription>
-              请输入分组名称
+              {t("managerGroups.dialogs.add.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <Field>
-              <FieldLabel>分组名称</FieldLabel>
+              <FieldLabel>{t("managerGroups.fields.name")}</FieldLabel>
               <FieldContent>
                 <Input
-                  placeholder="请输入分组名称"
+                  placeholder={t("managerGroups.fields.namePlaceholder")}
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   onKeyDown={(e) => {
@@ -333,10 +327,10 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleCancelAddGroup} disabled={submitting}>
-              取消
+              {t("managerShell.common.cancel")}
             </Button>
             <Button onClick={handleAddGroup} disabled={!groupName.trim() || submitting}>
-              添加
+              {t("managerGroups.actions.addShort")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -345,17 +339,17 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除分组</AlertDialogTitle>
+            <AlertDialogTitle>{t("managerGroups.dialogs.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除分组 "{deletingGroupName}" 吗？此操作不可恢复。
+              {t("managerGroups.dialogs.delete.description", { name: deletingGroupName })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancelDelete} disabled={deleting}>
-              取消
+              {t("managerShell.common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? "删除中..." : "确认删除"}
+              {deleting ? t("managerGroups.dialogs.delete.deleting") : t("managerGroups.dialogs.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -364,14 +358,14 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
       <Dialog open={editGroupDialogOpen} onOpenChange={setEditGroupDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>修改名称</DialogTitle>
+            <DialogTitle>{t("managerGroups.dialogs.edit.title")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
             <Field>
-              <FieldLabel>分组名称</FieldLabel>
+              <FieldLabel>{t("managerGroups.fields.name")}</FieldLabel>
               <FieldContent>
                 <Input
-                  placeholder="请输入分组名称"
+                  placeholder={t("managerGroups.fields.namePlaceholder")}
                   value={editingGroupName}
                   onChange={(e) => setEditingGroupName(e.target.value)}
                   onKeyDown={(e) => {
@@ -386,10 +380,10 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleCancelEditGroup} disabled={updating}>
-              取消
+              {t("managerShell.common.cancel")}
             </Button>
             <Button onClick={handleUpdateGroup} disabled={!editingGroupName.trim() || updating}>
-              {updating ? "更新中..." : "更新"}
+              {updating ? t("managerGroups.dialogs.edit.updating") : t("managerGroups.dialogs.edit.update")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -403,7 +397,7 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>调整成员 - {editingGroupMembersName}</DialogTitle>
+            <DialogTitle>{t("managerGroups.dialogs.members.title", { name: editingGroupMembersName })}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
             <Field>
@@ -419,10 +413,10 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
                   >
                     <span className="truncate">
                       {selectedMemberIds.length === 0
-                        ? "请选择成员"
+                        ? t("managerGroups.members.selectPlaceholder")
                         : selectedMemberIds.length === 1
-                        ? members.find((m) => m.user?.id === selectedMemberIds[0])?.user?.name || "已选择 1 个成员"
-                        : `已选择 ${selectedMemberIds.length} 个成员`}
+                        ? members.find((m) => m.user?.id === selectedMemberIds[0])?.user?.name || t("managerGroups.members.selectedOne")
+                        : t("managerGroups.members.selectedMany", { count: selectedMemberIds.length })}
                     </span>
                     <IconChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
                   </Button>
@@ -431,7 +425,7 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
                       <div className="max-h-[300px] overflow-auto p-1">
                         {sortedMembers.length === 0 ? (
                           <div className="py-6 text-center text-sm text-muted-foreground">
-                            暂无成员
+                            {t("managerGroups.members.empty")}
                           </div>
                         ) : (
                           sortedMembers.map((member) => {
@@ -470,10 +464,10 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleCancelEditMembers} disabled={savingMembers}>
-              取消
+              {t("managerShell.common.cancel")}
             </Button>
             <Button onClick={handleSaveGroupMembers} disabled={savingMembers}>
-              {savingMembers ? "保存中..." : "保存"}
+              {savingMembers ? t("managerGroups.dialogs.members.saving") : t("managerGroups.dialogs.members.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -482,15 +476,15 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
       <Dialog open={viewMembersDialogOpen} onOpenChange={setViewMembersDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{viewingGroup?.name} - 成员列表</DialogTitle>
+            <DialogTitle>{t("managerGroups.dialogs.viewMembers.title", { name: viewingGroup?.name })}</DialogTitle>
             <DialogDescription>
-              共 {viewingGroupMembers.length} 个成员
+              {t("managerGroups.dialogs.viewMembers.count", { count: viewingGroupMembers.length })}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             {viewingGroupMembers.length === 0 ? (
               <div className="text-sm text-muted-foreground">
-                该分组暂无成员
+                {t("managerGroups.dialogs.viewMembers.empty")}
               </div>
             ) : (
               <div className="max-h-[400px] overflow-auto">
@@ -506,7 +500,7 @@ export default function TeamGroupsCard({ groups, members, onRefreshGroups }: Tea
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewMembersDialogOpen(false)}>
-              关闭
+              {t("managerShell.common.close")}
             </Button>
           </DialogFooter>
         </DialogContent>

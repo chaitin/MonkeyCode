@@ -29,11 +29,16 @@ import { TrendCard } from "@/components/manager/dashboard/trend-card"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/utils/requestUtils"
+import { useTranslation } from "react-i18next"
 
-function formatDuration(seconds?: number) {
-  if (!seconds) return "暂无"
-  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`
-  return `${(seconds / 3600).toFixed(1)} 小时`
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+function formatDuration(seconds: number | undefined, t: Translate) {
+  if (!seconds) return t("managerOverview.duration.empty")
+  if (seconds < 3600) {
+    return t("managerOverview.duration.minutes", { count: Math.round(seconds / 60) })
+  }
+  return t("managerOverview.duration.hours", { count: (seconds / 3600).toFixed(1) })
 }
 
 function formatTokens(value?: number) {
@@ -44,9 +49,11 @@ function formatTokens(value?: number) {
 }
 
 function InsightEmpty() {
+  const { t } = useTranslation()
+
   return (
     <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-      当前周期暂无数据
+      {t("managerOverview.empty.period")}
     </div>
   )
 }
@@ -201,27 +208,28 @@ function TaskStatsPanel({
   tokens?: number
   requests?: number
 }) {
+  const { t } = useTranslation()
   const total = running + finished
   const finishedRate = total > 0 ? Math.round((finished / total) * 100) : 0
 
   return (
     <Card className="gap-0 rounded-lg shadow-none">
       <CardHeader className="gap-2 px-6 pb-4">
-        <CardTitle className="text-base font-semibold">任务统计</CardTitle>
+        <CardTitle className="text-base font-semibold">{t("managerOverview.taskStats.title")}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          运行状态、耗时与模型调用
+          {t("managerOverview.taskStats.description")}
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-lg bg-muted/60 p-4">
-            <div className="text-sm text-muted-foreground">运行中</div>
+            <div className="text-sm text-muted-foreground">{t("managerOverview.taskStats.running")}</div>
             <div className="mt-2 text-2xl font-semibold leading-none">
               {running}
             </div>
           </div>
           <div className="rounded-lg bg-muted/60 p-4">
-            <div className="text-sm text-muted-foreground">已结束</div>
+            <div className="text-sm text-muted-foreground">{t("managerOverview.taskStats.finished")}</div>
             <div className="mt-2 text-2xl font-semibold leading-none">
               {finished}
             </div>
@@ -230,7 +238,7 @@ function TaskStatsPanel({
 
         <div>
           <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">完成占比</span>
+            <span className="text-muted-foreground">{t("managerOverview.taskStats.finishedRate")}</span>
             <span className="font-medium">{finishedRate}%</span>
           </div>
           <div className="h-2 rounded-full bg-[var(--dashboard-brand-muted)]">
@@ -243,16 +251,16 @@ function TaskStatsPanel({
 
         <div className="space-y-4 text-sm">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">平均耗时</span>
-            <span className="font-medium">{formatDuration(averageDuration)}</span>
+            <span className="text-muted-foreground">{t("managerOverview.taskStats.averageDuration")}</span>
+            <span className="font-medium">{formatDuration(averageDuration, t)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Token 消耗</span>
+            <span className="text-muted-foreground">{t("managerOverview.taskStats.tokenUsage")}</span>
             <span className="font-medium">{formatTokens(tokens)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">模型调用</span>
-            <span className="font-medium">{requests || 0} 次</span>
+            <span className="text-muted-foreground">{t("managerOverview.taskStats.llmRequests")}</span>
+            <span className="font-medium">{t("managerOverview.values.times", { count: requests || 0 })}</span>
           </div>
         </div>
       </CardContent>
@@ -261,6 +269,7 @@ function TaskStatsPanel({
 }
 
 export default function TeamManagerOverview() {
+  const { t } = useTranslation()
   const [range, setRange] = useState<DashboardRange>("7d")
   const [data, setData] = useState<DomainTeamDashboardResp | null>(null)
   const [loading, setLoading] = useState(false)
@@ -275,7 +284,7 @@ export default function TeamManagerOverview() {
         if (resp.code === 0) {
           setData(resp.data)
         } else {
-          toast.error(resp.message || "获取团队仪表盘失败")
+          toast.error(resp.message || t("managerOverview.toast.fetchFailed"))
         }
         setLoading(false)
       },
@@ -283,7 +292,7 @@ export default function TeamManagerOverview() {
         setLoading(false)
       },
     )
-  }, [range])
+  }, [range, t])
 
   const metrics = data?.metrics
   const projectStats = data?.project_stats
@@ -303,11 +312,11 @@ export default function TeamManagerOverview() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold tracking-normal">
-              团队管理仪表盘
+              {t("managerOverview.title")}
             </h1>
             {loading && data && (
               <Badge variant="outline" className="font-normal">
-                刷新中
+                {t("managerOverview.refreshing")}
               </Badge>
             )}
           </div>
@@ -323,45 +332,45 @@ export default function TeamManagerOverview() {
             <EmptyMedia variant="icon">
               <Spinner className="size-6" />
             </EmptyMedia>
-            <EmptyTitle>正在加载团队仪表盘</EmptyTitle>
+            <EmptyTitle>{t("managerOverview.loading")}</EmptyTitle>
           </EmptyHeader>
         </Empty>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
-              title="任务总数"
+              title={t("managerOverview.metrics.tasks.title")}
               value={formatCount(taskStats?.total)}
               stats={[
-                { label: "近 7 天活动", value: formatCount(taskStats?.active_7d) },
-                { label: "今日活动", value: formatCount(taskStats?.active_today) },
+                { label: t("managerOverview.metrics.last7DaysActivity"), value: formatCount(taskStats?.active_7d) },
+                { label: t("managerOverview.metrics.todayActivity"), value: formatCount(taskStats?.active_today) },
               ]}
               icon={<Target />}
             />
             <MetricCard
-              title="项目总数"
+              title={t("managerOverview.metrics.projects.title")}
               value={formatCount(projectStats?.total)}
               stats={[
-                { label: "近 7 天活动", value: formatCount(projectStats?.active_7d) },
-                { label: "今日活动", value: formatCount(projectStats?.active_today) },
+                { label: t("managerOverview.metrics.last7DaysActivity"), value: formatCount(projectStats?.active_7d) },
+                { label: t("managerOverview.metrics.todayActivity"), value: formatCount(projectStats?.active_today) },
               ]}
               icon={<FolderKanban />}
             />
             <MetricCard
-              title="对话总数"
+              title={t("managerOverview.metrics.conversations.title")}
               value={formatCount(conversationStats?.total)}
               stats={[
-                { label: "近 7 天", value: formatCount(conversationStats?.count_7d) },
-                { label: "今日", value: formatCount(conversationStats?.count_today) },
+                { label: t("managerOverview.metrics.last7Days"), value: formatCount(conversationStats?.count_7d) },
+                { label: t("managerOverview.metrics.today"), value: formatCount(conversationStats?.count_today) },
               ]}
               icon={<MessageSquareText />}
             />
             <MetricCard
-              title="活跃成员"
+              title={t("managerOverview.metrics.members.title")}
               value={`${metrics?.active_members || 0} / ${metrics?.total_members || 0}`}
               stats={[
-                { label: "活跃率", value: formatRate(metrics?.active_rate) },
-                { label: "总成员", value: formatCount(metrics?.total_members) },
+                { label: t("managerOverview.metrics.members.activeRate"), value: formatRate(metrics?.active_rate) },
+                { label: t("managerOverview.metrics.members.total"), value: formatCount(metrics?.total_members) },
               ]}
               icon={<Activity />}
             />
@@ -370,8 +379,8 @@ export default function TeamManagerOverview() {
           <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="grid gap-4">
               <TrendCard
-                title="任务创建趋势"
-                description="按日期统计新增任务"
+                title={t("managerOverview.trends.tasks.title")}
+                description={t("managerOverview.trends.tasks.description")}
                 contentClassName="h-72"
               >
                 {taskTrend.length > 0 ? (
@@ -385,8 +394,8 @@ export default function TeamManagerOverview() {
               </TrendCard>
               <div className="grid gap-4 lg:grid-cols-2">
                 <TrendCard
-                  title="项目创建趋势"
-                  description="按日期统计新增项目"
+                  title={t("managerOverview.trends.projects.title")}
+                  description={t("managerOverview.trends.projects.description")}
                   contentClassName="h-52"
                 >
                   {projectTrend.length > 0 ? (
@@ -399,8 +408,8 @@ export default function TeamManagerOverview() {
                   )}
                 </TrendCard>
                 <TrendCard
-                  title="对话创建趋势"
-                  description="按日期统计新增对话"
+                  title={t("managerOverview.trends.conversations.title")}
+                  description={t("managerOverview.trends.conversations.description")}
                   contentClassName="h-52"
                 >
                   {conversationTrend.length > 0 ? (
@@ -424,7 +433,7 @@ export default function TeamManagerOverview() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <InsightTable title="高活跃成员" description="按任务数量排序">
+            <InsightTable title={t("managerOverview.insights.activeMembers.title")} description={t("managerOverview.insights.activeMembers.description")}>
               <div className="space-y-2">
                 {(data?.insights?.active_members || []).length === 0 && (
                   <InsightEmpty />
@@ -432,14 +441,14 @@ export default function TeamManagerOverview() {
                 {(data?.insights?.active_members || []).map((item) => (
                   <InsightRow
                     key={item.user_id}
-                    title={item.name || item.email || "未命名成员"}
-                    subtitle={item.group_name || "未分组"}
-                    value={`${item.task_count || 0} 个任务`}
+                    title={item.name || item.email || t("managerOverview.fallback.unnamedMember")}
+                    subtitle={item.group_name || t("managerOverview.fallback.ungrouped")}
+                    value={t("managerOverview.values.tasks", { count: item.task_count || 0 })}
                   />
                 ))}
               </div>
             </InsightTable>
-            <InsightTable title="高消耗对象" description="按 Token 消耗排序">
+            <InsightTable title={t("managerOverview.insights.highConsumption.title")} description={t("managerOverview.insights.highConsumption.description")}>
               <div className="space-y-2">
                 {(data?.insights?.high_consumption || []).length === 0 && (
                   <InsightEmpty />
@@ -447,15 +456,15 @@ export default function TeamManagerOverview() {
                 {(data?.insights?.high_consumption || []).map((item) => (
                   <InsightRow
                     key={item.id}
-                    title={item.name || "未知对象"}
-                    subtitle="Token 消耗"
+                    title={item.name || t("managerOverview.fallback.unknownObject")}
+                    subtitle={t("managerOverview.taskStats.tokenUsage")}
                     value={formatTokens(item.total_tokens)}
-                    badge={item.type === "project" ? "项目" : "成员"}
+                    badge={item.type === "project" ? t("managerOverview.types.project") : t("managerOverview.types.member")}
                   />
                 ))}
               </div>
             </InsightTable>
-            <InsightTable title="长时间运行任务" description="按运行时长排序">
+            <InsightTable title={t("managerOverview.insights.longRunningTasks.title")} description={t("managerOverview.insights.longRunningTasks.description")}>
               <div className="space-y-2">
                 {(data?.insights?.long_running_tasks || []).length === 0 && (
                   <InsightEmpty />
@@ -463,9 +472,9 @@ export default function TeamManagerOverview() {
                 {(data?.insights?.long_running_tasks || []).map((item) => (
                   <InsightRow
                     key={item.task_id}
-                    title={item.title || "未命名任务"}
-                    subtitle={item.creator || item.host_name || "未知创建人"}
-                    value={formatDuration(item.duration)}
+                    title={item.title || t("managerOverview.fallback.unnamedTask")}
+                    subtitle={item.creator || item.host_name || t("managerOverview.fallback.unknownCreator")}
+                    value={formatDuration(item.duration, t)}
                   />
                 ))}
               </div>
@@ -474,7 +483,7 @@ export default function TeamManagerOverview() {
 
           {!hasTrendData && (
             <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              当前周期还没有足够趋势数据，创建项目或任务后这里会展示增长曲线。
+              {t("managerOverview.empty.noTrendData")}
             </div>
           )}
         </>

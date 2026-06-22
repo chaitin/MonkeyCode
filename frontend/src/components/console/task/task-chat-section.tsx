@@ -5,80 +5,69 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { formatTokens } from "@/utils/common"
 import { IconDeviceDesktop, IconFile, IconGitBranch, IconSend, IconTerminal2 } from "@tabler/icons-react"
+import type { TFunction } from "i18next"
+import { useTranslation } from "react-i18next"
 
-const MOCK_MESSAGES: MessageType[] = [
-  {
-    id: "1",
-    time: Date.now() - 300000,
-    role: "user",
-    type: "user_input",
-    data: { content: "请帮我写个 Frida 脚本，来实现自动收取企业微信消息的逻辑" },
-  },
-  {
-    id: "2",
-    time: Date.now() - 270000,
-    role: "agent",
-    type: "agent_message_chunk",
-    data: {
-      content:
-        "这个请求我不能直接帮你写。企业微信涉及敏感的企业通信数据，建议通过以下合规方式实现：\n\n1. **官方 API**：使用企业微信提供的 Webhook、回调接口接收消息\n2. **会话存档**：开通企业微信的会话内容存档能力\n3. **群机器人**：在群内添加机器人，通过 Webhook 接收消息推送\n\n如需示例，我可以帮你写 Node.js 或 Python 调用上述接口的代码。",
+function createMockMessages(t: TFunction): MessageType[] {
+  return [
+    {
+      id: "1",
+      time: Date.now() - 300000,
+      role: "user",
+      type: "user_input",
+      data: { content: t("taskDetail.chat.mock.userRequest") },
     },
-  },
-  {
-    id: "3",
-    time: Date.now() - 240000,
-    role: "user",
-    type: "user_input",
-    data: { content: "那就用官方 API 的方式，写一个 Python 示例吧" },
-  },
-  {
-    id: "4",
-    time: Date.now() - 240000,
-    role: "user",
-    type: "user_input",
-    data: { content: "那就用官方 API 的方式，写一个 Python 示例吧" },
-  },
-  {
-    id: "5",
-    time: Date.now() - 270000,
-    role: "agent",
-    type: "agent_message_chunk",
-    data: {
-      content:
-        "这个请求我不能直接帮你写。企业微信涉及敏感的企业通信数据，建议通过以下合规方式实现：\n\n1. **官方 API**：使用企业微信提供的 Webhook、回调接口接收消息\n2. **会话存档**：开通企业微信的会话内容存档能力\n3. **群机器人**：在群内添加机器人，通过 Webhook 接收消息推送\n\n如需示例，我可以帮你写 Node.js 或 Python 调用上述接口的代码。",
+    {
+      id: "2",
+      time: Date.now() - 270000,
+      role: "agent",
+      type: "agent_message_chunk",
+      data: { content: t("taskDetail.chat.mock.agentReply") },
     },
-  },
-  {
-    id: "6",
-    time: Date.now() - 270000,
-    role: "agent",
-    type: "agent_message_chunk",
-    data: {
-      content:
-        "这个请求我不能直接帮你写。企业微信涉及敏感的企业通信数据，建议通过以下合规方式实现：\n\n1. **官方 API**：使用企业微信提供的 Webhook、回调接口接收消息\n2. **会话存档**：开通企业微信的会话内容存档能力\n3. **群机器人**：在群内添加机器人，通过 Webhook 接收消息推送\n\n如需示例，我可以帮你写 Node.js 或 Python 调用上述接口的代码。",
+    {
+      id: "3",
+      time: Date.now() - 240000,
+      role: "user",
+      type: "user_input",
+      data: { content: t("taskDetail.chat.mock.userFollowup") },
     },
-  },
-  {
-    id: "7",
-    time: Date.now() - 270000,
-    role: "agent",
-    type: "agent_message_chunk",
-    data: {
-      content:
-        "这个请求我不能直接帮你写。企业微信涉及敏感的企业通信数据，建议通过以下合规方式实现：\n\n1. **官方 API**：使用企业微信提供的 Webhook、回调接口接收消息\n2. **会话存档**：开通企业微信的会话内容存档能力\n3. **群机器人**：在群内添加机器人，通过 Webhook 接收消息推送\n\n如需示例，我可以帮你写 Node.js 或 Python 调用上述接口的代码。",
+    {
+      id: "4",
+      time: Date.now() - 240000,
+      role: "user",
+      type: "user_input",
+      data: { content: t("taskDetail.chat.mock.userFollowup") },
     },
-  },
-  {
-    id: "8",
-    time: Date.now() - 270000,
-    role: "agent",
-    type: "agent_message_chunk",
-    data: {
-      content:
-        "这个请求我不能直接帮你写。企业微信涉及敏感的企业通信数据，建议通过以下合规方式实现：\n\n1. **官方 API**：使用企业微信提供的 Webhook、回调接口接收消息\n2. **会话存档**：开通企业微信的会话内容存档能力\n3. **群机器人**：在群内添加机器人，通过 Webhook 接收消息推送\n\n如需示例，我可以帮你写 Node.js 或 Python 调用上述接口的代码。",
+    {
+      id: "5",
+      time: Date.now() - 270000,
+      role: "agent",
+      type: "agent_message_chunk",
+      data: { content: t("taskDetail.chat.mock.agentReply") },
     },
-  },
-]
+    {
+      id: "6",
+      time: Date.now() - 270000,
+      role: "agent",
+      type: "agent_message_chunk",
+      data: { content: t("taskDetail.chat.mock.agentReply") },
+    },
+    {
+      id: "7",
+      time: Date.now() - 270000,
+      role: "agent",
+      type: "agent_message_chunk",
+      data: { content: t("taskDetail.chat.mock.agentReply") },
+    },
+    {
+      id: "8",
+      time: Date.now() - 270000,
+      role: "agent",
+      type: "agent_message_chunk",
+      data: { content: t("taskDetail.chat.mock.agentReply") },
+    },
+  ]
+}
 
 export type PanelType = "files" | "terminal" | "changes" | "preview"
 
@@ -107,6 +96,7 @@ function PanelButton({
   label: string
   onClick: () => void
 }) {
+  const { t } = useTranslation()
   const button = (
     <Button
       variant="ghost"
@@ -125,7 +115,7 @@ function PanelButton({
         <TooltipTrigger asChild>
           <span className="inline-flex">{button}</span>
         </TooltipTrigger>
-        <TooltipContent>任务已结束，无法查看</TooltipContent>
+        <TooltipContent>{t("taskDetail.panels.disabledTooltip")}</TooltipContent>
       </Tooltip>
     )
   }
@@ -143,11 +133,18 @@ export function TaskChatSection({
   panelsDisabled = false,
   taskStats,
 }: TaskChatSectionProps) {
+  const { t } = useTranslation()
+  const mockMessages = createMockMessages(t)
+  const totalTokens = taskStats?.total_tokens ?? ((taskStats?.input_tokens ?? 0) + (taskStats?.output_tokens ?? 0))
+  const formattedTotalTokens = formatTokens(totalTokens) || "-"
+  const formattedInputTokens = formatTokens(taskStats?.input_tokens) || "-"
+  const formattedOutputTokens = formatTokens(taskStats?.output_tokens) || "-"
+
   return (
     <div className="flex flex-col h-full min-h-0 gap-4">
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className={cn("flex flex-col gap-4", hasPanel ? "max-w-full" : "mx-auto max-w-[800px]")}>
-          {MOCK_MESSAGES.map((msg) => (
+          {mockMessages.map((msg) => (
             <MessageItem key={msg.id} message={msg} />
           ))}
         </div>
@@ -157,7 +154,7 @@ export function TaskChatSection({
           <InputGroup className="rounded-lg">
             <InputGroupTextarea
               className="min-h-10 max-h-32 text-sm break-all resize-none"
-              placeholder="要求后续变更"
+              placeholder={t("taskDetail.chat.followupPlaceholder")}
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={onKeyDown}
@@ -171,7 +168,7 @@ export function TaskChatSection({
                 className="gap-1"
               >
                 <IconSend className="size-4" />
-                发送
+                {t("taskDetail.common.send")}
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
@@ -181,38 +178,41 @@ export function TaskChatSection({
                 active={activePanel === "files"}
                 disabled={panelsDisabled}
                 icon={IconFile}
-                label="文件"
+                label={t("taskDetail.panels.files")}
                 onClick={() => onTogglePanel("files")}
               />
               <PanelButton
                 active={activePanel === "terminal"}
                 disabled={panelsDisabled}
                 icon={IconTerminal2}
-                label="终端"
+                label={t("taskDetail.panels.terminal")}
                 onClick={() => onTogglePanel("terminal")}
               />
               <PanelButton
                 active={activePanel === "changes"}
                 disabled={panelsDisabled}
                 icon={IconGitBranch}
-                label="修改"
+                label={t("taskDetail.panels.changes")}
                 onClick={() => onTogglePanel("changes")}
               />
               <PanelButton
                 active={activePanel === "preview"}
                 disabled={panelsDisabled}
                 icon={IconDeviceDesktop}
-                label="预览"
+                label={t("taskDetail.panels.preview")}
                 onClick={() => onTogglePanel("preview")}
               />
             </div>
             {(taskStats?.input_tokens != null || taskStats?.output_tokens != null || taskStats?.total_tokens != null) ? (
               <span className="text-xs text-muted-foreground shrink-0">
                 <span className="sm:hidden">
-                  {formatTokens(taskStats?.total_tokens ?? ((taskStats?.input_tokens ?? 0) + (taskStats?.output_tokens ?? 0)))} tokens
+                  {t("taskDetail.panels.tokenStatsCompact", { total: formattedTotalTokens })}
                 </span>
                 <span className="hidden sm:inline">
-                  输入 {formatTokens(taskStats?.input_tokens) || "-"} / 输出 {formatTokens(taskStats?.output_tokens) || "-"} tokens
+                  {t("taskDetail.panels.tokenStatsFull", {
+                    input: formattedInputTokens,
+                    output: formattedOutputTokens,
+                  })}
                 </span>
               </span>
             ) : null}

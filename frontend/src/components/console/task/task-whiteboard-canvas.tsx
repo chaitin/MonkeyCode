@@ -55,6 +55,7 @@ import {
   useStylePanelContext,
 } from "tldraw"
 import "tldraw/tldraw.css"
+import { taskDetailT } from "./task-i18n"
 
 const whiteboardColorItems = [
   { value: "black", icon: "color" },
@@ -78,7 +79,7 @@ function WhiteboardColorPicker() {
 
   return (
     <StylePanelButtonPicker
-      title="颜色"
+      title={taskDetailT("whiteboard.color")}
       uiType="color"
       style={DefaultColorStyle}
       items={whiteboardColorItems}

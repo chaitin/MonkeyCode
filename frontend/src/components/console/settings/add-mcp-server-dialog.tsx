@@ -18,6 +18,7 @@ import {
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { useTranslation } from "react-i18next"
 
 interface AddMcpServerDialogProps {
   open: boolean
@@ -45,6 +46,7 @@ export default function AddMcpServerDialog({
   saving = false,
   server = null,
 }: AddMcpServerDialogProps) {
+  const { t } = useTranslation()
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
   const [headersJson, setHeadersJson] = useState("")
@@ -81,18 +83,18 @@ export default function AddMcpServerDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error("请输入 MCP 服务器名称")
+      toast.error(t("consoleSettings.mcp.toast.nameRequired"))
       return
     }
 
     if (!url.trim()) {
-      toast.error("请输入 MCP 服务器 URL")
+      toast.error(t("consoleSettings.mcp.toast.urlRequired"))
       return
     }
 
     const slug = generateMcpSlug(name.trim())
     if (!slug) {
-      toast.error("无法根据名称生成有效的工具前缀")
+      toast.error(t("consoleSettings.mcp.toast.invalidSlug"))
       return
     }
 
@@ -102,7 +104,7 @@ export default function AddMcpServerDialog({
       try {
         const parsed = JSON.parse(headersJson)
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          toast.error("HTTP Header 必须是 JSON 对象")
+          toast.error(t("consoleSettings.mcp.toast.headerObjectRequired"))
           return
         }
 
@@ -111,7 +113,7 @@ export default function AddMcpServerDialog({
           value: String(value ?? ""),
         }))
       } catch {
-        toast.error("HTTP Header JSON 格式不正确")
+        toast.error(t("consoleSettings.mcp.toast.headerJsonInvalid"))
         return
       }
     }
@@ -133,15 +135,15 @@ export default function AddMcpServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEditMode ? "修改 MCP 服务器" : "添加 MCP 服务器"}</DialogTitle>
+          <DialogTitle>{isEditMode ? t("consoleSettings.mcp.dialog.editTitle") : t("consoleSettings.mcp.dialog.addTitle")}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4">
           <Field>
-            <FieldLabel>名称</FieldLabel>
+            <FieldLabel>{t("consoleSettings.mcp.labels.name")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="请输入 MCP 服务器名称"
+                placeholder={t("consoleSettings.mcp.placeholders.name")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -149,10 +151,10 @@ export default function AddMcpServerDialog({
           </Field>
 
           <Field>
-            <FieldLabel>MCP 服务器地址</FieldLabel>
+            <FieldLabel>{t("consoleSettings.mcp.labels.url")}</FieldLabel>
             <FieldContent>
               <Input
-                placeholder="例如: https://mcp.example.com/sse"
+                placeholder={t("consoleSettings.mcp.placeholders.url")}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
@@ -174,10 +176,10 @@ export default function AddMcpServerDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            {t("consoleSettings.mcp.actions.cancel")}
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={saving}>
-            {isEditMode ? "保存" : "添加"}
+            {isEditMode ? t("consoleSettings.mcp.actions.save") : t("consoleSettings.mcp.actions.add")}
           </Button>
         </DialogFooter>
       </DialogContent>

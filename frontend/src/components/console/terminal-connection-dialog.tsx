@@ -6,9 +6,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconCirclePlus, IconReload, IconX } from "@tabler/icons-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import dayjs from "dayjs"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface TerminalConnectionDialogProps {
   open: boolean
@@ -25,9 +26,10 @@ export default function TerminalConnectionDialog({
   onConnectionSelected,
   onNewConnection,
 }: TerminalConnectionDialogProps) {
+  const { t } = useTranslation()
   const [connections, setConnections] = useState<DomainTerminal[]>([])
 
-  const fetchConnections = async () => {
+  const fetchConnections = useCallback(async () => {
     if (!envid) {
       return
     }
@@ -35,16 +37,15 @@ export default function TerminalConnectionDialog({
     await apiRequest('v1UsersHostsVmsTerminalsDetail', {}, [envid], (resp) => {
       if (resp.code === 0) {
         const connections = resp.data || []
-        // 根据 created_at 降序排序（最新的在前）
         connections.sort((a: DomainTerminal, b: DomainTerminal) => {
           return (b.created_at || 0) - (a.created_at || 0)
         })
         setConnections(connections)
       } else {
-        toast.error("获取终端连接失败: " + resp.message);
+        toast.error(t("consoleVm.connection.fetchFailed", { message: resp.message }));
       }
     })
-  }
+  }, [envid, t])
 
   const handleDeleteTerminal = async (terminalId: string) => {
     if (!envid) {
@@ -53,10 +54,10 @@ export default function TerminalConnectionDialog({
 
     await apiRequest('v1UsersHostsVmsTerminalsDelete', {}, [envid, terminalId], (resp) => {
       if (resp.code === 0) {
-        toast.success("终端连接已关闭")
+        toast.success(t("consoleVm.connection.closed"))
         fetchConnections()
       } else {
-        toast.error("关闭终端连接失败: " + resp.message);
+        toast.error(t("consoleVm.connection.closeFailed", { message: resp.message }));
       }
     })
   }
@@ -75,7 +76,7 @@ export default function TerminalConnectionDialog({
     if (open && envid) {
       fetchConnections()
     }
-  }, [open, envid])
+  }, [envid, fetchConnections, open])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -86,7 +87,7 @@ export default function TerminalConnectionDialog({
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle>选择终端连接</DialogTitle>
+          <DialogTitle>{t("consoleVm.connection.title")}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
           <ItemGroup className="gap-2">
@@ -97,37 +98,37 @@ export default function TerminalConnectionDialog({
                     {connection.id?.slice(0, 18)}
                   </ItemTitle>
                   <ItemDescription className="flex items-center gap-2">
-                    {connection.created_at && <Badge variant="secondary">{dayjs.unix(connection.created_at).fromNow()}创建</Badge>}
-                    <Badge variant="secondary">{connection.connected_count} 个连接</Badge>
+                    {connection.created_at && <Badge variant="secondary">{t("consoleVm.connection.createdAgo", { time: dayjs.unix(connection.created_at).fromNow() })}</Badge>}
+                    <Badge variant="secondary">{t("consoleVm.connection.connectionCount", { count: connection.connected_count })}</Badge>
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
                   <Button variant="ghost" size="sm" onClick={() => handleConnect(connection.id || '')}>
                     <IconReload />
-                    连接
+                    {t("consoleVm.connection.connect")}
                   </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="sm">
                         <IconX />
-                        关闭
+                        {t("consoleVm.connection.close")}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认关闭</AlertDialogTitle>
+                        <AlertDialogTitle>{t("consoleVm.connection.closeTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          确定要关闭终端连接 "{connection.id}" 吗？此操作不可撤销。
+                          {t("consoleVm.connection.closeDescription", { id: connection.id })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t("consoleVm.common.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => {
                             handleDeleteTerminal(connection.id || '')
                           }}
                         >
-                          确认关闭
+                          {t("consoleVm.connection.confirmClose")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -139,10 +140,9 @@ export default function TerminalConnectionDialog({
         </div>
         <Button variant="outline" className="w-full" onClick={handleCreateNew}>
             <IconCirclePlus />
-            新建连接
+            {t("consoleVm.connection.newConnection")}
         </Button>
       </DialogContent>
     </Dialog>
   )
 }
-

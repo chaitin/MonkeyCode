@@ -74,6 +74,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { apiRequest } from "@/utils/requestUtils"
+import { useTranslation } from "react-i18next"
 
 type SkillSourceType = "zip" | "markdown" | "text"
 
@@ -96,7 +97,10 @@ interface SkillSourceState {
   skillMdPath?: string
 }
 
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
 export default function TeamManagerSkills() {
+  const { t } = useTranslation()
   const [skills, setSkills] = useState<ManagedSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -110,7 +114,7 @@ export default function TeamManagerSkills() {
         setSkills((resp.data?.skills || []).map(toManagedSkill))
         return
       }
-      toast.error(resp.message || "获取 Skill 列表失败")
+      toast.error(resp.message || t("managerSkills.toast.fetchFailed"))
     })
     setLoading(false)
   }
@@ -131,10 +135,10 @@ export default function TeamManagerSkills() {
     void apiRequest("v1TeamsSkillsDelete", {}, [skillID], (resp) => {
       if (resp.code === 0) {
         setSkills((prev) => prev.filter((skill) => skill.id !== skillID))
-        toast.success("Skill 已删除")
+        toast.success(t("managerSkills.toast.deleted"))
         return
       }
-      toast.error(resp.message || "删除 Skill 失败")
+      toast.error(resp.message || t("managerSkills.toast.deleteFailed"))
     })
   }
 
@@ -147,7 +151,7 @@ export default function TeamManagerSkills() {
             Skills
           </CardTitle>
           <CardDescription>
-            管理团队可用 Skills、标签、说明和可使用分组。
+            {t("managerSkills.description")}
           </CardDescription>
           <CardAction>
             <div className="flex flex-wrap justify-end gap-2">
@@ -173,7 +177,7 @@ export default function TeamManagerSkills() {
                 <EmptyMedia variant="icon">
                   <Sparkles className="size-6" />
                 </EmptyMedia>
-                <EmptyTitle>正在加载 Skills</EmptyTitle>
+                <EmptyTitle>{t("managerSkills.empty.loading")}</EmptyTitle>
               </EmptyHeader>
             </Empty>
           ) : skills.length === 0 ? (
@@ -182,8 +186,8 @@ export default function TeamManagerSkills() {
                 <EmptyMedia variant="icon">
                   <Sparkles className="size-6" />
                 </EmptyMedia>
-                <EmptyTitle>暂无 Skills</EmptyTitle>
-                <EmptyDescription>添加 Skill 后会显示在这里。</EmptyDescription>
+                <EmptyTitle>{t("managerSkills.empty.title")}</EmptyTitle>
+                <EmptyDescription>{t("managerSkills.empty.description")}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -210,7 +214,7 @@ export default function TeamManagerSkills() {
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-xs text-muted-foreground">暂无标签</span>
+                        <span className="text-xs text-muted-foreground">{t("managerSkills.empty.noTags")}</span>
                       )}
                     </div>
                   </ItemContent>
@@ -224,7 +228,7 @@ export default function TeamManagerSkills() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setEditingSkill(skill)}>
                           <IconPencil />
-                          修改
+                          {t("managerSkills.actions.edit")}
                         </DropdownMenuItem>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -233,20 +237,20 @@ export default function TeamManagerSkills() {
                               onSelect={(event) => event.preventDefault()}
                             >
                               <IconTrash />
-                              删除
+                              {t("managerSkills.actions.delete")}
                             </DropdownMenuItem>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>确认删除</AlertDialogTitle>
+                              <AlertDialogTitle>{t("managerSkills.dialogs.delete.title")}</AlertDialogTitle>
                               <AlertDialogDescription>
-                                确定要删除 Skill "{skill.name}" 吗？此操作不可撤销。
+                                {t("managerSkills.dialogs.delete.description", { name: skill.name })}
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
                               <AlertDialogAction onClick={() => handleDelete(skill.id)}>
-                                确认删除
+                                {t("managerSkills.dialogs.delete.confirm")}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -268,7 +272,7 @@ export default function TeamManagerSkills() {
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-sm text-muted-foreground">暂无分组</span>
+                        <span className="text-sm text-muted-foreground">{t("managerSkills.empty.noGroups")}</span>
                       )}
                     </div>
                   </ItemFooter>
@@ -299,6 +303,7 @@ function ExtensionPackageImportDialog({
   onOpenChange: (open: boolean) => void
   onImported: () => void
 }) {
+  const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -318,7 +323,7 @@ function ExtensionPackageImportDialog({
 
   const handleSubmit = () => {
     if (!file) {
-      toast.error("请选择扩展包")
+      toast.error(t("managerSkills.toast.extensionRequired"))
       return
     }
 
@@ -327,14 +332,16 @@ function ExtensionPackageImportDialog({
     void api.api.v1TeamsExtensionPackagesCreate({ file }).then((response) => {
       const resp = response.data
       if (resp.code === 0 && resp.data) {
-        toast.success(`${formatExtensionImportResult(resp.data)}，镜像列表已更新`)
+        toast.success(t("managerSkills.extensionImport.success", {
+          summary: formatExtensionImportResult(resp.data, (key, options) => t(key, options)),
+        }))
         onImported()
         handleOpenChange(false)
         return
       }
-      toast.error(resp.message || "导入扩展包失败")
+      toast.error(resp.message || t("managerSkills.toast.extensionImportFailed"))
     }).catch((error) => {
-      toast.error(error?.message || "导入扩展包失败")
+      toast.error(error?.message || t("managerSkills.toast.extensionImportFailed"))
     }).finally(() => {
       setSubmitting(false)
     })
@@ -345,15 +352,15 @@ function ExtensionPackageImportDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Upload className="size-4" />
-          导入扩展包
+          {t("managerSkills.extensionImport.action")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>导入扩展包</DialogTitle>
+          <DialogTitle>{t("managerSkills.extensionImport.title")}</DialogTitle>
         </DialogHeader>
         <Field>
-          <FieldLabel>扩展包文件</FieldLabel>
+          <FieldLabel>{t("managerSkills.extensionImport.file")}</FieldLabel>
           <FieldContent>
             <Input
               ref={fileInputRef}
@@ -363,16 +370,16 @@ function ExtensionPackageImportDialog({
               onChange={(event) => setFile(event.target.files?.[0] || null)}
             />
             <FieldDescription>
-              支持包含 Skills 和镜像归档的 zip 扩展包。
+              {t("managerSkills.extensionImport.description")}
             </FieldDescription>
           </FieldContent>
         </Field>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>
-            取消
+            {t("managerShell.common.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!file || submitting}>
-            {submitting ? "导入中..." : "导入"}
+            {submitting ? t("managerSkills.extensionImport.importing") : t("managerSkills.extensionImport.import")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -389,6 +396,8 @@ function AddSkillDialog({
   onOpenChange: (open: boolean) => void
   onCreate: (skill: ManagedSkill) => void
 }) {
+  const { t } = useTranslation()
+  const translate = (key: string, options?: Record<string, unknown>) => t(key, options)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState("")
@@ -446,11 +455,11 @@ function AddSkillDialog({
 
     setParsing(true)
     try {
-      const parsedFile = await parseSkillFile(file)
+      const parsedFile = await parseSkillFile(file, translate)
       setPackageFile(parsedFile.source.type === "zip" ? file : null)
       applyParsedSkill(parsedFile.parsed, parsedFile.source)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Skill 文件解析失败"
+      const message = error instanceof Error ? error.message : t("managerSkills.parse.fileFailed")
       setDraft(null)
       setPackageFile(null)
       setSource(null)
@@ -476,28 +485,28 @@ function AddSkillDialog({
       setPackageFile(null)
       applyParsedSkill(parseSkillMarkdown(value), {
         type: "text",
-        label: "粘贴文本",
+        label: t("managerSkills.source.pastedText"),
       })
     } catch (error) {
       setDraft(null)
       setSource(null)
-      setParseError(error instanceof Error ? error.message : "Skill 文本解析失败")
+      setParseError(error instanceof Error ? error.message : t("managerSkills.parse.textFailed"))
     }
   }
 
   const handleSubmit = () => {
     if (!draft || !source) {
-      toast.error("请先上传或粘贴有效的 Skill")
+      toast.error(t("managerSkills.toast.validSkillRequired"))
       return
     }
 
     if (!name.trim()) {
-      toast.error("请输入 Skill 名称")
+      toast.error(t("managerSkills.toast.nameRequired"))
       return
     }
 
     if (!description.trim()) {
-      toast.error("请输入 Skill 描述")
+      toast.error(t("managerSkills.toast.descriptionRequired"))
       return
     }
 
@@ -518,13 +527,13 @@ function AddSkillDialog({
         const resp = response.data
         if (resp.code === 0 && resp.data) {
           onCreate(toManagedSkill(resp.data))
-          toast.success("Skill 已添加")
+          toast.success(t("managerSkills.toast.added"))
           handleOpenChange(false)
           return
         }
-        toast.error(resp.message || "添加 Skill 失败")
+        toast.error(resp.message || t("managerSkills.toast.addFailed"))
       }).catch((error) => {
-        toast.error(error?.message || "添加 Skill 失败")
+        toast.error(error?.message || t("managerSkills.toast.addFailed"))
       })
       return
     }
@@ -541,11 +550,11 @@ function AddSkillDialog({
     }, [], (resp) => {
       if (resp.code === 0 && resp.data) {
         onCreate(toManagedSkill(resp.data))
-        toast.success("Skill 已添加")
+        toast.success(t("managerSkills.toast.added"))
         handleOpenChange(false)
         return
       }
-      toast.error(resp.message || "添加 Skill 失败")
+      toast.error(resp.message || t("managerSkills.toast.addFailed"))
     })
   }
 
@@ -554,33 +563,33 @@ function AddSkillDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus className="size-4" />
-          添加 Skill
+          {t("managerSkills.actions.add")}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>添加 Skill</DialogTitle>
+          <DialogTitle>{t("managerSkills.dialogs.add.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-5">
           <Tabs defaultValue="paste">
             <TabsList>
               <TabsTrigger value="paste">
                 <ClipboardPaste className="size-4" />
-                输入文本
+                {t("managerSkills.tabs.paste")}
               </TabsTrigger>
               <TabsTrigger value="upload">
                 <Upload className="size-4" />
-                上传文件
+                {t("managerSkills.tabs.upload")}
               </TabsTrigger>
             </TabsList>
             <TabsContent value="paste" className="space-y-3">
               <Field>
-                <FieldLabel>SKILL.md 内容</FieldLabel>
+                <FieldLabel>{t("managerSkills.fields.skillContent")}</FieldLabel>
                 <FieldContent>
                   <Textarea
                     value={pastedText}
                     onChange={(event) => handlePastedTextChange(event.target.value)}
-                    placeholder="粘贴完整 SKILL.md 内容"
+                    placeholder={t("managerSkills.fields.skillContentPlaceholder")}
                     className="min-h-40 font-mono text-sm"
                   />
                 </FieldContent>
@@ -588,7 +597,7 @@ function AddSkillDialog({
             </TabsContent>
             <TabsContent value="upload" className="space-y-3">
               <Field>
-                <FieldLabel>Skill 文件</FieldLabel>
+                <FieldLabel>{t("managerSkills.fields.skillFile")}</FieldLabel>
                 <FieldContent>
                   <Input
                     ref={fileInputRef}
@@ -598,7 +607,7 @@ function AddSkillDialog({
                     disabled={parsing}
                   />
                   <FieldDescription>
-                    支持 zip 包或单个 SKILL.md 文件。
+                    {t("managerSkills.fields.skillFileDescription")}
                   </FieldDescription>
                 </FieldContent>
               </Field>
@@ -622,10 +631,10 @@ function AddSkillDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            取消
+            {t("managerShell.common.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!formEnabled || parsing}>
-            提交
+            {t("managerSkills.actions.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -644,6 +653,7 @@ function EditSkillDialog({
   onOpenChange: (open: boolean) => void
   onUpdate: (skill: ManagedSkill) => void
 }) {
+  const { t } = useTranslation()
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [tagsText, setTagsText] = useState("")
@@ -667,11 +677,11 @@ function EditSkillDialog({
   const handleSubmit = () => {
     if (!skill) return
     if (!name.trim()) {
-      toast.error("请输入 Skill 名称")
+      toast.error(t("managerSkills.toast.nameRequired"))
       return
     }
     if (!description.trim()) {
-      toast.error("请输入 Skill 描述")
+      toast.error(t("managerSkills.toast.descriptionRequired"))
       return
     }
 
@@ -683,11 +693,11 @@ function EditSkillDialog({
     }, [skill.id], (resp) => {
       if (resp.code === 0 && resp.data) {
         onUpdate(toManagedSkill(resp.data))
-        toast.success("Skill 已修改")
+        toast.success(t("managerSkills.toast.updated"))
         onOpenChange(false)
         return
       }
-      toast.error(resp.message || "修改 Skill 失败")
+      toast.error(resp.message || t("managerSkills.toast.updateFailed"))
     })
   }
 
@@ -695,7 +705,7 @@ function EditSkillDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>修改 Skill</DialogTitle>
+          <DialogTitle>{t("managerSkills.dialogs.edit.title")}</DialogTitle>
         </DialogHeader>
         <SkillMetaForm
           disabled={!skill}
@@ -711,9 +721,9 @@ function EditSkillDialog({
         />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            {t("managerShell.common.cancel")}
           </Button>
-          <Button onClick={handleSubmit}>保存</Button>
+          <Button onClick={handleSubmit}>{t("managerSkills.actions.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -743,10 +753,12 @@ function SkillMetaForm({
   onTagsTextChange: (value: string) => void
   onSelectedGroupIdsChange: (value: string[]) => void
 }) {
+  const { t } = useTranslation()
+
   return (
     <div className="grid gap-4">
       <Field>
-        <FieldLabel>名称</FieldLabel>
+        <FieldLabel>{t("managerSkills.fields.name")}</FieldLabel>
         <FieldContent>
           <Input
             value={name}
@@ -756,7 +768,7 @@ function SkillMetaForm({
         </FieldContent>
       </Field>
       <Field>
-        <FieldLabel>描述</FieldLabel>
+        <FieldLabel>{t("managerSkills.fields.description")}</FieldLabel>
         <FieldContent>
           <Textarea
             value={description}
@@ -767,18 +779,18 @@ function SkillMetaForm({
         </FieldContent>
       </Field>
       <Field>
-        <FieldLabel>标签</FieldLabel>
+        <FieldLabel>{t("managerSkills.fields.tags")}</FieldLabel>
         <FieldContent>
           <Input
             value={tagsText}
             onChange={(event) => onTagsTextChange(event.target.value)}
             disabled={disabled}
-            placeholder="前端, 设计"
+            placeholder={t("managerSkills.fields.tagsPlaceholder")}
           />
         </FieldContent>
       </Field>
       <Field>
-        <FieldLabel>可使用该 Skill 的分组</FieldLabel>
+        <FieldLabel>{t("managerSkills.fields.groups")}</FieldLabel>
         <FieldContent>
           <GroupMultiSelect
             disabled={disabled}
@@ -803,6 +815,7 @@ function GroupMultiSelect({
   selectedGroupIds: string[]
   onSelectedGroupIdsChange: (value: string[]) => void
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const selectRef = useRef<HTMLDivElement>(null)
 
@@ -832,10 +845,10 @@ function GroupMultiSelect({
 
   const selectedLabel =
     selectedGroupIds.length === 0
-      ? "请选择分组"
+      ? t("managerSkills.group.selectPlaceholder")
       : selectedGroupIds.length === 1
-        ? groups.find((group) => group.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
-        : `已选择 ${selectedGroupIds.length} 个分组`
+        ? groups.find((group) => group.id === selectedGroupIds[0])?.name || t("managerSkills.group.selectedOne")
+        : t("managerSkills.group.selectedMany", { count: selectedGroupIds.length })
 
   return (
     <div className="relative" ref={selectRef}>
@@ -857,7 +870,7 @@ function GroupMultiSelect({
         <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
           <div className="max-h-[300px] overflow-auto p-1">
             {groups.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">暂无分组</div>
+              <div className="py-6 text-center text-sm text-muted-foreground">{t("managerSkills.empty.noGroups")}</div>
             ) : (
               groups.map((group) => {
                 const groupID = group.id || ""
@@ -892,10 +905,12 @@ function ParseState({
   parseError: string
   parsing: boolean
 }) {
+  const { t } = useTranslation()
+
   if (parsing) {
     return (
       <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-        正在解析 Skill...
+        {t("managerSkills.parse.parsing")}
       </div>
     )
   }
@@ -918,7 +933,7 @@ function SkillSourceIcon({ type }: { type: SkillSourceType }) {
   return <FileText className="size-4" />
 }
 
-async function parseSkillFile(file: File): Promise<{
+async function parseSkillFile(file: File, t: Translate): Promise<{
   parsed: ParsedSkillMarkdown
   source: SkillSourceState
 }> {
@@ -929,12 +944,12 @@ async function parseSkillFile(file: File): Promise<{
     const zip = await JSZip.loadAsync(file)
     const skillMdPath = findSkillMarkdownPath(Object.keys(zip.files))
     if (!skillMdPath) {
-      throw new Error("zip 包中未找到 SKILL.md")
+      throw new Error(t("managerSkills.parse.readingZipMissing"))
     }
 
     const skillFile = zip.files[skillMdPath]
     if (!skillFile || skillFile.dir) {
-      throw new Error("zip 包中的 SKILL.md 无法读取")
+      throw new Error(t("managerSkills.parse.readingZipFailed"))
     }
 
     return {
@@ -957,7 +972,7 @@ async function parseSkillFile(file: File): Promise<{
     }
   }
 
-  throw new Error("仅支持 zip 包或 SKILL.md 文件")
+  throw new Error(t("managerSkills.parse.unsupportedFile"))
 }
 
 function fetchGroups(setGroups: (groups: DomainTeamGroup[]) => void) {

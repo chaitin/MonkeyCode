@@ -1,8 +1,9 @@
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 
 export const renderTitle = (message: MessageType) => {
-  return `读取网页内容 ${message.data.rawInput?.url ? ` "${message.data.rawInput?.url}"` : ''}`
+  return `${taskDetailT("toolcall.fetchWebpage")}${message.data.rawInput?.url ? ` "${message.data.rawInput?.url}"` : ''}`
 }
 
 export const renderDetail = (message: MessageType) => {

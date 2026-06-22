@@ -8,6 +8,7 @@ import React from 'react';
 import themes from '@/utils/terminalThemes';
 import { b64decode, b64encode } from '@/utils/common';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 const isWebglSupported = (): boolean => {
   if (typeof document === 'undefined') {
@@ -57,18 +58,17 @@ export default function Terminal({
   onUserNameChanged = null,
   onConnectionStatusChanged = null,
 }: TerminalProps) {
-  // 验证 theme 是否为合法值，如果不是则从 localStorage 读取，再不行就设置为 MonkeyCode
+  const { t } = useTranslation();
+
+  // Validate the theme, then fall back to localStorage and the default theme.
   const validTheme = React.useMemo(() => {
-    // 如果传入的 theme 是合法值，直接使用
     if (theme && theme in themes) {
       return theme;
     }
-    // 否则从 localStorage 读取
     const savedTheme = localStorage.getItem('terminalTheme');
     if (savedTheme && savedTheme in themes) {
       return savedTheme;
     }
-    // 最后使用默认值
     return 'MonkeyCode';
   }, [theme]);
 
@@ -87,7 +87,7 @@ export default function Terminal({
   const handleResize = () => {
     if (xtermInstance.current) {
       fitAddonRef.current?.fit();
-      // 判断 websocket 是否连接成功（readyState === 1 表示 OPEN 状态）
+      // readyState 1 means the websocket is open.
       if (websocketInstance.current && websocketInstance.current.readyState === 1) {
         websocketInstance.current.send(JSON.stringify({
           type: "resize",
@@ -105,8 +105,8 @@ export default function Terminal({
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (connected) {
         event.preventDefault();
-        event.returnValue = ''; // Chrome 需要设置 returnValue
-        return ''; // 其他浏览器
+        event.returnValue = ''; // Chrome requires returnValue.
+        return ''; // Other browsers.
       }
     };
 
@@ -116,7 +116,7 @@ export default function Terminal({
     };
   }, []);
 
-  // 使用 ResizeObserver 监听容器大小变化
+  // Watch container size changes with ResizeObserver.
   React.useEffect(() => {
     if (!terminalDiv.current) return;
 
@@ -223,11 +223,11 @@ export default function Terminal({
       } else if (data.type === 'connected') {
         const connectData = JSON.parse(data.data);
         onUserNameChanged?.(connectData.username, connectData.avatar_url || "/logo-light.png");
-        toast.success('终端连接成功');
+        toast.success(t("common.terminal.connected"));
         setConnecting(false);
         setConnected(true);
         xtermInstance.current?.focus();
-        // 等待 DOM 更新后再触发 resize
+        // Trigger resize after the DOM has updated.
         requestAnimationFrame(() => {
           handleResize();
         });
@@ -235,7 +235,7 @@ export default function Terminal({
         const { col, row } = JSON.parse(data.data);
         xtermInstance.current?.resize(col, row);
       } else if (data.type === 'error') {
-        toast.error(`错误：${data.data}`);
+        toast.error(t("common.terminal.serverError", { message: data.data }));
       }
     };
 
@@ -250,7 +250,7 @@ export default function Terminal({
       if (websocketInstance.current === event.target) {
         setConnecting(false);
         setConnected(false);
-        toast.error('终端连接发生错误');
+        toast.error(t("common.terminal.connectionError"));
       }
     };
   }

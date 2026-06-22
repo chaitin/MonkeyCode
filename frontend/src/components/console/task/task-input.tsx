@@ -13,12 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { TASK_PROMPT_PLACEHOLDER, findIdentitiesForRepoUrl, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
+import { findIdentitiesForRepoUrl, getGitPlatformIcon, getHostBadges, getImageShortName, getOSFromImageName, getOwnerTypeBadge, getRepoIcon, getRepoNameFromUrl, selectHost, selectImage, selectPreferredTaskModel, uploadFileWithPresignedUrl } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { IconLink, IconReload, IconSend, IconSourceCode, IconUpload, IconUser, IconXboxX } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSettingsDialog } from "@/pages/console/user/page";
+import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
 import { VoiceInputButton } from "./voice-input-button";
@@ -29,11 +29,12 @@ import { defaultSkills } from "@/utils/config";
 import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 import ModelSelect from "./model-select";
-import { TaskSkillSelector } from "./task-skill-selector";
+import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector";
 import { TaskPluginSelector } from "./task-plugin-selector";
 import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api";
-import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
+import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
 import { filterSelectableSkillIds } from "./task-skill-selection";
+import { useTranslation } from "react-i18next";
 
 interface RepoOption {
   gitIdentityId: string;
@@ -41,7 +42,7 @@ interface RepoOption {
   repository: DomainAuthRepository;
 }
 
-/** 支持从仓库列表选择的身份（GitHub、Gitee、Gitea、GitLab、Codeup、CNB） */
+/** Identities that can be used to select repositories from the repository list. */
 function isIdentityWithRepos(identity: DomainGitIdentity): boolean {
   return [
     ConstsGitPlatform.GitPlatformGithub,
@@ -61,7 +62,7 @@ interface TaskInputProps {
 
 export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const navigate = useNavigate()
-  // 输入相关状态
+  const { t } = useTranslation()
   const [taskContent, setTaskContent] = useState<string>("");
   const taskType = ConstsTaskType.TaskTypeDevelop;
   const [skillPopoverOpen, setSkillPopoverOpen] = useState<boolean>(false);
@@ -75,24 +76,21 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [codeDropdownOpen, setCodeDropdownOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills);
   const [skillList, setSkillList] = useState<DomainSkill[]>([]);
-  const [activeSkillTag, setActiveSkillTag] = useState<string>("全部");
+  const [activeSkillTag, setActiveSkillTag] = useState<string>(ALL_SKILLS_TAG);
   const [pluginPopoverOpen, setPluginPopoverOpen] = useState<boolean>(false);
   const [pluginList, setPluginList] = useState<PluginListItem[]>([]);
   const [selectedPlugin, setSelectedPlugin] = useState<string[]>([]);
 
-  // 运行参数状态（工具固定为 opencode）
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [selectedHostId, setSelectedHostId] = useState<string>("");
   const [selectedImageId, setSelectedImageId] = useState<string>("");
   const [selectedIdentityId, setSelectedIdentityId] = useState<string>("");
   const [branch, setBranch] = useState<string>("");
 
-  // 对话框状态
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
   const [creatingTask, setCreatingTask] = useState<boolean>(false);
   const [limitDialogOpen, setLimitDialogOpen] = useState(false);
 
-  // 上传相关状态
   const [uploadDialogOpen, setUploadDialogOpen] = useState<boolean>(false);
   const [uploadingZip, setUploadingZip] = useState<boolean>(false);
   const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null);
@@ -106,8 +104,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     [identities]
   );
 
-  // 用户已显式选定的身份（包括「我的仓库」精准带回、或选「匿名」）优先保留，
-  // 否则按 base_url 前缀 + hostname 推 platform 兜底自动匹配（覆盖 codeup/cnb/atomgit）。
   useEffect(() => {
     const userChoiceStillValid =
       selectedIdentityId === "none" ||
@@ -119,25 +115,19 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     setSelectedIdentityId(matched[0]?.id || "none");
   }, [selectedRepo, identities, selectedIdentityId])
 
-  useEffect(() => {
-    fetchSkillList();
-    fetchPluginList();
-  }, []);
-
-
-  const fetchSkillList = () => {
+  const fetchSkillList = useCallback(() => {
     apiRequest('v1SkillsList', {}, [], (resp) => {
       if (resp.code === 0) {
         const skills = resp.data || [];
         setSkillList(skills);
         setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills));
       } else {
-        toast.error(resp.message || '获取技能列表失败');
+        toast.error(resp.message || t("taskWorkflow.toast.fetchSkillsFailed"));
       }
     });
-  };
+  }, [t]);
 
-  const fetchPluginList = async () => {
+  const fetchPluginList = useCallback(async () => {
     if (IS_OFFLINE_EDITION) {
       return;
     }
@@ -146,9 +136,14 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       setPluginList(items);
     } catch (err) {
       // Plugin picker is optional/best-effort; warn rather than block the form.
-      toast.error((err as Error).message || '获取插件列表失败');
+      toast.error((err as Error).message || t("taskWorkflow.toast.fetchPluginsFailed"));
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    fetchSkillList();
+    void fetchPluginList();
+  }, [fetchPluginList, fetchSkillList]);
 
   const handlePluginChange = (pluginId: string, checked: boolean) => {
     setSelectedPlugin(prev => {
@@ -204,7 +199,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
               if (!repo.url?.trim()) continue;
               repos.push({
                 gitIdentityId: id,
-                username: identity.username || "未命名身份",
+                username: identity.username || t("taskWorkflow.repo.unnamedIdentity"),
                 repository: repo,
               });
             }
@@ -261,12 +256,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
   const validateTaskContent = () => {
     if (!taskContent.trim()) {
-      toast.error('请输入任务内容');
+      toast.error(t("taskWorkflow.toast.missingContent"));
       return false;
     }
 
     if (taskContentTooLong) {
-      toast.error(getTaskContentLimitErrorMessage());
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }));
       return false;
     }
 
@@ -285,13 +280,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     }
 
     if (!selectedModelId) {
-      toast.error('请选择大模型');
+      toast.error(t("taskWorkflow.toast.missingModel"));
       return;
     }
 
-    // 检查公共模型与非公共宿主机的组合
     if (!IS_OFFLINE_EDITION && selectedModel?.owner?.type === ConstsOwnerType.OwnerTypePublic && selectedHostId !== "public_host") {
-      toast.warning('内置模型只能在内置宿主机上使用');
+      toast.warning(t("taskWorkflow.toast.builtinModelHostOnly"));
       return;
     }
 
@@ -336,13 +330,13 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       },
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success('任务启动成功');
+        toast.success(t("taskWorkflow.toast.taskStarted"));
         onTaskCreated();
         navigate(`/console/task/${resp.data?.id}`);
       } else if (resp.code === 10811) {
         setLimitDialogOpen(true);
       } else {
-        toast.error(resp.message || "任务启动失败");
+        toast.error(resp.message || t("taskWorkflow.toast.taskStartFailed"));
       }
     });
     setDialogOpen(false);
@@ -356,13 +350,13 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     e.target.value = "";
     
     if (!file.name.endsWith('.zip')) {
-      toast.error('请选择 ZIP 格式的文件');
+      toast.error(t("taskWorkflow.toast.invalidZipFile"));
       return;
     }
 
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      toast.error('文件大小不能超过 10MB');
+      toast.error(t("taskWorkflow.toast.zipTooLarge"));
       return;
     }
     
@@ -372,7 +366,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
 
   const handleZipUpload = async () => {
     if (!selectedZipFile) {
-      toast.error('请选择要上传的文件');
+      toast.error(t("taskWorkflow.toast.missingUploadFile"));
       return;
     }
 
@@ -385,9 +379,9 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       setSelectedRepoFromMyRepos(false);
       setUploadDialogOpen(false);
       setSelectedZipFile(null);
-      toast.success('ZIP 文件上传成功');
+      toast.success(t("taskWorkflow.toast.zipUploaded"));
     } catch (error) {
-      toast.error('上传失败: ' + (error as Error).message);
+      toast.error(t("taskWorkflow.toast.uploadFailed", { message: (error as Error).message }));
     } finally {
       setUploadingZip(false);
     }
@@ -404,7 +398,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     setDialogOpen(true);
   };
 
-  const skillTags = useMemo(() => {    // 统计每个 tag 关联的技能数量
+  const skillTags = useMemo(() => {
     const tagCountMap = new Map<string, number>();
     
     skillList.forEach((skill) => {
@@ -413,17 +407,16 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       });
     });
     
-    // 按照关联技能数量降序排序
     const sortedTags = Array.from(tagCountMap.keys()).sort((a, b) => {
       return tagCountMap.get(b)! - tagCountMap.get(a)!;
     });
     
-    return ["全部"].concat(sortedTags);
+    return [ALL_SKILLS_TAG].concat(sortedTags);
   }, [skillList]);
 
   useEffect(() => {
     if (!skillTags.includes(activeSkillTag)) {
-      setActiveSkillTag(skillTags[0] || "全部");
+      setActiveSkillTag(skillTags[0] || ALL_SKILLS_TAG);
     }
   }, [activeSkillTag, skillTags]);
 
@@ -448,7 +441,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
         <InputGroupTextarea 
           className="min-h-30 max-h-60 break-all" 
           aria-invalid={taskContentTooLong}
-          placeholder={TASK_PROMPT_PLACEHOLDER} 
+          placeholder={t("taskWorkflow.input.placeholder")}
           value={taskContent} 
           onChange={(e) => setTaskContent(e.target.value)} 
         />
@@ -465,7 +458,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 <Button size="sm" variant="outline" className={cn("rounded-full max-w-[200px] sm:max-w-full", selectedRepo ? "text-primary hover:text-primary" : "")}>
                   <IconSourceCode />
                   <span className="line-clamp-1 break-all text-ellipsis hidden sm:block">
-                    {selectedRepo ? (selectedRepoDisplayName || getRepoNameFromUrl(selectedRepo)) : "代码"}
+                    {selectedRepo ? (selectedRepoDisplayName || getRepoNameFromUrl(selectedRepo)) : t("taskWorkflow.input.code")}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
@@ -476,22 +469,22 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                   setSelectedRepoFromMyRepos(false);
                 }}>
                   <IconXboxX className="size-4" />
-                  清空选择
+                  {t("taskWorkflow.input.clearSelection")}
                 </DropdownMenuItem>}
                 <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                   <IconUpload className="size-4" />
-                  ZIP 文件
+                  {t("taskWorkflow.input.zipFile")}
                 </DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="w-full">
                     <IconUser className="size-4" />
-                    我的仓库
+                    {t("taskWorkflow.repo.myRepositories")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent className="min-w-[200px] p-0">
                       {selectableIdentities.length === 0 ? (
                         <div className="flex items-center justify-between gap-3 px-3 py-3">
-                          <span className="text-sm text-muted-foreground">尚未绑定 Git 账号，请先绑定</span>
+                          <span className="text-sm text-muted-foreground">{t("taskWorkflow.repo.unboundGitAccount")}</span>
                           <Button
                             variant="outline"
                             size="sm"
@@ -500,7 +493,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                               setSettingsOpen(true);
                             }}
                           >
-                            去设置
+                            {t("taskWorkflow.repo.goToSettings")}
                           </Button>
                         </div>
                       ) : selectableIdentities.map((identity) => {
@@ -508,7 +501,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                         const repos = reposByIdentity[identityId] || [];
                         const isLoading = loadingByIdentity[identityId];
                         const search = identitySearch[identityId] ?? "";
-                        const identityLabel = identity.remark || identity.username || identity.base_url || "未命名身份";
+                        const identityLabel = identity.remark || identity.username || identity.base_url || t("taskWorkflow.repo.unnamedIdentity");
                         const filteredRepos = repos.filter((o) => {
                           if (!o.repository.url?.trim()) return false;
                           const kw = search.trim().toLowerCase();
@@ -529,7 +522,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                                 <div className="flex flex-col bg-popover p-2">
                                   <div className="flex items-center gap-2">
                                     <Input
-                                      placeholder="搜索仓库..."
+                                      placeholder={t("taskWorkflow.repo.searchPlaceholder")}
                                       className="text-sm w-full min-w-0"
                                       value={search}
                                       onChange={(e) => setIdentitySearch((prev) => ({ ...prev, [identityId]: e.target.value }))}
@@ -541,7 +534,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                                       variant="outline"
                                       className="shrink-0"
                                       disabled={isLoading}
-                                      aria-label="刷新仓库列表"
+                                      aria-label={t("taskWorkflow.repo.refreshList")}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         void loadReposForAllIdentities(true, identityId);
@@ -558,16 +551,16 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                                           <EmptyMedia variant="icon">
                                             <Spinner className="size-5" />
                                           </EmptyMedia>
-                                          <EmptyDescription>加载中...</EmptyDescription>
+                                          <EmptyDescription>{t("taskWorkflow.repo.loading")}</EmptyDescription>
                                         </EmptyHeader>
                                       </Empty>
                                     ) : repos.length === 0 ? (
                                       <div className="py-6 text-center text-sm text-muted-foreground">
-                                        没有仓库
+                                        {t("taskWorkflow.repo.empty")}
                                       </div>
                                     ) : filteredRepos.length === 0 ? (
                                       <div className="py-6 text-center text-sm text-muted-foreground">
-                                        {search.trim() ? "未找到匹配的仓库" : null}
+                                        {search.trim() ? t("taskWorkflow.repo.noMatches") : null}
                                       </div>
                                     ) : (
                                       filteredRepos.map((option) => {
@@ -591,7 +584,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                                               <span className="truncate flex-1 text-sm" title={repoName}>{repoName}</span>
                                             </div>
                                             <span className="text-xs text-muted-foreground truncate w-full max-w-[400px] pl-6" title={desc || undefined}>
-                                              {desc || "暂无描述"}
+                                              {desc || t("taskWorkflow.repo.noDescription")}
                                             </span>
                                           </DropdownMenuItem>
                                         );
@@ -610,12 +603,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="w-full">
                     <IconLink className="size-4" />
-                    其他仓库
+                    {t("taskWorkflow.repo.otherRepositories")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent className="p-2">
                       <Input
-                        placeholder="输入代码仓库地址，按回车键确认"
+                        placeholder={t("taskWorkflow.repo.otherRepoPlaceholder")}
                         className="text-sm w-full"
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
@@ -628,7 +621,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                               setSelectedRepoDisplayName("");
                               setSelectedRepoFromMyRepos(false);
                             } catch {
-                              toast.error("请输入正确的仓库地址");
+                              toast.error(t("taskWorkflow.toast.invalidRepoUrl"));
                             }
                           }
                         }}
@@ -698,7 +691,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
               />
             )}
             <Button size="sm" className="rounded-full" disabled={creatingTask || taskContentTooLong} onClick={handleExecuteButtonClick}>
-              <span className="hidden sm:block">执行</span>
+              <span className="hidden sm:block">{t("taskWorkflow.input.execute")}</span>
               {creatingTask ? <Spinner /> : <IconSend />}
             </Button>
           </div>
@@ -706,18 +699,20 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       </InputGroup>
       {taskContentTooLong && (
         <div className="mt-1 px-1 text-xs text-destructive">
-          已超出 {taskContentLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+          {t("taskWorkflow.input.contentTooLongInline", {
+            overCount: taskContentLength - MAX_TASK_CONTENT_LENGTH,
+            maxCount: MAX_TASK_CONTENT_LENGTH,
+          })}
         </div>
       )}
 
-      {/* 运行参数对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto flex flex-col">
           <DialogHeader>
-            <DialogTitle>任务参数</DialogTitle>
+            <DialogTitle>{t("taskWorkflow.dialog.params.title")}</DialogTitle>
           </DialogHeader>
           <Field>
-            <FieldLabel>大模型</FieldLabel>
+            <FieldLabel>{t("taskWorkflow.dialog.params.model")}</FieldLabel>
             <FieldContent>
               <ModelSelect
                 models={models}
@@ -730,22 +725,21 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
           </Field>
           {selectedRepo && !selectedRepoDisplayName.endsWith('.zip') && <>
             <Field>
-              <FieldLabel>仓库分支</FieldLabel>
+              <FieldLabel>{t("taskWorkflow.dialog.params.branch")}</FieldLabel>
               <FieldContent>
-                <Input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="不填则为主分支" className="text-sm" />
+                <Input value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={t("taskWorkflow.dialog.params.branchPlaceholder")} className="text-sm" />
               </FieldContent>
             </Field>
-            {/* 从「我的仓库」选择的仓库已绑定身份凭证，不展示该选项 */}
             {!selectedRepoFromMyRepos && (
               <Field>
-                <FieldLabel>仓库身份凭证</FieldLabel>
+                <FieldLabel>{t("taskWorkflow.dialog.params.identity")}</FieldLabel>
                 <FieldContent>
                   <Select value={selectedIdentityId || "none"} onValueChange={setSelectedIdentityId}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="选择身份" />
+                      <SelectValue placeholder={t("taskWorkflow.dialog.params.selectIdentity")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">匿名</SelectItem>
+                      <SelectItem value="none">{t("taskWorkflow.dialog.params.anonymous")}</SelectItem>
                       {(() => {
                         const matched = findIdentitiesForRepoUrl(selectedRepo, identities);
                         return matched.length > 0 ? (
@@ -756,7 +750,7 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="unknown" disabled>该仓库未配置身份凭证</SelectItem>
+                          <SelectItem value="unknown" disabled>{t("taskWorkflow.dialog.params.noIdentity")}</SelectItem>
                         );
                       })()}
                     </SelectContent>
@@ -766,18 +760,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
             )}
           </>}
           {user.role === ConstsUserRole.UserRoleSubAccount && <Field>
-            <FieldLabel>宿主机</FieldLabel>
+            <FieldLabel>{t("taskWorkflow.dialog.params.host")}</FieldLabel>
             <FieldContent>
               <Select value={selectedHostId} onValueChange={setSelectedHostId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择开发工具" />
+                  <SelectValue placeholder={t("taskWorkflow.dialog.params.selectHost")} />
                 </SelectTrigger>
                 <SelectContent>
                   {!IS_OFFLINE_EDITION && (
                     <SelectItem value={"public_host"}>
                       <div className="flex items-center gap-2">
                         <span>MonkeyCode</span>
-                        <Badge className="!text-primary-foreground">免费</Badge>
+                        <Badge className="!text-primary-foreground">{t("taskWorkflow.dialog.params.free")}</Badge>
                       </div>
                     </SelectItem>
                   )}
@@ -799,11 +793,11 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
             </FieldContent>
           </Field>}
           {user.role === ConstsUserRole.UserRoleSubAccount && <Field>
-            <FieldLabel>系统镜像</FieldLabel>
+            <FieldLabel>{t("taskWorkflow.dialog.params.image")}</FieldLabel>
             <FieldContent>
               <Select value={selectedImageId} onValueChange={setSelectedImageId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择开发工具" />
+                  <SelectValue placeholder={t("taskWorkflow.dialog.params.selectImage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {images.filter(image => image.id).map((image) => (
@@ -828,19 +822,18 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
           </Field>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              取消
+              {t("taskWorkflow.dialog.params.cancel")}
             </Button>
             <Button disabled={creatingTask || taskContentTooLong} onClick={() => {
               readyToExecuteTask();
             }}>
               {creatingTask && <Spinner />}
-              确认执行
+              {t("taskWorkflow.dialog.params.confirmExecute")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* 隐藏的文件选择 input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -849,7 +842,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
         onChange={handleZipFileSelect}
       />
 
-      {/* ZIP 文件上传确认对话框 */}
       <Dialog open={uploadDialogOpen} onOpenChange={(open) => {
         if (!uploadingZip) {
           setUploadDialogOpen(open);
@@ -858,12 +850,12 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>上传 ZIP 文件</DialogTitle>
+            <DialogTitle>{t("taskWorkflow.input.uploadZipTitle")}</DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
             <IconUpload className="size-5 text-muted-foreground" />
             <span className="text-sm truncate">
-              {selectedZipFile?.name || '未选择文件'}
+              {selectedZipFile?.name || t("taskWorkflow.input.noFileSelected")}
             </span>
             {selectedZipFile && (
               <Badge variant="outline" className="ml-auto">
@@ -876,11 +868,11 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
               setUploadDialogOpen(false);
               setSelectedZipFile(null);
             }} disabled={uploadingZip}>
-              取消
+              {t("taskWorkflow.dialog.params.cancel")}
             </Button>
             <Button onClick={handleZipUpload} disabled={uploadingZip || !selectedZipFile}>
               {uploadingZip && <Spinner />}
-              上传
+              {t("taskWorkflow.input.upload")}
             </Button>
           </DialogFooter>
         </DialogContent>

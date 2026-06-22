@@ -1,8 +1,9 @@
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 
 export const renderTitle = (message: MessageType) => {
-  return `查找文件${message.data.rawInput?.pattern ? ` "${message.data.rawInput?.pattern}"` : ''}`
+  return `${taskDetailT("toolcall.searchFile")}${message.data.rawInput?.pattern ? ` "${message.data.rawInput?.pattern}"` : ''}`
 }
 
 export const renderDetail = (message: MessageType) => {

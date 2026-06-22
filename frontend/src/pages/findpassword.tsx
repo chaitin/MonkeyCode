@@ -8,20 +8,22 @@ import { Spinner } from "@/components/ui/spinner";
 import { captchaChallenge, isValidEmail } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 
 export default function FindPasswordPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   const handleFindPassword = async () => {
     if (!isValidEmail(email)) {
-      toast.error('请输入正确的邮箱地址');
+      toast.error(t("auth.findPassword.toast.invalidEmail"));
       return;
     }
-    
+
     setLoading(true);
 
     const token = await captchaChallenge();
@@ -31,13 +33,13 @@ export default function FindPasswordPage() {
         captcha_token: token
       }, [], (resp) => {
         if (resp.code === 0) {
-          toast.success('重置密码邮件已发送，请注意查收');
+          toast.success(t("auth.findPassword.toast.sent"));
         } else {
-          toast.error(resp.message || '重置密码邮件发送失败');
+          toast.error(resp.message || t("auth.findPassword.toast.failed"));
         }
       });
     } else {
-      toast.error('验证码验证失败');
+      toast.error(t("auth.findPassword.toast.captchaFailed"));
     }
 
     setLoading(false);
@@ -48,19 +50,19 @@ export default function FindPasswordPage() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col gap-6">
           <Link to="/">
-            <h1 className="text-2xl hover:font-bold">MonkeyCode 智能开发平台</h1>
+            <h1 className="text-2xl hover:font-bold">{t("login.title")}</h1>
           </Link>
           <Card>
             <CardContent>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="email">邮箱</FieldLabel>
+                  <FieldLabel htmlFor="email">{t("auth.findPassword.email")}</FieldLabel>
                   <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </Field>
                 <Field>
                   <Button onClick={handleFindPassword} disabled={loading || !email}>
                     {loading && <Spinner />}
-                    找回密码
+                    {t("auth.findPassword.action")}
                   </Button>
                 </Field>
               </FieldGroup>

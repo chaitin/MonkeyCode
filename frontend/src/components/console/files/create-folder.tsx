@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { normalizePath } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface CreateFolderDialogProps {
   open: boolean
@@ -25,18 +26,20 @@ export default function CreateFolderDialog({
   baseDir = '',
   onSuccess,
 }: CreateFolderDialogProps) {
+  const { t } = useTranslation()
   const [folderName, setFolderName] = useState('')
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset the controlled dialog field whenever the parent opens it.
       setFolderName('')
     }
   }, [open])
 
   const handleCreate = async () => {
     if (!folderName.trim() || !envid) {
-      toast.error('请输入文件夹名称')
+      toast.error(t("consoleFiles.toast.folderNameRequired"))
       return
     }
 
@@ -47,13 +50,13 @@ export default function CreateFolderDialog({
         path: folderPath
       }, [], (resp) => {
         if (resp.code === 0) {
-          toast.success(`已创建文件夹 "${folderName.trim()}"`)
+          toast.success(t("consoleFiles.toast.folderCreated", { name: folderName.trim() }))
           onOpenChange(false)
           if (onSuccess) {
             onSuccess()
           }
         } else {
-          toast.error("创建文件夹失败: " + resp.message);
+          toast.error(t("consoleFiles.toast.folderCreateFailed", { message: resp.message }));
         }
       })
     setCreating(false)
@@ -67,11 +70,11 @@ export default function CreateFolderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>创建文件夹</DialogTitle>
+          <DialogTitle>{t("consoleFiles.actions.createFolder")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field>
-            <FieldLabel>目标目录</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.targetDirectory")}</FieldLabel>
             <Input
               value={targetDir || './'}
               readOnly
@@ -79,7 +82,7 @@ export default function CreateFolderDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>新文件夹名称</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.newFolderName")}</FieldLabel>
             <Input
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
@@ -89,11 +92,11 @@ export default function CreateFolderDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleCreate} disabled={!folderName.trim() || creating}>
             {creating && <Spinner />}
-            创建
+            {t("consoleFiles.actions.create")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { IconArrowLeft, IconMenu2 } from "@tabler/icons-react";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer";
 
@@ -11,6 +12,7 @@ const githubLink = "https://github.com/chaitin/MonkeyCode";
 
 const Header = () => {
   const { isLoggedIn } = useAuth();
+  const { t } = useTranslation();
   const [isScrolled, setIsScrolled] = React.useState(false);
   const location = useLocation();
   const isWelcomePage = location.pathname === "/";
@@ -21,12 +23,12 @@ const Header = () => {
   const signUpLink = "/api/v1/users/login?redirect=&inviter_id=" + inviterId;
   const navItems = isLegalPage
     ? [
-        { label: "隐私政策", to: "/privacy-policy" },
-        { label: "用户协议", to: "/user-agreement" },
+        { labelKey: "welcomeShell.nav.privacyPolicy", to: "/privacy-policy" },
+        { labelKey: "welcomeShell.nav.userAgreement", to: "/user-agreement" },
       ]
     : [
-        { label: "介绍", to: "/" },
-        { label: "广场", to: "/playground" },
+        { labelKey: "welcomeShell.nav.intro", to: "/" },
+        { labelKey: "welcomeShell.nav.playground", to: "/playground" },
       ];
   const activeNav = navItems.find((item) =>
     item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
@@ -84,7 +86,7 @@ const Header = () => {
                       >
                         <Link to="/">
                           <IconArrowLeft className="size-4" />
-                          返回首页
+                          {t("welcomeShell.actions.backHome")}
                         </Link>
                       </Button>
                     ) : null}
@@ -100,15 +102,15 @@ const Header = () => {
                         )}
                         asChild
                       >
-                        <Link to={item.to}>{item.label}</Link>
+                        <Link to={item.to}>{t(item.labelKey)}</Link>
                       </Button>
                     ))}
                     <Button variant="ghost" className="h-11 justify-start rounded-xl border border-[#1d2a22] px-4 text-sm text-[#a9b7ae] hover:bg-[#162019] hover:text-[#e8efe9]" asChild>
-                      <a href={docsLink} target="_blank" rel="noreferrer">文档</a>
+                      <a href={docsLink} target="_blank" rel="noreferrer">{t("welcomeShell.nav.docs")}</a>
                     </Button>
                     {!isLegalPage ? (
                       <Button variant="ghost" className="h-11 justify-start rounded-xl border border-[#1d2a22] px-4 text-sm text-[#a9b7ae] hover:bg-[#162019] hover:text-[#e8efe9]" asChild>
-                        <a href={githubLink} target="_blank" rel="noreferrer">开源仓库</a>
+                        <a href={githubLink} target="_blank" rel="noreferrer">{t("welcomeShell.nav.openSourceRepo")}</a>
                       </Button>
                     ) : null}
                   </div>
@@ -119,7 +121,7 @@ const Header = () => {
                         className="h-11 rounded-xl border border-[#243329] bg-[#111814] text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9]"
                         asChild
                       >
-                        <a href={signUpLink}>注册</a>
+                        <a href={signUpLink}>{t("welcomeShell.actions.signUp")}</a>
                       </Button>
                     )}
                     <Button
@@ -127,7 +129,7 @@ const Header = () => {
                       asChild
                     >
                       <Link to={isLoggedIn ? "/console" : "/login"}>
-                        {isLoggedIn ? "进入控制台" : "立即开始"}
+                        {isLoggedIn ? t("welcomeShell.actions.console") : t("welcomeShell.actions.start")}
                       </Link>
                     </Button>
                   </div>
@@ -154,7 +156,7 @@ const Header = () => {
                   className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-[#7a8c80] transition-colors hover:text-[#e8efe9]"
                 >
                   <IconArrowLeft className="size-4" />
-                  返回首页
+                  {t("welcomeShell.actions.backHome")}
                 </Link>
               ) : null}
               {navItems.map((item) => (
@@ -168,7 +170,7 @@ const Header = () => {
                       : "text-[#7a8c80] hover:text-[#e8efe9]"
                   )}
                 >
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               ))}
               <a
@@ -177,7 +179,7 @@ const Header = () => {
                 rel="noreferrer"
                 className="rounded-full px-4 py-2 text-sm text-[#7a8c80] transition-colors hover:text-[#e8efe9]"
               >
-                文档
+                {t("welcomeShell.nav.docs")}
               </a>
               {!isLegalPage ? (
                 <a
@@ -186,7 +188,7 @@ const Header = () => {
                   rel="noreferrer"
                   className="rounded-full px-4 py-2 text-sm text-[#7a8c80] transition-colors hover:text-[#e8efe9]"
                 >
-                  开源
+                  {t("welcomeShell.nav.openSource")}
                 </a>
               ) : null}
             </div>
@@ -199,7 +201,7 @@ const Header = () => {
                 className="rounded-full border border-[#243329] bg-[#111814] px-5 text-[#c9d6cc] hover:bg-[#162019] hover:text-[#e8efe9]"
                 asChild
               >
-                <a href={signUpLink}>注册</a>
+                <a href={signUpLink}>{t("welcomeShell.actions.signUp")}</a>
               </Button>
             )}
 
@@ -208,7 +210,7 @@ const Header = () => {
               asChild
             >
               <Link to={isLoggedIn ? "/console" : "/login"}>
-                {isLoggedIn ? "进入控制台" : "立即开始"}
+                {isLoggedIn ? t("welcomeShell.actions.console") : t("welcomeShell.actions.start")}
               </Link>
             </Button>
           </div>
@@ -248,13 +250,13 @@ const Header = () => {
               </DrawerHeader>
               <div className="flex flex-col gap-2 my-4">
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
-                  <Link to="/">介绍</Link>
+                  <Link to="/">{t("welcomeShell.nav.intro")}</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
-                  <Link to="/playground">广场</Link>
+                  <Link to="/playground">{t("welcomeShell.nav.playground")}</Link>
                 </Button>
                 <Button variant="link" className={cn(isPixelPage && "justify-start text-slate-900 no-underline")} asChild>
-                  <Link to="https://monkeycode.docs.baizhi.cloud/" target="_blank">使用文档</Link>
+                  <Link to="https://monkeycode.docs.baizhi.cloud/" target="_blank">{t("welcomeShell.nav.docsFull")}</Link>
                 </Button>
               </div>
             </DrawerContent>
@@ -273,25 +275,25 @@ const Header = () => {
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
             location.pathname === "/" ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
           )}>
-            <Link to="/">介绍</Link>
+            <Link to="/">{t("welcomeShell.nav.intro")}</Link>
           </Button>
           <Button variant={"link"} className={cn(
             isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "",
             location.pathname.startsWith("/playground") ? (isPixelPage ? "border-slate-900 bg-amber-100" : "underline decoration-2 underline-offset-8") : "text-foreground"
           )}>
-            <Link to="/playground">广场</Link>
+            <Link to="/playground">{t("welcomeShell.nav.playground")}</Link>
           </Button>
           <Button variant={"link"} className={cn(isPixelPage ? "rounded-none border-2 border-transparent text-slate-900 no-underline hover:bg-amber-50" : "text-foreground")}>
-            <Link to="https://monkeycode.docs.baizhi.cloud/" target="_blank">使用文档</Link>
+            <Link to="https://monkeycode.docs.baizhi.cloud/" target="_blank">{t("welcomeShell.nav.docsFull")}</Link>
           </Button>
         </div>
         <div className="flex flex-row items-center gap-2 sm:gap-3">
           {isLoggedIn ? (
-            <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/console">控制台</Link></Button>
+            <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/console">{t("welcomeShell.actions.console")}</Link></Button>
           ) : (
             <>
-              <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={signUpLink}>注册</a></Button>
-              <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/login">立即开始</Link></Button>
+              <Button variant="ghost" className={cn("hidden sm:inline-flex", isPixelPage && "pixel-button border-slate-900 bg-white text-slate-900 hover:bg-amber-50")} asChild><a href={signUpLink}>{t("welcomeShell.actions.signUp")}</a></Button>
+              <Button className={cn(isPixelPage && "pixel-button border-slate-900")} asChild><Link to="/login">{t("welcomeShell.actions.start")}</Link></Button>
             </>
           )}
         </div>

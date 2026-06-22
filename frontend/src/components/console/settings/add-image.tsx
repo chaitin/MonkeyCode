@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Field, FieldContent, FieldLabel } from "@/components/ui/field"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface AddImageProps {
   open: boolean
@@ -24,24 +25,25 @@ export default function AddImage({
   onOpenChange,
   onRefresh,
 }: AddImageProps) {
+  const { t } = useTranslation()
   const [imageName, setImageName] = useState("")
   const [remark, setRemark] = useState("")
 
   const handleSave = () => {
     if (!imageName.trim()) {
-      toast.error("请输入镜像名称")
+      toast.error(t("consoleSettings.images.toast.nameRequired"))
       return
     }
 
     apiRequest('v1UsersImagesCreate', { image_name: imageName.trim(), remark: remark.trim() || undefined }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("镜像绑定成功")
+        toast.success(t("consoleSettings.images.toast.addSuccess"))
         setImageName("")
         setRemark("")
         onOpenChange(false)
         onRefresh?.()
       } else {
-        toast.error("绑定镜像失败: " + resp.message)
+        toast.error(t("consoleSettings.images.toast.addFailed", { message: resp.message }))
       }
     })
   }
@@ -55,15 +57,15 @@ export default function AddImage({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant={"outline"} size="sm">绑定</Button>
+        <Button variant={"outline"} size="sm">{t("consoleSettings.images.actions.bind")}</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>绑定系统镜像</DialogTitle>
+          <DialogTitle>{t("consoleSettings.images.add.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <Field>
-            <FieldLabel>镜像名称</FieldLabel>
+            <FieldLabel>{t("consoleSettings.images.labels.imageName")}</FieldLabel>
             <FieldContent>
               <Input
                 placeholder="docker.io/library/ubuntu:24.04"
@@ -73,7 +75,7 @@ export default function AddImage({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("consoleSettings.images.labels.remark")}</FieldLabel>
             <FieldContent>
               <Input
                 value={remark}
@@ -84,14 +86,13 @@ export default function AddImage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleSettings.images.actions.cancel")}
           </Button>
           <Button onClick={handleSave}>
-            保存
+            {t("consoleSettings.images.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

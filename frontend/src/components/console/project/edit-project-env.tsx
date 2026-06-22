@@ -6,6 +6,7 @@ import { apiRequest } from "@/utils/requestUtils"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { IconLoader, IconPlus, IconTrash } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 export type EnvVar = { key: string; value: string }
 
@@ -24,6 +25,7 @@ export default function EditProjectEnvDialog({
 }: EditProjectEnvDialogProps) {
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [loading, setLoading] = useState(false)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (open && project) {
@@ -51,7 +53,7 @@ export default function EditProjectEnvDialog({
     const validVars = envVars.filter((row) => row.key.trim() !== "")
     const hasEmptyKey = envVars.some((row) => row.key.trim() === "" && row.value.trim() !== "")
     if (hasEmptyKey) {
-      toast.error("请填写完整的键值对，或删除空行")
+      toast.error(t("consoleProject.env.toast.incompletePair"))
       return
     }
 
@@ -65,11 +67,11 @@ export default function EditProjectEnvDialog({
       [project.id],
       (resp) => {
         if (resp.code === 0) {
-          toast.success("环境变量已保存")
+          toast.success(t("consoleProject.env.toast.saved"))
           onOpenChange(false)
           onSuccess?.()
         } else {
-          toast.error(resp.message || "保存环境变量失败")
+          toast.error(resp.message || t("consoleProject.env.toast.saveFailed"))
         }
       }
     )
@@ -85,9 +87,9 @@ export default function EditProjectEnvDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>项目环境变量</DialogTitle>
+          <DialogTitle>{t("consoleProject.env.title")}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            配置项目运行时的环境变量，以键值对形式存储
+            {t("consoleProject.env.description")}
           </p>
         </DialogHeader>
         <div className="space-y-4 max-h-[60vh]">
@@ -96,13 +98,13 @@ export default function EditProjectEnvDialog({
               <Input
                 value={row.key}
                 onChange={(e) => updateRow(index, "key", e.target.value)}
-                placeholder="例如: API_KEY"
+                placeholder={t("consoleProject.env.keyPlaceholder")}
                 className="flex-[1] font-mono text-sm"
               />
               <Input
                 value={row.value}
                 onChange={(e) => updateRow(index, "value", e.target.value)}
-                placeholder="例如: your-secret-value"
+                placeholder={t("consoleProject.env.valuePlaceholder")}
                 className="flex-[2] font-mono text-sm"
               />
               <Button
@@ -118,16 +120,16 @@ export default function EditProjectEnvDialog({
           ))}
           <Button type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
             <IconPlus className="size-4" />
-            添加环境变量
+            {t("consoleProject.env.add")}
           </Button>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleProject.common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading}>
             {loading && <IconLoader className="size-4 animate-spin" />}
-            保存
+            {t("consoleProject.common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

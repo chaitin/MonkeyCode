@@ -16,6 +16,7 @@ import { toast } from "sonner"
 import type { DomainTeamGroup } from "@/api/Api"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 
 interface EditHostProps {
   open: boolean
@@ -32,6 +33,7 @@ export default function EditHost({
   onRefresh,
   trigger,
 }: EditHostProps) {
+  const { t } = useTranslation()
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
   const [groups, setGroups] = useState<DomainTeamGroup[]>([])
   const [selectOpen, setSelectOpen] = useState(false)
@@ -46,9 +48,7 @@ export default function EditHost({
 
   useEffect(() => {
     if (host) {
-      // 初始化已选中的分组
       setSelectedGroupIds(host.groups?.map(g => g.id || "").filter(id => id) || [])
-      // 初始化备注
       setRemark(host.remark || "")
     }
   }, [host])
@@ -74,7 +74,7 @@ export default function EditHost({
       if (resp.code === 0) {
         setGroups(resp.data?.groups || [])
       } else {
-        toast.error("获取分组列表失败: " + resp.message);
+        toast.error(t("managerHosts.toast.groupFetchFailedWithMessage", { message: resp.message }));
       }
     })
   }
@@ -89,7 +89,7 @@ export default function EditHost({
 
   const handleSave = () => {
     if (!host?.id) {
-      toast.error("宿主机信息不完整")
+      toast.error(t("managerHosts.toast.incompleteHost"))
       return
     }
 
@@ -98,14 +98,14 @@ export default function EditHost({
       remark: remark
     }, [host.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("宿主机修改成功")
+        toast.success(t("managerHosts.toast.hostUpdated"))
         setSelectedGroupIds([])
         setRemark("")
         setSelectOpen(false)
         onOpenChange(false)
         onRefresh?.()
       } else {
-        toast.error("修改宿主机失败: " + resp.message);
+        toast.error(t("managerHosts.toast.updateHostFailedWithMessage", { message: resp.message }));
       }
     })
   }
@@ -122,11 +122,11 @@ export default function EditHost({
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改宿主机</DialogTitle>
+          <DialogTitle>{t("managerHosts.edit.title")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
           <Field>
-            <FieldLabel>宿主机</FieldLabel>
+            <FieldLabel>{t("managerHosts.edit.host")}</FieldLabel>
             <FieldContent>
               <div className="text-sm text-muted-foreground">
                 {host?.remark || `${host?.name}-${host?.external_ip}`}
@@ -134,17 +134,17 @@ export default function EditHost({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>备注</FieldLabel>
+            <FieldLabel>{t("managerHosts.edit.remark")}</FieldLabel>
             <FieldContent>
               <Input
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
-                placeholder="请输入备注名称"
+                placeholder={t("managerHosts.edit.remarkPlaceholder")}
               />
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>可使用该宿主机的分组</FieldLabel>
+            <FieldLabel>{t("managerHosts.edit.groups")}</FieldLabel>
             <FieldContent>
               <div className="relative" ref={selectRef}>
                 <Button
@@ -157,10 +157,10 @@ export default function EditHost({
                 >
                   <span className="truncate">
                     {selectedGroupIds.length === 0
-                      ? "请选择分组"
+                      ? t("managerHosts.groups.select")
                       : selectedGroupIds.length === 1
-                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || "已选择 1 个分组"
-                      : `已选择 ${selectedGroupIds.length} 个分组`}
+                      ? groups.find((g) => g.id === selectedGroupIds[0])?.name || t("managerHosts.groups.selectedOne")
+                      : t("managerHosts.groups.selectedMany", { count: selectedGroupIds.length })}
                   </span>
                   <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
                 </Button>
@@ -169,7 +169,7 @@ export default function EditHost({
                     <div className="max-h-[300px] overflow-auto p-1">
                       {groups.length === 0 ? (
                         <div className="py-6 text-center text-sm text-muted-foreground">
-                          暂无分组
+                          {t("managerHosts.groups.empty")}
                         </div>
                       ) : (
                         groups.map((group) => {
@@ -199,14 +199,13 @@ export default function EditHost({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("managerHosts.actions.cancel")}
           </Button>
           <Button onClick={handleSave}>
-            保存
+            {t("managerHosts.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

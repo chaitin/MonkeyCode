@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { b64decode } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 import AceEditor from "react-ace"
 import "ace-builds/src-noconflict/mode-text"
 import "ace-builds/src-noconflict/mode-javascript"
@@ -54,14 +55,13 @@ const getLanguageMode = (fileName: string): string => {
   return modeMap[ext || ''] || 'text'
 }
 
-// 文件模式枚举
 const FileMode = {
-  UNKNOWN: 0,    // 未知文件
-  REGULAR: 1,      // 普通文件
-  EXECUTABLE: 2,   // 可执行文件
-  SYMLINK: 3,      // 符号连接
-  DIRECTORY: 4,    // 目录
-  SUBMODULE: 5,    // Git Submodule
+  UNKNOWN: 0,
+  REGULAR: 1,
+  EXECUTABLE: 2,
+  SYMLINK: 3,
+  DIRECTORY: 4,
+  SUBMODULE: 5,
 } as const
 
 interface ProjectFileManagerProps {
@@ -71,12 +71,10 @@ interface ProjectFileManagerProps {
   className?: string
 }
 
-// 判断是否为目录
 const isDirectory = (entry: TreeEntry) => {
   return entry.mode === FileMode.DIRECTORY
 }
 
-// 文件排序：目录在前，文件在后，按名称排序
 const sortEntries = (entries: TreeEntry[]) => {
   return [...entries].sort((a, b) => {
     const aIsDir = isDirectory(a)
@@ -90,7 +88,6 @@ const sortEntries = (entries: TreeEntry[]) => {
   })
 }
 
-// 获取文件图标
 const getFileIcon = (entry: TreeEntry, isOpen?: boolean, loading?: boolean) => {
   if (loading) {
     return <IconLoader className="h-4 w-4 shrink-0 animate-spin" />
@@ -111,7 +108,6 @@ const getFileIcon = (entry: TreeEntry, isOpen?: boolean, loading?: boolean) => {
   }
 }
 
-// 格式化文件大小
 const formatSize = (size?: number) => {
   if (size === undefined || size === null) return ''
   if (size < 1024) return `${size} B`
@@ -230,6 +226,7 @@ const TreeNode = memo(({ entry, projectId, depth, branch, onFileSelect }: TreeNo
 TreeNode.displayName = 'TreeNode'
 
 export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className }: ProjectFileManagerProps) => {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<TreeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [branches, setBranches] = useState<DomainBranch[]>([])
@@ -242,7 +239,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
   selectedBranchRef.current = selectedBranch
   const isMountedRef = useRef(true)
 
-  // 文件内容对话框状态
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<TreeEntry | null>(null)
   const [fileContent, setFileContent] = useState<string>('')
@@ -269,7 +265,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
       path: '',
       ref: selectedBranch || undefined
     }, [project?.id], (resp) => {
-      // 忽略过期响应：切换 project 后，旧请求可能晚于新请求返回；或组件已卸载
       if (!isMountedRef.current || projectIdRef.current !== requestedProjectId) return
       if (selectedBranchRef.current !== requestedBranch) return
       if (resp.code === 0) {
@@ -284,7 +279,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     onLoaded?.()
   }, [project?.id, onLoaded, selectedBranch, branchProjectId, branchResolved])
 
-  // 获取分支列表
   useEffect(() => {
     const fetchBranches = async () => {
       if (!project?.id || !project?.git_identity_id || !project?.full_name) {
@@ -341,7 +335,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     }
   }, [project?.id, fetchRootEntries])
 
-  // 获取文件内容
   const fetchFileContent = useCallback(async (entry: TreeEntry) => {
     if (!project?.id) return
     setFileLoading(true)
@@ -359,13 +352,11 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
     setFileLoading(false)
   }, [project?.id, selectedBranch])
 
-  // 处理文件点击
   const handleFileClick = useCallback((entry: TreeEntry) => {
     setSelectedFile(entry)
     setDialogOpen(true)
     fetchFileContent(entry)
     
-    // 如果有外部回调也调用
     if (onFileSelect) {
       onFileSelect(entry)
     }
@@ -376,12 +367,12 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
       <div className="flex items-center gap-2">
         <Label className="flex items-center">
           <IconFolderOpen className="size-4" />
-          项目文件
+          {t("consoleProject.files.title")}
         </Label>
         {branches.length > 0 && (
           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
             <SelectTrigger className="w-[140px] text-xs" style={{ height: '28px' }}>
-              <SelectValue placeholder="选择分支" />
+              <SelectValue placeholder={t("consoleProject.files.selectBranch")} />
             </SelectTrigger>
             <SelectContent>
               {branches.map((branch) => (
@@ -401,7 +392,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         onClick={() => project?.repo_url && window.open(project.repo_url, '_blank')}
       >
         <IconExternalLink className="size-4" />
-        访问原仓库
+        {t("consoleProject.files.openRepository")}
       </Button>
     </div>
   )
@@ -419,7 +410,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
             <EmptyMedia variant="icon">
               <IconLoader className="animate-spin" />
             </EmptyMedia>
-            <EmptyDescription>正在加载...</EmptyDescription>
+            <EmptyDescription>{t("consoleProject.common.loading")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -435,7 +426,7 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
             <EmptyMedia variant="icon">
               <IconFolder />
             </EmptyMedia>
-            <EmptyDescription>当前项目没有文件</EmptyDescription>
+            <EmptyDescription>{t("consoleProject.files.empty")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -462,7 +453,6 @@ export const ProjectFileManager = ({ project, onFileSelect, onLoaded, className 
         </div>
       </div>
 
-      {/* 文件内容对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[80vw] xl:max-w-[60vw] h-[80vh] flex flex-col">
           <DialogHeader>

@@ -26,10 +26,11 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useCommonData } from "../data-provider";
-import { getSubscriptionPlanLabel, getSubscriptionPlanShortLabel, isValidEmail } from "@/utils/common";
+import { isValidEmail } from "@/utils/common";
 import { useNavigate } from "react-router-dom";
 import SubscriptionPlanDialog from "./subscription-plan-dialog";
 import { IS_OFFLINE_EDITION } from "@/utils/edition";
+import { useTranslation } from "react-i18next";
 
 interface NavBalanceProps {
   variant?: "sidebar" | "header";
@@ -43,6 +44,17 @@ interface NavBalanceProps {
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
 
 type WalletSectionId = "account" | "profile" | "plan" | "balance"
+type SubscriptionPlanKey = "basic" | "pro" | "ultra"
+
+function normalizeSubscriptionPlan(plan?: string | null): SubscriptionPlanKey {
+  if (plan === "pro") {
+    return "pro"
+  }
+  if (plan === "ultra" || plan === "flagship") {
+    return "ultra"
+  }
+  return "basic"
+}
 
 export default function NavBalance({
   variant = "sidebar",
@@ -52,6 +64,7 @@ export default function NavBalance({
   onOpenChange,
   initialSection = "account",
 }: NavBalanceProps) {
+  const { t } = useTranslation()
   const [dialogOpenInternal, setDialogOpenInternal] = useState(false);
   const [showSubscriptionPlanDialog, setShowSubscriptionPlanDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -79,44 +92,47 @@ export default function NavBalance({
     user,
   } = useCommonData();
   const requiresCurrentPassword = !!user?.has_password
-  const passwordActionLabel = requiresCurrentPassword ? "修改密码" : "设置密码"
+  const passwordActionLabel = requiresCurrentPassword
+    ? t("navBalance.security.changePassword")
+    : t("navBalance.security.setPassword")
 
   const formatPoints = (value: number) => Math.ceil(value).toLocaleString()
   const formatSubscriptionExpiry = (expiresAt?: string) => {
     if (!expiresAt) {
-      return "长期有效"
+      return null
     }
 
     const parsed = dayjs(expiresAt)
-      return parsed.isValid() ? parsed.format("YYYY-MM-DD") : expiresAt
+    return parsed.isValid() ? parsed.format("YYYY-MM-DD") : expiresAt
   }
 
   const remainingPoints = balance
-  const triggerPlanLabel = getSubscriptionPlanShortLabel(subscription?.plan)
+  const triggerPlanLabel = t(`consoleShell.rewards.plans.${normalizeSubscriptionPlan(subscription?.plan)}`)
+  const subscriptionExpiry = formatSubscriptionExpiry(subscription?.expires_at)
 
   const handleLogout = () => {
     apiRequest("v1UsersLogoutCreate", {}, [], (resp) => {
       if (resp.code === 0) {
         navigate("/")
       } else {
-        toast.error("登出失败: " + resp.message)
+        toast.error(t("navBalance.toast.logoutFailed", { message: resp.message || t("navBalance.common.unknownError") }))
       }
     })
   }
 
   const handleChangePassword = async () => {
     if (requiresCurrentPassword && !currentPassword) {
-      toast.error("请输入当前密码")
+      toast.error(t("navBalance.toast.currentPasswordRequired"))
       return
     }
 
     if (newPassword !== confirmPassword) {
-      toast.error("新密码和确认密码不一致")
+      toast.error(t("navBalance.toast.passwordMismatch"))
       return
     }
 
     if (newPassword.length < 8) {
-      toast.error("新密码长度至少为8位")
+      toast.error(t("navBalance.toast.passwordTooShort", { length: 8 }))
       return
     }
 
@@ -126,13 +142,13 @@ export default function NavBalance({
       new_password: newPassword,
     }, [], (resp) => {
       if (resp?.code === 0) {
-        toast.success("密码修改成功")
+        toast.success(t("navBalance.toast.passwordUpdated"))
         setShowChangePasswordDialog(false)
         setCurrentPassword("")
         setNewPassword("")
         setConfirmPassword("")
       } else {
-        toast.error(`密码修改失败：${resp?.message || "未知错误"}`)
+        toast.error(t("navBalance.toast.passwordUpdateFailed", { message: resp?.message || t("navBalance.common.unknownError") }))
       }
     })
     setChangingPassword(false)
@@ -141,7 +157,7 @@ export default function NavBalance({
   const handleBindEmail = async () => {
     const email = bindEmail.trim()
     if (!isValidEmail(email)) {
-      toast.error("请输入正确的邮箱地址")
+      toast.error(t("navBalance.toast.invalidEmail"))
       return
     }
 
@@ -150,11 +166,11 @@ export default function NavBalance({
       email,
     }, [], (resp) => {
       if (resp?.code === 0) {
-        toast.success("绑定邮件已发送，请前往邮箱完成验证")
+        toast.success(t("navBalance.toast.bindEmailSent"))
         setShowBindEmailDialog(false)
         setBindEmail("")
       } else {
-        toast.error(`绑定邮箱失败：${resp?.message || "未知错误"}`)
+        toast.error(t("navBalance.toast.bindEmailFailed", { message: resp?.message || t("navBalance.common.unknownError") }))
       }
     })
     setBindingEmail(false)
@@ -162,19 +178,19 @@ export default function NavBalance({
 
   const handleChangeName = async () => {
     if (!newName.trim()) {
-      toast.error("昵称不能为空")
+      toast.error(t("navBalance.toast.nameRequired"))
       return
     }
 
     setChangingName(true)
     await apiRequest("v1UsersUpdate", { name: newName.trim() }, [], (resp) => {
       if (resp?.code === 0) {
-        toast.success("昵称修改成功")
+        toast.success(t("navBalance.toast.nameUpdated"))
         reloadUser?.()
         setShowChangeNameDialog(false)
         setNewName("")
       } else {
-        toast.error(`昵称修改失败：${resp?.message || "未知错误"}`)
+        toast.error(t("navBalance.toast.nameUpdateFailed", { message: resp?.message || t("navBalance.common.unknownError") }))
       }
     })
     setChangingName(false)
@@ -189,7 +205,7 @@ export default function NavBalance({
     }
 
     if (!file.type.startsWith("image/")) {
-      toast.error("请选择图片文件")
+      toast.error(t("navBalance.toast.imageFileRequired"))
       return
     }
 
@@ -205,7 +221,7 @@ export default function NavBalance({
       const uploadResult = uploadResp.data as { code?: number; message?: string; data?: string }
       const avatarUrl = uploadResult?.data
       if (uploadResult?.code !== 0 || !avatarUrl) {
-        toast.error(uploadResult?.message || "头像上传失败")
+        toast.error(uploadResult?.message || t("navBalance.toast.avatarUploadFailed"))
         return
       }
 
@@ -230,15 +246,15 @@ export default function NavBalance({
         }
 
         if (avatarSynced) {
-          toast.success("头像修改成功")
+          toast.success(t("navBalance.toast.avatarUpdated"))
         } else {
-          toast.warning("头像已更新，界面稍后会自动同步")
+          toast.warning(t("navBalance.toast.avatarSyncDelayed"))
         }
       } else {
-        toast.error(updateResult?.message || "头像更新失败")
+        toast.error(updateResult?.message || t("navBalance.toast.avatarUpdateFailed"))
       }
     } catch (error) {
-      toast.error("头像上传失败，请重试")
+      toast.error(t("navBalance.toast.avatarUploadRetry"))
       console.error(error)
     } finally {
       setUploadingAvatar(false)
@@ -312,16 +328,16 @@ export default function NavBalance({
     }
 
     previousDialogOpenRef.current = dialogOpen
-  }, [dialogOpen, initialSection, initializeDialog])
+  }, [dialogOpen, hideTrigger, initialSection, initializeDialog, open])
 
   const triggerContent = triggerMode === "account" ? (
     <div className="flex w-full min-w-0 items-center gap-2">
       <Avatar className="size-8 rounded-lg">
-        <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || "未知用户"} />
+        <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || t("navBalance.common.unknownUser")} />
         <AvatarFallback className="rounded-lg">{user?.name?.charAt(0) || "-"}</AvatarFallback>
       </Avatar>
       <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-        <span className="truncate font-medium">{user?.name || "未知用户"}</span>
+        <span className="truncate font-medium">{user?.name || t("navBalance.common.unknownUser")}</span>
         {!IS_OFFLINE_EDITION && <span className="truncate text-xs">{triggerPlanLabel}</span>}
       </div>
       {!IS_OFFLINE_EDITION && (
@@ -354,7 +370,7 @@ export default function NavBalance({
             disabled={uploadingAvatar}
           >
             <Avatar className="size-12 rounded-xl">
-              <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || "未知用户"} />
+              <AvatarImage src={user?.avatar_url || "/logo-light.png"} alt={user?.name || t("navBalance.common.unknownUser")} />
               <AvatarFallback className="rounded-xl text-base">{user?.name?.charAt(0) || "-"}</AvatarFallback>
             </Avatar>
             <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
@@ -377,7 +393,7 @@ export default function NavBalance({
                 setShowChangeNameDialog(true)
               }}
             >
-              <span className="truncate">{user?.name || "未知用户"}</span>
+              <span className="truncate">{user?.name || t("navBalance.common.unknownUser")}</span>
               <IconPencil className="size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
             </button>
             <div className="mt-1 truncate text-xs text-muted-foreground">{user?.id || "-"}</div>
@@ -390,13 +406,13 @@ export default function NavBalance({
           <>
             <div className="flex min-h-12 items-center justify-between gap-4 py-2">
               <div className="min-w-0">
-                <div className="text-xs text-muted-foreground">当前套餐</div>
+                <div className="text-xs text-muted-foreground">{t("navBalance.plan.currentPlan")}</div>
                 <div className="mt-1 truncate text-sm font-medium">
-                  {getSubscriptionPlanLabel(subscription?.plan)}
+                  {triggerPlanLabel}
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    {formatSubscriptionExpiry(subscription?.expires_at) === "长期有效"
-                      ? "长期有效"
-                      : `${formatSubscriptionExpiry(subscription?.expires_at)} 前有效`}
+                    {subscriptionExpiry
+                      ? t("navBalance.plan.validUntil", { date: subscriptionExpiry })
+                      : t("navBalance.plan.lifetime")}
                   </span>
                 </div>
               </div>
@@ -406,13 +422,13 @@ export default function NavBalance({
                 className="h-8 shrink-0 px-3 text-xs"
                 onClick={() => setShowSubscriptionPlanDialog(true)}
               >
-                升级套餐
+                {t("navBalance.plan.upgrade")}
               </Button>
             </div>
 
             <div className="flex min-h-12 items-center justify-between gap-4 py-2">
               <div className="min-w-0">
-                <div className="text-xs text-muted-foreground">当前积分</div>
+                <div className="text-xs text-muted-foreground">{t("navBalance.balance.currentCredits")}</div>
                 <div className="mt-1 truncate text-sm font-medium tabular-nums">{formatPoints(remainingPoints)}</div>
               </div>
               <Button
@@ -425,7 +441,7 @@ export default function NavBalance({
                   }))
                 }}
               >
-                充值
+                {t("navBalance.balance.recharge")}
               </Button>
             </div>
           </>
@@ -433,8 +449,8 @@ export default function NavBalance({
 
         <div className="flex min-h-12 items-center justify-between gap-4 py-2">
           <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">邮箱</div>
-            <div className="mt-1 truncate text-sm font-medium">{user?.email || "未绑定"}</div>
+            <div className="text-xs text-muted-foreground">{t("navBalance.email.label")}</div>
+            <div className="mt-1 truncate text-sm font-medium">{user?.email || t("navBalance.email.unbound")}</div>
           </div>
           {!user?.email ? (
             <Button
@@ -447,15 +463,15 @@ export default function NavBalance({
               }}
             >
               <IconMail className="size-4" />
-              绑定邮箱
+              {t("navBalance.email.bind")}
             </Button>
           ) : null}
         </div>
 
         <div className="flex min-h-12 items-center justify-between gap-4 py-2">
           <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">团队</div>
-            <div className="mt-1 truncate text-sm font-medium">{user?.team?.name || "个人空间"}</div>
+            <div className="text-xs text-muted-foreground">{t("navBalance.team.label")}</div>
+            <div className="mt-1 truncate text-sm font-medium">{user?.team?.name || t("navBalance.team.personalSpace")}</div>
           </div>
         </div>
       </section>
@@ -475,7 +491,7 @@ export default function NavBalance({
           onClick={() => setShowLogoutDialog(true)}
         >
           <IconLogout className="size-4" />
-          登出
+          {t("navBalance.logout.action")}
         </Button>
       </section>
     </div>
@@ -497,7 +513,7 @@ export default function NavBalance({
                   className="cursor-pointer"
                   size={triggerMode === "account" ? "lg" : "default"}
                   isActive={triggerMode === "account" && dialogOpen}
-                  tooltip={triggerMode === "account" ? "账户" : "账户与余额"}
+                  tooltip={triggerMode === "account" ? t("navBalance.account.tooltipAccount") : t("navBalance.account.tooltipBalance")}
                 >
                   {triggerContent}
                 </SidebarMenuButton>
@@ -510,12 +526,12 @@ export default function NavBalance({
         className="flex max-h-[90vh] w-[90vw] max-w-3xl flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>我的账户</DialogTitle>
-          <DialogDescription>查看账户资料、积分余额、套餐与使用记录</DialogDescription>
+          <DialogTitle>{t("navBalance.account.title")}</DialogTitle>
+          <DialogDescription>{t("navBalance.account.description")}</DialogDescription>
         </DialogHeader>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="px-4 pt-4 pb-2">
-            <div className="text-sm font-medium">我的账户</div>
+            <div className="text-sm font-medium">{t("navBalance.account.title")}</div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
             {accountContent}
@@ -525,15 +541,15 @@ export default function NavBalance({
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认登出</AlertDialogTitle>
+            <AlertDialogTitle>{t("navBalance.logout.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              您确定要登出吗？登出后需要重新登录才能继续使用。
+              {t("navBalance.logout.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("navBalance.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleLogout}>
-              确认登出
+              {t("navBalance.logout.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -542,15 +558,15 @@ export default function NavBalance({
       <Dialog open={showChangeNameDialog} onOpenChange={setShowChangeNameDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>修改昵称</DialogTitle>
+            <DialogTitle>{t("navBalance.profile.changeNameTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="wallet-new-name">昵称</Label>
+              <Label htmlFor="wallet-new-name">{t("navBalance.profile.nickname")}</Label>
               <Input
                 id="wallet-new-name"
                 type="text"
-                placeholder="请输入新昵称"
+                placeholder={t("navBalance.profile.nicknamePlaceholder")}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 autoComplete="name"
@@ -565,14 +581,14 @@ export default function NavBalance({
                 setNewName("")
               }}
             >
-              取消
+              {t("navBalance.common.cancel")}
             </Button>
             <Button
               onClick={handleChangeName}
               disabled={changingName || !newName.trim()}
             >
               {changingName && <Spinner className="mr-2 size-4" />}
-              保存
+              {t("navBalance.common.save")}
             </Button>
           </div>
         </DialogContent>
@@ -580,15 +596,15 @@ export default function NavBalance({
       <Dialog open={showBindEmailDialog} onOpenChange={setShowBindEmailDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>绑定邮箱</DialogTitle>
+            <DialogTitle>{t("navBalance.email.bindTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="wallet-bind-email">邮箱</Label>
+              <Label htmlFor="wallet-bind-email">{t("navBalance.email.label")}</Label>
               <Input
                 id="wallet-bind-email"
                 type="email"
-                placeholder="请输入要绑定的邮箱"
+                placeholder={t("navBalance.email.placeholder")}
                 value={bindEmail}
                 onChange={(e) => setBindEmail(e.target.value)}
                 autoComplete="email"
@@ -603,14 +619,14 @@ export default function NavBalance({
                 setBindEmail("")
               }}
             >
-              取消
+              {t("navBalance.common.cancel")}
             </Button>
             <Button
               onClick={handleBindEmail}
               disabled={bindingEmail || !bindEmail.trim()}
             >
               {bindingEmail && <Spinner className="mr-2 size-4" />}
-              发送验证邮件
+              {t("navBalance.email.sendVerification")}
             </Button>
           </div>
         </DialogContent>
@@ -623,11 +639,11 @@ export default function NavBalance({
           <div className="space-y-4">
             {requiresCurrentPassword && (
               <div className="space-y-2">
-                <Label htmlFor="wallet-current-password">当前密码</Label>
+                <Label htmlFor="wallet-current-password">{t("navBalance.security.currentPassword")}</Label>
                 <Input
                   id="wallet-current-password"
                   type="password"
-                  placeholder="请输入当前密码"
+                  placeholder={t("navBalance.security.currentPasswordPlaceholder")}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   autoComplete="current-password"
@@ -635,22 +651,22 @@ export default function NavBalance({
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="wallet-new-password">新密码</Label>
+              <Label htmlFor="wallet-new-password">{t("navBalance.security.newPassword")}</Label>
               <Input
                 id="wallet-new-password"
                 type="password"
-                placeholder="请输入新密码"
+                placeholder={t("navBalance.security.newPasswordPlaceholder")}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="wallet-confirm-password">确认新密码</Label>
+              <Label htmlFor="wallet-confirm-password">{t("navBalance.security.confirmPassword")}</Label>
               <Input
                 id="wallet-confirm-password"
                 type="password"
-                placeholder="请再次输入新密码"
+                placeholder={t("navBalance.security.confirmPasswordPlaceholder")}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
@@ -667,14 +683,14 @@ export default function NavBalance({
                 setConfirmPassword("")
               }}
             >
-              取消
+              {t("navBalance.common.cancel")}
             </Button>
             <Button
               onClick={handleChangePassword}
               disabled={changingPassword || (requiresCurrentPassword && !currentPassword) || !newPassword || !confirmPassword}
             >
               {changingPassword && <Spinner className="mr-2 size-4" />}
-              确认修改
+              {t("navBalance.security.confirmChange")}
             </Button>
           </div>
         </DialogContent>

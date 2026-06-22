@@ -19,10 +19,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { apiRequest } from "@/utils/requestUtils"
+import { useTranslation } from "react-i18next"
 
-function formatTime(value?: number) {
+function formatTime(value: number | undefined, language: string) {
   if (!value) return "-"
-  return new Date(value * 1000).toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")
+  const locale = language === "cn" ? "zh-CN" : "en-US"
+  return new Date(value * 1000).toLocaleString(locale, { hour12: false }).replace(/\//g, "-")
 }
 
 function creatorName(item: DomainTeamConversationItem) {
@@ -30,6 +32,7 @@ function creatorName(item: DomainTeamConversationItem) {
 }
 
 export default function TeamManagerConversations() {
+  const { t, i18n } = useTranslation()
   const [conversations, setConversations] = useState<DomainTeamConversationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [pageSize, setPageSize] = useState(20)
@@ -48,7 +51,7 @@ export default function TeamManagerConversations() {
         setNextCursor(page?.cursor)
         setHasNextPage(!!page?.has_next_page)
       } else {
-        toast.error(resp.message || "获取对话列表失败")
+        toast.error(resp.message || t("managerConversations.toast.fetchFailed"))
       }
     })
     setLoading(false)
@@ -85,13 +88,13 @@ export default function TeamManagerConversations() {
   }
 
   if (loading && conversations.length === 0) {
-    return <ManagerListLoading title="正在加载对话" />
+    return <ManagerListLoading title={t("managerConversations.loading")} />
   }
 
   return (
     <ManagerListCard
-      title="对话"
-      description="查看团队对话输入、关联任务、创建人和附件数量。"
+      title={t("managerConversations.title")}
+      description={t("managerConversations.description")}
       icon={<IconMessages />}
       count={conversations.length}
       pagination={
@@ -111,18 +114,18 @@ export default function TeamManagerConversations() {
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableHead className="px-6">用户输入</TableHead>
-            <TableHead>创建人</TableHead>
-            <TableHead>附件</TableHead>
-            <TableHead>时间</TableHead>
+            <TableHead className="px-6">{t("managerConversations.columns.input")}</TableHead>
+            <TableHead>{t("managerConversations.columns.creator")}</TableHead>
+            <TableHead>{t("managerConversations.columns.attachments")}</TableHead>
+            <TableHead>{t("managerConversations.columns.time")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {!loading && conversations.length === 0 && (
             <ManagerListEmpty
               colSpan={4}
-              title="暂无对话"
-              description="团队成员发起对话后，这里会显示输入内容和关联任务。"
+              title={t("managerConversations.empty.title")}
+              description={t("managerConversations.empty.description")}
             />
           )}
           {conversations.map((item) => (
@@ -133,7 +136,7 @@ export default function TeamManagerConversations() {
                     {item.content || "-"}
                   </div>
                   <div className="truncate text-xs leading-4 text-muted-foreground">
-                    {item.task_title || item.task_id || "未关联任务"}
+                    {item.task_title || item.task_id || t("managerConversations.fallback.unlinkedTask")}
                     {item.project_name ? ` · ${item.project_name}` : ""}
                   </div>
                 </div>
@@ -148,7 +151,7 @@ export default function TeamManagerConversations() {
                   {item.attachment_count || 0}
                 </Badge>
               </TableCell>
-              <TableCell>{formatTime(item.created_at)}</TableCell>
+              <TableCell>{formatTime(item.created_at, i18n.language)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

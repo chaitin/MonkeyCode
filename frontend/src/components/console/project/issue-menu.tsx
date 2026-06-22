@@ -19,6 +19,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 import IssueDesignDialog from "./issue-design-dialog"
 import IssueDevelopDialog from "./issue-dev-dialog"
+import { useTranslation } from "react-i18next"
 
 interface IssueMenuProps {
   issue?: DomainProjectIssue
@@ -33,6 +34,7 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
   const [developDialogOpen, setDevelopDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const { t } = useTranslation()
 
   if (!issue) {
     return null
@@ -40,7 +42,7 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
 
   const handleDeleteIssue = () => {
     if (!issue.id) {
-      toast.error("需求 ID 不存在，无法删除")
+      toast.error(t("consoleProject.issue.delete.toast.missingId"))
       setDeleteDialogOpen(false)
       return
     }
@@ -54,16 +56,16 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
         setDeleting(false)
         setDeleteDialogOpen(false)
         if (resp.code === 0) {
-          toast.success("需求已删除")
+          toast.success(t("consoleProject.issue.delete.toast.deleted"))
           onIssueDeleted?.()
         } else {
-          toast.error(resp.message || "删除需求失败")
+          toast.error(resp.message || t("consoleProject.issue.delete.toast.deleteFailed"))
         }
       },
       () => {
         setDeleting(false)
         setDeleteDialogOpen(false)
-        toast.error("删除需求失败")
+        toast.error(t("consoleProject.issue.delete.toast.deleteFailed"))
       }
     )
   }
@@ -79,15 +81,15 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
         <DropdownMenuContent align="end" className="min-w-36">
           <DropdownMenuItem onClick={() => setDesignDialogOpen(true)}>
             <IconSparkles />
-            启动设计任务
+            {t("consoleProject.issue.actions.startDesign")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setDevelopDialogOpen(true)}>
             <IconDeviceImacCode />
-            启动开发任务
+            {t("consoleProject.issue.actions.startDevelop")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setDeleteDialogOpen(true)}>
             <IconTrash />
-            删除
+            {t("consoleProject.issue.actions.delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -111,13 +113,13 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
       <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => !deleting && setDeleteDialogOpen(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除需求</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleProject.issue.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除需求「{issue.title || "未命名需求"}」吗？此操作不可撤销。
+              {t("consoleProject.issue.delete.description", { title: issue.title || t("consoleProject.issue.untitled") })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("consoleProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault()
@@ -129,9 +131,9 @@ export default function IssueMenu({ issue, projectId, project, onTaskCreated, on
               {deleting ? (
                 <>
                   <Spinner />
-                  删除中...
+                  {t("consoleProject.issue.delete.deleting")}
                 </>
-              ) : "删除"}
+              ) : t("consoleProject.issue.actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

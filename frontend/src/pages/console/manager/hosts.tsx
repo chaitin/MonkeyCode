@@ -20,6 +20,7 @@ import { formatMemory, getHostStatusBadge } from "@/utils/common";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useTranslation } from "react-i18next";
 
 const secondsToHours = (seconds?: number) => {
   if (!seconds) {
@@ -36,12 +37,16 @@ const hoursToSeconds = (hours: string) => {
   return Math.round(value * 3600)
 }
 
-const formatPolicyDuration = (seconds?: number) => {
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+const formatPolicyDuration = (seconds: number | undefined, t: Translate) => {
   if (!seconds) {
-    return "未配置"
+    return t("managerHosts.policy.notConfigured")
   }
   const hours = seconds / 3600
-  return Number.isInteger(hours) ? `${hours} 小时` : `${Math.round(hours * 100) / 100} 小时`
+  return t("managerHosts.policy.hours", {
+    count: Number.isInteger(hours) ? hours : Math.round(hours * 100) / 100,
+  })
 }
 
 function PolicySummaryItem({ label, value }: { label: string; value: string }) {
@@ -56,6 +61,7 @@ function PolicySummaryItem({ label, value }: { label: string; value: string }) {
 }
 
 export default function TeamManagerHosts() {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [command, setCommand] = useState<string>("")
   const [hosts, setHosts] = useState<DomainHost[]>([])
@@ -74,6 +80,7 @@ export default function TeamManagerHosts() {
   const [recycleEnabled, setRecycleEnabled] = useState(true)
   const [recycleHours, setRecycleHours] = useState("")
   const [taskConcurrencyLimit, setTaskConcurrencyLimit] = useState("3")
+  const errorMessage = (message?: string) => message || t("managerShell.common.unknownError")
   
 
 
@@ -83,7 +90,7 @@ export default function TeamManagerHosts() {
       if (resp.code === 0) {
         setHosts(resp.data.hosts || [])
       } else {
-        toast.error("获取宿主机列表失败: " + resp.message)
+        toast.error(t("managerHosts.toast.fetchHostsFailed", { message: errorMessage(resp.message) }))
       }
     })
     setLoadingHosts(false)
@@ -104,7 +111,7 @@ export default function TeamManagerHosts() {
       if (resp.code === 0 && resp.data) {
         syncPolicyForm(resp.data)
       } else {
-        toast.error("获取任务开发环境策略失败: " + resp.message)
+        toast.error(t("managerHosts.toast.fetchPolicyFailed", { message: errorMessage(resp.message) }))
       }
     })
     setLoadingPolicy(false)
@@ -116,7 +123,7 @@ export default function TeamManagerHosts() {
       if (resp.code === 0) {
         setCommand(resp.data.command || "")
       } else {
-        toast.error("获取安装命令失败: " + resp.message)
+        toast.error(t("managerHosts.toast.fetchInstallCommandFailed", { message: errorMessage(resp.message) }))
       }
     })
     setLoadingInstallCommand(false)
@@ -136,7 +143,7 @@ export default function TeamManagerHosts() {
   const handleSavePolicy = async () => {
     const parsedTaskConcurrencyLimit = Number(taskConcurrencyLimit)
     if (!Number.isInteger(parsedTaskConcurrencyLimit) || parsedTaskConcurrencyLimit <= 0) {
-      toast.error("任务并发数必须为正整数")
+      toast.error(t("managerHosts.toast.invalidConcurrency"))
       return
     }
 
@@ -150,9 +157,9 @@ export default function TeamManagerHosts() {
     }, [], (resp) => {
       if (resp.code === 0 && resp.data) {
         syncPolicyForm(resp.data)
-        toast.success("任务策略已保存")
+        toast.success(t("managerHosts.toast.policySaved"))
       } else {
-        toast.error("保存任务策略失败: " + resp.message)
+        toast.error(t("managerHosts.toast.savePolicyFailed", { message: errorMessage(resp.message) }))
       }
     })
     setSavingPolicy(false)
@@ -161,10 +168,10 @@ export default function TeamManagerHosts() {
   const handleCopyCommand = async () => {
     try {
       await navigator.clipboard.writeText(command)
-      toast.success("命令已复制到剪贴板")
+      toast.success(t("managerHosts.toast.commandCopied"))
     } catch (error) {
-      toast.error("复制失败")
-      console.error("复制失败:", error)
+      toast.error(t("managerHosts.toast.copyFailed"))
+      console.error("Copy command failed:", error)
     }
   }
 
@@ -172,10 +179,10 @@ export default function TeamManagerHosts() {
     setRemovingHost(true)
     await apiRequest('v1TeamsHostsDelete', {}, [hostId], (resp) => {
       if (resp.code === 0) {
-        toast.success("宿主机已移除")
+        toast.success(t("managerHosts.toast.hostRemoved"))
         fetchHosts()
       } else {
-        toast.error("移除宿主机失败: " + resp.message)
+        toast.error(t("managerHosts.toast.removeHostFailed", { message: errorMessage(resp.message) }))
       }
     })
     setRemovingHost(false)
@@ -197,11 +204,11 @@ export default function TeamManagerHosts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock3 />
-            任务策略
+            {t("managerHosts.policy.title")}
           </CardTitle>
           <CardAction>
             <Button variant="outline" size="sm" onClick={() => setPolicyDialogOpen(true)}>
-              配置
+              {t("managerHosts.actions.configure")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -217,16 +224,16 @@ export default function TeamManagerHosts() {
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
               <PolicySummaryItem
-                label="任务并发数"
-                value={`${policy?.task_concurrency_limit ?? 3} 个任务`}
+                label={t("managerHosts.policy.concurrency")}
+                value={t("managerHosts.policy.taskCount", { count: policy?.task_concurrency_limit ?? 3 })}
               />
               <PolicySummaryItem
-                label="自动休眠"
-                value={sleepEnabled ? `${formatPolicyDuration(policy?.effective_sleep_seconds)} 后休眠` : "已关闭"}
+                label={t("managerHosts.policy.autoSleep")}
+                value={sleepEnabled ? t("managerHosts.policy.afterSleep", { duration: formatPolicyDuration(policy?.effective_sleep_seconds, t) }) : t("managerHosts.policy.disabled")}
               />
               <PolicySummaryItem
-                label="自动回收"
-                value={recycleEnabled ? `${formatPolicyDuration(policy?.effective_recycle_seconds)} 后回收` : "已关闭"}
+                label={t("managerHosts.policy.autoRecycle")}
+                value={recycleEnabled ? t("managerHosts.policy.afterRecycle", { duration: formatPolicyDuration(policy?.effective_recycle_seconds, t) }) : t("managerHosts.policy.disabled")}
               />
             </div>
           )}
@@ -236,7 +243,7 @@ export default function TeamManagerHosts() {
       <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>任务策略</DialogTitle>
+            <DialogTitle>{t("managerHosts.policy.title")}</DialogTitle>
           </DialogHeader>
           {loadingPolicy ? (
             <Empty className="bg-muted">
@@ -251,9 +258,9 @@ export default function TeamManagerHosts() {
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-lg border p-4">
                   <div className="space-y-1">
-                    <Label htmlFor="task-concurrency-limit">任务并发数</Label>
+                    <Label htmlFor="task-concurrency-limit">{t("managerHosts.policy.concurrency")}</Label>
                     <p className="text-sm text-muted-foreground">
-                      同一成员可同时运行的任务数量
+                      {t("managerHosts.policy.concurrencyDescription")}
                     </p>
                   </div>
                   <div className="mt-4 space-y-2">
@@ -271,9 +278,9 @@ export default function TeamManagerHosts() {
                 <div className="rounded-lg border p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <Label htmlFor="task-vm-sleep-enabled">自动休眠</Label>
+                      <Label htmlFor="task-vm-sleep-enabled">{t("managerHosts.policy.autoSleep")}</Label>
                       <p className="text-sm text-muted-foreground">
-                        空闲达到设置时长后休眠任务开发环境
+                        {t("managerHosts.policy.sleepDescription")}
                       </p>
                     </div>
                     <Switch
@@ -283,7 +290,7 @@ export default function TeamManagerHosts() {
                     />
                   </div>
                   <div className="mt-4 space-y-2">
-                    <Label htmlFor="task-vm-sleep-hours">休眠时长（小时）</Label>
+                    <Label htmlFor="task-vm-sleep-hours">{t("managerHosts.policy.sleepHours")}</Label>
                     <Input
                       id="task-vm-sleep-hours"
                       type="number"
@@ -291,11 +298,11 @@ export default function TeamManagerHosts() {
                       step="0.5"
                       value={sleepHours}
                       disabled={!sleepEnabled}
-                      placeholder={policy?.sleep_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_sleep_seconds)}` : "继承全局默认"}
+                      placeholder={policy?.sleep_inherited ? t("managerHosts.policy.inheritDefault", { duration: formatPolicyDuration(policy.effective_sleep_seconds, t) }) : t("managerHosts.policy.inheritGlobalDefault")}
                       onChange={(e) => setSleepHours(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      留空或填 0 表示继承全局默认，当前生效：{sleepEnabled ? formatPolicyDuration(policy?.effective_sleep_seconds) : "已关闭"}
+                      {t("managerHosts.policy.effectiveHint", { value: sleepEnabled ? formatPolicyDuration(policy?.effective_sleep_seconds, t) : t("managerHosts.policy.disabled") })}
                     </p>
                   </div>
                 </div>
@@ -303,9 +310,9 @@ export default function TeamManagerHosts() {
                 <div className="rounded-lg border p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1">
-                      <Label htmlFor="task-vm-recycle-enabled">自动回收</Label>
+                      <Label htmlFor="task-vm-recycle-enabled">{t("managerHosts.policy.autoRecycle")}</Label>
                       <p className="text-sm text-muted-foreground">
-                        空闲达到设置时长后回收任务开发环境
+                        {t("managerHosts.policy.recycleDescription")}
                       </p>
                     </div>
                     <Switch
@@ -315,7 +322,7 @@ export default function TeamManagerHosts() {
                     />
                   </div>
                   <div className="mt-4 space-y-2">
-                    <Label htmlFor="task-vm-recycle-hours">回收时长（小时）</Label>
+                    <Label htmlFor="task-vm-recycle-hours">{t("managerHosts.policy.recycleHours")}</Label>
                     <Input
                       id="task-vm-recycle-hours"
                       type="number"
@@ -323,11 +330,11 @@ export default function TeamManagerHosts() {
                       step="0.5"
                       value={recycleHours}
                       disabled={!recycleEnabled}
-                      placeholder={policy?.recycle_inherited ? `继承默认 ${formatPolicyDuration(policy.effective_recycle_seconds)}` : "继承全局默认"}
+                      placeholder={policy?.recycle_inherited ? t("managerHosts.policy.inheritDefault", { duration: formatPolicyDuration(policy.effective_recycle_seconds, t) }) : t("managerHosts.policy.inheritGlobalDefault")}
                       onChange={(e) => setRecycleHours(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      留空或填 0 表示继承全局默认，当前生效：{recycleEnabled ? formatPolicyDuration(policy?.effective_recycle_seconds) : "已关闭"}
+                      {t("managerHosts.policy.effectiveHint", { value: recycleEnabled ? formatPolicyDuration(policy?.effective_recycle_seconds, t) : t("managerHosts.policy.disabled") })}
                     </p>
                   </div>
                 </div>
@@ -335,7 +342,7 @@ export default function TeamManagerHosts() {
               <div className="flex justify-end">
                 <Button size="sm" onClick={handleSavePolicy} disabled={savingPolicy || loadingPolicy}>
                   {savingPolicy ? <Spinner className="size-4" /> : <Save className="size-4" />}
-                  保存
+                  {t("managerHosts.actions.save")}
                 </Button>
               </div>
             </>
@@ -347,13 +354,13 @@ export default function TeamManagerHosts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Box />
-            开发环境宿主机
+            {t("managerHosts.hosts.title")}
           </CardTitle>
           <CardDescription>
-            用于在宿主机上创建开发环境
+            {t("managerHosts.hosts.description")}
           </CardDescription>
           <CardAction>
-            <Button variant={"outline"} size="sm" onClick={() => setOpen(true)}>绑定宿主机</Button>
+            <Button variant={"outline"} size="sm" onClick={() => setOpen(true)}>{t("managerHosts.bind.title")}</Button>
           </CardAction>
         </CardHeader>
         <CardContent>
@@ -374,13 +381,16 @@ export default function TeamManagerHosts() {
                   <ItemTitle className="break-all">
                     {host.remark || `${host.name}-${host.external_ip}`}
                     {getHostStatusBadge(host.status)}
-                    <Badge variant="secondary" className="hidden sm:inline">{host.cores} 核</Badge>
+                    <Badge variant="secondary" className="hidden sm:inline">{t("managerHosts.hosts.cores", { count: host.cores })}</Badge>
                     <Badge variant="secondary" className="hidden sm:inline">{formatMemory(host.memory)}</Badge>
                     <Badge variant="secondary" className="hidden sm:inline">{host.arch}</Badge>
                     <Badge variant="secondary" className="hidden sm:inline">{host.external_ip}</Badge>
                   </ItemTitle>
                   <ItemDescription className="hidden md:block">
-                    共 {host.virtualmachines?.length || 0} 个开发环境，{host.virtualmachines?.filter((vm: DomainVirtualMachine) => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).length || 0} 个正在使用
+                    {t("managerHosts.hosts.vmSummary", {
+                      total: host.virtualmachines?.length || 0,
+                      active: host.virtualmachines?.filter((vm: DomainVirtualMachine) => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).length || 0,
+                    })}
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
@@ -393,7 +403,7 @@ export default function TeamManagerHosts() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleEdit(host)}>
                         <IconPencil />
-                        修改
+                        {t("managerHosts.actions.edit")}
                       </DropdownMenuItem>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -402,20 +412,20 @@ export default function TeamManagerHosts() {
                             onSelect={(e) => { e.preventDefault() }}
                           >
                             <IconTrash />
-                            移除
+                            {t("managerHosts.actions.remove")}
                           </DropdownMenuItem>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认移除</AlertDialogTitle>
+                            <AlertDialogTitle>{t("managerHosts.dialogs.remove.title")}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要移除宿主机 "{host.remark || `${host.name}-${host.external_ip}`}" 吗？此操作不可撤销。
+                              {t("managerHosts.dialogs.remove.description", { name: host.remark || `${host.name}-${host.external_ip}` })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDeleteHost(host.id!)} disabled={removingHost}>
-                              确认移除
+                              {t("managerHosts.dialogs.remove.confirm")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -429,13 +439,15 @@ export default function TeamManagerHosts() {
                     {host.groups && host.groups.length > 0 ? host.groups?.map((group: DomainTeamGroup) => (
                       <Badge variant="outline" key={group.id}>{group.name}</Badge>
                     )) : (
-                      <div className="text-sm text-muted-foreground">暂无分组</div>
+                      <div className="text-sm text-muted-foreground">{t("managerHosts.hosts.noGroups")}</div>
                     )}
                   </div>
                   <Separator />
                   <div className="flex flex-wrap gap-2">
                     {host.virtualmachines?.filter(vm => vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOffline).map(vm => (
-                      <Badge variant="outline" key={vm.id}>{`${vm.owner?.email} - ${vm.cores} 核, ${formatMemory(vm.memory)}`}</Badge>
+                      <Badge variant="outline" key={vm.id}>
+                        {t("managerHosts.hosts.vmBadge", { email: vm.owner?.email, cores: vm.cores, memory: formatMemory(vm.memory) })}
+                      </Badge>
                     ))}
                   </div>
                 </ItemFooter>
@@ -459,11 +471,11 @@ export default function TeamManagerHosts() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>绑定宿主机</DialogTitle>
+            <DialogTitle>{t("managerHosts.bind.title")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              以 root 权限登录你的 Linux 服务器，并执行以下命令
+              {t("managerHosts.bind.description")}
             </p>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -471,15 +483,15 @@ export default function TeamManagerHosts() {
                   className="bg-muted p-4 rounded-md whitespace-pre-wrap break-words text-sm cursor-pointer hover:text-success"
                   onClick={handleCopyCommand}
                 >
-                  <code className="code-font">{loadingInstallCommand ? "正在生成安装命令..." : command}</code>
+                  <code className="code-font">{loadingInstallCommand ? t("managerHosts.bind.generatingCommand") : command}</code>
                 </pre>
               </TooltipTrigger>
               <TooltipContent>
-                <p>复制命令</p>
+                <p>{t("managerHosts.bind.copyCommand")}</p>
               </TooltipContent>
             </Tooltip>
             <p className="text-sm text-muted-foreground">
-              执行完毕后刷新页面，你将会看到宿主机信息
+              {t("managerHosts.bind.afterRun")}
             </p>
           </div>
         </DialogContent>

@@ -35,10 +35,11 @@ import { apiRequest } from "@/utils/requestUtils"
 import { IconCheck, IconChevronDown, IconGitBranch, IconLoader, IconReload } from "@tabler/icons-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useSettingsDialog } from "@/pages/console/user/page"
+import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { useCommonData } from "@/components/console/data-provider"
+import { useTranslation } from "react-i18next"
 
 interface RepoOption {
   gitIdentityId: string
@@ -66,6 +67,7 @@ export default function AddProjectDialog({
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { setOpen: setSettingsOpen } = useSettingsDialog()
+  const { t } = useTranslation()
 
   const { identities } = useCommonData()
 
@@ -87,7 +89,7 @@ export default function AddProjectDialog({
     : ""
 
   const identityLabel = (identity: DomainGitIdentity) =>
-    identity.remark || identity.username || identity.base_url || "未命名身份"
+    identity.remark || identity.username || identity.base_url || t("consoleProject.create.unnamedIdentity")
 
   const loadReposForIdentity = useCallback(
     async (identityId: string, flush = false) => {
@@ -110,7 +112,7 @@ export default function AddProjectDialog({
             if (!repo.url?.trim()) continue
             repos.push({
               gitIdentityId: identityId,
-              username: identity?.username || identity?.remark || "未命名身份",
+              username: identity?.username || identity?.remark || t("consoleProject.create.unnamedIdentity"),
               repository: repo,
             })
           }
@@ -139,7 +141,7 @@ export default function AddProjectDialog({
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast.error("请输入项目名称")
+      toast.error(t("consoleProject.create.toast.nameRequired"))
       return
     }
 
@@ -152,18 +154,18 @@ export default function AddProjectDialog({
     } = { name: name.trim() }
 
     if (!selectedIdentityId) {
-      toast.error("请选择身份")
+      toast.error(t("consoleProject.create.toast.identityRequired"))
       return
     }
     if (!selectedRepoValue) {
-      toast.error("请选择要关联的仓库")
+      toast.error(t("consoleProject.create.toast.repositoryRequired"))
       return
     }
     const repo = identityRepoOptions.find(
       (o) => `${o.gitIdentityId}:${o.repository.url || ""}` === selectedRepoValue
     )
     if (!repo?.repository.url) {
-      toast.error("请选择可用仓库")
+      toast.error(t("consoleProject.create.toast.availableRepositoryRequired"))
       return
     }
     createReq.platform = selectedIdentity?.platform as ConstsGitPlatform
@@ -177,7 +179,7 @@ export default function AddProjectDialog({
       [],
       (resp) => {
         if (resp.code === 0) {
-          toast.success("项目创建成功")
+          toast.success(t("consoleProject.create.toast.created"))
           onOpenChange(false)
           setName("")
           setSelectedSource("")
@@ -188,7 +190,7 @@ export default function AddProjectDialog({
             navigate(`/console/project/${resp.data.id}`)
           }
         } else {
-          toast.error(resp.message || "创建项目失败")
+          toast.error(resp.message || t("consoleProject.create.toast.createFailed"))
         }
       }
     )
@@ -209,24 +211,24 @@ export default function AddProjectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>创建项目</DialogTitle>
+          <DialogTitle>{t("consoleProject.create.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="name">项目名称</Label>
+            <Label htmlFor="name">{t("consoleProject.create.name")}</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="请输入项目名称"
+              placeholder={t("consoleProject.create.namePlaceholder")}
               disabled={loading}
             />
           </div>
 
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label>代码仓库</Label>
+              <Label>{t("consoleProject.create.repository")}</Label>
               {identities.length > 0 ? (
                 <RadioGroup
                   value={selectedSource}
@@ -260,7 +262,7 @@ export default function AddProjectDialog({
               ) : (
                 <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-dashed bg-muted/30">
                   <p className="text-sm text-muted-foreground">
-                    尚未绑定 Git 账号，请先绑定
+                    {t("consoleProject.create.noGitIdentity")}
                   </p>
                   <Button
                     variant="outline"
@@ -270,7 +272,7 @@ export default function AddProjectDialog({
                       setSettingsOpen(true)
                     }}
                   >
-                    去设置
+                    {t("consoleProject.create.goSettings")}
                   </Button>
                 </div>
               )}
@@ -278,7 +280,7 @@ export default function AddProjectDialog({
 
             {selectedIdentityId ? (
               <div className="flex flex-col gap-2">
-                <Label>选择仓库</Label>
+                <Label>{t("consoleProject.create.selectRepositoryLabel")}</Label>
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <Popover open={repoPopoverOpen} onOpenChange={setRepoPopoverOpen} modal={true}>
@@ -292,12 +294,12 @@ export default function AddProjectDialog({
                         >
                           <span className={cn("truncate", !selectedRepoValue && "text-muted-foreground")}>
                             {loadingIdentityRepos
-                              ? "正在获取仓库..."
+                              ? t("consoleProject.create.loadingRepositories")
                               : selectedRepoValue
                                 ? selectedRepoLabel
                                 : identityRepoOptions.length === 0
-                                  ? "暂无仓库，点击重试"
-                                  : "请选择仓库"}
+                                  ? t("consoleProject.create.noRepositoriesRetry")
+                                  : t("consoleProject.create.selectRepository")}
                           </span>
                           <IconChevronDown className="ml-2 size-4 shrink-0 opacity-50" />
                         </Button>
@@ -306,24 +308,24 @@ export default function AddProjectDialog({
                         {loadingIdentityRepos ? (
                           <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                             <Spinner />
-                            正在获取仓库...
+                            {t("consoleProject.create.loadingRepositories")}
                           </div>
                         ) : identityRepoOptions.length === 0 ? (
                           <div className="p-4">
-                            <p className="mb-3 text-sm">暂无仓库或获取失败，请点击重试。</p>
+                            <p className="mb-3 text-sm">{t("consoleProject.create.noRepositoriesDescription")}</p>
                             <Button
                               type="button"
                               size="sm"
                               onClick={() => loadReposForIdentity(selectedIdentityId)}
                             >
-                              重试
+                              {t("consoleProject.common.retry")}
                             </Button>
                           </div>
                         ) : (
                           <Command>
-                            <CommandInput placeholder="搜索仓库..." />
+                            <CommandInput placeholder={t("consoleProject.create.searchRepository")} />
                             <CommandList className="max-h-48 p-1">
-                              <CommandEmpty>未找到匹配的仓库</CommandEmpty>
+                              <CommandEmpty>{t("consoleProject.create.repositoryNotFound")}</CommandEmpty>
                               {identityRepoOptions.map((option) => {
                                 const value = `${option.gitIdentityId}:${option.repository.url || ""}`
                                 const repoName = (
@@ -358,7 +360,7 @@ export default function AddProjectDialog({
                                       className="text-xs text-muted-foreground truncate w-full pl-6"
                                       title={desc || undefined}
                                     >
-                                      {desc || "暂无描述"}
+                                      {desc || t("consoleProject.create.noDescription")}
                                     </span>
                                   </CommandItem>
                                 )
@@ -376,7 +378,7 @@ export default function AddProjectDialog({
                     className="shrink-0"
                     onClick={() => loadReposForIdentity(selectedIdentityId, true)}
                     disabled={loading || loadingIdentityRepos || !selectedIdentityId}
-                    aria-label="刷新仓库列表"
+                    aria-label={t("consoleProject.create.refreshRepositoriesAria")}
                   >
                     <IconReload className={cn("size-4", loadingIdentityRepos && "animate-spin")} />
                   </Button>
@@ -388,11 +390,11 @@ export default function AddProjectDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleProject.common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading || !canSubmit}>
             {loading && <IconLoader className="size-4 animate-spin" />}
-            创建
+            {t("consoleProject.common.create")}
           </Button>
         </DialogFooter>
       </DialogContent>

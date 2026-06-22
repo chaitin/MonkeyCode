@@ -42,8 +42,10 @@ import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "../data-provider"
 import { Spinner } from "@/components/ui/spinner"
+import { useTranslation } from "react-i18next"
 
 export default function Identities() {
+  const { t } = useTranslation()
   const githubAppInstallUrl = getGithubAppInstallUrl()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [giteeBindLoading, setGiteeBindLoading] = useState(false)
@@ -87,7 +89,7 @@ export default function Identities() {
           }, 500)
         }
       } else {
-        toast.error(resp.message || "获取 Gitee 授权地址失败")
+        toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "Gitee" }))
       }
     }, () => {
       setGiteeBindLoading(false)
@@ -109,7 +111,7 @@ export default function Identities() {
           }, 500)
         }
       } else {
-        toast.error(resp.message || "获取 Gitea 授权地址失败")
+        toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "Gitea" }))
       }
     }, () => {
       setGiteaBindLoading(false)
@@ -131,7 +133,7 @@ export default function Identities() {
           }, 500)
         }
       } else {
-        toast.error(resp.message || "获取 GitLab 授权地址失败")
+        toast.error(resp.message || t("consoleSettings.identities.toast.authorizeUrlFailed", { platform: "GitLab" }))
       }
     }, () => {
       setGitlabBindLoading(false)
@@ -150,16 +152,16 @@ export default function Identities() {
 
   const handleDelete = (identity: DomainGitIdentity) => {
     if (!identity.id) {
-      toast.error("身份信息不完整")
+      toast.error(t("consoleSettings.identities.toast.incomplete"))
       return
     }
 
     apiRequest('v1UsersGitIdentitiesDelete', {}, [identity.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("身份移除成功")
+        toast.success(t("consoleSettings.identities.toast.removeSuccess"))
         reloadIdentities()
       } else {
-        toast.error("移除身份失败: " + resp.message)
+        toast.error(t("consoleSettings.identities.toast.removeFailed", { message: resp.message }))
       }
     })
   }
@@ -173,7 +175,7 @@ export default function Identities() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            正在加载身份列表...
+            {t("consoleSettings.identities.loading")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -190,7 +192,7 @@ export default function Identities() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            暂无配置，请先绑定身份凭证
+            {t("consoleSettings.identities.empty")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -209,10 +211,10 @@ export default function Identities() {
       <ItemContent>
         <ItemTitle className="flex items-center gap-2 break-all">
           GitHub
-          <Badge variant="secondary" className="font-normal">未绑定</Badge>
+          <Badge variant="secondary" className="font-normal">{t("consoleSettings.identities.status.unbound")}</Badge>
         </ItemTitle>
         <ItemDescription className="hidden md:block">
-          点击绑定 GitHub 身份，用于同步代码、提交代码等操作
+          {t("consoleSettings.identities.connectDescription", { platform: "GitHub" })}
         </ItemDescription>
       </ItemContent>
       <ItemActions>
@@ -222,7 +224,7 @@ export default function Identities() {
           onClick={() => githubAppInstallUrl && window.open(githubAppInstallUrl, "_blank")}
           disabled={!githubAppInstallUrl}
         >
-          绑定
+          {t("consoleSettings.identities.actions.bind")}
         </Button>
       </ItemActions>
     </Item>
@@ -240,10 +242,10 @@ export default function Identities() {
       <ItemContent>
         <ItemTitle className="flex items-center gap-2 break-all">
           Gitee
-          <Badge variant="secondary" className="font-normal">未绑定</Badge>
+          <Badge variant="secondary" className="font-normal">{t("consoleSettings.identities.status.unbound")}</Badge>
         </ItemTitle>
         <ItemDescription className="hidden md:block">
-          点击绑定 Gitee 身份，用于同步代码、提交代码等操作
+          {t("consoleSettings.identities.connectDescription", { platform: "Gitee" })}
         </ItemDescription>
       </ItemContent>
       <ItemActions>
@@ -253,7 +255,7 @@ export default function Identities() {
           onClick={handleGiteeBind}
           disabled={giteeBindLoading}
         >
-          {giteeBindLoading ? "获取中..." : "绑定"}
+          {giteeBindLoading ? t("consoleSettings.identities.actions.fetching") : t("consoleSettings.identities.actions.bind")}
         </Button>
       </ItemActions>
     </Item>
@@ -271,10 +273,10 @@ export default function Identities() {
       <ItemContent>
         <ItemTitle className="flex items-center gap-2 break-all">
           Gitea
-          <Badge variant="secondary" className="font-normal">未绑定</Badge>
+          <Badge variant="secondary" className="font-normal">{t("consoleSettings.identities.status.unbound")}</Badge>
         </ItemTitle>
         <ItemDescription className="hidden md:block">
-          点击绑定 Gitea 身份，用于同步代码、提交代码等操作
+          {t("consoleSettings.identities.connectDescription", { platform: "Gitea" })}
         </ItemDescription>
       </ItemContent>
       <ItemActions>
@@ -284,7 +286,7 @@ export default function Identities() {
           onClick={handleGiteaBind}
           disabled={giteaBindLoading}
         >
-          {giteaBindLoading ? "获取中..." : "绑定"}
+          {giteaBindLoading ? t("consoleSettings.identities.actions.fetching") : t("consoleSettings.identities.actions.bind")}
         </Button>
       </ItemActions>
     </Item>
@@ -302,10 +304,10 @@ export default function Identities() {
       <ItemContent>
         <ItemTitle className="flex items-center gap-2 break-all">
           GitLab
-          <Badge variant="secondary" className="font-normal">未绑定</Badge>
+          <Badge variant="secondary" className="font-normal">{t("consoleSettings.identities.status.unbound")}</Badge>
         </ItemTitle>
         <ItemDescription className="hidden md:block">
-          点击绑定 GitLab 身份，用于同步代码、提交代码等操作
+          {t("consoleSettings.identities.connectDescription", { platform: "GitLab" })}
         </ItemDescription>
       </ItemContent>
       <ItemActions>
@@ -315,7 +317,7 @@ export default function Identities() {
           onClick={handleGitLabBind}
           disabled={gitlabBindLoading}
         >
-          {gitlabBindLoading ? "获取中..." : "绑定"}
+          {gitlabBindLoading ? t("consoleSettings.identities.actions.fetching") : t("consoleSettings.identities.actions.bind")}
         </Button>
       </ItemActions>
     </Item>
@@ -349,7 +351,7 @@ export default function Identities() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => handleEdit(identity)}>
                 <IconPencil />
-                修改
+                {t("consoleSettings.identities.actions.edit")}
               </DropdownMenuItem>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -358,24 +360,24 @@ export default function Identities() {
                     onSelect={(e) => { e.preventDefault() }}
                   >
                     <IconTrash />
-                    移除
+                    {t("consoleSettings.identities.actions.remove")}
                   </DropdownMenuItem>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>确认移除</AlertDialogTitle>
+                    <AlertDialogTitle>{t("consoleSettings.identities.delete.title")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      确定要移除身份 "{identity.username}" 吗？此操作不可撤销。
+                      {t("consoleSettings.identities.delete.description", { name: identity.username })}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
+                    <AlertDialogCancel>{t("consoleSettings.identities.actions.cancel")}</AlertDialogCancel>
                     <AlertDialogAction
                       onClick={() => {
                         handleDelete(identity)
                       }}
                     >
-                      确认移除
+                      {t("consoleSettings.identities.delete.confirm")}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -393,17 +395,17 @@ export default function Identities() {
         <div>
           <div className="flex items-center gap-2 font-semibold leading-none">
             <IconPasswordFingerprint />
-            Git 平台身份凭证
+            {t("consoleSettings.identities.title")}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            用于在 Git 仓库中提交代码和拉取代码的身份凭证
+            {t("consoleSettings.identities.description")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                绑定
+                {t("consoleSettings.identities.actions.bind")}
                 <ChevronDown className="ml-1 size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -416,7 +418,7 @@ export default function Identities() {
                     disabled={!githubAppInstallUrl}
                   >
                     <Icon name="GitHub-Uncolor" className="fill-foreground size-4" />
-                    绑定 GitHub 身份
+                    {t("consoleSettings.identities.actions.bindPlatform", { platform: "GitHub" })}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="whitespace-nowrap"
@@ -424,7 +426,7 @@ export default function Identities() {
                     disabled={giteeBindLoading}
                   >
                     <Icon name="Gitee" className="size-4" />
-                    绑定 Gitee 身份
+                    {t("consoleSettings.identities.actions.bindPlatform", { platform: "Gitee" })}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="whitespace-nowrap"
@@ -432,7 +434,7 @@ export default function Identities() {
                     disabled={giteaBindLoading}
                   >
                     <Icon name="Gitea" className="size-4" />
-                    绑定 Gitea 身份
+                    {t("consoleSettings.identities.actions.bindPlatform", { platform: "Gitea" })}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="whitespace-nowrap"
@@ -440,13 +442,13 @@ export default function Identities() {
                     disabled={gitlabBindLoading}
                   >
                     <Icon name="GitLab" className="size-4" />
-                    绑定 GitLab 身份
+                    {t("consoleSettings.identities.actions.bindPlatform", { platform: "GitLab" })}
                   </DropdownMenuItem>
                 </>
               )}
               <DropdownMenuItem className="whitespace-nowrap" onClick={() => setIsDialogOpen(true)}>
                 <IconPlugConnected className="size-4" />
-                绑定其他平台
+                {t("consoleSettings.identities.actions.bindOther")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

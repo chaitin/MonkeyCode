@@ -5,6 +5,13 @@ interface ExtensionImportResult {
   updated_images?: number
 }
 
-export function formatExtensionImportResult(result: ExtensionImportResult) {
-  return `新增 ${result.created_skills ?? 0} 个 Skills，更新 ${result.updated_skills ?? 0} 个 Skills，新增 ${result.created_images ?? 0} 个镜像，更新 ${result.updated_images ?? 0} 个镜像`
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+export function formatExtensionImportResult(result: ExtensionImportResult, t: Translate) {
+  return t("managerSkills.extensionImport.summary", {
+    createdSkills: result.created_skills ?? 0,
+    updatedSkills: result.updated_skills ?? 0,
+    createdImages: result.created_images ?? 0,
+    updatedImages: result.updated_images ?? 0,
+  })
 }

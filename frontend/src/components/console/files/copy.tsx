@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { normalizePath } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface CopyFileDialogProps {
   open: boolean
@@ -18,15 +19,12 @@ interface CopyFileDialogProps {
 }
 
 const generateNewFileName = (fileName: string): string => {
-  // 在文件名后添加 _new
   const lastDotIndex = fileName.lastIndexOf('.')
   if (lastDotIndex > 0) {
-    // 有扩展名的情况：test.txt -> test_new.txt
     const nameWithoutExt = fileName.substring(0, lastDotIndex)
     const ext = fileName.substring(lastDotIndex)
     return nameWithoutExt + '_new' + ext
   } else {
-    // 没有扩展名的情况：test -> test_new
     return fileName + '_new'
   }
 }
@@ -39,17 +37,18 @@ export default function CopyFileDialog({
   baseDir = '',
   onSuccess,
 }: CopyFileDialogProps) {
+  const { t } = useTranslation()
   const [targetDir, setTargetDir] = useState('')
   const [targetFileName, setTargetFileName] = useState('')
   const [copying, setCopying] = useState(false)
 
   useEffect(() => {
     if (open && sourcePath) {
-      // 从源文件路径推断目标目录和文件名
       const pathParts = sourcePath.split('/')
       const fileName = pathParts[pathParts.length - 1]
       const dirPath = pathParts.slice(0, -1).join('/')
       
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize editable target fields from the selected source path.
       setTargetDir(dirPath || './')
       setTargetFileName(generateNewFileName(fileName))
     }
@@ -57,11 +56,10 @@ export default function CopyFileDialog({
 
   const handleCopy = async () => {
     if (!sourcePath || !targetFileName.trim() || !envid) {
-      toast.error('请填写完整信息')
+      toast.error(t("consoleFiles.toast.fullInfoRequired"))
       return
     }
 
-    // API 调用时添加 baseDir 前缀
     const fullSourcePath = normalizePath(baseDir + '/' + sourcePath)
     const fullTargetPath = normalizePath(baseDir + '/' + targetDir + '/' + targetFileName.trim())
     
@@ -72,13 +70,13 @@ export default function CopyFileDialog({
       target: fullTargetPath
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已复制文件 "${targetFileName.trim()}"`)
+        toast.success(t("consoleFiles.toast.fileCopied", { name: targetFileName.trim() }))
         onOpenChange(false)
         if (onSuccess) {
           onSuccess()
         }
       } else {
-        toast.error("复制文件失败: " + resp.message);
+        toast.error(t("consoleFiles.toast.copyFailed", { message: resp.message }));
       }
     })
     setCopying(false)
@@ -92,11 +90,11 @@ export default function CopyFileDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>复制文件</DialogTitle>
+          <DialogTitle>{t("consoleFiles.actions.copyFile")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field>
-            <FieldLabel>源文件路径</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.sourcePath")}</FieldLabel>
             <Input
               value={sourcePath || './'}
               readOnly
@@ -104,7 +102,7 @@ export default function CopyFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>目标目录</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.targetDirectory")}</FieldLabel>
             <Input
               value={targetDir}
               onChange={(e) => setTargetDir(e.target.value)}
@@ -112,7 +110,7 @@ export default function CopyFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>新文件名称</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.newFileName")}</FieldLabel>
             <Input
               value={targetFileName}
               onChange={(e) => setTargetFileName(e.target.value)}
@@ -121,11 +119,11 @@ export default function CopyFileDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleCopy} disabled={!sourcePath || !targetDir.trim() || !targetFileName.trim() || copying}>
             {copying && <Spinner />}
-            确认复制
+            {t("consoleFiles.actions.confirmCopy")}
           </Button>
         </DialogFooter>
       </DialogContent>

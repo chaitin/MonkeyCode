@@ -18,55 +18,57 @@ import { RefreshCw } from "lucide-react"
 import ManagerSidebar from "@/components/manager/manager-sidebar"
 import { Fragment } from "react/jsx-runtime"
 import { ModeToggle } from "@/components/mode-toggle"
+import { useTranslation } from "react-i18next"
 
 export default function ManagerConsolePage() {
   const location = useLocation()
+  const { t } = useTranslation()
 
   const breadcrumbSegmentsMap: Record<
     string,
     { label: string; href?: string }[]
   > = {
     "/manager/overview": [
-      { label: "仪表盘", href: "/manager/overview" },
+      { label: t("managerShell.nav.overview"), href: "/manager/overview" },
     ],
     "/manager/projects": [
-      { label: "项目", href: "/manager/projects" },
+      { label: t("managerShell.nav.projects"), href: "/manager/projects" },
     ],
     "/manager/tasks": [
-      { label: "任务", href: "/manager/tasks" },
+      { label: t("managerShell.nav.tasks"), href: "/manager/tasks" },
     ],
     "/manager/conversations": [
-      { label: "对话", href: "/manager/conversations" },
+      { label: t("managerShell.nav.conversations"), href: "/manager/conversations" },
     ],
     "/manager/members": [
-      { label: "成员与权限", href: "/manager/members" },
+      { label: t("managerShell.nav.members"), href: "/manager/members" },
     ],
     "/manager/skills": [
-      { label: "Skills", href: "/manager/skills" },
+      { label: t("managerShell.nav.skills"), href: "/manager/skills" },
     ],
     "/manager/mcp": [
-      { label: "MCP", href: "/manager/mcp" },
+      { label: t("managerShell.nav.mcp"), href: "/manager/mcp" },
     ],
     "/manager/hosts": [
-      { label: "设置", href: "/manager/settings" },
+      { label: t("managerShell.nav.settings"), href: "/manager/settings" },
     ],
     "/manager/settings": [
-      { label: "设置", href: "/manager/settings" },
+      { label: t("managerShell.nav.settings"), href: "/manager/settings" },
     ],
     "/manager/models": [
-      { label: "设置", href: "/manager/settings" },
+      { label: t("managerShell.nav.settings"), href: "/manager/settings" },
     ],
     "/manager/images": [
-      { label: "设置", href: "/manager/settings" },
+      { label: t("managerShell.nav.settings"), href: "/manager/settings" },
     ],
     "/manager/oidc": [
-      { label: "设置", href: "/manager/settings" },
+      { label: t("managerShell.nav.settings"), href: "/manager/settings" },
     ],
     "/manager/logs": [
-      { label: "操作记录", href: "/manager/logs" },
+      { label: t("managerShell.nav.logs"), href: "/manager/logs" },
     ],
     "/manager/license": [
-      { label: "License", href: "/manager/license" },
+      { label: t("managerShell.nav.license"), href: "/manager/license" },
     ],
   }
 
@@ -74,7 +76,7 @@ export default function ManagerConsolePage() {
     location.pathname !== "/" ? location.pathname.replace(/\/$/, "") : location.pathname
 
   const breadcrumbSegments =
-    breadcrumbSegmentsMap[normalizedPath] ?? [{ label: "企业管理后台" }]
+    breadcrumbSegmentsMap[normalizedPath] ?? [{ label: t("managerShell.breadcrumb.fallback") }]
 
   return (
     <SidebarProvider>
@@ -122,10 +124,10 @@ export default function ManagerConsolePage() {
               variant="ghost"
               size="sm"
               onClick={() => window.location.reload()}
-              title="刷新页面"
+              title={t("managerShell.actions.refreshPage")}
             >
               <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
-              刷新
+              {t("managerShell.actions.refresh")}
             </Button>
             <ModeToggle />
           </div>

@@ -37,6 +37,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { FolderOpen, ListTodo } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 type SidebarTaskItemProps = {
   task: DomainProjectTask
@@ -92,6 +93,7 @@ function SidebarTaskItem({ task, isActive, onStop, onDelete, onRenameSuccess }: 
 }
 
 export default function NavProject() {
+  const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
   const { isMobile, setOpen, state } = useSidebar()
@@ -141,7 +143,7 @@ export default function NavProject() {
         setDeleting(false)
         setTaskToDelete(null)
         if (resp.code === 0) {
-          toast.success("任务已删除")
+          toast.success(t("navProject.toast.taskDeleted"))
           reloadProjects()
           reloadUnlinkedTasks()
           reloadHistoricalTasks()
@@ -149,7 +151,7 @@ export default function NavProject() {
             navigate("/console/tasks")
           }
         } else {
-          toast.error(resp.message || "删除失败")
+          toast.error(resp.message || t("navProject.toast.deleteFailed"))
         }
       },
       () => {
@@ -173,12 +175,12 @@ export default function NavProject() {
         setStopping(false)
         setTaskToStop(null)
         if (resp.code === 0) {
-          toast.success("任务已终止")
+          toast.success(t("navProject.toast.taskStopped"))
           reloadProjects()
           reloadUnlinkedTasks()
           reloadHistoricalTasks()
         } else {
-          toast.error(resp.message || "终止失败")
+          toast.error(resp.message || t("navProject.toast.stopFailed"))
         }
       },
       () => {
@@ -227,16 +229,16 @@ export default function NavProject() {
       {isCollapsed ? (
         <SidebarMenu className="gap-2">
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="空项目" isActive={isUnlinkedActive} asChild>
+            <SidebarMenuButton tooltip={t("navProject.emptyProject")} isActive={isUnlinkedActive} asChild>
               <Link to="/console/tasks">
                 <ListTodo />
-                <span>空项目</span>
+                <span>{t("navProject.emptyProject")}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip={projects.length > 0 ? "展开项目列表" : "创建项目"}
+              tooltip={projects.length > 0 ? t("navProject.expandProjectList") : t("navProject.actions.createProject")}
               isActive={location.pathname.startsWith("/console/project/")}
               onClick={() => {
                 if (projects.length > 0) {
@@ -247,7 +249,7 @@ export default function NavProject() {
               }}
             >
               <FolderOpen />
-              <span>{projects.length > 0 ? "项目列表" : "创建项目"}</span>
+              <span>{projects.length > 0 ? t("navProject.projectList") : t("navProject.actions.createProject")}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -272,7 +274,7 @@ export default function NavProject() {
                       onClick={() => setDefaultTaskDialogOpen(true)}
                     >
                       <IconPlus className="size-3.5 shrink-0" />
-                      <span className="truncate">启动任务</span>
+                      <span className="truncate">{t("navProject.actions.startTask")}</span>
                     </button>
                   </SidebarMenuSubButton>
                   <button
@@ -285,7 +287,7 @@ export default function NavProject() {
                     ) : (
                       <IconFolder className="size-3.5 shrink-0 opacity-40" />
                     )}
-                    <span className="min-w-0 flex-1 truncate text-left">历史任务</span>
+                    <span className="min-w-0 flex-1 truncate text-left">{t("navProject.historyTasks")}</span>
                     {historyExpanded ? (
                       <IconChevronDown className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/history-row:opacity-50" />
                     ) : (
@@ -306,7 +308,7 @@ export default function NavProject() {
                           className="min-w-0 flex-1 flex items-center gap-2 truncate"
                         >
                           <IconDots className="size-3.5 shrink-0" />
-                          <span className="truncate">查看更多</span>
+                          <span className="truncate">{t("navProject.actions.viewMore")}</span>
                         </Link>
                         <Button
                           variant="ghost"
@@ -362,7 +364,7 @@ export default function NavProject() {
                           <IconPlus className="size-3.5" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="right">启动任务</TooltipContent>
+                      <TooltipContent side="right">{t("navProject.actions.startTask")}</TooltipContent>
                     </Tooltip>
                   </div>
                   {(project.tasks || []).length > 0 && (
@@ -392,14 +394,14 @@ export default function NavProject() {
             }) : (
               <SidebarMenuItem>
                 <SidebarMenuButton disabled>
-                  暂无项目
+                  {t("navProject.noProjects")}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
             <SidebarMenuItem>
               <SidebarMenuButton onClick={() => setAddDialogOpen(true)} className="[&>svg]:size-3.5">
                 <IconFolderPlus />
-                <span>添加项目</span>
+                <span>{t("navProject.actions.addProject")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -407,13 +409,13 @@ export default function NavProject() {
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+            <AlertDialogTitle>{t("navProject.deleteTask.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除任务「{getTaskDisplayName(taskToDelete)}」吗？此操作不可撤销。
+              {t("navProject.deleteTask.description", { task: getTaskDisplayName(taskToDelete) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("navProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -422,7 +424,7 @@ export default function NavProject() {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "删除中..." : "删除任务"}
+              {deleting ? t("navProject.deleteTask.deleting") : t("navProject.deleteTask.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -430,13 +432,13 @@ export default function NavProject() {
       <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认终止任务</AlertDialogTitle>
+            <AlertDialogTitle>{t("navProject.stopTask.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要终止任务「{getTaskDisplayName(taskToStop)}」吗？任务终止后无法恢复。
+              {t("navProject.stopTask.description", { task: getTaskDisplayName(taskToStop) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={stopping}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={stopping}>{t("navProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -445,7 +447,7 @@ export default function NavProject() {
               disabled={stopping}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {stopping ? "终止中..." : "终止任务"}
+              {stopping ? t("navProject.stopTask.stopping") : t("navProject.stopTask.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

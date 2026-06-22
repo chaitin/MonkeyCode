@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { AuthProvider, useAuth } from "@/components/auth-provider";
+import { useTranslation } from "react-i18next";
 
 const PlaygroundContent = () => {
+  const { t } = useTranslation()
   const [posts, setPosts] = useState<DomainPlaygroundPost[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
@@ -28,7 +30,7 @@ const PlaygroundContent = () => {
       if (resp.code === 0) {
         setPosts(resp.data?.playground_posts || [])
       } else {
-        toast.error(resp.message || "获取内容失败")
+        toast.error(resp.message || t("playground.toast.fetchFailed"))
       }
     })
     setLoading(false)
@@ -36,16 +38,17 @@ const PlaygroundContent = () => {
 
   useEffect(() => {
     fetchPosts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- The initial list should not refetch on every search input change.
   }, [])
 
   return (
     <main className="flex flex-col w-full px-10 flex-1 pt-16">
       <div className="w-full mx-auto my-20 text-center text-4xl font-bold">
-        开发者广场
+        {t("playground.title")}
       </div>
       <div className="w-full mx-auto text-center max-w-[1200px] flex flex-row gap-4 mb-6">
         <Input
-          placeholder="搜索内容"
+          placeholder={t("playground.searchPlaceholder")}
           className="h-10 rounded-full px-6"
           value={search}
           onChange={(e) => {
@@ -58,14 +61,14 @@ const PlaygroundContent = () => {
           }}
           disabled={loading}
         />
-        <Button variant="secondary" className="h-10 rounded-full px-6" onClick={fetchPosts} disabled={loading}>搜索</Button>
+        <Button variant="secondary" className="h-10 rounded-full px-6" onClick={fetchPosts} disabled={loading}>{t("playground.actions.search")}</Button>
         <Button variant="secondary" className="h-10 rounded-full px-6" onClick={() => {
           if (isLoggedIn) {
             window.open("/playground/create", "_blank")
           } else {
             navigate("/login")
           }
-        }}>发布</Button>
+        }}>{t("playground.actions.publish")}</Button>
       </div>
       {posts.length > 0 ? (
         <div className="w-full mx-auto mb-10 max-w-[1200px] grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-4">
@@ -109,7 +112,7 @@ const PlaygroundContent = () => {
             <EmptyMedia variant="icon">
               <IconMoodEmpty className="" />
             </EmptyMedia>
-            <EmptyTitle>没有找到内容</EmptyTitle>
+            <EmptyTitle>{t("playground.empty")}</EmptyTitle>
           </EmptyHeader>
         </Empty>
       )}

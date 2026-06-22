@@ -18,10 +18,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { apiRequest } from "@/utils/requestUtils"
+import { useTranslation } from "react-i18next"
 
-function formatTime(value?: number) {
+function formatTime(value: number | undefined, language: string) {
   if (!value) return "-"
-  return new Date(value * 1000).toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")
+  const locale = language === "cn" ? "zh-CN" : "en-US"
+  return new Date(value * 1000).toLocaleString(locale, { hour12: false }).replace(/\//g, "-")
 }
 
 function creatorName(project: DomainTeamProjectItem) {
@@ -29,6 +31,7 @@ function creatorName(project: DomainTeamProjectItem) {
 }
 
 export default function TeamManagerProjects() {
+  const { i18n, t } = useTranslation()
   const [projects, setProjects] = useState<DomainTeamProjectItem[]>([])
   const [loading, setLoading] = useState(true)
   const [pageSize, setPageSize] = useState(20)
@@ -47,7 +50,7 @@ export default function TeamManagerProjects() {
         setNextCursor(page?.cursor)
         setHasNextPage(!!page?.has_next_page)
       } else {
-        toast.error(resp.message || "获取项目列表失败")
+        toast.error(resp.message || t("managerProjects.toast.fetchFailed"))
       }
     })
     setLoading(false)
@@ -84,13 +87,13 @@ export default function TeamManagerProjects() {
   }
 
   if (loading && projects.length === 0) {
-    return <ManagerListLoading title="正在加载项目" />
+    return <ManagerListLoading title={t("managerProjects.loading")} />
   }
 
   return (
     <ManagerListCard
-      title="项目"
-      description="查看团队内项目、仓库来源、创建人和任务规模。"
+      title={t("managerProjects.title")}
+      description={t("managerProjects.description")}
       icon={<IconFolder />}
       count={projects.length}
       pagination={
@@ -110,19 +113,19 @@ export default function TeamManagerProjects() {
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableHead className="px-6">项目</TableHead>
-            <TableHead>创建人</TableHead>
-            <TableHead className="text-right">任务</TableHead>
-            <TableHead className="text-right">需求</TableHead>
-            <TableHead>更新时间</TableHead>
+            <TableHead className="px-6">{t("managerProjects.columns.project")}</TableHead>
+            <TableHead>{t("managerProjects.columns.creator")}</TableHead>
+            <TableHead className="text-right">{t("managerProjects.columns.tasks")}</TableHead>
+            <TableHead className="text-right">{t("managerProjects.columns.issues")}</TableHead>
+            <TableHead>{t("managerProjects.columns.updatedAt")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {!loading && projects.length === 0 && (
             <ManagerListEmpty
               colSpan={5}
-              title="暂无项目"
-              description="团队创建项目后，这里会显示项目、仓库和任务规模。"
+              title={t("managerProjects.empty.title")}
+              description={t("managerProjects.empty.description")}
             />
           )}
           {projects.map((project) => (
@@ -133,7 +136,7 @@ export default function TeamManagerProjects() {
                     {project.name || "-"}
                   </div>
                   <div className="truncate text-xs leading-4 text-muted-foreground">
-                    {project.repo_url || "暂无仓库地址"}
+                    {project.repo_url || t("managerProjects.fallback.noRepo")}
                   </div>
                 </div>
               </TableCell>
@@ -150,9 +153,9 @@ export default function TeamManagerProjects() {
               </TableCell>
               <TableCell>
                 <div className="space-y-1">
-                  <div className="text-sm">{formatTime(project.updated_at)}</div>
+                  <div className="text-sm">{formatTime(project.updated_at, i18n.language)}</div>
                   <div className="text-xs leading-4 text-muted-foreground">
-                    创建于 {formatTime(project.created_at)}
+                    {t("managerProjects.createdAt", { time: formatTime(project.created_at, i18n.language) })}
                   </div>
                 </div>
               </TableCell>

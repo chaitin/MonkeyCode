@@ -9,6 +9,7 @@ import { IconLoader } from "@tabler/icons-react"
 import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useCommonData } from "../data-provider"
+import { useTranslation } from "react-i18next"
 
 interface EditGitBotPermissionDialogProps {
   open: boolean
@@ -23,6 +24,7 @@ export default function EditGitBotPermissionDialog({
   bot,
   onSuccess,
 }: EditGitBotPermissionDialogProps) {
+  const { t } = useTranslation()
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [selectOpen, setSelectOpen] = useState(false)
@@ -32,14 +34,15 @@ export default function EditGitBotPermissionDialog({
 
   useEffect(() => {
     if (open && bot) {
-      // 加载已有的用户权限
       const existingIds = (bot.users || [])
         .map(u => u.id)
         .filter(Boolean) as string[]
-      setSelectedUserIds(existingIds)
+      queueMicrotask(() => setSelectedUserIds(existingIds))
     } else if (!open) {
-      setSelectedUserIds([])
-      setSelectOpen(false)
+      queueMicrotask(() => {
+        setSelectedUserIds([])
+        setSelectOpen(false)
+      })
     }
   }, [open, bot])
 
@@ -69,7 +72,7 @@ export default function EditGitBotPermissionDialog({
 
   const handleSave = async () => {
     if (!bot?.id) {
-      toast.error("机器人信息不完整")
+      toast.error(t("consoleGitBot.toast.incompleteBot"))
       return
     }
 
@@ -80,11 +83,11 @@ export default function EditGitBotPermissionDialog({
       user_ids: selectedUserIds
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("权限修改成功")
+        toast.success(t("consoleGitBot.toast.permissionSuccess"))
         onOpenChange(false)
         onSuccess?.()
       } else {
-        toast.error("修改权限失败: " + resp.message)
+        toast.error(t("consoleGitBot.toast.permissionFailed", { message: resp.message }))
       }
     })
     setLoading(false)
@@ -99,9 +102,9 @@ export default function EditGitBotPermissionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>修改查看权限</DialogTitle>
+          <DialogTitle>{t("consoleGitBot.permission.title")}</DialogTitle>
           <DialogDescription>
-            以下成员可以看到 "{bot?.name || '机器人'}" 执行过的任务
+            {t("consoleGitBot.permission.description", { name: bot?.name || t("consoleGitBot.permission.fallbackBotName") })}
           </DialogDescription>
         </DialogHeader>
         <div className="relative" ref={selectRef}>
@@ -116,12 +119,12 @@ export default function EditGitBotPermissionDialog({
           >
             <span className="truncate">
               {selectedUserIds.length === 0
-                ? "请选择成员"
+                ? t("consoleGitBot.permission.selectMembers")
                 : selectedUserIds.length === 1
                 ? members.find((m) => m.id === selectedUserIds[0])?.name || 
                   members.find((m) => m.id === selectedUserIds[0])?.email ||
-                  "已选择 1 名成员"
-                : `已选择 ${selectedUserIds.length} 名成员`}
+                  t("consoleGitBot.permission.selectedOne")
+                : t("consoleGitBot.permission.selectedMany", { count: selectedUserIds.length })}
             </span>
             <ChevronDown className={cn("ml-2 h-4 w-4 shrink-0 opacity-50 transition-transform", selectOpen && "rotate-180")} />
           </Button>
@@ -130,7 +133,7 @@ export default function EditGitBotPermissionDialog({
               <div className="max-h-[200px] overflow-auto p-1">
                 {members.length === 0 ? (
                   <div className="py-6 text-center text-sm text-muted-foreground">
-                    暂无可选的成员
+                    {t("consoleGitBot.permission.emptyMembers")}
                   </div>
                 ) : (
                   members.map((member) => {
@@ -162,11 +165,11 @@ export default function EditGitBotPermissionDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleGitBot.actions.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading}>
             {loading && <IconLoader className="size-4 animate-spin" />}
-            保存
+            {t("consoleGitBot.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

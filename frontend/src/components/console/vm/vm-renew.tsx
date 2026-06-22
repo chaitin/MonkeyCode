@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import React from "react"
+import { useTranslation } from "react-i18next"
 
 interface VmRenewDialogProps {
   open: boolean
@@ -27,27 +28,25 @@ interface VmRenewDialogProps {
   onSuccess?: () => void
 }
 
-// 格式化剩余时间
-function formatRemainingTime(seconds: number): string {
+function formatRemainingTime(seconds: number, t: ReturnType<typeof useTranslation>["t"]): string {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   
   if (hours > 0 && minutes > 0) {
-    return `${hours} 小时 ${minutes} 分钟`
+    return t("consoleVm.renew.hoursMinutes", { hours, minutes })
   } else if (hours > 0) {
-    return `${hours} 小时`
+    return t("consoleVm.renew.hours", { hours })
   } else if (minutes > 0) {
-    return `${minutes} 分钟`
+    return t("consoleVm.renew.minutes", { minutes })
   } else {
-    return `${seconds} 秒`
+    return t("consoleVm.renew.seconds", { seconds })
   }
 }
 
-// 续期时间选项
 const renewLifeOptions = [
-  { label: `续期 1 小时`, value: `1h`, seconds: 1 * 60 * 60 },
-  { label: `续期 2 小时`, value: `2h`, seconds: 2 * 60 * 60 },
-  { label: `续期 3 小时`, value: `3h`, seconds: 3 * 60 * 60 }
+  { hours: 1, value: `1h`, seconds: 1 * 60 * 60 },
+  { hours: 2, value: `2h`, seconds: 2 * 60 * 60 },
+  { hours: 3, value: `3h`, seconds: 3 * 60 * 60 }
 ]
 
 export function VmRenewDialog({
@@ -57,6 +56,7 @@ export function VmRenewDialog({
   vmId,
   onSuccess,
 }: VmRenewDialogProps) {
+  const { t } = useTranslation()
   const [renewLife, setRenewLife] = useState<string>("1h")
   const [renewLoading, setRenewLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
@@ -73,14 +73,14 @@ export function VmRenewDialog({
 
   const confirmRenewVM = async () => {
     if (!vmId || !hostId) {
-      toast.error("无法获取开发环境信息")
+      toast.error(t("consoleVm.renew.missingVm"))
       onOpenChange(false)
       return
     }
 
     const selectedOption = renewLifeOptions.find(opt => opt.value === renewLife)
     if (!selectedOption) {
-      toast.error("请选择续期时间")
+      toast.error(t("consoleVm.renew.selectDuration"))
       return
     }
 
@@ -91,12 +91,11 @@ export function VmRenewDialog({
       life: selectedOption.seconds,
     }, [], (resp) => {
       if (resp.code === 0) {
-        console.log('剩余到期时间：', resp.data?.life_time_seconds)
         setRemainingTime(resp.data?.life_time_seconds || 0)
         setIsSuccess(true)
         onSuccess?.()
       } else {
-        toast.error(resp.message || "续期失败")
+        toast.error(resp.message || t("consoleVm.renew.failed"))
       }
     })
     setRenewLoading(false)
@@ -106,21 +105,21 @@ export function VmRenewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>开发环境续期</DialogTitle>
+          <DialogTitle>{t("consoleVm.renew.title")}</DialogTitle>
         </DialogHeader>
         {isSuccess ? (
           <div className="text-md">
-            续期成功，开发环境将在 <b>{formatRemainingTime(remainingTime)}</b>后回收
+            {t("consoleVm.renew.successPrefix")} <b>{formatRemainingTime(remainingTime, t)}</b>{t("consoleVm.renew.successSuffix")}
           </div>
         ) : (
           <Select value={renewLife} onValueChange={setRenewLife}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="请选择续期时长" />
+              <SelectValue placeholder={t("consoleVm.renew.selectPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
               {renewLifeOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  {option.label}
+                  {t("consoleVm.renew.option", { hours: option.hours })}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -129,12 +128,12 @@ export function VmRenewDialog({
         <DialogFooter>
           {isSuccess ? (
             <Button onClick={() => onOpenChange(false)}>
-              好的
+              {t("consoleVm.common.ok")}
             </Button>
           ) : (
             <Button onClick={confirmRenewVM} disabled={renewLoading}>
               {renewLoading && <Spinner className="size-4" />}
-              确认续期
+              {t("consoleVm.renew.confirm")}
             </Button>
           )}
         </DialogFooter>
@@ -142,4 +141,3 @@ export function VmRenewDialog({
     </Dialog>
   )
 }
-

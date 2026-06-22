@@ -2,6 +2,7 @@ import Terminal from "@/components/common/terminal"
 import { Separator } from "@/components/ui/separator"
 import { IconTerminal2, IconXboxXFilled } from "@tabler/icons-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 import themes from '@/utils/terminalThemes';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 export default function SharedTerminalPage() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const [connectionId] = useState<string | null>(searchParams.get('id'))
   const [title, setTitle] = useState<string>('Terminal')
@@ -33,12 +35,12 @@ export default function SharedTerminalPage() {
       if (connectionStatus === 'connecting') {
         return <>
           <Spinner className="w-4 h-4 min-w-4 min-h-4 animate-spin" />
-          正在连接
+          {t("sharedTerminal.status.connecting")}
         </>
       } else if (connectionStatus === 'disconnected') {
         return <>
           <IconXboxXFilled className="w-4 h-4 min-w-4 min-h-4 text-danger" />
-          连接已断开
+          {t("sharedTerminal.status.disconnected")}
         </>
       } else if (connectionStatus === 'connected') {
         return <>
@@ -49,7 +51,7 @@ export default function SharedTerminalPage() {
     }
     return <>
       <IconTerminal2 className="w-4 h-4 min-w-4 min-h-4" />
-      连接未建立
+      {t("sharedTerminal.status.notEstablished")}
     </>
   }
 
@@ -67,7 +69,7 @@ export default function SharedTerminalPage() {
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>输入连接密码</DialogTitle>
+            <DialogTitle>{t("sharedTerminal.password.title")}</DialogTitle>
           </DialogHeader>
           <Input
             value={password}
@@ -83,22 +85,22 @@ export default function SharedTerminalPage() {
           />
           <DialogFooter>
             <Button onClick={connect} disabled={!password.trim()}>
-              确认
+              {t("sharedTerminal.password.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <div className="flex items-center justify-between p-2">
         <div className="flex items-center gap-2">
-          远程协助{userName && userAvatar && <>
+          {t("sharedTerminal.header.title")}{userName && userAvatar && <>
             <span>-</span>
-            来自
+            <span>{t("sharedTerminal.header.from")}</span>
             <Avatar className="size-6">
               <AvatarFallback>
                 <img src={userAvatar} className="size-4" />
               </AvatarFallback>
             </Avatar>
-            {userName} 的分享
+            <span>{t("sharedTerminal.header.sharedBy", { userName })}</span>
           </>}
         </div>
         {/*<ModeToggle />*/}
@@ -115,11 +117,11 @@ export default function SharedTerminalPage() {
                 localStorage.setItem('terminalTheme', value);
               }}>
                 <SelectTrigger className="w-[150px] hidden md:flex" size="sm">
-                  <SelectValue placeholder="配色方案" />
+                  <SelectValue placeholder={t("sharedTerminal.theme.label")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectLabel>配色方案</SelectLabel>
+                    <SelectLabel>{t("sharedTerminal.theme.label")}</SelectLabel>
                     {Object.keys(themes).map((theme) => (
                       <SelectItem key={theme} value={theme}>{themes[theme as keyof typeof themes].name}</SelectItem>
                     ))}

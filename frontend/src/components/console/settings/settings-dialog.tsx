@@ -49,15 +49,16 @@ import Identities from "./identities"
 import VmsPage from "./vms"
 import Notifications from "./notifications"
 import ToolsAndMcp from "./tools-mcp"
+import { useTranslation } from "react-i18next"
 
 const SETTINGS_NAV = [
-  { id: "identities", name: "Git 身份", icon: IconPasswordFingerprint },
-  { id: "tools-mcp", name: "MCP 与工具", icon: Blocks },
-  { id: "models", name: "AI 大模型", icon: Bot },
-  { id: "images", name: "系统镜像", icon: Box },
-  { id: "hosts", name: "宿主机", icon: HardDrive },
-  { id: "vms", name: "开发环境", icon: MonitorCloud },
-  { id: "notifications", name: "通知", icon: Bell },
+  { id: "identities", icon: IconPasswordFingerprint },
+  { id: "tools-mcp", icon: Blocks },
+  { id: "models", icon: Bot },
+  { id: "images", icon: Box },
+  { id: "hosts", icon: HardDrive },
+  { id: "vms", icon: MonitorCloud },
+  { id: "notifications", icon: Bell },
 ] as const
 
 type SettingsSectionId = (typeof SETTINGS_NAV)[number]["id"]
@@ -90,12 +91,14 @@ function SettingsNavContent({
   activeSection: SettingsSectionId
   onSectionChange: (id: SettingsSectionId) => void
 }) {
+  const { t } = useTranslation()
+
   return (
     <Sidebar collapsible="none" className="w-12 shrink-0 border-r md:w-44">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 pt-2 pb-4 font-semibold text-md">
           <Settings className="size-4 shrink-0" />
-          <span className="hidden sm:inline">设置</span>
+          <span className="hidden sm:inline">{t("consoleSettings.dialog.sidebarTitle")}</span>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -109,7 +112,7 @@ function SettingsNavContent({
                     onClick={() => onSectionChange(item.id)}
                   >
                     <item.icon className="size-4 shrink-0" />
-                    <span className="hidden sm:inline">{item.name}</span>
+                    <span className="hidden sm:inline">{t(`consoleSettings.nav.${item.id}`)}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -127,6 +130,7 @@ export interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+  const { t } = useTranslation()
   const [activeSection, setActiveSection] =
     React.useState<SettingsSectionId>("identities")
   const { reloadIdentities } = useCommonData()
@@ -143,8 +147,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           showCloseButton={false}
         >
           <DialogHeader className="sr-only">
-            <DialogTitle>配置</DialogTitle>
-            <DialogDescription>自定义您的配置选项</DialogDescription>
+            <DialogTitle>{t("consoleSettings.dialog.title")}</DialogTitle>
+            <DialogDescription>{t("consoleSettings.dialog.description")}</DialogDescription>
           </DialogHeader>
           <SidebarProvider
             style={
@@ -179,19 +183,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {result?.type === "success"
-                ? "GitHub App 安装成功"
-                : "GitHub App 安装失败"}
+                ? t("consoleSettings.githubApp.successTitle")
+                : t("consoleSettings.githubApp.failedTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {result?.type === "success"
                 ? result.accountLogin
-                  ? `已关联到账户 ${result.accountLogin}`
-                  : "GitHub App 已成功安装"
-                : `安装失败 (${result?.reason}): ${result?.message}`}
+                  ? t("consoleSettings.githubApp.linkedAccount", { account: result.accountLogin })
+                  : t("consoleSettings.githubApp.successDescription")
+                : t("consoleSettings.githubApp.failedDescription", { reason: result?.reason, message: result?.message })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={dismiss}>确定</AlertDialogAction>
+            <AlertDialogAction onClick={dismiss}>{t("consoleSettings.dialog.ok")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

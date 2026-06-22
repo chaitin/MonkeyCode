@@ -1,10 +1,11 @@
 import type { MessageType } from "../message";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { IconFileText } from "@tabler/icons-react";
+import { taskDetailT } from "../task-i18n";
 
 
 export const renderTitle = (message: MessageType) => {
-  return `读取文件${message.data.rawInput?.filePath ? ` "${message.data.rawInput?.filePath}"` : ''}`
+  return `${taskDetailT("toolcall.readFile")}${message.data.rawInput?.filePath ? ` "${message.data.rawInput?.filePath}"` : ''}`
 }
 
 export const renderDetail = (message: MessageType) => {
@@ -15,7 +16,7 @@ export const renderDetail = (message: MessageType) => {
         <EmptyMedia variant="icon">
           <IconFileText className="size-6 opacity-50" />
         </EmptyMedia>
-        <EmptyDescription>没有内容</EmptyDescription>
+        <EmptyDescription>{taskDetailT("toolcall.noContent")}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   }

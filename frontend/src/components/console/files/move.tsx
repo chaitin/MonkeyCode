@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import { normalizePath } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface MoveFileDialogProps {
   open: boolean
@@ -25,17 +26,18 @@ export default function MoveFileDialog({
   baseDir = '',
   onSuccess,
 }: MoveFileDialogProps) {
+  const { t } = useTranslation()
   const [targetDir, setTargetDir] = useState('')
   const [targetFileName, setTargetFileName] = useState('')
   const [moving, setMoving] = useState(false)
 
   useEffect(() => {
     if (open && sourcePath) {
-      // 从源文件路径推断目标目录和文件名
       const pathParts = sourcePath.split('/')
       const fileName = pathParts[pathParts.length - 1]
       const dirPath = pathParts.slice(0, -1).join('/')
       
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize editable target fields from the selected source path.
       setTargetDir(dirPath || './')
       setTargetFileName(fileName)
     }
@@ -43,11 +45,10 @@ export default function MoveFileDialog({
 
   const handleMove = async () => {
     if (!sourcePath || !targetFileName.trim() || !envid) {
-      toast.error('请填写完整信息')
+      toast.error(t("consoleFiles.toast.fullInfoRequired"))
       return
     }
 
-    // API 调用时添加 baseDir 前缀
     const fullSourcePath = normalizePath(baseDir + '/' + sourcePath)
     const fullTargetPath = normalizePath(baseDir + '/' + targetDir + '/' + targetFileName.trim())
     
@@ -58,13 +59,13 @@ export default function MoveFileDialog({
         target: fullTargetPath
       }, [], (resp) => {
         if (resp.code === 0) {
-          toast.success(`已移动文件 "${targetFileName.trim()}"`)
+          toast.success(t("consoleFiles.toast.fileMoved", { name: targetFileName.trim() }))
           onOpenChange(false)
           if (onSuccess) {
             onSuccess()
           }
         } else {
-          toast.error("移动文件失败: " + resp.message);
+          toast.error(t("consoleFiles.toast.moveFailed", { message: resp.message }));
         }
       })
     setMoving(false)
@@ -78,11 +79,11 @@ export default function MoveFileDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>移动文件</DialogTitle>
+          <DialogTitle>{t("consoleFiles.actions.moveFile")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field>
-            <FieldLabel>源文件路径</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.sourcePath")}</FieldLabel>
             <Input
               value={sourcePath}
               readOnly
@@ -90,7 +91,7 @@ export default function MoveFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>目标目录</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.targetDirectory")}</FieldLabel>
             <Input
               value={targetDir}
               onChange={(e) => setTargetDir(e.target.value)}
@@ -98,7 +99,7 @@ export default function MoveFileDialog({
             />
           </Field>
           <Field>
-            <FieldLabel>新文件名称</FieldLabel>
+            <FieldLabel>{t("consoleFiles.labels.newFileName")}</FieldLabel>
             <Input
               value={targetFileName}
               onChange={(e) => setTargetFileName(e.target.value)}
@@ -107,11 +108,11 @@ export default function MoveFileDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleMove} disabled={!sourcePath || !targetDir.trim() || !targetFileName.trim() || moving}>
             {moving && <Spinner />}
-            确认移动
+            {t("consoleFiles.actions.confirmMove")}
           </Button>
         </DialogFooter>
       </DialogContent>

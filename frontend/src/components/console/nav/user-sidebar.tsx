@@ -14,13 +14,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { useSettingsDialog } from "@/pages/console/user/page"
+import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
 import { Settings } from "lucide-react"
 import { IS_ONLINE_EDITION } from "@/utils/edition"
+import { useTranslation } from "react-i18next"
 
 export default function UserSidebar({ 
   ...props 
 }: React.ComponentProps<typeof Sidebar>) {
+  const { t } = useTranslation()
   const { open: settingsOpen, setOpen: setSettingsOpen } = useSettingsDialog()
 
   return (
@@ -33,7 +35,7 @@ export default function UserSidebar({
                 <img src="/logo-light.png" alt="MonkeyCode AI" className="size-8" />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">MonkeyCode</span>
-                  <span className="truncate text-xs text-foreground/60">长亭百智云</span>
+                  <span className="truncate text-xs text-foreground/60">{t("consoleShell.sidebar.brandSubtitle")}</span>
                 </div>
               </a>
             </SidebarMenuButton>
@@ -62,13 +64,13 @@ export default function UserSidebar({
           <SidebarMenu className="flex-1">
             <SidebarMenuItem className="h-full">
               <SidebarMenuButton
-                tooltip="配置"
+                tooltip={t("consoleShell.sidebar.settings")}
                 isActive={settingsOpen}
                 onClick={() => setSettingsOpen(true)}
                 className="h-full py-1"
               >
                 <Settings className="size-4" />
-                <span>配置</span>
+                <span>{t("consoleShell.sidebar.settings")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

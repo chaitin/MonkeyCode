@@ -3,7 +3,9 @@ import Icon from "@/components/common/Icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { IconArrowRight, IconBrandAndroid, IconBrandApple, IconCheck, IconCoins, IconDownload, IconFile, IconFilePencil, IconFolder, IconFolderOpen, IconHelpCircle, IconSend, IconX } from "@tabler/icons-react";
+import type { TFunction } from "i18next";
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { TerminalFooter, TerminalHeader } from "./terminal-chrome";
 
@@ -32,348 +34,205 @@ const featureItems = [
   {
     key: "01",
     cmd: "--free --no-install",
-    title: "免费即用",
-    body: "无需下载客户端，也不用折腾环境。浏览器打开、注册账号，几秒钟就能开始执行第一个 AI 开发任务。",
+    i18nKey: "free",
   },
   {
     key: "02",
     cmd: "--cloud --dedicated",
-    title: "云端开发环境",
-    body: "不依赖本地开发机。每个任务背后都有一台真实服务器提供运行环境，编译、测试、预览都在云上完成。",
+    i18nKey: "cloud",
   },
   {
     key: "03",
     cmd: "--models --all-major",
-    title: "全量主流模型",
-    body: "GLM、Kimi、MiniMax、Qwen、DeepSeek 等都已接入，按任务类型切换，也能手动指定。",
+    i18nKey: "models",
   },
   {
     key: "04",
     cmd: "--mobile --cross-device",
-    title: "移动端原生支持",
-    body: "深度适配 iOS / Android，PC 和手机数据实时同步。通勤路上也能把任务交给 Agent 继续跑。",
+    i18nKey: "mobile",
   },
   {
     key: "05",
     cmd: "--opensource --auditable",
-    title: "完全开源",
-    body: "核心代码全部公开在 GitHub。任何人都能审计、fork、二次开发，技术选型和安全策略自己掌控。",
+    i18nKey: "openSource",
   },
   {
     key: "06",
     cmd: "--self-host --air-gapped",
-    title: "私有化离线部署",
-    body: "对数据隐私要求高的企业和团队，可以把 MonkeyCode 独立部署到自己的内网中，数据不出本地。",
+    i18nKey: "selfHost",
   },
-];
+] as const;
 
 const useCaseItems = [
   {
     tag: "game",
-    cmd: '$ monkey task "用 canvas 做一个俄罗斯方块"',
-    title: "做个小游戏",
-    body: "一句话描述玩法，AI 帮你搭框架、处理碰撞检测、补音效，一个下午就能跑出可玩的版本。",
-    stack: ["HTML5 · Canvas", "TypeScript", "零依赖"],
+    key: "game",
   },
   {
     tag: "feature",
-    cmd: '$ monkey task "给后台加一个用户导出 CSV 的接口"',
-    title: "实现一个需求",
-    body: "把需求丢进去，AI 读你的代码仓库、理解项目约定，直接改文件、跑测试、开 PR。",
-    stack: ["读懂代码风格", "自动写单测", "一键开 PR"],
+    key: "feature",
   },
   {
     tag: "security",
-    cmd: "$ monkey scan --security ./my-repo",
-    title: "安全审查",
-    body: "上线前做一次体检。AI 扫常见漏洞、硬编码密钥、依赖风险，输出可修复的清单。",
-    stack: ["OWASP Top 10", "依赖 CVE", "SAST 规则"],
+    key: "security",
   },
   {
     tag: "paper",
-    cmd: '$ monkey write --paper "基于 XX 方法的 XX 研究"',
-    title: "写毕业论文",
-    body: "帮你查文献、列提纲、补实验代码、跑数据、画图、排版 LaTeX，从选题到定稿都能接力。",
-    stack: ["文献检索", "实验脚本", "LaTeX 排版"],
+    key: "paper",
   },
   {
     tag: "data",
-    cmd: "$ monkey analyze sales_2026.csv",
-    title: "数据分析",
-    body: "丢一份 CSV 或 Parquet，描述你想看的角度。AI 自动清洗、建模、画图，再写一段可读结论。",
-    stack: ["Pandas / Polars", "Matplotlib", "自动写结论"],
+    key: "data",
   },
   {
     tag: "research",
-    cmd: '$ monkey research "2026 年最佳向量数据库对比"',
-    title: "产品 / 技术调研",
-    body: "AI 拉公开资料、跑 benchmark、出对比报告，带引用链接，适合做技术选型和产品预研。",
-    stack: ["公开资料聚合", "横向对比", "带引用"],
+    key: "research",
   },
-];
+] as const;
 
 const mobileClientItems = [
   {
     platform: "Android",
     icon: IconBrandAndroid,
     href: "https://release.monkeycode-ai.com/public/mobile/app/monkeycode-latest.apk",
-    cta: "下载 Android APK",
+    i18nKey: "android",
   },
   {
     platform: "iOS",
     icon: IconBrandApple,
     href: "https://apps.apple.com/cn/app/monkeycode%E7%BC%96%E7%A8%8B%E5%8A%A9%E6%89%8B/id6777423440",
-    cta: "前往 App Store",
+    i18nKey: "ios",
   },
-];
+] as const;
 
 const SELF_HOSTING_DOC_LINK = "https://monkeycode.docs.baizhi.cloud/node/019eb0f3-9424-7c93-9489-4e584f989527";
 
-const selfHostingAdvantages = [
-  "部署在企业内网，代码仓库、任务记录和研发数据留在自己的网络边界内。",
-  "统一管理团队成员、开发环境、AI 模型和任务流程，便于研发负责人做治理和审计。",
-  "支持对接企业已有的大模型、Git 平台和开发环境宿主机，适配内部研发基础设施。",
-  "可按在线或离线方式安装，适合有网络隔离、合规要求或本地算力资源的团队。",
-];
+const selfHostingAdvantageKeys = ["dataBoundary", "governance", "integration", "offline"] as const;
 
-const compareColumns = ["MonkeyCode", "Cursor", "Claude Code", "Codex"];
+const compareColumns = ["MonkeyCode", "Cursor", "Claude Code", "Codex"] as const;
 
 const compareRows = [
-  { label: "在线使用", values: [1, 1, 1, 1] },
-  { label: "本地 IDE", values: [0, 1, 1, 1] },
-  { label: "本地 CLI", values: [0, 1, 1, 1] },
-  { label: "需求与 SPEC 管理", values: [1, 0, 0, 0] },
-  { label: "云端开发环境", values: [1, 2, 2, 2] },
-  { label: "代码补全", values: [0, 1, 0, 0] },
-  { label: "PR / MR 自动代码审查", values: [1, 2, 2, 2] },
-  { label: "团队协作", values: [1, 0, 0, 0] },
-  { label: "适配国产大模型", values: [1, 0, 0, 0] },
-  { label: "私有化部署", values: [1, 0, 0, 0] },
-  { label: "开源", values: [1, 0, 0, 0] },
-];
+  { key: "online", values: [1, 1, 1, 1] },
+  { key: "localIde", values: [0, 1, 1, 1] },
+  { key: "localCli", values: [0, 1, 1, 1] },
+  { key: "specManagement", values: [1, 0, 0, 0] },
+  { key: "cloudEnvironment", values: [1, 2, 2, 2] },
+  { key: "completion", values: [0, 1, 0, 0] },
+  { key: "review", values: [1, 2, 2, 2] },
+  { key: "collaboration", values: [1, 0, 0, 0] },
+  { key: "domesticModels", values: [1, 0, 0, 0] },
+  { key: "selfHosting", values: [1, 0, 0, 0] },
+  { key: "openSource", values: [1, 0, 0, 0] },
+] as const;
 
-const testimonialItems: Array<{
-  quote: string;
-  name: string;
-  role: string;
-  stat?: string;
-}> = [
-  {
-    quote:
-      "用起来有点像 OpenCode 和 Coze 的结合体。最良心的是提供了隔离的运行环境，启动非常快，编译完成后还能直接生成一个可对外访问的网址。你可以高度自由地配置自己的模型，当然它也内置了免费且高性价比的模型。自带很多实用的技能，上手简单又方便。最关键的是，它是一款开源产品，能陪你一起成长。",
-    name: "aiwenming",
-    role: "产品管理",
-  },
-  {
-    quote:
-      "Vibe Coding 是一个全新的时代，告别闷热、逼窒的小格子，到更广阔的天地去，呼吸着自由的空气。即使是出差在路上，也只需带一个轻薄本或 iPad，使用 MonkeyCode，轻松在云端跑着复杂的编码工作。",
-    name: "弈韬",
-    role: "和旭电商 · 电商运营",
-  },
-  {
-    quote:
-      "MonkeyCode 的云开发环境体验出色，Agent 能连接终端自主思考执行，真正实现“甩手掌柜”式编程。免费提供 MiniMax 和千问模型，响应快、调用无限制，相比别家月底掐算 Token 的日子一去不复返。",
-    name: "Full",
-    role: "安全工程师",
-  },
-  {
-    quote:
-      "MonkeyCode 是一款定位独特的 AI 编程平台，它不仅仅是一个代码补全工具，更致力于成为一个覆盖“需求 → 设计 → 开发 → 评审”全流程的 AI 研发基础设施。其核心价值在于通过自动化和云端环境，改变传统的研发工作流，尤其适合我们这种传统性开发公司，提供了全流程支撑。",
-    name: "李宏喜",
-    role: "零商界网络科技 · 总经理",
-  },
-  {
-    quote:
-      "很喜欢 MonkeyCode 这种云端轻量级开发模式，开发都不用打开本地 IDE，未跑完的任务手机打开也可以接着跑，满足随时随地都可以开发的需求，而且还内置了各种主流模型、Skills、MCP 等供开发者自由选择，这也是未来的趋势。",
-    name: "Clever",
-    role: "中国电信 · 全栈工程师",
-  },
-  {
-    quote:
-      "MonkeyCode 是我日常写项目、做课设的首选，AI 辅助生成效率很高，环境秒级启动，不用折腾本地配置。对学生党特别友好，很多复杂功能拖拽加描述就能搞定，节省了大量查文档的时间。",
-    name: "司徒北",
-    role: "独立开发者",
-  },
-  {
-    quote:
-      "之前让其他 AI 写代码还要自己不断测试，现在直接让 MonkeyCode 接入我的服务器自动进行写代码和测试就可以，还能自动根据测试的内容给我进行反馈，节省很多人为时间。",
-    name: "sinian-liu",
-    role: "37VPS · 创始人",
-  },
-  {
-    quote:
-      "以往光配置环境就耗费大量时间，低效又繁琐。使用 MonkeyCode 后省去大量无效劳动，开箱即用，可直接专注业务开发，流程顺畅，大幅提升开发体验与效率。",
-    name: "时光旅人",
-    role: "独立开发者",
-  },
-  {
-    quote:
-      "上手零门槛，注册就能用，关键还免费。不用安装任何环境，打开浏览器就能在线编程，从需求到开发、测试到交付，包括终端调试和代码提交，几轮对话就能全部搞定。再也不用背着电脑到处跑了。",
-    name: "不开灯的街",
-    role: "技术负责人",
-  },
-  {
-    quote:
-      "MonkeyCode 是一款 AI 本位的开发工具，提供可落地的 AI + Dev 全链路开发能力。它不仅能帮助我写代码，还能理解项目、执行任务、协助调试，让我把更多时间和精力留给创意。",
-    name: "小谈谈",
-    role: "OPC 创业者",
-  },
-  {
-    quote:
-      "以前带新人做项目，第一步总是先花半天配环境。现在直接把需求和仓库交给 MonkeyCode，大家在同一套云端环境里推进，少了很多无意义的折腾，协作效率高很多。",
-    name: "南山",
-    role: "阿里巴巴 · 技术负责人",
-  },
-  {
-    quote:
-      "我最看重的是它不挑设备。办公室用电脑，回家用平板，临时出门用手机看进度，任务都能接着跑。对经常要在多个场景切换的人来说，这种连续性真的很舒服。",
-    name: "阿杰",
-    role: "独立开发者",
-  },
-];
+const testimonialKeys = [
+  "aiwenming",
+  "yitao",
+  "full",
+  "liHongxi",
+  "clever",
+  "situBei",
+  "sinianLiu",
+  "timeTraveler",
+  "darkStreet",
+  "xiaotantan",
+  "nanshan",
+  "ajie",
+] as const;
 
 type PricingFeature = {
-  label: string;
   status?: "supported" | "partial" | "unsupported";
-  tooltip?: string;
+  key: string;
+  tooltipKey?: "credit" | "thirdPartyModels" | "enhancedCapabilities";
 };
 
-const creditFeatureTooltip = "积分可用于 AI 调用图片识别、文档解析、联网搜索等工具时支付调用费用；也可以调用更多模型；当每日 Token 额度不足时，还可以消耗积分继续使用。";
-const thirdPartyModelsTooltip = "gpt、deepseek、glm、qwen、minimax、kimi、mimo 等大模型，调用时消耗积分";
-const enhancedCapabilitiesTooltip = "图片识别、文档解析、联网搜索等能力，调用时消耗积分";
-
 type PricingTier = {
-  name: string;
+  key: string;
   cmd: string;
   monthlyPrice: string;
-  monthlyUnit: string;
   yearlyPrice: string;
-  yearlyUnit: string;
-  yearlyDiscount: string;
-  desc: string;
   features: PricingFeature[];
-  cta: string;
   ctaTo: string;
   featured?: boolean;
 };
 
 const pricingTiers: PricingTier[] = [
   {
-    name: "基础会员",
+    key: "free",
     cmd: "monkey account --free",
     monthlyPrice: "¥0",
-    monthlyUnit: "永久免费",
     yearlyPrice: "¥0",
-    yearlyUnit: "永久免费",
-    yearlyDiscount: "",
-    desc: "免费可用，适合轻量办公和简单开发任务。",
     features: [
-      { label: "1 个任务并发" },
-      { label: "云开发环境 1C / 4G" },
-      { label: "基础模型：每天 3000 万 Token" },
-      { label: "专业模型：无额度", status: "unsupported" },
-      { label: "旗舰模型：无额度", status: "unsupported" },
-      { label: "不赠送积分", status: "unsupported", tooltip: creditFeatureTooltip },
-      { label: "更多第三方大模型", status: "partial", tooltip: thirdPartyModelsTooltip },
-      { label: "更多增强能力", status: "partial", tooltip: enhancedCapabilitiesTooltip },
+      { key: "concurrency1" },
+      { key: "cloud1c4g" },
+      { key: "basic30m" },
+      { key: "proNone", status: "unsupported" },
+      { key: "ultraNone", status: "unsupported" },
+      { key: "noCredits", status: "unsupported", tooltipKey: "credit" },
+      { key: "thirdPartyModels", status: "partial", tooltipKey: "thirdPartyModels" },
+      { key: "enhancedCapabilities", status: "partial", tooltipKey: "enhancedCapabilities" },
     ],
-    cta: "免费开始",
     ctaTo: "/console",
     featured: true,
   },
   {
-    name: "专业会员",
+    key: "pro",
     cmd: "monkey account --pro",
     monthlyPrice: "¥99",
-    monthlyUnit: "/ 月",
     yearlyPrice: "¥999",
-    yearlyUnit: "/ 年",
-    yearlyDiscount: "8.3 折",
-    desc: "适合日常高频使用。",
     features: [
-      { label: "3 个任务并发" },
-      { label: "云开发环境 2C / 8G" },
-      { label: "基础模型：每天 3000 万 Token" },
-      { label: "专业模型：每天 3000 万 Token" },
-      { label: "旗舰模型：无额度", status: "unsupported" },
-      { label: "每月赠送 1 万积分", tooltip: creditFeatureTooltip },
-      { label: "更多第三方大模型", tooltip: thirdPartyModelsTooltip },
-      { label: "更多增强能力", tooltip: enhancedCapabilitiesTooltip },
+      { key: "concurrency3" },
+      { key: "cloud2c8g" },
+      { key: "basic30m" },
+      { key: "pro30m" },
+      { key: "ultraNone", status: "unsupported" },
+      { key: "credits10k", tooltipKey: "credit" },
+      { key: "thirdPartyModels", tooltipKey: "thirdPartyModels" },
+      { key: "enhancedCapabilities", tooltipKey: "enhancedCapabilities" },
     ],
-    cta: "订阅专业会员",
     ctaTo: "/console",
   },
   {
-    name: "旗舰会员",
+    key: "ultra",
     cmd: "monkey account --ultra",
     monthlyPrice: "¥499",
-    monthlyUnit: "/ 月",
     yearlyPrice: "¥4999",
-    yearlyUnit: "/ 年",
-    yearlyDiscount: "8.3 折",
-    desc: "面向专业开发者和重度用户。",
     features: [
-      { label: "3 个任务并发" },
-      { label: "云开发环境 2C / 8G" },
-      { label: "基础模型：每天 6000 万 Token" },
-      { label: "专业模型：每天 6000 万 Token" },
-      { label: "旗舰模型：每天 6000 万 Token" },
-      { label: "每月赠送 10 万积分", tooltip: creditFeatureTooltip },
-      { label: "更多第三方大模型", tooltip: thirdPartyModelsTooltip },
-      { label: "更多增强能力", tooltip: enhancedCapabilitiesTooltip },
+      { key: "concurrency3" },
+      { key: "cloud2c8g" },
+      { key: "basic60m" },
+      { key: "pro60m" },
+      { key: "ultra60m" },
+      { key: "credits100k", tooltipKey: "credit" },
+      { key: "thirdPartyModels", tooltipKey: "thirdPartyModels" },
+      { key: "enhancedCapabilities", tooltipKey: "enhancedCapabilities" },
     ],
-    cta: "订阅旗舰会员",
     ctaTo: "/console",
   },
 ];
 
 const billingOptions = [
-  { value: "monthly", label: "按月购买" },
-  { value: "yearly", label: "按年购买" },
+  { value: "monthly", i18nKey: "monthly" },
+  { value: "yearly", i18nKey: "yearly" },
 ] as const;
 
 type BillingPeriod = (typeof billingOptions)[number]["value"];
 
 const earnWays = [
-  { icon: "↗", label: "每邀请 1 位新用户", value: "+5000 积分" },
-  { icon: "✓", label: "每日签到", value: "每日 100 积分" },
-  { icon: "✎", label: "征文投稿", value: "1 万 - 10 万积分" },
-  { icon: "#", label: "其他社区活动", value: "加入社区交流群", valueTo: "#community" },
-];
+  { icon: "↗", key: "invite" },
+  { icon: "✓", key: "checkin" },
+  { icon: "✎", key: "article" },
+  { icon: "#", key: "community", valueTo: "#community" },
+] as const;
 
 const rechargeTiers = [
-  { amount: "¥10", points: "2,000 积分", extra: "无折扣" },
-  { amount: "¥50", points: "15,000 积分", extra: "6.7 折" },
-  { amount: "¥250", points: "100,000 积分", extra: "5.0 折" },
-  { amount: "¥1000", points: "500,000 积分", extra: "4.0 折" },
-];
+  { amount: "¥10", key: "rmb10" },
+  { amount: "¥50", key: "rmb50" },
+  { amount: "¥250", key: "rmb250" },
+  { amount: "¥1000", key: "rmb1000" },
+] as const;
 
-const faqItems = [
-  {
-    question: "真的完全免费？怎么赚钱？",
-    answer: "个人 Free tier 长期可用。我们主要通过 Pro 订阅和企业自托管商业支持赚钱，核心推理成本平台侧承担。",
-  },
-  {
-    question: "代码会不会被拿去训练模型？",
-    answer: "默认不会。你的仓库、prompt 和输出默认不进入任何模型训练流程。自托管版本数据也不会出你的网络。",
-  },
-  {
-    question: "支持哪些模型？",
-    answer: "平台已接入 GPT、Claude、GLM、Kimi、MiniMax、Qwen、DeepSeek 等主流模型，也支持第三方兼容接口。",
-  },
-  {
-    question: "离线能用吗？",
-    answer: "主站依赖云端算力，需要网络。自托管版本可以部署在内网环境，模型也可以走本地 Ollama 或 vLLM。",
-  },
-  {
-    question: "和 Cursor / Copilot / Codex 有什么不同？",
-    answer: "它们更偏本地 IDE 插件或 CLI，环境仍然由你自己维护。MonkeyCode 是云端 agent + 云端运行时，你只需要浏览器。",
-  },
-  {
-    question: "我能用在生产项目上吗？",
-    answer: "可以。所有修改都可以回到 Git PR 流程，你保留完整 review、审计和 rollback 能力。",
-  },
-];
+const faqKeys = ["free", "training", "models", "offline", "difference", "production"] as const;
 
 type HeroFileTreeItem = {
   name: string;
@@ -399,6 +258,11 @@ const heroFileTree: HeroFileTreeItem[] = [
   { name: "package.json", type: "file" },
   { name: "README.md", type: "file" },
 ];
+
+function tStringList(t: TFunction, key: string) {
+  const value = t(key, { returnObjects: true });
+  return Array.isArray(value) ? value.map(String) : [];
+}
 
 function SectionShell({
   id,
@@ -501,8 +365,16 @@ function HeaderAction({
 
 export default function TerminalNativePage() {
   const { isLoggedIn } = useAuth();
+  const { t } = useTranslation();
   const [openFaq, setOpenFaq] = React.useState(0);
   const [billingPeriod, setBillingPeriod] = React.useState<BillingPeriod>("monthly");
+  const selfHostingAdvantages = selfHostingAdvantageKeys.map((key) => t(`terminalNative.selfHosting.advantages.${key}`));
+  const testimonialItems = testimonialKeys.map((key) => ({
+    key,
+    quote: String(t(`terminalNative.testimonials.items.${key}.quote`)),
+    name: String(t(`terminalNative.testimonials.items.${key}.name`)),
+    role: String(t(`terminalNative.testimonials.items.${key}.role`)),
+  }));
 
   return (
     <div
@@ -556,20 +428,20 @@ export default function TerminalNativePage() {
                   <span className="text-[var(--a-accent)] [text-shadow:0_0_24px_rgba(124,242,156,0.35)]">Code</span>
                 </h1>
                 <p className="mt-4 max-w-[540px] text-2xl font-medium leading-[1.08] tracking-[-0.03em] text-[var(--a-fg)] sm:text-[30px]">
-                  在线 AI 开发平台
+                  {t("terminalNative.hero.tagline")}
                 </p>
                 <p className="mt-5 max-w-[540px] text-sm leading-8 text-[var(--a-fg-dim)] sm:text-[15px]">
-                  免费使用，无需安装，内置云端开发环境，并支持业内最全的顶尖大模型。无论是开发项目、做调研、写文档，还是分析数据、处理任务，打开浏览器就能随时开始，让 AI 持续帮你推进工作。
+                  {t("terminalNative.hero.description")}
                 </p>
 
                 <div className="mt-9 flex flex-wrap gap-3">
                   <HeaderAction to="/console" primary>
                     <IconArrowRight className="size-4" />
-                    <span>开始使用</span>
+                    <span>{t("terminalNative.actions.start")}</span>
                   </HeaderAction>
                   <HeaderAction href="#mobile-client">
                     <IconArrowRight className="size-4" />
-                    <span>手机客户端</span>
+                    <span>{t("terminalNative.actions.mobileClient")}</span>
                   </HeaderAction>
                   <HeaderAction href={GITHUB_LINK} external>
                     <Icon name="GitHub-Uncolor" className="size-4 fill-current" />
@@ -588,8 +460,8 @@ export default function TerminalNativePage() {
           id="features"
           index="01"
           label="FEATURES"
-          title="功能与特色"
-          subtitle="你不需要自己拼工具、搭环境、来回切流程。把需求交给 MonkeyCode，它会从开发到验证一路接住，真正把 AI 编程变成可持续的工作流。"
+          title={t("terminalNative.features.title")}
+          subtitle={t("terminalNative.features.subtitle")}
         >
           <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-line)] md:grid-cols-2 lg:grid-cols-3">
             {featureItems.map((item) => (
@@ -604,9 +476,9 @@ export default function TerminalNativePage() {
                   </span>
                 </div>
                 <h3 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--a-accent)] transition-[text-shadow] group-hover:[text-shadow:0_0_18px_rgba(124,242,156,0.4)]">
-                  {item.title}
+                  {t(`terminalNative.featureItems.${item.i18nKey}.title`)}
                 </h3>
-                <p className="mt-4 text-sm leading-7 text-[var(--a-fg-dim)]">{item.body}</p>
+                <p className="mt-4 text-sm leading-7 text-[var(--a-fg-dim)]">{t(`terminalNative.featureItems.${item.i18nKey}.body`)}</p>
               </div>
             ))}
           </div>
@@ -616,13 +488,13 @@ export default function TerminalNativePage() {
           id="usecases"
           index="02"
           label="USE CASES"
-          title="能在 MonkeyCode 上做什么？"
-          subtitle="从正经项目到灵感试验，从白天的工作任务到晚上的个人想法，只要你说清目标，MonkeyCode 就能陪你把它真正做出来。"
+          title={t("terminalNative.useCases.title")}
+          subtitle={t("terminalNative.useCases.subtitle")}
         >
           <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line-2)] bg-[var(--a-line)] md:grid-cols-2 lg:grid-cols-3">
             {useCaseItems.map((item, index) => (
               <div
-                key={item.title}
+                key={item.key}
                 className="group flex min-h-[280px] flex-col bg-[var(--a-panel)] p-7 transition-colors hover:bg-[rgba(124,242,156,0.035)]"
               >
                 <div className="mb-4 flex items-center justify-between">
@@ -632,11 +504,11 @@ export default function TerminalNativePage() {
                   </span>
                 </div>
                 <h3 className="text-[22px] font-semibold tracking-[-0.02em] text-[var(--a-accent)] transition-[text-shadow] group-hover:[text-shadow:0_0_14px_rgba(124,242,156,0.4)]">
-                  {item.title}
+                  {t(`terminalNative.useCaseItems.${item.key}.title`)}
                 </h3>
-                <p className="mt-3 flex-1 text-sm leading-7 text-[var(--a-fg-dim)]">{item.body}</p>
+                <p className="mt-3 flex-1 text-sm leading-7 text-[var(--a-fg-dim)]">{t(`terminalNative.useCaseItems.${item.key}.body`)}</p>
                 <div className="mt-5 flex flex-wrap gap-2">
-                  {item.stack.map((tag) => (
+                  {tStringList(t, `terminalNative.useCaseItems.${item.key}.stack`).map((tag) => (
                     <span key={tag} className="rounded border border-[var(--a-line-2)] px-2 py-1 text-[11px] text-[var(--a-fg-dim)]">
                       {tag}
                     </span>
@@ -651,8 +523,8 @@ export default function TerminalNativePage() {
           id="mobile-client"
           index="03"
           label="MOBILE CLIENT"
-          title="移动客户端"
-          subtitle="离开电脑也不必暂停开发。用手机查看任务进度、继续对话、接收结果，让 AI Agent 在你切换场景时继续工作。"
+          title={t("terminalNative.mobile.title")}
+          subtitle={t("terminalNative.mobile.subtitle")}
         >
           <div className="grid gap-4 md:grid-cols-2">
             {mobileClientItems.map((item) => (
@@ -677,7 +549,7 @@ export default function TerminalNativePage() {
                   className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded border border-[rgba(124,242,156,0.24)] bg-[rgba(124,242,156,0.08)] px-4 py-3 text-sm font-semibold text-[var(--a-accent)] transition-colors hover:bg-[rgba(124,242,156,0.14)] hover:text-[var(--a-fg)]"
                 >
                   <IconDownload className="size-4" />
-                  {item.cta}
+                  {t(`terminalNative.mobile.items.${item.i18nKey}.cta`)}
                 </a>
               </div>
             ))}
@@ -688,12 +560,12 @@ export default function TerminalNativePage() {
           id="self-hosting"
           index="04"
           label="SELF HOSTING"
-          title="私有化部署"
-          subtitle="当团队需要把 AI 开发能力放进企业内网，MonkeyCode 可以独立部署，统一管理研发团队、开发环境和模型配置。"
+          title={t("terminalNative.selfHosting.title")}
+          subtitle={t("terminalNative.selfHosting.subtitle")}
           action={
             <HeaderAction href={SELF_HOSTING_DOC_LINK} external>
               <IconArrowRight className="size-4" />
-              <span>查看部署教程</span>
+              <span>{t("terminalNative.selfHosting.action")}</span>
             </HeaderAction>
           }
         >
@@ -701,10 +573,10 @@ export default function TerminalNativePage() {
             <div className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
               <div className="text-[10px] tracking-[0.12em] text-[var(--a-accent)]">$ monkey deploy --self-hosted</div>
               <h3 className="mt-3 text-2xl font-semibold tracking-[-0.02em] text-[var(--a-fg)]">
-                给团队一套可控的 AI 研发平台
+                {t("terminalNative.selfHosting.cardTitle")}
               </h3>
               <p className="mt-4 text-sm leading-7 text-[var(--a-fg-dim)]">
-                私有化部署版适合企业研发团队在内网统一使用。管理员可以集中配置大模型、开发环境宿主机和成员权限，开发者只需要在浏览器里启动任务。
+                {t("terminalNative.selfHosting.cardBody")}
               </p>
             </div>
             <div className="grid gap-px overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-line)]">
@@ -724,14 +596,14 @@ export default function TerminalNativePage() {
           id="why"
           index="05"
           label="WHY MONKEYCODE"
-          title="和其他 Coding 工具的区别"
-          subtitle="和依赖本地 IDE、CLI 或开发环境的工具不同，MonkeyCode 打开浏览器就能随时开始开发，并支持围绕同一个项目持续迭代、长期管理与协作。"
+          title={t("terminalNative.compare.title")}
+          subtitle={t("terminalNative.compare.subtitle")}
         >
           <div className="overflow-x-auto rounded-md border border-[var(--a-line-2)] bg-[var(--a-panel)]">
             <table className="min-w-[900px] w-full border-collapse">
               <thead>
                 <tr className="border-b border-[var(--a-line-2)] bg-[var(--a-bg-2)]">
-                  <th className="px-5 py-4 text-left text-[11px] tracking-[0.12em] text-[var(--a-fg-mute)]"># 对比维度</th>
+                  <th className="px-5 py-4 text-left text-[11px] tracking-[0.12em] text-[var(--a-fg-mute)]"># {t("terminalNative.compare.dimension")}</th>
                   {compareColumns.map((column, index) => (
                     <th
                       key={column}
@@ -751,11 +623,11 @@ export default function TerminalNativePage() {
               </thead>
               <tbody>
                 {compareRows.map((row, rowIndex) => (
-                  <tr key={row.label} className={rowIndex % 2 === 1 ? "bg-[rgba(255,255,255,0.012)]" : ""}>
-                    <td className="border-b border-[var(--a-line)] px-5 py-4 text-sm text-[var(--a-fg)]">{row.label}</td>
+                  <tr key={row.key} className={rowIndex % 2 === 1 ? "bg-[rgba(255,255,255,0.012)]" : ""}>
+                    <td className="border-b border-[var(--a-line)] px-5 py-4 text-sm text-[var(--a-fg)]">{t(`terminalNative.compare.rows.${row.key}`)}</td>
                     {row.values.map((value, cellIndex) => (
                       <td
-                        key={`${row.label}-${cellIndex}`}
+                        key={`${row.key}-${cellIndex}`}
                         className={cn(
                           "border-b border-[var(--a-line)] px-3 py-4 text-center",
                           cellIndex === 0
@@ -768,13 +640,13 @@ export default function TerminalNativePage() {
                             ✓
                           </span>
                         ) : value === 2 ? (
-                            <Tooltip>
+                          <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="inline-flex size-[18px] cursor-help items-center justify-center rounded-[3px] bg-[rgba(247,185,85,0.72)] text-[11px] font-bold text-[var(--a-bg)]">
                                 ✓
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent>仅支持部分能力</TooltipContent>
+                            <TooltipContent>{t("terminalNative.compare.partialTooltip")}</TooltipContent>
                           </Tooltip>
                         ) : (
                           <span className="inline-flex size-[18px] items-center justify-center text-[13px] text-[var(--a-fg-mute)]">✕</span>
@@ -787,7 +659,7 @@ export default function TerminalNativePage() {
             </table>
           </div>
           <div className="mt-4 text-[11px] tracking-[0.04em] text-[var(--a-fg-mute)]">
-            // 数据基于各产品公开特性整理，如有遗漏欢迎提 issue 或 PR
+            // {t("terminalNative.compare.note")}
           </div>
         </SectionShell>
 
@@ -795,20 +667,17 @@ export default function TerminalNativePage() {
           id="testimonials"
           index="06"
           label="WHAT DEVS SAY"
-          title="用户真实评价"
-          subtitle="来自真实用户的使用反馈，覆盖开发、运营、创业、团队协作等不同场景。"
+          title={t("terminalNative.testimonials.title")}
+          subtitle={t("terminalNative.testimonials.subtitle")}
         >
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
             {[...testimonialItems].sort((a, b) => a.quote.length - b.quote.length).map((item) => (
-              <div key={item.name} className="relative flex h-full flex-col rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
+              <div key={item.key} className="relative flex h-full flex-col rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
                 <div className="absolute left-5 top-4 text-4xl leading-none text-[var(--a-accent-dim)] opacity-40">❝</div>
                 <p className="relative flex-1 text-sm leading-7 text-[var(--a-fg)]">{item.quote}</p>
                 <div className="mt-5 border-t border-dashed border-[var(--a-line-2)] pt-4">
                   <div className="text-sm text-[var(--a-accent)]">{item.name}</div>
                   <div className="mt-1 text-[13px] text-[var(--a-fg-dim)]">{item.role}</div>
-                  {item.stat ? (
-                    <div className="mt-1 text-[11px] tracking-[0.06em] text-[var(--a-fg-mute)]">{item.stat}</div>
-                  ) : null}
                 </div>
               </div>
             ))}
@@ -819,8 +688,8 @@ export default function TerminalNativePage() {
           id="pricing"
           index="07"
           label="PRICING"
-          title="套餐与费用"
-          subtitle="个人用户可以直接免费使用；需要更高额度或团队能力时，可以按月或按年购买套餐。"
+          title={t("terminalNative.pricing.title")}
+          subtitle={t("terminalNative.pricing.subtitle")}
           action={
             <div className="inline-flex rounded-md border border-[var(--a-line-2)] bg-[var(--a-bg-2)] p-1">
               {billingOptions.map((option) => (
@@ -835,7 +704,7 @@ export default function TerminalNativePage() {
                       : "text-[var(--a-fg-dim)] hover:text-[var(--a-fg)]"
                   )}
                 >
-                  {option.label}
+                  {t(`terminalNative.pricing.billing.${option.i18nKey}`)}
                 </button>
               ))}
             </div>
@@ -844,12 +713,12 @@ export default function TerminalNativePage() {
           <div className="grid gap-4 xl:grid-cols-3">
             {pricingTiers.map((tier) => {
               const price = billingPeriod === "monthly" ? tier.monthlyPrice : tier.yearlyPrice;
-              const unit = billingPeriod === "monthly" ? tier.monthlyUnit : tier.yearlyUnit;
-              const discount = billingPeriod === "yearly" ? tier.yearlyDiscount : "";
+              const unit = t(`terminalNative.pricing.tiers.${tier.key}.${billingPeriod}Unit`);
+              const discount = billingPeriod === "yearly" ? t(`terminalNative.pricing.tiers.${tier.key}.yearlyDiscount`) : "";
 
               return (
                 <div
-                  key={tier.name}
+                  key={tier.key}
                   className={cn(
                     "relative flex h-full flex-col rounded-md border p-7",
                     tier.featured
@@ -859,11 +728,11 @@ export default function TerminalNativePage() {
                 >
                   {tier.featured ? (
                     <div className="absolute left-1/2 top-[-10px] -translate-x-1/2 rounded bg-[var(--a-accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.1em] text-[var(--a-bg)]">
-                      推荐
+                      {t("terminalNative.pricing.recommended")}
                     </div>
                   ) : null}
                   <div className="text-[11px] tracking-[0.08em] text-[var(--a-fg-mute)]">$ {tier.cmd}</div>
-                  <div className="mt-2 text-[22px] font-semibold text-[var(--a-fg)]">{tier.name}</div>
+                  <div className="mt-2 text-[22px] font-semibold text-[var(--a-fg)]">{t(`terminalNative.pricing.tiers.${tier.key}.name`)}</div>
                   <div className="flex items-baseline gap-2">
                     <span
                       className={cn(
@@ -880,14 +749,15 @@ export default function TerminalNativePage() {
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-4 text-[12.5px] leading-[1.6] text-[var(--a-fg-dim)]">{tier.desc}</p>
+                  <p className="mt-4 text-[12.5px] leading-[1.6] text-[var(--a-fg-dim)]">{t(`terminalNative.pricing.tiers.${tier.key}.desc`)}</p>
                   <div className="mt-5 flex-1 space-y-2">
                     {tier.features.map((feature) => {
                       const status = feature.status || "supported";
                       const FeatureIcon = status === "unsupported" ? IconX : IconCheck;
+                      const featureLabel = t(`terminalNative.pricing.features.${feature.key}`);
 
                       return (
-                        <div key={feature.label} className={cn("flex items-start gap-2 text-[12.5px]", status === "unsupported" ? "text-[var(--a-fg-dim)]" : "text-[var(--a-fg)]")}>
+                        <div key={feature.key} className={cn("flex items-start gap-2 text-[12.5px]", status === "unsupported" ? "text-[var(--a-fg-dim)]" : "text-[var(--a-fg)]")}>
                           <FeatureIcon
                             className={cn(
                               "mt-[2px] size-3.5 shrink-0",
@@ -899,18 +769,18 @@ export default function TerminalNativePage() {
                             )}
                           />
                           <div className="min-w-0">
-                            {feature.tooltip ? (
+                            {feature.tooltipKey ? (
                               <Tooltip>
-                                <span>{feature.label}</span>
+                                <span>{featureLabel}</span>
                                 <TooltipTrigger className="ml-1 inline-flex align-[-2px] text-[var(--a-fg-mute)] transition-colors hover:text-[var(--a-accent)]">
                                   <IconHelpCircle className="size-3.5" />
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-[320px] text-balance leading-6">
-                                  {feature.tooltip}
+                                  {t(`terminalNative.pricing.tooltips.${feature.tooltipKey}`)}
                                 </TooltipContent>
                               </Tooltip>
                             ) : (
-                              feature.label
+                              featureLabel
                             )}
                           </div>
                         </div>
@@ -926,7 +796,7 @@ export default function TerminalNativePage() {
                         : "border-[var(--a-line-2)] text-[var(--a-fg)] hover:bg-[#162019]"
                     )}
                   >
-                    {tier.cta} →
+                    {t(`terminalNative.pricing.tiers.${tier.key}.cta`)} →
                   </Link>
                 </div>
               );
@@ -936,11 +806,11 @@ export default function TerminalNativePage() {
           <div className="mt-8 grid gap-4 xl:grid-cols-2">
             <div className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
               <div className="text-[10px] tracking-[0.12em] text-[var(--a-accent)]">▸ EARN</div>
-              <div className="mt-2 text-lg font-semibold text-[var(--a-fg)]">免费赚积分</div>
+              <div className="mt-2 text-lg font-semibold text-[var(--a-fg)]">{t("terminalNative.pricing.earn.title")}</div>
               <div className="mt-4">
                 {earnWays.map((item, index) => (
                   <div
-                    key={item.label}
+                    key={item.key}
                     className={cn(
                       "flex items-center gap-3 py-3",
                       index > 0 ? "border-t border-[var(--a-line)]" : ""
@@ -949,13 +819,13 @@ export default function TerminalNativePage() {
                     <span className="inline-flex size-6 items-center justify-center rounded bg-[rgba(124,242,156,0.08)] text-[13px] text-[var(--a-accent)]">
                       {item.icon}
                     </span>
-                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{item.label}</span>
+                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{t(`terminalNative.pricing.earn.items.${item.key}.label`)}</span>
                     {"valueTo" in item ? (
                       <a href={item.valueTo} className="text-sm font-medium text-[var(--a-accent)] transition-colors hover:text-[var(--a-fg)]">
-                        {item.value}
+                        {t(`terminalNative.pricing.earn.items.${item.key}.value`)}
                       </a>
                     ) : (
-                      <span className="text-sm font-medium text-[var(--a-accent)]">{item.value}</span>
+                      <span className="text-sm font-medium text-[var(--a-accent)]">{t(`terminalNative.pricing.earn.items.${item.key}.value`)}</span>
                     )}
                   </div>
                 ))}
@@ -964,7 +834,7 @@ export default function TerminalNativePage() {
 
             <div className="rounded-md border border-[var(--a-line)] bg-[var(--a-panel)] p-6">
               <div className="text-[10px] tracking-[0.12em] text-[var(--a-warn)]">▸ RECHARGE</div>
-              <div className="mt-2 text-lg font-semibold text-[var(--a-fg)]">充值积分</div>
+              <div className="mt-2 text-lg font-semibold text-[var(--a-fg)]">{t("terminalNative.pricing.recharge.title")}</div>
               <div className="mt-4">
                 {rechargeTiers.map((item, index) => (
                   <div
@@ -977,12 +847,10 @@ export default function TerminalNativePage() {
                     <span className="inline-flex size-6 items-center justify-center rounded bg-[rgba(247,185,85,0.08)] text-[13px] text-[var(--a-warn)]">
                       <IconCoins className="size-4" />
                     </span>
-                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{item.points}</span>
-                    {item.extra ? (
-                      <span className="rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] tracking-[0.04em] text-[var(--a-accent)]">
-                        {item.extra}
-                      </span>
-                    ) : null}
+                    <span className="flex-1 text-sm font-medium text-[var(--a-fg)]">{t(`terminalNative.pricing.recharge.items.${item.key}.points`)}</span>
+                    <span className="rounded bg-[rgba(124,242,156,0.08)] px-2 py-1 text-[11px] tracking-[0.04em] text-[var(--a-accent)]">
+                      {t(`terminalNative.pricing.recharge.items.${item.key}.extra`)}
+                    </span>
                     <span className="text-base font-semibold text-[var(--a-fg)]">{item.amount}</span>
                   </div>
                 ))}
@@ -999,8 +867,8 @@ export default function TerminalNativePage() {
             >
               <span className="w-12 text-[10px] tracking-[0.1em] text-[var(--a-fg-mute)]">$ OSS</span>
               <div className="flex-1">
-                <div className="text-sm font-semibold text-[var(--a-fg)]">开源版</div>
-                <div className="mt-1 text-[12px] text-[var(--a-fg-dim)]">完整源码，自由 clone / fork，社区支持</div>
+                <div className="text-sm font-semibold text-[var(--a-fg)]">{t("terminalNative.pricing.openSource.title")}</div>
+                <div className="mt-1 text-[12px] text-[var(--a-fg-dim)]">{t("terminalNative.pricing.openSource.description")}</div>
               </div>
               <span className="text-sm text-[var(--a-accent)]">→ GitHub</span>
             </a>
@@ -1012,10 +880,10 @@ export default function TerminalNativePage() {
             >
               <span className="w-12 text-[10px] tracking-[0.1em] text-[var(--a-fg-mute)]">$ ENT</span>
               <div className="flex-1">
-                <div className="text-sm font-semibold text-[var(--a-fg)]">团队版</div>
-                <div className="mt-1 text-[12px] text-[var(--a-fg-dim)]">私有化离线部署，企业级安全与审计，商业支持</div>
+                <div className="text-sm font-semibold text-[var(--a-fg)]">{t("terminalNative.pricing.enterprise.title")}</div>
+                <div className="mt-1 text-[12px] text-[var(--a-fg-dim)]">{t("terminalNative.pricing.enterprise.description")}</div>
               </div>
-              <span className="text-sm text-[var(--a-accent)]">→ 联系我们</span>
+              <span className="text-sm text-[var(--a-accent)]">→ {t("terminalNative.pricing.enterprise.action")}</span>
             </a>
           </div>
         </SectionShell>
@@ -1024,23 +892,23 @@ export default function TerminalNativePage() {
           id="faq"
           index="08"
           label="FAQ"
-          title="常见问题"
-          subtitle="没有覆盖到的问题，可以直接进社区或者文档继续查。"
+          title={t("terminalNative.faq.title")}
+          subtitle={t("terminalNative.faq.subtitle")}
         >
           <div className="overflow-hidden rounded-md border border-[var(--a-line)] bg-[var(--a-panel)]">
-            {faqItems.map((item, index) => (
-              <div key={item.question} className={index < faqItems.length - 1 ? "border-b border-[var(--a-line)]" : ""}>
+            {faqKeys.map((itemKey, index) => (
+              <div key={itemKey} className={index < faqKeys.length - 1 ? "border-b border-[var(--a-line)]" : ""}>
                 <button
                   type="button"
                   onClick={() => setOpenFaq(openFaq === index ? -1 : index)}
                   className="flex w-full items-center gap-4 px-5 py-5 text-left text-sm text-[var(--a-fg)] transition-colors hover:bg-[rgba(124,242,156,0.03)]"
                 >
                   <span className="w-4 text-[var(--a-accent)]">{openFaq === index ? "▾" : "▸"}</span>
-                  <span className="flex-1">{item.question}</span>
+                  <span className="flex-1">{t(`terminalNative.faq.items.${itemKey}.question`)}</span>
                   <span className="text-[11px] tracking-[0.08em] text-[var(--a-fg-mute)]">Q{String(index + 1).padStart(2, "0")}</span>
                 </button>
                 {openFaq === index ? (
-                  <div className="px-5 pb-5 pl-[52px] text-sm leading-7 text-[var(--a-fg-dim)]">{item.answer}</div>
+                  <div className="px-5 pb-5 pl-[52px] text-sm leading-7 text-[var(--a-fg-dim)]">{t(`terminalNative.faq.items.${itemKey}.answer`)}</div>
                 ) : null}
               </div>
             ))}
@@ -1052,17 +920,17 @@ export default function TerminalNativePage() {
           <div className="relative">
             <div className="text-[11px] tracking-[0.12em] text-[var(--a-accent)]">┌─ START WITH MONKEYCODE ─┐</div>
             <h2 className="mt-5 text-4xl font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl lg:text-[56px]">
-              现在就开始，
+              {t("terminalNative.finalCta.titlePrefix")}
               <br />
-              <span className="text-[var(--a-accent)]">把想法真正做出来</span>
+              <span className="text-[var(--a-accent)]">{t("terminalNative.finalCta.titleHighlight")}</span>
             </h2>
             <p className="mx-auto mt-4 max-w-[480px] text-sm leading-8 text-[var(--a-fg-dim)]">
-              无需本地环境，无需复杂配置。打开浏览器，你就可以立刻开始第一个 AI 开发任务。
+              {t("terminalNative.finalCta.description")}
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <HeaderAction to={isLoggedIn ? "/console" : "/login"} primary>
                 <IconArrowRight className="size-4" />
-                <span>开始使用</span>
+                <span>{t("terminalNative.actions.start")}</span>
               </HeaderAction>
               <HeaderAction href={GITHUB_LINK} external>
                 <Icon name="GitHub-Uncolor" className="size-4 fill-current" />
@@ -1079,6 +947,8 @@ export default function TerminalNativePage() {
 }
 
 function HeroTerminalCard() {
+  const { t } = useTranslation();
+
   return (
     <div className="relative">
       <div className="pointer-events-none absolute inset-[-20px] bg-[radial-gradient(ellipse_at_center,rgba(124,242,156,0.12),transparent_70%)] blur-3xl" />
@@ -1089,7 +959,7 @@ function HeroTerminalCard() {
             <span className="size-2.5 rounded-full bg-[#ffbd2e]" />
             <span className="size-2.5 rounded-full bg-[#27c93f]" />
           </div>
-          <div className="text-[9px] text-[var(--a-fg-dim)] sm:text-[10px]">MonkeyCode · 开发一个网页版《我的世界》游戏</div>
+          <div className="text-[9px] text-[var(--a-fg-dim)] sm:text-[10px]">{t("terminalNative.heroTerminal.title")}</div>
           <div className="ml-auto flex items-center gap-2 text-[8.5px] text-[var(--a-accent)]">
             <span className="size-[5px] rounded-full bg-[var(--a-accent)] shadow-[0_0_5px_var(--a-accent)]" />
             LIVE
@@ -1126,22 +996,22 @@ function HeroTerminalCard() {
 
             <div className="space-y-4 px-4 py-4">
               <div>
-                <div className="text-[10px] leading-6 text-[var(--a-fg)]">计划分成 3 步：</div>
+                <div className="text-[10px] leading-6 text-[var(--a-fg)]">{t("terminalNative.heroTerminal.planTitle")}</div>
                 <div className="mt-2 space-y-1 text-[9.5px] leading-6 text-[var(--a-fg-dim)]">
                   <div>
-                    <span className="text-[var(--a-accent)]">1.</span> 先用 <span className="text-[var(--a-magenta)]">terrain.ts</span> 生成方块地形和基础光照
+                    <span className="text-[var(--a-accent)]">1.</span> {t("terminalNative.heroTerminal.steps.terrain.before")} <span className="text-[var(--a-magenta)]">terrain.ts</span> {t("terminalNative.heroTerminal.steps.terrain.after")}
                   </div>
                   <div>
-                    <span className="text-[var(--a-accent)]">2.</span> 在 <span className="text-[var(--a-magenta)]">chunk.ts</span> 里做区块加载、视野剔除和存档
+                    <span className="text-[var(--a-accent)]">2.</span> {t("terminalNative.heroTerminal.steps.chunk.before")} <span className="text-[var(--a-magenta)]">chunk.ts</span> {t("terminalNative.heroTerminal.steps.chunk.after")}
                   </div>
                   <div>
-                    <span className="text-[var(--a-accent)]">3.</span> 给 <span className="text-[var(--a-magenta)]">inventory.ts</span> 补背包、放置方块和快捷栏切换
+                    <span className="text-[var(--a-accent)]">3.</span> {t("terminalNative.heroTerminal.steps.inventory.before")} <span className="text-[var(--a-magenta)]">inventory.ts</span> {t("terminalNative.heroTerminal.steps.inventory.after")}
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-2 rounded border border-[rgba(124,242,156,0.16)] bg-[rgba(124,242,156,0.04)] px-3 py-2 text-[9px] leading-none text-[var(--a-fg-dim)]">
                   <IconFilePencil className="size-3 shrink-0 text-[var(--a-accent-dim)]" />
                   <span className="inline-flex items-center gap-1 leading-none">
-                    <span>修改文件</span>
+                    <span>{t("terminalNative.heroTerminal.modifiedFile")}</span>
                     <span className="text-[var(--a-fg)]">chunk.ts</span>
                   </span>
                   <span className="ml-auto inline-flex items-center gap-2 text-[8.5px] leading-none">
@@ -1150,25 +1020,25 @@ function HeroTerminalCard() {
                   </span>
                 </div>
                 <div className="mt-3 text-[9.5px] leading-6 text-[var(--a-fg-dim)]">
-                  首个可玩版本我会先做平原地形、昼夜循环和第一人称拾取交互，保证移动、挖掘、放置这三条主链路能跑通。
+                  {t("terminalNative.heroTerminal.summary")}
                 </div>
                 <div className="mt-2 space-y-1 text-[9px] leading-5 text-[var(--a-fg-dim)]">
-                  <div>• 地形用 seed 驱动，保证每次刷新都能复现同一张地图</div>
-                  <div>• 方块交互走 raycast，鼠标左键挖掘，右键放置</div>
-                  <div>• 先预留 biome 和 crafting 接口，后面再继续扩展</div>
+                  {tStringList(t, "terminalNative.heroTerminal.bullets").map((item) => (
+                    <div key={item}>• {item}</div>
+                  ))}
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <div className="flex h-8 min-w-0 flex-1 items-center rounded-[6px] border border-[var(--a-line-2)] bg-[var(--a-panel)] px-3 text-[9px] leading-none text-[var(--a-fg-dim)] ring-1 ring-inset ring-[rgba(124,242,156,0.12)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
-                  <span className="truncate leading-none text-[var(--a-fg)]">继续把挖掘动画和合成台也接上</span>
+                  <span className="truncate leading-none text-[var(--a-fg)]">{t("terminalNative.heroTerminal.inputPlaceholder")}</span>
                 </div>
                 <button
                   type="button"
                   className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-[4px] border border-[rgba(124,242,156,0.24)] bg-[rgba(124,242,156,0.1)] px-2.5 text-[8.5px] leading-none text-[var(--a-accent)]"
                 >
                   <IconSend className="size-2.5" />
-                  <span className="inline-flex items-center leading-none">发送</span>
+                  <span className="inline-flex items-center leading-none">{t("terminalNative.heroTerminal.send")}</span>
                 </button>
               </div>
             </div>

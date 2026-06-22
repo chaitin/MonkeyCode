@@ -43,9 +43,11 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 export default function NavManager() {
   const { isMobile } = useSidebar()
+  const { t } = useTranslation()
   const [userEmail, setUserEmail] = React.useState<string>('');
   const [teamName, setTeamName] = React.useState<string>('');
   const [userName, setUserName] = React.useState<string>('');
@@ -65,31 +67,29 @@ export default function NavManager() {
         setUserName(resp.data?.user?.name || '');
         localStorage.setItem('teamid', resp.data?.team?.team_id || '');
       } else {
-        toast.error('获取用户信息失败: ' + resp.message);
+        toast.error(t("managerShell.account.fetchFailed", { message: resp.message || t("managerShell.common.unknownError") }));
       }
     })
-  }, []);
+  }, [t]);
 
   const handleLogout = () => {
     apiRequest('v1TeamsUsersLogoutCreate', {}, [], (resp) => {
       if (resp.code === 0) {
         navigate('/');
       } else {
-        toast.error('登出失败: ' + resp.message);
+        toast.error(t("managerShell.account.logout.failed", { message: resp.message || t("managerShell.common.unknownError") }));
       }
     });
   };
 
   const handleChangePassword = async () => {
-    // 验证新密码和确认密码是否一致
     if (newPassword !== confirmPassword) {
-      toast.error('新密码和确认密码不一致');
+      toast.error(t("managerShell.account.changePassword.passwordMismatch"));
       return;
     }
 
-    // 验证密码长度
     if (newPassword.length < 6) {
-      toast.error('新密码长度至少为6位')
+      toast.error(t("managerShell.account.changePassword.passwordTooShort", { count: 6 }))
       return;
     }
 
@@ -98,16 +98,14 @@ export default function NavManager() {
       current_password: currentPassword,
       new_password: newPassword,
     }, [], (resp) => {
-      // 只有在成功时才关闭对话框
       if (resp.code === 0) {
-        toast.success('密码修改成功');
+        toast.success(t("managerShell.account.changePassword.success"));
         setShowChangePasswordDialog(false);
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        // 失败时不关闭对话框，只显示错误提示
-        toast.error(`密码修改失败：${resp.message || '未知错误'}`)
+        toast.error(t("managerShell.account.changePassword.failed", { message: resp.message || t("managerShell.common.unknownError") }))
       }
     })
     setChangingPassword(false)
@@ -128,7 +126,7 @@ export default function NavManager() {
                   <AvatarFallback className="rounded-lg">{teamName.charAt(0) || '-'}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{userName} - {teamName || '未知团队'}</span>
+                  <span className="truncate font-medium">{userName} - {teamName || t("managerShell.account.unknownTeam")}</span>
                   <span className="text-muted-foreground truncate text-xs">
                     {userEmail}
                   </span>
@@ -149,7 +147,7 @@ export default function NavManager() {
                     <AvatarFallback className="rounded-lg">{teamName.charAt(0) || '-'}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{userName} - {teamName || '未知团队'}</span>
+                    <span className="truncate font-medium">{userName} - {teamName || t("managerShell.account.unknownTeam")}</span>
                     <span className="text-muted-foreground truncate text-xs">
                       {userEmail}
                     </span>
@@ -159,27 +157,27 @@ export default function NavManager() {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowChangePasswordDialog(true)}>
                 <IconLockCode />
-                修改密码
+                {t("managerShell.account.changePassword.title")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowLogoutDialog(true)}>
                 <LogOut />
-                登出
+                {t("managerShell.account.logout.action")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>确认登出</AlertDialogTitle>
+                <AlertDialogTitle>{t("managerShell.account.logout.confirmTitle")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  您确定要登出吗？登出后需要重新登录才能继续使用。
+                  {t("managerShell.account.logout.confirmDescription")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogCancel>{t("managerShell.common.cancel")}</AlertDialogCancel>
                 <AlertDialogAction onClick={handleLogout}>
-                  确认登出
+                  {t("managerShell.account.logout.confirmAction")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -187,37 +185,37 @@ export default function NavManager() {
           <Dialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>修改密码</DialogTitle>
+                <DialogTitle>{t("managerShell.account.changePassword.title")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="current-password">当前密码</Label>
+                  <Label htmlFor="current-password">{t("managerShell.account.changePassword.currentPassword")}</Label>
                   <Input
                     id="current-password"
                     type="password"
-                    placeholder="请输入当前密码"
+                    placeholder={t("managerShell.account.changePassword.currentPasswordPlaceholder")}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     autoComplete="current-password"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="new-password">新密码</Label>
+                  <Label htmlFor="new-password">{t("managerShell.account.changePassword.newPassword")}</Label>
                   <Input
                     id="new-password"
                     type="password"
-                    placeholder="请输入新密码"
+                    placeholder={t("managerShell.account.changePassword.newPasswordPlaceholder")}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     autoComplete="new-password"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="confirm-password">确认新密码</Label>
+                  <Label htmlFor="confirm-password">{t("managerShell.account.changePassword.confirmPassword")}</Label>
                   <Input
                     id="confirm-password"
                     type="password"
-                    placeholder="请再次输入新密码"
+                    placeholder={t("managerShell.account.changePassword.confirmPasswordPlaceholder")}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     autoComplete="new-password"
@@ -234,14 +232,14 @@ export default function NavManager() {
                     setConfirmPassword('');
                   }}
                 >
-                  取消
+                  {t("managerShell.common.cancel")}
                 </Button>
                 <Button
                   onClick={handleChangePassword}
                   disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
                 >
                   {changingPassword && <Spinner className="size-4 mr-2" />}
-                  确认修改
+                  {t("managerShell.account.changePassword.confirmAction")}
                 </Button>
               </DialogFooter>
             </DialogContent>

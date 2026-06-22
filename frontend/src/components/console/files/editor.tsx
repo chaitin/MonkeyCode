@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { apiRequest } from "@/utils/requestUtils"
@@ -19,9 +19,10 @@ import "ace-builds/src-noconflict/mode-dockerfile"
 import "ace-builds/src-noconflict/theme-github"
 import "ace-builds/src-noconflict/theme-monokai"
 import "ace-builds/src-noconflict/ext-language_tools"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
 import { Spinner } from "@/components/ui/spinner"
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { useTranslation } from "react-i18next"
 
 interface FileEditorProps {
   open: boolean
@@ -62,22 +63,14 @@ export default function FileEditor({
   path,
   envid,
 }: FileEditorProps) {
+  const { t } = useTranslation()
   const [content, setContent] = useState("")
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const { resolvedTheme } = useTheme()
   const [languageMode, setLanguageMode] = useState("text")
 
-  useEffect(() => {
-    if (open && path) {
-      setLanguageMode(getLanguageMode(path || ""))
-      fetchFileContent()
-    } else {
-      setContent("")
-    }
-  }, [open, path])
-
-  const fetchFileContent = async () => {
+  const fetchFileContent = useCallback(async () => {
     if (!path || !envid) return
 
     setLoading(true)    
@@ -89,11 +82,21 @@ export default function FileEditor({
     }).then(text => {
       setContent(text)
     }).catch(err => {
-      toast.error(`文件读取失败：${err.message}`)
+      toast.error(t("consoleFiles.toast.readFailed", { message: err.message }))
     }).finally(() => {
       setLoading(false)
     })
-  }
+  }, [envid, path, t])
+
+  useEffect(() => {
+    if (open && path) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync editor mode when the controlled file path changes.
+      setLanguageMode(getLanguageMode(path || ""))
+      fetchFileContent()
+    } else {
+      setContent("")
+    }
+  }, [fetchFileContent, open, path])
 
   const handleSave = async () => {
     if (!path || !envid) return
@@ -105,10 +108,10 @@ export default function FileEditor({
       content: content,
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success('文件保存成功')
+        toast.success(t("consoleFiles.toast.saveSuccess"))
         onOpenChange(false)
       } else {
-        toast.error("文件保存失败: " + resp.message);
+        toast.error(t("consoleFiles.toast.saveFailed", { message: resp.message }));
       }
     })
     setSaving(false)
@@ -153,11 +156,11 @@ export default function FileEditor({
           )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading || saving}>
             {saving && <Spinner className="size-4 mr-2" />}
-            保存
+            {t("consoleFiles.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

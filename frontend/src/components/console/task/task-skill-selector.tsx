@@ -10,6 +10,9 @@ import { getSkillTagIcon } from "@/utils/common"
 import { defaultSkills } from "@/utils/config"
 import { IconChevronLeft, IconChevronRight, IconPuzzle } from "@tabler/icons-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+
+export const ALL_SKILLS_TAG = "__all__"
 
 /**
  * SkillForPicker augments the swagger-generated DomainSkill with the
@@ -41,6 +44,8 @@ interface SkillItemProps {
 }
 
 function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
+  const { t } = useTranslation()
+
   if (!skill.id) {
     return null
   }
@@ -81,11 +86,11 @@ function SkillItem({ skill, selectedSkills, onSkillChange }: SkillItemProps) {
                   variant="secondary"
                   className="shrink-0 px-1.5 py-0 text-[10px] leading-4"
                 >
-                  强制下发
+                  {t("taskWorkflow.skill.forceDelivery")}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
-                由管理员强制下发，无需选择
+                {t("taskWorkflow.skill.forceDeliveryTooltip")}
               </TooltipContent>
             </Tooltip>
           )}
@@ -110,6 +115,7 @@ export function TaskSkillSelector({
   triggerClassName,
   labelClassName,
 }: TaskSkillSelectorProps) {
+  const { t } = useTranslation()
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(skillTags.length > 1)
@@ -165,7 +171,9 @@ export function TaskSkillSelector({
         >
           <IconPuzzle />
           <span className={labelClassName}>
-            {selectedSkills.length > 0 ? `${selectedSkills.length} 个技能` : "技能"}
+            {selectedSkills.length > 0
+              ? t("taskWorkflow.skill.selectedCount", { count: selectedSkills.length })
+              : t("taskWorkflow.skill.label")}
           </span>
         </Button>
       </PopoverTrigger>
@@ -200,8 +208,8 @@ export function TaskSkillSelector({
                   value={tag}
                   className="h-6 shrink-0 justify-start px-2 text-xs hover:bg-sidebar-accent data-[state=active]:bg-accent data-[state=active]:shadow-none"
                 >
-                  {getSkillTagIcon(tag)}
-                  {tag}
+                  {getSkillTagIcon(tag === ALL_SKILLS_TAG ? t("taskWorkflow.skill.all") : tag)}
+                  {tag === ALL_SKILLS_TAG ? t("taskWorkflow.skill.all") : tag}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -224,7 +232,7 @@ export function TaskSkillSelector({
             >
               {skills
                 .filter((skill) => !skill.is_force_delivery)
-                .filter((skill) => tag === "全部" || (skill.tags || []).includes(tag))
+                .filter((skill) => tag === ALL_SKILLS_TAG || (skill.tags || []).includes(tag))
                 .map((skill) => (
                   <SkillItem
                     key={skill.id}

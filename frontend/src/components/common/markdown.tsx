@@ -12,9 +12,10 @@ import { IconCopy } from "@tabler/icons-react"
 import { toast } from "sonner"
 import "@/utils/markdown.css"
 import { cn } from "@/lib/utils"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
+import { useTranslation } from "react-i18next"
 
-// 初始化 mermaid 配置
+// Initialize Mermaid configuration.
 mermaid.initialize({
   startOnLoad: false,
   theme: "default",
@@ -43,7 +44,7 @@ const Mermaid = memo(function Mermaid({ chart, isDark }: MermaidProps) {
           securityLevel: "loose",
           suppressErrorRendering: true,
         })
-        // 使用唯一 ID 避免冲突
+        // Use a unique ID to avoid collisions.
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`
         const { svg } = await mermaid.render(id, chart)
         if (renderVersionRef.current !== currentRenderVersion) return
@@ -91,13 +92,15 @@ interface CodeBlockProps {
 }
 
 const CodeBlock = ({ code, language, isDark }: CodeBlockProps) => {
+  const { t } = useTranslation()
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code)
-      toast.success("代码已复制到剪贴板")
+      toast.success(t("common.markdown.copySuccess"))
     } catch (error) {
-      toast.error("复制代码失败")
-      console.error("复制代码失败:", error)
+      toast.error(t("common.markdown.copyFailed"))
+      console.error("Copy code failed:", error)
     }
   }
 
@@ -107,7 +110,7 @@ const CodeBlock = ({ code, language, isDark }: CodeBlockProps) => {
         type="button"
         className="absolute right-2 top-2 z-10 inline-flex size-7 items-center justify-center rounded-md border bg-background/80 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-background hover:text-foreground group-hover/code:opacity-100"
         onClick={handleCopy}
-        aria-label="复制代码"
+        aria-label={t("common.markdown.copyCode")}
       >
         <IconCopy className="size-4" />
       </button>
@@ -140,16 +143,16 @@ function MarkdownCodeBlock({ children, isDark }: { children: React.ReactNode; is
 
 interface MarkdownProps {
   children: string
-  /** 是否允许渲染原始 HTML（会自动进行安全处理） */
+  /** Whether raw HTML rendering is allowed. Content is still sanitized. */
   allowHtml?: boolean
-  /** 是否允许渲染站内链接 */
+  /** Whether internal links should navigate in-app. */
   allowInternalLink?: boolean
   className?: string
 }
 
 /**
- * 判断是否为站内链接
- * 站内链接包括：相对路径、以 / 开头的绝对路径、同域名的完整 URL
+ * Determine whether the link points inside the current site.
+ * Internal links include relative paths, absolute paths starting with /, and same-origin full URLs.
  */
 function isInternalLink(href: string | undefined): boolean {
   if (!href) return false
@@ -158,34 +161,32 @@ function isInternalLink(href: string | undefined): boolean {
     const url = new URL(href, window.location.origin)
     return url.origin === window.location.origin
   } catch {
-    // 如果解析失败，当作站内链接处理
+    // Treat parse failures as internal links.
     return true
   }
 }
 
 /**
- * 将相对路径解析为绝对路径
- * @param href 原始链接
- * @param currentPath 当前页面路径
+ * Resolve a relative path to an absolute path.
+ * @param href Original link.
+ * @param currentPath Current page path.
  */
 function resolveRelativePath(href: string, currentPath: string): string {
-  // 如果已经是绝对路径，直接返回
+  // Already absolute.
   if (href.startsWith('/')) {
     return href
   }
   
-  // 处理相对路径
-  // 获取当前路径的目录部分（去掉最后的文件名/路由段）
+  // Resolve relative to the current directory.
   const basePath = currentPath.endsWith('/') 
     ? currentPath.slice(0, -1) 
     : currentPath.substring(0, currentPath.lastIndexOf('/')) || '/'
   
-  // 使用 URL API 解析相对路径
   try {
     const resolved = new URL(href, `http://dummy${basePath}/`).pathname
     return resolved
   } catch {
-    // 解析失败时返回原始 href
+    // Preserve the original href if URL parsing fails.
     return href
   }
 }

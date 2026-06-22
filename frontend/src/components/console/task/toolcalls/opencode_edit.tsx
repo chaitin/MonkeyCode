@@ -1,5 +1,6 @@
 import type { MessageType } from "../message";
 import { EditDiffPreview } from "./edit-diff-preview";
+import { taskDetailT } from "../task-i18n";
 
 const formatFilePath = (value: unknown) => {
   if (typeof value !== "string") {
@@ -12,10 +13,10 @@ const formatFilePath = (value: unknown) => {
 export const renderTitle = (message: MessageType) => {
   const filePath = formatFilePath(message.data.rawInput?.filePath)
   const action = message.data.status === "failed"
-    ? "修改文件失败"
+    ? taskDetailT("toolcall.editFailed")
     : message.data.status === "pending" || message.data.status === "in_progress"
-      ? "正在修改文件"
-      : "修改文件"
+      ? taskDetailT("toolcall.editingFile")
+      : taskDetailT("toolcall.editFile")
   return `${action}${filePath ? ` "${filePath}"` : ""}`
 }
 

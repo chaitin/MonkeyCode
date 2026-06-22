@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { getStatusBadgeProps, translateStatus } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
 import { IconCopy, IconDeviceDesktop, IconFolderOpen, IconReload, IconScreenShare, IconTerminal2, IconXboxXFilled } from "@tabler/icons-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { v4 as uuidv4 } from 'uuid';
 import themes from '@/utils/terminalThemes';
@@ -22,8 +22,10 @@ import { toast } from "sonner"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TerminalConnectionDialog from "@/components/console/terminal-connection-dialog"
 import { VmPortForwardDialog } from "@/components/console/vm/vm-port-forward"
+import { useTranslation } from "react-i18next"
 
 export default function TerminalPage() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const [envid] = useState<string>(searchParams.get('envid') || '')
   const [vm, setVm] = useState<DomainVirtualMachine | null>(null)
@@ -33,7 +35,7 @@ export default function TerminalPage() {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected')
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState<boolean>(false)
   const [connectionErrorDialogOpen, setConnectionErrorDialogOpen] = useState(false)
-  const [connectionDialogOpen, setConnectionDialogOpen] = useState<boolean>(false)
+  const [connectionDialogOpen, setConnectionDialogOpen] = useState<boolean>(true)
   const [portForwardDialogOpen, setPortForwardDialogOpen] = useState<boolean>(false)
 
   const [currentTheme, setCurrentTheme] = useState(() => {
@@ -41,15 +43,15 @@ export default function TerminalPage() {
     return savedTheme ? savedTheme : 'MonkeyCode';
   });
 
-  // 远程协助相关状态
+  // Remote assistance state
   const [assistMode, setAssistMode] = useState<ConstsTerminalMode>(ConstsTerminalMode.TerminalModeReadOnly)
   const [assistPassword, setAssistPassword] = useState<string>('')
   const [isGeneratingPassword, setIsGeneratingPassword] = useState<boolean>(false)
   const [hasGeneratedPassword, setHasGeneratedPassword] = useState<boolean>(false)
   const [isAssistDialogOpen, setIsAssistDialogOpen] = useState<boolean>(false)
 
-  // 获取虚拟机详情
-  const fetchVMInfo = async () => {    
+  // Fetch virtual machine details
+  const fetchVMInfo = useCallback(async () => {
     if (!envid) {
       return
     }
@@ -59,14 +61,14 @@ export default function TerminalPage() {
         setVm(resp.data || null)
         setConnectionErrorDialogOpen(false)
       } else {
-        toast.error(resp.message || "获取虚拟机详情失败")
+        toast.error(resp.message || t("consoleTerminal.vm.fetchFailed"))
         setConnectionErrorDialogOpen(true)
       }
     })
-  }
+  }, [envid, t])
 
 
-  // 生成远程协助密码
+  // Generate remote assistance password
   const handleGenerateAssistPassword = async () => {
     if (!envid || !connectionId) {
       return
@@ -82,53 +84,49 @@ export default function TerminalPage() {
         setAssistPassword(resp.data?.password || '')
         setHasGeneratedPassword(true)
       } else {
-        toast.error(resp.message || "生成远程协助密码失败")
+        toast.error(resp.message || t("consoleTerminal.assist.generateFailed"))
       }
       setIsGeneratingPassword(false)
     })
   }
 
-  // 获取共享链接
+  // Build shared link
   const getSharedUrl = () => {
     if (!connectionId) return ''
     return `${window.location.origin}/sharedterminal?id=${connectionId}`
   }
 
-  // 复制连接信息到剪贴板
+  // Copy connection details to clipboard
   const handleCopyConnectionInfo = async () => {
-    const connectionInfo = `邀请你对我进行远程协助
-
-连接地址：${getSharedUrl()}
-连接密码：${assistPassword}`
+    const connectionInfo = t("consoleTerminal.assist.copyText", {
+      url: getSharedUrl(),
+      password: assistPassword,
+    })
     
     try {
       await navigator.clipboard.writeText(connectionInfo)
-      toast.success('连接信息已复制到剪贴板')
-    } catch (err) {
-      toast.error('复制连接信息失败，请手动复制')
+      toast.success(t("consoleTerminal.assist.copySuccess"))
+    } catch {
+      toast.error(t("consoleTerminal.assist.copyFailed"))
     }
   }
 
-  // 重置远程协助状态
-  useEffect(() => {
-    if (!isAssistDialogOpen) {
+  const handleAssistDialogOpenChange = (open: boolean) => {
+    setIsAssistDialogOpen(open)
+    if (!open) {
       setAssistPassword('')
       setHasGeneratedPassword(false)
       setAssistMode(ConstsTerminalMode.TerminalModeReadOnly)
     }
-  }, [isAssistDialogOpen])
+  }
 
   useEffect(() => {
     fetchVMInfo()
-    // 页面首次加载时，如果没有连接ID，显示连接选择对话框
-    if (!connectionId) {
-      setConnectionDialogOpen(true)
-    }
     const interval = setInterval(() => {
       fetchVMInfo()
-    }, 10000) // 每10秒钟调用一次
+    }, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchVMInfo])
 
   
   const renderTitle = () => {
@@ -136,12 +134,12 @@ export default function TerminalPage() {
       if (connectionStatus === 'connecting') {
         return <>
           <Spinner className="w-4 h-4 min-w-4 min-h-4 animate-spin" />
-          正在连接
+          {t("sharedTerminal.status.connecting")}
         </>
       } else if (connectionStatus === 'disconnected') {
         return <>
           <IconXboxXFilled className="w-4 h-4 min-w-4 min-h-4 text-danger" />
-          连接已断开
+          {t("sharedTerminal.status.disconnected")}
         </>
       } else if (connectionStatus === 'connected') {
         return <>
@@ -152,7 +150,7 @@ export default function TerminalPage() {
     }
     return <>
       <IconTerminal2 className="w-4 h-4 min-w-4 min-h-4" />
-      连接未建立
+      {t("sharedTerminal.status.notEstablished")}
     </>
   }
 
@@ -167,7 +165,7 @@ export default function TerminalPage() {
               <Badge variant="outline" className="hidden md:block cursor-default">{vm?.os}</Badge>
             </TooltipTrigger>
             <TooltipContent>
-              操作系统
+              {t("consoleTerminal.vm.os")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -183,26 +181,26 @@ export default function TerminalPage() {
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => { setSignal(signal + 1); }}>
                   <IconReload />
-                  重新连接
+                  {t("consoleTerminal.actions.reconnect")}
                 </Button>
                 <Button variant="outline" size="sm" className="hidden sm:flex" disabled={connectionStatus !== 'connected'} onClick={() => setPortForwardDialogOpen(true)}>
                   <IconDeviceDesktop />
-                  在线预览
+                  {t("consoleTerminal.actions.preview")}
                 </Button>
                 <Button variant="outline" size="sm" className="hidden lg:flex" disabled={connectionStatus !== 'connected'} onClick={() => { window.open(`/console/files?envid=${envid}&path=/workspace`, '_blank'); }}>
                   <IconFolderOpen />
-                  文件管理
+                  {t("consoleTerminal.actions.files")}
                 </Button>
-                <Dialog open={isAssistDialogOpen} onOpenChange={setIsAssistDialogOpen}>
+                <Dialog open={isAssistDialogOpen} onOpenChange={handleAssistDialogOpenChange}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="hidden md:flex" disabled={connectionStatus !== 'connected'}>
                       <IconScreenShare />
-                      远程协助
+                      {t("consoleTerminal.actions.remoteAssist")}
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-md">
                     <DialogHeader>
-                      <DialogTitle>远程协助</DialogTitle>
+                      <DialogTitle>{t("consoleTerminal.assist.title")}</DialogTitle>
                       {!hasGeneratedPassword ? (
                         <>
                           <DialogDescription className="py-2">
@@ -210,9 +208,9 @@ export default function TerminalPage() {
                               <FieldLabel htmlFor="terminal-mode-readonly">
                                 <Field orientation="horizontal" className="cursor-pointer">
                                   <FieldContent>
-                                    <FieldTitle className="text-foreground">只读模式</FieldTitle>
+                                    <FieldTitle className="text-foreground">{t("consoleTerminal.assist.readOnlyTitle")}</FieldTitle>
                                     <FieldDescription>
-                                      对方只能看到你的终端界面，无法输入或操作
+                                      {t("consoleTerminal.assist.readOnlyDescription")}
                                     </FieldDescription>
                                   </FieldContent>
                                   <RadioGroupItem value={ConstsTerminalMode.TerminalModeReadOnly} id="terminal-mode-readonly" className="cursor-pointer" />
@@ -221,9 +219,9 @@ export default function TerminalPage() {
                                 <FieldLabel htmlFor="terminal-mode-readwrite">
                                 <Field orientation="horizontal" className="cursor-pointer">
                                   <FieldContent>
-                                    <FieldTitle className="text-foreground">控制模式</FieldTitle>
+                                    <FieldTitle className="text-foreground">{t("consoleTerminal.assist.controlTitle")}</FieldTitle>
                                     <FieldDescription>
-                                      对方可以看到你的终端界面且可进行输入和交互操作
+                                      {t("consoleTerminal.assist.controlDescription")}
                                     </FieldDescription>
                                   </FieldContent>
                                   <RadioGroupItem value={ConstsTerminalMode.TerminalModeReadWrite} id="terminal-mode-readwrite" className="cursor-pointer" />
@@ -233,11 +231,11 @@ export default function TerminalPage() {
                           </DialogDescription>
                           <DialogFooter>
                             <Button variant="outline" onClick={() => setIsAssistDialogOpen(false)}>
-                              取消
+                              {t("consoleTerminal.actions.cancel")}
                             </Button>
                             <Button onClick={handleGenerateAssistPassword}>
                               {isGeneratingPassword && <Spinner className="w-4 h-4 mr-2" />}
-                              生成连接信息
+                              {t("consoleTerminal.assist.generateConnection")}
                             </Button>
                           </DialogFooter>
                         </>
@@ -245,7 +243,7 @@ export default function TerminalPage() {
                         <>
                           <DialogDescription className="py-2 space-y-4">
                             <Field>
-                              <FieldLabel className="text-foreground">连接地址</FieldLabel>
+                              <FieldLabel className="text-foreground">{t("consoleTerminal.assist.address")}</FieldLabel>
                               <Input
                                 className="text-foreground"
                                 value={getSharedUrl()}
@@ -253,7 +251,7 @@ export default function TerminalPage() {
                               />
                             </Field>
                             <Field>
-                              <FieldLabel className="text-foreground">连接密码</FieldLabel>
+                              <FieldLabel className="text-foreground">{t("consoleTerminal.assist.password")}</FieldLabel>
                               <Input
                                 className="text-foreground"
                                 value={assistPassword}
@@ -264,7 +262,7 @@ export default function TerminalPage() {
                           <DialogFooter>
                             <Button onClick={handleCopyConnectionInfo}>
                               <IconCopy />
-                              复制连接信息
+                              {t("consoleTerminal.assist.copyConnection")}
                             </Button>
                           </DialogFooter>
                         </>
@@ -277,11 +275,11 @@ export default function TerminalPage() {
                   localStorage.setItem('terminalTheme', value);
                 }}>
                   <SelectTrigger className="w-[150px] hidden md:flex" size="sm">
-                    <SelectValue placeholder="配色方案" />
+                    <SelectValue placeholder={t("sharedTerminal.theme.label")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectLabel>配色方案</SelectLabel>
+                      <SelectLabel>{t("sharedTerminal.theme.label")}</SelectLabel>
                       {Object.keys(themes).map((theme) => (
                         <SelectItem key={theme} value={theme}>{themes[theme as keyof typeof themes].name}</SelectItem>
                       ))}
@@ -322,9 +320,9 @@ export default function TerminalPage() {
       <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>终端连接已断开</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleTerminal.alerts.disconnectedTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              终端连接已断开，请检查网络连接或稍后重试。
+              {t("consoleTerminal.alerts.disconnectedDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -334,7 +332,7 @@ export default function TerminalPage() {
                 setSignal(signal + 1);
               }}
             >
-              重新连接
+              {t("consoleTerminal.actions.reconnect")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -342,11 +340,11 @@ export default function TerminalPage() {
       <AlertDialog open={connectionErrorDialogOpen} onOpenChange={setConnectionErrorDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>无法连接主机</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleTerminal.alerts.hostConnectionFailed")}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => window.close()}>关闭</AlertDialogCancel>
-            <AlertDialogAction onClick={() => window.location.reload()}>刷新</AlertDialogAction>
+            <AlertDialogCancel onClick={() => window.close()}>{t("consoleTerminal.actions.close")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => window.location.reload()}>{t("consoleTerminal.actions.refresh")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

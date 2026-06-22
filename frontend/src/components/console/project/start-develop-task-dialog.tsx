@@ -12,12 +12,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import ModelSelect from "@/components/console/task/model-select"
-import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "@/components/console/task/task-content-limit"
+import { MAX_TASK_CONTENT_LENGTH } from "@/components/console/task/task-content-limit"
 import {
   getImageShortName,
   getOSFromImageName,
   getOwnerTypeBadge,
-  TASK_PROMPT_PLACEHOLDER,
   selectHost,
   selectImage,
   selectPreferredTaskModel,
@@ -30,6 +29,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
+import { useTranslation } from "react-i18next"
 
 interface StartDevelopTaskDialogProps {
   open: boolean
@@ -55,6 +55,7 @@ export default function StartDevelopTaskDialog({
   const [selectedImageId, setSelectedImageId] = useState<string>('')
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false)
   const { images, models, hosts, subscription } = useCommonData()
+  const { t } = useTranslation()
   const branchRequestIdRef = useRef(0)
   const branchTouchedRef = useRef(false)
   const prevOpenRef = useRef(false)
@@ -99,7 +100,6 @@ export default function StartDevelopTaskDialog({
       return
     }
 
-    // internal 平台不需要获取分支列表
     if (project.platform === ConstsGitPlatform.GitPlatformInternal) {
       setSelectedBranch('')
       setBranches([])
@@ -113,7 +113,6 @@ export default function StartDevelopTaskDialog({
     setSelectedBranch('main')
     
     try {
-      // 直接使用 full_name 字段
       const escapedRepoFullName = project?.full_name || ''
       
       if (!escapedRepoFullName) {
@@ -124,7 +123,6 @@ export default function StartDevelopTaskDialog({
         return
       }
 
-      // URL 编码仓库名称
       const encodedRepoName = encodeURIComponent(escapedRepoFullName)
 
       await apiRequest('v1UsersGitIdentitiesBranchesDetail', {}, [project.git_identity_id, encodedRepoName], (resp) => {
@@ -143,7 +141,6 @@ export default function StartDevelopTaskDialog({
           }
           
           if (!branchTouchedRef.current) {
-            // 优先选择 main 或 master，否则选择第一个
             if (branchList.includes('main')) {
               setSelectedBranch('main')
             } else if (branchList.includes('master')) {
@@ -157,7 +154,7 @@ export default function StartDevelopTaskDialog({
           if (!branchTouchedRef.current) {
             setSelectedBranch('main')
           }
-          toast.error('获取分支列表失败: ' + resp.message)
+          toast.error(t("consoleProject.startTask.toast.fetchBranchesFailedWithMessage", { message: resp.message || t("consoleProject.common.unknownError") }))
         }
       })
     } catch (error) {
@@ -167,14 +164,14 @@ export default function StartDevelopTaskDialog({
         if (!branchTouchedRef.current) {
           setSelectedBranch('main')
         }
-        toast.error('获取分支列表失败')
+        toast.error(t("consoleProject.startTask.toast.fetchBranchesFailed"))
       }
     } finally {
       if (requestId === branchRequestIdRef.current) {
         setLoadingBranches(false)
       }
     }
-  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name])
+  }, [project?.git_identity_id, project?.repo_url, project?.platform, project?.full_name, t])
 
   useEffect(() => {
     if (open) {
@@ -237,48 +234,47 @@ export default function StartDevelopTaskDialog({
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {
-      toast.error('请输入任务内容')
+      toast.error(t("consoleProject.startTask.toast.contentRequired"))
       return
     }
 
     if (userMessageTooLong) {
-      toast.error(getTaskContentLimitErrorMessage())
+      toast.error(t("consoleProject.startTask.toast.contentTooLong", { max: MAX_TASK_CONTENT_LENGTH }))
       return
     }
 
     if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && loadingBranches) {
-      toast.error('分支列表加载中，请稍后')
+      toast.error(t("consoleProject.startTask.toast.branchesLoading"))
       return
     }
 
     if (project?.platform !== ConstsGitPlatform.GitPlatformInternal && !selectedBranch.trim()) {
-      toast.error('请输入分支名称')
+      toast.error(t("consoleProject.startTask.toast.branchRequired"))
       return
     }
 
     if (!selectedModelId) {
-      toast.error('请选择大模型')
+      toast.error(t("consoleProject.startTask.toast.modelRequired"))
       return
     }
 
     if (!selectedHostId) {
-      toast.error('请选择宿主机')
+      toast.error(t("consoleProject.startTask.toast.hostRequired"))
       return
     }
 
     if (!selectedImageId) {
-      toast.error('请选择系统镜像')
+      toast.error(t("consoleProject.startTask.toast.imageRequired"))
       return
     }
 
     if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId !== "public_host") {
-      toast.warning('内置模型只能在内置宿主机上使用')
+      toast.warning(t("consoleProject.startTask.toast.publicModelHostOnly"))
       return
     }
 
     setSubmitting(true)
 
-    // 创建任务
     await apiRequest('v1UsersTasksCreate', {
       content: userMessage.trim(),
       cli_name: ConstsCliName.CliNameOpencode,
@@ -299,13 +295,13 @@ export default function StartDevelopTaskDialog({
       task_type: ConstsTaskType.TaskTypeDevelop,
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success('对话任务已启动')
+        toast.success(t("consoleProject.startTask.toast.started"))
         onOpenChange(false)
         navigate(`/console/task/${resp.data?.id}`)
       } else if (resp.code === 10811) {
         setLimitDialogOpen(true)
       } else {
-        toast.error(resp.message || '任务启动失败')
+        toast.error(resp.message || t("consoleProject.startTask.toast.startFailed"))
       }
     })
 
@@ -317,12 +313,12 @@ export default function StartDevelopTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex flex-col">
         <DialogHeader>
-          <DialogTitle>启动 AI 任务</DialogTitle>
+          <DialogTitle>{t("consoleProject.startTask.title")}</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>项目</Label>
+            <Label>{t("consoleProject.startTask.project")}</Label>
             <Input 
               value={project?.name || '-'} 
               readOnly 
@@ -331,23 +327,23 @@ export default function StartDevelopTaskDialog({
           </div>
           {(project?.platform !== ConstsGitPlatform.GitPlatformInternal) && (
             <div className="space-y-2">
-              <Label>代码仓库分支</Label>
+              <Label>{t("consoleProject.startTask.branch")}</Label>
               {loadingBranches ? (
                 <div className="flex h-10 items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground">
                   <Spinner className="size-4" />
-                  <span>加载中...</span>
+                  <span>{t("consoleProject.common.loading")}</span>
                 </div>
               ) : branchFetchFailed || branches.length === 0 ? (
                 <Input
                   value={selectedBranch}
                   onChange={(e) => selectBranch(e.target.value)}
-                  placeholder="请输入分支名称"
+                  placeholder={t("consoleProject.startTask.branchPlaceholder")}
                   required
                 />
               ) : (
                 <Select value={selectedBranch} onValueChange={selectBranch}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="请选择分支" />
+                    <SelectValue placeholder={t("consoleProject.startTask.selectBranch")} />
                   </SelectTrigger>
                   <SelectContent className="break-all">
                     {branches.map((branch) => (
@@ -371,7 +367,7 @@ export default function StartDevelopTaskDialog({
                 variant="ghost"
                 className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-transparent aria-expanded:bg-transparent"
               >
-                <span className="font-medium">高级选项</span>
+                <span className="font-medium">{t("consoleProject.startTask.advancedOptions")}</span>
                 <IconChevronDown
                   className={cn(
                     "size-4 text-muted-foreground transition-transform",
@@ -382,7 +378,7 @@ export default function StartDevelopTaskDialog({
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 border-t px-3 py-3">
               <div className="space-y-2">
-                <Label>大模型</Label>
+                <Label>{t("consoleProject.startTask.model")}</Label>
                 <ModelSelect
                   models={models}
                   selectedModel={selectedModel}
@@ -392,17 +388,17 @@ export default function StartDevelopTaskDialog({
                 />
               </div>
               <div className="space-y-2">
-                <Label>宿主机</Label>
+                <Label>{t("consoleProject.startTask.host")}</Label>
                 <Select value={selectedHostId} onValueChange={setSelectedHostId}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="请选择宿主机" />
+                    <SelectValue placeholder={t("consoleProject.startTask.selectHost")} />
                   </SelectTrigger>
                   <SelectContent>
                     {!IS_OFFLINE_EDITION && (
                       <SelectItem value="public_host">
                         <div className="flex items-center gap-2">
                           <span>MonkeyCode</span>
-                          <Badge className="!text-primary-foreground">免费</Badge>
+                          <Badge className="!text-primary-foreground">{t("consoleProject.startTask.free")}</Badge>
                         </div>
                       </SelectItem>
                     )}
@@ -421,10 +417,10 @@ export default function StartDevelopTaskDialog({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>系统镜像</Label>
+                <Label>{t("consoleProject.startTask.image")}</Label>
                 <Select value={selectedImageId} onValueChange={setSelectedImageId}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择系统镜像" />
+                    <SelectValue placeholder={t("consoleProject.startTask.selectImage")} />
                   </SelectTrigger>
                   <SelectContent>
                     {images.filter((image) => image.id).map((image) => (
@@ -447,19 +443,22 @@ export default function StartDevelopTaskDialog({
             </CollapsibleContent>
           </Collapsible>
           <div className="space-y-2">
-            <Label>任务内容</Label>
+            <Label>{t("consoleProject.startTask.content")}</Label>
             <div className="space-y-1">
               <Textarea
                 value={userMessage}
                 onChange={(e) => setUserMessage(e.target.value)}
-                placeholder={TASK_PROMPT_PLACEHOLDER}
+                placeholder={t("consoleProject.startTask.contentPlaceholder")}
                 rows={4}
                 className="resize-none break-all"
                 aria-invalid={userMessageTooLong}
               />
               {userMessageTooLong && (
                 <div className="px-1 text-xs text-destructive">
-                  已超出 {userMessageLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+                  {t("consoleProject.startTask.contentTooLong", {
+                    over: userMessageLength - MAX_TASK_CONTENT_LENGTH,
+                    max: MAX_TASK_CONTENT_LENGTH,
+                  })}
                 </div>
               )}
             </div>
@@ -472,7 +471,7 @@ export default function StartDevelopTaskDialog({
             disabled={submitting || userMessageTooLong}
           >
             {submitting ? <Spinner /> : <IconSparkles className="size-4" />}
-            开始对话
+            {t("consoleProject.startTask.start")}
           </Button>
         </DialogFooter>
       </DialogContent>

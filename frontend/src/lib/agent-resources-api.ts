@@ -5,6 +5,12 @@
 // slim spec §7.4. This module only exposes the read-only listing types that
 // the task-input components consume.
 
+import i18n from "@/i18n"
+
+function agentResourcesText(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(`agentResourcesApi.${key}`, options))
+}
+
 // Backend response envelope used by GoYoko/v1 routes.
 type ApiResponse<T> = {
   code: number
@@ -30,14 +36,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     ) {
       window.location.href = "/login"
     }
-    throw new Error("未登录")
+    throw new Error(agentResourcesText("unauthorized"))
   }
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${res.statusText}`)
   }
   const json = (await res.json()) as ApiResponse<T>
   if (json.code !== 0) {
-    throw new Error(json.message || "请求失败")
+    throw new Error(json.message || agentResourcesText("requestFailed"))
   }
   return json.data
 }

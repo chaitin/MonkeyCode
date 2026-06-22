@@ -59,8 +59,10 @@ import { Spinner } from "@/components/ui/spinner"
 import { IconCheck, IconHeartRateMonitor, IconLoader, IconPencil, IconTrash, IconX } from "@tabler/icons-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { useTranslation } from "react-i18next"
 
 export default function TeamManagerModels() {
+  const { t } = useTranslation()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [selectedModel, setSelectedModel] = useState<DomainTeamModel | null>(null)
@@ -77,7 +79,7 @@ export default function TeamManagerModels() {
       if (resp.code === 0) {
         setModels(resp.data?.models || []);
       } else {
-        toast.error(resp.message || "获取模型列表失败")
+        toast.error(resp.message || t("managerModels.toast.fetchFailed"))
       }
     })
     setLoading(false)
@@ -90,48 +92,47 @@ export default function TeamManagerModels() {
 
   const handleDelete = (model: DomainTeamModel) => {
     if (!model.id) {
-      toast.error("模型信息不完整")
+      toast.error(t("managerModels.toast.incomplete"))
       return
     }
 
     apiRequest('v1TeamsModelsDelete', {}, [model.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("模型移除成功")
+        toast.success(t("managerModels.toast.removed"))
         fetchModels()
       } else {
-        toast.error(resp.message || "移除模型失败")
+        toast.error(resp.message || t("managerModels.toast.removeFailed"))
       }
     })
   }
 
   const handleCheck = async (model: DomainTeamModel) => {
     if (!model.id) {
-      toast.error("模型信息不完整")
+      toast.error(t("managerModels.toast.incomplete"))
       return
     }
     
-    // 打开检查对话框
     setCheckingModel(model)
     setCheckStatus('checking')
-    setCheckMessage('正在检查模型配置...')
+    setCheckMessage(t("managerModels.check.checkingMessage"))
     setIsCheckDialogOpen(true)
     
     await apiRequest('v1TeamsModelsHealthCheckDetail', {}, [model.id], (resp) => {
       if (resp.code === 0) {
         if (resp.data?.success) {
           setCheckStatus('success')
-          setCheckMessage('模型连接正常')
-          toast.success("检查成功")
+          setCheckMessage(t("managerModels.check.connectionOk"))
+          toast.success(t("managerModels.toast.checkSuccess"))
           fetchModels()
         } else {
           setCheckStatus('error')
-          setCheckMessage(resp.data?.error || '检查失败')
-          toast.error("检查失败: " + resp.data?.error)
+          setCheckMessage(resp.data?.error || t("managerModels.toast.checkFailed"))
+          toast.error(t("managerModels.toast.checkFailedWithMessage", { message: resp.data?.error }))
         }
       } else {
         setCheckStatus('error')
-        setCheckMessage(resp.message || '检查失败')
-        toast.error("检查失败: " + resp.message)
+        setCheckMessage(resp.message || t("managerModels.toast.checkFailed"))
+        toast.error(t("managerModels.toast.checkFailedWithMessage", { message: resp.message }))
       }
     })
   }
@@ -146,10 +147,10 @@ export default function TeamManagerModels() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bot />
-            AI 大模型
+            {t("managerModels.title")}
           </CardTitle>
           <CardDescription>
-            配置 AI 大模型，用于代码生成和分析项目
+            {t("managerModels.description")}
           </CardDescription>
           <CardAction>
             <AddModel
@@ -182,7 +183,7 @@ export default function TeamManagerModels() {
                 </ItemMedia>
                 <ItemContent>
                   <ItemTitle className="break-all">
-                    {getModelDisplayNameForModel(model) || '未知模型'}
+                    {getModelDisplayNameForModel(model) || t("managerModels.fallback.unknownModel")}
                     {getInterfaceTypeBadge(model.interface_type)}
                   </ItemTitle>
                 </ItemContent>
@@ -196,11 +197,11 @@ export default function TeamManagerModels() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleCheck(model)}>
                         <IconHeartRateMonitor />
-                        检查
+                        {t("managerModels.actions.check")}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleEdit(model)}>
                         <IconPencil />
-                        修改
+                        {t("managerModels.actions.edit")}
                       </DropdownMenuItem>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -209,24 +210,26 @@ export default function TeamManagerModels() {
                             onSelect={(e) => { e.preventDefault() }}
                           >
                             <IconTrash />
-                            移除
+                            {t("managerModels.actions.remove")}
                           </DropdownMenuItem>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认移除</AlertDialogTitle>
+                            <AlertDialogTitle>{t("managerModels.remove.title")}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要移除模型 "{getModelDisplayNameForModel(model) || '未知模型'}" 吗？此操作不可撤销。
+                              {t("managerModels.remove.description", {
+                                name: getModelDisplayNameForModel(model) || t("managerModels.fallback.unknownModel"),
+                              })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogCancel>{t("managerModels.actions.cancel")}</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
                                 handleDelete(model)
                               }}
                             >
-                              确认移除
+                              {t("managerModels.actions.confirmRemove")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -240,7 +243,9 @@ export default function TeamManagerModels() {
                     {model.groups && model.groups.length > 0 ? model.groups?.map((group) => (
                       <Badge variant="outline" key={group.id}>{group.name}</Badge>
                     )) : (
-                      <div className="text-sm text-muted-foreground">暂无分组</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t("managerModels.fallback.noGroups")}
+                      </div>
                     )}
                   </div>
                 </ItemFooter>
@@ -256,18 +261,18 @@ export default function TeamManagerModels() {
           onRefresh={fetchModels}
         />
         
-        {/* 模型检查对话框 */}
         <Dialog open={isCheckDialogOpen} onOpenChange={(open) => {
-          // 只有在检查完成时才允许关闭
           if (checkStatus !== 'checking') {
             setIsCheckDialogOpen(open)
           }
         }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>检查模型配置</DialogTitle>
+              <DialogTitle>{t("managerModels.check.title")}</DialogTitle>
               <DialogDescription>
-                检查模型 "{checkingModel?.model || '未知模型'}" 的配置是否正确
+                {t("managerModels.check.description", {
+                  name: checkingModel?.model || t("managerModels.fallback.unknownModel"),
+                })}
               </DialogDescription>
             </DialogHeader>
             <div className="border border-dashed rounded-md p-4 items-center justify-center flex flex-col gap-4">
@@ -278,9 +283,9 @@ export default function TeamManagerModels() {
                   {checkStatus === 'error' && <IconX className="size-6" />}
                 </div>
                 <div className="text-md font-bold text-center">
-                  {checkStatus === 'checking' && '正在检查...'}
-                  {checkStatus === 'success' && '检查成功'}
-                  {checkStatus === 'error' && '检查失败'}
+                  {checkStatus === 'checking' && t("managerModels.check.checking")}
+                  {checkStatus === 'success' && t("managerModels.check.success")}
+                  {checkStatus === 'error' && t("managerModels.check.failed")}
                 </div>
               </div>
               <div className="break-all text-xs text-muted-foreground max-h-[100px] overflow-y-auto text-center">

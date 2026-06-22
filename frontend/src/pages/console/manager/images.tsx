@@ -54,8 +54,10 @@ import {
 import { IconPencil, IconTrash } from "@tabler/icons-react"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { useTranslation } from "react-i18next"
 
 export default function TeamManagerImages() {
+  const { t } = useTranslation()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [images, setImages] = useState<DomainTeamImage[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,7 +71,9 @@ export default function TeamManagerImages() {
       if (resp.code === 0) {
         setImages(resp.data?.images || []);
       } else {
-        toast.error("获取镜像列表失败: " + resp.message)
+        toast.error(resp.message
+          ? t("managerImages.toast.fetchFailedWithMessage", { message: resp.message })
+          : t("managerImages.toast.fetchFailed"))
       }
     })
     setLoading(false)
@@ -91,16 +95,16 @@ export default function TeamManagerImages() {
 
   const handleDelete = (image: DomainTeamImage) => {
     if (!image.id) {
-      toast.error("镜像信息不完整")
+      toast.error(t("managerImages.toast.incomplete"))
       return
     }
 
     apiRequest('v1TeamsImagesDelete', {}, [image.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("镜像移除成功")
+        toast.success(t("managerImages.toast.removed"))
         fetchImages()
       } else {
-        toast.error(resp.message || "移除镜像失败")
+        toast.error(resp.message || t("managerImages.toast.removeFailed"))
       }
     })
   }
@@ -111,10 +115,10 @@ export default function TeamManagerImages() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Box />
-            系统镜像
+            {t("managerImages.title")}
           </CardTitle>
           <CardDescription>
-            使用 Docker 镜像，用于构建开发环境
+            {t("managerImages.description")}
           </CardDescription>
           <CardAction>
             <AddImage
@@ -163,7 +167,7 @@ export default function TeamManagerImages() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleEdit(image)}>
                         <IconPencil />
-                        修改
+                        {t("managerImages.actions.edit")}
                       </DropdownMenuItem>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -172,24 +176,26 @@ export default function TeamManagerImages() {
                             onSelect={(e) => { e.preventDefault() }}
                           >
                             <IconTrash />
-                            移除
+                            {t("managerImages.actions.remove")}
                           </DropdownMenuItem>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认移除</AlertDialogTitle>
+                            <AlertDialogTitle>{t("managerImages.delete.title")}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要移除镜像 "{image.remark || getImageShortName(image.name || '')}" 吗？此操作不可撤销。
+                              {t("managerImages.delete.description", {
+                                name: image.remark || getImageShortName(image.name || ''),
+                              })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogCancel>{t("managerImages.actions.cancel")}</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
                                 handleDelete(image)
                               }}
                             >
-                              确认移除
+                              {t("managerImages.actions.confirmRemove")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -203,7 +209,9 @@ export default function TeamManagerImages() {
                     {image.groups && image.groups.length > 0 ? image.groups?.map((group) => (
                       <Badge variant="outline" key={group.id}>{group.name}</Badge>
                     )) : (
-                      <div className="text-sm text-muted-foreground">暂无分组</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t("managerImages.groups.empty")}
+                      </div>
                     )}
                   </div>
                 </ItemFooter>

@@ -15,6 +15,7 @@ import { apiRequest } from "@/utils/requestUtils";
 import { captchaChallenge } from "@/utils/common";
 import { toast } from "sonner";
 import dayjs from "dayjs";
+import { useTranslation } from "react-i18next";
 
 interface TeamMembersCardProps {
   members: any[];
@@ -25,14 +26,21 @@ interface TeamMembersCardProps {
   onRefreshGroups?: () => void;
 }
 
+const ADD_MEMBER_ERROR_MATCHERS = {
+  limit: ["limit", "\u4e0a\u9650"],
+  deleted: ["deleted", "\u5220\u9664"],
+  exists: ["exists", "\u5b58\u5728"],
+};
+
 export default function TeamMembersCard({ members, memberLimit, usedSeats, groups, onRefreshMembers, onRefreshGroups }: TeamMembersCardProps) {
+  const { t } = useTranslation();
   const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [emails, setEmails] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [generatedPasswords, setGeneratedPasswords] = useState<{ email?: string; password?: string }[]>([]);
-  const [passwordDialogTitle, setPasswordDialogTitle] = useState("成员初始密码");
+  const [passwordDialogTitleKey, setPasswordDialogTitleKey] = useState("managerMembers.password.initialTitle");
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [resettingPasswordUser, setResettingPasswordUser] = useState<{ id?: string; email?: string }>({});
@@ -40,21 +48,19 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<{ id?: string; email?: string }>({});
   const [deleting, setDeleting] = useState(false);
+  const errorMessage = (message?: string) => message || t("managerShell.common.unknownError");
 
-  // 获取成员所属的组
   const getMemberGroups = (memberId: string) => {
     return groups.filter(group => 
       group.users?.some((user: any) => user.id === memberId)
     );
   };
 
-  // 验证邮箱格式
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email.trim());
   };
 
-  // 解析邮箱列表（支持换行和逗号分隔）
   const parseEmails = (emailString: string): string[] => {
     return emailString
       .split(/[,\n;]/)
@@ -64,38 +70,37 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
 
   const formatAddMemberError = (message?: string) => {
     if (!message) {
-      return "成员添加失败，请稍后重试";
+      return t("managerMembers.toast.addFailedGeneric");
     }
-    if (message.includes("limit") || message.includes("上限")) {
-      return "成员添加失败：团队成员数量已达上限";
+    if (ADD_MEMBER_ERROR_MATCHERS.limit.some((keyword) => message.includes(keyword))) {
+      return t("managerMembers.toast.addFailedLimit");
     }
-    if (message.includes("deleted") || message.includes("删除")) {
-      return "成员添加失败：邮箱对应用户已被删除，不能重复添加";
+    if (ADD_MEMBER_ERROR_MATCHERS.deleted.some((keyword) => message.includes(keyword))) {
+      return t("managerMembers.toast.addFailedDeleted");
     }
-    if (message.includes("exists") || message.includes("存在")) {
-      return "成员添加失败：用户已在团队中";
+    if (ADD_MEMBER_ERROR_MATCHERS.exists.some((keyword) => message.includes(keyword))) {
+      return t("managerMembers.toast.addFailedExists");
     }
-    return `成员添加失败：${message}`;
+    return t("managerMembers.toast.addFailedWithMessage", { message });
   };
 
   const handleAddMember = async () => {
     const emailList = parseEmails(emails);
     
     if (emailList.length === 0) {
-      toast.error("请输入至少一个邮箱地址");
+      toast.error(t("managerMembers.toast.emailRequired"));
       return;
     }
 
-    // 验证所有邮箱格式
     const invalidEmails = emailList.filter(email => !validateEmail(email));
     if (invalidEmails.length > 0) {
-      toast.error(`以下邮箱格式不正确：${invalidEmails.join(", ")}`);
+      toast.error(t("managerMembers.toast.invalidEmails", { emails: invalidEmails.join(", ") }));
       return;
     }
     const lowerEmails = emailList.map(email => email.toLowerCase());
     const duplicateEmails = emailList.filter((email, index) => lowerEmails.indexOf(email.toLowerCase()) !== index);
     if (duplicateEmails.length > 0) {
-      toast.error(`以下邮箱重复输入：${Array.from(new Set(duplicateEmails)).join(", ")}`);
+      toast.error(t("managerMembers.toast.duplicateEmails", { emails: Array.from(new Set(duplicateEmails)).join(", ") }));
       return;
     }
 
@@ -105,10 +110,10 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       group_id: selectedGroupId || undefined,
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("成员添加成功");
+        toast.success(t("managerMembers.toast.added"));
         const passwords = resp.data?.passwords || [];
         setGeneratedPasswords(passwords);
-        setPasswordDialogTitle("成员初始密码");
+        setPasswordDialogTitleKey("managerMembers.password.initialTitle");
         setPasswordDialogOpen(passwords.length > 0);
         setAddMemberDialogOpen(false);
         setEmails("");
@@ -127,9 +132,9 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       .join("\n");
     try {
       await navigator.clipboard.writeText(text);
-      toast.success("初始密码已复制到剪贴板");
+      toast.success(t("managerMembers.toast.initialPasswordCopied"));
     } catch {
-      toast.error("复制失败，请手动复制");
+      toast.error(t("managerMembers.toast.copyFailed"));
     }
   };
 
@@ -144,10 +149,10 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       is_blocked: !currentStatus,
     }, [userId], (resp) => {
       if (resp.code === 0) {
-        toast.success(currentStatus ? "成员已启用" : "成员已禁用");
+        toast.success(currentStatus ? t("managerMembers.toast.enabled") : t("managerMembers.toast.disabled"));
         onRefreshMembers();
       } else {
-        toast.error("成员状态切换失败: " + resp.message);
+        toast.error(t("managerMembers.toast.statusToggleFailed", { message: errorMessage(resp.message) }));
       }
     })
   }
@@ -175,20 +180,20 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       }
       await apiRequest('v1TeamsUsersPasswordsResetUpdate', {}, [resettingPasswordUser.id], (resp) => {
         if (resp.code === 0) {
-          toast.success(`已为 ${resettingPasswordUser.email || "该成员"} 重置密码`);
+          toast.success(t("managerMembers.toast.resetPassword", { email: resettingPasswordUser.email || t("managerMembers.userFallback") }));
           setGeneratedPasswords(resp.data ? [resp.data] : []);
-          setPasswordDialogTitle("成员重置密码");
+          setPasswordDialogTitleKey("managerMembers.password.resetTitle");
           setPasswordDialogOpen(!!resp.data?.password);
           setResetPasswordDialogOpen(false);
           setResettingPasswordUser({});
         } else {
-          toast.error("重置密码失败: " + resp.message);
+          toast.error(t("managerMembers.toast.resetFailed", { message: errorMessage(resp.message) }));
         }
       })
     } else {
       const captchaToken = await captchaChallenge();
       if (!captchaToken) {
-        toast.error("验证码验证失败");
+        toast.error(t("managerMembers.toast.captchaFailed"));
         setResettingPassword(false);
         return;
       }
@@ -197,11 +202,11 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
         captcha_token: captchaToken,
       }, [], (resp) => {
         if (resp.code === 0) {
-          toast.success(`已为 ${resettingPasswordUser.email} 发送密码重置邮件`);
+          toast.success(t("managerMembers.toast.resetEmailSent", { email: resettingPasswordUser.email }));
           setResetPasswordDialogOpen(false);
           setResettingPasswordUser({});
         } else {
-          toast.error("发送密码重置邮件失败: " + resp.message);
+          toast.error(t("managerMembers.toast.resetEmailFailed", { message: errorMessage(resp.message) }));
         }
       })
     }
@@ -225,13 +230,13 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
     setDeleting(true);
     await apiRequest('v1TeamsUsersDelete', {}, [deletingUser.id], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已删除成员 ${deletingUser.email || ""}`);
+        toast.success(t("managerMembers.toast.deleted", { email: deletingUser.email || "" }));
         setDeletingUser({});
         setDeleteDialogOpen(false);
         onRefreshMembers();
         onRefreshGroups?.();
       } else {
-        toast.error("删除成员失败: " + resp.message);
+        toast.error(t("managerMembers.toast.deleteFailed", { message: errorMessage(resp.message) }));
       }
     })
     setDeleting(false);
@@ -243,10 +248,10 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <IconUserCircle />
-            普通成员
+            {t("managerMembers.title")}
           </CardTitle>
           <CardDescription>
-            当前成员数量: {usedSeats} / {memberLimit}
+            {t("managerMembers.count", { used: usedSeats, limit: memberLimit })}
           </CardDescription>
           <CardAction>
             <Button 
@@ -255,7 +260,7 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
               onClick={() => setAddMemberDialogOpen(true)}
             >
               <IconCirclePlus />
-              添加成员
+              {t("managerMembers.actions.add")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -278,8 +283,10 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
                       {member.user?.name} - {member.user?.email}
                     </ItemTitle>
                     <ItemDescription className="flex flex-wrap gap-1">
-                      {dayjs(member.created_at * 1000).fromNow()}加入
-                      {!!member.last_active_at && `，${dayjs(member.last_active_at * 1000).fromNow()}使用过`}
+                      <span>{t("managerMembers.list.joined", { time: dayjs(member.created_at * 1000).fromNow() })}</span>
+                      {!!member.last_active_at && (
+                        <span>{t("managerMembers.list.lastActive", { time: dayjs(member.last_active_at * 1000).fromNow() })}</span>
+                      )}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
@@ -295,27 +302,27 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
                             onClick={() => handleToggleBlockStatus(member.user?.id || '', member.user?.is_blocked || false)}
                           >
                             <IconCheck />
-                            设为启用
+                            {t("managerMembers.actions.enable")}
                           </DropdownMenuItem>
                         ) : (
                           <DropdownMenuItem
                             onClick={() => handleToggleBlockStatus(member.user?.id || '', member.user?.is_blocked || false)}
                           >
                             <IconForbid />
-                            设为禁用
+                            {t("managerMembers.actions.disable")}
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
                           onClick={() => handleOpenResetPasswordDialog({ id: member.user?.id, email: member.user?.email })}
                         >
                           <IconLockCode />
-                          重置密码
+                          {t("managerMembers.actions.resetPassword")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleOpenDeleteDialog({ id: member.user?.id, email: member.user?.email })}
                         >
                           <IconTrash />
-                          删除成员
+                          {t("managerMembers.actions.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -337,11 +344,11 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       <Dialog open={addMemberDialogOpen} onOpenChange={setAddMemberDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>添加成员</DialogTitle>
+            <DialogTitle>{t("managerMembers.dialogs.add.title")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
             <Field>
-              <FieldLabel>邮箱地址</FieldLabel>
+              <FieldLabel>{t("managerMembers.fields.email")}</FieldLabel>
               <FieldContent>
                 <Textarea
                   placeholder="user1@example.com; user2@example.com; user3@example.com"
@@ -354,10 +361,10 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleCancelAddMember} disabled={submitting}>
-              取消
+              {t("managerShell.common.cancel")}
             </Button>
             <Button onClick={handleAddMember} disabled={!emails.trim() || submitting}>
-              {submitting ? "添加中..." : "添加"}
+              {submitting ? t("managerMembers.actions.adding") : t("managerMembers.actions.addShort")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -366,7 +373,7 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{passwordDialogTitle}</DialogTitle>
+            <DialogTitle>{t(passwordDialogTitleKey)}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             {generatedPasswords.map((item) => (
@@ -379,10 +386,10 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
           <DialogFooter>
             <Button variant="outline" onClick={handleCopyGeneratedPasswords} disabled={generatedPasswords.length === 0}>
               <IconCopy />
-              复制
+              {t("managerMembers.actions.copy")}
             </Button>
             <Button onClick={() => setPasswordDialogOpen(false)}>
-              完成
+              {t("managerMembers.actions.done")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -391,19 +398,19 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       <AlertDialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认重置密码</AlertDialogTitle>
+            <AlertDialogTitle>{t("managerMembers.dialogs.resetPassword.title")}</AlertDialogTitle>
             <AlertDialogDescription>
               {isOfflineEdition
-                ? `确定要为成员 "${resettingPasswordUser.email}" 重置密码吗？系统将生成新密码，并仅在本次操作后展示一次。`
-                : `确定要为成员 "${resettingPasswordUser.email}" 重置密码吗？系统将发送密码重置邮件到该成员的邮箱。`}
+                ? t("managerMembers.dialogs.resetPassword.offlineDescription", { email: resettingPasswordUser.email })
+                : t("managerMembers.dialogs.resetPassword.onlineDescription", { email: resettingPasswordUser.email })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancelResetPassword} disabled={resettingPassword}>
-              取消
+              {t("managerShell.common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmResetPassword} disabled={resettingPassword}>
-              {resettingPassword ? "重置中..." : "确认重置"}
+              {resettingPassword ? t("managerMembers.dialogs.resetPassword.resetting") : t("managerMembers.dialogs.resetPassword.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -412,17 +419,17 @@ export default function TeamMembersCard({ members, memberLimit, usedSeats, group
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除成员</AlertDialogTitle>
+            <AlertDialogTitle>{t("managerMembers.dialogs.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除成员 "{deletingUser.email}" 吗？删除后该成员将无法继续使用团队账号登录。
+              {t("managerMembers.dialogs.delete.description", { email: deletingUser.email })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancelDelete} disabled={deleting}>
-              取消
+              {t("managerShell.common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? "删除中..." : "确认删除"}
+              {deleting ? t("managerMembers.dialogs.delete.deleting") : t("managerMembers.dialogs.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

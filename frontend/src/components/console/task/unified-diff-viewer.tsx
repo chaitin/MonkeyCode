@@ -1,6 +1,7 @@
 import { IconLoader, IconReport } from "@tabler/icons-react"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
 import { cn } from "@/lib/utils"
+import { taskDetailT } from "./task-i18n"
 
 export type DiffViewMode = "unified" | "split"
 
@@ -43,7 +44,7 @@ function normalizePath(path: string) {
 function getDisplayPath(file: DiffFile) {
   if (file.newPath && file.newPath !== "/dev/null") return file.newPath
   if (file.oldPath && file.oldPath !== "/dev/null") return file.oldPath
-  return "未知文件"
+  return taskDetailT("diff.unknownFile")
 }
 
 function getDisplayFileName(file: DiffFile) {
@@ -172,7 +173,7 @@ function LoadingState() {
         <EmptyMedia variant="icon">
           <IconLoader className="size-6 animate-spin" />
         </EmptyMedia>
-        <EmptyDescription>加载中...</EmptyDescription>
+        <EmptyDescription>{taskDetailT("diff.loading")}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   )
@@ -279,16 +280,16 @@ function FileHunksView({ hunks, viewMode, lineNumberWidth }: { hunks: DiffHunk[]
 
 export function UnifiedDiffViewer({ diffText, loading = false, viewMode = "unified" }: UnifiedDiffViewerProps) {
   if (loading) return <LoadingState />
-  if (!diffText.trim()) return <EmptyState>暂无变更</EmptyState>
+  if (!diffText.trim()) return <EmptyState>{taskDetailT("diff.empty")}</EmptyState>
 
   let files: DiffFile[]
   try {
     files = parseUnifiedDiff(diffText)
   } catch {
-    return <EmptyState>变更内容解析失败</EmptyState>
+    return <EmptyState>{taskDetailT("diff.parseContentFailed")}</EmptyState>
   }
 
-  if (files.length === 0) return <EmptyState>暂无文本变更</EmptyState>
+  if (files.length === 0) return <EmptyState>{taskDetailT("diff.noTextChanges")}</EmptyState>
 
   const lineNumberWidth = `calc(${getMaxLineNumberDigits(files)}ch + 1rem)`
 
@@ -301,7 +302,7 @@ export function UnifiedDiffViewer({ diffText, loading = false, viewMode = "unifi
               {getDisplayFileName(file)}
             </div>
             {file.isBinary ? (
-              <div className="px-3 py-4 text-sm text-muted-foreground">二进制文件变更，无法展示文本 diff</div>
+              <div className="px-3 py-4 text-sm text-muted-foreground">{taskDetailT("diff.binaryUnsupported")}</div>
             ) : (
               <FileHunksView hunks={file.hunks} viewMode={viewMode} lineNumberWidth={lineNumberWidth} />
             )}

@@ -1,5 +1,6 @@
 import { createPatch } from "diff"
 import { UnifiedDiffViewer, type DiffViewMode } from "../unified-diff-viewer"
+import { taskDetailT } from "../task-i18n"
 
 const PATCH_OPTIONS = {
   headerOptions: {
@@ -54,7 +55,7 @@ const buildPreview = (filePath: unknown, oldValue: unknown, newValue: unknown) =
     }
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "diff 解析失败",
+      error: error instanceof Error ? error.message : taskDetailT("diff.parseFailed"),
       diffText: "",
       oldText,
       newText,
@@ -84,10 +85,10 @@ export const EditDiffPreview = ({
     return (
       <div className={padded ? "space-y-3 p-3" : "space-y-3"}>
         <div className="text-muted-foreground">
-          Diff 预览失败，已回退为文本展示。
+          {taskDetailT("diff.fallback")}
         </div>
         <pre className="overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/40 p-3 text-[11px] leading-5 text-muted-foreground">
-          {`文件: ${safePath}\n\n--- old ---\n${oldText || "(empty)"}\n\n--- new ---\n${newText || "(empty)"}\n\n[parse error] ${error}`}
+          {`${taskDetailT("diff.file")}: ${safePath}\n\n--- old ---\n${oldText || "(empty)"}\n\n--- new ---\n${newText || "(empty)"}\n\n[parse error] ${error}`}
         </pre>
       </div>
     )
@@ -96,7 +97,7 @@ export const EditDiffPreview = ({
   if (!diffText.trim()) {
     return (
       <div className={padded ? "p-3 text-muted-foreground" : "text-muted-foreground"}>
-        {hasChanges ? "未生成可展示的 diff" : "未检测到文本差异"}
+        {hasChanges ? taskDetailT("diff.noDisplayableDiff") : taskDetailT("diff.noTextDifference")}
       </div>
     )
   }

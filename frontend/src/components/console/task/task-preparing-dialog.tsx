@@ -3,6 +3,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "
 import { IconCheck, IconLoader, IconX } from "@tabler/icons-react"
 import { ConstsTaskStatus, GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType, type DomainProjectTask } from "@/api/Api"
 import { getConditionTypeText, getLastCondition } from "@/utils/common"
+import { useTranslation } from "react-i18next"
 
 interface TaskPreparingProps {
   task: DomainProjectTask | null
@@ -24,13 +25,13 @@ function TaskPreparingIcon({ task }: TaskPreparingProps) {
   return <IconCheck className="size-8" />
 }
 
-/** 内联形式，用于主内容区替换，不阻塞页面。使用 Empty 组件展示 */
 export function TaskPreparingView({ task }: TaskPreparingProps) {
+  const { t } = useTranslation()
   const show = useShouldShowPreparing(task)
   if (!show) return null
 
   const statusText = getConditionTypeText(task?.virtualmachine?.conditions)
-  const detailMessage = task?.virtualmachine?.conditions?.[task?.virtualmachine?.conditions?.length - 1]?.message || "正在准备开发环境..."
+  const detailMessage = task?.virtualmachine?.conditions?.[task?.virtualmachine?.conditions?.length - 1]?.message || t("taskDetail.preparing.detail")
 
   return (
     <Empty className="flex-1 bg-muted/60">

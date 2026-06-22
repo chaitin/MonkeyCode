@@ -15,12 +15,12 @@ import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
-import { getTaskContentLimitErrorMessage, MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
+import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
+import { useTranslation } from "react-i18next"
 
 const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
 const TASK_INPUT_DRAFT_STORAGE_PREFIX = "task-chat-input-draft"
-const PUBLISH_WEBSITE_PROMPT = "使用 publish-website 技能发布当前应用"
 const PASTED_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -92,6 +92,7 @@ const removeTaskInputDraft = (taskId: string) => {
 }
 
 export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }: TaskChatInputBoxProps) => {
+  const { t } = useTranslation()
   const [content, setContent] = useState(() => readTaskInputDraft(taskId))
   const [isComposing, setIsComposing] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
@@ -161,7 +162,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     }
 
     if (input.content.length > MAX_TASK_CONTENT_LENGTH) {
-      toast.error(getTaskContentLimitErrorMessage())
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
       return false
     }
 
@@ -180,16 +181,16 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     lastSubmittedInputRef.current = input
     restoreSubmittedInputOnIdleRef.current = false
     return true
-  }, [onSend])
+  }, [onSend, t])
 
-  const clearCurrentInput = () => {
+  const clearCurrentInput = React.useCallback(() => {
     removeTaskInputDraft(taskId)
     setContent('')
     setUploadedFiles([])
     setPreviewFile(null)
     setWhiteboardFileIndex(1)
     nextAttachmentFileIndexRef.current = 1
-  }
+  }, [taskId])
 
   const sendCurrentInput = async () => {
     const sent = await sendInputSnapshot(createCurrentInputSnapshot())
@@ -207,7 +208,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     }
 
     if (content.length > MAX_TASK_CONTENT_LENGTH) {
-      toast.error(getTaskContentLimitErrorMessage())
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
       return
     }
 
@@ -246,7 +247,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
       try {
         sent = await sendInputSnapshot(inputToSend)
       } catch (error) {
-        console.error("自动发送等待输入失败:", error)
+        console.error("Failed to auto-send queued input:", error)
       } finally {
         autoSendingQueuedInputRef.current = false
         if (mountedRef.current) {
@@ -269,9 +270,9 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
       setPreviewFile(null)
       nextAttachmentFileIndexRef.current = inputToSend.nextAttachmentFileIndex
       setQueuedInput(null)
-      toast.error("等待发送失败，请手动重试")
+      toast.error(t("taskDetail.chat.toast.autoSendFailed"))
     })()
-  }, [isExecuting, queueSize, queuedInput, sendInputSnapshot, sending])
+  }, [clearCurrentInput, isExecuting, queueSize, queuedInput, sendInputSnapshot, sending, t])
 
   const handleCancel = () => {
     restoreSubmittedInputOnIdleRef.current = content.trim() === '' && !queuedInput
@@ -288,7 +289,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     }
 
     if (content.length > MAX_TASK_CONTENT_LENGTH) {
-      toast.error(getTaskContentLimitErrorMessage())
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
       return
     }
 
@@ -383,24 +384,24 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     }
 
     if (uploadedFiles.length >= MAX_UPLOADED_FILES) {
-      toast.error(`最多只能上传 ${MAX_UPLOADED_FILES} 个文件`)
+      toast.error(t("taskDetail.chat.toast.maxFiles", { count: MAX_UPLOADED_FILES }))
       return
     }
 
     const normalizedFile = addCurrentRoundFileIndex(normalizeUploadFile(file))
 
     if (normalizedFile.size === 0) {
-      toast.error("不能上传空文件")
+      toast.error(t("taskDetail.chat.toast.emptyFile"))
       return
     }
 
     if (normalizedFile.size > MAX_UPLOAD_FILE_SIZE) {
-      toast.error("文件大小不能超过 2MB")
+      toast.error(t("taskDetail.chat.toast.fileTooLarge", { size: "2MB" }))
       return
     }
 
     if (!hasFileExtension(normalizedFile.name)) {
-      toast.error("不支持上传没有后缀的文件")
+      toast.error(t("taskDetail.chat.toast.missingExtension"))
       return
     }
 
@@ -474,7 +475,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
 
     e.preventDefault()
     if (files.length > 1) {
-      toast.info("当前仅支持一次上传 1 个文件")
+      toast.info(t("taskDetail.chat.toast.singleFileOnly"))
     }
 
     prepareUploadFile(files[0], { autoUpload: true })
@@ -525,7 +526,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
         return
       }
       if (files.length > 1) {
-        toast.info("当前仅支持一次上传 1 个文件")
+        toast.info(t("taskDetail.chat.toast.singleFileOnly"))
       }
 
       prepareUploadFile(files[0], { autoUpload: true })
@@ -544,12 +545,10 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     }
   })
 
-  // 处理键盘事件
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (inputLocked) {
       return
     }
-    // 如果正在输入法组合过程中，不触发提交
     if (isComposing) {
       return
     }
@@ -572,12 +571,10 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
     }
   }
 
-  // 处理输入法组合开始
   const handleCompositionStart = () => {
     setIsComposing(true)
   }
 
-  // 处理输入法组合结束
   const handleCompositionEnd = () => {
     setIsComposing(false)
   }
@@ -588,10 +585,10 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
   const contentTooLong = contentLength > MAX_TASK_CONTENT_LENGTH
   const canSend = content.trim() !== '' && !contentTooLong
   const canUploadMoreFiles = uploadedFiles.length < MAX_UPLOADED_FILES
-  const whiteboardFileName = `画板-${whiteboardFileIndex}.png`
+  const whiteboardFileName = `whiteboard-${whiteboardFileIndex}.png`
   const inputPlaceholder = isExecuting
-    ? "任务执行中，可先输入下一条消息，回车后将等待发送。"
-    : "描述你的需求，Shift+Enter 换行，Enter 发送。"
+    ? t("taskDetail.chat.placeholder.executing")
+    : t("taskDetail.chat.placeholder.idle")
   const executionElapsedSeconds = (executionTimeMs / 1000).toFixed(1)
   const showExecutionStatusPanel = isExecuting
 
@@ -606,7 +603,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
         <div className="mb-2 flex min-w-0 items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs">
           <div className="flex min-w-0 items-center gap-2 font-medium">
             <IconLoader className="size-4 shrink-0 animate-spin text-primary" />
-            <span className="truncate">任务正在执行，耗时 {executionElapsedSeconds} 秒</span>
+            <span className="truncate">{t("taskDetail.chat.executionStatus", { seconds: executionElapsedSeconds })}</span>
           </div>
           <Button
             type="button"
@@ -615,7 +612,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
             onClick={handleCancel}
             disabled={!onCancel}
           >
-            取消
+            {t("taskDetail.common.cancel")}
           </Button>
         </div>
       )}
@@ -649,7 +646,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>命令选项</TooltipContent>
+                  <TooltipContent>{t("taskDetail.chat.commandOptions")}</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent className={showCommandItems ? "w-[min(90vw,32rem)] min-w-80 max-w-[min(90vw,32rem)]" : "w-48 min-w-48"}>
                   {showCommandItems && (
@@ -657,32 +654,32 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                       <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onSelect={() => onRequestRestartAgent?.(false)}>
                         <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
                           <IconReload />
-                          <div className="font-bold text-xs">重启 Agent</div>
+                          <div className="font-bold text-xs">{t("taskDetail.chat.commands.restartAgent")}</div>
                         </div>
                         <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
-                          保留当前上下文，重新启动 Agent 会话。
+                          {t("taskDetail.chat.commands.restartAgentDescription")}
                         </div>
                       </DropdownMenuItem>
                       <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onSelect={() => onRequestRestartAgent?.(true)}>
                         <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
                           <IconTrash />
-                          <div className="font-bold text-xs">重启 Agent 并清空上下文</div>
+                          <div className="font-bold text-xs">{t("taskDetail.chat.commands.restartAgentClear")}</div>
                         </div>
                         <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
-                          清空当前上下文后，重新启动 Agent 会话。
+                          {t("taskDetail.chat.commands.restartAgentClearDescription")}
                         </div>
                       </DropdownMenuItem>
                       {!IS_OFFLINE_EDITION && (
                         <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => {
-                          setContent(PUBLISH_WEBSITE_PROMPT)
+                          setContent(t("taskDetail.chat.commands.publishPrompt"))
                           requestAnimationFrame(() => textareaRef.current?.focus())
                         }}>
                           <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
                             <IconCommand />
-                            <div className="font-bold text-xs">发布 Web 应用</div>
+                            <div className="font-bold text-xs">{t("taskDetail.chat.commands.publishWebsite")}</div>
                           </div>
                           <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
-                            将你制作的 Web 应用发布到可公开访问的 MonkeyCode 用户作品集。
+                            {t("taskDetail.chat.commands.publishWebsiteDescription")}
                           </div>
                         </DropdownMenuItem>
                       )}
@@ -712,13 +709,13 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                       size="icon-sm"
                       className="rounded-full"
                       disabled={!canUseIdleControls}
-                      aria-label="上传附件"
+                      aria-label={t("taskDetail.chat.uploadAttachment")}
                       onClick={handleSelectFile}
                     >
                       <IconUpload />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>上传附件</TooltipContent>
+                  <TooltipContent>{t("taskDetail.chat.uploadAttachment")}</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
@@ -729,13 +726,13 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                     size="icon-sm"
                     className="rounded-full"
                     disabled={!canUseIdleControls}
-                    aria-label="画板"
+                    aria-label={t("taskDetail.chat.whiteboard")}
                     onClick={() => setWhiteboardDialogOpen(true)}
                   >
                     <IconPalette />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>画板</TooltipContent>
+                <TooltipContent>{t("taskDetail.chat.whiteboard")}</TooltipContent>
               </Tooltip>
               {uploadedFiles.map((uploadedFile) => (
                 <TaskUploadedFileItem
@@ -769,11 +766,11 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                 >
                   <IconLoader className="size-4 shrink-0 animate-spin" />
                   {autoSendingQueuedInput ? (
-                    "正在自动发送"
+                    t("taskDetail.chat.autoSending")
                   ) : (
                     <>
-                      <span className="group-hover/auto-send:hidden">等待自动发送</span>
-                      <span className="hidden group-hover/auto-send:inline">取消自动发送</span>
+                      <span className="group-hover/auto-send:hidden">{t("taskDetail.chat.waitingAutoSend")}</span>
+                      <span className="hidden group-hover/auto-send:inline">{t("taskDetail.chat.cancelAutoSend")}</span>
                     </>
                   )}
                 </InputGroupButton>
@@ -786,7 +783,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                   disabled={!canSend}
                 >
                   <IconSend />
-                  发送
+                  {t("taskDetail.common.send")}
                 </InputGroupButton>
               ) : (
                 <InputGroupButton
@@ -797,7 +794,7 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                   disabled={!canSend || !canUseIdleControls}
                 >
                   <IconSend />
-                  发送
+                  {t("taskDetail.common.send")}
                 </InputGroupButton>
               )}
             </div>
@@ -806,7 +803,10 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
       </InputGroup>
       {contentTooLong && (
         <div className="mt-1 px-1 text-xs text-destructive">
-          已超出 {contentLength - MAX_TASK_CONTENT_LENGTH} 字，最多 {MAX_TASK_CONTENT_LENGTH} 字，无法发送。
+          {t("taskDetail.chat.contentTooLongInline", {
+            overCount: contentLength - MAX_TASK_CONTENT_LENGTH,
+            maxCount: MAX_TASK_CONTENT_LENGTH,
+          })}
         </div>
       )}
       <TaskFileUploadDialog
@@ -842,15 +842,15 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
       <AlertDialog open={slashCommandConfirmOpen} onOpenChange={setSlashCommandConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>内部指令</AlertDialogTitle>
+            <AlertDialogTitle>{t("taskDetail.chat.slashCommand.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              消息以 / 开头，会被系统识别成内部指令。
+              {t("taskDetail.chat.slashCommand.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmSlashCommand}>
-              确认发送
+              {t("taskDetail.chat.slashCommand.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

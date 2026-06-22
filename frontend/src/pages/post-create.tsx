@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { IconArticle, IconPlus, IconShare, IconLoader, IconX, IconCheck, IconSelector, IconFileCode } from "@tabler/icons-react";
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Field, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import MarkdownEditor from "../components/common/markdown-editor";
@@ -20,19 +21,20 @@ type PostType = "article" | "task" | "project" | null;
 const postTypeOptions = [
   {
     value: "article" as const,
-    label: "写一篇文章",
-    description: "分享你的想法、教程或经验",
+    labelKey: "playground.create.options.article.label",
+    descriptionKey: "playground.create.options.article.description",
     icon: IconArticle,
   },
   {
     value: "task" as const,
-    label: "分享你执行过的任务",
-    description: "分享你执行过的任务，让更多人了解你的技能",
+    labelKey: "playground.create.options.task.label",
+    descriptionKey: "playground.create.options.task.description",
     icon: IconShare,
   }
 ];
 
 const PostCreate = () => {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const taskIdFromUrl = searchParams.get("taskid");
   
@@ -53,7 +55,7 @@ const PostCreate = () => {
   const [files, setFiles] = useState<string[]>([]);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
 
-  // 当选择任务类型时，拉取任务列表
+  // Fetch the task list when task sharing is selected.
   useEffect(() => {
     if (postType === "task" && tasks.length === 0) {
       setLoadingTasks(true);
@@ -61,12 +63,14 @@ const PostCreate = () => {
         if (resp.code === 0) {
           setTasks(resp.data?.tasks || []);
         } else {
-          toast.error("获取任务列表失败: " + resp.message);
+          toast.error(t("playground.create.toast.fetchTasksFailed", {
+            message: resp.message || t("playground.create.toast.unknownError"),
+          }));
         }
         setLoadingTasks(false);
       });
     }
-  }, [postType]);
+  }, [postType, tasks.length, t]);
 
   const onEditAddImage = (imageUrl: string) => {
     if (!images.includes(imageUrl)) {
@@ -81,7 +85,7 @@ const PostCreate = () => {
     e.target.value = "";
 
     if (!file.type.startsWith("image/")) {
-      toast.error("请选择图片文件");
+      toast.error(t("playground.create.toast.invalidImage"));
       return;
     }
 
@@ -96,12 +100,14 @@ const PostCreate = () => {
       if (response.data?.code === 0 && response.data?.data) {
         const imageUrl = response.data.data;
         setImages([...images, imageUrl]);
-        toast.success("图片上传成功");
+        toast.success(t("playground.create.toast.imageUploaded"));
       } else {
-        toast.error("图片上传失败: " + (response.data?.message || "未知错误"));
+        toast.error(t("playground.create.toast.imageUploadFailed", {
+          message: response.data?.message || t("playground.create.toast.unknownError"),
+        }));
       }
     } catch (error) {
-      toast.error("图片上传失败: " + (error as Error).message);
+      toast.error(t("playground.create.toast.imageUploadFailed", { message: (error as Error).message }));
     } finally {
       setUploading(false);
     }
@@ -177,10 +183,12 @@ const PostCreate = () => {
       [],
       (resp) => {
         if (resp.code === 0) {
-          toast.success("发布成功，审核后会显示在广场上");
+          toast.success(t("playground.create.toast.postSuccess"));
           navigate("/playground");
         } else {
-          toast.error("发布失败: " + resp.message);
+          toast.error(t("playground.create.toast.postFailed", {
+            message: resp.message || t("playground.create.toast.unknownError"),
+          }));
         }
       }
     );
@@ -191,7 +199,7 @@ const PostCreate = () => {
     if (files.length > 0) {
       const result = await zipFile();
       if (!result) {
-        toast.error("分享失败: 无法打包代码文件");
+        toast.error(t("playground.create.toast.zipFailed"));
         return;
       }
       zipFileUrl = result;
@@ -208,10 +216,12 @@ const PostCreate = () => {
       [taskId],
       (resp) => {
         if (resp.code === 0) {
-          toast.success("分享成功，审核后会显示在广场上");
+          toast.success(t("playground.create.toast.shareSuccess"));
           navigate("/playground");
         } else {
-          toast.error("分享失败: " + resp.message);
+          toast.error(t("playground.create.toast.shareFailed", {
+            message: resp.message || t("playground.create.toast.unknownError"),
+          }));
         }
       }
     );
@@ -231,11 +241,10 @@ const PostCreate = () => {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
-      {/* 类型选择弹窗 */}
       <Dialog open={showTypeDialog} onOpenChange={setShowTypeDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-center text-xl">选择发布类型</DialogTitle>
+            <DialogTitle className="text-center text-xl">{t("playground.create.typeTitle")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-4">
             {postTypeOptions.map((option) => (
@@ -248,8 +257,8 @@ const PostCreate = () => {
                   <option.icon className="size-6 text-primary" />
                 </div>
                 <div className="flex-1">
-                  <div className="font-medium">{option.label}</div>
-                  <div className="text-sm text-muted-foreground">{option.description}</div>
+                  <div className="font-medium">{t(option.labelKey)}</div>
+                  <div className="text-sm text-muted-foreground">{t(option.descriptionKey)}</div>
                 </div>
               </div>
             ))}
@@ -257,15 +266,15 @@ const PostCreate = () => {
         </DialogContent>
       </Dialog>
 
-      {/* 表单区域 */}
       {postType && (
         <div className="space-y-6">
-          <h1 className="text-xl font-semibold">{postTypeOptions.find((option) => option.value === postType)?.label}</h1>
+          <h1 className="text-xl font-semibold">
+            {t(postTypeOptions.find((option) => option.value === postType)?.labelKey || "")}
+          </h1>
 
-          {/* 任务特有字段 - 选择任务放在标题上面 */}
           {postType === "task" && (
             <Field>
-              <FieldLabel>任务</FieldLabel>
+              <FieldLabel>{t("playground.create.fields.task")}</FieldLabel>
               <Popover open={taskPopoverOpen} onOpenChange={setTaskPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -276,22 +285,22 @@ const PostCreate = () => {
                     disabled={posting || loadingTasks}
                   >
                     {loadingTasks ? (
-                      <span className="text-muted-foreground">加载中...</span>
+                      <span className="text-muted-foreground">{t("playground.create.task.loading")}</span>
                     ) : taskId ? (
                       <span className="truncate">
-                        {tasks.find((t) => t.id === taskId)?.content || `任务 ${taskId}`}
+                        {tasks.find((task) => task.id === taskId)?.content || t("playground.create.task.fallbackName", { taskId })}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">请选择要分享的任务</span>
+                      <span className="text-muted-foreground">{t("playground.create.task.selectPlaceholder")}</span>
                     )}
                     <IconSelector className="ml-2 size-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-full max-w-3xl p-0" align="start">
                   <Command>
-                    <CommandInput placeholder="搜索任务..." />
+                    <CommandInput placeholder={t("playground.create.task.searchPlaceholder")} />
                     <CommandList className="max-h-[200px] w-full">
-                      <CommandEmpty>暂无任务</CommandEmpty>
+                      <CommandEmpty>{t("playground.create.task.empty")}</CommandEmpty>
                       <CommandGroup>
                         {tasks.map((task) => (
                           <CommandItem
@@ -304,7 +313,9 @@ const PostCreate = () => {
                             }}
                             className="cursor-pointer"
                           >
-                            <span className="line-clamp-1">{task.content || `任务 ${task.id}`}</span>
+                            <span className="line-clamp-1">
+                              {task.content || t("playground.create.task.fallbackName", { taskId: task.id })}
+                            </span>
                             <IconCheck className={cn("size-4", taskId === task.id ? "opacity-100" : "opacity-0")} />
                           </CommandItem>
                         ))}
@@ -317,21 +328,20 @@ const PostCreate = () => {
           )}
 
           <Field>
-            <FieldLabel>标题</FieldLabel>
+            <FieldLabel>{t("playground.create.fields.title")}</FieldLabel>
             <Input
-              placeholder="请输入标题"
+              placeholder={t("playground.create.placeholders.title")}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={posting}
             />
           </Field>
 
-          {/* 项目特有字段 */}
           {postType === "project" && (
             <Field>
-              <FieldLabel>项目 ID</FieldLabel>
+              <FieldLabel>{t("playground.create.fields.projectId")}</FieldLabel>
               <Input
-                placeholder="请输入要分享的项目 ID"
+                placeholder={t("playground.create.placeholders.projectId")}
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
                 disabled={posting}
@@ -340,7 +350,7 @@ const PostCreate = () => {
           )}
 
           <Field>
-            <FieldLabel>内容</FieldLabel>
+            <FieldLabel>{t("playground.create.fields.content")}</FieldLabel>
             <div className="h-[50vh]">
               <MarkdownEditor
                 disabled={posting}
@@ -352,7 +362,7 @@ const PostCreate = () => {
           </Field>
 
           <Field>
-            <FieldLabel>图片</FieldLabel>
+            <FieldLabel>{t("playground.create.fields.images")}</FieldLabel>
             <div className="flex flex-wrap gap-2">
               {images.map((image) => (
                 <div
@@ -388,7 +398,6 @@ const PostCreate = () => {
             </div>
           </Field>
 
-          {/* 产出物文件选择 - 仅当任务模式且任务正在执行时显示 */}
           {postType === "task" && taskId && (() => {
             const selectedTask = tasks.find((t) => t.id === taskId);
             const isOnline = selectedTask?.status === ConstsTaskStatus.TaskStatusProcessing;
@@ -397,14 +406,16 @@ const PostCreate = () => {
             }
             return (
               <Field>
-                <FieldLabel>产出物</FieldLabel>
+                <FieldLabel>{t("playground.create.fields.artifact")}</FieldLabel>
                 <div className="flex flex-wrap gap-2 text-xs">
                   <div
                     className="w-fit relative group cursor-pointer border rounded-md border-dashed px-3 py-2 flex items-center justify-center bg-muted/30 hover:bg-muted gap-2"
                     onClick={() => setFilePickerOpen(true)}
                   >
                     <IconFileCode className="size-4 text-muted-foreground" />
-                    {files.length > 0 ? `已选择 ${files.length} 个文件` : '未选择文件'}
+                    {files.length > 0
+                      ? t("playground.create.task.selectedFiles", { count: files.length })
+                      : t("playground.create.task.noFilesSelected")}
                   </div>
                 </div>
                 <FilePickerDialog
@@ -426,7 +437,7 @@ const PostCreate = () => {
             className="w-full"
             size="lg"
           >
-            发布
+            {t("playground.actions.publish")}
           </Button>
         </div>
       )}

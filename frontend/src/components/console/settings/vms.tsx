@@ -33,7 +33,7 @@ import {
 import CreateVM from "@/components/console/vm/vm-add";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Icon from "@/components/common/Icon";
-import { canManageDevEnvironment, getOSFromImageName, humanTime, translateStatus, getStatusBadgeProps, formatMemory, renderHoverCardContent, getVmMessage, getLastCondition } from "@/utils/common";
+import { canManageDevEnvironment, getOSFromImageName, getStatusBadgeProps, formatMemory, renderHoverCardContent, getVmMessage, getLastCondition } from "@/utils/common";
 import { Badge } from "@/components/ui/badge";
 import dayjs from "dayjs";
 import {
@@ -58,8 +58,10 @@ import { HoverCard, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useCommonData } from "@/components/console/data-provider";
 import { VmRenewDialog } from "@/components/console/vm/vm-renew";
 import { Switch } from "@/components/ui/switch";
+import { useTranslation } from "react-i18next";
 
 export default function VmsPage() {
+  const { t } = useTranslation()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [vmToDelete, setVmToDelete] = useState<DomainVirtualMachine | null>(null)
@@ -94,7 +96,7 @@ export default function VmsPage() {
       return
     }
 
-    // 有正在创建中的开发环境时加快轮询，避免列表长时间停留在旧状态。
+    // Poll faster while environments are being created so the list does not stay stale.
     const hasPending = vms.some((vm) => vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusPending)
     const timeoutId = setTimeout(() => {
       reloadHostsRef.current()
@@ -104,6 +106,52 @@ export default function VmsPage() {
       clearTimeout(timeoutId)
     }
   }, [hostsInited, vms])
+
+  const formatVmStatus = (status?: TaskflowVirtualMachineStatus) => {
+    switch (status) {
+      case TaskflowVirtualMachineStatus.VirtualMachineStatusOnline:
+        return t("consoleSettings.vms.status.online")
+      case TaskflowVirtualMachineStatus.VirtualMachineStatusPending:
+        return t("consoleSettings.vms.status.pending")
+      case TaskflowVirtualMachineStatus.VirtualMachineStatusOffline:
+        return t("consoleSettings.vms.status.offline")
+      default:
+        return status || t("consoleSettings.vms.fallback.unknown")
+    }
+  }
+
+  const formatDuration = (seconds: number) => {
+    const normalizedSeconds = seconds > 0 ? seconds : 0
+    if (normalizedSeconds < 60) {
+      return t("consoleSettings.vms.duration.seconds", { count: Math.floor(normalizedSeconds) })
+    }
+    if (normalizedSeconds < 60 * 60) {
+      return t("consoleSettings.vms.duration.minutes", { count: Math.floor(normalizedSeconds / 60) })
+    }
+    if (normalizedSeconds < 60 * 60 * 24) {
+      return t("consoleSettings.vms.duration.hours", { count: Math.floor(normalizedSeconds / 60 / 60) })
+    }
+    return t("consoleSettings.vms.duration.days", { count: Math.floor(normalizedSeconds / 60 / 60 / 24) })
+  }
+
+  const formatVmName = (vm: DomainVirtualMachine | null | undefined) =>
+    vm?.name || t("consoleSettings.vms.fallback.unnamed")
+
+  const formatVmMemory = (memory?: number) =>
+    memory ? formatMemory(memory) : t("consoleSettings.vms.fallback.unknown")
+
+  const formatOnlineSummary = (vm: DomainVirtualMachine) => {
+    const parts = [
+      vm.cores ? t("consoleSettings.vms.card.cpu", { cores: vm.cores }) : "",
+      vm.memory ? t("consoleSettings.vms.card.memory", { memory: formatMemory(vm.memory) }) : "",
+      t("consoleSettings.vms.card.createdAgo", { time: dayjs.unix(vm.created_at as number).fromNow() }),
+      vm.life_time_seconds === 0
+        ? t("consoleSettings.vms.card.neverRecycle")
+        : t("consoleSettings.vms.card.recycleAfter", { time: formatDuration(vm.life_time_seconds as number) }),
+    ].filter(Boolean)
+
+    return parts.join(t("consoleSettings.vms.card.separator"))
+  }
 
   const handleDeleteVM = (vm: DomainVirtualMachine) => {
     setVmToDelete(vm)
@@ -117,7 +165,7 @@ export default function VmsPage() {
 
     const vm = vmToDelete
     if (!vm.id) {
-      toast.error("无法获取开发环境 ID")
+      toast.error(t("consoleSettings.vms.toast.missingVmId"))
       setDeleteDialogOpen(false)
       setVmToDelete(null)
       return
@@ -125,7 +173,7 @@ export default function VmsPage() {
 
     const hostId = vm.host?.id
     if (!hostId) {
-      toast.error("无法获取宿主机 ID")
+      toast.error(t("consoleSettings.vms.toast.missingHostId"))
       setDeleteDialogOpen(false)
       setVmToDelete(null)
       return
@@ -133,10 +181,10 @@ export default function VmsPage() {
 
     apiRequest('v1UsersHostsVmsDelete', {}, [hostId, vm.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("开发环境移除成功")
+        toast.success(t("consoleSettings.vms.toast.removeSuccess"))
         reloadHosts()
       } else {
-        toast.error(resp.message || "移除开发环境失败")
+        toast.error(resp.message || t("consoleSettings.vms.toast.removeFailed"))
       }
       setDeleteDialogOpen(false)
       setVmToDelete(null)
@@ -165,7 +213,7 @@ export default function VmsPage() {
         </EmptyHeader>
         <EmptyContent>
           <EmptyDescription>
-            正在加载开发环境列表...
+            {t("consoleSettings.vms.loading")}
           </EmptyDescription>
         </EmptyContent>
       </Empty>
@@ -179,20 +227,20 @@ export default function VmsPage() {
           <EmptyMedia variant="icon">
             <Server />
           </EmptyMedia>
-          <EmptyTitle>没有开发环境</EmptyTitle>
+          <EmptyTitle>{t("consoleSettings.vms.empty.title")}</EmptyTitle>
           <EmptyDescription>
-            还没有创建任何开发环境
+            {t("consoleSettings.vms.empty.description")}
           </EmptyDescription>
         </EmptyHeader>
           <EmptyContent>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => reloadHosts()}>
                 <IconReload />
-                刷新
+                {t("consoleSettings.vms.actions.refresh")}
               </Button>
             <Button onClick={() => setCreateDialogOpen(true)} disabled={!canCreateVm}>
               <CirclePlusIcon />
-              创建开发环境
+              {t("consoleSettings.vms.actions.create")}
             </Button>
             </div>
           </EmptyContent>
@@ -208,7 +256,7 @@ export default function VmsPage() {
             <MonitorCloud />
           </EmptyMedia>
           <EmptyDescription>
-            您有 {vms.length} 个离线开发环境，开启「离线开发环境」可查看
+            {t("consoleSettings.vms.offlineOnly", { count: vms.length })}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -235,34 +283,31 @@ export default function VmsPage() {
               <HoverCard>
                 <HoverCardTrigger asChild>
                   <ItemTitle className="flex items-center gap-2 break-all">
-                    {vm.name || "未命名开发环境"}
-                    <Badge {...getStatusBadgeProps(vm.status)}>{translateStatus(vm.status)}</Badge>
+                    {formatVmName(vm)}
+                    <Badge {...getStatusBadgeProps(vm.status)}>{formatVmStatus(vm.status)}</Badge>
                     {vm.host?.arch !== 'x86_64' && <Badge variant={"outline"} className="hidden md:flex">{vm.host?.arch}</Badge>}
                   </ItemTitle>
                 </HoverCardTrigger>
                 {renderHoverCardContent([
-                  {title: "开发环境名称", content: vm.name || "未命名开发环境"},
-                  {title: "开发环境状态", content: translateStatus(vm.status)},
-                  {title: "开发环境状态信息", content: getVmMessage(vm)},
-                  {title: "宿主机", content: vm.host?.remark || `${vm.host?.name}-${vm.host?.external_ip}`},
-                  {title: "操作系统", content: vm.os || "未知"},
-                  {title: "资源限制", content: `${vm.cores} 核 CPU，${formatMemory(vm.memory)} 内存`},
-                  {title: "创建时间", content: dayjs.unix(vm.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
-                  {title: "回收时间", content: vm.life_time_seconds ? dayjs.unix(new Date().getTime() / 1000).add(vm.life_time_seconds as number, 'seconds').format("YYYY-MM-DD HH:mm:ss") : "永不回收"},
+                  {title: t("consoleSettings.vms.hover.name"), content: formatVmName(vm)},
+                  {title: t("consoleSettings.vms.hover.status"), content: formatVmStatus(vm.status)},
+                  {title: t("consoleSettings.vms.hover.statusMessage"), content: getVmMessage(vm)},
+                  {title: t("consoleSettings.vms.hover.host"), content: vm.host?.remark || `${vm.host?.name}-${vm.host?.external_ip}`},
+                  {title: t("consoleSettings.vms.hover.os"), content: vm.os || t("consoleSettings.vms.fallback.unknown")},
+                  {title: t("consoleSettings.vms.hover.resource"), content: t("consoleSettings.vms.card.resourceLimit", { cores: vm.cores, memory: formatVmMemory(vm.memory) })},
+                  {title: t("consoleSettings.vms.hover.createdAt"), content: dayjs.unix(vm.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
+                  {title: t("consoleSettings.vms.hover.recycleAt"), content: vm.life_time_seconds ? dayjs.unix(new Date().getTime() / 1000).add(vm.life_time_seconds as number, 'seconds').format("YYYY-MM-DD HH:mm:ss") : t("consoleSettings.vms.card.neverRecycle")},
                 ])}
               </HoverCard>
               <ItemDescription className="min-w-0 max-w-full overflow-hidden line-clamp-1 truncate">
                 {vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOnline && <>
-                  {Boolean(vm.cores) && `${vm.cores} 核 CPU，`}
-                  {Boolean(vm.memory) && `${formatMemory(vm.memory)} 内存，`}
-                  {`${dayjs.unix(vm.created_at as number).fromNow()}创建，`}
-                  {vm.life_time_seconds === 0 ? "永不回收" : `${humanTime(vm.life_time_seconds as number)}后回收`}
+                  {formatOnlineSummary(vm)}
                 </>}
                 {vm.status === TaskflowVirtualMachineStatus.VirtualMachineStatusOffline && <>
                   {getLastCondition(vm)?.type === GitInChaitinNetAiMonkeycodeMonkeycodeAiEntTypesConditionType.ConditionTypeFailed ? (
                       getVmMessage(vm)
                     ) : (
-                      '已离线'
+                      t("consoleSettings.vms.status.offline")
                     )
                   }
                 </>}
@@ -272,11 +317,11 @@ export default function VmsPage() {
             <ItemActions className="w-full md:w-auto flex">
               <Button variant="ghost" size="sm" className="flex-1 bg-secondary md:bg-transparent" disabled={vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOnline} onClick={() => window.open(`/console/terminal?envid=${vm.id}`, '_blank')}>
                 <IconTerminal2 />
-                终端
+                {t("consoleSettings.vms.actions.terminal")}
               </Button>
               <Button variant="ghost" size="sm" className="flex-1 bg-secondary md:bg-transparent" disabled={vm.status !== TaskflowVirtualMachineStatus.VirtualMachineStatusOnline} onClick={() => window.open(`/console/files?envid=${vm.id}&path=/workspace`, '_blank')}>
                 <IconFolderOpen />
-                文件
+                {t("consoleSettings.vms.actions.files")}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -290,14 +335,14 @@ export default function VmsPage() {
                     onClick={() => handleRenewVM(vm)}
                   >
                     <IconClockHour4 className="size-4" />
-                    续期
+                    {t("consoleSettings.vms.actions.renew")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
                     onClick={() => handleDeleteVM(vm)}
                   >
                     <IconTrash className="size-4" />
-                    移除
+                    {t("consoleSettings.vms.actions.remove")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -314,10 +359,10 @@ export default function VmsPage() {
         <div>
           <div className="flex items-center gap-2 font-semibold leading-none">
             <MonitorCloud />
-            开发环境
+            {t("consoleSettings.vms.title")}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            用于在宿主机上创建开发环境，当前能力仅对团队空间开放
+            {t("consoleSettings.vms.description")}
           </p>
         </div>
         <DropdownMenu>
@@ -329,18 +374,18 @@ export default function VmsPage() {
             <DropdownMenuContent align="end" className="w-46 min-w-46">
               <DropdownMenuItem className="whitespace-nowrap" onClick={() => setCreateDialogOpen(true)} disabled={!canCreateVm}>
                 <CirclePlusIcon />
-                创建开发环境
+                {t("consoleSettings.vms.actions.create")}
               </DropdownMenuItem>
               <DropdownMenuItem className="whitespace-nowrap" onClick={reloadHosts} disabled={loadingHosts}>
                 <IconReload className={loadingHosts ? "animate-spin" : ""} />
-                刷新
+                {t("consoleSettings.vms.actions.refresh")}
               </DropdownMenuItem>
               <DropdownMenuItem className="whitespace-nowrap" onClick={(e) => {
                 setShowOfflineVms(!showOfflineVms)
                 e.preventDefault()
               }}>
                 {showOfflineVms ? <IconCircleCheck className="text-primary" /> : <IconCircle /> }
-                离线开发环境
+                {t("consoleSettings.vms.actions.offline")}
                 <Switch checked={showOfflineVms} onCheckedChange={setShowOfflineVms} />
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -356,9 +401,9 @@ export default function VmsPage() {
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>确认移除</AlertDialogTitle>
+              <AlertDialogTitle>{t("consoleSettings.vms.remove.title")}</AlertDialogTitle>
               <AlertDialogDescription>
-                确定要移除开发环境 "{vmToDelete?.name || '未命名开发环境'}" 吗？此操作不可撤销。
+                {t("consoleSettings.vms.remove.description", { name: formatVmName(vmToDelete) })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -366,12 +411,12 @@ export default function VmsPage() {
                 setDeleteDialogOpen(false)
                 setVmToDelete(null)
               }}>
-                取消
+                {t("consoleSettings.vms.actions.cancel")}
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={confirmDeleteVM}
               >
-                确认移除
+                {t("consoleSettings.vms.remove.confirm")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

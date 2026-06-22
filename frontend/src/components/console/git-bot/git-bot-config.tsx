@@ -1,5 +1,5 @@
 import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item"
-import { useState, useEffect, forwardRef, useImperativeHandle } from "react"
+import { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from "react"
 import { apiRequest } from "@/utils/requestUtils"
 import { toast } from "sonner"
 import type { DomainGitBot } from "@/api/Api"
@@ -39,6 +39,7 @@ import { AvatarFallback } from "@/components/ui/avatar"
 import { getGitPlatformIcon } from "@/utils/common"
 import { IconLock } from "@tabler/icons-react"
 import { Label } from "@/components/ui/label"
+import { useTranslation } from "react-i18next"
 
 export interface GitBotConfigRef {
   fetchGitBots: () => void
@@ -46,6 +47,7 @@ export interface GitBotConfigRef {
 }
 
 export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_, ref) {
+  const { t } = useTranslation()
   const [gitBots, setGitBots] = useState<DomainGitBot[]>([])
   const [loading, setLoading] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -55,29 +57,29 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false)
   const [permissionBot, setPermissionBot] = useState<DomainGitBot | null>(null)
 
+  const fetchGitBots = useCallback(async () => {
+    setLoading(true)
+    await apiRequest('v1UsersGitBotsList', {}, [], (resp) => {
+      if (resp.code === 0) {
+        setGitBots(resp.data?.bots || [])
+      } else {
+        toast.error(t("consoleGitBot.toast.fetchBotsFailed", { message: resp.message }))
+      }
+    })
+    setLoading(false)
+  }, [t])
+
   useImperativeHandle(ref, () => ({
     fetchGitBots,
     showWebhook: (bot: DomainGitBot) => {
       setWebhookBot(bot)
       setWebhookDialogOpen(true)
     }
-  }))
-
-  const fetchGitBots = async () => {
-    setLoading(true)
-    await apiRequest('v1UsersGitBotsList', {}, [], (resp) => {
-      if (resp.code === 0) {
-        setGitBots(resp.data?.bots || [])
-      } else {
-        toast.error("获取机器人列表失败: " + resp.message)
-      }
-    })
-    setLoading(false)
-  }
+  }), [fetchGitBots])
 
   useEffect(() => {
-    fetchGitBots()
-  }, [])
+    queueMicrotask(() => fetchGitBots())
+  }, [fetchGitBots])
 
   const handleEdit = (bot: DomainGitBot) => {
     setEditingBot(bot)
@@ -97,29 +99,29 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
   const handleCopyWebhook = () => {
     if (webhookBot?.webhook_url) {
       navigator.clipboard.writeText(webhookBot.webhook_url)
-      toast.success("WebHook 地址已复制到剪贴板")
+      toast.success(t("consoleGitBot.toast.webhookCopied"))
     }
   }
 
   const handleCopySecretToken = () => {
     if (webhookBot?.secret_token) {
       navigator.clipboard.writeText(webhookBot.secret_token)
-      toast.success("Secret Token 已复制到剪贴板")
+      toast.success(t("consoleGitBot.toast.secretCopied"))
     }
   }
 
   const handleDelete = (bot: DomainGitBot) => {
     if (!bot.id) {
-      toast.error("机器人信息不完整")
+      toast.error(t("consoleGitBot.toast.incompleteBot"))
       return
     }
 
     apiRequest('v1UsersGitBotsDelete', {}, [bot.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("机器人删除成功")
+        toast.success(t("consoleGitBot.toast.deleteSuccess"))
         fetchGitBots()
       } else {
-        toast.error("删除机器人失败: " + resp.message)
+        toast.error(t("consoleGitBot.toast.deleteFailed", { message: resp.message }))
       }
     })
   }
@@ -132,7 +134,7 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
             <EmptyMedia variant="icon">
               <IconLoader className="animate-spin" />
             </EmptyMedia>
-            <EmptyDescription>正在加载...</EmptyDescription>
+            <EmptyDescription>{t("consoleGitBot.common.loading")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -148,7 +150,7 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
             <EmptyMedia variant="icon">
               <IconFolder />
             </EmptyMedia>
-            <EmptyDescription>暂无机器人配置</EmptyDescription>
+            <EmptyDescription>{t("consoleGitBot.config.empty")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -186,11 +188,11 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleEditPermission(bot)}>
                     <IconLock />
-                    权限
+                    {t("consoleGitBot.config.permission")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleEdit(bot)}>
                     <IconPencil />
-                    修改
+                    {t("consoleGitBot.config.edit")}
                   </DropdownMenuItem>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -199,20 +201,20 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
                         onSelect={(e) => { e.preventDefault() }}
                       >
                         <IconTrash />
-                        删除
+                        {t("consoleGitBot.config.delete")}
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>确认删除</AlertDialogTitle>
+                        <AlertDialogTitle>{t("consoleGitBot.config.deleteTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          确定要删除机器人 "{bot.name || '未知'}" 吗？此操作不可撤销。
+                          {t("consoleGitBot.config.deleteDescription", { name: bot.name || t("consoleGitBot.common.unknown") })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogCancel>{t("consoleGitBot.actions.cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => handleDelete(bot)}>
-                          确认删除
+                          {t("consoleGitBot.config.confirmDelete")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -238,12 +240,12 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
       <Dialog open={webhookDialogOpen} onOpenChange={setWebhookDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>WebHook 信息</DialogTitle>
+            <DialogTitle>{t("consoleGitBot.config.webhookTitle")}</DialogTitle>
             <DialogDescription>
-              将 webhook 地址和 secret token 配置到 {webhookBot?.platform?.toLowerCase()} 中
+              {t("consoleGitBot.config.webhookDescription", { platform: webhookBot?.platform?.toLowerCase() })}
             </DialogDescription>
           </DialogHeader>
-          <Label>WebHook 地址</Label>
+          <Label>{t("consoleGitBot.config.webhookUrl")}</Label>
           <div className="flex gap-2">
             <Input 
               value={webhookBot?.webhook_url || ''} 
@@ -254,7 +256,7 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
               <IconCopy className="size-4" />
             </Button>
           </div>
-          <Label>Secret Token</Label>
+          <Label>{t("consoleGitBot.config.secretToken")}</Label>
           <div className="flex gap-2">
             <Input 
               value={webhookBot?.secret_token || ''} 
@@ -270,4 +272,3 @@ export const GitBotConfig = forwardRef<GitBotConfigRef>(function GitBotConfig(_,
     </>
   )
 })
-

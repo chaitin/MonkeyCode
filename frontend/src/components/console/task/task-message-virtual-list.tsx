@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { IconHistory } from "@tabler/icons-react"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { MessageItem, shouldRenderMessage, type MessageType } from "./message"
 import {
   getTaskMessageVirtualRow,
@@ -87,6 +88,7 @@ const TaskMessageVirtualList = React.forwardRef<TaskMessageVirtualListHandle, Ta
       historyLoaded,
       onLoadHistory,
     } = props
+    const { t } = useTranslation()
 
     const contentElementRef = React.useRef<HTMLDivElement | null>(null)
     const highlightTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -211,7 +213,7 @@ const TaskMessageVirtualList = React.forwardRef<TaskMessageVirtualListHandle, Ta
       return (
         <div ref={setContentElementRef} className={cn("min-h-full", className)}>
           {historyLoaded && (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无消息</div>
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{t("taskDetail.messages.empty")}</div>
           )}
         </div>
       )
@@ -246,7 +248,11 @@ const TaskMessageVirtualList = React.forwardRef<TaskMessageVirtualListHandle, Ta
                   >
                     {!historyLoading && <IconHistory className="size-4" />}
                     {historyLoading && <Spinner className="size-4" />}
-                    {historyLoading ? "正在加载" : historyLoaded ? "加载更多" : "加载历史消息"}
+                    {historyLoading
+                      ? t("taskDetail.messages.loadingHistory")
+                      : historyLoaded
+                        ? t("taskDetail.messages.loadMore")
+                        : t("taskDetail.messages.loadHistory")}
                   </Button>
                 </div>
               ) : (

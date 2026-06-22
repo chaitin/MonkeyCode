@@ -1,9 +1,15 @@
+import i18n from "@/i18n"
+
 export interface ParsedSkillMarkdown {
   name: string
   description: string
   tags: string[]
   content: string
   body: string
+}
+
+function skillPackageText(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(`managerSkillPackage.${key}`, options))
 }
 
 export function normalizeSkillTags(value: unknown): string[] {
@@ -28,7 +34,7 @@ export function normalizeSkillTags(value: unknown): string[] {
 
 export function parseSkillMarkdown(content: string): ParsedSkillMarkdown {
   if (!content.trim()) {
-    throw new Error("SKILL.md 内容为空")
+    throw new Error(skillPackageText("emptyContent"))
   }
 
   const parsed = parseFrontmatter(content)

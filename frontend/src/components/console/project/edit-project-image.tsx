@@ -9,6 +9,7 @@ import { getImageShortName, getOSFromImageName } from "@/utils/common"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { IconLoader } from "@tabler/icons-react"
+import { useTranslation } from "react-i18next"
 
 interface EditProjectImageDialogProps {
   open: boolean
@@ -26,6 +27,7 @@ export default function EditProjectImageDialog({
   const { images, loadingImages } = useCommonData()
   const [selectedImageId, setSelectedImageId] = useState<string>("")
   const [loading, setLoading] = useState(false)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (open && project) {
@@ -44,11 +46,11 @@ export default function EditProjectImageDialog({
       [project.id],
       (resp) => {
         if (resp.code === 0) {
-          toast.success("开发镜像已保存")
+          toast.success(t("consoleProject.image.toast.saved"))
           onOpenChange(false)
           onSuccess?.()
         } else {
-          toast.error(resp.message || "保存开发镜像失败")
+          toast.error(resp.message || t("consoleProject.image.toast.saveFailed"))
         }
       }
     )
@@ -66,19 +68,21 @@ export default function EditProjectImageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>开发镜像</DialogTitle>
+          <DialogTitle>{t("consoleProject.image.title")}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            为项目绑定开发环境的系统镜像
+            {t("consoleProject.image.description")}
           </p>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
             <Select value={selectedImageId || "none"} onValueChange={(v) => setSelectedImageId(v === "none" ? "" : v)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={loadingImages ? "加载中..." : "选择镜像"} />
+                <SelectValue
+                  placeholder={loadingImages ? t("consoleProject.common.loading") : t("consoleProject.image.selectPlaceholder")}
+                />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">未选择</SelectItem>
+                <SelectItem value="none">{t("consoleProject.image.none")}</SelectItem>
                 {selectableImages.map((image) => (
                   <SelectItem key={image.id} value={image.id}>
                     <div className="flex items-center gap-2">
@@ -93,11 +97,11 @@ export default function EditProjectImageDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel} disabled={loading}>
-            取消
+            {t("consoleProject.common.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={loading}>
             {loading && <IconLoader className="size-4 animate-spin" />}
-            保存
+            {t("consoleProject.common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

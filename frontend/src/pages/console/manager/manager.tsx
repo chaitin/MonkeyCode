@@ -35,8 +35,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { captchaChallenge } from "@/utils/common";
 import { apiRequest } from "@/utils/requestUtils";
+import { useTranslation } from "react-i18next";
 
 export default function TeamManagerManager() {
+  const { t } = useTranslation();
   const isOfflineEdition = import.meta.env.VITE_APP_EDITION === "offline";
   const [managers, setManagers] = useState<any[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -55,14 +57,15 @@ export default function TeamManagerManager() {
   const [resettingPassword, setResettingPassword] = useState(false);
   const [passwordResult, setPasswordResult] = useState<{ email?: string; password?: string } | null>(null);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [passwordDialogTitle, setPasswordDialogTitle] = useState("管理员密码");
+  const [passwordDialogTitleKey, setPasswordDialogTitleKey] = useState("managerAdmins.password.title");
+  const errorMessage = (message?: string) => message || t("managerShell.common.unknownError");
 
   const fetchManagers = async () => {
     await apiRequest("v1TeamsUsersList", { role: "admin" }, [], (resp) => {
       if (resp.code === 0) {
         setManagers(resp.data?.members || []);
       } else {
-        toast.error("获取管理员列表失败: " + resp.message);
+        toast.error(t("managerAdmins.toast.fetchFailed", { message: errorMessage(resp.message) }));
       }
     });
   };
@@ -79,22 +82,22 @@ export default function TeamManagerManager() {
 
   const handleAddAdmin = async () => {
     if (!email.trim()) {
-      toast.error("请输入邮箱地址");
+      toast.error(t("managerAdmins.toast.emailRequired"));
       return;
     }
     if (!name.trim()) {
-      toast.error("请输入姓名");
+      toast.error(t("managerAdmins.toast.nameRequired"));
       return;
     }
 
     setSubmitting(true);
     await apiRequest("v1TeamsAdminCreate", { email: email.trim(), name: name.trim() }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success("添加管理员成功");
+        toast.success(t("managerAdmins.toast.added"));
         const password = resp.data?.password || "";
         if (password) {
           setPasswordResult({ email: resp.data?.user?.user?.email || email.trim(), password });
-          setPasswordDialogTitle("管理员初始密码");
+          setPasswordDialogTitleKey("managerAdmins.password.initialTitle");
           setPasswordDialogOpen(true);
         }
         setAddDialogOpen(false);
@@ -102,7 +105,7 @@ export default function TeamManagerManager() {
         setName("");
         fetchManagers();
       } else {
-        toast.error("添加管理员失败: " + resp.message);
+        toast.error(t("managerAdmins.toast.addFailed", { message: errorMessage(resp.message) }));
       }
     });
     setSubmitting(false);
@@ -121,7 +124,7 @@ export default function TeamManagerManager() {
       return;
     }
     if (!editName.trim()) {
-      toast.error("请输入姓名");
+      toast.error(t("managerAdmins.toast.nameRequired"));
       return;
     }
     await apiRequest("v1TeamsUsersUpdate", {
@@ -129,12 +132,12 @@ export default function TeamManagerManager() {
       is_blocked: editBlocked,
     }, [userId], (resp) => {
       if (resp.code === 0) {
-        toast.success("管理员已更新");
+        toast.success(t("managerAdmins.toast.updated"));
         setEditDialogOpen(false);
         setEditingManager(null);
         fetchManagers();
       } else {
-        toast.error("更新管理员失败: " + resp.message);
+        toast.error(t("managerAdmins.toast.updateFailed", { message: errorMessage(resp.message) }));
       }
     });
   };
@@ -152,12 +155,12 @@ export default function TeamManagerManager() {
     setDeleting(true);
     await apiRequest("v1TeamsUsersDelete", {}, [userId], (resp) => {
       if (resp.code === 0) {
-        toast.success("管理员已删除");
+        toast.success(t("managerAdmins.toast.deleted"));
         setDeleteDialogOpen(false);
         setDeletingManager(null);
         fetchManagers();
       } else {
-        toast.error("删除管理员失败: " + resp.message);
+        toast.error(t("managerAdmins.toast.deleteFailed", { message: errorMessage(resp.message) }));
       }
     });
     setDeleting(false);
@@ -181,20 +184,20 @@ export default function TeamManagerManager() {
       }
       await apiRequest("v1TeamsUsersPasswordsResetUpdate", {}, [resettingPasswordUser.id], (resp) => {
         if (resp.code === 0) {
-          toast.success(`已为 ${resettingPasswordUser.email || "该管理员"} 重置密码`);
+          toast.success(t("managerAdmins.toast.resetPassword", { email: resettingPasswordUser.email || t("managerAdmins.userFallback") }));
           setPasswordResult(resp.data || null);
-          setPasswordDialogTitle("管理员重置密码");
+          setPasswordDialogTitleKey("managerAdmins.password.resetTitle");
           setPasswordDialogOpen(!!resp.data?.password);
           setResetPasswordDialogOpen(false);
           setResettingPasswordUser({});
         } else {
-          toast.error("重置密码失败: " + resp.message);
+          toast.error(t("managerAdmins.toast.resetFailed", { message: errorMessage(resp.message) }));
         }
       });
     } else {
       const captchaToken = await captchaChallenge();
       if (!captchaToken) {
-        toast.error("验证码验证失败");
+        toast.error(t("managerAdmins.toast.captchaFailed"));
         setResettingPassword(false);
         return;
       }
@@ -203,11 +206,11 @@ export default function TeamManagerManager() {
         captcha_token: captchaToken,
       }, [], (resp) => {
         if (resp.code === 0) {
-          toast.success(`已为 ${resettingPasswordUser.email} 发送密码重置邮件`);
+          toast.success(t("managerAdmins.toast.resetEmailSent", { email: resettingPasswordUser.email }));
           setResetPasswordDialogOpen(false);
           setResettingPasswordUser({});
         } else {
-          toast.error("发送密码重置邮件失败: " + resp.message);
+          toast.error(t("managerAdmins.toast.resetEmailFailed", { message: errorMessage(resp.message) }));
         }
       });
     }
@@ -220,9 +223,9 @@ export default function TeamManagerManager() {
     }
     try {
       await navigator.clipboard.writeText(`${passwordResult.email || ""}\t${passwordResult.password || ""}`);
-      toast.success("密码已复制到剪贴板");
+      toast.success(t("managerAdmins.toast.passwordCopied"));
     } catch {
-      toast.error("复制失败，请手动复制");
+      toast.error(t("managerAdmins.toast.copyFailed"));
     }
   };
 
@@ -232,13 +235,13 @@ export default function TeamManagerManager() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <IconUserCircle />
-            管理员
+            {t("managerAdmins.title")}
           </CardTitle>
-          <CardDescription>共 {managers.length} 个管理员</CardDescription>
+          <CardDescription>{t("managerAdmins.count", { count: managers.length })}</CardDescription>
           <CardAction>
             <Button variant="outline" onClick={handleOpenAddDialog}>
               <IconCirclePlus />
-              添加管理员
+              {t("managerAdmins.actions.add")}
             </Button>
           </CardAction>
         </CardHeader>
@@ -261,8 +264,10 @@ export default function TeamManagerManager() {
                       {manager.user?.name} - {manager.user?.email}
                     </ItemTitle>
                     <ItemDescription className="flex flex-wrap gap-1">
-                      {dayjs(manager.created_at * 1000).fromNow()}加入
-                      {!!manager.last_active_at && `，${dayjs(manager.last_active_at * 1000).fromNow()}使用过`}
+                      <span>{t("managerAdmins.list.joined", { time: dayjs(manager.created_at * 1000).fromNow() })}</span>
+                      {!!manager.last_active_at && (
+                        <span>{t("managerAdmins.list.lastActive", { time: dayjs(manager.last_active_at * 1000).fromNow() })}</span>
+                      )}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
@@ -275,15 +280,15 @@ export default function TeamManagerManager() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleOpenEditDialog(manager)}>
                           <IconEdit />
-                          编辑
+                          {t("managerAdmins.actions.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleOpenResetPasswordDialog({ id: manager.user?.id, email: manager.user?.email })}>
                           <IconLockCode />
-                          重置密码
+                          {t("managerAdmins.actions.resetPassword")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleOpenDeleteDialog(manager)}>
                           <IconTrash />
-                          删除
+                          {t("managerAdmins.actions.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -298,21 +303,21 @@ export default function TeamManagerManager() {
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>添加管理员</DialogTitle>
-            <DialogDescription>请输入管理员的邮箱和姓名</DialogDescription>
+            <DialogTitle>{t("managerAdmins.dialogs.add.title")}</DialogTitle>
+            <DialogDescription>{t("managerAdmins.dialogs.add.description")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <Field>
-              <FieldLabel>邮箱地址</FieldLabel>
+              <FieldLabel>{t("managerAdmins.fields.email")}</FieldLabel>
               <FieldContent>
-                <Input type="email" placeholder="请输入邮箱地址" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+                <Input type="email" placeholder={t("managerAdmins.fields.emailPlaceholder")} value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
               </FieldContent>
             </Field>
             <Field>
-              <FieldLabel>姓名</FieldLabel>
+              <FieldLabel>{t("managerAdmins.fields.name")}</FieldLabel>
               <FieldContent>
                 <Input
-                  placeholder="请输入姓名"
+                  placeholder={t("managerAdmins.fields.namePlaceholder")}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => {
@@ -326,10 +331,10 @@ export default function TeamManagerManager() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)} disabled={submitting}>
-              取消
+              {t("managerShell.common.cancel")}
             </Button>
             <Button onClick={handleAddAdmin} disabled={!email.trim() || !name.trim() || submitting}>
-              {submitting ? "添加中..." : "添加"}
+              {submitting ? t("managerAdmins.actions.adding") : t("managerAdmins.actions.addShort")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -338,30 +343,30 @@ export default function TeamManagerManager() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑管理员</DialogTitle>
-            <DialogDescription>修改管理员姓名和账号状态</DialogDescription>
+            <DialogTitle>{t("managerAdmins.dialogs.edit.title")}</DialogTitle>
+            <DialogDescription>{t("managerAdmins.dialogs.edit.description")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <Field>
-              <FieldLabel>姓名</FieldLabel>
+              <FieldLabel>{t("managerAdmins.fields.name")}</FieldLabel>
               <FieldContent>
-                <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入姓名" />
+                <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder={t("managerAdmins.fields.namePlaceholder")} />
               </FieldContent>
             </Field>
             <div className="flex items-center justify-between rounded-md border p-3">
               <div className="flex items-center gap-2 text-sm">
                 <IconForbid className="size-4 text-muted-foreground" />
-                <span>禁用账号</span>
+                <span>{t("managerAdmins.fields.blockAccount")}</span>
               </div>
               <Switch checked={editBlocked} onCheckedChange={setEditBlocked} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              取消
+              {t("managerShell.common.cancel")}
             </Button>
             <Button onClick={handleSaveEdit} disabled={!editName.trim()}>
-              保存
+              {t("managerAdmins.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -370,19 +375,19 @@ export default function TeamManagerManager() {
       <AlertDialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认重置密码</AlertDialogTitle>
+            <AlertDialogTitle>{t("managerAdmins.dialogs.resetPassword.title")}</AlertDialogTitle>
             <AlertDialogDescription>
               {isOfflineEdition
-                ? `确定要为管理员 "${resettingPasswordUser.email}" 重置密码吗？系统将生成新密码，并仅在本次操作后展示一次。`
-                : `确定要为管理员 "${resettingPasswordUser.email}" 重置密码吗？系统将发送密码重置邮件到该管理员的邮箱。`}
+                ? t("managerAdmins.dialogs.resetPassword.offlineDescription", { email: resettingPasswordUser.email })
+                : t("managerAdmins.dialogs.resetPassword.onlineDescription", { email: resettingPasswordUser.email })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setResetPasswordDialogOpen(false)} disabled={resettingPassword}>
-              取消
+              {t("managerShell.common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmResetPassword} disabled={resettingPassword}>
-              {resettingPassword ? "重置中..." : "确认重置"}
+              {resettingPassword ? t("managerAdmins.dialogs.resetPassword.resetting") : t("managerAdmins.dialogs.resetPassword.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -391,17 +396,17 @@ export default function TeamManagerManager() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除管理员</AlertDialogTitle>
+            <AlertDialogTitle>{t("managerAdmins.dialogs.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除管理员 "{deletingManager?.user?.email}" 吗？删除后该账号将无法继续作为团队管理员登录。
+              {t("managerAdmins.dialogs.delete.description", { email: deletingManager?.user?.email })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
-              取消
+              {t("managerShell.common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? "删除中..." : "确认删除"}
+              {deleting ? t("managerAdmins.dialogs.delete.deleting") : t("managerAdmins.dialogs.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -410,7 +415,7 @@ export default function TeamManagerManager() {
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{passwordDialogTitle}</DialogTitle>
+            <DialogTitle>{t(passwordDialogTitleKey)}</DialogTitle>
           </DialogHeader>
           {passwordResult && (
             <div className="rounded-md border p-3 text-sm">
@@ -421,9 +426,9 @@ export default function TeamManagerManager() {
           <DialogFooter>
             <Button variant="outline" onClick={handleCopyPassword} disabled={!passwordResult?.password}>
               <IconCopy />
-              复制
+              {t("managerAdmins.actions.copy")}
             </Button>
-            <Button onClick={() => setPasswordDialogOpen(false)}>完成</Button>
+            <Button onClick={() => setPasswordDialogOpen(false)}>{t("managerAdmins.actions.done")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

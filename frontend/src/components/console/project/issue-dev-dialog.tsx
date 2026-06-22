@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
 import { IssueTaskModelSelect, IssueTaskProjectFields, useIssueTaskModelSelection, useProjectBranchSelection } from "./issue-task-dialog-shared"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface IssueDevelopDialogProps {
   open: boolean
@@ -35,24 +36,25 @@ export default function IssueDevelopDialog({
   const { images, models, hosts, reloadProjects, reloadUnlinkedTasks, subscription } = useCommonData()
   const { branches, loadingBranches, selectedBranch, selectBranch } = useProjectBranchSelection(open, project)
   const { selectedModel, selectedModelId, setSelectedModelId } = useIssueTaskModelSelection(open, models, subscription)
+  const { t } = useTranslation()
 
   const handleOpenChange = (open: boolean) => {
     onOpenChange(open)
   }
 
   const renderPrompt = useMemo(() => {
-    let prompt = `为需求 "${issue?.title}" 执行开发任务`
+    let prompt = t("consoleProject.issueTask.develop.promptTitle", { title: issue?.title || "" })
 
     if (issue?.requirement_document) {
       prompt += `
 
-详细描述如下:
+${t("consoleProject.issueTask.develop.requirementSection")}
 \`\`\`
 ${issue?.requirement_document?.replaceAll("`", "\\`")}
 \`\`\`
 
 
-技术方案如下:
+${t("consoleProject.issueTask.develop.designSection")}
 \`\`\`
 ${issue?.design_document?.replaceAll("`", "\\`")}
 \`\`\`
@@ -60,22 +62,21 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
     }
 
     return prompt
-}, [issue])
+}, [issue, t])
 
   const handleConfirm = async () => {
     if (project && project.platform !== ConstsGitPlatform.GitPlatformInternal && !selectedBranch) {
-      toast.error('请选择分支')
+      toast.error(t("consoleProject.issueTask.toast.branchRequired"))
       return
     }
 
     if (!selectedModelId) {
-      toast.error('请选择大模型')
+      toast.error(t("consoleProject.issueTask.toast.modelRequired"))
       return
     }
 
     setSubmitting(true)
   
-    // 创建任务
     await apiRequest('v1UsersTasksCreate', {
       content: renderPrompt,
       cli_name: ConstsCliName.CliNameOpencode,
@@ -97,7 +98,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
       task_type: ConstsTaskType.TaskTypeDevelop,
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success('开发任务已启动')
+        toast.success(t("consoleProject.issueTask.develop.toast.started"))
         reloadProjects()
         reloadUnlinkedTasks()
         onConfirm?.()
@@ -106,7 +107,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
       } else if (resp.code === 10811) {
         setLimitDialogOpen(true)
       } else {
-        toast.error(resp.message || '任务启动失败')
+        toast.error(resp.message || t("consoleProject.issueTask.toast.startFailed"))
       }
     })
 
@@ -118,9 +119,9 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex flex-col">
         <DialogHeader>
-          <DialogTitle>开发任务 (AI)</DialogTitle>
+          <DialogTitle>{t("consoleProject.issueTask.develop.title")}</DialogTitle>
           <DialogDescription>
-            AI 将根据需求和技术方案自动生成开发任务
+            {t("consoleProject.issueTask.develop.description")}
           </DialogDescription>
         </DialogHeader>
         <IssueTaskProjectFields
@@ -140,7 +141,7 @@ ${issue?.design_document?.replaceAll("`", "\\`")}
         <DialogFooter>
           <Button onClick={handleConfirm} disabled={submitting}>
             {submitting ? <Spinner /> : <IconSparkles className="size-4" />}
-            开始开发
+            {t("consoleProject.issueTask.develop.start")}
           </Button>
         </DialogFooter>
       </DialogContent>

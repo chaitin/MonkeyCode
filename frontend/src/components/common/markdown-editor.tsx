@@ -8,7 +8,8 @@ import "@/utils/ace-theme"
 import "ace-builds/src-noconflict/theme-github"
 import "ace-builds/src-noconflict/theme-monokai"
 import { Markdown } from "@/components/common/markdown"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
+import { useTranslation } from "react-i18next"
 
 interface MarkdownEditorProps {
   disabled?: boolean
@@ -35,6 +36,7 @@ export default function MarkdownEditor({
   const [mode, setMode] = useState<"edit" | "preview">(defaultMode)
   const editorRef = useRef<IAceEditor | null>(null)
   const { resolvedTheme } = useTheme()
+  const { t } = useTranslation()
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items
@@ -58,22 +60,22 @@ export default function MarkdownEditor({
             const imageUrl = response.data.data
             const markdownImage = `![image](${imageUrl})`
             
-            // 在当前光标位置插入 markdown 图片
+            // Insert the markdown image at the current cursor position.
             if (editorRef.current) {
               const editor = editorRef.current
               editor.session.insert(editor.getCursorPosition(), markdownImage)
               editor.focus()
             } else {
-              // 如果没有 editor 引用，直接追加到内容末尾
+              // Fall back to appending when the editor ref is unavailable.
               onChange(value + markdownImage)
             }
             onAddImage?.(imageUrl)
-            toast.success("图片上传成功")
+            toast.success(t("common.markdownEditor.uploadSuccess"))
           } else {
-            toast.error("图片上传失败: " + (response.data?.message || '未知错误'))
+            toast.error(t("common.markdownEditor.uploadFailedWithMessage", { message: response.data?.message || t("common.markdownEditor.unknownError") }))
           }
         } catch (error) {
-          toast.error("图片上传失败: " + (error as Error).message)
+          toast.error(t("common.markdownEditor.uploadFailedWithMessage", { message: (error as Error).message }))
         } finally {
           setUploading(false)
         }
@@ -90,7 +92,7 @@ export default function MarkdownEditor({
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
         <div className="text-xs text-muted-foreground">
-          {mode === "edit" ? "编辑模式 - Markdown" : "预览模式"}
+          {mode === "edit" ? t("common.markdownEditor.editMode") : t("common.markdownEditor.previewMode")}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -101,7 +103,7 @@ export default function MarkdownEditor({
                 ? "bg-primary text-primary-foreground"
                 : "hover:bg-muted text-muted-foreground"
             }`}
-            title="预览"
+            title={t("common.markdownEditor.previewTitle")}
           >
             <IconEye className="size-4" />
           </button>
@@ -113,7 +115,7 @@ export default function MarkdownEditor({
                 ? "bg-primary text-primary-foreground"
                 : "hover:bg-muted text-muted-foreground"
             }`}
-            title="编辑"
+            title={t("common.markdownEditor.editTitle")}
           >
             <IconEdit className="size-4" />
           </button>
@@ -126,7 +128,7 @@ export default function MarkdownEditor({
           <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <IconLoader className="size-4 animate-spin" />
-              正在上传图片...
+              {t("common.markdownEditor.uploadingImage")}
             </div>
           </div>
         )}
@@ -159,7 +161,7 @@ export default function MarkdownEditor({
             {value ? (
               <Markdown allowHtml>{value}</Markdown>
             ) : (
-              <p className="text-muted-foreground italic">{placeholder || "暂无内容"}</p>
+              <p className="text-muted-foreground italic">{placeholder || t("common.markdownEditor.empty")}</p>
             )}
           </div>
         )}

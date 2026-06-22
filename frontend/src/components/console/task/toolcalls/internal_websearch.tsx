@@ -1,6 +1,7 @@
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { IconSearch } from "@tabler/icons-react";
 import type { MessageType } from "../message";
+import { taskDetailT } from "../task-i18n";
 
 type WebsearchResultItem = {
   title?: string
@@ -39,7 +40,7 @@ function parsePayload(message: MessageType): WebsearchPayload | null {
 
 export const renderTitle = (message: MessageType) => {
   const query = message.data.rawInput?.query
-  return query ? `联网搜索 “${query}”` : "联网搜索 搜索结果"
+  return query ? `${taskDetailT("toolcall.webSearch")} "${query}"` : taskDetailT("toolcall.webSearchResults")
 }
 
 export const renderDetail = (message: MessageType) => {
@@ -54,7 +55,7 @@ export const renderDetail = (message: MessageType) => {
           <EmptyMedia variant="icon">
             <IconSearch className="size-5 opacity-60" />
           </EmptyMedia>
-          <EmptyDescription>没有搜索结果</EmptyDescription>
+          <EmptyDescription>{taskDetailT("toolcall.noSearchResults")}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -78,7 +79,7 @@ export const renderDetail = (message: MessageType) => {
             >
               <div className="min-w-0">
                 <div className="line-clamp-2 text-xs font-medium text-foreground">
-                  {result.title || "未命名结果"}
+                  {result.title || taskDetailT("toolcall.untitledResult")}
                 </div>
                 <a
                   href={result.url || "#"}
@@ -86,7 +87,7 @@ export const renderDetail = (message: MessageType) => {
                   rel="noreferrer"
                   className="mt-1 block text-[11px] text-muted-foreground transition-colors hover:text-primary"
                 >
-                  <span className="truncate">{result.url || "无链接"}</span>
+                  <span className="truncate">{result.url || taskDetailT("toolcall.noLink")}</span>
                 </a>
               </div>
             </div>

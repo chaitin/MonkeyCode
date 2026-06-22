@@ -28,6 +28,7 @@ import UploadFileDialog from "@/components/console/files/upload-file"
 import CopyFileDialog from "@/components/console/files/copy"
 import MoveFileDialog from "@/components/console/files/move"
 import { FileDownloadDialog } from "./file-download-dialog"
+import { useTranslation } from "react-i18next"
 
 type WindowWithSaveFilePicker = Window & {
   showSaveFilePicker?: (options?: {
@@ -38,17 +39,18 @@ type WindowWithSaveFilePicker = Window & {
 interface FileActionsDropdownProps {
   file: RepoFileStatus
   envid?: string
-  /** 手动刷新（由“刷新”菜单项触发） */
+  /** Manual refresh triggered by the refresh menu item. */
   onRefresh?: () => void
-  /** 文件/目录操作成功后的回调 */
+  /** Called after a file or directory operation succeeds. */
   onSuccess?: () => void
-  /** 是否始终显示按钮（不依赖 hover） */
+  /** Always show the trigger without relying on hover. */
   alwaysVisible?: boolean
-  /** 隐藏移动和删除操作（用于根目录） */
+  /** Hide move and delete actions, used for the root directory. */
   hideDestructive?: boolean
 }
 
 export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysVisible, hideDestructive }: FileActionsDropdownProps) {
+  const { t } = useTranslation()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false)
   const [createFileDialogOpen, setCreateFileDialogOpen] = useState(false)
@@ -59,12 +61,10 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
   const [downloadFileHandle, setDownloadFileHandle] = useState<FileSystemFileHandle | null>(null)
 
   const isDirectory = file.entry_mode === RepoFileEntryMode.RepoEntryModeTree
-  // 完整路径用于 API 调用
   const filePath = normalizePath('/workspace/' + file.path)
-  // 展示路径统一使用完整工作区路径
   const displayPath = filePath
   const downloadFilename = isDirectory ? `${file.name}.zip` : file.name
-  const fileType = isDirectory ? '目录' : '文件'
+  const fileType = isDirectory ? t("taskDetail.fileActions.directory") : t("taskDetail.fileActions.file")
 
   const handleDelete = async () => {
     if (!envid) return
@@ -74,10 +74,10 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
       path: filePath
     }, [], (resp) => {
       if (resp.code === 0) {
-        toast.success(`已删除${fileType} "${file.name}"`)
+        toast.success(t("taskDetail.fileActions.deleteSuccess", { fileType, fileName: file.name }))
         onSuccess?.()
       } else {
-        toast.error(resp.message || "删除失败")
+        toast.error(resp.message || t("taskDetail.fileActions.deleteFailed"))
       }
     })
     setDeleteDialogOpen(false)
@@ -123,51 +123,47 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-          {/* 目录专属操作 */}
           {isDirectory && (
             <>
-              {/* 刷新单独一组，放在最上面 */}
               <DropdownMenuItem onClick={() => onRefresh?.()}>
                 <IconReload className="h-4 w-4" />
-                刷新
+                {t("taskDetail.fileActions.refresh")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setCreateFileDialogOpen(true)}>
                 <IconFile className="h-4 w-4" />
-                创建文件
+                {t("taskDetail.fileActions.createFile")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setCreateFolderDialogOpen(true)}>
                 <IconFolder className="h-4 w-4" />
-                创建目录
+                {t("taskDetail.fileActions.createFolder")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setUploadFileDialogOpen(true)}>
                 <IconUpload className="h-4 w-4" />
-                上传文件
+                {t("taskDetail.fileActions.uploadFile")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
           )}
           
-          {/* 文件专属操作 */}
           {!isDirectory && (
             <DropdownMenuItem onClick={() => setCopyFileDialogOpen(true)}>
               <IconCopy className="h-4 w-4" />
-              复制
+              {t("taskDetail.fileActions.copy")}
             </DropdownMenuItem>
           )}
           
-          {/* 通用操作 */}
           {!hideDestructive && (
             <DropdownMenuItem onClick={() => setMoveFileDialogOpen(true)}>
               <IconTransfer className="h-4 w-4" />
-              移动
+              {t("taskDetail.fileActions.move")}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => {
             void handleDownloadClick()
           }}>
             <IconDownload className="h-4 w-4" />
-            下载
+            {t("taskDetail.fileActions.download")}
           </DropdownMenuItem>
           {!hideDestructive && (
             <>
@@ -177,25 +173,24 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
                 onClick={() => setDeleteDialogOpen(true)}
               >
                 <IconTrash className="h-4 w-4" />
-                删除
+                {t("taskDetail.fileActions.delete")}
               </DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* 删除确认对话框 */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t("taskDetail.fileActions.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除{fileType} "{displayPath}" 吗？此操作不可撤销。
+              {t("taskDetail.fileActions.deleteDescription", { fileType, displayPath })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>确认删除</AlertDialogAction>
+            <AlertDialogCancel>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t("taskDetail.fileActions.confirmDelete")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -219,7 +214,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         />
       )}
 
-      {/* 创建文件夹对话框 */}
       {envid && (
         <CreateFolderDialog
           open={createFolderDialogOpen}
@@ -230,7 +224,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         />
       )}
 
-      {/* 创建文件对话框 */}
       {envid && (
         <CreateFileDialog
           open={createFileDialogOpen}
@@ -241,7 +234,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         />
       )}
 
-      {/* 上传文件对话框 */}
       {envid && (
         <UploadFileDialog
           open={uploadFileDialogOpen}
@@ -252,7 +244,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         />
       )}
 
-      {/* 复制文件对话框 */}
       {envid && (
         <CopyFileDialog
           open={copyFileDialogOpen}
@@ -263,7 +254,6 @@ export function FileActionsDropdown({ file, envid, onRefresh, onSuccess, alwaysV
         />
       )}
 
-      {/* 移动文件对话框 */}
       {envid && (
         <MoveFileDialog
           open={moveFileDialogOpen}

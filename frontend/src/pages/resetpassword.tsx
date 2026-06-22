@@ -9,14 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { apiRequest } from "@/utils/requestUtils";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 export default function ResetPasswordPage() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
   const missingToken = !token;
-  const tokenErrorMessage = '令牌无效或已过期，请重新发送找回密码邮件。';
+  const tokenErrorMessage = t("auth.resetPassword.invalidToken");
   const [pageError, setPageError] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,11 +29,11 @@ export default function ResetPasswordPage() {
 
   const handleResetPassword = async () => {
     if (password !== confirmPassword) {
-      toast.error('密码和确认密码不一致');
+      toast.error(t("auth.resetPassword.toast.passwordMismatch"));
       return;
     }
     if (password.length < 6) {
-      toast.error('密码长度不能小于6位');
+      toast.error(t("auth.resetPassword.toast.passwordTooShort"));
       return;
     }
     setLoading(true);
@@ -39,7 +41,7 @@ export default function ResetPasswordPage() {
       if (resp.code === 0) {
         setSuccessDialogOpen(true);
       } else {
-        toast.error(resp.message || '密码重置失败');
+        toast.error(resp.message || t("auth.resetPassword.toast.failed"));
       }
     });
     setLoading(false);
@@ -47,6 +49,7 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     if (missingToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Surface the missing token state as page-local form error.
       setPageError(tokenErrorMessage);
       return;
     }
@@ -75,17 +78,17 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col gap-6">
           <Link to="/">
-            <h1 className="text-2xl hover:font-bold">MonkeyCode 智能开发平台</h1>
+            <h1 className="text-2xl hover:font-bold">{t("login.title")}</h1>
           </Link>
           <Card>
             <CardContent>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="email">账号</FieldLabel>
+                  <FieldLabel htmlFor="email">{t("auth.resetPassword.account")}</FieldLabel>
                   <Input id="email" type="email" value={email} readOnly />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="password">密码</FieldLabel>
+                  <FieldLabel htmlFor="password">{t("auth.resetPassword.password")}</FieldLabel>
                   <Input
                     id="password"
                     type="password"
@@ -95,7 +98,7 @@ export default function ResetPasswordPage() {
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="password">确认密码</FieldLabel>
+                  <FieldLabel htmlFor="password">{t("auth.resetPassword.confirmPassword")}</FieldLabel>
                   <Input
                     id="confirm-password"
                     type="password"
@@ -107,7 +110,7 @@ export default function ResetPasswordPage() {
                 <Field>
                   <Button onClick={handleResetPassword} disabled={!!pageError || loading || !email || !password || !confirmPassword}>
                     {loading && <Spinner />}
-                    重置密码
+                    {t("auth.resetPassword.action")}
                   </Button>
                 </Field>
               </FieldGroup>
@@ -115,7 +118,7 @@ export default function ResetPasswordPage() {
           </Card>
           {pageError && (
             <Alert variant="destructive">
-              <AlertTitle>重置链接无效</AlertTitle>
+              <AlertTitle>{t("auth.resetPassword.invalidLinkTitle")}</AlertTitle>
               <AlertDescription>
                 {pageError}
               </AlertDescription>
@@ -126,11 +129,11 @@ export default function ResetPasswordPage() {
       <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>密码重置成功</AlertDialogTitle>
+            <AlertDialogTitle>{t("auth.resetPassword.successTitle")}</AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => navigate('/')}>
-              知道了
+              {t("auth.resetPassword.ok")}
             </AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>

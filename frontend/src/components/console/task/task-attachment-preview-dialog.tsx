@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { IconDownload, IconFile } from "@tabler/icons-react"
 import { isTaskImageAttachment } from "./task-shared"
 import { formatFileSize } from "./task-file-upload"
+import { useTranslation } from "react-i18next"
 
 export interface TaskAttachmentPreviewFile {
   name: string
@@ -34,15 +35,16 @@ function FileDetailRow({ label, value }: { label: string; value: string }) {
 }
 
 export function TaskAttachmentPreviewDialog({ open, file, onOpenChange }: TaskAttachmentPreviewDialogProps) {
+  const { t } = useTranslation()
   const isImage = file ? isTaskImageAttachment(file.name) : false
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>附件预览</DialogTitle>
+          <DialogTitle>{t("taskDetail.attachment.title")}</DialogTitle>
           <DialogDescription className="truncate" title={file?.name}>
-            {file?.name || "未选择附件"}
+            {file?.name || t("taskDetail.attachment.noneSelected")}
           </DialogDescription>
         </DialogHeader>
 
@@ -64,9 +66,9 @@ export function TaskAttachmentPreviewDialog({ open, file, onOpenChange }: TaskAt
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium" title={file.name}>{file.name}</div>
                   <div className="mt-3 text-sm">
-                    <FileDetailRow label="文件名" value={file.name} />
-                    <FileDetailRow label="大小" value={typeof file.size === "number" ? formatFileSize(file.size) : "未知"} />
-                    <FileDetailRow label="类型" value={file.type || "未知类型"} />
+                    <FileDetailRow label={t("taskDetail.attachment.fileName")} value={file.name} />
+                    <FileDetailRow label={t("taskDetail.attachment.size")} value={typeof file.size === "number" ? formatFileSize(file.size) : t("taskDetail.common.unknown")} />
+                    <FileDetailRow label={t("taskDetail.attachment.type")} value={file.type || t("taskDetail.attachment.unknownType")} />
                   </div>
                 </div>
               </div>
@@ -76,13 +78,13 @@ export function TaskAttachmentPreviewDialog({ open, file, onOpenChange }: TaskAt
 
         <DialogFooter className="shrink-0">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            关闭
+            {t("taskDetail.common.close")}
           </Button>
           {file && (
             <Button type="button" asChild>
               <a href={file.accessUrl} download={file.name}>
                 <IconDownload className="size-4" />
-                下载附件
+                {t("taskDetail.attachment.download")}
               </a>
             </Button>
           )}

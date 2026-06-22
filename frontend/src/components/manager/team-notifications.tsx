@@ -63,16 +63,18 @@ import Icon from "@/components/common/Icon"
 import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
+import { useTranslation } from "react-i18next"
 
-/** 接收端类型（UI 用，wechat_work 映射到 API 的 wecom） */
 type ReceiverType = "dingtalk" | "feishu" | "wechat_work" | "webhook"
 type ApiReceiverKind = "dingtalk" | "feishu" | "wecom" | "webhook"
 
-const RECEIVER_TYPE_OPTIONS: { value: ReceiverType; label: string; icon: React.ReactNode }[] = [
-  { value: "dingtalk", label: "钉钉机器人", icon: <Icon name="dingtalk" className="size-4" /> },
-  { value: "feishu", label: "飞书机器人", icon: <Icon name="lark" className="size-4" /> },
-  { value: "wechat_work", label: "企业微信机器人", icon: <Icon name="wecom" className="size-4" /> },
-  { value: "webhook", label: "Webhook", icon: <Link2 className="size-4" /> },
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+const RECEIVER_TYPE_OPTIONS: { value: ReceiverType; icon: React.ReactNode }[] = [
+  { value: "dingtalk", icon: <Icon name="dingtalk" className="size-4" /> },
+  { value: "feishu", icon: <Icon name="lark" className="size-4" /> },
+  { value: "wechat_work", icon: <Icon name="wecom" className="size-4" /> },
+  { value: "webhook", icon: <Link2 className="size-4" /> },
 ]
 
 const RECEIVER_TO_API_KIND: Record<ReceiverType, ApiReceiverKind> = {
@@ -97,16 +99,25 @@ function fromApiKind(kind?: ConstsNotifyChannelKind): ReceiverType {
   return kind ? API_KIND_TO_RECEIVER[kind] ?? "webhook" : "webhook"
 }
 
-function getReceiverTypeLabel(type: ReceiverType): string {
-  return RECEIVER_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
+function getReceiverTypeLabel(type: ReceiverType, t: Translate): string {
+  switch (type) {
+    case "dingtalk":
+      return t("managerNotifications.receiverTypes.dingtalk")
+    case "feishu":
+      return t("managerNotifications.receiverTypes.feishu")
+    case "wechat_work":
+      return t("managerNotifications.receiverTypes.wechat_work")
+    case "webhook":
+      return t("managerNotifications.receiverTypes.webhook")
+  }
 }
 
 function getReceiverTypeIcon(type: ReceiverType): React.ReactNode {
   return RECEIVER_TYPE_OPTIONS.find((o) => o.value === type)?.icon ?? <Link2 className="size-4" />
 }
 
-/** 企业管理后台 - 团队消息通知（使用 /api/v1/teams/notify/channels） */
 export default function TeamNotifications() {
+  const { t } = useTranslation()
   const [channels, setChannels] = useState<DomainNotifyChannel[]>([])
   const [eventTypes, setEventTypes] = useState<ConstsNotifyEventTypeInfo[]>([])
   const [loadingChannels, setLoadingChannels] = useState(true)
@@ -135,7 +146,7 @@ export default function TeamNotifications() {
         setChannels(res.data.data)
       }
     } catch {
-      toast.error("加载推送渠道失败")
+      toast.error(t("managerNotifications.toast.loadChannelsFailed"))
     } finally {
       setLoadingChannels(false)
     }
@@ -149,7 +160,7 @@ export default function TeamNotifications() {
         setEventTypes(res.data.data)
       }
     } catch {
-      toast.error("加载事件类型失败")
+      toast.error(t("managerNotifications.toast.loadEventTypesFailed"))
     } finally {
       setLoadingEventTypes(false)
     }
@@ -186,13 +197,13 @@ export default function TeamNotifications() {
 
   const handleSave = async () => {
     if (!formName.trim()) {
-      toast.error("请输入名称")
+      toast.error(t("managerNotifications.toast.nameRequired"))
       return
     }
     if (!formWebhookUrl.trim()) return
     const name = formName.trim()
     if (formEventTypes.length === 0) {
-      toast.error("请至少选择一种订阅事件")
+      toast.error(t("managerNotifications.toast.eventRequired"))
       return
     }
 
@@ -209,12 +220,12 @@ export default function TeamNotifications() {
           }
         )
         if (res.data?.code === 0) {
-          toast.success("保存成功")
+          toast.success(t("managerNotifications.toast.saved"))
           setAddDialogOpen(false)
           resetForm()
           loadChannels()
         } else {
-          toast.error(res.data?.message ?? "保存失败")
+          toast.error(res.data?.message ?? t("managerNotifications.toast.saveFailed"))
         }
       } else {
         const res = await api.api.v1TeamsNotifyChannelsCreate({
@@ -225,16 +236,16 @@ export default function TeamNotifications() {
           ...(formSecret.trim() && { secret: formSecret.trim() }),
         })
         if (res.data?.code === 0) {
-          toast.success("添加成功")
+          toast.success(t("managerNotifications.toast.added"))
           setAddDialogOpen(false)
           resetForm()
           loadChannels()
         } else {
-          toast.error(res.data?.message ?? "添加失败")
+          toast.error(res.data?.message ?? t("managerNotifications.toast.addFailed"))
         }
       }
     } catch {
-      toast.error("操作失败")
+      toast.error(t("managerNotifications.toast.operationFailed"))
     } finally {
       setSaving(false)
     }
@@ -251,15 +262,15 @@ export default function TeamNotifications() {
     try {
       const res = await api.api.v1TeamsNotifyChannelsDelete(channelToDelete.id)
       if (res.data?.code === 0) {
-        toast.success("移除成功")
+        toast.success(t("managerNotifications.toast.removed"))
         setChannelToDelete(null)
         setDeleteDialogOpen(false)
         loadChannels()
       } else {
-        toast.error(res.data?.message ?? "移除失败")
+        toast.error(res.data?.message ?? t("managerNotifications.toast.removeFailed"))
       }
     } catch {
-      toast.error("移除失败")
+      toast.error(t("managerNotifications.toast.removeFailed"))
     } finally {
       setDeleting(false)
     }
@@ -271,12 +282,12 @@ export default function TeamNotifications() {
     try {
       const res = await api.api.v1TeamsNotifyChannelsTestCreate(ch.id)
       if (res.data?.code === 0) {
-        toast.success("测试消息已发送")
+        toast.success(t("managerNotifications.toast.testSent"))
       } else {
-        toast.error(res.data?.message ?? "测试失败")
+        toast.error(res.data?.message ?? t("managerNotifications.toast.testFailed"))
       }
     } catch {
-      toast.error("测试失败")
+      toast.error(t("managerNotifications.toast.testFailed"))
     } finally {
       setTestingId(null)
     }
@@ -294,56 +305,64 @@ export default function TeamNotifications() {
 
   const listChannels = () => (
     <ItemGroup className="flex flex-col gap-4">
-      {channels.map((ch) => (
-        <Item key={ch.id} variant="outline" className="hover:border-primary/50" size="sm">
-          <ItemMedia className="hidden sm:flex">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-              {getReceiverTypeIcon(fromApiKind(ch.kind))}
-            </div>
-          </ItemMedia>
-          <ItemContent>
-            <ItemTitle>{ch.name ?? "未命名"}</ItemTitle>
-            <ItemDescription className="break-all">
-              {getReceiverTypeLabel(fromApiKind(ch.kind))} · 订阅{" "}
-              {(ch.event_types ?? []).length > 0
-                ? (ch.event_types ?? [])
-                    .map((t) => getEventTypeLabel(t))
-                    .join("、")
-                : "无"}
-            </ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleTest(ch)}
-              disabled={!!testingId}
-            >
-              {testingId === ch.id ? <Spinner className="size-4" /> : "测试"}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <MoreVertical className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openEditDialog(ch)}>
-                  <IconPencil />
-                  编辑
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => handleDelete(ch)}
-                >
-                  <IconTrash />
-                  移除
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </ItemActions>
-        </Item>
-      ))}
+      {channels.map((ch) => {
+        const receiver = getReceiverTypeLabel(fromApiKind(ch.kind), t)
+        const eventNames = (ch.event_types ?? [])
+          .map((eventType) => getEventTypeLabel(eventType))
+          .join(t("managerNotifications.eventSeparator"))
+        return (
+          <Item key={ch.id} variant="outline" className="hover:border-primary/50" size="sm">
+            <ItemMedia className="hidden sm:flex">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                {getReceiverTypeIcon(fromApiKind(ch.kind))}
+              </div>
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>{ch.name ?? t("managerNotifications.fallback.unnamed")}</ItemTitle>
+              <ItemDescription className="break-all">
+                {t("managerNotifications.subscriptionSummary", {
+                  receiver,
+                  events: eventNames || t("managerNotifications.none"),
+                })}
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleTest(ch)}
+                disabled={!!testingId}
+              >
+                {testingId === ch.id ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  t("managerNotifications.actions.test")
+                )}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm">
+                    <MoreVertical className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openEditDialog(ch)}>
+                    <IconPencil />
+                    {t("managerNotifications.actions.edit")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => handleDelete(ch)}
+                  >
+                    <IconTrash />
+                    {t("managerNotifications.actions.remove")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </ItemActions>
+          </Item>
+        )
+      })}
     </ItemGroup>
   )
 
@@ -355,7 +374,7 @@ export default function TeamNotifications() {
         </EmptyMedia>
       </EmptyHeader>
       <EmptyContent>
-        <EmptyDescription>正在加载推送渠道...</EmptyDescription>
+        <EmptyDescription>{t("managerNotifications.loading")}</EmptyDescription>
       </EmptyContent>
     </Empty>
   )
@@ -365,10 +384,10 @@ export default function TeamNotifications() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell />
-          消息通知
+          {t("managerNotifications.title")}
         </CardTitle>
         <CardDescription>
-          配置团队任务、系统等消息的接收方式，支持钉钉、飞书、企业微信机器人和 Webhook
+          {t("managerNotifications.description")}
         </CardDescription>
         <CardAction>
           <Button
@@ -378,7 +397,7 @@ export default function TeamNotifications() {
             disabled={loadingEventTypes || eventTypes.length === 0}
           >
             <CirclePlus className="size-4" />
-            添加接收端
+            {t("managerNotifications.actions.addReceiver")}
           </Button>
         </CardAction>
       </CardHeader>
@@ -389,11 +408,15 @@ export default function TeamNotifications() {
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingChannel ? "编辑接收端" : "添加接收端"}</DialogTitle>
+            <DialogTitle>
+              {editingChannel
+                ? t("managerNotifications.dialog.editTitle")
+                : t("managerNotifications.dialog.addTitle")}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>接收端类型</Label>
+              <Label>{t("managerNotifications.fields.receiverType")}</Label>
               <Select
                 value={formType}
                 onValueChange={(v) => setFormType(v as ReceiverType)}
@@ -407,27 +430,33 @@ export default function TeamNotifications() {
                     <SelectItem key={opt.value} value={opt.value}>
                       <span className="flex items-center gap-2">
                         {opt.icon}
-                        {opt.label}
+                        {getReceiverTypeLabel(opt.value, t)}
                       </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {editingChannel && (
-                <p className="text-xs text-muted-foreground">编辑时不可修改接收端类型</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("managerNotifications.hints.receiverTypeLocked")}
+                </p>
               )}
             </div>
             <div className="space-y-2">
-              <Label>名称</Label>
+              <Label>{t("managerNotifications.fields.name")}</Label>
               <Input
-                placeholder={`如：${getReceiverTypeLabel(formType)}-1`}
+                placeholder={t("managerNotifications.namePlaceholder", {
+                  receiver: getReceiverTypeLabel(formType, t),
+                })}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <Label>
-                {formType === "webhook" ? "Webhook 地址" : "机器人 Webhook 地址"}
+                {formType === "webhook"
+                  ? t("managerNotifications.fields.webhookUrl")
+                  : t("managerNotifications.fields.robotWebhookUrl")}
               </Label>
               <Input
                 placeholder="https://..."
@@ -436,22 +465,24 @@ export default function TeamNotifications() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Secret（选填）</Label>
+              <Label>{t("managerNotifications.fields.secret")}</Label>
               <Input
                 type="password"
-                placeholder="用于签名验证，钉钉/飞书/企业微信机器人可选填"
+                placeholder={t("managerNotifications.secretPlaceholder")}
                 value={formSecret}
                 onChange={(e) => setFormSecret(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                部分机器人需要配置 Secret 以验证消息来源
+                {t("managerNotifications.hints.secret")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label>订阅消息</Label>
+              <Label>{t("managerNotifications.fields.subscribedMessages")}</Label>
               <div className="flex flex-col gap-2 rounded-lg border p-3">
                 {eventTypes.length === 0 ? (
-                  <span className="text-sm text-muted-foreground">暂无可用事件类型</span>
+                  <span className="text-sm text-muted-foreground">
+                    {t("managerNotifications.hints.noEventTypes")}
+                  </span>
                 ) : (
                   eventTypes.map((et) => (
                     <div
@@ -481,7 +512,7 @@ export default function TeamNotifications() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-              取消
+              {t("managerNotifications.actions.cancel")}
             </Button>
             <Button
               onClick={handleSave}
@@ -492,7 +523,13 @@ export default function TeamNotifications() {
                 saving
               }
             >
-              {saving ? <Spinner className="size-4" /> : editingChannel ? "保存" : "添加"}
+              {saving ? (
+                <Spinner className="size-4" />
+              ) : editingChannel ? (
+                t("managerNotifications.actions.save")
+              ) : (
+                t("managerNotifications.actions.add")
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -501,17 +538,23 @@ export default function TeamNotifications() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认移除</AlertDialogTitle>
+            <AlertDialogTitle>{t("managerNotifications.dialog.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要移除接收端「{channelToDelete?.name}」吗？此操作不可撤销。
+              {t("managerNotifications.dialog.deleteDescription", {
+                name: channelToDelete?.name ?? t("managerNotifications.fallback.unnamed"),
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setChannelToDelete(null)} disabled={deleting}>
-              取消
+              {t("managerNotifications.actions.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
-              {deleting ? <Spinner className="size-4" /> : "确认移除"}
+              {deleting ? (
+                <Spinner className="size-4" />
+              ) : (
+                t("managerNotifications.dialog.confirmRemove")
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

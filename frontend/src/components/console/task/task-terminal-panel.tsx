@@ -19,7 +19,8 @@ import { toast } from "sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@/components/theme-context"
+import { useTranslation } from "react-i18next"
 
 interface TaskTerminalPanelProps {
   envid?: string
@@ -28,9 +29,11 @@ interface TaskTerminalPanelProps {
 }
 
 export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTerminalPanelProps) {
+  const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const [sessions, setSessions] = useState<DomainTerminal[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [fallbackCreatedAt] = useState(() => Date.now() / 1000)
   const [signal, setSignal] = useState<number>(0)
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected")
   const [titles, setTitles] = useState<Record<string, string>>({})
@@ -57,9 +60,9 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
 
     await apiRequest("v1UsersHostsVmsTerminalsDelete", {}, [envid, terminalId], (resp) => {
       if (resp.code === 0) {
-        toast.success("终端会话已关闭")
+        toast.success(t("taskDetail.terminal.closed"))
       } else {
-        toast.error("关闭终端会话失败: " + resp.message)
+        toast.error(t("taskDetail.terminal.closeFailed", { message: resp.message }))
       }
     })
 
@@ -109,8 +112,10 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
 
   useEffect(() => {
     if (sessions.length > 0 && currentSessionId === null) {
-      setCurrentSessionId(sessions[0].id || null)
-      setSignal((prev) => prev + 1)
+      queueMicrotask(() => {
+        setCurrentSessionId(sessions[0].id || null)
+        setSignal((prev) => prev + 1)
+      })
     }
   }, [currentSessionId, sessions])
 
@@ -120,8 +125,8 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
   if (currentSessionId && !sessions.some((s) => s.id === currentSessionId)) {
     displaySessions.unshift({
       id: currentSessionId,
-      title: "新终端",
-      created_at: Date.now() / 1000,
+      title: t("taskDetail.terminal.newTerminal"),
+      created_at: fallbackCreatedAt,
     })
   }
 
@@ -129,7 +134,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
     if (currentSessionId === session.id && connectionStatus === "connected" && titles[session.id || ""]) {
       return titles[session.id || ""]
     }
-    return session.title || session.id?.slice(0, 8) || "终端"
+    return session.title || session.id?.slice(0, 8) || t("taskDetail.terminal.fallbackTitle")
   }
 
   const getTabIcon = (sessionId: string) => {
@@ -202,7 +207,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
           </div>
         ) : (
           <div className="px-1 text-sm text-muted-foreground">
-            {disabled ? "开发环境未就绪" : "暂无终端连接"}
+            {disabled ? t("taskDetail.terminal.envNotReady") : t("taskDetail.terminal.empty")}
           </div>
         )}
       </div>
@@ -220,7 +225,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
                 <IconCloudOff className="size-6" />
               </EmptyMedia>
               <EmptyDescription>
-                开发环境未就绪
+                {t("taskDetail.terminal.envNotReady")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -248,7 +253,7 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
               <EmptyMedia variant="icon">
                 <IconTerminal2 className="size-6" />
               </EmptyMedia>
-              <EmptyDescription>点击 + 创建终端</EmptyDescription>
+              <EmptyDescription>{t("taskDetail.terminal.createHint")}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -257,13 +262,13 @@ export function TaskTerminalPanel({ envid, disabled, onClosePanel }: TaskTermina
       <AlertDialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认关闭</AlertDialogTitle>
-            <AlertDialogDescription>确定要关闭此终端会话吗？此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogTitle>{t("taskDetail.terminal.closeTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("taskDetail.terminal.closeDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setCloseDialogOpen(false)}>取消</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setCloseDialogOpen(false)}>{t("taskDetail.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => sessionToClose && handleDeleteSession(sessionToClose)}>
-              确认关闭
+              {t("taskDetail.terminal.confirmClose")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

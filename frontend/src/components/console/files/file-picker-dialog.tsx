@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { IconChevronDown, IconChevronRight, IconFile, IconFolder, IconFolderOpen } from "@tabler/icons-react"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 
 interface TreeNode {
   file: TaskflowFile
@@ -41,6 +42,7 @@ export default function FilePickerDialog({
   onSelect,
   defaultSelectedFiles = [],
 }: FilePickerDialogProps) {
+  const { t } = useTranslation()
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(false)
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
@@ -86,14 +88,15 @@ export default function FilePickerDialog({
           depth,
         }))
       } else {
-        toast.error("获取文件列表失败: " + resp.message)
+        toast.error(t("consoleFiles.toast.fetchFailedWithMessage", { message: resp.message }))
       }
     })
     return result
-  }, [envid])
+  }, [envid, t])
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize picker selection from controlled props when opened.
       setSelectedFiles(defaultSelectedFiles)
       setExpandedDirs(new Set([ROOT_PATH])) // Auto expand workspace
       setLoading(true)
@@ -349,7 +352,7 @@ export default function FilePickerDialog({
           <span className="truncate text-sm">{node.file.name}</span>
           {isDir && hasUnloaded && (
             <span className="text-muted-foreground text-xs flex-shrink-0">
-              (子目录未完全加载)
+              {t("consoleFiles.picker.unloadedChildren")}
             </span>
           )}
           <span className="flex-1" />
@@ -371,7 +374,7 @@ export default function FilePickerDialog({
                 className="text-muted-foreground text-xs py-1 border-b"
                 style={{ paddingLeft: paddingLeft + 24 }}
               >
-                (空目录)
+                {t("consoleFiles.picker.emptyDirectory")}
               </div>
             ) : (
               node.children.map(child => renderNode(child))
@@ -386,7 +389,7 @@ export default function FilePickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>选择产出物</DialogTitle>
+          <DialogTitle>{t("consoleFiles.picker.title")}</DialogTitle>
         </DialogHeader>
         <div className="h-[50vh] overflow-y-auto border rounded-md">
           {loading ? (
@@ -395,7 +398,7 @@ export default function FilePickerDialog({
             </div>
           ) : treeNodes.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground py-8">
-              此目录为空
+              {t("consoleFiles.picker.empty")}
             </div>
           ) : (
             <div className="flex flex-col">
@@ -405,10 +408,10 @@ export default function FilePickerDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            取消
+            {t("consoleFiles.actions.cancel")}
           </Button>
           <Button onClick={handleConfirm}>
-            确定
+            {t("consoleFiles.actions.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -18,6 +18,7 @@ import { MoreVertical } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 interface ProjectInfoProps {
   project?: DomainProject
@@ -39,6 +40,7 @@ const ProjectInfo = ({
   const [autoReviewDialogOpen, setAutoReviewDialogOpen] = useState(false)
   const navigate = useNavigate()
   const { projects, reloadProjects, reloadUnlinkedTasks } = useCommonData()
+  const { t } = useTranslation()
 
   const handleEditProjectName = () => {
     if (!project) return
@@ -70,10 +72,9 @@ const ProjectInfo = ({
     setDeleteLoading(true)
     await apiRequest('v1UsersProjectsDelete', {}, [deletingProject.id], (resp) => {
       if (resp.code === 0) {
-        toast.success("项目已删除")
+        toast.success(t("consoleProject.delete.toast.deleted"))
         setDeleteDialogOpen(false)
         setDeletingProject(undefined)
-        // 找到删除后的第一个项目
         const remainingProjects = projects.filter(p => p.id !== deletingProject.id)
         reloadProjects()
         if (remainingProjects.length > 0) {
@@ -82,7 +83,7 @@ const ProjectInfo = ({
           navigate('/console/tasks')
         }
       } else {
-        toast.error(resp.message || "删除项目失败")
+        toast.error(resp.message || t("consoleProject.delete.toast.deleteFailed"))
       }
     })
     setDeleteLoading(false)
@@ -99,6 +100,9 @@ const ProjectInfo = ({
   }
 
   const isRepoUnbound = isProjectRepoUnbound(project)
+  const autoReviewLabel = project?.auto_review_enabled
+    ? t("consoleProject.info.autoReviewEnabled")
+    : t("consoleProject.info.autoReviewDisabled")
 
   return (
     <>
@@ -119,9 +123,9 @@ const ProjectInfo = ({
           </ItemTitle>
           <ItemDescription className="flex flex-row gap-2 items-center">
             {isRepoUnbound && (
-              <span className="text-warning">未绑定仓库</span>
+              <span className="text-warning">{t("consoleProject.info.unboundRepository")}</span>
             ) || (
-              <span>{project?.description || "暂无描述"}</span>
+              <span>{project?.description || t("consoleProject.info.noDescription")}</span>
             )}
           </ItemDescription>
         </ItemContent>
@@ -136,11 +140,11 @@ const ProjectInfo = ({
                 className={`cursor-pointer disabled:cursor-not-allowed ${project?.auto_review_enabled ? "" : "text-muted-foreground"}`}
               >
                 <IconViewfinder className="size-4" />
-                {project?.auto_review_enabled ? "已开启自动 Review" : "未开启自动 Review"}
+                {autoReviewLabel}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {project?.auto_review_enabled ? "已开启自动 Review" : "未开启自动 Review"}
+              {autoReviewLabel}
             </TooltipContent>
           </Tooltip>
           <Button
@@ -151,7 +155,7 @@ const ProjectInfo = ({
             className="cursor-pointer disabled:cursor-not-allowed"
           >
             <IconSparkles className="size-4" />
-            启动 AI
+            {t("consoleProject.info.startAi")}
           </Button>
           
           <DropdownMenu>
@@ -163,22 +167,22 @@ const ProjectInfo = ({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleEditProjectName}>
                 <IconPencil />
-                修改名称
+                {t("consoleProject.info.editName")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleEditEnv}>
                 <IconSettings />
-                环境变量
+                {t("consoleProject.info.env")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleEditImage}>
                 <IconDeviceImacCode />
-                开发镜像
+                {t("consoleProject.info.image")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
                 onClick={handleDeleteClick}
               >
                 <IconTrash />
-                移除项目
+                {t("consoleProject.info.remove")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -213,24 +217,23 @@ const ProjectInfo = ({
         onSuccess={onRefresh}
       />
 
-      {/* 删除项目确认对话框 */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleProject.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除项目 "{deletingProject?.name}" 吗？此操作不可撤销，项目内的所有数据都将被删除。
+              {t("consoleProject.delete.description", { name: deletingProject?.name || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteLoading}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteLoading}>{t("consoleProject.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleteLoading}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteLoading && <IconLoader className="size-4 animate-spin mr-2" />}
-              确认删除
+              {t("consoleProject.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
