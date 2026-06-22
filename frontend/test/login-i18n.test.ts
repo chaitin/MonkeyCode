@@ -20,7 +20,8 @@ test("登录页使用 i18n 翻译 key 渲染主要文案", () => {
 
 test("登录页翻译资源提供中英文文案", () => {
   assert.equal(cn.login.title, "MonkeyCode 智能开发平台");
-  assert.equal(en.login.title, "MonkeyCode Intelligent Development Platform");
+  assert.equal(en.login.title, "MonkeyCode AI Platform");
+  assert.equal(en.login.tabs.manager, "Admin");
   assert.equal(cn.login.toast.captchaFailed, "验证码验证失败");
   assert.equal(en.login.toast.captchaFailed, "Captcha verification failed");
 });

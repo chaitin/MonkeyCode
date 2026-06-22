@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCommonData } from "@/components/console/data-provider";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 const PAGE_SIZE = 24;
 
@@ -33,6 +34,7 @@ export default function TasksPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const { reloadProjects, reloadUnlinkedTasks, reloadHistoricalTasks } = useCommonData()
+  const { t } = useTranslation()
   const [tasks, setTasks] = useState<DomainProjectTask[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
@@ -60,7 +62,7 @@ export default function TasksPage() {
         setDeleting(false)
         setTaskToDelete(null)
         if (resp.code === 0) {
-          toast.success("任务已删除")
+          toast.success(t("consoleTasks.toast.deleted"))
           setTasks((prev) => prev.filter((t) => t.id !== taskId))
           reloadProjects()
           reloadUnlinkedTasks()
@@ -68,7 +70,7 @@ export default function TasksPage() {
             navigate("/console/tasks")
           }
         } else {
-          toast.error(resp.message || "删除失败")
+          toast.error(resp.message || t("consoleTasks.toast.deleteFailed"))
         }
       },
       () => {
@@ -93,7 +95,7 @@ export default function TasksPage() {
         setStopping(false)
         setTaskToStop(null)
         if (resp.code === 0) {
-          toast.success("任务已终止")
+          toast.success(t("consoleTasks.toast.stopped"))
           setTasks((prev) => prev.map((task) => (
             task.id === taskId
               ? { ...task, status: ConstsTaskStatus.TaskStatusError }
@@ -102,7 +104,7 @@ export default function TasksPage() {
           reloadProjects()
           reloadUnlinkedTasks()
         } else {
-          toast.error(resp.message || "终止失败")
+          toast.error(resp.message || t("consoleTasks.toast.stopFailed"))
         }
       },
       () => {
@@ -139,11 +141,11 @@ export default function TasksPage() {
         setPage(pageNum)
       } else {
         setHasMore(false)
-        toast.error("获取任务列表失败: " + resp.message)
+        toast.error(t("consoleTasks.toast.fetchFailed", { message: resp.message || "" }))
       }
       resetLoading()
     }, () => resetLoading())
-  }, [])
+  }, [t])
 
   const loadMore = useCallback(() => {
     if (!loading && hasMore) {
@@ -152,8 +154,10 @@ export default function TasksPage() {
   }, [loading, hasMore, page, fetchTasks])
 
   useEffect(() => {
-    fetchTasks(1, false)
-  }, [])
+    const initialLoadTimer = window.setTimeout(() => fetchTasks(1, false), 0)
+
+    return () => window.clearTimeout(initialLoadTimer)
+  }, [fetchTasks])
 
   useEffect(() => {
     const el = loadMoreRef.current
@@ -185,7 +189,7 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col flex-1 items-center">
-      <h1 className="text-4xl pt-30 pb-10">MonkeyCode 智能任务</h1>
+      <h1 className="text-4xl pt-30 pb-10">{t("consoleTasks.title")}</h1>
       <div className="max-w-[800px] w-full py-10">
         <TaskInput repos={repos} onTaskCreated={() => { setPage(1); setHasMore(true); fetchTasks(1, false); reloadProjects(); reloadUnlinkedTasks(); }} />
       </div>
@@ -202,16 +206,16 @@ export default function TasksPage() {
                   </ItemTitle>
                 </HoverCardTrigger>
                 {renderHoverCardContent([
-                  {title: "任务名称", content: getTaskDisplayName(task)},
-                  {title: "任务内容", content: task.content || ""},
-                  {title: "任务状态", content: task.status || ""},
-                  {title: "任务类型", content: `${task.type}/${task.sub_type}` || ""},
-                  task.repo_url ? {title: "代码仓库", content: task.repo_url} : null,
-                  task.repo_filename ? {title: "代码文件", content: task.repo_filename} : null,
-                  task.repo_url ? {title: "仓库分支", content: task.branch || ""} : null,
-                  {title: "开发工具", content: task.cli_name || ""},
-                  {title: "大模型", content: getModelDisplayNameForModel(task.model)},
-                  {title: "创建时间", content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
+                  {title: t("consoleTasks.hover.taskName"), content: getTaskDisplayName(task)},
+                  {title: t("consoleTasks.hover.taskContent"), content: task.content || ""},
+                  {title: t("consoleTasks.hover.taskStatus"), content: task.status || ""},
+                  {title: t("consoleTasks.hover.taskType"), content: `${task.type}/${task.sub_type}`},
+                  task.repo_url ? {title: t("consoleTasks.hover.repository"), content: task.repo_url} : null,
+                  task.repo_filename ? {title: t("consoleTasks.hover.repositoryFile"), content: task.repo_filename} : null,
+                  task.repo_url ? {title: t("consoleTasks.hover.branch"), content: task.branch || ""} : null,
+                  {title: t("consoleTasks.hover.developmentTool"), content: task.cli_name || ""},
+                  {title: t("consoleTasks.hover.model"), content: getModelDisplayNameForModel(task.model)},
+                  {title: t("consoleTasks.hover.createdAt"), content: dayjs.unix(task.created_at as number).format("YYYY-MM-DD HH:mm:ss")},
                 ])}
               </HoverCard>
               <TaskActionsDropdown
@@ -219,8 +223,8 @@ export default function TasksPage() {
                 onStop={setTaskToStop}
                 onDelete={setTaskToDelete}
                 onRenameSuccess={(title) => handleTaskRenamed(task.id || "", title)}
-                stopLabel="终止"
-                deleteLabel="删除"
+                stopLabel={t("consoleTasks.actions.stop")}
+                deleteLabel={t("consoleTasks.actions.delete")}
                 triggerClassName="text-muted-foreground/50 group-hover:text-primary hover:text-primary"
               />
             </ItemHeader>
@@ -233,17 +237,17 @@ export default function TasksPage() {
                     <span className="inline-flex">
                       <Badge variant="outline" className="text-muted-foreground">
                         <IconCircleCheck />
-                        已终止
+                        {t("consoleTasks.status.stopped")}
                       </Badge>
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>连续三天不对话的任务将自动回收</TooltipContent>
+                  <TooltipContent>{t("consoleTasks.status.recycleTip")}</TooltipContent>
                 </Tooltip>
               ) : (
                 <Badge variant="outline" className={cn(task.status === "processing" || task.status === "pending" ? "" : "text-muted-foreground")} >
-                  {task.status === "error" && <><IconAlertTriangle />启动失败</>}
-                  {task.status === "pending" && <><Spinner />正在启动</>}
-                  {task.status === "processing" && <><Spinner />运行中</>}
+                  {task.status === "error" && <><IconAlertTriangle />{t("consoleTasks.status.startFailed")}</>}
+                  {task.status === "pending" && <><Spinner />{t("consoleTasks.status.starting")}</>}
+                  {task.status === "processing" && <><Spinner />{t("consoleTasks.status.processing")}</>}
                 </Badge>
               )}
               {task.stats?.total_tokens ? (
@@ -265,13 +269,13 @@ export default function TasksPage() {
       <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除任务</AlertDialogTitle>
+            <AlertDialogTitle>{t("consoleTasks.dialog.delete.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除任务「{getTaskDisplayName(taskToDelete)}」吗？此操作不可撤销。
+              {t("consoleTasks.dialog.delete.description", { taskName: getTaskDisplayName(taskToDelete) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -280,7 +284,7 @@ export default function TasksPage() {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "删除中..." : "删除"}
+              {deleting ? t("consoleTasks.dialog.delete.confirming") : t("consoleTasks.dialog.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -288,13 +292,13 @@ export default function TasksPage() {
       <AlertDialog open={!!taskToStop} onOpenChange={(open) => !open && setTaskToStop(null)}>
         <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>确认终止任务</AlertDialogTitle>
+              <AlertDialogTitle>{t("consoleTasks.dialog.stop.title")}</AlertDialogTitle>
               <AlertDialogDescription>
-                确定要终止任务「{getTaskDisplayName(taskToStop)}」吗？任务终止后无法恢复。
+                {t("consoleTasks.dialog.stop.description", { taskName: getTaskDisplayName(taskToStop) })}
               </AlertDialogDescription>
             </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={stopping}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={stopping}>{t("consoleTasks.dialog.common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault()
@@ -303,7 +307,7 @@ export default function TasksPage() {
               disabled={stopping}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {stopping ? "终止中..." : "终止"}
+              {stopping ? t("consoleTasks.dialog.stop.confirming") : t("consoleTasks.dialog.stop.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

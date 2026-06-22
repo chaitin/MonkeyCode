@@ -40,6 +40,56 @@ const cn = {
       captchaFailed: "验证码验证失败",
     },
   },
+  consoleTasks: {
+    title: "MonkeyCode 智能任务",
+    hover: {
+      taskName: "任务名称",
+      taskContent: "任务内容",
+      taskStatus: "任务状态",
+      taskType: "任务类型",
+      repository: "代码仓库",
+      repositoryFile: "代码文件",
+      branch: "仓库分支",
+      developmentTool: "开发工具",
+      model: "大模型",
+      createdAt: "创建时间",
+    },
+    actions: {
+      stop: "终止",
+      delete: "删除",
+    },
+    status: {
+      stopped: "已终止",
+      recycleTip: "连续三天不对话的任务将自动回收",
+      startFailed: "启动失败",
+      starting: "正在启动",
+      processing: "运行中",
+    },
+    toast: {
+      deleted: "任务已删除",
+      deleteFailed: "删除失败",
+      stopped: "任务已终止",
+      stopFailed: "终止失败",
+      fetchFailed: "获取任务列表失败: {{message}}",
+    },
+    dialog: {
+      common: {
+        cancel: "取消",
+      },
+      delete: {
+        title: "确认删除任务",
+        description: "确定要删除任务「{{taskName}}」吗？此操作不可撤销。",
+        confirming: "删除中...",
+        confirm: "删除",
+      },
+      stop: {
+        title: "确认终止任务",
+        description: "确定要终止任务「{{taskName}}」吗？任务终止后无法恢复。",
+        confirming: "终止中...",
+        confirm: "终止",
+      },
+    },
+  },
 }
 
 export default cn

@@ -92,7 +92,7 @@ test("全局 meta 翻译资源提供中英文默认文案", () => {
   });
 
   assert.deepEqual((en as MetaResources).meta?.default, {
-    title: "MonkeyCode Intelligent Development Platform",
+    title: "MonkeyCode AI Platform",
     description:
       "MonkeyCode AI is an intelligent code generation platform that helps developers build applications faster with AI-powered coding assistants, automated workflows, and smart development tools.",
     keywords: "AI code generation, intelligent programming, developer tools, automated programming, code assistant, AI development platform, MonkeyCode, artificial intelligence programming",
