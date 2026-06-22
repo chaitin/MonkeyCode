@@ -9,22 +9,22 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
-type bridgeProductVersionProviderStub struct{}
+type bridgeServerConfigProviderStub struct{}
 
-func (bridgeProductVersionProviderStub) GetProductVersion(context.Context) (domain.ProductVersion, error) {
-	return domain.ProductVersion{Edition: domain.ProductEditionPrivate}, nil
+func (bridgeServerConfigProviderStub) GetServerConfig(context.Context) (domain.ServerConfig, error) {
+	return domain.ServerConfig{Edition: domain.ProductEditionPrivate}, nil
 }
 
-func TestWithProductVersionProviderRegistersProvider(t *testing.T) {
+func TestWithServerConfigProviderRegistersProvider(t *testing.T) {
 	injector := do.New()
-	provider := bridgeProductVersionProviderStub{}
+	provider := bridgeServerConfigProviderStub{}
 
-	WithProductVersionProvider(provider)(injector)
+	WithServerConfigProvider(provider)(injector)
 
-	got := do.MustInvoke[domain.ProductVersionProvider](injector)
-	info, err := got.GetProductVersion(context.Background())
+	got := do.MustInvoke[domain.ServerConfigProvider](injector)
+	info, err := got.GetServerConfig(context.Background())
 	if err != nil {
-		t.Fatalf("GetProductVersion: %v", err)
+		t.Fatalf("GetServerConfig: %v", err)
 	}
 	if info.Edition != domain.ProductEditionPrivate {
 		t.Fatalf("edition = %q, want %q", info.Edition, domain.ProductEditionPrivate)

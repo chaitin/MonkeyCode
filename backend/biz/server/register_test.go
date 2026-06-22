@@ -1,4 +1,4 @@
-package product
+package server
 
 import (
 	"context"
@@ -15,58 +15,59 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/domain"
 )
 
-type productVersionProviderStub struct {
-	info domain.ProductVersion
+type serverConfigProviderStub struct {
+	info domain.ServerConfig
 }
 
-func (s productVersionProviderStub) GetProductVersion(context.Context) (domain.ProductVersion, error) {
+func (s serverConfigProviderStub) GetServerConfig(context.Context) (domain.ServerConfig, error) {
 	return s.info, nil
 }
 
-func TestProductRegistersVersionRoute(t *testing.T) {
+func TestServerRegistersConfigRoute(t *testing.T) {
 	injector := do.New()
 	w := web.New()
 	do.ProvideValue(injector, w)
 	do.ProvideValue(injector, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	do.ProvideValue[domain.ProductVersionProvider](injector, productVersionProviderStub{})
+	do.ProvideValue[domain.ServerConfigProvider](injector, serverConfigProviderStub{})
 
-	ProvideProduct(injector)
-	InvokeProduct(injector)
+	ProvideServer(injector)
+	InvokeServer(injector)
 
-	if !hasRoute(w, http.MethodGet, "/api/v1/product/version") {
-		t.Fatal("GET /api/v1/product/version route is not registered")
+	if !hasRoute(w, http.MethodGet, "/api/v1/server/config") {
+		t.Fatal("GET /api/v1/server/config route is not registered")
 	}
 }
 
-func TestProductSkipsVersionRouteWithoutProvider(t *testing.T) {
+func TestServerSkipsConfigRouteWithoutProvider(t *testing.T) {
 	injector := do.New()
 	w := web.New()
 	do.ProvideValue(injector, w)
 	do.ProvideValue(injector, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	ProvideProduct(injector)
-	InvokeProduct(injector)
+	ProvideServer(injector)
+	InvokeServer(injector)
 
-	if hasRoute(w, http.MethodGet, "/api/v1/product/version") {
-		t.Fatal("GET /api/v1/product/version should not be registered without provider")
+	if hasRoute(w, http.MethodGet, "/api/v1/server/config") {
+		t.Fatal("GET /api/v1/server/config should not be registered without provider")
 	}
 }
 
-func TestProductVersionReturnsInjectedProviderInfo(t *testing.T) {
+func TestServerConfigReturnsInjectedProviderInfo(t *testing.T) {
 	injector := do.New()
 	w := web.New()
 	do.ProvideValue(injector, w)
 	do.ProvideValue(injector, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	do.ProvideValue[domain.ProductVersionProvider](injector, productVersionProviderStub{
-		info: domain.ProductVersion{
-			Edition: domain.ProductEditionSaaSCN,
+	do.ProvideValue[domain.ServerConfigProvider](injector, serverConfigProviderStub{
+		info: domain.ServerConfig{
+			Edition: domain.ProductEditionSaaS,
+			Region:  domain.ProductRegionCN,
 		},
 	})
 
-	ProvideProduct(injector)
-	InvokeProduct(injector)
+	ProvideServer(injector)
+	InvokeServer(injector)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/product/version", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/server/config", nil)
 	rec := httptest.NewRecorder()
 	w.Echo().ServeHTTP(rec, req)
 
@@ -75,9 +76,9 @@ func TestProductVersionReturnsInjectedProviderInfo(t *testing.T) {
 	}
 
 	var resp struct {
-		Code    int                   `json:"code"`
-		Message string                `json:"message"`
-		Data    domain.ProductVersion `json:"data"`
+		Code    int                 `json:"code"`
+		Message string              `json:"message"`
+		Data    domain.ServerConfig `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
@@ -85,7 +86,7 @@ func TestProductVersionReturnsInjectedProviderInfo(t *testing.T) {
 	if resp.Code != 0 || resp.Message != "success" {
 		t.Fatalf("response meta = (%d, %q), want (0, success)", resp.Code, resp.Message)
 	}
-	if resp.Data.Edition != domain.ProductEditionSaaSCN {
+	if resp.Data.Edition != domain.ProductEditionSaaS || resp.Data.Region != domain.ProductRegionCN {
 		t.Fatalf("data = %+v", resp.Data)
 	}
 }
