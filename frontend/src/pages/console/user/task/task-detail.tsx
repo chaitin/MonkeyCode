@@ -2,7 +2,7 @@ import { ConstsOwnerType, ConstsTaskStatus, type DomainModel, type DomainProject
 import { useBreadcrumbTask } from "@/components/console/breadcrumb-task-context"
 import { useCommonData } from "@/components/console/data-provider"
 import { PlanStepsBlock } from "@/components/console/task/chat-panel"
-import { TaskChatInputBox } from "@/components/console/task/chat-inputbox"
+import { TaskChatInputBox, type TaskChatInputBoxHandle } from "@/components/console/task/chat-inputbox"
 import { TaskControlClient } from "@/components/console/task/task-control-client"
 import { TaskMessageHandler, type TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
 import type { MessageType } from "@/components/console/task/message"
@@ -17,6 +17,7 @@ import { TaskUserInputIndex } from "@/components/console/task/task-user-input-in
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -48,7 +49,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { canUseModelBySubscription, formatTokens, getBrandFromModel, getBuiltinModelName, getModelDisplayName, getOwnerTypeBadge, getTaskDisplayName, isBuiltinPublicModelPackage, stripBuiltinPublicModelPackagePrefix } from "@/utils/common"
 import { apiRequest } from "@/utils/requestUtils"
-import { IconChevronDown, IconDeviceDesktop, IconFile, IconReload, IconTerminal2 } from "@tabler/icons-react"
+import { IconChevronDown, IconDeviceDesktop, IconFile, IconReload, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -109,6 +110,7 @@ export default function TaskDetailPage() {
   const [restartAgentDialogOpen, setRestartAgentDialogOpen] = React.useState(false)
   const [restartAgentSubmitting, setRestartAgentSubmitting] = React.useState(false)
   const [restartAgentClearContext, setRestartAgentClearContext] = React.useState(false)
+  const [publishConfirmDialogOpen, setPublishConfirmDialogOpen] = React.useState(false)
   const [modelSwitchDialogOpen, setModelSwitchDialogOpen] = React.useState(false)
   const [modelSwitchSubmitting, setModelSwitchSubmitting] = React.useState(false)
   const [pendingSwitchModel, setPendingSwitchModel] = React.useState<DomainModel | null>(null)
@@ -118,6 +120,7 @@ export default function TaskDetailPage() {
   const chatScrollRootRef = React.useRef<HTMLDivElement | null>(null)
   const historyLoadedRef = React.useRef(false)
   const chatScrollRef = React.useRef<HTMLDivElement | null>(null)
+  const chatInputRef = React.useRef<TaskChatInputBoxHandle>(null)
   const chatContentRef = React.useRef<HTMLDivElement | null>(null)
   const taskMessageListRef = React.useRef<TaskMessageVirtualListHandle | null>(null)
   const autoScrollFrameRef = React.useRef<number | null>(null)
@@ -969,6 +972,12 @@ export default function TaskDetailPage() {
     toast.error(restartAgentClearContext ? t("taskDetail.page.toast.restartAgentClearFailed") : t("taskDetail.page.toast.restartAgentFailed"))
   }, [restartAgentClearContext, restartAgentSubmitting, t])
 
+  const handleConfirmPublishWebsite = React.useCallback(() => {
+    chatInputRef.current?.requestPublishWebsite()
+    setPublishConfirmDialogOpen(false)
+    setPreviewDialogOpen(false)
+  }, [])
+
   const showHistoryLoadButton = historyCursorReady && (!historyLoaded || historyHasMore)
 
   const getChatScrollContainer = React.useCallback(() => {
@@ -1285,6 +1294,18 @@ export default function TaskDetailPage() {
               <IconDeviceDesktop className="size-3.5" />
               {t("taskDetail.panels.preview")}{previewPortCount > 0 ? ` (${previewPortCount})` : ""}
             </Button>
+            {!IS_OFFLINE_EDITION && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", publishConfirmDialogOpen && "text-primary bg-accent")}
+                onClick={() => setPublishConfirmDialogOpen(true)}
+                disabled={!taskInteractive}
+              >
+                <IconUpload className="size-3.5" />
+                {t("taskDetail.page.dialogs.publishWebsite.button")}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1432,6 +1453,7 @@ export default function TaskDetailPage() {
                     )}
                     {taskInteractive ? (
                       <TaskChatInputBox
+                        ref={chatInputRef}
                         taskId={taskId ?? ""}
                         streamStatus={streamStatus}
                         availableCommands={availableCommands}
@@ -1508,6 +1530,22 @@ export default function TaskDetailPage() {
           />
         </DialogContent>
       </Dialog>
+      <AlertDialog open={publishConfirmDialogOpen} onOpenChange={setPublishConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("taskDetail.page.dialogs.publishWebsite.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("taskDetail.page.dialogs.publishWebsite.description")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("taskDetail.common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPublishWebsite}>
+              {t("taskDetail.page.dialogs.publishWebsite.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

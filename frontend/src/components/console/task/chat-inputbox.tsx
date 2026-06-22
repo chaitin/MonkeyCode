@@ -51,6 +51,10 @@ interface TaskChatInputBoxProps {
   whiteboardPersistenceKey?: string
 }
 
+export interface TaskChatInputBoxHandle {
+  requestPublishWebsite: () => void
+}
+
 const getTaskInputDraftStorageKey = (taskId: string) => {
   const normalizedTaskId = taskId.trim()
   return normalizedTaskId ? `${TASK_INPUT_DRAFT_STORAGE_PREFIX}:${normalizedTaskId}` : null
@@ -91,7 +95,7 @@ const removeTaskInputDraft = (taskId: string) => {
   writeTaskInputDraft(taskId, "")
 }
 
-export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }: TaskChatInputBoxProps) => {
+export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskChatInputBoxProps>(function TaskChatInputBox({ taskId, streamStatus, availableCommands, onSend, sending, queueSize, executionTimeMs = 0, onCancel, onRequestRestartAgent, whiteboardPersistenceKey = "task-whiteboard" }, ref) {
   const { t } = useTranslation()
   const [content, setContent] = useState(() => readTaskInputDraft(taskId))
   const [isComposing, setIsComposing] = useState(false)
@@ -133,6 +137,15 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
   React.useEffect(() => {
     writeTaskInputDraft(taskId, content)
   }, [content, taskId])
+
+  const requestPublishWebsite = React.useCallback(() => {
+    setContent(t("taskDetail.chat.commands.publishPrompt"))
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }, [t])
+
+  React.useImperativeHandle(ref, () => ({
+    requestPublishWebsite,
+  }), [requestPublishWebsite])
 
   React.useEffect(() => {
     if (wasExecutingRef.current && !isExecuting && queuedInput) {
@@ -669,20 +682,6 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
                           {t("taskDetail.chat.commands.restartAgentClearDescription")}
                         </div>
                       </DropdownMenuItem>
-                      {!IS_OFFLINE_EDITION && (
-                        <DropdownMenuItem className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => {
-                          setContent(t("taskDetail.chat.commands.publishPrompt"))
-                          requestAnimationFrame(() => textareaRef.current?.focus())
-                        }}>
-                          <div className="flex min-w-0 flex-row flex-wrap items-center gap-2">
-                            <IconCommand />
-                            <div className="font-bold text-xs">{t("taskDetail.chat.commands.publishWebsite")}</div>
-                          </div>
-                          <div className="max-w-full truncate pl-6 text-xs text-muted-foreground">
-                            {t("taskDetail.chat.commands.publishWebsiteDescription")}
-                          </div>
-                        </DropdownMenuItem>
-                      )}
                       <DropdownMenuSeparator />
                       {commandItems.map((command: AvailableCommand, index: number) => (
                         <DropdownMenuItem key={index} className="flex flex-col items-start gap-1 whitespace-normal" onClick={() => setContent(`/${command.name}`)}>
@@ -857,4 +856,4 @@ export const TaskChatInputBox = ({ taskId, streamStatus, availableCommands, onSe
       </AlertDialog>
     </div>
   )
-}
+})

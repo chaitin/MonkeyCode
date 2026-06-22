@@ -3872,6 +3872,12 @@ const cn = {
           description: "确定要重启 Agent 吗？当前上下文会被保留。",
           clearDescription: "确定要重启 Agent 并清空当前上下文吗？完成后 AI 会失去之前的记忆，后续操作将会基于新的上下文进行。",
         },
+        publishWebsite: {
+          button: "发布",
+          title: "发布 Web 应用",
+          description: "发布会将当前任务所作的 Web 应用打包发布到 MonkeyCode 作品集，发布后将可以公开访问。",
+          confirm: "确认发布",
+        },
       },
       tokenUsage: "累计消耗 {{total}} tokens",
     },
@@ -3895,8 +3901,6 @@ const cn = {
         restartAgentDescription: "保留当前上下文，重新启动 Agent 会话。",
         restartAgentClear: "重启 Agent 并清空上下文",
         restartAgentClearDescription: "清空当前上下文后，重新启动 Agent 会话。",
-        publishWebsite: "发布 Web 应用",
-        publishWebsiteDescription: "将你制作的 Web 应用发布到可公开访问的 MonkeyCode 用户作品集。",
         publishPrompt: "使用 publish-website 技能发布当前应用",
       },
       mock: {

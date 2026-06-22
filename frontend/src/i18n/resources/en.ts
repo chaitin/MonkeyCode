@@ -3872,6 +3872,12 @@ const en = {
           description: "Restart Agent? The current context will be kept.",
           clearDescription: "Restart Agent and clear the current context? After this, the AI will lose previous memory and future operations will use a fresh context.",
         },
+        publishWebsite: {
+          button: "Publish",
+          title: "Publish web app",
+          description: "This will package the web app from the current task and publish it to the MonkeyCode portfolio. It will be publicly accessible after publishing.",
+          confirm: "Confirm publish",
+        },
       },
       tokenUsage: "{{total}} tokens used",
     },
@@ -3895,8 +3901,6 @@ const en = {
         restartAgentDescription: "Keep the current context and restart the Agent session.",
         restartAgentClear: "Restart Agent and clear context",
         restartAgentClearDescription: "Clear the current context and restart the Agent session.",
-        publishWebsite: "Publish web app",
-        publishWebsiteDescription: "Publish your web app to a publicly accessible MonkeyCode user portfolio.",
         publishPrompt: "Use the publish-website skill to publish the current app",
       },
       mock: {
