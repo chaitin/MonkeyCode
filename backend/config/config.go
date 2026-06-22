@@ -842,4 +842,13 @@ type WechatMPConfig struct {
 	EncodingAESKey string            `mapstructure:"encoding_aes_key"`
 	Templates      map[string]string `mapstructure:"templates"`
 	MirrorMode     bool              `mapstructure:"mirror_mode"`
+	QA             WechatMPQAConfig  `mapstructure:"qa"` // 文本消息自动问答
+}
+
+// WechatMPQAConfig 公众号文本消息自动问答（接 baizhi 知识库 chat/completions）
+type WechatMPQAConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	BaseURL string `mapstructure:"base_url"` // 形如 https://monkeycode.docs.baizhi.cloud
+	APIKey  string `mapstructure:"api_key"`  // 知识库 share token
+	Model   string `mapstructure:"model"`    // 形如 deepseek-v3.2
 }

@@ -21,7 +21,6 @@ const (
 	defaultReplySubscribe = "感谢关注！您将收到任务进度通知。"
 	defaultReplyScan      = "扫码成功"
 	defaultReplyClick     = "收到点击事件"
-	defaultReplyText      = "收到您的消息"
 )
 
 // WechatCallbackHandler 微信公众号回调处理器
@@ -200,7 +199,14 @@ func (h *WechatCallbackHandler) routeEvent(ctx context.Context, msg *msgpush.Mes
 
 	case "text":
 		h.logger.InfoContext(ctx, "wechat mp callback: text received", "openid", msg.FromUserName, "content", msg.Content)
-		replyContent = defaultReplyText
+		reply, err := h.usecase.HandleTextMessage(ctx, msg.MsgID, msg.FromUserName, msg.Content)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "wechat mp callback: handle text failed", "error", err)
+		}
+		if reply == "" {
+			return []byte("success") // 已去重，无需回复
+		}
+		replyContent = reply
 
 	default:
 		h.logger.InfoContext(ctx, "wechat mp callback: unknown msg type", "type", msg.MsgType, "openid", msg.FromUserName)

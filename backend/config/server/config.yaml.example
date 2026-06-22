@@ -55,6 +55,40 @@ vm_idle:
   # VM 回收前，非微信公众号渠道（钉钉/飞书等）的提前预警时长（秒），<=0 视为禁用；省略则使用 3600（1h）
   recycle_warn_default_lead_seconds: 3600
 
+wechat:
+  # 微信开放平台 - 网站扫码登录（按需配置，不用可整段省略）
+  open:
+    app_id: ""
+    app_secret: ""
+    callback_url: ""
+    scope: "snsapi_login"
+    debug: false
+
+  # 微信公众号 - 消息推送 / 回调 / 文本自动问答
+  mp:
+    app_id: ""
+    app_secret: ""
+    # 服务器配置里的 Token，用于回调验签（需与公众号后台一致）
+    token: ""
+    # 安全模式的消息加解密 key，43 位；留空则为明文模式
+    encoding_aes_key: ""
+    # 按事件类型路由的模板 ID（key 为 consts.NotifyEventType 字符串）
+    templates: {}
+    # Nginx mirror 部署时置 true：绑定成功的 inline 回复会被丢弃，需主动补发模板消息。
+    # 单后端部署保持 false，否则用户会收到两次"绑定成功"。
+    mirror_mode: false
+
+    # 文本消息自动问答（接 baizhi 知识库 chat/completions）
+    qa:
+      # 总开关。false（或 base_url/api_key 缺失）时，文本消息只回固定文案，不调用知识库
+      enabled: false
+      # 知识库域名，形如 https://monkeycode.docs.baizhi.cloud
+      base_url: ""
+      # 知识库 share token。建议用环境变量注入，不要明文写进仓库
+      api_key: ""
+      # 模型名，留空默认 deepseek-v3.2
+      model: "deepseek-v3.2"
+
 task:
   create_req_ttl_seconds: 600
 
