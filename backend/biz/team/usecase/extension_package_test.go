@@ -33,6 +33,7 @@ func TestTeamExtensionPackageUsecaseImportWritesAggregatedManifest(t *testing.T)
 	}
 	u := &teamExtensionPackageUsecase{
 		repo:              repo,
+		ruleImporter:      &extensionPackageRuleImporterStub{},
 		staticDir:         staticDir,
 		staticRoutePrefix: "/static",
 		logger:            slog.Default(),
@@ -73,6 +74,35 @@ func TestTeamExtensionPackageUsecaseImportWritesAggregatedManifest(t *testing.T)
 	}
 }
 
+func TestTeamExtensionPackageUsecaseImportReturnsRuleCounts(t *testing.T) {
+	ctx := context.Background()
+	teamID := uuid.New()
+	userID := uuid.New()
+	ruleImporter := &extensionPackageRuleImporterStub{created: 1}
+	u := &teamExtensionPackageUsecase{
+		repo:              &extensionPackageRepoStub{},
+		ruleImporter:      ruleImporter,
+		staticDir:         t.TempDir(),
+		staticRoutePrefix: "/static",
+		logger:            slog.Default(),
+	}
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json":       `{"package_id":"pack","version":"1.0.0","rules":[{"rule_id":"codex-base","name":"codex-base","path":"rules/codex-base.md"}]}`,
+		"rules/codex-base.md": "# Codex Base\n",
+	})
+
+	resp, err := u.Import(ctx, &domain.TeamUser{User: &domain.User{ID: userID}, Team: &domain.Team{ID: teamID}}, &domain.ImportTeamExtensionPackageReq{
+		Filename: "pack.zip",
+		Data:     data,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.CreatedRules != 1 || resp.UpdatedRules != 0 {
+		t.Fatalf("rule counts = created %d updated %d", resp.CreatedRules, resp.UpdatedRules)
+	}
+}
+
 type extensionPackageRepoStub struct {
 	importReq *domain.TeamExtensionImport
 	archives  []*db.TeamExtensionImageArchive
@@ -88,4 +118,13 @@ func (s *extensionPackageRepoStub) ImportResources(_ context.Context, _, _ uuid.
 
 func (s *extensionPackageRepoStub) ListImageArchives(_ context.Context, _ uuid.UUID) ([]*db.TeamExtensionImageArchive, error) {
 	return s.archives, nil
+}
+
+type extensionPackageRuleImporterStub struct {
+	created int
+	updated int
+}
+
+func (s *extensionPackageRuleImporterStub) ImportRules(_ context.Context, _ uuid.UUID, _ *parsedExtensionPackage) (domain.ExtensionRuleImportResult, error) {
+	return domain.ExtensionRuleImportResult{CreatedRules: s.created, UpdatedRules: s.updated}, nil
 }

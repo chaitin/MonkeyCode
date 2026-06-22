@@ -28,6 +28,12 @@ const (
 	FieldCreatedBy = "created_by"
 	// FieldActiveVersionID holds the string denoting the active_version_id field in the database.
 	FieldActiveVersionID = "active_version_id"
+	// FieldExtensionPackageID holds the string denoting the extension_package_id field in the database.
+	FieldExtensionPackageID = "extension_package_id"
+	// FieldExtensionRuleID holds the string denoting the extension_rule_id field in the database.
+	FieldExtensionRuleID = "extension_rule_id"
+	// FieldExtensionVersion holds the string denoting the extension_version field in the database.
+	FieldExtensionVersion = "extension_version"
 	// FieldIsDeleted holds the string denoting the is_deleted field in the database.
 	FieldIsDeleted = "is_deleted"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -56,6 +62,9 @@ var Columns = []string{
 	FieldScopeID,
 	FieldCreatedBy,
 	FieldActiveVersionID,
+	FieldExtensionPackageID,
+	FieldExtensionRuleID,
+	FieldExtensionVersion,
 	FieldIsDeleted,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -149,6 +158,21 @@ func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
 // ByActiveVersionID orders the results by the active_version_id field.
 func ByActiveVersionID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActiveVersionID, opts...).ToFunc()
+}
+
+// ByExtensionPackageID orders the results by the extension_package_id field.
+func ByExtensionPackageID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionPackageID, opts...).ToFunc()
+}
+
+// ByExtensionRuleID orders the results by the extension_rule_id field.
+func ByExtensionRuleID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionRuleID, opts...).ToFunc()
+}
+
+// ByExtensionVersion orders the results by the extension_version field.
+func ByExtensionVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExtensionVersion, opts...).ToFunc()
 }
 
 // ByIsDeleted orders the results by the is_deleted field.

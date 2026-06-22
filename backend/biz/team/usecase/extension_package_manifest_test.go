@@ -53,6 +53,58 @@ func TestParseExtensionPackageReadsSkillAndImageArchive(t *testing.T) {
 	}
 }
 
+func TestParseExtensionPackageReadsRules(t *testing.T) {
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json": `{
+			"package_id":"pack",
+			"version":"1.0.0",
+			"rules":[{"rule_id":"codex-base","name":"codex-base","description":"base rule","path":"rules/codex-base.md"}]
+		}`,
+		"rules/codex-base.md": "# Codex Base\n",
+	})
+
+	pkg, err := parseExtensionPackage(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkg.Rules) != 1 {
+		t.Fatalf("rules = %#v", pkg.Rules)
+	}
+	if got := pkg.Rules[0].Content; got != "# Codex Base\n" {
+		t.Fatalf("rule content = %q", got)
+	}
+	if got := pkg.Rules[0].Name; got != "codex-base" {
+		t.Fatalf("rule name = %q", got)
+	}
+}
+
+func TestParseExtensionPackageRejectsDuplicateRuleID(t *testing.T) {
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json": `{
+			"package_id":"pack",
+			"version":"1.0.0",
+			"rules":[
+				{"rule_id":"codex-base","name":"codex-base","path":"rules/a.md"},
+				{"rule_id":"codex-base","name":"codex-other","path":"rules/b.md"}
+			]
+		}`,
+		"rules/a.md": "a",
+		"rules/b.md": "b",
+	})
+	if _, err := parseExtensionPackage(data); err == nil {
+		t.Fatal("parseExtensionPackage should reject duplicate rule_id")
+	}
+}
+
+func TestParseExtensionPackageRequiresAtLeastOneResource(t *testing.T) {
+	data := makeExtensionZip(t, map[string]string{
+		"manifest.json": `{"package_id":"pack","version":"1.0.0"}`,
+	})
+	if _, err := parseExtensionPackage(data); err == nil {
+		t.Fatal("parseExtensionPackage should reject empty resources")
+	}
+}
+
 func makeExtensionZip(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer

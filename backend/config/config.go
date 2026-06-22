@@ -145,10 +145,11 @@ type Doubao struct {
 }
 
 type InitTeam struct {
-	Email    string `mapstructure:"email"`
-	Password string `mapstructure:"password"`
-	Name     string `mapstructure:"name"`
-	Image    string `mapstructure:"image"`
+	Email               string `mapstructure:"email"`
+	Password            string `mapstructure:"password"`
+	Name                string `mapstructure:"name"`
+	Image               string `mapstructure:"image"`
+	ExtensionPackageDir string `mapstructure:"extension_package_dir"`
 }
 
 type TaskFlow struct {

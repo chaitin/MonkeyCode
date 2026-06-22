@@ -25,6 +25,8 @@ type ImportTeamExtensionPackageReq struct {
 type ImportTeamExtensionPackageResp struct {
 	PackageID     string `json:"package_id"`
 	Version       string `json:"version"`
+	CreatedRules  int    `json:"created_rules"`
+	UpdatedRules  int    `json:"updated_rules"`
 	CreatedSkills int    `json:"created_skills"`
 	UpdatedSkills int    `json:"updated_skills"`
 	CreatedImages int    `json:"created_images"`
@@ -68,4 +70,9 @@ type TeamExtensionImportResult struct {
 	UpdatedSkills int
 	CreatedImages int
 	UpdatedImages int
+}
+
+type ExtensionRuleImportResult struct {
+	CreatedRules int
+	UpdatedRules int
 }

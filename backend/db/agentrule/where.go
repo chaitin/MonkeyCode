@@ -81,6 +81,21 @@ func ActiveVersionID(v uuid.UUID) predicate.AgentRule {
 	return predicate.AgentRule(sql.FieldEQ(FieldActiveVersionID, v))
 }
 
+// ExtensionPackageID applies equality check predicate on the "extension_package_id" field. It's identical to ExtensionPackageIDEQ.
+func ExtensionPackageID(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionRuleID applies equality check predicate on the "extension_rule_id" field. It's identical to ExtensionRuleIDEQ.
+func ExtensionRuleID(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldExtensionRuleID, v))
+}
+
+// ExtensionVersion applies equality check predicate on the "extension_version" field. It's identical to ExtensionVersionEQ.
+func ExtensionVersion(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldExtensionVersion, v))
+}
+
 // IsDeleted applies equality check predicate on the "is_deleted" field. It's identical to IsDeletedEQ.
 func IsDeleted(v bool) predicate.AgentRule {
 	return predicate.AgentRule(sql.FieldEQ(FieldIsDeleted, v))
@@ -409,6 +424,231 @@ func ActiveVersionIDIsNil() predicate.AgentRule {
 // ActiveVersionIDNotNil applies the NotNil predicate on the "active_version_id" field.
 func ActiveVersionIDNotNil() predicate.AgentRule {
 	return predicate.AgentRule(sql.FieldNotNull(FieldActiveVersionID))
+}
+
+// ExtensionPackageIDEQ applies the EQ predicate on the "extension_package_id" field.
+func ExtensionPackageIDEQ(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDNEQ applies the NEQ predicate on the "extension_package_id" field.
+func ExtensionPackageIDNEQ(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNEQ(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDIn applies the In predicate on the "extension_package_id" field.
+func ExtensionPackageIDIn(vs ...string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldIn(FieldExtensionPackageID, vs...))
+}
+
+// ExtensionPackageIDNotIn applies the NotIn predicate on the "extension_package_id" field.
+func ExtensionPackageIDNotIn(vs ...string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNotIn(FieldExtensionPackageID, vs...))
+}
+
+// ExtensionPackageIDGT applies the GT predicate on the "extension_package_id" field.
+func ExtensionPackageIDGT(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldGT(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDGTE applies the GTE predicate on the "extension_package_id" field.
+func ExtensionPackageIDGTE(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldGTE(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDLT applies the LT predicate on the "extension_package_id" field.
+func ExtensionPackageIDLT(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldLT(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDLTE applies the LTE predicate on the "extension_package_id" field.
+func ExtensionPackageIDLTE(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldLTE(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDContains applies the Contains predicate on the "extension_package_id" field.
+func ExtensionPackageIDContains(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldContains(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDHasPrefix applies the HasPrefix predicate on the "extension_package_id" field.
+func ExtensionPackageIDHasPrefix(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldHasPrefix(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDHasSuffix applies the HasSuffix predicate on the "extension_package_id" field.
+func ExtensionPackageIDHasSuffix(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldHasSuffix(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDIsNil applies the IsNil predicate on the "extension_package_id" field.
+func ExtensionPackageIDIsNil() predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldIsNull(FieldExtensionPackageID))
+}
+
+// ExtensionPackageIDNotNil applies the NotNil predicate on the "extension_package_id" field.
+func ExtensionPackageIDNotNil() predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNotNull(FieldExtensionPackageID))
+}
+
+// ExtensionPackageIDEqualFold applies the EqualFold predicate on the "extension_package_id" field.
+func ExtensionPackageIDEqualFold(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEqualFold(FieldExtensionPackageID, v))
+}
+
+// ExtensionPackageIDContainsFold applies the ContainsFold predicate on the "extension_package_id" field.
+func ExtensionPackageIDContainsFold(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldContainsFold(FieldExtensionPackageID, v))
+}
+
+// ExtensionRuleIDEQ applies the EQ predicate on the "extension_rule_id" field.
+func ExtensionRuleIDEQ(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDNEQ applies the NEQ predicate on the "extension_rule_id" field.
+func ExtensionRuleIDNEQ(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNEQ(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDIn applies the In predicate on the "extension_rule_id" field.
+func ExtensionRuleIDIn(vs ...string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldIn(FieldExtensionRuleID, vs...))
+}
+
+// ExtensionRuleIDNotIn applies the NotIn predicate on the "extension_rule_id" field.
+func ExtensionRuleIDNotIn(vs ...string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNotIn(FieldExtensionRuleID, vs...))
+}
+
+// ExtensionRuleIDGT applies the GT predicate on the "extension_rule_id" field.
+func ExtensionRuleIDGT(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldGT(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDGTE applies the GTE predicate on the "extension_rule_id" field.
+func ExtensionRuleIDGTE(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldGTE(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDLT applies the LT predicate on the "extension_rule_id" field.
+func ExtensionRuleIDLT(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldLT(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDLTE applies the LTE predicate on the "extension_rule_id" field.
+func ExtensionRuleIDLTE(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldLTE(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDContains applies the Contains predicate on the "extension_rule_id" field.
+func ExtensionRuleIDContains(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldContains(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDHasPrefix applies the HasPrefix predicate on the "extension_rule_id" field.
+func ExtensionRuleIDHasPrefix(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldHasPrefix(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDHasSuffix applies the HasSuffix predicate on the "extension_rule_id" field.
+func ExtensionRuleIDHasSuffix(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldHasSuffix(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDIsNil applies the IsNil predicate on the "extension_rule_id" field.
+func ExtensionRuleIDIsNil() predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldIsNull(FieldExtensionRuleID))
+}
+
+// ExtensionRuleIDNotNil applies the NotNil predicate on the "extension_rule_id" field.
+func ExtensionRuleIDNotNil() predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNotNull(FieldExtensionRuleID))
+}
+
+// ExtensionRuleIDEqualFold applies the EqualFold predicate on the "extension_rule_id" field.
+func ExtensionRuleIDEqualFold(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEqualFold(FieldExtensionRuleID, v))
+}
+
+// ExtensionRuleIDContainsFold applies the ContainsFold predicate on the "extension_rule_id" field.
+func ExtensionRuleIDContainsFold(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldContainsFold(FieldExtensionRuleID, v))
+}
+
+// ExtensionVersionEQ applies the EQ predicate on the "extension_version" field.
+func ExtensionVersionEQ(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEQ(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionNEQ applies the NEQ predicate on the "extension_version" field.
+func ExtensionVersionNEQ(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNEQ(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionIn applies the In predicate on the "extension_version" field.
+func ExtensionVersionIn(vs ...string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldIn(FieldExtensionVersion, vs...))
+}
+
+// ExtensionVersionNotIn applies the NotIn predicate on the "extension_version" field.
+func ExtensionVersionNotIn(vs ...string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNotIn(FieldExtensionVersion, vs...))
+}
+
+// ExtensionVersionGT applies the GT predicate on the "extension_version" field.
+func ExtensionVersionGT(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldGT(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionGTE applies the GTE predicate on the "extension_version" field.
+func ExtensionVersionGTE(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldGTE(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionLT applies the LT predicate on the "extension_version" field.
+func ExtensionVersionLT(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldLT(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionLTE applies the LTE predicate on the "extension_version" field.
+func ExtensionVersionLTE(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldLTE(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionContains applies the Contains predicate on the "extension_version" field.
+func ExtensionVersionContains(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldContains(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionHasPrefix applies the HasPrefix predicate on the "extension_version" field.
+func ExtensionVersionHasPrefix(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldHasPrefix(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionHasSuffix applies the HasSuffix predicate on the "extension_version" field.
+func ExtensionVersionHasSuffix(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldHasSuffix(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionIsNil applies the IsNil predicate on the "extension_version" field.
+func ExtensionVersionIsNil() predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldIsNull(FieldExtensionVersion))
+}
+
+// ExtensionVersionNotNil applies the NotNil predicate on the "extension_version" field.
+func ExtensionVersionNotNil() predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldNotNull(FieldExtensionVersion))
+}
+
+// ExtensionVersionEqualFold applies the EqualFold predicate on the "extension_version" field.
+func ExtensionVersionEqualFold(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldEqualFold(FieldExtensionVersion, v))
+}
+
+// ExtensionVersionContainsFold applies the ContainsFold predicate on the "extension_version" field.
+func ExtensionVersionContainsFold(v string) predicate.AgentRule {
+	return predicate.AgentRule(sql.FieldContainsFold(FieldExtensionVersion, v))
 }
 
 // IsDeletedEQ applies the EQ predicate on the "is_deleted" field.

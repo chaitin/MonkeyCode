@@ -3470,25 +3470,28 @@ func (m *AgentPluginVersionMutation) ResetEdge(name string) error {
 // AgentRuleMutation represents an operation that mutates the AgentRule nodes in the graph.
 type AgentRuleMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *uuid.UUID
-	name              *string
-	description       *string
-	scope_type        *agentrule.ScopeType
-	scope_id          *string
-	created_by        *uuid.UUID
-	active_version_id *uuid.UUID
-	is_deleted        *bool
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	versions          map[uuid.UUID]struct{}
-	removedversions   map[uuid.UUID]struct{}
-	clearedversions   bool
-	done              bool
-	oldValue          func(context.Context) (*AgentRule, error)
-	predicates        []predicate.AgentRule
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	name                 *string
+	description          *string
+	scope_type           *agentrule.ScopeType
+	scope_id             *string
+	created_by           *uuid.UUID
+	active_version_id    *uuid.UUID
+	extension_package_id *string
+	extension_rule_id    *string
+	extension_version    *string
+	is_deleted           *bool
+	created_at           *time.Time
+	updated_at           *time.Time
+	clearedFields        map[string]struct{}
+	versions             map[uuid.UUID]struct{}
+	removedversions      map[uuid.UUID]struct{}
+	clearedversions      bool
+	done                 bool
+	oldValue             func(context.Context) (*AgentRule, error)
+	predicates           []predicate.AgentRule
 }
 
 var _ ent.Mutation = (*AgentRuleMutation)(nil)
@@ -3837,6 +3840,153 @@ func (m *AgentRuleMutation) ResetActiveVersionID() {
 	delete(m.clearedFields, agentrule.FieldActiveVersionID)
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (m *AgentRuleMutation) SetExtensionPackageID(s string) {
+	m.extension_package_id = &s
+}
+
+// ExtensionPackageID returns the value of the "extension_package_id" field in the mutation.
+func (m *AgentRuleMutation) ExtensionPackageID() (r string, exists bool) {
+	v := m.extension_package_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionPackageID returns the old "extension_package_id" field's value of the AgentRule entity.
+// If the AgentRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuleMutation) OldExtensionPackageID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionPackageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionPackageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionPackageID: %w", err)
+	}
+	return oldValue.ExtensionPackageID, nil
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (m *AgentRuleMutation) ClearExtensionPackageID() {
+	m.extension_package_id = nil
+	m.clearedFields[agentrule.FieldExtensionPackageID] = struct{}{}
+}
+
+// ExtensionPackageIDCleared returns if the "extension_package_id" field was cleared in this mutation.
+func (m *AgentRuleMutation) ExtensionPackageIDCleared() bool {
+	_, ok := m.clearedFields[agentrule.FieldExtensionPackageID]
+	return ok
+}
+
+// ResetExtensionPackageID resets all changes to the "extension_package_id" field.
+func (m *AgentRuleMutation) ResetExtensionPackageID() {
+	m.extension_package_id = nil
+	delete(m.clearedFields, agentrule.FieldExtensionPackageID)
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (m *AgentRuleMutation) SetExtensionRuleID(s string) {
+	m.extension_rule_id = &s
+}
+
+// ExtensionRuleID returns the value of the "extension_rule_id" field in the mutation.
+func (m *AgentRuleMutation) ExtensionRuleID() (r string, exists bool) {
+	v := m.extension_rule_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionRuleID returns the old "extension_rule_id" field's value of the AgentRule entity.
+// If the AgentRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuleMutation) OldExtensionRuleID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionRuleID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionRuleID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionRuleID: %w", err)
+	}
+	return oldValue.ExtensionRuleID, nil
+}
+
+// ClearExtensionRuleID clears the value of the "extension_rule_id" field.
+func (m *AgentRuleMutation) ClearExtensionRuleID() {
+	m.extension_rule_id = nil
+	m.clearedFields[agentrule.FieldExtensionRuleID] = struct{}{}
+}
+
+// ExtensionRuleIDCleared returns if the "extension_rule_id" field was cleared in this mutation.
+func (m *AgentRuleMutation) ExtensionRuleIDCleared() bool {
+	_, ok := m.clearedFields[agentrule.FieldExtensionRuleID]
+	return ok
+}
+
+// ResetExtensionRuleID resets all changes to the "extension_rule_id" field.
+func (m *AgentRuleMutation) ResetExtensionRuleID() {
+	m.extension_rule_id = nil
+	delete(m.clearedFields, agentrule.FieldExtensionRuleID)
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (m *AgentRuleMutation) SetExtensionVersion(s string) {
+	m.extension_version = &s
+}
+
+// ExtensionVersion returns the value of the "extension_version" field in the mutation.
+func (m *AgentRuleMutation) ExtensionVersion() (r string, exists bool) {
+	v := m.extension_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtensionVersion returns the old "extension_version" field's value of the AgentRule entity.
+// If the AgentRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AgentRuleMutation) OldExtensionVersion(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtensionVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtensionVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtensionVersion: %w", err)
+	}
+	return oldValue.ExtensionVersion, nil
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (m *AgentRuleMutation) ClearExtensionVersion() {
+	m.extension_version = nil
+	m.clearedFields[agentrule.FieldExtensionVersion] = struct{}{}
+}
+
+// ExtensionVersionCleared returns if the "extension_version" field was cleared in this mutation.
+func (m *AgentRuleMutation) ExtensionVersionCleared() bool {
+	_, ok := m.clearedFields[agentrule.FieldExtensionVersion]
+	return ok
+}
+
+// ResetExtensionVersion resets all changes to the "extension_version" field.
+func (m *AgentRuleMutation) ResetExtensionVersion() {
+	m.extension_version = nil
+	delete(m.clearedFields, agentrule.FieldExtensionVersion)
+}
+
 // SetIsDeleted sets the "is_deleted" field.
 func (m *AgentRuleMutation) SetIsDeleted(b bool) {
 	m.is_deleted = &b
@@ -4033,7 +4183,7 @@ func (m *AgentRuleMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentRuleMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 12)
 	if m.name != nil {
 		fields = append(fields, agentrule.FieldName)
 	}
@@ -4051,6 +4201,15 @@ func (m *AgentRuleMutation) Fields() []string {
 	}
 	if m.active_version_id != nil {
 		fields = append(fields, agentrule.FieldActiveVersionID)
+	}
+	if m.extension_package_id != nil {
+		fields = append(fields, agentrule.FieldExtensionPackageID)
+	}
+	if m.extension_rule_id != nil {
+		fields = append(fields, agentrule.FieldExtensionRuleID)
+	}
+	if m.extension_version != nil {
+		fields = append(fields, agentrule.FieldExtensionVersion)
 	}
 	if m.is_deleted != nil {
 		fields = append(fields, agentrule.FieldIsDeleted)
@@ -4081,6 +4240,12 @@ func (m *AgentRuleMutation) Field(name string) (ent.Value, bool) {
 		return m.CreatedBy()
 	case agentrule.FieldActiveVersionID:
 		return m.ActiveVersionID()
+	case agentrule.FieldExtensionPackageID:
+		return m.ExtensionPackageID()
+	case agentrule.FieldExtensionRuleID:
+		return m.ExtensionRuleID()
+	case agentrule.FieldExtensionVersion:
+		return m.ExtensionVersion()
 	case agentrule.FieldIsDeleted:
 		return m.IsDeleted()
 	case agentrule.FieldCreatedAt:
@@ -4108,6 +4273,12 @@ func (m *AgentRuleMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldCreatedBy(ctx)
 	case agentrule.FieldActiveVersionID:
 		return m.OldActiveVersionID(ctx)
+	case agentrule.FieldExtensionPackageID:
+		return m.OldExtensionPackageID(ctx)
+	case agentrule.FieldExtensionRuleID:
+		return m.OldExtensionRuleID(ctx)
+	case agentrule.FieldExtensionVersion:
+		return m.OldExtensionVersion(ctx)
 	case agentrule.FieldIsDeleted:
 		return m.OldIsDeleted(ctx)
 	case agentrule.FieldCreatedAt:
@@ -4164,6 +4335,27 @@ func (m *AgentRuleMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetActiveVersionID(v)
+		return nil
+	case agentrule.FieldExtensionPackageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionPackageID(v)
+		return nil
+	case agentrule.FieldExtensionRuleID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionRuleID(v)
+		return nil
+	case agentrule.FieldExtensionVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtensionVersion(v)
 		return nil
 	case agentrule.FieldIsDeleted:
 		v, ok := value.(bool)
@@ -4222,6 +4414,15 @@ func (m *AgentRuleMutation) ClearedFields() []string {
 	if m.FieldCleared(agentrule.FieldActiveVersionID) {
 		fields = append(fields, agentrule.FieldActiveVersionID)
 	}
+	if m.FieldCleared(agentrule.FieldExtensionPackageID) {
+		fields = append(fields, agentrule.FieldExtensionPackageID)
+	}
+	if m.FieldCleared(agentrule.FieldExtensionRuleID) {
+		fields = append(fields, agentrule.FieldExtensionRuleID)
+	}
+	if m.FieldCleared(agentrule.FieldExtensionVersion) {
+		fields = append(fields, agentrule.FieldExtensionVersion)
+	}
 	return fields
 }
 
@@ -4241,6 +4442,15 @@ func (m *AgentRuleMutation) ClearField(name string) error {
 		return nil
 	case agentrule.FieldActiveVersionID:
 		m.ClearActiveVersionID()
+		return nil
+	case agentrule.FieldExtensionPackageID:
+		m.ClearExtensionPackageID()
+		return nil
+	case agentrule.FieldExtensionRuleID:
+		m.ClearExtensionRuleID()
+		return nil
+	case agentrule.FieldExtensionVersion:
+		m.ClearExtensionVersion()
 		return nil
 	}
 	return fmt.Errorf("unknown AgentRule nullable field %s", name)
@@ -4267,6 +4477,15 @@ func (m *AgentRuleMutation) ResetField(name string) error {
 		return nil
 	case agentrule.FieldActiveVersionID:
 		m.ResetActiveVersionID()
+		return nil
+	case agentrule.FieldExtensionPackageID:
+		m.ResetExtensionPackageID()
+		return nil
+	case agentrule.FieldExtensionRuleID:
+		m.ResetExtensionRuleID()
+		return nil
+	case agentrule.FieldExtensionVersion:
+		m.ResetExtensionVersion()
 		return nil
 	case agentrule.FieldIsDeleted:
 		m.ResetIsDeleted()

@@ -60,7 +60,12 @@ type TeamGroupUserRepo interface {
 	DeleteUser(ctx context.Context, teamID, userID uuid.UUID) error
 	GetMembersByIDs(ctx context.Context, teamID uuid.UUID, userIDs []uuid.UUID) ([]*db.TeamMember, error)
 	GetMember(ctx context.Context, teamID, userID uuid.UUID) (*db.TeamMember, error)
-	InitTeam(ctx context.Context, email, name, password, image string) error
+	InitTeam(ctx context.Context, email, name, password, image string) (*InitTeamResult, error)
+}
+
+type InitTeamResult struct {
+	TeamID uuid.UUID
+	UserID uuid.UUID
 }
 
 type TeamPolicyRepo interface {

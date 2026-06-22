@@ -33,6 +33,9 @@ func (AgentRule) Fields() []ent.Field {
 		field.String("scope_id").Default("global"),
 		field.UUID("created_by", uuid.UUID{}),
 		field.UUID("active_version_id", uuid.UUID{}).Optional().Nillable(),
+		field.String("extension_package_id").Optional().Nillable(),
+		field.String("extension_rule_id").Optional().Nillable(),
+		field.String("extension_version").Optional().Nillable(),
 		field.Bool("is_deleted").Default(false),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
@@ -51,6 +54,7 @@ func (AgentRule) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("scope_type", "scope_id"),
 		index.Fields("active_version_id"),
+		index.Fields("extension_package_id", "extension_rule_id"),
 	}
 }
 

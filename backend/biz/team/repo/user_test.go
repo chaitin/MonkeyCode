@@ -38,8 +38,12 @@ func TestInitTeamCreatesConfiguredImage(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest"); err != nil {
+	result, err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if result.TeamID == uuid.Nil || result.UserID == uuid.Nil {
+		t.Fatalf("init team result = %#v", result)
 	}
 
 	admin, err := client.User.Query().First(ctx)
@@ -83,7 +87,7 @@ func TestInitTeamCreatesConfiguredImage(t *testing.T) {
 		t.Fatal("default group image relation was not created")
 	}
 
-	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest"); err != nil {
+	if _, err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest"); err != nil {
 		t.Fatal(err)
 	}
 	if count, err := client.Image.Query().Where(image.NameEQ("ghcr.io/chaitin/monkeycode-runner/devbox:latest")).Count(ctx); err != nil {
@@ -106,7 +110,7 @@ func TestInitTeamSkipsImageWhenConfigEmpty(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
+	if _, err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,7 +129,7 @@ func TestInitTeamCreatesMemberInDefaultGroup(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
+	if _, err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -180,7 +184,7 @@ func TestInitTeamCreatesMemberInDefaultGroup(t *testing.T) {
 		t.Fatal("member was not added to default group")
 	}
 
-	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
+	if _, err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", ""); err != nil {
 		t.Fatal(err)
 	}
 	if count, err := client.User.Query().Where(user.EmailEQ("admin@example.com")).Count(ctx); err != nil {
@@ -235,7 +239,7 @@ func TestInitTeamAddsImageForExistingTeam(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest"); err != nil {
+	if _, err := repo.InitTeam(ctx, "admin@example.com", "MonkeyCode", "password", "ghcr.io/chaitin/monkeycode-runner/devbox:latest"); err != nil {
 		t.Fatal(err)
 	}
 

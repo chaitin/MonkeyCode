@@ -18,8 +18,16 @@ import (
 type extensionPackageManifest struct {
 	PackageID string                   `json:"package_id"`
 	Version   string                   `json:"version"`
+	Rules     []extensionRuleManifest  `json:"rules"`
 	Skills    []extensionSkillManifest `json:"skills"`
 	Images    []extensionImageManifest `json:"images"`
+}
+
+type extensionRuleManifest struct {
+	RuleID      string `json:"rule_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Path        string `json:"path"`
 }
 
 type extensionSkillManifest struct {
@@ -43,8 +51,17 @@ type extensionImageArchiveManifest struct {
 type parsedExtensionPackage struct {
 	PackageID string
 	Version   string
+	Rules     []parsedExtensionRule
 	Skills    []parsedExtensionSkill
 	Images    []parsedExtensionImage
+}
+
+type parsedExtensionRule struct {
+	RuleID      string
+	Name        string
+	Description string
+	Content     string
+	Path        string
 }
 
 type parsedExtensionSkill struct {
@@ -98,11 +115,46 @@ func parseExtensionPackage(data []byte) (*parsedExtensionPackage, error) {
 	if strings.TrimSpace(manifest.PackageID) == "" || strings.TrimSpace(manifest.Version) == "" {
 		return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("extension manifest missing package_id or version"))
 	}
+	if len(manifest.Rules) == 0 && len(manifest.Skills) == 0 && len(manifest.Images) == 0 {
+		return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("extension manifest contains no resources"))
+	}
 
 	pkg := &parsedExtensionPackage{
 		PackageID: strings.TrimSpace(manifest.PackageID),
 		Version:   strings.TrimSpace(manifest.Version),
 	}
+	seenRules := map[string]bool{}
+	for _, item := range manifest.Rules {
+		ruleID := strings.TrimSpace(item.RuleID)
+		name := strings.TrimSpace(item.Name)
+		if ruleID == "" || name == "" {
+			return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("extension rule missing rule_id or name"))
+		}
+		if seenRules[ruleID] {
+			return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("duplicate extension rule %s", ruleID))
+		}
+		seenRules[ruleID] = true
+		path, err := safeExtensionPath(item.Path)
+		if err != nil {
+			return nil, err
+		}
+		file := files[path]
+		if file == nil {
+			return nil, errcode.ErrBadRequest.Wrap(fmt.Errorf("extension rule file not found: %s", path))
+		}
+		content, err := readExtensionZipFile(file)
+		if err != nil {
+			return nil, err
+		}
+		pkg.Rules = append(pkg.Rules, parsedExtensionRule{
+			RuleID:      ruleID,
+			Name:        name,
+			Description: strings.TrimSpace(item.Description),
+			Content:     string(content),
+			Path:        path,
+		})
+	}
+
 	seenSkills := map[string]bool{}
 	for _, item := range manifest.Skills {
 		skillID := strings.TrimSpace(item.SkillID)

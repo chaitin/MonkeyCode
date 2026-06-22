@@ -127,6 +127,66 @@ func (_u *AgentRuleUpdate) ClearActiveVersionID() *AgentRuleUpdate {
 	return _u
 }
 
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_u *AgentRuleUpdate) SetExtensionPackageID(v string) *AgentRuleUpdate {
+	_u.mutation.SetExtensionPackageID(v)
+	return _u
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_u *AgentRuleUpdate) SetNillableExtensionPackageID(v *string) *AgentRuleUpdate {
+	if v != nil {
+		_u.SetExtensionPackageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (_u *AgentRuleUpdate) ClearExtensionPackageID() *AgentRuleUpdate {
+	_u.mutation.ClearExtensionPackageID()
+	return _u
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (_u *AgentRuleUpdate) SetExtensionRuleID(v string) *AgentRuleUpdate {
+	_u.mutation.SetExtensionRuleID(v)
+	return _u
+}
+
+// SetNillableExtensionRuleID sets the "extension_rule_id" field if the given value is not nil.
+func (_u *AgentRuleUpdate) SetNillableExtensionRuleID(v *string) *AgentRuleUpdate {
+	if v != nil {
+		_u.SetExtensionRuleID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionRuleID clears the value of the "extension_rule_id" field.
+func (_u *AgentRuleUpdate) ClearExtensionRuleID() *AgentRuleUpdate {
+	_u.mutation.ClearExtensionRuleID()
+	return _u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_u *AgentRuleUpdate) SetExtensionVersion(v string) *AgentRuleUpdate {
+	_u.mutation.SetExtensionVersion(v)
+	return _u
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_u *AgentRuleUpdate) SetNillableExtensionVersion(v *string) *AgentRuleUpdate {
+	if v != nil {
+		_u.SetExtensionVersion(*v)
+	}
+	return _u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (_u *AgentRuleUpdate) ClearExtensionVersion() *AgentRuleUpdate {
+	_u.mutation.ClearExtensionVersion()
+	return _u
+}
+
 // SetIsDeleted sets the "is_deleted" field.
 func (_u *AgentRuleUpdate) SetIsDeleted(v bool) *AgentRuleUpdate {
 	_u.mutation.SetIsDeleted(v)
@@ -294,6 +354,24 @@ func (_u *AgentRuleUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ActiveVersionIDCleared() {
 		_spec.ClearField(agentrule.FieldActiveVersionID, field.TypeUUID)
+	}
+	if value, ok := _u.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(agentrule.FieldExtensionPackageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionPackageIDCleared() {
+		_spec.ClearField(agentrule.FieldExtensionPackageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionRuleID(); ok {
+		_spec.SetField(agentrule.FieldExtensionRuleID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionRuleIDCleared() {
+		_spec.ClearField(agentrule.FieldExtensionRuleID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionVersion(); ok {
+		_spec.SetField(agentrule.FieldExtensionVersion, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionVersionCleared() {
+		_spec.ClearField(agentrule.FieldExtensionVersion, field.TypeString)
 	}
 	if value, ok := _u.mutation.IsDeleted(); ok {
 		_spec.SetField(agentrule.FieldIsDeleted, field.TypeBool, value)
@@ -464,6 +542,66 @@ func (_u *AgentRuleUpdateOne) SetNillableActiveVersionID(v *uuid.UUID) *AgentRul
 // ClearActiveVersionID clears the value of the "active_version_id" field.
 func (_u *AgentRuleUpdateOne) ClearActiveVersionID() *AgentRuleUpdateOne {
 	_u.mutation.ClearActiveVersionID()
+	return _u
+}
+
+// SetExtensionPackageID sets the "extension_package_id" field.
+func (_u *AgentRuleUpdateOne) SetExtensionPackageID(v string) *AgentRuleUpdateOne {
+	_u.mutation.SetExtensionPackageID(v)
+	return _u
+}
+
+// SetNillableExtensionPackageID sets the "extension_package_id" field if the given value is not nil.
+func (_u *AgentRuleUpdateOne) SetNillableExtensionPackageID(v *string) *AgentRuleUpdateOne {
+	if v != nil {
+		_u.SetExtensionPackageID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionPackageID clears the value of the "extension_package_id" field.
+func (_u *AgentRuleUpdateOne) ClearExtensionPackageID() *AgentRuleUpdateOne {
+	_u.mutation.ClearExtensionPackageID()
+	return _u
+}
+
+// SetExtensionRuleID sets the "extension_rule_id" field.
+func (_u *AgentRuleUpdateOne) SetExtensionRuleID(v string) *AgentRuleUpdateOne {
+	_u.mutation.SetExtensionRuleID(v)
+	return _u
+}
+
+// SetNillableExtensionRuleID sets the "extension_rule_id" field if the given value is not nil.
+func (_u *AgentRuleUpdateOne) SetNillableExtensionRuleID(v *string) *AgentRuleUpdateOne {
+	if v != nil {
+		_u.SetExtensionRuleID(*v)
+	}
+	return _u
+}
+
+// ClearExtensionRuleID clears the value of the "extension_rule_id" field.
+func (_u *AgentRuleUpdateOne) ClearExtensionRuleID() *AgentRuleUpdateOne {
+	_u.mutation.ClearExtensionRuleID()
+	return _u
+}
+
+// SetExtensionVersion sets the "extension_version" field.
+func (_u *AgentRuleUpdateOne) SetExtensionVersion(v string) *AgentRuleUpdateOne {
+	_u.mutation.SetExtensionVersion(v)
+	return _u
+}
+
+// SetNillableExtensionVersion sets the "extension_version" field if the given value is not nil.
+func (_u *AgentRuleUpdateOne) SetNillableExtensionVersion(v *string) *AgentRuleUpdateOne {
+	if v != nil {
+		_u.SetExtensionVersion(*v)
+	}
+	return _u
+}
+
+// ClearExtensionVersion clears the value of the "extension_version" field.
+func (_u *AgentRuleUpdateOne) ClearExtensionVersion() *AgentRuleUpdateOne {
+	_u.mutation.ClearExtensionVersion()
 	return _u
 }
 
@@ -664,6 +802,24 @@ func (_u *AgentRuleUpdateOne) sqlSave(ctx context.Context) (_node *AgentRule, er
 	}
 	if _u.mutation.ActiveVersionIDCleared() {
 		_spec.ClearField(agentrule.FieldActiveVersionID, field.TypeUUID)
+	}
+	if value, ok := _u.mutation.ExtensionPackageID(); ok {
+		_spec.SetField(agentrule.FieldExtensionPackageID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionPackageIDCleared() {
+		_spec.ClearField(agentrule.FieldExtensionPackageID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionRuleID(); ok {
+		_spec.SetField(agentrule.FieldExtensionRuleID, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionRuleIDCleared() {
+		_spec.ClearField(agentrule.FieldExtensionRuleID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExtensionVersion(); ok {
+		_spec.SetField(agentrule.FieldExtensionVersion, field.TypeString, value)
+	}
+	if _u.mutation.ExtensionVersionCleared() {
+		_spec.ClearField(agentrule.FieldExtensionVersion, field.TypeString)
 	}
 	if value, ok := _u.mutation.IsDeleted(); ok {
 		_spec.SetField(agentrule.FieldIsDeleted, field.TypeBool, value)
