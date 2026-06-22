@@ -17,7 +17,7 @@ const isWebglSupported = (): boolean => {
   try {
     const canvas = document.createElement('canvas');
     return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
-  } catch (error) {
+  } catch {
     return false;
   }
 };
@@ -170,7 +170,7 @@ export default function Terminal({
       fontFamily: '"JetBrains Mono Variable", monospace',
       fontSize: 12,
     });
-    
+
     xtermInstance.current.open(terminalDiv.current as unknown as HTMLElement);
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -189,7 +189,7 @@ export default function Terminal({
     xtermInstance.current.onTitleChange((title) => {
       onTitleChanged?.(title);
     });
-        
+
     xtermInstance.current.onData((data) => {
       if (websocketInstance.current && websocketInstance.current.readyState === WebSocket.OPEN) {
         websocketInstance.current.send(JSON.stringify({
@@ -204,9 +204,9 @@ export default function Terminal({
 
   const connectWebSocket = () => {
     setConnecting(true);
-    
+
     websocketInstance.current = new WebSocket(buildWebSocketUrl(ws));
-    
+
     websocketInstance.current.onopen = () => {
       pingLooper.current = window.setInterval(() => {
         if (websocketInstance.current && websocketInstance.current.readyState === WebSocket.OPEN) {

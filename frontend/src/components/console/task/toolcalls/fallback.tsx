@@ -46,13 +46,13 @@ export const renderTitle = (message: MessageType) => {
       return renderEditTitle(message.data.rawInput.filePath)
     } else if (message.data.kind === 'edit') {
       return renderEditTitle()
-    } 
+    }
     return message.data.title
   }
 
 
  export const renderDetail = (message: MessageType) => {
-    let cwd = message.data.rawInput?.cwd || ''
+    const cwd = message.data.rawInput?.cwd || ''
     let input = ''
     let output = ''
 
@@ -79,12 +79,12 @@ export const renderTitle = (message: MessageType) => {
     if (typeof message.data.rawInput?.command === 'string') {
       input = message.data.rawInput.command
     }
-    
+
     if (typeof message.data.rawOutput?.output === 'string') {
       output = message.data.rawOutput.output
     }
 
-  
+
 
     if (input.length > 0) {
       return <div className="flex flex-col gap-2 text-xs p-3">

@@ -1,10 +1,9 @@
-import type { MessageType } from "../message";
 import { taskDetailT } from "../task-i18n";
 
-export const renderTitle = (_message: MessageType) => {
+export const renderTitle = () => {
   return taskDetailT("toolcall.abuseReported")
 }
 
-export const renderDetail = (_message: MessageType) => {
+export const renderDetail = () => {
   return null
 }

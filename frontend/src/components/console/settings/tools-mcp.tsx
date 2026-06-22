@@ -233,7 +233,7 @@ export default function ToolsAndMcp() {
       >
         <div className="min-w-0">
           <div
-            className={Boolean(tool.enabled)
+            className={tool.enabled
               ? "flex items-center gap-2 text-sm font-medium leading-none"
               : "flex items-center gap-2 text-sm font-medium leading-none text-muted-foreground"}
           >
@@ -248,7 +248,7 @@ export default function ToolsAndMcp() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div
-                  className={Boolean(tool.enabled)
+                  className={tool.enabled
                     ? "mt-1 line-clamp-1 text-xs text-muted-foreground"
                     : "mt-1 line-clamp-1 text-xs text-muted-foreground/60"}
                 >

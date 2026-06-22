@@ -53,28 +53,28 @@ type WindowWithSaveFilePicker = Window & {
 
 const formatPermissions = (mode: number | undefined, unknownText: string) => {
   if (typeof mode !== 'number') return unknownText
-  
+
   // Keep only the low 9 permission bits for user, group, and others.
   const perm = mode & 0o777
-  
+
   const perms = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx']
-  
+
   const user = perms[(perm >> 6) & 0o7]
   const group = perms[(perm >> 3) & 0o7]
   const others = perms[perm & 0o7]
-  
+
   const isDirectory = (mode & 0o40000) !== 0
-  
+
   return (isDirectory ? 'd' : '-') + user + group + others
 }
 
 const formatFileSize = (bytes?: number) => {
   if (!bytes || bytes === 0) return '0 B'
-  
+
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
@@ -101,14 +101,14 @@ const sortFiles = (files: TaskflowFile[]) => {
       }
       return file.kind === TaskflowFileKind.FileKindDir ? 0 : 2
     }
-    
+
     const priorityA = getTypePriority(a)
     const priorityB = getTypePriority(b)
-    
+
     if (priorityA !== priorityB) {
       return priorityA - priorityB
     }
-    
+
     return (a.name || '').localeCompare(b.name || '')
   })
 }
@@ -191,7 +191,7 @@ export default function FileManagerPage() {
   }, [fetchVMInfo])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Load files when the controlled path changes.
+
     fetchFiles()
   }, [fetchFiles])
 
@@ -213,7 +213,7 @@ export default function FileManagerPage() {
         toast.error(t("consoleFiles.toast.editTooLarge"))
         return
       }
-      
+
       setEditingFile(normalizePath(currentPath + '/' + file.name))
       setEditFileDialogOpen(true)
     }
@@ -247,7 +247,7 @@ export default function FileManagerPage() {
     if (!file.name) {
       return
     }
-    
+
     const sourcePath = normalizePath(currentPath + '/' + file.name)
     setCopySourcePath(sourcePath)
     setCopyFileDialogOpen(true)
@@ -257,7 +257,7 @@ export default function FileManagerPage() {
     if (!file.name) {
       return
     }
-    
+
     const sourcePath = normalizePath(currentPath + '/' + file.name)
     setMoveSourcePath(sourcePath)
     setMoveFileDialogOpen(true)
@@ -491,7 +491,7 @@ export default function FileManagerPage() {
         path={editingFile}
         envid={envid}
       />
-      
+
       {/* Create folder dialog */}
       <CreateFolderDialog
         open={createFolderDialogOpen}

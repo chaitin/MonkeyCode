@@ -38,7 +38,7 @@ export default function CreateFileDialog({
 
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset controlled dialog fields whenever the parent opens it.
+
       setFileName('')
       setFileContent('')
     }
@@ -51,7 +51,7 @@ export default function CreateFileDialog({
     }
 
     const filePath = normalizePath(baseDir + '/' + targetDir + '/' + fileName.trim())
-    
+
     setCreating(true)
     await apiRequest('v1UsersFilesSaveUpdate', {
       id: envid,

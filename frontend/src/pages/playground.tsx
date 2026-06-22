@@ -38,7 +38,7 @@ const PlaygroundContent = () => {
 
   useEffect(() => {
     fetchPosts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- The initial list should not refetch on every search input change.
+
   }, [])
 
   return (

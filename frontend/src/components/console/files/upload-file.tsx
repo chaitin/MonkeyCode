@@ -35,7 +35,7 @@ export default function UploadFileDialog({
 
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset controlled dialog fields whenever the parent opens it.
+
       setFileName('')
       setUploadFile(null)
     }
@@ -71,7 +71,7 @@ export default function UploadFileDialog({
     }
 
     const filePath = normalizePath(baseDir + '/' + targetDir + '/' + fileName.trim())
-    
+
     setUploading(true)
     await apiRequest('v1UsersFilesUploadCreate', {
       id: envid,

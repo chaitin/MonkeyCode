@@ -471,7 +471,7 @@ function ToolList({ tools }: { tools: DomainMCPTool[] }) {
       <div className="min-w-0">
         <div
           className={
-            Boolean(tool.enabled)
+            tool.enabled
               ? "flex items-center gap-2 text-sm font-medium leading-none"
               : "flex items-center gap-2 text-sm font-medium leading-none text-muted-foreground"
           }
@@ -482,7 +482,7 @@ function ToolList({ tools }: { tools: DomainMCPTool[] }) {
           <TooltipTrigger asChild>
             <div
               className={
-                Boolean(tool.enabled)
+                tool.enabled
                   ? "mt-1 line-clamp-1 text-xs text-muted-foreground"
                   : "mt-1 line-clamp-1 text-xs text-muted-foreground/60"
               }

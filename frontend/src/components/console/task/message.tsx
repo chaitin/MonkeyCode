@@ -26,21 +26,21 @@ interface MessageType {
   role: 'agent' | 'user' | 'system'
   type: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_input' | 'user_cancel' | 'tool_call' | 'tool_call_update' | 'available_commands_update' | 'plan' | 'error_message' | 'alert_message' | 'ask_user_question' | 'system_message' | 'restart_session'
   data: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     _meta?: any
     requestId?: string
     details?: string
     text?: string
     level?: 'info' | 'warning'
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     content?: any
     kind?: string
     status?: string
     title?: string
     toolCallId?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     rawInput?: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     rawOutput?: any
     locations?: string
     entries?: {
@@ -62,7 +62,7 @@ interface MessageType {
       }[]
     }[]
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   onResponseAskUserQuestion?: (askId: string, answers: any) => "sent" | "queued" | "rejected"
   onReloadSession?: () => Promise<boolean> | boolean
   onUserInput?: (content: TaskUserInput) => Promise<boolean> | boolean
@@ -116,14 +116,14 @@ const MessageItem = ({ message, cli, isLatest = false }: { message: MessageType,
       {message.role !== 'system' && <div className={cn("text-[10px] text-transparent group-hover:text-muted-foreground transition-colors px-1", message.role === 'user' ? 'text-right' : 'text-left')}>
         {dayjs.unix(normalizeTimestampToSeconds(message.time)).format('MM-DD HH:mm:ss')}
       </div>}
-      <div className={cn("flex text-sm w-full", message.role === 'user' ? 'ml-auto justify-end' : 'mr-auto justify-start')}> 
+      <div className={cn("flex text-sm w-full", message.role === 'user' ? 'ml-auto justify-end' : 'mr-auto justify-start')}>
         {renderMessage(message)}
       </div>
     </div>
   )
 }
 
-export { 
+export {
   MessageItem,
   shouldRenderMessage,
   type MessageType

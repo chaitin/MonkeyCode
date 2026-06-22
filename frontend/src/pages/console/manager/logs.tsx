@@ -135,7 +135,7 @@ export default function TeamManagerLogs() {
   const formatJSON = (json: string) => {
     try {
       return JSON.stringify(JSON.parse(json || '{}'), null, 2)
-    } catch (error) {
+    } catch {
       return json
     }
   }
@@ -202,7 +202,7 @@ export default function TeamManagerLogs() {
           </TableBody>
         </Table>
       </div>
-      
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-4 py-4 border-t bg-background shrink-0">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ export default function TeamManagerLogs() {
             </Select>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <div className="text-sm text-muted-foreground mr-2">
             {t("managerPagination.page", { page: cursorHistory.length })}

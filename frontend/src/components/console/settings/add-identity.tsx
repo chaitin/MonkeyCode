@@ -44,14 +44,14 @@ export default function AddIdentity({
 
   // Validate email format.
   const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[a-zA-Z0-9+\-\_\.]+@[0-9a-zA-Z\.-]+$/
+    const emailRegex = /^[a-zA-Z0-9+_.-]+@[0-9a-zA-Z.-]+$/
     return emailRegex.test(email)
   }
 
   // Validate username format while allowing Unicode characters.
   const isValidUsername = (username: string): boolean => {
-    const forbiddenChars = /[!@#$%\^\&\*\[\]\(\)\<\>'"]/
-    return !forbiddenChars.test(username)
+    const forbiddenChars = "!@#$%^&*[]()<>'\""
+    return !Array.from(forbiddenChars).some((char) => username.includes(char))
   }
 
   // Set a default Base URL for the selected platform; users can still edit it for self-hosted instances.

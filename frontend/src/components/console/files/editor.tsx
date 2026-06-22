@@ -73,7 +73,7 @@ export default function FileEditor({
   const fetchFileContent = useCallback(async () => {
     if (!path || !envid) return
 
-    setLoading(true)    
+    setLoading(true)
     fetch(`/api/v1/users/files/download?id=${envid}&path=${encodeURIComponent(path)}`).then(resp => {
       if (!resp.ok) {
         throw new Error(`${resp.status}`);
@@ -90,7 +90,7 @@ export default function FileEditor({
 
   useEffect(() => {
     if (open && path) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync editor mode when the controlled file path changes.
+
       setLanguageMode(getLanguageMode(path || ""))
       fetchFileContent()
     } else {

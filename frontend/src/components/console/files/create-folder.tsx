@@ -32,7 +32,7 @@ export default function CreateFolderDialog({
 
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset the controlled dialog field whenever the parent opens it.
+
       setFolderName('')
     }
   }, [open])

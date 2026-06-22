@@ -182,7 +182,7 @@ export default function CreateDefaultTaskDialog({
 
   useEffect(() => {
     if (!open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset dialog-local state when the parent closes the controlled dialog.
+
       setContent("")
       setCodeDropdownOpen(false)
       setSkillPopoverOpen(false)
@@ -242,7 +242,7 @@ export default function CreateDefaultTaskDialog({
       return
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize dialog defaults from loaded account data when the dialog opens.
+
     setDefaultConfig()
   }, [open, setDefaultConfig])
 
@@ -254,7 +254,7 @@ export default function CreateDefaultTaskDialog({
       return
     }
     const matched = findIdentitiesForRepoUrl(selectedRepo, identities)
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the repository credential selection aligned with the selected repo.
+
     setSelectedIdentityId(matched[0]?.id || "none")
   }, [selectedRepo, identities, selectedIdentityId])
 
@@ -346,7 +346,7 @@ export default function CreateDefaultTaskDialog({
 
   useEffect(() => {
     if (!skillTags.includes(activeSkillTag)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore the tab sentinel when the available skill tags change.
+
       setActiveSkillTag(skillTags[0] || ALL_SKILLS_TAG)
     }
   }, [activeSkillTag, skillTags])
@@ -398,7 +398,7 @@ export default function CreateDefaultTaskDialog({
 
   useEffect(() => {
     if (!IS_OFFLINE_EDITION && selectedPublicModel && selectedHostId && selectedHostId !== "public_host") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Built-in public models must stay pinned to the built-in host.
+
       setSelectedHostId("public_host")
     }
   }, [selectedPublicModel, selectedHostId])

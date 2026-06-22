@@ -47,8 +47,8 @@ export default function CopyFileDialog({
       const pathParts = sourcePath.split('/')
       const fileName = pathParts[pathParts.length - 1]
       const dirPath = pathParts.slice(0, -1).join('/')
-      
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize editable target fields from the selected source path.
+
+
       setTargetDir(dirPath || './')
       setTargetFileName(generateNewFileName(fileName))
     }
@@ -62,7 +62,7 @@ export default function CopyFileDialog({
 
     const fullSourcePath = normalizePath(baseDir + '/' + sourcePath)
     const fullTargetPath = normalizePath(baseDir + '/' + targetDir + '/' + targetFileName.trim())
-    
+
     setCopying(true)
     await apiRequest('v1UsersFilesCopyCreate', {
       id: envid,

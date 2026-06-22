@@ -35,9 +35,9 @@ export function getImageShortName(imageTag: string): string {
   if (!imageTag) {
     return '';
   }
-  
+
   const lastSlashIndex = imageTag.lastIndexOf('/');
-  
+
   if (lastSlashIndex === -1) {
     return imageTag;
   }
@@ -254,16 +254,16 @@ export function formatTokens(tokens?: number): string {
 
 export function humanTime(seconds: number): string {
   seconds = seconds > 0 ? seconds : 0;
-  
-  if (seconds < 60) { 
+
+  if (seconds < 60) {
     return commonText("commonUtils.time.seconds", { count: Math.floor(seconds) });
-  } else if (seconds < 60 * 60) { 
+  } else if (seconds < 60 * 60) {
     return commonText("commonUtils.time.minutes", { count: Math.floor(seconds / 60) });
-  } else if (seconds < 60 * 60 * 24) { 
+  } else if (seconds < 60 * 60 * 24) {
     return commonText("commonUtils.time.hours", { count: Math.floor(seconds / 60 / 60) });
-  } else { 
+  } else {
     return commonText("commonUtils.time.days", { count: Math.floor(seconds / 60 / 60 / 24) });
-  } 
+  }
 };
 
 export function translateStatus(status?: TaskflowVirtualMachineStatus): string {
@@ -328,9 +328,9 @@ export function normalizePath(path: string): string {
   if (!path.startsWith('/')) {
     path = '/' + path
   }
-  
+
   const parts = path.split('/')
-  
+
   const stack: string[] = []
   for (const part of parts) {
     if (part === '..') {
@@ -341,7 +341,7 @@ export function normalizePath(path: string): string {
       stack.push(part)
     }
   }
-  
+
   return '/' + stack.join('/')
 }
 
@@ -482,7 +482,7 @@ export function getRepoNameFromUrl(url?: string): string {
 
 // Validate email format.
 export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[a-zA-Z0-9+\-\_\.]+@[0-9a-zA-Z\.-]+$/
+  const emailRegex = /^[a-zA-Z0-9+_.-]+@[0-9a-zA-Z.-]+$/
   return emailRegex.test(email)
 }
 
@@ -639,7 +639,7 @@ export function getLastCondition(vm: DomainVirtualMachine | undefined): GitInCha
 
   return vm.conditions?.[vm.conditions.length - 1]
 }
-  
+
 
 export function getVmMessage(vm: DomainVirtualMachine | undefined): string {
   if (!vm) {
@@ -962,15 +962,15 @@ export async function downloadFile(
   }
 
   const url = getDownloadFileUrl(envid, path, downloadFilename)
-  
+
   const response = await fetch(url, { signal })
-  
+
   // x-internal-error indicates a backend-side download failure.
   const internalError = response.headers.get('x-internal-error')
   if (internalError) {
     throw new Error(b64decode(internalError))
   }
-  
+
   if (!response.body) {
     throw new Error(String(i18n.t("commonUtils.download.streamUnavailable")))
   }
@@ -978,10 +978,10 @@ export async function downloadFile(
   if (!response.ok) {
     throw new Error(commonText("commonUtils.download.failedWithStatus", { status: response.status }))
   }
-  
+
   const contentLength = response.headers.get('content-length')
   const total = contentLength ? Number(contentLength) : null
-  
+
   // Use the caller-provided browser/system write stream to avoid buffering large files in memory.
   const fileStream = writableStream
   const reader = response.body.getReader()
@@ -1061,12 +1061,12 @@ export function getModelUrlDescription(baseUrl: string, interfaceType: ConstsInt
  */
 export function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
   const result = { ...target }
-  
+
   for (const key in source) {
-    if (source.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
       const sourceValue = source[key]
       const targetValue = result[key]
-      
+
       if (
         sourceValue !== null &&
         typeof sourceValue === 'object' &&
@@ -1083,7 +1083,7 @@ export function deepMerge<T extends Record<string, any>>(target: T, source: Part
       }
     }
   }
-  
+
   return result
 }
 
@@ -1130,11 +1130,11 @@ export function getSkillTagIcon(tag: string): React.ReactNode {
   if (tag.includes("python")) {
     return <IconBrandPython className="size-3" />
   }
-  
+
   if (tag.includes("\u524d\u7aef")) {
     return <IconBrandChrome className="size-3" />
   }
-  
+
   if (tag.includes("\u6e38\u620f")) {
     return <IconDeviceGamepad2 className="size-3" />
   }

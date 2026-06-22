@@ -49,7 +49,7 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     if (missingToken) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Surface the missing token state as page-local form error.
+
       setPageError(tokenErrorMessage);
       return;
     }

@@ -44,12 +44,18 @@ export default function EditProjectNameDialog({
       return
     }
 
+    const projectId = project?.id
+    if (!projectId) {
+      toast.error(t("consoleProject.common.unknownError"))
+      return
+    }
+
     setLoading(true)
 
-    await apiRequest('v1UsersProjectsUpdate', { 
+    await apiRequest('v1UsersProjectsUpdate', {
       name: name.trim(),
       description: description.trim(),
-    }, [project?.id!], (resp) => {
+    }, [projectId], (resp) => {
         if (resp.code === 0) {
           toast.success(t("consoleProject.editName.toast.updated"))
           onOpenChange(false)

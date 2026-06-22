@@ -56,14 +56,14 @@ export default function FilePickerDialog({
         }
         return file.kind === 'dir' ? 0 : 2
       }
-      
+
       const priorityA = getTypePriority(a)
       const priorityB = getTypePriority(b)
-      
+
       if (priorityA !== priorityB) {
         return priorityA - priorityB
       }
-      
+
       return (a.name || '').localeCompare(b.name || '')
     })
   }
@@ -96,7 +96,7 @@ export default function FilePickerDialog({
 
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize picker selection from controlled props when opened.
+
       setSelectedFiles(defaultSelectedFiles)
       setExpandedDirs(new Set([ROOT_PATH])) // Auto expand workspace
       setLoading(true)
@@ -135,11 +135,11 @@ export default function FilePickerDialog({
       if (!node.children) {
         // Mark as loading
         setTreeNodes(prev => updateNodeChildren(prev, dirPath, [], true))
-        
+
         const children = await fetchFiles(dirPath, node.depth + 1)
         setTreeNodes(prev => updateNodeChildren(prev, dirPath, children, false))
       }
-      
+
       setExpandedDirs(prev => {
         const next = new Set(prev)
         next.add(dirPath)
@@ -163,7 +163,7 @@ export default function FilePickerDialog({
   // Get all file paths under a node (recursively)
   const getAllFilesUnderNode = (node: TreeNode): string[] => {
     const files: string[] = []
-    
+
     if (!isDirectory(node.file)) {
       files.push(node.path)
     } else if (node.children) {
@@ -171,7 +171,7 @@ export default function FilePickerDialog({
         files.push(...getAllFilesUnderNode(child))
       }
     }
-    
+
     return files
   }
 
@@ -180,12 +180,12 @@ export default function FilePickerDialog({
     if (!node.children || node.children.length === 0) {
       return 'none'
     }
-    
+
     const allFiles = getAllFilesUnderNode(node)
     if (allFiles.length === 0) return 'none'
-    
+
     const selectedCount = allFiles.filter(f => selectedFiles.includes(f)).length
-    
+
     if (selectedCount === 0) return 'none'
     if (selectedCount === allFiles.length) return 'all'
     return 'some'
@@ -195,7 +195,7 @@ export default function FilePickerDialog({
   const hasUnloadedContent = (node: TreeNode): boolean => {
     // If this directory itself hasn't been loaded
     if (!node.children) return true
-    
+
     // Check child directories
     for (const child of node.children) {
       if (isDirectory(child.file)) {
@@ -213,7 +213,7 @@ export default function FilePickerDialog({
   }
 
   const handleFileToggle = (filePath: string) => {
-    setSelectedFiles(prev => 
+    setSelectedFiles(prev =>
       prev.includes(filePath)
         ? prev.filter(f => f !== filePath)
         : [...prev, filePath]
@@ -226,7 +226,7 @@ export default function FilePickerDialog({
       setTreeNodes(prev => updateNodeChildren(prev, node.path, [], true))
       const children = await fetchFiles(node.path, node.depth + 1)
       setTreeNodes(prev => updateNodeChildren(prev, node.path, children, false))
-      
+
       // After loading, select all files
       const allFiles = children.flatMap(child => {
         if (!isDirectory(child.file)) {
@@ -234,7 +234,7 @@ export default function FilePickerDialog({
         }
         return []
       })
-      
+
       setSelectedFiles(prev => {
         const newSelected = [...prev]
         for (const file of allFiles) {
@@ -244,7 +244,7 @@ export default function FilePickerDialog({
         }
         return newSelected
       })
-      
+
       // Also expand
       setExpandedDirs(prev => {
         const next = new Set(prev)
@@ -253,10 +253,10 @@ export default function FilePickerDialog({
       })
       return
     }
-    
+
     const state = getDirSelectionState(node)
     const allFiles = getAllFilesUnderNode(node)
-    
+
     if (state === 'all') {
       // Unselect all
       setSelectedFiles(prev => prev.filter(f => !allFiles.includes(f)))
@@ -283,7 +283,7 @@ export default function FilePickerDialog({
     const kind = file.kind === 'symlink' ? file.symlink_kind : file.kind
     switch (kind) {
       case 'dir':
-        return isExpanded 
+        return isExpanded
           ? <IconFolderOpen className="h-4 w-4 text-primary" />
           : <IconFolder className="h-4 w-4 text-primary" />
       case 'file':
@@ -321,7 +321,7 @@ export default function FilePickerDialog({
         >
           {/* Chevron for directories, spacer for files */}
           {isDir ? (
-            <div 
+            <div
               className="flex items-center size-4"
               onClick={(e) => handleExpandToggle(node, e)}
             >
@@ -334,7 +334,7 @@ export default function FilePickerDialog({
               )}
             </div>
           ) : (
-            <div className="size-4" /> 
+            <div className="size-4" />
           )}
           {/* Checkbox */}
           <Checkbox
@@ -370,7 +370,7 @@ export default function FilePickerDialog({
         {isDir && isExpanded && node.children && (
           <>
             {node.children.length === 0 ? (
-              <div 
+              <div
                 className="text-muted-foreground text-xs py-1 border-b"
                 style={{ paddingLeft: paddingLeft + 24 }}
               >
