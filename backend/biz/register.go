@@ -14,6 +14,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/biz/mcphub"
 	"github.com/chaitin/MonkeyCode/backend/biz/notify"
 	"github.com/chaitin/MonkeyCode/backend/biz/plugin"
+	"github.com/chaitin/MonkeyCode/backend/biz/product"
 	"github.com/chaitin/MonkeyCode/backend/biz/project"
 	"github.com/chaitin/MonkeyCode/backend/biz/public"
 	"github.com/chaitin/MonkeyCode/backend/biz/setting"
@@ -46,6 +47,7 @@ func RegisterAll(i *do.Injector) error {
 	vmidle.ProvideVMIdle(i)
 	skill.ProvideSkill(i)
 	plugin.ProvidePlugin(i)
+	product.ProvideProduct(i)
 	return nil
 }
 
@@ -63,6 +65,7 @@ func InvokeAll(i *do.Injector) {
 	vmidle.InvokeVMIdle(i)
 	skill.InvokeSkill(i)
 	plugin.InvokePlugin(i)
+	product.InvokeProduct(i)
 }
 
 // RegisterOpenSource 注册仅在开源项目中使用的模块

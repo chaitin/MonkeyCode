@@ -104,6 +104,12 @@ func WithMemberManager(mm domain.MemberManager) BridgeOption {
 	}
 }
 
+func WithProductVersionProvider(provider domain.ProductVersionProvider) BridgeOption {
+	return func(i *do.Injector) {
+		do.ProvideValue(i, provider)
+	}
+}
+
 func Register(e *echo.Echo, dir string, opts ...BridgeOption) error {
 	cfg, err := config.Init(dir)
 	if err != nil {
