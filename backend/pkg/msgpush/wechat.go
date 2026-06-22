@@ -471,6 +471,50 @@ func (c *WechatClient) SendTemplateMessage(ctx context.Context, msg *TemplateMes
 	return nil
 }
 
+// ========== 客服消息 ==========
+
+// customMessageText 客服文本消息正文
+type customMessageText struct {
+	Content string `json:"content"`
+}
+
+// customMessageReq 客服消息请求体
+type customMessageReq struct {
+	ToUser  string            `json:"touser"`
+	MsgType string            `json:"msgtype"`
+	Text    customMessageText `json:"text"`
+}
+
+// customMessageResp 客服消息发送响应
+type customMessageResp struct {
+	ErrCode int    `json:"errcode"`
+	ErrMsg  string `json:"errmsg"`
+}
+
+func (r customMessageResp) wechatErr() (int, string) { return r.ErrCode, r.ErrMsg }
+
+// SendCustomTextMessage 发送客服文本消息。
+// 仅在用户最近一次互动后的额度有效期内可用（用户发消息：48h 内 5 条）。
+func (c *WechatClient) SendCustomTextMessage(ctx context.Context, openID, content string) error {
+	req := &customMessageReq{
+		ToUser:  openID,
+		MsgType: "text",
+		Text:    customMessageText{Content: content},
+	}
+	_, err := withTokenRetry(ctx, c, func(token string) (*customMessageResp, error) {
+		return request.Post[customMessageResp](c.wechatClient, ctx, "/cgi-bin/message/custom/send",
+			req,
+			request.WithQuery(request.Query{"access_token": token}),
+		)
+	})
+	if err != nil {
+		c.logger.ErrorContext(ctx, "failed to send custom message", "error", err, "touser", openID)
+		return fmt.Errorf("failed to send custom message: %w", err)
+	}
+	c.logger.InfoContext(ctx, "custom message sent", "touser", openID)
+	return nil
+}
+
 // ========== HTTP Handler 辅助方法 ==========
 //
 // 微信回调的 HTTP 接收/路由/回复全部在 biz/notify/handler/v1/wechat_callback.go。

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -19,6 +20,7 @@ import (
 	"github.com/chaitin/MonkeyCode/backend/db/user"
 	"github.com/chaitin/MonkeyCode/backend/domain"
 	"github.com/chaitin/MonkeyCode/backend/errcode"
+	"github.com/chaitin/MonkeyCode/backend/pkg/kbqa"
 	"github.com/chaitin/MonkeyCode/backend/pkg/msgpush"
 )
 
@@ -36,16 +38,25 @@ type WechatMPUsecaseImpl struct {
 	redis        *redis.Client
 	config       *config.Config
 	logger       *slog.Logger
+	kb           *kbqa.Client // 文本消息自动问答客户端，未配置 QA 时为 nil
 }
 
 // NewWechatMPUsecase 创建微信公众号绑定 usecase
 func NewWechatMPUsecase(i *do.Injector) (domain.WechatMPUsecase, error) {
+	cfg := do.MustInvoke[*config.Config](i)
+
+	var kb *kbqa.Client
+	if qa := cfg.Wechat.MP.QA; qa.Enabled && qa.BaseURL != "" && qa.APIKey != "" {
+		kb = kbqa.NewClient(qa.BaseURL, qa.APIKey, qa.Model)
+	}
+
 	return &WechatMPUsecaseImpl{
 		db:           do.MustInvoke[*db.Client](i),
 		wechatClient: do.MustInvoke[*msgpush.WechatClient](i),
 		redis:        do.MustInvoke[*redis.Client](i),
-		config:       do.MustInvoke[*config.Config](i),
+		config:       cfg,
 		logger:       do.MustInvoke[*slog.Logger](i).With("module", "wechat_mp.usecase"),
+		kb:           kb,
 	}, nil
 }
 
@@ -257,6 +268,104 @@ func (u *WechatMPUsecaseImpl) HandleUnsubscribe(ctx context.Context, mpOpenID st
 		}
 	}
 	return nil
+}
+
+// 文本自动问答相关常量
+const (
+	// wechatMPQAMsgDedupTTL 同一条用户消息（MsgId）只处理一次的去重 TTL
+	wechatMPQAMsgDedupTTL = 3 * time.Minute
+	// wechatMPQASyncWait 同步等待答案的最长时间，给微信 5s 被动回复超时留余量
+	wechatMPQASyncWait = 3800 * time.Millisecond
+	// wechatMPAnswerMaxRunes 答案最大字符数（微信文本上限约 2048 字节，按中文 3 字节留余量）
+	wechatMPAnswerMaxRunes = 600
+	// wechatMPQARatePerMin 单个用户每分钟最多触发的问答次数，防刷量/控成本
+	wechatMPQARatePerMin = 10
+)
+
+// HandleTextMessage 处理用户文本消息。详见 domain.WechatMPUsecase 接口注释。
+func (u *WechatMPUsecaseImpl) HandleTextMessage(ctx context.Context, msgID int64, mpOpenID, content string) (string, error) {
+	if !u.config.Wechat.MP.QA.Enabled || u.kb == nil {
+		return "收到您的消息", nil
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return "收到您的消息", nil
+	}
+
+	// 按 MsgId 去重：微信重试或用户连点时只让首次请求真正处理
+	dedupKey := fmt.Sprintf("wechat:mp:qa:msg:%d", msgID)
+	first, err := u.redis.SetNX(ctx, dedupKey, "1", wechatMPQAMsgDedupTTL).Result()
+	if err != nil {
+		u.logger.WarnContext(ctx, "wechat mp qa: dedup setnx failed, proceeding", "error", err)
+	} else if !first {
+		return "", nil // 重复，交给上层回 success
+	}
+
+	// 限流：单用户每分钟最多 wechatMPQARatePerMin 次，防刷量/控成本
+	rlKey := fmt.Sprintf("wechat:mp:qa:rl:%s", mpOpenID)
+	cnt, err := u.redis.Incr(ctx, rlKey).Result()
+	if err != nil {
+		u.logger.WarnContext(ctx, "wechat mp qa: rate limit incr failed, proceeding", "error", err)
+	} else {
+		if cnt == 1 {
+			u.redis.Expire(ctx, rlKey, time.Minute)
+		}
+		if cnt > wechatMPQARatePerMin {
+			u.logger.InfoContext(ctx, "wechat mp qa: rate limited", "openid", mpOpenID, "count", cnt)
+			return "消息太频繁啦，请稍等一会儿再问我～", nil
+		}
+	}
+
+	logger := u.logger.With("openid", mpOpenID, "msg_id", msgID)
+
+	// 后台查询：用独立 ctx（请求 ctx 在被动回复返回后会被取消），结果写入带缓冲 channel
+	resultCh := make(chan string, 1)
+	go func() {
+		bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		ans, err := u.kb.Ask(bg, content)
+		if err != nil {
+			logger.ErrorContext(bg, "wechat mp qa: ask failed", "error", err)
+			ans = "抱歉，我暂时没查到答案，请稍后再问我一次～"
+		}
+		resultCh <- truncateRunes(ans, wechatMPAnswerMaxRunes)
+	}()
+
+	// 同步窗口内拿到答案就直接被动回复（单气泡秒回）；超时则转客服消息补发
+	select {
+	case ans := <-resultCh:
+		return ans, nil
+	case <-time.After(wechatMPQASyncWait):
+		go func() {
+			ans := <-resultCh // 带缓冲，必到
+			bg, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := u.wechatClient.SendCustomTextMessage(bg, mpOpenID, ans); err != nil {
+				logger.ErrorContext(bg, "wechat mp qa: push answer via custom message failed", "error", err)
+			}
+		}()
+		return "正在为你查询 MonkeyCode 知识库，请稍候，马上回复你 🐒", nil
+	}
+}
+
+// truncateRunes 按字符截断，超长末尾加省略号。
+// 为避免把 URL/单词截成两半（半截 URL 点不了），若截断点正处在词中间，
+// 回退到最近的空白处（最多回退 200 字，找不到则按原位截断）。
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	cut := max
+	if !unicode.IsSpace(r[cut]) && !unicode.IsSpace(r[cut-1]) {
+		for i := cut - 1; i > 0 && i > cut-200; i-- {
+			if unicode.IsSpace(r[i]) {
+				cut = i
+				break
+			}
+		}
+	}
+	return strings.TrimRight(string(r[:cut]), " \t\n") + "…"
 }
 
 // ExtractScene 从 EventKey 中提取 scene 值
