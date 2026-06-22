@@ -104,7 +104,7 @@ func WithMemberManager(mm domain.MemberManager) BridgeOption {
 	}
 }
 
-func WithProductVersionProvider(provider domain.ProductVersionProvider) BridgeOption {
+func WithServerConfigProvider(provider domain.ServerConfigProvider) BridgeOption {
 	return func(i *do.Injector) {
 		do.ProvideValue(i, provider)
 	}
