@@ -11,6 +11,7 @@ func TestObjectStorageDefaults(t *testing.T) {
 	t.Setenv("MCAI_OBJECT_STORAGE_TEMP_PREFIX", "")
 	t.Setenv("MCAI_TASKFLOW_GRPC_URL", "")
 	t.Setenv("MCAI_TASK_CREATE_REQ_TTL_SECONDS", "")
+	t.Setenv("MCAI_INIT_TEAM_EXTENSION_PACKAGE_DIR", "")
 
 	cfg, err := Init(t.TempDir())
 	if err != nil {
@@ -45,6 +46,9 @@ func TestObjectStorageDefaults(t *testing.T) {
 	}
 	if cfg.Task.CreateReqTTLSeconds != 600 {
 		t.Fatalf("task.create_req_ttl_seconds = %d, want 600", cfg.Task.CreateReqTTLSeconds)
+	}
+	if cfg.InitTeam.ExtensionPackageDir != "/app/extensions/packages" {
+		t.Fatalf("init_team.extension_package_dir = %q", cfg.InitTeam.ExtensionPackageDir)
 	}
 	if !cfg.StaticFiles.Enabled {
 		t.Fatal("static_files.enabled default = false, want true")

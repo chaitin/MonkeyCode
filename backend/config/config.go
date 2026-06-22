@@ -347,6 +347,7 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("init_team.name", "")
 	v.SetDefault("init_team.password", "")
 	v.SetDefault("init_team.image", "")
+	v.SetDefault("init_team.extension_package_dir", "/app/extensions/packages")
 	v.SetDefault("taskflow.grpc_url", "")
 	v.SetDefault("task.at_keyword", "")
 	v.SetDefault("task.host_ids", []string{})
