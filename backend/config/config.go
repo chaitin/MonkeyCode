@@ -385,6 +385,13 @@ func Init(dir string) (*Config, error) {
 	v.SetDefault("wechat.mp.app_secret", "")
 	v.SetDefault("wechat.mp.token", "")
 	v.SetDefault("wechat.mp.templates", map[string]string{})
+	// 这些 key 必须注册 default，否则 viper 的 AutomaticEnv 在 Unmarshal 时不认识它们，
+	// 仅靠 MCAI_WECHAT_MP_* 环境变量（本项目无 config.yaml，全靠 env 注入）会被静默忽略。
+	v.SetDefault("wechat.mp.mirror_mode", false)
+	v.SetDefault("wechat.mp.qa.enabled", false)
+	v.SetDefault("wechat.mp.qa.base_url", "")
+	v.SetDefault("wechat.mp.qa.api_key", "")
+	v.SetDefault("wechat.mp.qa.model", "deepseek-v3.2")
 
 	v.SetConfigType("yaml")
 	v.AddConfigPath(dir)
