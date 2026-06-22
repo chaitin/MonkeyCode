@@ -20,7 +20,7 @@ test("任务输入框在 offline 模式下也加载并展示 Skills", () => {
 
 test("默认任务弹窗在 offline 模式下也加载并展示 Skills", () => {
   const loadEffectMatch = defaultTaskDialogSource.match(
-    /useEffect\(\(\) => \{[\s\S]*?\}, \[open, skillList\.length, pluginList\.length\]\)/,
+    /useEffect\(\(\) => \{[\s\S]*?\}, \[open, skillList, skillList\.length, t\]\)/,
   );
   assert.ok(loadEffectMatch, "default task dialog should have resource-loading effect");
 

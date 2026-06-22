@@ -76,8 +76,6 @@ import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "./task-concurrent-limit-dialog"
 import ModelSelect from "./model-select"
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector"
-import { TaskPluginSelector } from "./task-plugin-selector"
-import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api"
 import { filterSelectableSkillIds } from "./task-skill-selection"
 
 interface CreateDefaultTaskDialogProps {
@@ -126,9 +124,6 @@ export default function CreateDefaultTaskDialog({
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills)
   const [skillList, setSkillList] = useState<DomainSkill[]>([])
   const [activeSkillTag, setActiveSkillTag] = useState(ALL_SKILLS_TAG)
-  const [pluginPopoverOpen, setPluginPopoverOpen] = useState(false)
-  const [pluginList, setPluginList] = useState<PluginListItem[]>([])
-  const [selectedPlugin, setSelectedPlugin] = useState<string[]>([])
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState("")
   const [selectedHostId, setSelectedHostId] = useState("")
@@ -198,8 +193,6 @@ export default function CreateDefaultTaskDialog({
           : defaultSkills
       )
       setActiveSkillTag(ALL_SKILLS_TAG)
-      setPluginPopoverOpen(false)
-      setSelectedPlugin([])
       setAdvancedOptionsOpen(false)
       setSelectedModelId("")
       setSelectedHostId("")
@@ -222,20 +215,7 @@ export default function CreateDefaultTaskDialog({
     } else {
       setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
     }
-
-    if (IS_OFFLINE_EDITION) {
-      return
-    }
-
-    if (pluginList.length === 0) {
-      // Plugin picker is best-effort — surface but do not block the dialog.
-      fetchPluginListing()
-        .then((items) => setPluginList(items))
-        .catch((err: Error) => {
-          toast.error(err.message || t("taskWorkflow.toast.fetchPluginsFailed"))
-        })
-    }
-  }, [open, skillList, skillList.length, pluginList.length, t])
+  }, [open, skillList, skillList.length, t])
 
   useEffect(() => {
     if (!open) {
@@ -364,15 +344,6 @@ export default function CreateDefaultTaskDialog({
     })
   }
 
-  const handlePluginChange = (pluginId: string, checked: boolean) => {
-    setSelectedPlugin((prev) => {
-      if (checked) {
-        return prev.includes(pluginId) ? prev : [...prev, pluginId]
-      }
-      return prev.filter((id) => id !== pluginId)
-    })
-  }
-
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId),
     [models, selectedModelId]
@@ -468,7 +439,6 @@ export default function CreateDefaultTaskDialog({
       },
       extra: {
         skill_ids: selectedSkill,
-        plugin_ids: selectedPlugin,
       },
       resource: {
         core: 2,
@@ -804,16 +774,6 @@ export default function CreateDefaultTaskDialog({
               onSkillChange={handleSkillChange}
               triggerClassName="rounded-md"
             />
-            {!IS_OFFLINE_EDITION && (
-              <TaskPluginSelector
-                open={pluginPopoverOpen}
-                onOpenChange={setPluginPopoverOpen}
-                selectedPlugins={selectedPlugin}
-                plugins={pluginList}
-                onPluginChange={handlePluginChange}
-                triggerClassName="rounded-md"
-              />
-            )}
 
           </div>
 

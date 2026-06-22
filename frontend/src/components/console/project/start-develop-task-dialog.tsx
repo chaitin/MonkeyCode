@@ -1,4 +1,4 @@
-import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch } from "@/api/Api"
+import { ConstsCliName, ConstsTaskType, ConstsGitPlatform, ConstsHostStatus, ConstsOwnerType, type DomainProject, type DomainBranch, type DomainSkill } from "@/api/Api"
 import Icon from "@/components/common/Icon"
 import { useCommonData } from "@/components/console/data-provider"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,7 @@ import {
   selectPreferredTaskModel,
 } from "@/utils/common"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
+import { defaultSkills } from "@/utils/config"
 import { apiRequest } from "@/utils/requestUtils"
 import { cn } from "@/lib/utils"
 import { IconChevronDown, IconSparkles } from "@tabler/icons-react"
@@ -29,6 +30,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { TaskConcurrentLimitDialog } from "@/components/console/task/task-concurrent-limit-dialog"
+import { ALL_SKILLS_TAG, TaskSkillSelector } from "@/components/console/task/task-skill-selector"
+import { filterSelectableSkillIds } from "@/components/console/task/task-skill-selection"
 import { useTranslation } from "react-i18next"
 
 interface StartDevelopTaskDialogProps {
@@ -54,6 +57,10 @@ export default function StartDevelopTaskDialog({
   const [selectedHostId, setSelectedHostId] = useState<string>('')
   const [selectedImageId, setSelectedImageId] = useState<string>('')
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false)
+  const [skillPopoverOpen, setSkillPopoverOpen] = useState(false)
+  const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills)
+  const [skillList, setSkillList] = useState<DomainSkill[]>([])
+  const [activeSkillTag, setActiveSkillTag] = useState(ALL_SKILLS_TAG)
   const { images, models, hosts, subscription } = useCommonData()
   const { t } = useTranslation()
   const branchRequestIdRef = useRef(0)
@@ -183,14 +190,43 @@ export default function StartDevelopTaskDialog({
         setSelectedHostId(selectDefaultHostId())
         setSelectedImageId(selectImage(images, true))
         setSelectedBranch('main')
+        setSkillPopoverOpen(false)
+        setSelectedSkill(
+          skillList.length > 0
+            ? filterSelectableSkillIds(defaultSkills, skillList)
+            : defaultSkills
+        )
+        setActiveSkillTag(ALL_SKILLS_TAG)
       }
     } else {
       prevOpenRef.current = false
       branchRequestIdRef.current += 1
       setSelectedHostId('')
       setSelectedImageId('')
+      setSkillPopoverOpen(false)
     }
-  }, [open, models, subscription, images, selectDefaultHostId])
+  }, [open, models, subscription, images, selectDefaultHostId, skillList])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    if (skillList.length === 0) {
+      apiRequest("v1SkillsList", {}, [], (resp) => {
+        if (resp.code === 0) {
+          const skills = resp.data || []
+          setSkillList(skills)
+          setSelectedSkill((prev) => filterSelectableSkillIds(prev, skills))
+        } else {
+          toast.error(resp.message || t("taskWorkflow.toast.fetchSkillsFailed"))
+        }
+      })
+      return
+    }
+
+    setSelectedSkill((prev) => filterSelectableSkillIds(prev, skillList))
+  }, [open, skillList, skillList.length, t])
 
   useEffect(() => {
     if (!open) {
@@ -231,6 +267,41 @@ export default function StartDevelopTaskDialog({
     if (!open || !branchSourceKey) return
     fetchBranches()
   }, [open, branchSourceKey, fetchBranches])
+
+  const skillTags = useMemo(() => {
+    const tagCountMap = new Map<string, number>()
+
+    skillList.forEach((skill) => {
+      (skill.tags || []).forEach((tag) => {
+        tagCountMap.set(tag, (tagCountMap.get(tag) || 0) + 1)
+      })
+    })
+
+    const sortedTags = Array.from(tagCountMap.keys()).sort(
+      (a, b) => (tagCountMap.get(b) || 0) - (tagCountMap.get(a) || 0)
+    )
+
+    return [ALL_SKILLS_TAG, ...sortedTags]
+  }, [skillList])
+
+  useEffect(() => {
+    if (!skillTags.includes(activeSkillTag)) {
+      setActiveSkillTag(skillTags[0] || ALL_SKILLS_TAG)
+    }
+  }, [activeSkillTag, skillTags])
+
+  const handleSkillChange = (skillId: string, checked: boolean) => {
+    if (defaultSkills.includes(skillId)) {
+      return
+    }
+
+    setSelectedSkill((prev) => {
+      if (checked) {
+        return prev.includes(skillId) ? prev : [...prev, skillId]
+      }
+      return prev.filter((id) => id !== skillId)
+    })
+  }
 
   const handleSubmit = async () => {
     if (!userMessage.trim()) {
@@ -291,6 +362,7 @@ export default function StartDevelopTaskDialog({
       },
       extra: {
         project_id: project?.id,
+        skill_ids: selectedSkill,
       },
       task_type: ConstsTaskType.TaskTypeDevelop,
     }, [], (resp) => {
@@ -377,6 +449,20 @@ export default function StartDevelopTaskDialog({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+              <div className="space-y-2">
+                <Label>{t("taskWorkflow.skill.label")}</Label>
+                <TaskSkillSelector
+                  open={skillPopoverOpen}
+                  onOpenChange={setSkillPopoverOpen}
+                  selectedSkills={selectedSkill}
+                  skills={skillList}
+                  skillTags={skillTags}
+                  activeSkillTag={activeSkillTag}
+                  onActiveSkillTagChange={setActiveSkillTag}
+                  onSkillChange={handleSkillChange}
+                  triggerClassName="w-full justify-start rounded-md"
+                />
+              </div>
               <div className="space-y-2">
                 <Label>{t("consoleProject.startTask.model")}</Label>
                 <ModelSelect

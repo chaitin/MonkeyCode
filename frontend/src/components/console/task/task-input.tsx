@@ -30,8 +30,6 @@ import { IS_OFFLINE_EDITION } from "@/utils/edition";
 import { readStoredTaskDialogParams, writeStoredTaskDialogParams } from "./task-dialog-params-storage";
 import ModelSelect from "./model-select";
 import { ALL_SKILLS_TAG, TaskSkillSelector } from "./task-skill-selector";
-import { TaskPluginSelector } from "./task-plugin-selector";
-import { fetchPluginListing, type PluginListItem } from "@/lib/agent-resources-api";
 import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit";
 import { filterSelectableSkillIds } from "./task-skill-selection";
 import { useTranslation } from "react-i18next";
@@ -77,9 +75,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
   const [selectedSkill, setSelectedSkill] = useState<string[]>(defaultSkills);
   const [skillList, setSkillList] = useState<DomainSkill[]>([]);
   const [activeSkillTag, setActiveSkillTag] = useState<string>(ALL_SKILLS_TAG);
-  const [pluginPopoverOpen, setPluginPopoverOpen] = useState<boolean>(false);
-  const [pluginList, setPluginList] = useState<PluginListItem[]>([]);
-  const [selectedPlugin, setSelectedPlugin] = useState<string[]>([]);
 
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [selectedHostId, setSelectedHostId] = useState<string>("");
@@ -127,32 +122,9 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
     });
   }, [t]);
 
-  const fetchPluginList = useCallback(async () => {
-    if (IS_OFFLINE_EDITION) {
-      return;
-    }
-    try {
-      const items = await fetchPluginListing();
-      setPluginList(items);
-    } catch (err) {
-      // Plugin picker is optional/best-effort; warn rather than block the form.
-      toast.error((err as Error).message || t("taskWorkflow.toast.fetchPluginsFailed"));
-    }
-  }, [t]);
-
   useEffect(() => {
     fetchSkillList();
-    void fetchPluginList();
-  }, [fetchPluginList, fetchSkillList]);
-
-  const handlePluginChange = (pluginId: string, checked: boolean) => {
-    setSelectedPlugin(prev => {
-      if (checked) {
-        return prev.includes(pluginId) ? prev : [...prev, pluginId];
-      }
-      return prev.filter(id => id !== pluginId);
-    });
-  };
+  }, [fetchSkillList]);
 
   const loadReposForAllIdentities = async (flush = false, targetIdentityId?: string) => {
     const targetIdentities = selectableIdentities.filter((identity) => {
@@ -321,7 +293,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
       },
       extra: {
         skill_ids: selectedSkill,
-        plugin_ids: selectedPlugin,
       },
       resource: {
         core: 2,
@@ -671,17 +642,6 @@ export function TaskInput({ repos, onTaskCreated }: TaskInputProps) {
               triggerClassName="rounded-full"
               labelClassName="hidden sm:block"
             />
-            {!IS_OFFLINE_EDITION && (
-              <TaskPluginSelector
-                open={pluginPopoverOpen}
-                onOpenChange={setPluginPopoverOpen}
-                selectedPlugins={selectedPlugin}
-                plugins={pluginList}
-                onPluginChange={handlePluginChange}
-                triggerClassName="rounded-full"
-                labelClassName="hidden sm:block"
-              />
-            )}
           </div>
           <div className="flex flex-row gap-2">
             {!IS_OFFLINE_EDITION && (
