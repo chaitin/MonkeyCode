@@ -1349,6 +1349,7 @@ const en = {
     },
     sidebar: {
       brandSubtitle: "Chaitin Baizhi Cloud",
+      consultPurchase: "Contact sales",
       settings: "Settings",
     },
     user: {

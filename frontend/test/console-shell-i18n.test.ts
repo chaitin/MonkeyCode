@@ -26,6 +26,10 @@ test("用户控制台外壳和基础导航使用 consoleShell i18n key", () => {
   }
 
   assert.match(sourceFiles.userPage, /t\("consoleShell\.breadcrumbs\.dashboard"\)/);
+  assert.match(sourceFiles.userSidebar, /IS_OFFLINE_EDITION/);
+  assert.match(sourceFiles.userSidebar, /CONSULT_PURCHASE_URL = "https:\/\/baizhi\.cloud\/consult"/);
+  assert.match(sourceFiles.userSidebar, /t\("consoleShell\.sidebar\.consultPurchase"\)/);
+  assert.match(sourceFiles.userSidebar, /target="_blank"/);
   assert.match(sourceFiles.userSidebar, /t\("consoleShell\.sidebar\.settings"\)/);
   assert.match(sourceFiles.navUser, /t\("consoleShell\.user\.unknown"\)/);
   assert.match(sourceFiles.navCommunity, /t\("consoleShell\.community\.title"\)/);
@@ -35,6 +39,8 @@ test("用户控制台外壳和基础导航使用 consoleShell i18n key", () => {
 test("用户控制台外壳提供中英文资源", () => {
   assert.equal(cn.consoleShell.breadcrumbs.dashboard, "仪表盘");
   assert.equal(en.consoleShell.breadcrumbs.dashboard, "Dashboard");
+  assert.equal(cn.consoleShell.sidebar.consultPurchase, "咨询采购");
+  assert.equal(en.consoleShell.sidebar.consultPurchase, "Contact sales");
   assert.equal(cn.consoleShell.sidebar.settings, "配置");
   assert.equal(en.consoleShell.sidebar.settings, "Settings");
   assert.equal(cn.consoleShell.community.dialogTitle, "扫码加入技术交流群");

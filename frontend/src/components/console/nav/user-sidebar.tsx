@@ -15,9 +15,11 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { useSettingsDialog } from "@/pages/console/user/settings-dialog-context"
-import { Settings } from "lucide-react"
-import { IS_ONLINE_EDITION } from "@/utils/edition"
+import { ExternalLink, Settings } from "lucide-react"
+import { IS_OFFLINE_EDITION, IS_ONLINE_EDITION } from "@/utils/edition"
 import { useTranslation } from "react-i18next"
+
+const CONSULT_PURCHASE_URL = "https://baizhi.cloud/consult"
 
 export default function UserSidebar({ 
   ...props 
@@ -52,6 +54,22 @@ export default function UserSidebar({
             <NavInvite />
             <NavEssay />
           </>
+        )}
+        {IS_OFFLINE_EDITION && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip={t("consoleShell.sidebar.consultPurchase")}
+                className="border border-amber-300/70 bg-amber-100 py-1 text-amber-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(245,158,11,0.18)] transition-colors hover:border-amber-400 hover:bg-amber-200 hover:text-amber-950 active:border-amber-500 active:bg-[#fcd76a] dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100 dark:hover:border-amber-400 dark:hover:bg-amber-500/20 dark:active:border-amber-300 dark:active:bg-amber-500/26"
+                asChild
+              >
+                <a href={CONSULT_PURCHASE_URL} target="_blank" rel="noreferrer">
+                  <ExternalLink className="size-4 text-amber-700 dark:text-amber-300" />
+                  <span className="font-medium">{t("consoleShell.sidebar.consultPurchase")}</span>
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         )}
         <div className="flex items-stretch gap-2 group-data-[collapsible=icon]:flex-col">
           {IS_ONLINE_EDITION && (

@@ -1349,6 +1349,7 @@ const cn = {
     },
     sidebar: {
       brandSubtitle: "长亭百智云",
+      consultPurchase: "咨询采购",
       settings: "配置",
     },
     user: {
