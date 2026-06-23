@@ -14,8 +14,8 @@ github.com/ClickHouse/clickhouse-go/v2 v2.45.0 h1:iHt15nA4iYhfde5bDQAcLAat9BAh7B
 github.com/ClickHouse/clickhouse-go/v2 v2.45.0/go.mod h1:giJfUVlMkcfUEPVfRpt51zZaGEx9i17gCos8gBl392c=
 github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
 github.com/DATA-DOG/go-sqlmock v1.5.2/go.mod h1:88MAG/4G7SMwSE3CeA0ZKzrT5CiOU3OJ+JlNzwDqpNU=
-github.com/GoYoko/web v1.6.0 h1:gwnErVfMSDKc8XwJIW9iiMBNuzwx1E3QwqPiGwEW76U=
-github.com/GoYoko/web v1.6.0/go.mod h1:MNOw+4KjmtRzUabIMqWK3t59yibnO1sDCp3EcLCmJVc=
+github.com/GoYoko/web v1.7.0 h1:5kqeqEBcA1/6PShMb18M0lN95FECEfv4pyZgsPz+ea0=
+github.com/GoYoko/web v1.7.0/go.mod h1:MNOw+4KjmtRzUabIMqWK3t59yibnO1sDCp3EcLCmJVc=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/ackcoder/go-cap v1.1.3 h1:rHIZEmyOM/KlXJQxGoy3UHpzpeUhw+V8qa/OoEaJR7A=
