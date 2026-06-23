@@ -59,8 +59,10 @@ func TestServerConfigReturnsInjectedProviderInfo(t *testing.T) {
 	do.ProvideValue(injector, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	do.ProvideValue[domain.ServerConfigProvider](injector, serverConfigProviderStub{
 		info: domain.ServerConfig{
-			Edition: domain.ProductEditionSaaS,
-			Region:  domain.ProductRegionCN,
+			Edition:        domain.ProductEditionSaaS,
+			Region:         domain.ProductRegionCN,
+			CurrentVersion: "v1.2.3",
+			LatestVersion:  "v1.2.4",
 		},
 	})
 
@@ -88,6 +90,9 @@ func TestServerConfigReturnsInjectedProviderInfo(t *testing.T) {
 	}
 	if resp.Data.Edition != domain.ProductEditionSaaS || resp.Data.Region != domain.ProductRegionCN {
 		t.Fatalf("data = %+v", resp.Data)
+	}
+	if resp.Data.CurrentVersion != "v1.2.3" || resp.Data.LatestVersion != "v1.2.4" {
+		t.Fatalf("versions = (%q, %q), want (v1.2.3, v1.2.4)", resp.Data.CurrentVersion, resp.Data.LatestVersion)
 	}
 }
 

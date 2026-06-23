@@ -32,7 +32,7 @@ func NewServerConfigHandler(i *do.Injector) (*ServerConfigHandler, error) {
 // Get 获取服务配置
 //
 //	@Summary		获取服务配置
-//	@Description	返回当前服务的产品形态和 SaaS 区域，用于前端区分 SaaS、私有化、国内 SaaS 和海外 SaaS。
+//	@Description	返回当前服务的产品形态、SaaS 区域和版本信息，用于前端区分部署形态和升级状态。
 //	@Tags			【服务】配置信息
 //	@Accept			json
 //	@Produce		json
