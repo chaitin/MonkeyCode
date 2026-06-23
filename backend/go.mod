@@ -6,7 +6,7 @@ require (
 	entgo.io/ent v0.14.5
 	github.com/ClickHouse/clickhouse-go/v2 v2.45.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/GoYoko/web v1.6.0
+	github.com/GoYoko/web v1.7.0
 	github.com/ackcoder/go-cap v1.1.3
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/alibabacloud-nls-go-sdk v1.1.1
