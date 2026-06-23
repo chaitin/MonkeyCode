@@ -1,6 +1,6 @@
 import { useState, useRef } from "react"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
-import { IconCommand, IconLoader, IconPalette, IconReload, IconTrash, IconSend, IconTerminal2, IconUpload } from "@tabler/icons-react"
+import { IconCommand, IconDots, IconLoader, IconPalette, IconReload, IconTrash, IconSend, IconSparkles, IconTerminal2, IconUpload } from "@tabler/icons-react"
 import React from "react"
 import { VoiceInputButton } from "./voice-input-button"
 import type { TaskMessageHandlerStatus } from "@/components/console/task/task-message-handler"
@@ -17,6 +17,17 @@ import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 import { useTranslation } from "react-i18next"
+import {
+  getRecommendedTaskQuickInputs,
+  getTaskQuickInputVisibleCount,
+  incrementTaskQuickInput,
+  normalizeQuickInputText,
+  normalizeTaskQuickInputs,
+  parseTaskQuickInputStorage,
+  TASK_QUICK_INPUT_GAP_WIDTH,
+  TASK_QUICK_INPUT_STORAGE_KEY,
+  type TaskQuickInputItem,
+} from "./task-quick-inputs"
 
 const MAX_UPLOADED_FILES = 3
 const TASK_INPUT_DRAFT_STORAGE_PREFIX = "task-chat-input-draft"
@@ -52,6 +63,8 @@ interface TaskChatInputBoxProps {
 export interface TaskChatInputBoxHandle {
   submitPublishWebsite: () => void
 }
+
+type TaskQuickInputUpdater = (items: TaskQuickInputItem[]) => TaskQuickInputItem[]
 
 const getTaskInputDraftStorageKey = (taskId: string) => {
   const normalizedTaskId = taskId.trim()
@@ -108,12 +121,18 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   const [slashCommandConfirmOpen, setSlashCommandConfirmOpen] = useState(false)
   const [queuedInput, setQueuedInput] = useState<QueuedTaskInput | null>(null)
   const [autoSendingQueuedInput, setAutoSendingQueuedInput] = useState(false)
+  const [quickInputs, setQuickInputs] = useState<TaskQuickInputItem[]>([])
+  const [quickInputContainerWidth, setQuickInputContainerWidth] = useState(0)
+  const [measuredQuickInputVisibleCount, setMeasuredQuickInputVisibleCount] = useState<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const quickInputContainerRef = useRef<HTMLDivElement>(null)
+  const quickInputMeasureRef = useRef<HTMLDivElement>(null)
   const dragDepthRef = useRef(0)
   const nextAttachmentFileIndexRef = useRef(1)
   const autoSendingQueuedInputRef = useRef(false)
   const mountedRef = useRef(true)
+  const selectedQuickInputRef = useRef<string | null>(null)
   const isExecuting = (streamStatus === 'connected' || streamStatus === 'inited' || streamStatus === 'executing')
   const wasExecutingRef = useRef(isExecuting)
   const restoreSubmittedInputOnIdleRef = useRef(false)
@@ -126,11 +145,57 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     return !sending && !isExecuting && queueSize === 0 && !queuedInput && !inputLocked
   }, [inputLocked, isExecuting, queueSize, queuedInput, sending])
 
+  const writeQuickInputs = React.useCallback((items: TaskQuickInputItem[]) => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(TASK_QUICK_INPUT_STORAGE_KEY, JSON.stringify(items))
+    } catch {
+      // Ignore storage failures so the chat input remains usable.
+    }
+  }, [])
+
+  const readQuickInputs = React.useCallback(() => {
+    if (typeof window === "undefined") {
+      return []
+    }
+
+    try {
+      return normalizeTaskQuickInputs(parseTaskQuickInputStorage(window.localStorage.getItem(TASK_QUICK_INPUT_STORAGE_KEY)))
+    } catch {
+      return []
+    }
+  }, [])
+
+  const updateQuickInputs = React.useCallback((updater: TaskQuickInputUpdater) => {
+    setQuickInputs((currentItems) => {
+      let baseItems = currentItems
+      if (typeof window !== "undefined") {
+        try {
+          baseItems = normalizeTaskQuickInputs(parseTaskQuickInputStorage(window.localStorage.getItem(TASK_QUICK_INPUT_STORAGE_KEY)))
+        } catch {
+          baseItems = normalizeTaskQuickInputs(currentItems)
+        }
+      }
+      const nextItems = updater(baseItems)
+      writeQuickInputs(nextItems)
+      return nextItems
+    })
+  }, [writeQuickInputs])
+
   React.useEffect(() => {
     return () => {
       mountedRef.current = false
     }
   }, [])
+
+  React.useEffect(() => {
+    const nextQuickInputs = readQuickInputs()
+    setQuickInputs(nextQuickInputs)
+    writeQuickInputs(nextQuickInputs)
+  }, [readQuickInputs, writeQuickInputs])
 
   React.useEffect(() => {
     writeTaskInputDraft(taskId, content)
@@ -157,6 +222,15 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     uploadedFiles,
     nextAttachmentFileIndex: nextAttachmentFileIndexRef.current,
   })
+
+  const recordSentQuickInput = React.useCallback((sentContent: string) => {
+    const normalizedContent = normalizeQuickInputText(sentContent)
+    const adoptedQuickInput = selectedQuickInputRef.current
+    const adopted = !!adoptedQuickInput && normalizeQuickInputText(adoptedQuickInput) === normalizedContent
+    selectedQuickInputRef.current = null
+
+    updateQuickInputs((items) => incrementTaskQuickInput(items, normalizedContent, { force: adopted }))
+  }, [updateQuickInputs])
 
   const sendInputSnapshot = React.useCallback(async (input: QueuedTaskInput) => {
     if (input.content.trim() === '') {
@@ -187,6 +261,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
   const clearCurrentInput = React.useCallback(() => {
     removeTaskInputDraft(taskId)
+    selectedQuickInputRef.current = null
     setContent('')
     setUploadedFiles([])
     setPreviewFile(null)
@@ -247,11 +322,13 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   }), [submitPublishWebsite])
 
   const sendCurrentInput = async () => {
-    const sent = await sendInputSnapshot(createCurrentInputSnapshot())
+    const currentInput = createCurrentInputSnapshot()
+    const sent = await sendInputSnapshot(currentInput)
     if (!sent) {
       return
     }
 
+    recordSentQuickInput(currentInput.content)
     clearCurrentInput()
   }
 
@@ -261,6 +338,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
 
   const cancelQueuedInput = () => {
     if (!queuedInput || autoSendingQueuedInput) return
+    selectedQuickInputRef.current = null
     setPreviewFile(null)
     setQueuedInput(null)
   }
@@ -303,6 +381,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       }
 
       if (sent) {
+        recordSentQuickInput(inputToSend.content)
         setQueuedInput(null)
         clearCurrentInput()
         return
@@ -315,7 +394,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
       setQueuedInput(null)
       toast.error(t("taskDetail.chat.toast.autoSendFailed"))
     })()
-  }, [clearCurrentInput, isExecuting, queueSize, queuedInput, sendInputSnapshot, sending, t])
+  }, [clearCurrentInput, isExecuting, queueSize, queuedInput, recordSentQuickInput, sendInputSnapshot, sending, t])
 
   const handleCancel = () => {
     restoreSubmittedInputOnIdleRef.current = content.trim() === '' && !queuedInput
@@ -359,7 +438,33 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   }
 
   const handleTextRecognized = (text: string) => {
+    selectedQuickInputRef.current = null
     setContent(text)
+  }
+
+  const handleContentChange = (nextContent: string) => {
+    if (
+      selectedQuickInputRef.current
+      && normalizeQuickInputText(selectedQuickInputRef.current) !== normalizeQuickInputText(nextContent)
+    ) {
+      selectedQuickInputRef.current = null
+    }
+    setContent(nextContent)
+  }
+
+  const applyQuickInput = (text: string) => {
+    const normalizedText = normalizeQuickInputText(text)
+    if (!normalizedText) {
+      return
+    }
+
+    selectedQuickInputRef.current = normalizedText
+    setContent(normalizedText)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      const cursorPosition = normalizedText.length
+      textareaRef.current?.setSelectionRange(cursorPosition, cursorPosition)
+    })
   }
 
   const handleSelectFile = () => {
@@ -635,6 +740,78 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     : t("taskDetail.chat.placeholder.idle")
   const executionElapsedSeconds = (executionTimeMs / 1000).toFixed(1)
   const showExecutionStatusPanel = isExecuting
+  const recommendedQuickInputs = React.useMemo(() => getRecommendedTaskQuickInputs(quickInputs), [quickInputs])
+  const showQuickInputPanel = canUseIdleControls && content.trim() === "" && uploadedFiles.length === 0 && recommendedQuickInputs.length > 0
+  const quickInputMoreLabel = t("taskDetail.chat.quickInputs.more")
+  const fallbackQuickInputVisibleCount = React.useMemo(() => (
+    getTaskQuickInputVisibleCount(recommendedQuickInputs, quickInputContainerWidth, quickInputMoreLabel)
+  ), [quickInputContainerWidth, quickInputMoreLabel, recommendedQuickInputs])
+  const quickInputVisibleCount = measuredQuickInputVisibleCount ?? fallbackQuickInputVisibleCount
+  const visibleQuickInputs = recommendedQuickInputs.slice(0, quickInputVisibleCount)
+  const overflowQuickInputs = recommendedQuickInputs.slice(quickInputVisibleCount)
+
+  React.useEffect(() => {
+    const element = quickInputContainerRef.current
+    if (!showQuickInputPanel || !element || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const updateContainerWidth = (width: number) => {
+      setQuickInputContainerWidth(Math.max(0, Math.floor(width)))
+    }
+
+    updateContainerWidth(element.getBoundingClientRect().width)
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      updateContainerWidth(entries[0]?.contentRect.width ?? element.getBoundingClientRect().width)
+    })
+    resizeObserver.observe(element)
+
+    return () => resizeObserver.disconnect()
+  }, [recommendedQuickInputs.length, showQuickInputPanel])
+
+  React.useEffect(() => {
+    const measureElement = quickInputMeasureRef.current
+    if (!showQuickInputPanel || !measureElement || quickInputContainerWidth <= 0) {
+      setMeasuredQuickInputVisibleCount(null)
+      return
+    }
+
+    const itemElements = Array.from(
+      measureElement.querySelectorAll<HTMLElement>("[data-quick-input-measure-item]"),
+    )
+    const moreElement = measureElement.querySelector<HTMLElement>("[data-quick-input-measure-more]")
+    if (itemElements.length === 0 || !moreElement) {
+      setMeasuredQuickInputVisibleCount(null)
+      return
+    }
+
+    const itemWidths = itemElements.map((item) => Math.ceil(item.getBoundingClientRect().width))
+    const totalItemsWidth = itemWidths.reduce((sum, width, index) => (
+      sum + width + (index > 0 ? TASK_QUICK_INPUT_GAP_WIDTH : 0)
+    ), 0)
+
+    if (totalItemsWidth <= quickInputContainerWidth) {
+      setMeasuredQuickInputVisibleCount(itemWidths.length)
+      return
+    }
+
+    const moreWidth = Math.ceil(moreElement.getBoundingClientRect().width)
+    let usedWidth = moreWidth
+    let visibleCount = 0
+
+    for (const width of itemWidths.slice(0, -1)) {
+      const nextWidth = usedWidth + TASK_QUICK_INPUT_GAP_WIDTH + width
+      if (nextWidth > quickInputContainerWidth) {
+        break
+      }
+
+      usedWidth = nextWidth
+      visibleCount += 1
+    }
+
+    setMeasuredQuickInputVisibleCount(Math.max(1, visibleCount))
+  }, [quickInputContainerWidth, quickInputMoreLabel, recommendedQuickInputs, showQuickInputPanel])
 
   return (
     <div
@@ -666,6 +843,80 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
         className="hidden"
         onChange={handleFileChange}
       />
+      {showQuickInputPanel && (
+        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+          <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+            <IconSparkles className="size-3.5" />
+            <span>{t("taskDetail.chat.quickInputs.label")}</span>
+          </div>
+          <div ref={quickInputContainerRef} className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-hidden">
+            <div
+              ref={quickInputMeasureRef}
+              className="pointer-events-none absolute -z-10 flex h-0 max-w-none flex-nowrap items-center gap-2 overflow-hidden opacity-0"
+              aria-hidden="true"
+            >
+              {recommendedQuickInputs.map((item) => (
+                <Button
+                  key={item.text}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-full px-2.5 text-xs font-normal"
+                  data-quick-input-measure-item
+                  tabIndex={-1}
+                >
+                  <span>{item.text}</span>
+                </Button>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-full px-2.5 text-xs font-normal"
+                data-quick-input-measure-more
+                tabIndex={-1}
+              >
+                <IconDots className="size-3.5" />
+                {quickInputMoreLabel}
+              </Button>
+            </div>
+            {visibleQuickInputs.map((item) => (
+              <Button
+                key={item.text}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 min-w-0 max-w-full rounded-full px-2.5 text-xs font-normal"
+                onClick={() => applyQuickInput(item.text)}
+              >
+                <span className="truncate">{item.text}</span>
+              </Button>
+            ))}
+            {overflowQuickInputs.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 shrink-0 rounded-full px-2.5 text-xs font-normal"
+                  >
+                    <IconDots className="size-3.5" />
+                    {quickInputMoreLabel}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
+                  {overflowQuickInputs.map((item) => (
+                    <DropdownMenuItem key={item.text} onSelect={() => applyQuickInput(item.text)}>
+                      <span className="truncate">{item.text}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
+      )}
       <InputGroup>
         <InputGroupTextarea
           ref={textareaRef}
@@ -673,7 +924,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
           placeholder={inputPlaceholder}
           value={content}
           disabled={!canEditContent}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => handleContentChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onCompositionStart={handleCompositionStart}

@@ -27,6 +27,7 @@ function readSource(path: string) {
 test("任务详情核心组件使用 taskDetail i18n key", () => {
   assert.match(sourceFiles.chatInput, /useTranslation/);
   assert.match(sourceFiles.chatInput, /t\("taskDetail\.chat\.placeholder\.idle"\)/);
+  assert.match(sourceFiles.chatInput, /t\("taskDetail\.chat\.quickInputs\.label"\)/);
   assert.match(sourceFiles.chatInput, /t\("taskDetail\.chat\.toast\.fileTooLarge"/);
 
   assert.match(sourceFiles.messageToolcall, /taskDetailT/);
@@ -63,6 +64,8 @@ test("任务详情核心组件使用 taskDetail i18n key", () => {
 test("任务详情核心组件提供中英文资源", () => {
   assert.equal(cn.taskDetail.chat.placeholder.idle, "描述你的需求，Shift+Enter 换行，Enter 发送。");
   assert.equal(en.taskDetail.chat.placeholder.idle, "Describe what you need. Shift+Enter for a new line, Enter to send.");
+  assert.equal(cn.taskDetail.chat.quickInputs.label, "快捷输入");
+  assert.equal(en.taskDetail.chat.quickInputs.label, "Quick input");
   assert.equal(cn.taskDetail.files.title, "项目文件");
   assert.equal(en.taskDetail.files.title, "Project files");
   assert.equal(cn.taskDetail.fileActions.download, "下载");

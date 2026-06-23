@@ -3912,6 +3912,10 @@ const cn = {
       },
       commandOptions: "命令选项",
       executionStatus: "任务正在执行，耗时 {{seconds}} 秒",
+      quickInputs: {
+        label: "快捷输入",
+        more: "更多",
+      },
       commands: {
         restartAgent: "重启 Agent",
         restartAgentDescription: "保留当前上下文，重新启动 Agent 会话。",

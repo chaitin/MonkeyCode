@@ -3912,6 +3912,10 @@ const en = {
       },
       commandOptions: "Command options",
       executionStatus: "Task running for {{seconds}}s",
+      quickInputs: {
+        label: "Quick input",
+        more: "More",
+      },
       commands: {
         restartAgent: "Restart Agent",
         restartAgentDescription: "Keep the current context and restart the Agent session.",
