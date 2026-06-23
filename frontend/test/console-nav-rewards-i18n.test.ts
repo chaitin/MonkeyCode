@@ -28,6 +28,18 @@ test("侧边栏在线权益入口使用 consoleShell rewards i18n key", () => {
   assert.match(sourceFiles.invite, /t\("consoleShell\.rewards\.invite\.title"\)/);
   assert.match(sourceFiles.essay, /t\("consoleShell\.rewards\.essay\.label"\)/);
   assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.quota\.freeQuota"\)/);
+  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.button"\)/);
+  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.description"\)/);
+  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.templateLabel"\)/);
+  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.templateCopy"\)/);
+  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.copySuccess"\)/);
+  assert.match(sourceFiles.freeModelUsage, /const feedbackTemplate = t\("consoleShell\.rewards\.feedback\.template", \{ uid: userId \}\)/);
+  assert.match(sourceFiles.freeModelUsage, /navigator\.clipboard\.writeText\(feedbackTemplate\)/);
+  assert.match(sourceFiles.freeModelUsage, /const \{\s*user,\s*\} = useCommonData\(\)/);
+  assert.match(sourceFiles.freeModelUsage, /const userId = user\?\.id \|\| "-"/);
+  assert.match(sourceFiles.freeModelUsage, /className="hidden h-8[\s\S]*lg:inline-flex/);
+  assert.match(sourceFiles.freeModelUsage, /const GITHUB_REPOSITORY_URL = "https:\/\/github\.com\/chaitin\/monkeycode"/);
+  assert.match(sourceFiles.freeModelUsage, /window\.open\(GITHUB_REPOSITORY_URL, "_blank", "noopener,noreferrer"\)/);
 });
 
 test("侧边栏在线权益入口提供中英文资源", () => {
@@ -37,4 +49,14 @@ test("侧边栏在线权益入口提供中英文资源", () => {
   assert.equal(en.consoleShell.rewards.invite.title, "Invite users for credits");
   assert.equal(cn.consoleShell.rewards.quota.freeQuota, "免费额度");
   assert.equal(en.consoleShell.rewards.quota.freeQuota, "Free quota");
+  assert.equal(cn.consoleShell.rewards.feedback.button, "提个建议");
+  assert.equal(en.consoleShell.rewards.feedback.button, "Feedback");
+  assert.equal(cn.consoleShell.rewards.feedback.templateLabel, "反馈模板");
+  assert.equal(en.consoleShell.rewards.feedback.templateLabel, "Feedback template");
+  assert.equal(cn.consoleShell.rewards.feedback.action, "去 GitHub 反馈");
+  assert.equal(en.consoleShell.rewards.feedback.action, "Give feedback on GitHub");
+  assert.match(cn.consoleShell.rewards.feedback.template, /\{\{uid\}\}/);
+  assert.match(cn.consoleShell.rewards.feedback.template, /我的 UID/);
+  assert.match(en.consoleShell.rewards.feedback.template, /\{\{uid\}\}/);
+  assert.equal(cn.consoleShell.rewards.feedback.description, "到 MonkeyCode 的 GitHub 提 Issue，并留下你的 UID。\nIssue 被采纳后你将获得 3 万积分的奖励。");
 });

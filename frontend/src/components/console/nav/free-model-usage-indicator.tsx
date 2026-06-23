@@ -2,12 +2,16 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { Progress } from "@/components/ui/progress"
 import { CircularProgress } from "@/components/ui/circular-progress"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { useCommonData } from "../data-provider"
-import { Crown } from "lucide-react"
+import { Copy, Crown, ExternalLink, MessageSquarePlus } from "lucide-react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 const OPEN_WALLET_DIALOG_EVENT = "open-wallet-dialog"
+const GITHUB_REPOSITORY_URL = "https://github.com/chaitin/monkeycode"
 
 const PLAN_TOKEN_LIMITS = {
   basic: {
@@ -259,11 +263,79 @@ export function MembershipBalanceIndicator() {
   )
 }
 
+export function FeedbackSuggestionButton() {
+  const { t } = useTranslation()
+  const {
+    user,
+  } = useCommonData()
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false)
+  const userId = user?.id || "-"
+  const feedbackTemplate = t("consoleShell.rewards.feedback.template", { uid: userId })
+
+  const openFeedbackIssues = () => {
+    window.open(GITHUB_REPOSITORY_URL, "_blank", "noopener,noreferrer")
+    setFeedbackDialogOpen(false)
+  }
+
+  const copyFeedbackTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(feedbackTemplate)
+      toast.success(t("consoleShell.rewards.feedback.copySuccess"))
+    } catch {
+      toast.error(t("consoleShell.rewards.feedback.copyFailed"))
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="hidden h-8 shrink-0 gap-1.5 px-2.5 lg:inline-flex"
+        onClick={() => setFeedbackDialogOpen(true)}
+      >
+        <MessageSquarePlus className="size-4" />
+        {t("consoleShell.rewards.feedback.button")}
+      </Button>
+      <Dialog open={feedbackDialogOpen} onOpenChange={setFeedbackDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("consoleShell.rewards.feedback.title")}</DialogTitle>
+            <DialogDescription>
+              {t("consoleShell.rewards.feedback.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-medium">{t("consoleShell.rewards.feedback.templateLabel")}</div>
+              <Button type="button" size="xs" variant="secondary" onClick={() => void copyFeedbackTemplate()}>
+                <Copy className="size-3.5" />
+                {t("consoleShell.rewards.feedback.templateCopy")}
+              </Button>
+            </div>
+            <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-background p-2 text-xs text-muted-foreground">
+              {feedbackTemplate}
+            </pre>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" onClick={openFeedbackIssues}>
+              <ExternalLink className="size-4" />
+              {t("consoleShell.rewards.feedback.action")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export default function FreeModelUsageIndicator() {
   return (
     <div className="hidden items-center gap-2 md:flex">
       <FreeModelQuotaIndicator />
       <MembershipBalanceIndicator />
+      <FeedbackSuggestionButton />
     </div>
   )
 }

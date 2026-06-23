@@ -16,6 +16,29 @@ import { toast } from "sonner"
 import { isTaskImageAttachment } from "./task-shared"
 import { useTranslation } from "react-i18next"
 
+const IMAGE_COMPRESS_MIN_SIZE_BYTES = 200 * 1024
+const IMAGE_COMPRESS_QUALITY = 0.6
+const IMAGE_COMPRESS_OUTPUT_TYPE = "image/webp"
+const IMAGE_COMPRESS_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/bmp",
+  "image/avif",
+])
+const IMAGE_COMPRESS_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "bmp",
+  "avif",
+])
+
+export const MAX_TASK_UPLOAD_FILE_SIZE_BYTES = 2 * 1024 * 1024
+export const MAX_TASK_UPLOAD_FILE_SIZE_LABEL = "2MB"
+
 export interface TaskUploadedFile {
   name: string
   size: number
@@ -23,13 +46,131 @@ export interface TaskUploadedFile {
   accessUrl: string
 }
 
+export class TaskUploadFileTooLargeError extends Error {
+  constructor() {
+    super("Task upload file is too large")
+    this.name = "TaskUploadFileTooLargeError"
+  }
+}
+
+const replaceFileExtension = (filename: string, extension: string) => {
+  const extensionIndex = filename.lastIndexOf(".")
+  if (extensionIndex <= 0) {
+    return `${filename}.${extension}`
+  }
+
+  return `${filename.slice(0, extensionIndex)}.${extension}`
+}
+
+const loadImageFromFile = (file: File) => {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve(image)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error("Failed to load image"))
+    }
+    image.src = objectUrl
+  })
+}
+
+const canvasToCompressedBlob = (canvas: HTMLCanvasElement) => {
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(
+      resolve,
+      IMAGE_COMPRESS_OUTPUT_TYPE,
+      IMAGE_COMPRESS_QUALITY,
+    )
+  })
+}
+
+export const isCompressibleImageFile = (file: File) => {
+  if (IMAGE_COMPRESS_TYPES.has(file.type.toLowerCase())) {
+    return true
+  }
+
+  const extensionMatch = file.name.match(/\.([^./\\]+)$/)
+  return !!extensionMatch && IMAGE_COMPRESS_EXTENSIONS.has(extensionMatch[1].toLowerCase())
+}
+
+const compressImageFileIfNeeded = async (file: File) => {
+  if (file.size < IMAGE_COMPRESS_MIN_SIZE_BYTES) {
+    return file
+  }
+
+  if (!isCompressibleImageFile(file)) {
+    return file
+  }
+
+  if (
+    typeof document === "undefined"
+    || typeof Image === "undefined"
+    || typeof URL === "undefined"
+    || typeof URL.createObjectURL !== "function"
+    || typeof URL.revokeObjectURL !== "function"
+  ) {
+    return file
+  }
+
+  try {
+    const image = await loadImageFromFile(file)
+    const width = image.naturalWidth || image.width
+    const height = image.naturalHeight || image.height
+    if (width <= 0 || height <= 0) {
+      return file
+    }
+
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext("2d")
+    if (!context) {
+      return file
+    }
+
+    context.drawImage(image, 0, 0, width, height)
+    const compressedBlob = await canvasToCompressedBlob(canvas)
+    if (!compressedBlob || compressedBlob.type !== IMAGE_COMPRESS_OUTPUT_TYPE) {
+      return file
+    }
+
+    const compressedFile = new File(
+      [compressedBlob],
+      replaceFileExtension(file.name, "webp"),
+      {
+        type: IMAGE_COMPRESS_OUTPUT_TYPE,
+        lastModified: file.lastModified,
+      },
+    )
+
+    if (compressedFile.size >= file.size) {
+      return file
+    }
+
+    return compressedFile
+  } catch {
+    return file
+  }
+}
+
 export async function uploadTaskFile(file: File): Promise<TaskUploadedFile> {
-  const uploadedFile = await uploadFileWithPresignedUrl(file)
+  const uploadFile = await compressImageFileIfNeeded(file)
+  if (uploadFile.size > MAX_TASK_UPLOAD_FILE_SIZE_BYTES) {
+    throw new TaskUploadFileTooLargeError()
+  }
+
+  const uploadedFile = await uploadFileWithPresignedUrl(uploadFile)
 
   return {
-    name: file.name,
-    size: file.size,
-    type: file.type,
+    name: uploadFile.name,
+    size: uploadFile.size,
+    type: uploadFile.type,
     accessUrl: uploadedFile.accessUrl,
   }
 }
@@ -94,7 +235,10 @@ export function TaskFileUploadDialog({ open, file, autoUpload = false, onOpenCha
       toast.success(t("taskDetail.upload.success"))
       onOpenChange(false)
     } catch (error) {
-      toast.error((error as Error).message)
+      const message = error instanceof TaskUploadFileTooLargeError
+        ? t("taskDetail.chat.toast.fileTooLarge", { size: MAX_TASK_UPLOAD_FILE_SIZE_LABEL })
+        : (error as Error).message
+      toast.error(message)
     } finally {
       setUploading(false)
     }

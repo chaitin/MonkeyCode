@@ -29,6 +29,8 @@ test("任务工作流共享组件使用 taskWorkflow i18n key", () => {
   assert.match(sourceFiles.taskInput, /overCount:/);
 
   assert.match(sourceFiles.taskActions, /t\("taskWorkflow\.actions\.rename"\)/);
+  assert.match(sourceFiles.taskActions, /t\("taskWorkflow\.actions\.stop"\)/);
+  assert.match(sourceFiles.taskActions, /t\("taskWorkflow\.actions\.delete"\)/);
   assert.match(sourceFiles.taskActions, /t\("taskWorkflow\.rename\.title"\)/);
 
   assert.match(sourceFiles.modelSelect, /t\("taskWorkflow\.model\.basic"\)/);
@@ -61,4 +63,8 @@ test("任务工作流共享组件提供中英文资源", () => {
   assert.equal(en.taskWorkflow.dialog.create.title, "Create task");
   assert.equal(cn.taskWorkflow.dialog.params.advancedOptions, "高级选项");
   assert.equal(en.taskWorkflow.dialog.params.advancedOptions, "Advanced options");
+  assert.equal(cn.taskWorkflow.actions.stop, "终止任务");
+  assert.equal(en.taskWorkflow.actions.stop, "Stop");
+  assert.equal(cn.taskWorkflow.actions.delete, "删除任务");
+  assert.equal(en.taskWorkflow.actions.delete, "Delete");
 });

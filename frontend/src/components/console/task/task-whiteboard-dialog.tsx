@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner"
 import React from "react"
 import { toast } from "sonner"
 import type { TldrawProps } from "tldraw"
-import { uploadTaskFile, type TaskUploadedFile } from "./task-file-upload"
+import { MAX_TASK_UPLOAD_FILE_SIZE_LABEL, TaskUploadFileTooLargeError, uploadTaskFile, type TaskUploadedFile } from "./task-file-upload"
 import { useTranslation } from "react-i18next"
 
 const TaskWhiteboardCanvas = React.lazy(() => import("./task-whiteboard-canvas"))
@@ -76,7 +76,10 @@ export function TaskWhiteboardDialog({
       onOpenChange(false)
       toast.success(t("taskDetail.whiteboard.uploaded"))
     } catch (error) {
-      toast.error((error as Error).message || t("taskDetail.whiteboard.uploadFailed"))
+      const message = error instanceof TaskUploadFileTooLargeError
+        ? t("taskDetail.chat.toast.fileTooLarge", { size: MAX_TASK_UPLOAD_FILE_SIZE_LABEL })
+        : (error as Error).message || t("taskDetail.whiteboard.uploadFailed")
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }

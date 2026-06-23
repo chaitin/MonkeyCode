@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } from "./task-file-upload"
+import { isCompressibleImageFile, MAX_TASK_UPLOAD_FILE_SIZE_BYTES, MAX_TASK_UPLOAD_FILE_SIZE_LABEL, TaskFileUploadDialog, TaskUploadedFileItem, type TaskUploadedFile } from "./task-file-upload"
 import { toast } from "sonner"
 import { TaskWhiteboardDialog } from "./task-whiteboard-dialog"
 import { TaskAttachmentPreviewDialog } from "./task-attachment-preview-dialog"
@@ -18,7 +18,6 @@ import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import { MAX_TASK_CONTENT_LENGTH } from "./task-content-limit"
 import { useTranslation } from "react-i18next"
 
-const MAX_UPLOAD_FILE_SIZE = 2 * 1024 * 1024
 const MAX_UPLOADED_FILES = 3
 const TASK_INPUT_DRAFT_STORAGE_PREFIX = "task-chat-input-draft"
 const PASTED_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
@@ -31,126 +30,6 @@ const PASTED_IMAGE_EXTENSION_BY_TYPE: Record<string, string> = {
   "image/svg+xml": "svg",
   "image/avif": "avif",
 }
-const IMAGE_COMPRESS_MIN_SIZE_BYTES = 200 * 1024
-const IMAGE_COMPRESS_QUALITY = 0.6
-const IMAGE_COMPRESS_OUTPUT_TYPE = "image/webp"
-const IMAGE_COMPRESS_TYPES = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/bmp",
-  "image/avif",
-])
-const IMAGE_COMPRESS_EXTENSIONS = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "webp",
-  "bmp",
-  "avif",
-])
-
-const replaceFileExtension = (filename: string, extension: string) => {
-  const extensionIndex = filename.lastIndexOf(".")
-  if (extensionIndex <= 0) {
-    return `${filename}.${extension}`
-  }
-
-  return `${filename.slice(0, extensionIndex)}.${extension}`
-}
-
-const loadImageFromFile = (file: File) => {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file)
-    const image = new Image()
-
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      resolve(image)
-    }
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl)
-      reject(new Error("Failed to load image"))
-    }
-    image.src = objectUrl
-  })
-}
-
-const canvasToCompressedBlob = (canvas: HTMLCanvasElement) => {
-  return new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(
-      resolve,
-      IMAGE_COMPRESS_OUTPUT_TYPE,
-      IMAGE_COMPRESS_QUALITY,
-    )
-  })
-}
-
-const isCompressibleImageFile = (file: File) => {
-  if (IMAGE_COMPRESS_TYPES.has(file.type.toLowerCase())) {
-    return true
-  }
-
-  const extensionMatch = file.name.match(/\.([^./\\]+)$/)
-  return !!extensionMatch && IMAGE_COMPRESS_EXTENSIONS.has(extensionMatch[1].toLowerCase())
-}
-
-const compressImageFileIfNeeded = async (file: File) => {
-  if (file.size < IMAGE_COMPRESS_MIN_SIZE_BYTES) {
-    return file
-  }
-
-  if (!isCompressibleImageFile(file)) {
-    return file
-  }
-
-  if (typeof document === "undefined" || typeof Image === "undefined" || typeof URL === "undefined") {
-    return file
-  }
-
-  try {
-    const image = await loadImageFromFile(file)
-    const width = image.naturalWidth || image.width
-    const height = image.naturalHeight || image.height
-    if (width <= 0 || height <= 0) {
-      return file
-    }
-
-    const canvas = document.createElement("canvas")
-    canvas.width = width
-    canvas.height = height
-
-    const context = canvas.getContext("2d")
-    if (!context) {
-      return file
-    }
-
-    context.drawImage(image, 0, 0, width, height)
-    const compressedBlob = await canvasToCompressedBlob(canvas)
-    if (!compressedBlob || compressedBlob.type !== IMAGE_COMPRESS_OUTPUT_TYPE) {
-      return file
-    }
-
-    const compressedFile = new File(
-      [compressedBlob],
-      replaceFileExtension(file.name, "webp"),
-      {
-        type: IMAGE_COMPRESS_OUTPUT_TYPE,
-        lastModified: file.lastModified,
-      },
-    )
-
-    if (compressedFile.size >= file.size) {
-      return file
-    }
-
-    return compressedFile
-  } catch {
-    return file
-  }
-}
-
 interface QueuedTaskInput {
   content: string
   uploadedFiles: TaskUploadedFile[]
@@ -542,7 +421,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     return createFileWithName(file, appendAttachmentFileIndex(file.name, nextAttachmentFileIndexRef.current))
   }
 
-  const prepareUploadFile = async (file: File, options?: { autoUpload?: boolean }) => {
+  const prepareUploadFile = (file: File, options?: { autoUpload?: boolean }) => {
     if (!canUseIdleControls) {
       return
     }
@@ -553,20 +432,15 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     }
 
     const normalizedFile = normalizeUploadFile(file)
-    const compressedFile = await compressImageFileIfNeeded(normalizedFile)
-    if (!mountedRef.current) {
-      return
-    }
-
-    const uploadFile = addCurrentRoundFileIndex(compressedFile)
+    const uploadFile = addCurrentRoundFileIndex(normalizedFile)
 
     if (uploadFile.size === 0) {
       toast.error(t("taskDetail.chat.toast.emptyFile"))
       return
     }
 
-    if (uploadFile.size > MAX_UPLOAD_FILE_SIZE) {
-      toast.error(t("taskDetail.chat.toast.fileTooLarge", { size: "2MB" }))
+    if (uploadFile.size > MAX_TASK_UPLOAD_FILE_SIZE_BYTES && !isCompressibleImageFile(uploadFile)) {
+      toast.error(t("taskDetail.chat.toast.fileTooLarge", { size: MAX_TASK_UPLOAD_FILE_SIZE_LABEL }))
       return
     }
 

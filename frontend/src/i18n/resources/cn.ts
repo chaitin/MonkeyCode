@@ -1407,6 +1407,17 @@ const cn = {
       essay: {
         label: "参与征文拿积分",
       },
+      feedback: {
+        button: "提个建议",
+        title: "提个建议",
+        description: "到 MonkeyCode 的 GitHub 提 Issue，并留下你的 UID。\nIssue 被采纳后你将获得 3 万积分的奖励。",
+        templateLabel: "反馈模板",
+        templateCopy: "复制模板",
+        template: "反馈标题：\n\n反馈内容：\n\n期望效果：\n\n我的 UID：{{uid}}",
+        copySuccess: "反馈模板已复制",
+        copyFailed: "复制失败，请手动复制",
+        action: "去 GitHub 反馈",
+      },
       quota: {
         freeQuota: "免费额度",
         remainingToday: "今日剩余 {{amount}}",

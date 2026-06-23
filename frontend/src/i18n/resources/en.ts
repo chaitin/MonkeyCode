@@ -1407,6 +1407,17 @@ const en = {
       essay: {
         label: "Submit an article for credits",
       },
+      feedback: {
+        button: "Feedback",
+        title: "Share feedback",
+        description: "Submit feedback in our GitHub Issues and include your UID. If the issue is accepted, you can receive a 30,000-credit reward.",
+        templateLabel: "Feedback template",
+        templateCopy: "Copy template",
+        template: "Feedback title:\n\nFeedback details:\n\nExpected result:\n\nCurrent UID: {{uid}}",
+        copySuccess: "Feedback template copied",
+        copyFailed: "Copy failed. Please copy manually.",
+        action: "Give feedback on GitHub",
+      },
       quota: {
         freeQuota: "Free quota",
         remainingToday: "{{amount}} left today",
@@ -3742,8 +3753,8 @@ const en = {
     },
     actions: {
       rename: "Rename",
-      stop: "Stop task",
-      delete: "Delete task",
+      stop: "Stop",
+      delete: "Delete",
     },
     rename: {
       invalidTask: "Invalid task information",
