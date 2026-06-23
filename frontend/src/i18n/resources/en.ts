@@ -1420,8 +1420,11 @@ const en = {
       },
       quota: {
         freeQuota: "Free quota",
+        freeWithValue: "Daily quota {{amount}}",
         remainingToday: "{{amount}} left today",
         noQuota: "No quota",
+        membershipCredits: "Membership and credits",
+        creditsSummary: "Credits {{value}}",
         creditsWithValue: "{{value}} credits",
         credits: "Credits",
         upgrade: "Upgrade",

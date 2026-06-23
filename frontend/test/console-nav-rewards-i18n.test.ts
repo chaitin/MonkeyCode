@@ -27,7 +27,8 @@ test("侧边栏在线权益入口使用 consoleShell rewards i18n key", () => {
   assert.match(sourceFiles.checkin, /t\("consoleShell\.rewards\.checkin\.label"\)/);
   assert.match(sourceFiles.invite, /t\("consoleShell\.rewards\.invite\.title"\)/);
   assert.match(sourceFiles.essay, /t\("consoleShell\.rewards\.essay\.label"\)/);
-  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.quota\.freeQuota"\)/);
+  assert.match(sourceFiles.freeModelUsage, /export function RewardsBalanceIndicator/);
+  assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.quota\.freeWithValue", \{ amount: formatTokenNumber\(remainingTokens\) \}\)/);
   assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.button"\)/);
   assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.description"\)/);
   assert.match(sourceFiles.freeModelUsage, /t\("consoleShell\.rewards\.feedback\.templateLabel"\)/);
@@ -49,6 +50,12 @@ test("侧边栏在线权益入口提供中英文资源", () => {
   assert.equal(en.consoleShell.rewards.invite.title, "Invite users for credits");
   assert.equal(cn.consoleShell.rewards.quota.freeQuota, "免费额度");
   assert.equal(en.consoleShell.rewards.quota.freeQuota, "Free quota");
+  assert.equal(cn.consoleShell.rewards.quota.freeWithValue, "今日额度 {{amount}}");
+  assert.equal(en.consoleShell.rewards.quota.freeWithValue, "Daily quota {{amount}}");
+  assert.equal(cn.consoleShell.rewards.quota.creditsSummary, "积分 {{value}}");
+  assert.equal(en.consoleShell.rewards.quota.creditsSummary, "Credits {{value}}");
+  assert.equal(cn.consoleShell.rewards.quota.membershipCredits, "会员与积分");
+  assert.equal(en.consoleShell.rewards.quota.membershipCredits, "Membership and credits");
   assert.equal(cn.consoleShell.rewards.feedback.button, "提个建议");
   assert.equal(en.consoleShell.rewards.feedback.button, "Feedback");
   assert.equal(cn.consoleShell.rewards.feedback.templateLabel, "反馈模板");

@@ -119,15 +119,20 @@ function openWalletSection(section: "earn" | "usage" | "plan") {
   }))
 }
 
-export function FreeModelQuotaIndicator() {
+export function RewardsBalanceIndicator() {
   const { t } = useTranslation()
   const {
+    balance,
     dailyBasicTokenBalance,
     dailyProTokenBalance,
     dailyUltraTokenBalance,
     subscription,
   } = useCommonData()
   const plan = normalizePlan(subscription?.plan)
+  const planLabel = t(`consoleShell.rewards.plans.${plan}`)
+  const balanceLabel = Math.floor(balance).toLocaleString("zh-CN")
+  const canUpgradePlan = plan !== "ultra"
+  const canRenewPlan = plan !== "basic"
   const quotaItems = getQuotaItems(plan, {
     basic: dailyBasicTokenBalance,
     pro: dailyProTokenBalance,
@@ -143,7 +148,7 @@ export function FreeModelQuotaIndicator() {
       <HoverCardTrigger asChild>
         <button
           type="button"
-          className="hidden h-8 items-center gap-1.5 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left text-sm transition-colors hover:border-brand-border hover:bg-background md:inline-flex"
+          className="hidden h-8 items-center gap-2 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left text-sm transition-colors hover:border-brand-border hover:bg-background md:inline-flex"
         >
           <CircularProgress
             value={usedProgress}
@@ -153,8 +158,9 @@ export function FreeModelQuotaIndicator() {
             indicatorClassName={getQuotaCircularProgressClassName(usedProgress)}
             aria-hidden="true"
           />
-          <span className="hidden lg:inline">{t("consoleShell.rewards.quota.freeQuota")}</span>
-          <span className="font-medium">{formatTokenNumber(remainingTokens)}</span>
+          <span className="shrink-0 tabular-nums">
+            {t("consoleShell.rewards.quota.freeWithValue", { amount: formatTokenNumber(remainingTokens) })}
+          </span>
         </button>
       </HoverCardTrigger>
       <HoverCardContent
@@ -162,101 +168,73 @@ export function FreeModelQuotaIndicator() {
         align="end"
         className="w-80"
       >
-        <div className="space-y-3">
-          {quotaItems.map((item) => (
-            <div key={item.key} className="rounded-lg border bg-muted/20 p-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate font-medium">{t(`consoleShell.rewards.quota.models.${item.key}`)}</span>
-                <span className={cn("text-xs", item.total > 0 ? "text-muted-foreground" : "text-muted-foreground/70")}>
-                  {item.total > 0 ? t("consoleShell.rewards.quota.remainingToday", { amount: formatTokenNumber(item.remaining) }) : t("consoleShell.rewards.quota.noQuota")}
-                </span>
+        <div className="space-y-4">
+          <section className="rounded-lg border bg-muted/20 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="inline-flex min-w-0 items-center gap-1.5 rounded-sm bg-brand-muted px-2 py-1 font-medium text-brand">
+                    <Crown className="size-3.5 shrink-0" />
+                    <span className="truncate">{planLabel}</span>
+                  </span>
+                </div>
               </div>
-              <Progress
-                value={item.progress}
-                className={cn("mt-3 h-2 bg-muted", item.total === 0 && "opacity-50")}
-                indicatorClassName={getQuotaProgressClassName(item.progress)}
-              />
+              <div className="flex shrink-0 items-center gap-1.5">
+                {canUpgradePlan ? (
+                  <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
+                    {t("consoleShell.rewards.quota.upgrade")}
+                  </Button>
+                ) : null}
+                {canRenewPlan ? (
+                  <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
+                    {t("consoleShell.rewards.quota.renew")}
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          ))}
-        </div>
-      </HoverCardContent>
-    </HoverCard>
-  )
-}
+            <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
+              <span className="text-muted-foreground">{t("consoleShell.rewards.quota.credits")}</span>
+              <span className="font-medium tabular-nums">{balanceLabel}</span>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                className="h-7 flex-1"
+                onClick={() => openWalletSection("earn")}
+              >
+                {t("consoleShell.rewards.quota.earnCredits")}
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                className="h-7 flex-1"
+                onClick={() => openWalletSection("usage")}
+              >
+                {t("consoleShell.rewards.quota.creditBill")}
+              </Button>
+            </div>
+          </section>
 
-export function MembershipBalanceIndicator() {
-  const { t } = useTranslation()
-  const {
-    balance,
-    subscription,
-  } = useCommonData()
-  const plan = normalizePlan(subscription?.plan)
-  const planLabel = t(`consoleShell.rewards.plans.${plan}`)
-  const balanceLabel = Math.floor(balance).toLocaleString("zh-CN")
-  const canUpgradePlan = plan !== "ultra"
-  const canRenewPlan = plan !== "basic"
-
-  return (
-    <HoverCard openDelay={120} closeDelay={120}>
-      <HoverCardTrigger asChild>
-        <button
-          type="button"
-          className="hidden h-8 items-center gap-2 rounded-sm border border-border/70 bg-background/60 px-2.5 text-left transition-colors hover:border-brand-border hover:bg-background md:inline-flex"
-        >
-          <span className="shrink-0 text-sm font-medium">{planLabel}</span>
-          <span className="shrink-0 rounded-sm bg-brand-muted px-1.5 py-0.5 text-xs text-brand">{t("consoleShell.rewards.quota.creditsWithValue", { value: balanceLabel })}</span>
-        </button>
-      </HoverCardTrigger>
-      <HoverCardContent
-        side="bottom"
-        align="end"
-        className="w-80"
-      >
-        <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-sm bg-brand-muted px-2 py-1 font-medium text-brand">
-                <Crown className="size-3.5" />
-                {planLabel}
-              </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {canUpgradePlan ? (
-                <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
-                  {t("consoleShell.rewards.quota.upgrade")}
-                </Button>
-              ) : null}
-              {canRenewPlan ? (
-                <Button type="button" size="xs" variant="secondary" className="h-7" onClick={() => openWalletSection("plan")}>
-                  {t("consoleShell.rewards.quota.renew")}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
-            <span className="text-muted-foreground">{t("consoleShell.rewards.quota.credits")}</span>
-            <span className="font-medium">{balanceLabel}</span>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button
-              type="button"
-              size="xs"
-              variant="secondary"
-              className="h-7 flex-1"
-              onClick={() => openWalletSection("earn")}
-            >
-              {t("consoleShell.rewards.quota.earnCredits")}
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              variant="secondary"
-              className="h-7 flex-1"
-              onClick={() => openWalletSection("usage")}
-            >
-              {t("consoleShell.rewards.quota.creditBill")}
-            </Button>
-          </div>
+          <section className="space-y-3">
+            {quotaItems.map((item) => (
+              <div key={item.key} className="rounded-lg border bg-muted/20 p-3">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="truncate font-medium">{t(`consoleShell.rewards.quota.models.${item.key}`)}</span>
+                  <span className={cn("text-xs", item.total > 0 ? "text-muted-foreground" : "text-muted-foreground/70")}>
+                    {item.total > 0 ? t("consoleShell.rewards.quota.remainingToday", { amount: formatTokenNumber(item.remaining) }) : t("consoleShell.rewards.quota.noQuota")}
+                  </span>
+                </div>
+                <Progress
+                  value={item.progress}
+                  className={cn("mt-3 h-2 bg-muted", item.total === 0 && "opacity-50")}
+                  indicatorClassName={getQuotaProgressClassName(item.progress)}
+                />
+              </div>
+            ))}
+          </section>
         </div>
       </HoverCardContent>
     </HoverCard>
@@ -333,8 +311,7 @@ export function FeedbackSuggestionButton() {
 export default function FreeModelUsageIndicator() {
   return (
     <div className="hidden items-center gap-2 md:flex">
-      <FreeModelQuotaIndicator />
-      <MembershipBalanceIndicator />
+      <RewardsBalanceIndicator />
       <FeedbackSuggestionButton />
     </div>
   )

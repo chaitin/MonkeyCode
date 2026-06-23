@@ -1420,8 +1420,11 @@ const cn = {
       },
       quota: {
         freeQuota: "免费额度",
+        freeWithValue: "今日额度 {{amount}}",
         remainingToday: "今日剩余 {{amount}}",
         noQuota: "无额度",
+        membershipCredits: "会员与积分",
+        creditsSummary: "积分 {{value}}",
         creditsWithValue: "{{value}} 积分",
         credits: "积分",
         upgrade: "升级",
