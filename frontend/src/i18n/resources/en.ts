@@ -1608,10 +1608,12 @@ const en = {
       currentPlan: "Current plan",
       lifetime: "Lifetime",
       validUntil: "Valid until {{date}}",
-      upgrade: "Upgrade plan",
+      upgrade: "Upgrade membership",
+      renew: "Renew",
     },
     balance: {
       currentCredits: "Current credits",
+      creditBill: "Credit bill",
       recharge: "Recharge",
     },
     email: {

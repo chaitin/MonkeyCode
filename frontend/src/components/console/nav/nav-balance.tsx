@@ -107,7 +107,9 @@ export default function NavBalance({
   }
 
   const remainingPoints = balance
-  const triggerPlanLabel = t(`consoleShell.rewards.plans.${normalizeSubscriptionPlan(subscription?.plan)}`)
+  const normalizedSubscriptionPlan = normalizeSubscriptionPlan(subscription?.plan)
+  const triggerPlanLabel = t(`consoleShell.rewards.plans.${normalizedSubscriptionPlan}`)
+  const canRenewSubscription = normalizedSubscriptionPlan === "pro" || normalizedSubscriptionPlan === "ultra"
   const subscriptionExpiry = formatSubscriptionExpiry(subscription?.expires_at)
 
   const handleLogout = () => {
@@ -416,14 +418,26 @@ export default function NavBalance({
                   </span>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 px-3 text-xs"
-                onClick={() => setShowSubscriptionPlanDialog(true)}
-              >
-                {t("navBalance.plan.upgrade")}
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setShowSubscriptionPlanDialog(true)}
+                >
+                  {t("navBalance.plan.upgrade")}
+                </Button>
+                {canRenewSubscription ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setShowSubscriptionPlanDialog(true)}
+                  >
+                    {t("navBalance.plan.renew")}
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             <div className="flex min-h-12 items-center justify-between gap-4 py-2">
@@ -431,18 +445,32 @@ export default function NavBalance({
                 <div className="text-xs text-muted-foreground">{t("navBalance.balance.currentCredits")}</div>
                 <div className="mt-1 truncate text-sm font-medium tabular-nums">{formatPoints(remainingPoints)}</div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 px-3 text-xs"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
-                    detail: { section: "earn" },
-                  }))
-                }}
-              >
-                {t("navBalance.balance.recharge")}
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+                      detail: { section: "earn" },
+                    }))
+                  }}
+                >
+                  {t("navBalance.balance.recharge")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent(OPEN_WALLET_DIALOG_EVENT, {
+                      detail: { section: "usage" },
+                    }))
+                  }}
+                >
+                  {t("navBalance.balance.creditBill")}
+                </Button>
+              </div>
             </div>
           </>
         )}
@@ -523,19 +551,14 @@ export default function NavBalance({
         </DialogTrigger>
       )}
       <DialogContent
-        className="flex max-h-[90vh] w-[90vw] max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[90vh] w-[90vw] max-w-3xl flex-col overflow-hidden"
       >
-        <DialogHeader className="sr-only">
+        <DialogHeader>
           <DialogTitle>{t("navBalance.account.title")}</DialogTitle>
           <DialogDescription>{t("navBalance.account.description")}</DialogDescription>
         </DialogHeader>
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="px-4 pt-4 pb-2">
-            <div className="text-sm font-medium">{t("navBalance.account.title")}</div>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
-            {accountContent}
-          </div>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          {accountContent}
         </main>
       </DialogContent>
       <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>

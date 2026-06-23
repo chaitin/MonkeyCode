@@ -1608,10 +1608,12 @@ const cn = {
       currentPlan: "当前套餐",
       lifetime: "长期有效",
       validUntil: "{{date}} 前有效",
-      upgrade: "升级套餐",
+      upgrade: "开通高级会员",
+      renew: "续费",
     },
     balance: {
       currentCredits: "当前积分",
+      creditBill: "积分账单",
       recharge: "充值",
     },
     email: {

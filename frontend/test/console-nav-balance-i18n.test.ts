@@ -12,6 +12,11 @@ test("账户余额入口使用 navBalance i18n key", () => {
   assert.match(source, /useTranslation/);
   assert.match(source, /t\("navBalance\.account\.title"\)/);
   assert.match(source, /t\("navBalance\.profile\.changeNameTitle"\)/);
+  assert.match(source, /const canRenewSubscription = normalizedSubscriptionPlan === "pro" \|\| normalizedSubscriptionPlan === "ultra"/);
+  assert.match(source, /t\("navBalance\.plan\.upgrade"\)/);
+  assert.match(source, /t\("navBalance\.plan\.renew"\)/);
+  assert.match(source, /t\("navBalance\.balance\.creditBill"\)/);
+  assert.match(source, /detail: \{ section: "usage" \}/);
   assert.match(source, /t\("navBalance\.security\.changePassword"\)/);
   assert.match(source, /t\("navBalance\.logout\.title"\)/);
   assert.doesNotMatch(source, cjkPattern);
@@ -20,6 +25,12 @@ test("账户余额入口使用 navBalance i18n key", () => {
 test("账户余额入口提供中英文资源", () => {
   assert.equal(cn.navBalance.account.title, "我的账户");
   assert.equal(en.navBalance.account.title, "My account");
+  assert.equal(cn.navBalance.plan.upgrade, "开通高级会员");
+  assert.equal(en.navBalance.plan.upgrade, "Upgrade membership");
+  assert.equal(cn.navBalance.plan.renew, "续费");
+  assert.equal(en.navBalance.plan.renew, "Renew");
+  assert.equal(cn.navBalance.balance.creditBill, "积分账单");
+  assert.equal(en.navBalance.balance.creditBill, "Credit bill");
   assert.equal(cn.navBalance.security.changePassword, "修改密码");
   assert.equal(en.navBalance.security.changePassword, "Change password");
   assert.equal(cn.navBalance.email.sendVerification, "发送验证邮件");
