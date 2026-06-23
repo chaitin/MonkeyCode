@@ -52,7 +52,7 @@ interface TaskChatInputBoxProps {
 }
 
 export interface TaskChatInputBoxHandle {
-  requestPublishWebsite: () => void
+  submitPublishWebsite: () => void
 }
 
 const getTaskInputDraftStorageKey = (taskId: string) => {
@@ -138,15 +138,6 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     writeTaskInputDraft(taskId, content)
   }, [content, taskId])
 
-  const requestPublishWebsite = React.useCallback(() => {
-    setContent(t("taskDetail.chat.commands.publishPrompt"))
-    requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [t])
-
-  React.useImperativeHandle(ref, () => ({
-    requestPublishWebsite,
-  }), [requestPublishWebsite])
-
   React.useEffect(() => {
     if (wasExecutingRef.current && !isExecuting && queuedInput) {
       restoreSubmittedInputOnIdleRef.current = false
@@ -205,6 +196,58 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
     nextAttachmentFileIndexRef.current = 1
   }, [taskId])
 
+  const queueInputSnapshot = React.useCallback((input: QueuedTaskInput) => {
+    if (queuedInput) return false
+    if (input.content.trim() === '') {
+      return false
+    }
+
+    if (input.content.length > MAX_TASK_CONTENT_LENGTH) {
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
+      return false
+    }
+
+    setQueuedInput(input)
+    setPreviewFile(null)
+    return true
+  }, [queuedInput, t])
+
+  const submitInputSnapshot = React.useCallback((input: QueuedTaskInput) => {
+    if (queuedInput || sending || queueSize > 0 || inputLocked) {
+      return false
+    }
+
+    if (input.content.trim() === '') {
+      return false
+    }
+
+    if (input.content.length > MAX_TASK_CONTENT_LENGTH) {
+      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
+      return false
+    }
+
+    if (isExecuting) {
+      return queueInputSnapshot(input)
+    }
+
+    void sendInputSnapshot(input)
+    return true
+  }, [inputLocked, isExecuting, queueInputSnapshot, queueSize, queuedInput, sendInputSnapshot, sending, t])
+
+  const submitPublishWebsite = React.useCallback(() => {
+    const publishInput: QueuedTaskInput = {
+      content: t("taskDetail.chat.commands.publishPrompt"),
+      uploadedFiles: [],
+      nextAttachmentFileIndex: nextAttachmentFileIndexRef.current,
+    }
+
+    submitInputSnapshot(publishInput)
+  }, [submitInputSnapshot, t])
+
+  React.useImperativeHandle(ref, () => ({
+    submitPublishWebsite,
+  }), [submitPublishWebsite])
+
   const sendCurrentInput = async () => {
     const sent = await sendInputSnapshot(createCurrentInputSnapshot())
     if (!sent) {
@@ -215,18 +258,7 @@ export const TaskChatInputBox = React.forwardRef<TaskChatInputBoxHandle, TaskCha
   }
 
   const queueCurrentInput = () => {
-    if (queuedInput) return
-    if (content.trim() === '') {
-      return
-    }
-
-    if (content.length > MAX_TASK_CONTENT_LENGTH) {
-      toast.error(t("taskWorkflow.input.contentTooLong", { maxCount: MAX_TASK_CONTENT_LENGTH }))
-      return
-    }
-
-    setQueuedInput(createCurrentInputSnapshot())
-    setPreviewFile(null)
+    queueInputSnapshot(createCurrentInputSnapshot())
   }
 
   const cancelQueuedInput = () => {

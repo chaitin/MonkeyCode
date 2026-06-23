@@ -17,7 +17,6 @@ import { TaskUserInputIndex } from "@/components/console/task/task-user-input-in
 import { IS_OFFLINE_EDITION } from "@/utils/edition"
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -28,7 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CircularProgress } from "@/components/ui/circular-progress"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -973,7 +972,7 @@ export default function TaskDetailPage() {
   }, [restartAgentClearContext, restartAgentSubmitting, t])
 
   const handleConfirmPublishWebsite = React.useCallback(() => {
-    chatInputRef.current?.requestPublishWebsite()
+    chatInputRef.current?.submitPublishWebsite()
     setPublishConfirmDialogOpen(false)
     setPreviewDialogOpen(false)
   }, [])
@@ -1300,7 +1299,7 @@ export default function TaskDetailPage() {
                 size="sm"
                 className={cn("h-7 min-w-0 px-2 gap-1 text-sm font-normal", publishConfirmDialogOpen && "text-primary bg-accent")}
                 onClick={() => setPublishConfirmDialogOpen(true)}
-                disabled={!taskInteractive}
+                disabled={!canInput}
               >
                 <IconUpload className="size-3.5" />
                 {t("taskDetail.page.dialogs.publishWebsite.button")}
@@ -1530,22 +1529,24 @@ export default function TaskDetailPage() {
           />
         </DialogContent>
       </Dialog>
-      <AlertDialog open={publishConfirmDialogOpen} onOpenChange={setPublishConfirmDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("taskDetail.page.dialogs.publishWebsite.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog open={publishConfirmDialogOpen} onOpenChange={setPublishConfirmDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("taskDetail.page.dialogs.publishWebsite.title")}</DialogTitle>
+            <DialogDescription>
               {t("taskDetail.page.dialogs.publishWebsite.description")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("taskDetail.common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmPublishWebsite}>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishConfirmDialogOpen(false)}>
+              {t("taskDetail.common.cancel")}
+            </Button>
+            <Button onClick={handleConfirmPublishWebsite}>
               {t("taskDetail.page.dialogs.publishWebsite.confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

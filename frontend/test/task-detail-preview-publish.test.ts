@@ -14,18 +14,24 @@ const chatInputSource = readFileSync(
   "utf8",
 );
 
-test("任务详情预览弹窗支持确认后填入发布指令", () => {
+test("任务详情预览弹窗支持确认后自动发送发布指令", () => {
   assert.match(chatInputSource, /export interface TaskChatInputBoxHandle/);
-  assert.match(chatInputSource, /requestPublishWebsite: \(\) => void/);
+  assert.match(chatInputSource, /submitPublishWebsite: \(\) => void/);
   assert.match(chatInputSource, /React\.useImperativeHandle\(ref/);
-  assert.match(chatInputSource, /setContent\(t\("taskDetail\.chat\.commands\.publishPrompt"\)\)/);
+  assert.match(chatInputSource, /content: t\("taskDetail\.chat\.commands\.publishPrompt"\)/);
+  assert.match(chatInputSource, /submitInputSnapshot\(publishInput\)/);
+  assert.doesNotMatch(chatInputSource, /setContent\(t\("taskDetail\.chat\.commands\.publishPrompt"\)\)/);
+  assert.doesNotMatch(chatInputSource, /requestPublishWebsite/);
   assert.doesNotMatch(chatInputSource, /taskDetail\.chat\.commands\.publishWebsite/);
   assert.doesNotMatch(chatInputSource, /taskDetail\.chat\.commands\.publishWebsiteDescription/);
 
   assert.match(pageSource, /TaskChatInputBoxHandle/);
   assert.match(pageSource, /chatInputRef/);
   assert.match(pageSource, /publishConfirmDialogOpen/);
-  assert.match(pageSource, /chatInputRef\.current\?\.requestPublishWebsite\(\)/);
+  assert.match(pageSource, /chatInputRef\.current\?\.submitPublishWebsite\(\)/);
+  assert.doesNotMatch(pageSource, /requestPublishWebsite/);
+  assert.match(pageSource, /<Dialog open=\{publishConfirmDialogOpen\} onOpenChange=\{setPublishConfirmDialogOpen\}>/);
+  assert.doesNotMatch(pageSource, /<AlertDialog open=\{publishConfirmDialogOpen\}/);
   assert.match(pageSource, /t\("taskDetail\.page\.dialogs\.publishWebsite\.description"\)/);
   assert.match(pageSource, /t\("taskDetail\.page\.dialogs\.publishWebsite\.confirm"\)/);
 
@@ -33,6 +39,7 @@ test("任务详情预览弹窗支持确认后填入发布指令", () => {
     /<IconTerminal2[\s\S]*?t\("taskDetail\.panels\.preview"\)[\s\S]*?<IconUpload[\s\S]*?t\("taskDetail\.page\.dialogs\.publishWebsite\.button"\)[\s\S]*?<\/div>/,
   );
   assert.ok(panelButtonGroupMatch, "publish button should sit next to terminal, files, and preview controls");
+  assert.match(panelButtonGroupMatch[0], /disabled=\{!canInput\}/);
 
   const previewDialogMatch = pageSource.match(
     /<Dialog open=\{previewDialogOpen\}[\s\S]*?<\/Dialog>/,

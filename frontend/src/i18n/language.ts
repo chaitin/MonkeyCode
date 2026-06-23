@@ -27,21 +27,19 @@ export function isAppLanguage(value: unknown): value is AppLanguage {
   return value === "cn" || value === "en"
 }
 
-export function detectLanguageFromBrowser(languages: readonly string[] = []): AppLanguage {
-  return languages.some((language) => /^zh($|[-_])/i.test(language.trim()))
-    ? "cn"
-    : "en"
+export function detectLanguageFromBrowser(language: string | null | undefined = ""): AppLanguage {
+  return /^zh($|[-_])/i.test((language ?? "").trim()) ? "cn" : "en"
 }
 
 export function resolveInitialLanguage(
   cookieLanguage: string | null | undefined,
-  browserLanguages: readonly string[] = [],
+  browserLanguage: string | null | undefined = "",
 ): AppLanguage {
   if (isAppLanguage(cookieLanguage)) {
     return cookieLanguage
   }
 
-  return detectLanguageFromBrowser(browserLanguages)
+  return detectLanguageFromBrowser(browserLanguage)
 }
 
 export function getHtmlLang(language: AppLanguage): string {
@@ -91,7 +89,7 @@ export function applyLanguage(language: AppLanguage) {
 }
 
 export function initLanguage(): AppLanguage {
-  const language = resolveInitialLanguage(readLanguageCookie(), getBrowserLanguages())
+  const language = resolveInitialLanguage(readLanguageCookie(), getBrowserLanguage())
   applyLanguage(language)
   return language
 }
@@ -104,14 +102,10 @@ function getDocumentCookie(): string {
   return document.cookie
 }
 
-function getBrowserLanguages(): readonly string[] {
+function getBrowserLanguage(): string {
   if (typeof navigator === "undefined") {
-    return []
+    return ""
   }
 
-  if (navigator.languages.length > 0) {
-    return navigator.languages
-  }
-
-  return navigator.language ? [navigator.language] : []
+  return navigator.language || ""
 }

@@ -19,23 +19,25 @@ test("语言 cookie 只接受 cn 和 en", () => {
 });
 
 test("合法 language cookie 优先于浏览器语言", () => {
-  assert.equal(resolveInitialLanguage("cn", ["en-US"]), "cn");
-  assert.equal(resolveInitialLanguage("en", ["zh-CN"]), "en");
+  assert.equal(resolveInitialLanguage("cn", "en-US"), "cn");
+  assert.equal(resolveInitialLanguage("en", "zh-CN"), "en");
 });
 
 test("缺失或非法 language cookie 时根据浏览器语言重新初始化", () => {
-  assert.equal(resolveInitialLanguage(undefined, ["en-US", "zh-CN"]), "cn");
-  assert.equal(resolveInitialLanguage("zh-CN", ["en-US", "fr-FR"]), "en");
+  assert.equal(resolveInitialLanguage(undefined, "zh-CN"), "cn");
+  assert.equal(resolveInitialLanguage("zh-CN", "en-US"), "en");
 });
 
-test("浏览器语言列表中任意中文语言命中 cn", () => {
-  assert.equal(detectLanguageFromBrowser(["en-US", "zh-Hant-TW"]), "cn");
-  assert.equal(detectLanguageFromBrowser(["zh"]), "cn");
+test("浏览器首选语言是中文时命中 cn", () => {
+  assert.equal(detectLanguageFromBrowser("zh-Hant-TW"), "cn");
+  assert.equal(detectLanguageFromBrowser("zh"), "cn");
 });
 
-test("浏览器语言列表没有中文时统一使用 en", () => {
-  assert.equal(detectLanguageFromBrowser(["ja-JP", "fr-FR", "en-US"]), "en");
-  assert.equal(detectLanguageFromBrowser([]), "en");
+test("浏览器首选语言不是中文时统一使用 en", () => {
+  assert.equal(detectLanguageFromBrowser("en-US"), "en");
+  assert.equal(detectLanguageFromBrowser("ja-JP"), "en");
+  assert.equal(detectLanguageFromBrowser(null), "en");
+  assert.equal(detectLanguageFromBrowser(""), "en");
 });
 
 test("语言映射到 html lang 和 dayjs locale", () => {
