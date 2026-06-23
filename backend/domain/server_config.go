@@ -27,6 +27,10 @@ type ServerConfig struct {
 	Edition ProductEdition `json:"edition" enums:"saas,private" example:"saas"`
 	// Region SaaS 区域，国内 SaaS 返回 cn，海外 SaaS 返回 global。
 	Region ProductRegion `json:"region,omitempty" enums:"cn,global" example:"cn"`
+	// CurrentVersion 当前服务版本。
+	CurrentVersion string `json:"current_version,omitempty" example:"v1.2.3"`
+	// LatestVersion 最新可用版本。
+	LatestVersion string `json:"latest_version,omitempty" example:"v1.2.4"`
 }
 
 type ServerConfigProvider interface {
