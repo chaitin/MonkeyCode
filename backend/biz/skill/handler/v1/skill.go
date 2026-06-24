@@ -44,7 +44,7 @@ func NewSkillHandler(i *do.Injector) (*SkillHandler, error) {
 // ListEnabled 获取当前用户视角下的 Skill 列表
 //
 //	@Summary		获取本用户的 Skill 列表
-//	@Description	并集返回 (global ∪ 用户 active team ∪ 用户个人) 三级 scope 下的 skill，禁用的 skill 返回 enabled=false。
+//	@Description	并集返回 (global ∪ 用户 active team ∪ 用户个人) 三级 scope 下、enabled=true 的 skill。禁用的 skill 不返回。
 //	@Tags			【用户】任务管理
 //	@Security		MonkeyCodeAIAuth
 //	@Accept			json
@@ -60,6 +60,11 @@ func (h *SkillHandler) ListEnabled(c *web.Context) error {
 	}
 	resp := make([]*domain.SkillListItem, 0, len(items))
 	for _, it := range items {
+		// Repo intentionally returns disabled rows so admin pickers can grey
+		// them out; the user-facing endpoint hides them entirely.
+		if !it.Enabled {
+			continue
+		}
 		groups := make([]domain.SkillGroupRef, 0, len(it.Groups))
 		for _, g := range it.Groups {
 			groups = append(groups, domain.SkillGroupRef{ID: g.ID.String(), Name: g.Name})
