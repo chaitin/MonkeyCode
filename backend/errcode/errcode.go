@@ -108,6 +108,13 @@ var (
 	ErrOIDCEmailDomainDenied         = web.NewErr(http.StatusOK, 10623, "err-oidc-email-domain-denied")
 	ErrOIDCTeamMemberRequired        = web.NewErr(http.StatusOK, 10624, "err-oidc-team-member-required")
 	ErrPasswordLoginDisabled         = web.NewErr(http.StatusOK, 10625, "err-password-login-disabled")
+	ErrOAuthLoginProviderDisabled    = web.NewErr(http.StatusOK, 10626, "err-oauth-login-provider-disabled")
+	ErrOAuthLoginStateInvalid        = web.NewErr(http.StatusOK, 10627, "err-oauth-login-state-invalid")
+	ErrOAuthLoginEmailRequired       = web.NewErr(http.StatusOK, 10628, "err-oauth-login-email-required")
+	ErrOAuthLoginEmailUnverified     = web.NewErr(http.StatusOK, 10629, "err-oauth-login-email-unverified")
+	ErrOAuthLoginRoleDenied          = web.NewErr(http.StatusOK, 10630, "err-oauth-login-role-denied")
+	ErrOAuthLoginFailed              = web.NewErr(http.StatusOK, 10631, "err-oauth-login-failed")
+	ErrOAuthLoginRedirectInvalid     = web.NewErr(http.StatusOK, 10632, "err-oauth-login-redirect-invalid")
 
 	// captcha 模块
 	ErrCreateCaptchaFailed = web.NewErr(http.StatusOK, 10700, "err-create-captcha-failed")

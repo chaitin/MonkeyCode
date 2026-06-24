@@ -90,6 +90,20 @@ wechat:
       # 模型名，留空默认 deepseek-v3.2
       model: "deepseek-v3.2"
 
+oauth_login:
+  google:
+    enabled: false
+    client_id: ""
+    client_secret: ""
+    # 留空时默认使用 server.base_url + /api/v1/users/oauth/google/callback
+    redirect_url: ""
+  github:
+    enabled: false
+    client_id: ""
+    client_secret: ""
+    # 留空时默认使用 server.base_url + /api/v1/users/oauth/github/callback
+    redirect_url: ""
+
 task:
   create_req_ttl_seconds: 600
 

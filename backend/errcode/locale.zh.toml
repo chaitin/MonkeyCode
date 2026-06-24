@@ -244,6 +244,27 @@ other = "账号未加入该团队"
 [err-password-login-disabled]
 other = "该团队已关闭账号密码登录"
 
+[err-oauth-login-provider-disabled]
+other = "该登录方式暂未启用"
+
+[err-oauth-login-state-invalid]
+other = "登录状态已失效，请重新登录"
+
+[err-oauth-login-email-required]
+other = "第三方账号未返回可用邮箱"
+
+[err-oauth-login-email-unverified]
+other = "第三方账号邮箱未验证"
+
+[err-oauth-login-role-denied]
+other = "该账号不允许使用第三方登录"
+
+[err-oauth-login-failed]
+other = "第三方登录失败"
+
+[err-oauth-login-redirect-invalid]
+other = "登录跳转地址无效"
+
 [err-has-invalid-entry]
 other = "存在无效条目"
 

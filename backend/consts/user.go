@@ -4,6 +4,7 @@ type UserPlatform string
 
 const (
 	UserPlatformBaizhi UserPlatform = "baizhi" // 百智云平台
+	UserPlatformGoogle UserPlatform = "google"
 	UserPlatformGithub UserPlatform = "github"
 	UserPlatformGitLab UserPlatform = "gitlab"
 	UserPlatformGitea  UserPlatform = "gitea"

@@ -61,6 +61,20 @@ func TestPublicURLAddsBucketWhenAccessEndpointHasNoPath(t *testing.T) {
 	}
 }
 
+func TestPublicURLDoesNotAddBucketWhenAccessEndpointHostHasBucket(t *testing.T) {
+	client := &Client{
+		cfg: config.ObjectStorageConfig{
+			AccessEndpoint: "https://monkeycode-global.oss-accelerate.aliyuncs.com",
+			Bucket:         "monkeycode-global",
+		},
+	}
+	url := client.GetURL("dev/avatar/oauth/google", "108176778654195666956.png")
+	want := "https://monkeycode-global.oss-accelerate.aliyuncs.com/dev/avatar/oauth/google/108176778654195666956.png"
+	if url != want {
+		t.Fatalf("url = %q, want %q", url, want)
+	}
+}
+
 func TestPublicURLEscapesPath(t *testing.T) {
 	client := &Client{
 		cfg: config.ObjectStorageConfig{

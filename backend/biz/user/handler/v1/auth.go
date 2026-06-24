@@ -23,6 +23,7 @@ type AuthHandler struct {
 	config         *config.Config
 	logger         *slog.Logger
 	usecase        domain.UserUsecase
+	oauthUsecase   domain.OAuthLoginUsecase
 	teamUsecase    domain.TeamGroupUserUsecase
 	oidcUsecase    domain.TeamOIDCLoginUsecase
 	redis          *redis.Client
@@ -41,12 +42,14 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 	auth := do.MustInvoke[*middleware.AuthMiddleware](i)
 	targetActive := do.MustInvoke[*middleware.TargetActiveMiddleware](i)
 	captchaSvc := do.MustInvoke[*captcha.Captcha](i)
+	oauthUsecase, _ := do.Invoke[domain.OAuthLoginUsecase](i)
 	oidcUsecase, _ := do.Invoke[domain.TeamOIDCLoginUsecase](i)
 
 	h := &AuthHandler{
 		config:         cfg,
 		logger:         logger.With("module", "auth.handler"),
 		usecase:        usecase,
+		oauthUsecase:   oauthUsecase,
 		teamUsecase:    teamUsecase,
 		oidcUsecase:    oidcUsecase,
 		redis:          redisClient,
@@ -63,6 +66,8 @@ func NewAuthHandler(i *do.Injector) (*AuthHandler, error) {
 
 	// 密码登录
 	v1.POST("/password-login", web.BindHandler(h.PasswordLogin), targetActive.TargetActive())
+	v1.GET("/oauth/:provider/login", web.BindHandler(h.OAuthLogin), targetActive.TargetActive())
+	v1.GET("/oauth/:provider/callback", web.BindHandler(h.OAuthCallback), targetActive.TargetActive())
 	v1.GET("/oidc/login", web.BindHandler(h.OIDCLogin), targetActive.TargetActive())
 	v1.GET("/oidc/callback", web.BindHandler(h.OIDCCallback), targetActive.TargetActive())
 	v1.GET("/oidc/default-team", web.BaseHandler(h.OIDCDefaultPublicConfig), targetActive.TargetActive())
@@ -165,6 +170,64 @@ func (h *AuthHandler) OIDCDefaultPublicConfig(c *web.Context) error {
 		return err
 	}
 	return c.Success(resp)
+}
+
+// OAuthLogin 发起 Google/GitHub OAuth 登录
+//
+//	@Summary		发起 Google/GitHub OAuth 登录
+//	@Description	根据 provider 生成第三方授权地址。provider 仅支持 google、github。redirect_url 可选，必须是站内相对路径；登录成功后后端会跳转到该路径，空值默认 /console/。
+//	@Tags			【用户】OAuth
+//	@Accept			json
+//	@Produce		json
+//	@Param			provider		path		string	true	"登录提供方，仅支持 google、github"
+//	@Param			redirect_url	query		string	false	"登录成功后的站内跳转路径，例如 /console/tasks；只允许站内相对路径"
+//	@Success		200				{object}	web.Resp{data=domain.OAuthLoginResp}
+//	@Failure		400				{object}	web.Resp	"provider 或 redirect_url 无效"
+//	@Router			/api/v1/users/oauth/{provider}/login [get]
+func (h *AuthHandler) OAuthLogin(c *web.Context, req domain.OAuthLoginReq) error {
+	if h.oauthUsecase == nil {
+		return errcode.ErrOAuthLoginProviderDisabled
+	}
+	authURL, err := h.oauthUsecase.StartOAuthLogin(c.Request().Context(), req.Provider, req.RedirectURL)
+	if err != nil {
+		return err
+	}
+	return c.Success(domain.OAuthLoginResp{AuthURL: authURL})
+}
+
+// OAuthCallback 处理 Google/GitHub OAuth 登录回调。
+func (h *AuthHandler) OAuthCallback(c *web.Context, req domain.OAuthCallbackReq) error {
+	if h.oauthUsecase == nil {
+		return c.Redirect(http.StatusFound, "/login?oauth_error=provider_disabled")
+	}
+	resp, err := h.oauthUsecase.HandleOAuthCallback(c.Request().Context(), req.Provider, req.Code, req.State)
+	if err != nil {
+		h.logger.WarnContext(c.Request().Context(), "oauth callback failed", "provider", req.Provider, "error", err)
+		return c.Redirect(http.StatusFound, "/login?oauth_error="+oauthErrorCode(err))
+	}
+	if resp == nil || resp.User == nil {
+		return c.Redirect(http.StatusFound, "/login?oauth_error=login_failed")
+	}
+	if _, err := h.authMiddleware.Session.Save(c, consts.MonkeyCodeAISession, resp.User.ID, resp.User); err != nil {
+		h.logger.ErrorContext(c.Request().Context(), "save oauth login session failed", "error", err)
+		return errcode.ErrInternalServer
+	}
+	return c.Redirect(http.StatusFound, resp.RedirectURL)
+}
+
+func oauthErrorCode(err error) string {
+	switch err {
+	case errcode.ErrOAuthLoginProviderDisabled:
+		return "provider_disabled"
+	case errcode.ErrOAuthLoginStateInvalid:
+		return "state_invalid"
+	case errcode.ErrOAuthLoginEmailRequired:
+		return "email_required"
+	case errcode.ErrOAuthLoginEmailUnverified:
+		return "email_unverified"
+	default:
+		return "login_failed"
+	}
 }
 
 // PasswordLogin 密码登录接口

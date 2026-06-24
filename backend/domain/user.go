@@ -36,6 +36,48 @@ type UserRepo interface {
 	SetEmail(ctx context.Context, userID uuid.UUID, email string) error
 }
 
+type OAuthLoginUser struct {
+	Provider   consts.UserPlatform
+	IdentityID string
+	Email      string
+	Username   string
+	Name       string
+	AvatarURL  string
+}
+
+type OAuthLoginRepo interface {
+	FindUserByOAuthIdentity(ctx context.Context, platform consts.UserPlatform, identityID string) (*db.User, error)
+	FindIndividualByEmail(ctx context.Context, email string) (*db.User, error)
+	CreateIndividualWithIdentity(ctx context.Context, external *OAuthLoginUser) (*db.User, error)
+	BindOAuthIdentity(ctx context.Context, userID uuid.UUID, external *OAuthLoginUser) error
+	UpdateOAuthIdentity(ctx context.Context, external *OAuthLoginUser) error
+}
+
+type OAuthLoginUsecase interface {
+	StartOAuthLogin(ctx context.Context, provider string, redirectURL string) (string, error)
+	HandleOAuthCallback(ctx context.Context, provider string, code string, state string) (*OAuthLoginCallbackResp, error)
+}
+
+type OAuthLoginCallbackResp struct {
+	User        *User
+	RedirectURL string
+}
+
+type OAuthLoginResp struct {
+	AuthURL string `json:"auth_url"`
+}
+
+type OAuthLoginReq struct {
+	Provider    string `param:"provider" validate:"required" swaggerignore:"true"`
+	RedirectURL string `query:"redirect_url"`
+}
+
+type OAuthCallbackReq struct {
+	Provider string `param:"provider" validate:"required" swaggerignore:"true"`
+	Code     string `query:"code" validate:"required"`
+	State    string `query:"state" validate:"required"`
+}
+
 // UserActiveRepo 用户活跃记录仓储接口
 type UserActiveRepo interface {
 	RecordActiveIP(ctx context.Context, key string, ip string) error
