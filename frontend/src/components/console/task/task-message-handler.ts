@@ -212,51 +212,172 @@ export class TaskMessageHandler {
     this.state.messages.push(newMessage)
   }
 
-  private applyAskUserQuestion(data: any, timestamp: number) {
-    const newMessage: MessageType = {
+  private normalizeAskUserQuestions(rawQuestions: any, defaultMultiple = false) {
+    if (!Array.isArray(rawQuestions)) {
+      return null
+    }
+
+    return rawQuestions.map((question: any) => {
+      const multiple = question?.multiple ?? question?.multiSelect ?? defaultMultiple
+
+      return {
+        custom: !!question?.custom,
+        header: question?.header,
+        multiSelect: !!multiple,
+        question: question?.question,
+        options: (Array.isArray(question?.options) ? question.options : []).map((option: any) => ({
+          label: option?.label,
+          description: option?.description,
+        })),
+      }
+    })
+  }
+
+  private getAskUserQuestionRawQuestions(toolCall: any) {
+    return Array.isArray(toolCall?.rawInput?.questions)
+      ? toolCall.rawInput.questions
+      : toolCall?._meta?.askUserQuestion?.questions
+  }
+
+  private getAskUserQuestionDefaultMultiple(toolCall: any) {
+    return !!(toolCall?.rawInput?.multiple ?? toolCall?._meta?.askUserQuestion?.multiple ?? false)
+  }
+
+  private isUserQuestionToolCall(data: any) {
+    const questions = this.normalizeAskUserQuestions(
+      this.getAskUserQuestionRawQuestions(data),
+      this.getAskUserQuestionDefaultMultiple(data),
+    )
+    if (!questions) {
+      return false
+    }
+
+    const title = typeof data?.title === "string" ? data.title : ""
+    const kind = typeof data?.kind === "string" ? data.kind : ""
+    const normalizedTitle = title.toLowerCase().trim().replace(/[_\s]+/g, "-")
+    const normalizedKind = kind.toLowerCase().trim().replace(/[_\s]+/g, "-")
+
+    return (
+      normalizedTitle === "question"
+      || normalizedTitle === "user-question"
+      || normalizedTitle.endsWith("-user-question")
+      || normalizedTitle.includes("ask-user-question")
+      || normalizedKind === "user-question"
+      || normalizedKind === "ask-user-question"
+      || (title === "" && kind === "")
+    )
+  }
+
+  private upsertAskUserQuestionFromToolCall(toolCall: any, timestamp: number) {
+    const askId = toolCall?.toolCallId
+    const questions = this.normalizeAskUserQuestions(
+      this.getAskUserQuestionRawQuestions(toolCall),
+      this.getAskUserQuestionDefaultMultiple(toolCall),
+    )
+
+    if (!askId || !questions) {
+      return false
+    }
+
+    const askQuestionIndex = this.state.messages.findIndex(
+      (message: MessageType) => message.type === "ask_user_question" && message.data.askId === askId,
+    )
+    const toolcallIndex = this.state.messages.findIndex(
+      (message: MessageType) => message.type === "tool_call" && message.data.toolCallId === askId,
+    )
+    const nextMessage: MessageType = {
       id: this.createMessageId(),
       time: timestamp,
       type: "ask_user_question",
       role: "agent",
       data: {
-        askId: data.toolCall.toolCallId,
-        status: "pending",
-        questions: data.toolCall.rawInput.questions.map((question: any) => ({
-          custom: !!question.custom,
-          header: question.header,
-          multiSelect: !!question.multiSelect,
-          question: question.question,
-          options: question.options.map((option: any) => ({
-            label: option.label,
-            description: option.description,
-          })),
-        })),
+        askId,
+        status: toolCall?.status || "pending",
+        questions,
       },
     }
-    this.state.messages.push(newMessage)
-  }
 
-  private applyReplyQuestion(data: any) {
-    const askQuestionIndex = this.state.messages.findIndex(
-      (message: MessageType) => message.type === "ask_user_question" && message.data.askId === data.request_id,
-    )
-    if (askQuestionIndex === -1) {
-      return
+    if (askQuestionIndex !== -1) {
+      const existingMessage = this.state.messages[askQuestionIndex]
+      const existingAnswers = new Map(
+        (existingMessage.data.questions ?? [])
+          .filter((question: any) => question.answer !== undefined)
+          .map((question: any) => [question.question, question.answer]),
+      )
+      const mergedQuestions = questions.map((question: any) => (
+        existingAnswers.has(question.question)
+          ? {
+            ...question,
+            answer: existingAnswers.get(question.question),
+          }
+          : question
+      ))
+
+      this.state.messages[askQuestionIndex] = {
+        ...existingMessage,
+        data: {
+          ...existingMessage.data,
+          status: existingMessage.data.status === "completed"
+            ? "completed"
+            : toolCall?.status || existingMessage.data.status || "pending",
+          questions: mergedQuestions,
+        },
+      }
+      return true
     }
 
-    const answers = JSON.parse(data.answers_json)
+    if (toolcallIndex !== -1) {
+      this.state.messages[toolcallIndex] = nextMessage
+      return true
+    }
+
+    this.state.messages.push(nextMessage)
+    return true
+  }
+
+  private applyAskUserQuestion(data: any, timestamp: number) {
+    this.upsertAskUserQuestionFromToolCall({
+      ...data?.toolCall,
+      status: "pending",
+    }, timestamp)
+  }
+
+  applyOptimisticReplyQuestion(requestId: string, answers: unknown) {
+    if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+      return false
+    }
+
+    return this.applyReplyQuestionAnswers(requestId, answers as Record<string, unknown>)
+  }
+
+  private applyReplyQuestionAnswers(requestId: string, answers: Record<string, unknown>, status?: string) {
+    const askQuestionIndex = this.state.messages.findIndex(
+      (message: MessageType) => message.type === "ask_user_question" && message.data.askId === requestId,
+    )
+    if (askQuestionIndex === -1) {
+      return false
+    }
+
     const existingMessage = this.state.messages[askQuestionIndex]
     this.state.messages[askQuestionIndex] = {
       ...existingMessage,
       data: {
+        ...existingMessage.data,
         questions: existingMessage.data.questions?.map((question: any) => ({
           ...question,
           answer: answers[question.question],
         })),
-        askId: data.request_id,
-        status: "completed",
+        askId: requestId,
+        ...(status && { status }),
       },
     }
+
+    return true
+  }
+
+  private applyReplyQuestion(data: any) {
+    const answers = JSON.parse(data.answers_json)
+    this.applyReplyQuestionAnswers(data.request_id, answers, "completed")
   }
 
   private applyAgentMessageChunk(data: any, timestamp: number) {
@@ -303,6 +424,11 @@ export class TaskMessageHandler {
   }
 
   private applyToolCall(data: any, timestamp: number) {
+    if (this.isUserQuestionToolCall(data)) {
+      this.upsertAskUserQuestionFromToolCall(data, timestamp)
+      return
+    }
+
     const toolcallIndex = this.state.messages.findIndex(
       (message: MessageType) => message.type === "tool_call" && message.data.toolCallId === data.toolCallId,
     )

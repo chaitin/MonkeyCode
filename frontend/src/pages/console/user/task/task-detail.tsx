@@ -147,9 +147,10 @@ export default function TaskDetailPage() {
       const askId = message.data.askId ?? ""
       const baseStatus = message.data.status
       const isCompleted = baseStatus === "completed"
+      const isExpired = baseStatus === "failed" || baseStatus === "expired"
 
-      let nextStatus: AskUserQuestionStatus = isCompleted ? "completed" : "pending"
-      if (!isCompleted) {
+      let nextStatus: AskUserQuestionStatus = isCompleted ? "completed" : isExpired ? "expired" : "pending"
+      if (!isCompleted && !isExpired) {
         if (source === "history" || streamConnectionState === "closed") {
           nextStatus = "expired"
         } else if (queuedReplyIdSet.has(askId)) {

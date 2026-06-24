@@ -212,6 +212,7 @@ export class TaskStreamClient {
     }
 
     if (this.sendMessage(payload)) {
+      this.messageHandler.applyOptimisticReplyQuestion(requestId, answers)
       this.queuedReplies.delete(requestId)
       this.submittingReplies.add(requestId)
       this.emitState(this.messageHandler.getState())
@@ -219,6 +220,7 @@ export class TaskStreamClient {
     }
 
     if (this.connectionState === "connecting" || this.connectionState === "reconnecting") {
+      this.messageHandler.applyOptimisticReplyQuestion(requestId, answers)
       this.queuedReplies.set(requestId, JSON.stringify(payload))
       this.submittingReplies.delete(requestId)
       this.emitState(this.messageHandler.getState())
