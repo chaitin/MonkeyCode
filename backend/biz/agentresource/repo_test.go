@@ -278,6 +278,48 @@ func TestListActiveSkills_KeepsOrphans(t *testing.T) {
 	}
 }
 
+func TestListActiveSkillsScoped_ExcludesOrphans(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-skills-scoped-orphan")
+	repoID := seedSkillRepo(t, ctx, client)
+
+	good := seedSkill(t, ctx, client, repoID, skillSeed{name: "good", withVersion: true})
+	orphan := seedSkill(t, ctx, client, repoID, skillSeed{name: "orphan", isOrphan: true, withVersion: true})
+
+	repo := NewRepo(client)
+	out, err := repo.ListActiveSkillsScoped(ctx, SkillSelection{
+		UserSelectedIDs: []uuid.UUID{good, orphan},
+		Scope:           GlobalOnlyScope(),
+	})
+	if err != nil {
+		t.Fatalf("ListActiveSkillsScoped: %v", err)
+	}
+	if len(out) != 1 || out[0].Name != "good" {
+		t.Fatalf("expected only good to dispatch (orphan excluded), got %+v", out)
+	}
+}
+
+func TestListActivePluginsScoped_ExcludesOrphans(t *testing.T) {
+	ctx := context.Background()
+	client := newTestDB(t, "agentresource-plugins-scoped-orphan")
+	repoID := seedPluginRepo(t, ctx, client)
+
+	good := seedPlugin(t, ctx, client, repoID, pluginSeed{name: "good", withVersion: true, entry: "m.js"})
+	orphan := seedPlugin(t, ctx, client, repoID, pluginSeed{name: "orphan", isOrphan: true, withVersion: true, entry: "m.js"})
+
+	repo := NewRepo(client)
+	out, err := repo.ListActivePluginsScoped(ctx, SkillSelection{
+		UserSelectedIDs: []uuid.UUID{good, orphan},
+		Scope:           GlobalOnlyScope(),
+	})
+	if err != nil {
+		t.Fatalf("ListActivePluginsScoped: %v", err)
+	}
+	if len(out) != 1 || out[0].Name != "good" {
+		t.Fatalf("expected only good to dispatch (orphan excluded), got %+v", out)
+	}
+}
+
 func TestListActiveSkills_EmptyUserIDs_OnlyForce(t *testing.T) {
 	ctx := context.Background()
 	client := newTestDB(t, "agentresource-skills-emptyuser")

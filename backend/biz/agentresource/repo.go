@@ -570,6 +570,7 @@ func (r *repoImpl) ListActiveSkillsScoped(ctx context.Context, sel SkillSelectio
 	q := r.db.AgentSkill.Query().
 		Where(
 			agentskill.IsDeletedEQ(false),
+			agentskill.IsOrphanEQ(false),
 			agentskill.EnabledEQ(true),
 			agentskill.ActiveVersionIDNotNil(),
 		)
@@ -638,6 +639,7 @@ func (r *repoImpl) ListActivePluginsScoped(ctx context.Context, sel SkillSelecti
 	q := r.db.AgentPlugin.Query().
 		Where(
 			agentplugin.IsDeletedEQ(false),
+			agentplugin.IsOrphanEQ(false),
 			agentplugin.EnabledEQ(true),
 			agentplugin.ActiveVersionIDNotNil(),
 		)
